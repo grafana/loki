@@ -33,12 +33,24 @@ scrape_configs:
       - localhost
       labels:
         job: varlogs
+limit_config:
+  readline_rate: 100
+  readline_burst: 200
 `
 
 func Test_Load(t *testing.T) {
 	var dst Config
 	err := yaml.Unmarshal([]byte(testFile), &dst)
 	require.Nil(t, err)
+}
+
+func Test_RateLimitLoad(t *testing.T) {
+	var dst Config
+	err := yaml.Unmarshal([]byte(testFile), &dst)
+	require.Nil(t, err)
+	config := dst.LimitConfig
+	require.Equal(t, float64(100), config.ReadlineRate)
+	require.Equal(t, 200, config.ReadlineBurst)
 }
 
 func TestConfig_Setup(t *testing.T) {

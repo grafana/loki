@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
@@ -33,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	fe "github.com/grafana/loki/pkg/util/flagext"
 	loki_net "github.com/grafana/loki/pkg/util/net"
+	"github.com/grafana/loki/pkg/util/test"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -146,7 +146,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 	request := makeWriteRequest(10, 10)
-	vCtx := d.validator.getValidationContextFor("123")
+	vCtx := d.validator.getValidationContextForTime(testTime, "123")
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
@@ -287,7 +287,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			// updates to the expected size
 			if distributors[0].distributorsRing != nil {
 				test.Poll(t, time.Second, testData.distributors, func() interface{} {
-					return distributors[0].distributorsRing.HealthyInstancesCount()
+					return distributors[0].distributorsLifecycler.HealthyInstancesCount()
 				})
 			}
 
@@ -339,6 +339,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client, factory
 	distributorConfig.DistributorRing.HeartbeatPeriod = 100 * time.Millisecond
 	distributorConfig.DistributorRing.InstanceID = strconv.Itoa(rand.Int())
 	distributorConfig.DistributorRing.KVStore.Mock = kvStore
+	distributorConfig.DistributorRing.KVStore.Store = "inmemory"
 	distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
 	distributorConfig.factory = factory
 	if factory == nil {

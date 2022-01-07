@@ -326,6 +326,11 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 
 // sendFileCreateEvent sends file creation events to only the targets with matched path.
 func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
+	// Lock the mutex because other threads are manipulating s.fileEventWatchers which can lead to a deadlock
+	// where we send events to channels where nobody is listening anymore
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	for path, watcher := range s.fileEventWatchers {
 		matched, err := doublestar.Match(path, event.Name)
 		if err != nil {

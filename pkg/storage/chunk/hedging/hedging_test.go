@@ -33,7 +33,7 @@ func TestHedging(t *testing.T) {
 		MaxPerSecond: 1000,
 	}
 	count := atomic.NewInt32(0)
-	client := cfg.Client(&http.Client{
+	client, err := cfg.Client(&http.Client{
 		Transport: RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			count.Inc()
 			time.Sleep(200 * time.Millisecond)
@@ -42,6 +42,9 @@ func TestHedging(t *testing.T) {
 			}, nil
 		}),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, _ = client.Get("http://example.com")
 
 	require.Equal(t, int32(3), count.Load())
@@ -65,7 +68,7 @@ func TestHedgingRateLimit(t *testing.T) {
 		MaxPerSecond: 1,
 	}
 	count := atomic.NewInt32(0)
-	client := cfg.Client(&http.Client{
+	client, err := cfg.Client(&http.Client{
 		Transport: RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			count.Inc()
 			time.Sleep(200 * time.Millisecond)
@@ -74,6 +77,9 @@ func TestHedgingRateLimit(t *testing.T) {
 			}, nil
 		}),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, _ = client.Get("http://example.com")
 
 	require.Equal(t, int32(2), count.Load())

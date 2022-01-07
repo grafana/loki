@@ -13,8 +13,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
+	"github.com/grafana/loki/pkg/querier/astmapper"
 )
 
 const (
@@ -964,4 +965,8 @@ func (v11Entries) GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]Inde
 			HashValue: string(seriesID),
 		},
 	}, nil
+}
+
+type v12Entries struct {
+	v11Entries
 }

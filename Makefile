@@ -20,7 +20,7 @@ SHELL = /usr/bin/env bash
 #
 # Can be used from command line by using "GOMOD= make" (empty = no -mod parameter), or "GOMOD=vendor make" (default).
 
-GOMOD?=vendor
+GOMOD ?= vendor
 ifeq ($(strip $(GOMOD)),) # Is empty?
 	MOD_FLAG=
 	GOLANGCI_ARG=
@@ -28,6 +28,8 @@ else
 	MOD_FLAG=-mod=$(GOMOD)
 	GOLANGCI_ARG=--modules-download-mode=$(GOMOD)
 endif
+
+GOTEST ?= go test
 
 #############
 # Variables #
@@ -272,7 +274,7 @@ lint:
 ########
 
 test: all
-	GOGC=10 go test -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./...
+	GOGC=10 $(GOTEST) -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./...
 
 #########
 # Clean #
@@ -554,7 +556,7 @@ endif
 
 benchmark-store:
 	go run $(MOD_FLAG) ./pkg/storage/hack/main.go
-	go test $(MOD_FLAG) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
+	$(GOTEST) $(MOD_FLAG) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
 
 # regenerate drone yaml
 drone:
@@ -637,8 +639,8 @@ endif
 # usage: FUZZ_TESTCASE_PATH=/tmp/testcase make test-fuzz
 # this will run the fuzzing using /tmp/testcase and save benchmark locally.
 test-fuzz:
-	go test -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
-		-run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s
+	$(GOTEST) -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
+	  -run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s
 
 format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \

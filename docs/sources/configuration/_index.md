@@ -86,6 +86,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # the distributor and compactor, but all in the same process.
 # Supported values: all, compactor, distributor, ingester, querier, query-scheduler,
 #  ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write.
+# A full list of available targets can be printed when running Loki with the `-list-targets` command line flag.
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
@@ -320,7 +321,7 @@ The `query_scheduler` block configures the Loki query scheduler.
 
 # The hash ring configuration. This option is required only if use_scheduler_ring is true
 # The CLI flags prefix for this block config is scheduler.ring
-[scheduler_ring: <ring_config>]
+[scheduler_ring: <ring>]
 ```
 
 ## frontend
@@ -370,20 +371,6 @@ The `frontend` block configures the Loki query-frontend.
 The `query_range` block configures query splitting and caching in the Loki query-frontend.
 
 ```yaml
-# Split queries by an interval and execute in parallel, 0 disables it. You
-# should use in multiple of 24 hours (same as the storage bucketing scheme),
-# to avoid queriers downloading and processing the same chunks. This also
-# determines how cache keys are chosen when result caching is enabled
-# CLI flag: -querier.split-queries-by-interval
-[split_queries_by_interval: <duration> | default = 0s]
-
-# Limit queries that can be sharded.
-# Queries within the time range of now and now minus this sharding lookback
-# are not sharded. The default value of 0s disables the lookback, causing
-# sharding of all queries at all times.
-# CLI flag: -frontend.min-sharding-lookback
-[min_sharding_lookback: <duration> | default = 0s]
-
 # Deprecated: Split queries by day and execute in parallel.
 # Use -querier.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
@@ -466,11 +453,11 @@ storage:
   # Configures backend rule storage for Swift.
   [swift: <swift_storage_config>]
 
-  # Configures backend rule storage for a local filesystem directory.
+  # Configures backend rule storage for a local file system directory.
   [local: <local_storage_config>]
 
-  # The `hedging_config` configures how to hedge requests for the storage.
-  [hedging: <hedging_config>]
+  # The `hedging` block configures how to hedge storage requests.
+  [hedging: <hedging>]
 
 # Remote-write configuration to send rule samples to a Prometheus remote-write endpoint.
 remote_write:
@@ -480,22 +467,6 @@ remote_write:
   # Minimum period to wait between refreshing remote-write reconfigurations.
   # This should be greater than or equivalent to -limits.per-user-override-period.
   [config_refresh_period: <duration> | default = 10s]
-
-  wal:
-    # The directory in which to write tenant WAL files. Each tenant will have its own
-    # directory one level below this directory.
-    [dir: <string> | default = "ruler-wal"]
-    # Frequency with which to run the WAL truncation process.
-    [truncate_frequency: <duration> | default = 60m]
-    # Minimum and maximum time series should exist in the WAL for.
-    [min_age: <duration> | default = 5m]
-    [max_age: <duration> | default = 4h]
-
-  wal_cleaner:
-    # The minimum age of a WAL to consider for cleaning.
-    [min_age: <duration> | default = 12h]
-    # How often to run the WAL cleaner.
-    [period: <duration> | default = 0s (disabled)]
 
   client:
     # The URL of the endpoint to send samples to.
@@ -599,6 +570,22 @@ remote_write:
       # This is experimental and might change in the future.
       [retry_on_http_429: <boolean> | default = false]
 
+wal:
+  # The directory in which to write tenant WAL files. Each tenant will have its own
+  # directory one level below this directory.
+  [dir: <string> | default = "ruler-wal"]
+  # Frequency with which to run the WAL truncation process.
+  [truncate_frequency: <duration> | default = 60m]
+  # Minimum and maximum time series should exist in the WAL for.
+  [min_age: <duration> | default = 5m]
+  [max_age: <duration> | default = 4h]
+
+wal_cleaner:
+  # The minimum age of a WAL to consider for cleaning.
+  [min_age: <duration> | default = 12h]
+  # How often to run the WAL cleaner.
+  [period: <duration> | default = 0s (disabled)]
+
 # File path to store temporary rule files.
 # CLI flag: -ruler.rule-path
 [rule_path: <filename> | default = "/rules"]
@@ -653,7 +640,57 @@ remote_write:
 
 # Ring used by Loki ruler.
 # The CLI flags prefix for this block config is ruler.ring
-[ring: <ring_config>]
+ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -<prefix>.store
+    [store: <string> | default = "memberlist"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -<prefix>.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # The consul_config configures the consul client.
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -<prefix>.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -<prefix>.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -<prefix>.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -<prefix>.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Interval between heartbeats sent to the ring. 0 = disabled.
+  # CLI flag: -<prefix>.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which ruler ring members are considered unhealthy
+  # within the ring. 0 = never (timeout disabled). 
+  # CLI flag: -<prefix>.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # Name of network interface to read addresses from.
+  # CLI flag: -<prefix>.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # The number of tokens the lifecycler will generate and put into the ring if
+  # it joined without transferring tokens from another lifecycler.
+  # CLI flag: -<prefix>.num-tokens
+  [num_tokens: <int> | default = 128]
 ```
 
 ## azure_storage_config
@@ -706,6 +743,10 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # Maximum time to wait before retrying a request.
 # CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
+
+# Use Managed Identity or not.
+# CLI flag: -ruler.storage.azure.use-managed-identity
+[use_managed_identity: <boolean> | default = false]
 ```
 
 ## gcs_storage_config
@@ -725,6 +766,10 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 # The duration after which the requests to GCS should be timed out.
 # CLI flag: -<prefix>.gcs.request-timeout
 [request_timeout: <duration> | default = 0s]
+
+# Enable HTTP/2 when connecting to GCS.
+# CLI flag: -<prefix>.gcs.enable-http2
+[enable_http2: <bool> | default = true]
 ```
 
 ## s3_storage_config
@@ -856,33 +901,35 @@ The `swift_storage_config` configures Swift as a general storage for different d
 [container_name: <string> | default = "cortex"]
 ```
 
-## hedging_config
+## hedging
 
-The `hedging_config` configures how to hedge requests for the storage.
+The `hedging` block configures how to hedge storage requests.
 
-Hedged requests is sending a secondary request until the first request has been outstanding for more than a configure expected latency
-for this class of requests.
-You should configure the latency based on your p99 of object store requests.
+The hedging implementation sends a second storage request once a first request has
+been outstanding for more than a configured expected latency for this class of requests.
+Calculate your latency to be the 99th percentile of object storage response times.
 
 ```yaml
-# Optional. Default is 0 (disabled)
+# An optional duration that sets the quantity of time after a first storage request
+# is sent and before a second request is sent, when no response is received for the first
+# storage request. The recommended duration is the measured 99th percentile of object
+# storage response times, to reduce long tail latency. This option is most impactful
+# when used with queriers, and has minimal to no impact on other components.
+# The default value of 0 disables the hedging of storage requests.
 # Example: "at: 500ms"
-# If set to a non-zero value another request will be issued at the provided duration. Recommended to
-# be set to p99 of object store requests to reduce long tail latency. This setting is most impactful when
-# used with queriers and has minimal to no impact on other pieces.
 [at: <duration> | default = 0]
-# Optional. Default is 2
-# The maximum amount of hedge requests to be issued for a given request.
-[up_to: <int> | default = 2]
-# Optional. Default is 5
-# The maximum amount of hedged requests to be issued per seconds.
-[max_per_second: <int> | default = 5]
 
+# An optional maximum quantity of hedged requests to be issued for a given request.
+[up_to: <int> | default = 2]
+
+# Caps the rate of hedged requests by optionally defining the maximum quantity of
+# hedged requests issued per second.
+[max_per_second: <int> | default = 5]
 ```
 
 ## local_storage_config
 
-The `local_storage_config` configures a (local) filesystem as a general storage for different data generated by Loki.
+The `local_storage_config` configures a (local) file system as a general storage for different data generated by Loki.
 
 ```yaml
 # Filesystem directory to be used as storage.
@@ -1582,14 +1629,14 @@ swift:
   [container_name: <string> | default = "cortex"]
 
 # Configures storing index in BoltDB. Required fields only
-# required when boltdb is present in config.
+# required when boltdb is present in the configuration.
 boltdb:
   # Location of BoltDB index files.
   # CLI flag: -boltdb.dir
   directory: <string>
 
-# Configures storing the chunks on the local filesystem. Required
-# fields only required when filesystem is present in config.
+# Configures storing the chunks on the local file system. Required
+# fields only required when filesystem is present in the configuration.
 filesystem:
   # Directory to store chunks in.
   # CLI flag: -local.chunk-directory
@@ -1752,7 +1799,7 @@ memcached_client:
   [consistent_hash: <bool>]
 
 redis:
-  # Redis Server endpoint to use for caching. A comma-separated list of endpoints
+  # Redis Server or Cluster configuration endpoint to use for caching. A comma-separated list of endpoints
   # for Redis Cluster or Redis Sentinel. If empty, no redis will be used.
   # CLI flag: -<prefix>.redis.endpoint
   [endpoint: <string>]
@@ -1922,7 +1969,7 @@ compacts index shards to more performant forms.
 
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
-[compactor_ring: <ring_config>]
+[compactor_ring: <ring>]
 ```
 
 ## limits_config
@@ -2037,6 +2084,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Maximum number of stream matchers per query.
 # CLI flag: -querier.max-streams-matcher-per-query
 [max_streams_matchers_per_query: <int> | default = 1000]
+
+# Maximum number of concurrent tail requests.
+# CLI flag: -querier.max-concurrent-tail-requests
+[max_concurrent_tail_requests: <int> | default = 10]
 
 # Duration to delay the evaluation of rules to ensure.
 # CLI flag: -ruler.evaluation-delay-duration
@@ -2155,6 +2206,20 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Retry upon receiving a 429 status code from the remote-write storage.
 # This is experimental and might change in the future.
 [ruler_remote_write_queue_retry_on_ratelimit: <bool>]
+
+# Limit queries that can be sharded.
+# Queries within the time range of now and now minus this sharding lookback
+# are not sharded. The default value of 0s disables the lookback, causing
+# sharding of all queries at all times.
+# CLI flag: -frontend.min-sharding-lookback
+[min_sharding_lookback: <duration> | default = 0s]
+
+# Split queries by an interval and execute in parallel, 0 disables it. You
+# should use in multiple of 24 hours (same as the storage bucketing scheme),
+# to avoid queriers downloading and processing the same chunks. This also
+# determines how cache keys are chosen when result caching is enabled
+# CLI flag: -querier.split-queries-by-interval
+[split_queries_by_interval: <duration> | default = 0s]
 ```
 
 ### grpc_client_config
@@ -2358,12 +2423,25 @@ This way, one doesn't have to replicate configuration in multiple places.
 # and path_prefix is empty.
 [persist_tokens: <boolean>: default = false]
 
+# A common list of net interfaces used internally to look for addresses.
+# If a more specific "instance_interface_names" is set, this is ignored.
+# If "instance_interface_names" under the common ring section is configured,
+# this common "instance_interface_names" is only applied to the frontend, but not for
+# ring related components (ex: distributor, ruler, etc).
+[instance_interface_names: <list of string>]
+
+# A common address used by Loki components to advertise their address.
+# If a more specific "instance_addr" is set, this is ignored.
+# If "instance_addr" under the common ring section is configured, this common "instance_addr"
+# is only applied to the frontend, but not for ring related components (ex: distributor, ruler, etc).
+[instance_addr: <string>]
+
 # A common ring configuration to be used by all Loki rings.
 # If a common ring is given, its values are used to define any undefined ring values.
 # For instance, you can expect the `heartbeat_period` defined in the common section
 # to be used by the distributor's ring, but only if the distributor's ring itself
 # doesn't have a `heartbeat_period` set.
-[ring: <ring_config>]
+[ring: <ring>]
 ```
 
 ### storage
@@ -2385,16 +2463,29 @@ If any specific configuration for an object storage client have been provided el
 # Configures Swift as the common storage.
 [swift: <swift_storage_config>]
 
-# Configures a (local) filesystem as the common storage.
-[filesystem: <local_storage_config>]
+# Configures a (local) file system as the common storage.
+[filesystem: <filesystem>]
 
 # The `hedging_config` configures how to hedge requests for the storage.
 [hedging: <hedging_config>]
 ```
 
-### ring_config
+### filesystem
 
-The `ring_config` blocks defines a ring configuration used by Loki component.
+The common `filesystem` block configures a local file system as a general
+storage for various types of data generated by Loki.
+
+```yaml
+# File system directory to be used for chunks storage.
+[chunks_directory: <filename> | default = ""]
+
+# File system directory to be used for rules storage.
+[rules_directory: <filename> | default = ""]
+```
+
+### ring
+
+The common `ring` block defines a ring configuration used by a Loki component.
 
 ```yaml
 # The key-value store used to share the hash ring across multiple instances.
