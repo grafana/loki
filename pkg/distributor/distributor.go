@@ -227,7 +227,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedSamplesSize := 0
 	validatedSamplesCount := 0
 
-	validationContext := d.validator.getValidationContextFor(userID)
+	validationContext := d.validator.getValidationContextForTime(time.Now(), userID)
 
 	for _, stream := range req.Streams {
 		// Truncate first so subsequent steps have consistent line lengths

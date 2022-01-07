@@ -1747,7 +1747,7 @@ memcached_client:
   [consistent_hash: <bool>]
 
 redis:
-  # Redis Server endpoint to use for caching. A comma-separated list of endpoints
+  # Redis Server or Cluster configuration endpoint to use for caching. A comma-separated list of endpoints
   # for Redis Cluster or Redis Sentinel. If empty, no redis will be used.
   # CLI flag: -<prefix>.redis.endpoint
   [endpoint: <string>]
@@ -2370,6 +2370,19 @@ This way, one doesn't have to replicate configuration in multiple places.
 # to files in the path_prefix directory. Loki will error if you set this to true
 # and path_prefix is empty.
 [persist_tokens: <boolean>: default = false]
+
+# A common list of net interfaces used internally to look for addresses.
+# If a more specific "instance_interface_names" is set, this is ignored.
+# If "instance_interface_names" under the common ring section is configured,
+# this common "instance_interface_names" is only applied to the frontend, but not for
+# ring related components (ex: distributor, ruler, etc).
+[instance_interface_names: <list of string>]
+
+# A common address used by Loki components to advertise their address.
+# If a more specific "instance_addr" is set, this is ignored.
+# If "instance_addr" under the common ring section is configured, this common "instance_addr"
+# is only applied to the frontend, but not for ring related components (ex: distributor, ruler, etc).
+[instance_addr: <string>]
 
 # A common ring configuration to be used by all Loki rings.
 # If a common ring is given, its values are used to define any undefined ring values.

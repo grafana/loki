@@ -123,7 +123,7 @@ func main() {
 	log.Info("registering metrics")
 	metrics.RegisterMetricCollectors()
 
-	log.Info("Registring profiling endpoints.")
+	log.Info("Registering profiling endpoints.")
 	err = registerProfiler(mgr)
 	if err != nil {
 		log.Error(err, "failed to register extra pprof handler")

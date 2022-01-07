@@ -1344,3 +1344,140 @@ common:
 		assert.Equal(t, 1, config.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor)
 	})
 }
+
+func Test_instanceAddr(t *testing.T) {
+	t.Run("common instance addr isn't applied when addresses are explicitly set", func(t *testing.T) {
+		yamlContent := `distributor:
+  ring:
+    instance_addr: mydistributor
+ingester:
+  lifecycler:
+    address: myingester
+ruler:
+  ring:
+    instance_addr: myruler
+query_scheduler:
+  scheduler_ring:
+    instance_addr: myscheduler
+frontend:
+  address: myqueryfrontend
+compactor:
+  compactor_ring:
+    instance_addr: mycompactor
+common:
+  instance_addr: 99.99.99.99
+  ring:
+    instance_addr: mycommonring`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "mydistributor", config.Distributor.DistributorRing.InstanceAddr)
+		assert.Equal(t, "myingester", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "myruler", config.Ruler.Ring.InstanceAddr)
+		assert.Equal(t, "myscheduler", config.QueryScheduler.SchedulerRing.InstanceAddr)
+		assert.Equal(t, "myqueryfrontend", config.Frontend.FrontendV2.Addr)
+		assert.Equal(t, "mycompactor", config.CompactorConfig.CompactorRing.InstanceAddr)
+	})
+
+	t.Run("common instance addr is applied when addresses are not explicitly set", func(t *testing.T) {
+		yamlContent := `common:
+  instance_addr: 99.99.99.99`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "99.99.99.99", config.Distributor.DistributorRing.InstanceAddr)
+		assert.Equal(t, "99.99.99.99", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "99.99.99.99", config.Ruler.Ring.InstanceAddr)
+		assert.Equal(t, "99.99.99.99", config.QueryScheduler.SchedulerRing.InstanceAddr)
+		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr)
+		assert.Equal(t, "99.99.99.99", config.CompactorConfig.CompactorRing.InstanceAddr)
+	})
+
+	t.Run("common instance addr doesn't supersede instance addr from common ring", func(t *testing.T) {
+		yamlContent := `common:
+  instance_addr: 99.99.99.99
+  ring:
+    instance_addr: 22.22.22.22`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "22.22.22.22", config.Distributor.DistributorRing.InstanceAddr)
+		assert.Equal(t, "22.22.22.22", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "22.22.22.22", config.Ruler.Ring.InstanceAddr)
+		assert.Equal(t, "22.22.22.22", config.QueryScheduler.SchedulerRing.InstanceAddr)
+		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr) // not a ring.
+		assert.Equal(t, "22.22.22.22", config.CompactorConfig.CompactorRing.InstanceAddr)
+	})
+}
+
+func Test_instanceInterfaceNames(t *testing.T) {
+	t.Run("common instance net interfaces aren't applied when explicitly set at other sections", func(t *testing.T) {
+		yamlContent := `distributor:
+  ring:
+    instance_interface_names:
+    - mydistributor
+ingester:
+  lifecycler:
+    interface_names:
+    - myingester
+ruler:
+  ring:
+    instance_interface_names:
+    - myruler
+query_scheduler:
+  scheduler_ring:
+    instance_interface_names:
+    - myscheduler
+frontend:
+  instance_interface_names:
+  - myfrontend
+compactor:
+  compactor_ring:
+    instance_interface_names:
+    - mycompactor
+common:
+  instance_interface_names:
+  - mycommoninf
+  ring:
+    instance_interface_names:
+    - mycommonring`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"mydistributor"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"myingester"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"myruler"}, config.Ruler.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"myscheduler"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"myfrontend"}, config.Frontend.FrontendV2.InfNames)
+		assert.Equal(t, []string{"mycompactor"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+	})
+
+	t.Run("common instance net interfaces is applied when others net interfaces are not explicitly set", func(t *testing.T) {
+		yamlContent := `common:
+  instance_interface_names:
+  - commoninterface`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"commoninterface"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"commoninterface"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"commoninterface"}, config.Ruler.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"commoninterface"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"commoninterface"}, config.Frontend.FrontendV2.InfNames)
+		assert.Equal(t, []string{"commoninterface"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+	})
+
+	t.Run("common instance net interface doesn't supersede net interface from common ring", func(t *testing.T) {
+		yamlContent := `common:
+  instance_interface_names:
+  - ringsshouldntusethis
+  ring:
+    instance_interface_names:
+    - ringsshouldusethis`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ruler.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldntusethis"}, config.Frontend.FrontendV2.InfNames) // not a ring.
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+	})
+}

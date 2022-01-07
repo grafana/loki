@@ -107,7 +107,7 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 			lbls = append(lbls, labels.Label{Name: lbl.Name, Value: lbl.Value})
 		}
 
-		instance := i.getOrCreateInstance(chunkSet.UserId)
+		instance := i.GetOrCreateInstance(chunkSet.UserId)
 		for _, chunk := range chunkSet.Chunks {
 			if err := instance.consumeChunk(userCtx, lbls, chunk); err != nil {
 				return err
