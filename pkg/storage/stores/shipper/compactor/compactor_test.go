@@ -95,7 +95,7 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	}
 
 	cm := storage.NewClientMetrics()
-	// defer am.Unregister()
+	defer cm.Unregister()
 	compactor := setupTestCompactor(t, tempDir, cm)
 	err = compactor.RunCompaction(context.Background(), true)
 	require.NoError(t, err)

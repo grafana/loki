@@ -148,7 +148,7 @@ func NewBlobStorageMetrics() BlobStorageMetrics {
 			Name:      "azure_blob_request_duration_seconds",
 			Help:      "Time spent doing azure blob requests.",
 			// Latency seems to range from a few ms to a few secs and is
-			// important.  So use 6 buckets from 5ms to 5s.
+			// important. So use 6 buckets from 5ms to 5s.
 			Buckets: prometheus.ExponentialBuckets(0.005, 4, 6),
 		}, []string{"operation", "status_code"}),
 		egressBytesTotal: prometheus.NewCounter(prometheus.CounterOpts{
