@@ -221,7 +221,7 @@ type Loki struct {
 	tenantConfigs            *runtime.TenantConfigs
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
-	Ingester                 *ingester.Ingester
+	Ingester                 ingester.Interface
 	Querier                  *querier.Querier
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store

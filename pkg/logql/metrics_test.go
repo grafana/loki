@@ -76,7 +76,7 @@ func TestLogSlowQuery(t *testing.T) {
 	}, "200", stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,
-			QueueTime:               2,
+			QueueTime:               0.000000002,
 			ExecTime:                25.25,
 			TotalBytesProcessed:     100000,
 		},

@@ -26,7 +26,7 @@ import (
 )
 
 // small util for ensuring data exists as we expect
-func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time, i *Ingester) {
+func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time, i Interface) {
 	result := mockQuerierServer{
 		ctx: ctx,
 	}
