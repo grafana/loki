@@ -1,11 +1,13 @@
 package stages
 
 import (
+	"context"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 )
@@ -16,11 +18,16 @@ type PipelineStages = []interface{}
 // PipelineStage contains configuration for a single pipeline stage
 type PipelineStage = map[interface{}]interface{}
 
+var rateLimiter *rate.Limiter
+var rateLimiterDrop bool
+var rateLimiterDropReason = "global_rate_limiter_drop"
+
 // Pipeline pass down a log entry to each stage for mutation and/or label extraction.
 type Pipeline struct {
-	logger  log.Logger
-	stages  []Stage
-	jobName *string
+	logger    log.Logger
+	stages    []Stage
+	jobName   *string
+	dropCount *prometheus.CounterVec
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
@@ -48,9 +55,10 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 		}
 	}
 	return &Pipeline{
-		logger:  log.With(logger, "component", "pipeline"),
-		stages:  st,
-		jobName: jobName,
+		logger:    log.With(logger, "component", "pipeline"),
+		stages:    st,
+		jobName:   jobName,
+		dropCount: getDropCountMetric(registerer),
 	}, nil
 }
 
@@ -99,6 +107,16 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 	go func() {
 		defer wg.Done()
 		for e := range pipelineOut {
+			if rateLimiter != nil {
+				if rateLimiterDrop {
+					if !rateLimiter.Allow() {
+						p.dropCount.WithLabelValues(rateLimiterDropReason).Inc()
+						continue
+					}
+				} else {
+					_ = rateLimiter.Wait(context.Background())
+				}
+			}
 			nextChan <- e.Entry
 		}
 	}()
@@ -121,4 +139,9 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 // Size gets the current number of stages in the pipeline
 func (p *Pipeline) Size() int {
 	return len(p.stages)
+}
+
+func SetReadLineRateLimiter(rateVal float64, burstVal int, drop bool) {
+	rateLimiter = rate.NewLimiter(rate.Limit(rateVal), burstVal)
+	rateLimiterDrop = drop
 }

@@ -8,6 +8,7 @@ require (
 	cloud.google.com/go/storage v1.10.0
 	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.13.0
+	github.com/Azure/go-autorest/autorest/adal v0.9.17
 	github.com/Masterminds/sprig/v3 v3.2.2
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Shopify/sarama v1.30.0
@@ -22,7 +23,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/cortexproject/cortex v1.10.1-0.20211124141505-4e9fc3a2b5ab
-	github.com/cristalhq/hedgedhttp v0.6.2
+	github.com/cristalhq/hedgedhttp v0.7.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v20.10.11+incompatible
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
@@ -114,7 +115,6 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Azure/go-autorest v14.2.0+incompatible // indirect
 	github.com/Azure/go-autorest/autorest v0.11.22 // indirect
-	github.com/Azure/go-autorest/autorest/adal v0.9.17 // indirect
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.8 // indirect
 	github.com/Azure/go-autorest/autorest/azure/cli v0.4.2 // indirect
 	github.com/Azure/go-autorest/autorest/date v0.3.0 // indirect

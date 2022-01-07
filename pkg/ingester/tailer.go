@@ -75,17 +75,11 @@ func (t *tailer) loop() {
 	var err error
 	var ok bool
 
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
-
 	for {
 		select {
-		case <-ticker.C:
-			err := t.conn.Context().Err()
-			if err != nil {
-				t.close()
-				return
-			}
+		case <-t.conn.Context().Done():
+			t.close()
+			return
 		case <-t.closeChan:
 			return
 		case stream, ok = <-t.sendChan:

@@ -266,9 +266,6 @@ github.com/cortexproject/cortex/pkg/configs/client
 github.com/cortexproject/cortex/pkg/configs/legacy_promql
 github.com/cortexproject/cortex/pkg/configs/userconfig
 github.com/cortexproject/cortex/pkg/cortexpb
-github.com/cortexproject/cortex/pkg/distributor
-github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb
-github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb
 github.com/cortexproject/cortex/pkg/ingester/client
 github.com/cortexproject/cortex/pkg/prom1/storage/metric
 github.com/cortexproject/cortex/pkg/querier
@@ -287,8 +284,6 @@ github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient
 github.com/cortexproject/cortex/pkg/ruler/rulestore/configdb
 github.com/cortexproject/cortex/pkg/ruler/rulestore/local
 github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient
-github.com/cortexproject/cortex/pkg/scheduler/queue
-github.com/cortexproject/cortex/pkg/scheduler/schedulerpb
 github.com/cortexproject/cortex/pkg/storage/bucket
 github.com/cortexproject/cortex/pkg/storage/bucket/azure
 github.com/cortexproject/cortex/pkg/storage/bucket/filesystem
@@ -303,15 +298,13 @@ github.com/cortexproject/cortex/pkg/tenant
 github.com/cortexproject/cortex/pkg/util
 github.com/cortexproject/cortex/pkg/util/chunkcompat
 github.com/cortexproject/cortex/pkg/util/extract
-github.com/cortexproject/cortex/pkg/util/fakeauth
 github.com/cortexproject/cortex/pkg/util/limiter
 github.com/cortexproject/cortex/pkg/util/log
 github.com/cortexproject/cortex/pkg/util/math
 github.com/cortexproject/cortex/pkg/util/spanlogger
-github.com/cortexproject/cortex/pkg/util/test
 github.com/cortexproject/cortex/pkg/util/validation
 github.com/cortexproject/cortex/tools/querytee
-# github.com/cristalhq/hedgedhttp v0.6.2
+# github.com/cristalhq/hedgedhttp v0.7.0
 ## explicit; go 1.16
 github.com/cristalhq/hedgedhttp
 # github.com/davecgh/go-spew v1.1.1
@@ -664,6 +657,7 @@ github.com/grafana/dskit/ring/util
 github.com/grafana/dskit/runtimeconfig
 github.com/grafana/dskit/runutil
 github.com/grafana/dskit/services
+github.com/grafana/dskit/spanlogger
 github.com/grafana/dskit/time
 # github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 ## explicit; go 1.14

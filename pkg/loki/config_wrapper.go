@@ -31,6 +31,7 @@ type ConfigWrapper struct {
 	PrintVersion    bool
 	VerifyConfig    bool
 	PrintConfig     bool
+	ListTargets     bool
 	LogConfig       bool
 	ConfigFile      string
 	ConfigExpandEnv bool
@@ -40,6 +41,7 @@ func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.PrintVersion, "version", false, "Print this builds version information")
 	f.BoolVar(&c.VerifyConfig, "verify-config", false, "Verify config file and exits")
 	f.BoolVar(&c.PrintConfig, "print-config-stderr", false, "Dump the entire Loki config object to stderr")
+	f.BoolVar(&c.ListTargets, "list-targets", false, "List available targets")
 	f.BoolVar(&c.LogConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 	f.StringVar(&c.ConfigFile, "config.file", "", "yaml file to load")
@@ -83,6 +85,8 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyPathPrefixDefaults(r, &defaults)
 
+		applyInstanceConfigs(r, &defaults)
+
 		applyDynamicRingConfigs(r, &defaults)
 
 		appendLoopbackInterface(r, &defaults)
@@ -101,9 +105,39 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyFIFOCacheConfig(r)
 		applyIngesterFinalSleep(r)
+		applyIngesterReplicationFactor(r)
 		applyChunkRetain(r, &defaults)
 
 		return nil
+	}
+}
+
+// applyInstanceConfigs apply to Loki components instance-related configurations under the common
+// config section.
+//
+// The list of components making usage of these instance-related configurations are: compactor's ring,
+// ruler's ring, distributor's ring, ingester's ring, query scheduler's ring, and the query frontend.
+//
+// The list of implement common configurations are:
+// - "instance-addr", the address advertised to be used by other components.
+// - "instance-interface-names", a list of net interfaces used when looking for addresses.
+func applyInstanceConfigs(r, defaults *ConfigWrapper) {
+	if !reflect.DeepEqual(r.Common.InstanceAddr, defaults.Common.InstanceAddr) {
+		r.Ingester.LifecyclerConfig.Addr = r.Common.InstanceAddr
+		r.CompactorConfig.CompactorRing.InstanceAddr = r.Common.InstanceAddr
+		r.Distributor.DistributorRing.InstanceAddr = r.Common.InstanceAddr
+		r.Ruler.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.QueryScheduler.SchedulerRing.InstanceAddr = r.Common.InstanceAddr
+		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
+	}
+
+	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
+		r.Ingester.LifecyclerConfig.InfNames = r.Common.InstanceInterfaceNames
+		r.CompactorConfig.CompactorRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.Distributor.DistributorRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.Ruler.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -185,6 +219,11 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Ruler.Ring.InstanceID = rc.InstanceID
 		r.Ruler.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
 		r.Ruler.Ring.KVStore = rc.KVStore
+
+		// TODO(tjw): temporary fix until dskit is updated: https://github.com/grafana/dskit/pull/101
+		// The ruler's default ring key is "ring", so if if registers under the same common prefix
+		// as the ingester, queriers will try to query it, resulting in failed queries.
+		r.Ruler.Ring.KVStore.Prefix = "/rulers"
 	}
 
 	// Query Scheduler
@@ -472,6 +511,10 @@ func isMemcacheSet(cfg cortexcache.Config) bool {
 
 func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.FinalSleep = 0 * time.Second
+}
+
+func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
+	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
 }
 
 // applyChunkRetain is used to set chunk retain based on having an index query cache configured

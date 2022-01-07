@@ -1,0 +1,43 @@
+---
+run:
+  tests: false
+  skip-files:
+    - "example_.+_test.go$"
+
+# golangci.com configuration
+# https://github.com/golangci/golangci/wiki/Configuration
+linters-settings:
+  govet:
+    check-shadowing: true
+  maligned:
+    suggest-new: true
+  misspell:
+    locale: US
+
+linters:
+  enable-all: false
+  enable:
+  - deadcode # Finds unused code
+  - errcheck # Errcheck is a program for checking for unchecked errors in go programs. These unchecked errors can be critical bugs in some cases
+  - goerr113 # checks that errors are wrapped according to go 1.13 error wrapping tools
+  - gofumpt # checks that gofumpt was run on all source code
+  - goimports # checks that goimports was run on all source code
+  - golint
+  - gosimple # Linter for Go source code that specializes in simplifying a code
+  - govet # Vet examines Go source code and reports suspicious constructs, such as Printf calls whose arguments do not align with the format string
+  - ineffassign # Detects when assignments to existing variables are not used
+  - misspell # spell checker
+  - rowserrcheck # checks whether Err of rows is checked successfully
+  - staticcheck # Staticcheck is a go vet on steroids, applying a ton of static analysis checks
+  - structcheck # Finds unused struct fields
+  - typecheck # Like the front-end of a Go compiler, parses and type-checks Go code
+  - unused # Checks Go code for unused constants, variables, functions and types
+  - varcheck # Finds unused global variables and constants
+
+issues:
+  exclude-use-default: false
+  exclude-rules:
+    # - text: "could be of size"
+    #   path: api/v1beta1/lokistack_types.go
+    #   linters:
+    #     - maligned

@@ -50,7 +50,7 @@ Implement a health check with a simple query:
 Double the rate of a a log stream's entries:
 
 ```logql
-sum(rate({app="foo"})) * 2
+sum(rate({app="foo"}[1m])) * 2
 ```
 
 Get proportion of warning logs to error logs for the `foo` app

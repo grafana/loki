@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
@@ -22,6 +21,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -35,7 +36,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	errUtil "github.com/grafana/loki/pkg/util"
-	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -83,6 +83,8 @@ type Config struct {
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
 	LabelFilterer LabelValueFilterer           `yaml:"-"`
+	// Optional wrapper that can be used to modify the behaviour of the ingester
+	Wrapper Wrapper `yaml:"-"`
 
 	IndexShards int `yaml:"index_shards"`
 }
@@ -137,6 +139,32 @@ type LabelValueFilterer interface {
 	Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error)
 }
 
+type Wrapper interface {
+	Wrap(wrapped Interface) Interface
+}
+
+// ChunkStore is the interface we need to store chunks.
+type ChunkStore interface {
+	Put(ctx context.Context, chunks []chunk.Chunk) error
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
+	GetSchemaConfigs() []chunk.PeriodConfig
+}
+
+// Interface is an interface for the Ingester
+type Interface interface {
+	services.Service
+
+	logproto.IngesterServer
+	logproto.PusherServer
+	logproto.QuerierServer
+	CheckReady(ctx context.Context) error
+	FlushHandler(w http.ResponseWriter, _ *http.Request)
+	ShutdownHandler(w http.ResponseWriter, r *http.Request)
+	GetOrCreateInstance(instanceID string) *instance
+}
+
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
 	services.Service
@@ -180,15 +208,6 @@ type Ingester struct {
 
 	chunkFilter storage.RequestChunkFilterer
 	labelFilter LabelValueFilterer
-}
-
-// ChunkStore is the interface we need to store chunks.
-type ChunkStore interface {
-	Put(ctx context.Context, chunks []chunk.Chunk) error
-	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
-	GetSchemaConfigs() []chunk.PeriodConfig
 }
 
 // New makes a new Ingester.
@@ -521,12 +540,12 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	err = instance.Push(ctx, req)
 	return &logproto.PushResponse{}, err
 }
 
-func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
+func (i *Ingester) GetOrCreateInstance(instanceID string) *instance {
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
 		return inst
@@ -552,7 +571,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	itrs, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 	if err != nil {
 		return err
@@ -577,7 +596,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
 
-	defer listutil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+	defer errUtil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendBatches(ctx, heapItr, queryServer, req.Limit)
 }
@@ -592,7 +611,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		return err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	itrs, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
@@ -615,7 +634,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 	heapItr := iter.NewHeapSampleIterator(ctx, itrs)
 
-	defer listutil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+	defer errUtil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendSampleBatches(ctx, heapItr, queryServer)
 }
@@ -655,7 +674,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	reqStart = adjustQueryStartTime(boltdbShipperMaxLookBack, reqStart, time.Now())
 
 	// parse the request
-	start, end := listutil.RoundToMilliseconds(reqStart, req.End)
+	start, end := errUtil.RoundToMilliseconds(reqStart, req.End)
 	matchers, err := logql.ParseMatchers(req.Matchers)
 	if err != nil {
 		return nil, err
@@ -685,7 +704,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
-	instance := i.getOrCreateInstance(userID)
+	instance := i.GetOrCreateInstance(userID)
 	resp, err := instance.Label(ctx, req)
 	if err != nil {
 		return nil, err
@@ -732,7 +751,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		}
 	}
 
-	allValues := listutil.MergeStringLists(resp.Values, storeValues)
+	allValues := errUtil.MergeStringLists(resp.Values, storeValues)
 
 	if req.Values && i.labelFilter != nil {
 		var filteredValues []string
@@ -759,7 +778,7 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		return nil, err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	return instance.Series(ctx, req)
 }
 
@@ -815,7 +834,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 		return err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	tailer, err := newTailer(instanceID, req.Query, queryServer)
 	if err != nil {
 		return err

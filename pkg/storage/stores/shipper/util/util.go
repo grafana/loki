@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	gzip "github.com/klauspost/pgzip"
 	"go.etcd.io/bbolt"
@@ -68,18 +69,21 @@ func putGzipWriter(writer io.WriteCloser) {
 
 type IndexStorageClient interface {
 	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
+	GetUserFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error)
 }
 
-// GetFileFromStorage downloads a file from storage to given location.
-func GetFileFromStorage(ctx context.Context, storageClient IndexStorageClient, tableName, fileName, destination string, sync bool) error {
-	readCloser, err := storageClient.GetFile(ctx, tableName, fileName)
+type GetFileFunc func() (io.ReadCloser, error)
+
+// DownloadFileFromStorage downloads a file from storage to given location.
+func DownloadFileFromStorage(getFileFunc GetFileFunc, decompressFile bool, destination string, sync bool, logger log.Logger) error {
+	readCloser, err := getFileFunc()
 	if err != nil {
 		return err
 	}
 
 	defer func() {
 		if err := readCloser.Close(); err != nil {
-			level.Error(util_log.Logger)
+			level.Error(logger).Log("msg", "failed to close read closer", "err", err)
 		}
 	}()
 
@@ -94,7 +98,7 @@ func GetFileFromStorage(ctx context.Context, storageClient IndexStorageClient, t
 		}
 	}()
 	var objectReader io.Reader = readCloser
-	if strings.HasSuffix(fileName, ".gz") {
+	if decompressFile {
 		decompressedReader := getGzipReader(readCloser)
 		defer putGzipReader(decompressedReader)
 
@@ -106,7 +110,7 @@ func GetFileFromStorage(ctx context.Context, storageClient IndexStorageClient, t
 		return err
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloaded file %s from table %s", fileName, tableName))
+	level.Info(logger).Log("msg", "downloaded file")
 	if sync {
 		return f.Sync()
 	}
@@ -234,4 +238,8 @@ func QueryKey(q chunk.IndexQuery) string {
 	}
 
 	return ret
+}
+
+func IsCompressedFile(filename string) bool {
+	return strings.HasSuffix(filename, ".gz")
 }
