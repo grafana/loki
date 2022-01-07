@@ -75,7 +75,7 @@ type IndexStorageClient interface {
 type GetFileFunc func() (io.ReadCloser, error)
 
 // DownloadFileFromStorage downloads a file from storage to given location.
-func DownloadFileFromStorage(getFileFunc GetFileFunc, decompressFile bool, destination string, sync bool, logger log.Logger) error {
+func DownloadFileFromStorage(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc GetFileFunc) error {
 	readCloser, err := getFileFunc()
 	if err != nil {
 		return err
@@ -94,7 +94,7 @@ func DownloadFileFromStorage(getFileFunc GetFileFunc, decompressFile bool, desti
 
 	defer func() {
 		if err := f.Close(); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to close file", "file", destination)
+			level.Warn(logger).Log("msg", "failed to close file", "file", destination)
 		}
 	}()
 	var objectReader io.Reader = readCloser
@@ -242,4 +242,8 @@ func QueryKey(q chunk.IndexQuery) string {
 
 func IsCompressedFile(filename string) bool {
 	return strings.HasSuffix(filename, ".gz")
+}
+
+func LoggerWithFilename(logger log.Logger, filename string) log.Logger {
+	return log.With(logger, "file-name", filename)
 }

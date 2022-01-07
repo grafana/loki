@@ -56,7 +56,7 @@ func TestLoadTables(t *testing.T) {
 	testutil.AddRecordsToDB(t, filepath.Join(indexPath, "table0"), boltDBIndexClient, 0, 10, nil)
 
 	// table1 with 2 dbs
-	testutil.SetupDBsAtPath(t, "table1", indexPath, map[string]testutil.DBRecords{
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table1"), map[string]testutil.DBRecords{
 		"db1": {
 			Start:      10,
 			NumRecords: 10,
@@ -68,7 +68,7 @@ func TestLoadTables(t *testing.T) {
 	}, false, nil)
 
 	// table2 with 2 dbs
-	testutil.SetupDBsAtPath(t, "table2", indexPath, map[string]testutil.DBRecords{
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table2"), map[string]testutil.DBRecords{
 		"db1": {
 			Start:      30,
 			NumRecords: 10,
@@ -104,7 +104,7 @@ func TestLoadTables(t *testing.T) {
 	require.True(t, !stat.IsDir())
 
 	for tableName, expectedIndex := range expectedTables {
-		testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 
@@ -141,7 +141,7 @@ func TestTableManager_BatchWrite(t *testing.T) {
 
 	for tableName, expectedIndex := range tc {
 		require.NoError(t, tm.tables[tableName].Snapshot())
-		testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 
@@ -181,5 +181,5 @@ func TestTableManager_QueryPages(t *testing.T) {
 		require.NoError(t, table.Snapshot())
 	}
 
-	testutil.TestMultiTableQuery(t, queries, tm, 0, 30)
+	testutil.TestMultiTableQuery(t, userID, queries, tm, 0, 30)
 }

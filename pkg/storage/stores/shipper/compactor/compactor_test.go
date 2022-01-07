@@ -88,10 +88,10 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	}
 
 	for name, dbs := range tables {
-		testutil.SetupDBsAtPath(t, name, tablesPath, dbs, false, nil)
+		testutil.SetupDBsAtPath(t, filepath.Join(tablesPath, name), dbs, false, nil)
 
 		// setup exact same copy of dbs for comparison.
-		testutil.SetupDBsAtPath(t, name, tablesCopyPath, dbs, false, nil)
+		testutil.SetupDBsAtPath(t, filepath.Join(tablesCopyPath, name), dbs, false, nil)
 	}
 
 	compactor := setupTestCompactor(t, tempDir)

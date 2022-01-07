@@ -38,9 +38,10 @@ func Test_GetFileFromStorage(t *testing.T) {
 
 	indexStorageClient := storage.NewIndexStorageClient(objectClient, "")
 
-	require.NoError(t, DownloadFileFromStorage(func() (io.ReadCloser, error) {
-		return indexStorageClient.GetFile(context.Background(), tableName, "src")
-	}, false, filepath.Join(tempDir, "dest"), false, util_log.Logger))
+	require.NoError(t, DownloadFileFromStorage(filepath.Join(tempDir, "dest"), false,
+		false, util_log.Logger, func() (io.ReadCloser, error) {
+			return indexStorageClient.GetFile(context.Background(), tableName, "src")
+		}))
 
 	// verify the contents of the downloaded file.
 	b, err := ioutil.ReadFile(filepath.Join(tempDir, "dest"))
@@ -53,9 +54,10 @@ func Test_GetFileFromStorage(t *testing.T) {
 	require.NoError(t, err)
 
 	// get the compressed file from storage
-	require.NoError(t, DownloadFileFromStorage(func() (io.ReadCloser, error) {
-		return indexStorageClient.GetFile(context.Background(), tableName, "src.gz")
-	}, true, filepath.Join(tempDir, "dest.gz"), false, util_log.Logger))
+	require.NoError(t, DownloadFileFromStorage(filepath.Join(tempDir, "dest.gz"), true,
+		false, util_log.Logger, func() (io.ReadCloser, error) {
+			return indexStorageClient.GetFile(context.Background(), tableName, "src.gz")
+		}))
 
 	// verify the contents of the downloaded gz file.
 	b, err = ioutil.ReadFile(filepath.Join(tempDir, "dest.gz"))

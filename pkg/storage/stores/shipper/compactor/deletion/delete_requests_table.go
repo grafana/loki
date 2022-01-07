@@ -66,9 +66,10 @@ func (t *deleteRequestsTable) init() error {
 
 	_, err := os.Stat(t.dbPath)
 	if err != nil {
-		err = shipper_util.DownloadFileFromStorage(func() (io.ReadCloser, error) {
-			return t.indexStorageClient.GetFile(context.Background(), DeleteRequestsTableName, deleteRequestsIndexFileName)
-		}, shipper_util.IsCompressedFile(deleteRequestsIndexFileName), t.dbPath, true, util_log.Logger)
+		err = shipper_util.DownloadFileFromStorage(t.dbPath, true,
+			true, shipper_util.LoggerWithFilename(util_log.Logger, deleteRequestsIndexFileName), func() (io.ReadCloser, error) {
+				return t.indexStorageClient.GetFile(context.Background(), DeleteRequestsTableName, deleteRequestsIndexFileName)
+			})
 		if err != nil && !t.indexStorageClient.IsFileNotFoundErr(err) {
 			return err
 		}

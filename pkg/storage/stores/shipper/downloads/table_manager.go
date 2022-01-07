@@ -4,19 +4,20 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"os"
-	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"sync"
 	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -35,7 +36,7 @@ type Config struct {
 type TableManager struct {
 	cfg                Config
 	boltIndexClient    BoltDBIndexClient
-	indexStorageClient StorageClient
+	indexStorageClient storage.Client
 
 	tables    map[string]*Table
 	tablesMtx sync.RWMutex
@@ -46,7 +47,7 @@ type TableManager struct {
 	wg     sync.WaitGroup
 }
 
-func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, indexStorageClient StorageClient, registerer prometheus.Registerer) (*TableManager, error) {
+func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, indexStorageClient storage.Client, registerer prometheus.Registerer) (*TableManager, error) {
 	if err := chunk_util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
@@ -144,26 +145,15 @@ func (tm *TableManager) query(ctx context.Context, tableName string, queries []c
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	level.Debug(logger).Log("table-name", tableName)
 
-	table := tm.getOrCreateTable(ctx, tableName)
-
-	err := util.DoParallelQueries(ctx, table, queries, callback)
+	table, err := tm.getOrCreateTable(tableName)
 	if err != nil {
-		if table.Err() != nil {
-			// table is in invalid state, remove the table so that next queries re-create it.
-			tm.tablesMtx.Lock()
-			defer tm.tablesMtx.Unlock()
-
-			level.Error(logger).Log("msg", fmt.Sprintf("table %s has some problem, cleaning it up", tableName), "err", table.Err())
-
-			delete(tm.tables, tableName)
-			return table.Err()
-		}
+		return err
 	}
 
-	return err
+	return util.DoParallelQueries(ctx, table, queries, callback)
 }
 
-func (tm *TableManager) getOrCreateTable(spanCtx context.Context, tableName string) *Table {
+func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
 	// if table is already there, use it.
 	tm.tablesMtx.RLock()
 	table, ok := tm.tables[tableName]
@@ -177,13 +167,19 @@ func (tm *TableManager) getOrCreateTable(spanCtx context.Context, tableName stri
 			// table not found, creating one.
 			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
 
-			table = NewTable(spanCtx, tableName, tm.cfg.CacheDir, tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
+			tablePath := filepath.Join(tm.cfg.CacheDir, tableName)
+			err := chunk_util.EnsureDirectory(tablePath)
+			if err != nil {
+				return nil, err
+			}
+
+			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
 			tm.tables[tableName] = table
 		}
 		tm.tablesMtx.Unlock()
 	}
 
-	return table
+	return table, nil
 }
 
 func (tm *TableManager) syncTables(ctx context.Context) error {
@@ -220,21 +216,14 @@ func (tm *TableManager) cleanupCache() error {
 	level.Info(util_log.Logger).Log("msg", "cleaning tables cache")
 
 	for name, table := range tm.tables {
-		lastUsedAt := table.LastUsedAt()
-		if lastUsedAt.Add(tm.cfg.CacheTTL).Before(time.Now()) {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("cleaning up expired table %s", name))
-			err := table.CleanupAllDBs()
-			if err != nil {
-				return err
-			}
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("cleaning up expired table %s", name))
+		isEmpty, err := table.DropUnusedIndex(tm.cfg.CacheTTL, time.Now())
+		if err != nil {
+			return err
+		}
 
+		if isEmpty {
 			delete(tm.tables, name)
-
-			// remove the directory where files for the table were downloaded.
-			err = os.RemoveAll(path.Join(tm.cfg.CacheDir, name))
-			if err != nil {
-				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove directory for table %s", name), "err", err)
-			}
 		}
 	}
 
@@ -265,14 +254,22 @@ func (tm *TableManager) ensureQueryReadiness() error {
 		table, ok := tm.tables[tableName]
 		tm.tablesMtx.RUnlock()
 		if ok {
-			// table already exists, update the last used at time to avoid cache cleanup operation removing it.
-			table.UpdateLastUsedAt()
+			err = table.EnsureQueryReadiness(context.Background())
+			if err != nil {
+				return err
+			}
 			continue
 		}
 
 		level.Info(util_log.Logger).Log("msg", "table required for query readiness does not exist locally, downloading it", "table-name", tableName)
 		// table doesn't exist, download it.
-		table, err := LoadTable(tm.ctx, tableName, tm.cfg.CacheDir, tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
+		tablePath := filepath.Join(tm.cfg.CacheDir, tableName)
+		err = chunk_util.EnsureDirectory(tablePath)
+		if err != nil {
+			return err
+		}
+
+		table, err = LoadTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
 		if err != nil {
 			return err
 		}
@@ -280,6 +277,11 @@ func (tm *TableManager) ensureQueryReadiness() error {
 		tm.tablesMtx.Lock()
 		tm.tables[tableName] = table
 		tm.tablesMtx.Unlock()
+
+		err = table.EnsureQueryReadiness(context.Background())
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -336,7 +338,7 @@ func (tm *TableManager) loadLocalTables() error {
 
 		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", fileInfo.Name()))
 
-		table, err := LoadTable(tm.ctx, fileInfo.Name(), tm.cfg.CacheDir, tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
+		table, err := LoadTable(fileInfo.Name(), filepath.Join(tm.cfg.CacheDir, fileInfo.Name()), tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
 		if err != nil {
 			return err
 		}
