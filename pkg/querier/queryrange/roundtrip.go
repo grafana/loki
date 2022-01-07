@@ -375,11 +375,11 @@ func NewMetricTripperware(
 		)
 	}
 
-	// queryRangeMiddleware = append(
-	// 	queryRangeMiddleware,
-	// 	queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
-	// 	SplitByIntervalMiddleware(limits, codec, splitMetricByTime, splitByMetrics),
-	// )
+	queryRangeMiddleware = append(
+		queryRangeMiddleware,
+		queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
+		SplitByIntervalMiddleware(limits, codec, splitMetricByTime, splitByMetrics),
+	)
 
 	var c cache.Cache
 	if cfg.CacheResults {
@@ -420,11 +420,11 @@ func NewMetricTripperware(
 	}
 
 	if cfg.MaxRetries > 0 {
-		// queryRangeMiddleware = append(
-		// 	queryRangeMiddleware,
-		// 	queryrange.InstrumentMiddleware("retry", instrumentMetrics),
-		// 	queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics),
-		// )
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			queryrange.InstrumentMiddleware("retry", instrumentMetrics),
+			queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics),
+		)
 	}
 
 	return func(next http.RoundTripper) http.RoundTripper {
