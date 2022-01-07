@@ -108,10 +108,14 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	lf := &LineFormatter{
 		buf: bytes.NewBuffer(make([]byte, 4096)),
 	}
-	functionMap[functionLineName] = func() string {
+	functions := make(map[string]interface{}, len(functionMap)+1)
+	for k, v := range functionMap {
+		functions[k] = v
+	}
+	functions[functionLineName] = func() string {
 		return unsafeGetString(lf.currentLine)
 	}
-	t, err := template.New("line").Option("missingkey=zero").Funcs(functionMap).Parse(tmpl)
+	t, err := template.New("line").Option("missingkey=zero").Funcs(functions).Parse(tmpl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid line template: %w", err)
 	}
