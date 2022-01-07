@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/util/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/util/test"
 )
 
 func TestRecvFailDoesntCancelProcess(t *testing.T) {

@@ -61,8 +61,8 @@ func TestFrontend(t *testing.T) {
 		assert.Equal(t, "Hello World", string(body))
 	}
 
-	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil, nil)
-	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
 }
 
 func TestFrontendPropagateTrace(t *testing.T) {
@@ -111,8 +111,8 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		// Query should do one call.
 		assert.Equal(t, traceID, <-observedTraceID)
 	}
-	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil, nil)
-	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
 }
 
 func TestFrontendCheckReady(t *testing.T) {
@@ -176,9 +176,9 @@ func TestFrontendCancel(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		assert.Equal(t, int32(1), tries.Load())
 	}
-	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
 	tries.Store(0)
-	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
 }
 
 func TestFrontendMetricsCleanup(t *testing.T) {
@@ -220,15 +220,12 @@ func TestFrontendMetricsCleanup(t *testing.T) {
 			`), "cortex_query_frontend_queue_length"))
 		}
 
-		testFrontend(t, defaultFrontendConfig(), handler, test, matchMaxConcurrency, nil, reg)
+		testFrontend(t, defaultFrontendConfig(), handler, test, matchMaxConcurrency, reg)
 	}
 }
 
-func testFrontend(t *testing.T, config Config, handler http.Handler, test func(addr string, frontend *Frontend), matchMaxConcurrency bool, l log.Logger, reg prometheus.Registerer) {
+func testFrontend(t *testing.T, config Config, handler http.Handler, test func(addr string, frontend *Frontend), matchMaxConcurrency bool, reg prometheus.Registerer) {
 	logger := log.NewNopLogger()
-	if l != nil {
-		logger = l
-	}
 
 	var workerConfig querier_worker.Config
 	flagext.DefaultValues(&workerConfig)

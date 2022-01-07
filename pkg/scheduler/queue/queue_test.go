@@ -282,13 +282,13 @@ func TestContextCond(t *testing.T) {
 	})
 }
 
-func assertChanReceived(t *testing.T, c chan struct{}, timeout time.Duration, msg string, args ...interface{}) {
+func assertChanReceived(t *testing.T, c chan struct{}, timeout time.Duration, msg string) {
 	t.Helper()
 
 	select {
 	case <-c:
 	case <-time.After(timeout):
-		t.Fatalf(msg, args...)
+		t.Fatalf(msg)
 	}
 }
 
