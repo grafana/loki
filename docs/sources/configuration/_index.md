@@ -857,15 +857,14 @@ The `hedging` block configures how to hedge storage requests.
 
 The hedging implementation sends a second storage request once a first request has
 been outstanding for more than a configured expected latency for this class of requests.
-Calculate your latency to be when 99 percent of object storage requests have 
-seen responses.
+Calculate your latency to be the 99th percentile of object storage response times.
 
 ```yaml
 # An optional duration that sets the quantity of time after a first storage request
 # is sent and before a second request is sent, when no response is received for the first
-# storage request. The recommended duration is the measured p99 of object store requests,
-# to reduce long tail latency. This option is most impactful when used with queriers,
-# and has minimal to no impact on other components.
+# storage request. The recommended duration is the measured 99th percentile of object
+# storage response times, to reduce long tail latency. This option is most impactful
+# when used with queriers, and has minimal to no impact on other components.
 # The default value of 0 disables the hedging of storage requests.
 # Example: "at: 500ms"
 [at: <duration> | default = 0]
