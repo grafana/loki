@@ -444,14 +444,6 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 	s.requestQueue.RegisterQuerierConnection(querierID)
 	defer s.requestQueue.UnregisterQuerierConnection(querierID)
 
-	// If the downstream connection to querier is cancelled,
-	// we need to ping the condition variable to unblock getNextRequestForQuerier.
-	// Ideally we'd have ctx aware condition variables...
-	go func() {
-		<-querier.Context().Done()
-		s.requestQueue.QuerierDisconnecting()
-	}()
-
 	lastUserIndex := queue.FirstUser()
 
 	// In stopping state scheduler is not accepting new queries, but still dispatching queries in the queues.
