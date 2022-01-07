@@ -678,7 +678,7 @@ ring:
   # CLI flag: -<prefix>.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
-  # The heartbeat timeout after which ring members are considered unhealthy
+  # The heartbeat timeout after which ruler ring members are considered unhealthy
   # within the ring. 0 = never (timeout disabled). 
   # CLI flag: -<prefix>.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
