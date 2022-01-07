@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/testutils"
 )
 
@@ -29,7 +30,16 @@ func TestChunksPartialError(t *testing.T) {
 	}
 	ctx := context.Background()
 	// Create more chunks than we can read in one batch
-	_, chunks, err := testutils.CreateChunks(0, dynamoDBMaxReadBatchSize+50, model.Now().Add(-time.Hour), model.Now())
+	s := chunk.SchemaConfig{
+		Configs: []chunk.PeriodConfig{
+			{
+				From:      chunk.DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+	_, chunks, err := testutils.CreateChunks(s, 0, dynamoDBMaxReadBatchSize+50, model.Now().Add(-time.Hour), model.Now())
 	require.NoError(t, err)
 	err = client.PutChunks(ctx, chunks)
 	require.NoError(t, err)

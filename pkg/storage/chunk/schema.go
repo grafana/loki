@@ -966,3 +966,7 @@ func (v11Entries) GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]Inde
 		},
 	}, nil
 }
+
+type v12Entries struct {
+	v11Entries
+}

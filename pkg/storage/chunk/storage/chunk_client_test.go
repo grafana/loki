@@ -18,6 +18,15 @@ import (
 
 func TestChunksBasic(t *testing.T) {
 	forAllFixtures(t, func(t *testing.T, _ chunk.IndexClient, client chunk.Client) {
+		s := chunk.SchemaConfig{
+			Configs: []chunk.PeriodConfig{
+				{
+					From:      chunk.DayTime{Time: 0},
+					Schema:    "v11",
+					RowShards: 16,
+				},
+			},
+		}
 		const batchSize = 5
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
@@ -25,7 +34,7 @@ func TestChunksBasic(t *testing.T) {
 		// Write a few batches of chunks.
 		written := []string{}
 		for i := 0; i < 5; i++ {
-			keys, chunks, err := testutils.CreateChunks(i, batchSize, model.Now().Add(-time.Hour), model.Now())
+			keys, chunks, err := testutils.CreateChunks(s, i, batchSize, model.Now().Add(-time.Hour), model.Now())
 			require.NoError(t, err)
 			written = append(written, keys...)
 			err = client.PutChunks(ctx, chunks)
@@ -51,10 +60,10 @@ func TestChunksBasic(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, len(chunksToGet), len(chunksWeGot))
 
-			sort.Sort(ByKey(chunksToGet))
-			sort.Sort(ByKey(chunksWeGot))
+			sort.Sort(ByKey{chunksToGet, s})
+			sort.Sort(ByKey{chunksWeGot, s})
 			for i := 0; i < len(chunksWeGot); i++ {
-				require.Equal(t, chunksToGet[i].ExternalKey(), chunksWeGot[i].ExternalKey(), strconv.Itoa(i))
+				require.Equal(t, s.ExternalKey(chunksToGet[i]), s.ExternalKey(chunksWeGot[i]), strconv.Itoa(i))
 			}
 		}
 	})
