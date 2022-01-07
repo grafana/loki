@@ -29,8 +29,11 @@ export PATH="$HOME/.rbenv/bin:$PATH"
 eval "$(rbenv init -)"
 ```
 
-Then install bundler
-`gem install bundler:2.1.4`
+Then install bundler:
+
+```bash
+gem install bundler:2.1.4
+```
 
 Follow those instructions to [install logstash](https://www.elastic.co/guide/en/logstash/current/installing-logstash.html) before moving to the next section.
 
@@ -41,36 +44,45 @@ Follow those instructions to [install logstash](https://www.elastic.co/guide/en/
 ```bash
 git clone git@github.com:elastic/logstash.git
 cd logstash
-git checkout tags/v7.6.2
-export LOGSTASH_PATH=`pwd`
-export GEM_PATH=$LOGSTASH_PATH/vendor/bundle/jruby/2.5.0
-export GEM_HOME=$LOGSTASH_PATH/vendor/bundle/jruby/2.5.0
+git checkout tags/v7.16.1
+export LOGSTASH_PATH="$(pwd)"
+export GEM_PATH="$LOGSTASH_PATH/vendor/bundle/jruby/2.5.0"
+export GEM_HOME="$LOGSTASH_PATH/vendor/bundle/jruby/2.5.0"
 ./gradlew assemble
 cd ..
+ruby -S bundle config set --local path "$LOGSTASH_PATH/vendor/bundle"
 ruby -S bundle install
 ruby -S bundle exec rake vendor
 ```
 
 ### Build the plugin
 
-`gem build logstash-output-loki.gemspec`
+```bash
+gem build logstash-output-loki.gemspec
+```
 
 ### Test
 
-`ruby -S bundle exec rspec`
+```bash
+ruby -S bundle exec rspec
+```
 
 Alternatively if you don't want to install JRuby. Enter inside logstash-loki container.
 
 ```bash
 docker build -t logstash-loki ./
-docker run -v  `pwd`/spec:/home/logstash/spec -it --rm --entrypoint /bin/sh logstash-loki
+docker run -v  $(pwd)/spec:/home/logstash/spec -it --rm --entrypoint /bin/sh logstash-loki
 bundle exec rspec
 ```
 
 ## Install plugin to local logstash
 
-`bin/logstash-plugin install --no-verify --local logstash-output-loki-1.0.0.gem`
+```bash
+bin/logstash-plugin install --no-verify --local logstash-output-loki-1.0.0.gem
+```
 
 ## Send sample event and check plugin is working
 
-`bin/logstash -f loki.conf`
+```bash
+bin/logstash -f loki.conf
+```

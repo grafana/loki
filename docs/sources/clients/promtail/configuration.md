@@ -442,7 +442,7 @@ The CRI stage is just a convenience wrapper for this definition:
 
 ```yaml
 - regex:
-    expression: "^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$",
+    expression: "^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$"
 - labels:
     stream:
 - timestamp:
@@ -887,7 +887,7 @@ You can add additional labels with the `labels` property.
 [exclude_event_data: <bool> | default = false]
 
 # Allows to exclude the user data of each windows event.
-[exclude_event_data: <bool> | default = false]
+[exclude_user_data: <bool> | default = false]
 
 # Label map to add to every log line read from the windows event log
 labels:

@@ -67,13 +67,16 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 func (FSObjectClient) Stop() {}
 
 // GetObject from the store
-func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, error) {
+func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	fl, err := os.Open(filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey)))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-
-	return fl, nil
+	stats, err := fl.Stat()
+	if err != nil {
+		return nil, 0, err
+	}
+	return fl, stats.Size(), nil
 }
 
 // PutObject into the store

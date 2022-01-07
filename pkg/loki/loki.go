@@ -6,13 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
+	rt "runtime"
 
 	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -38,12 +39,14 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
+	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/util/fakeauth"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -217,7 +220,7 @@ type Loki struct {
 	tenantConfigs            *runtime.TenantConfigs
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
-	Ingester                 *ingester.Ingester
+	Ingester                 ingester.Interface
 	Querier                  *querier.Querier
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
@@ -293,6 +296,24 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 		configEndpointHandlerFn = opts.CustomConfigEndpointHandlerFn
 	}
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
+}
+
+// ListTargets prints a list of available user visible targets and their
+// dependencies
+func (t *Loki) ListTargets() {
+	green := color.New(color.FgGreen, color.Bold)
+	if rt.GOOS == "windows" {
+		green.DisableColor()
+	}
+	for _, m := range t.ModuleManager.UserVisibleModuleNames() {
+		fmt.Fprintln(os.Stdout, green.Sprint(m))
+
+		for _, n := range t.ModuleManager.DependenciesForModule(m) {
+			if t.ModuleManager.IsUserVisibleModule(n) {
+				fmt.Fprintln(os.Stdout, " ", n)
+			}
+		}
+	}
 }
 
 // Run starts Loki running, and blocks until a Loki stops.
@@ -427,15 +448,15 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 func (t *Loki) setupModuleManager() error {
 	mm := modules.NewManager(util_log.Logger)
 
-	mm.RegisterModule(Server, t.initServer)
-	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig)
-	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
-	mm.RegisterModule(Ring, t.initRing)
-	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(Server, t.initServer, modules.UserInvisibleModule)
+	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
+	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
+	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
+	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
-	mm.RegisterModule(TenantConfigs, t.initTenantConfigs)
+	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
-	mm.RegisterModule(Store, t.initStore)
+	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
@@ -475,7 +496,7 @@ func (t *Loki) setupModuleManager() error {
 		Write:                    {Ingester, Distributor},
 	}
 
-	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
+	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, or read.
 	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}

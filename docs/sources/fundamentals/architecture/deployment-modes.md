@@ -28,7 +28,7 @@ This is monolithic mode;
 it runs all of Loki’s microservice components inside a single process
 as a single binary or Docker image.
 
-![monolithic mode diagram](monolithic-mode.png)
+![monolithic mode diagram](../monolithic-mode.png)
 
 Monolithic mode is useful for getting started quickly to experiment with Loki,
 as well as for small read/write volumes of up to approximately 100GB per day.
@@ -54,10 +54,12 @@ Loki provides the simple scalable deployment mode.
 This deployment mode can scale to several TBs of logs per day and more.
 Consider the microservices mode approach for very large Loki installations.
 
-![simple scalable deployment mode diagram](simple-scalable.png)
+![simple scalable deployment mode diagram](../simple-scalable.png)
 
 In this mode the component microservices of Loki are bundled into two targets:
 `-target=read` and `-target=write`.
+The BoltDB [compactor](../../../operations/storage/boltdb-shipper/#compactor) 
+service will run as part of the read target.
 
 There are advantages to separating the read and write paths:
 
@@ -87,7 +89,7 @@ Each process is invoked specifying its `target`:
 * ruler
 * compactor
 
-![microservices mode diagram](microservices-mode.png)
+![microservices mode diagram](../microservices-mode.png)
 
 Running components as individual microservices allows scaling up
 by increasing the quantity of microservices.

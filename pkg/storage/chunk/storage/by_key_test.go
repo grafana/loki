@@ -5,8 +5,13 @@ import (
 )
 
 // ByKey allow you to sort chunks by ID
-type ByKey []chunk.Chunk
+type ByKey struct {
+	chunks []chunk.Chunk
+	scfg   chunk.SchemaConfig
+}
 
-func (cs ByKey) Len() int           { return len(cs) }
-func (cs ByKey) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
-func (cs ByKey) Less(i, j int) bool { return cs[i].ExternalKey() < cs[j].ExternalKey() }
+func (a ByKey) Len() int      { return len(a.chunks) }
+func (a ByKey) Swap(i, j int) { a.chunks[i], a.chunks[j] = a.chunks[j], a.chunks[i] }
+func (a ByKey) Less(i, j int) bool {
+	return a.scfg.ExternalKey(a.chunks[i]) < a.scfg.ExternalKey(a.chunks[j])
+}

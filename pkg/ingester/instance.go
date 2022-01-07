@@ -8,7 +8,6 @@ import (
 	"syscall"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,9 +27,10 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -381,18 +381,26 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	return iters, nil
 }
 
-func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	var labels []string
-	if req.Values {
-		values, err := i.index.LabelValues(req.Name, nil)
-		if err != nil {
-			return nil, err
+// Label returns the label names or values depending on the given request
+// Without label matchers the label names and values are retrieved from the index directly.
+// If label matchers are given only the matching streams are fetched from the index.
+// The label names or values are then retrieved from those matching streams.
+func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
+	if len(matchers) == 0 {
+		var labels []string
+		if req.Values {
+			values, err := i.index.LabelValues(req.Name, nil)
+			if err != nil {
+				return nil, err
+			}
+			labels = make([]string, len(values))
+			for i := 0; i < len(values); i++ {
+				labels[i] = values[i]
+			}
+			return &logproto.LabelResponse{
+				Values: labels,
+			}, nil
 		}
-		labels = make([]string, len(values))
-		for i := 0; i < len(values); i++ {
-			labels[i] = values[i]
-		}
-	} else {
 		names, err := i.index.LabelNames(nil)
 		if err != nil {
 			return nil, err
@@ -401,7 +409,28 @@ func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logpro
 		for i := 0; i < len(names); i++ {
 			labels[i] = names[i]
 		}
+		return &logproto.LabelResponse{
+			Values: labels,
+		}, nil
 	}
+
+	labels := make([]string, 0)
+	err := i.forMatchingStreams(ctx, matchers, nil, func(s *stream) error {
+		for _, label := range s.labels {
+			if req.Values && label.Name == req.Name {
+				labels = append(labels, label.Value)
+				continue
+			}
+			if !req.Values {
+				labels = append(labels, label.Name)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return &logproto.LabelResponse{
 		Values: labels,
 	}, nil
@@ -668,7 +697,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	// send until the limit is reached.
 	sent := uint32(0)
 	for sent < limit && !isDone(queryServer.Context()) {
-		batch, batchSize, err := iter.ReadBatch(i, util.MinUint32(queryBatchSize, limit-sent))
+		batch, batchSize, err := iter.ReadBatch(i, math.MinUint32(queryBatchSize, limit-sent))
 		if err != nil {
 			return err
 		}

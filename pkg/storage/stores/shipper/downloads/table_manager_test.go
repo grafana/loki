@@ -79,7 +79,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 	var queries []chunk.IndexQuery
 	for name, dbs := range tables {
 		queries = append(queries, chunk.IndexQuery{TableName: name})
-		testutil.SetupDBTablesAtPath(t, name, objectStoragePath, dbs, true)
+		testutil.SetupDBsAtPath(t, name, objectStoragePath, dbs, true, nil)
 	}
 
 	tableManager, stopFunc := buildTestTableManager(t, tempDir)
@@ -174,7 +174,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			}
 
 			for name, dbs := range tables {
-				testutil.SetupDBTablesAtPath(t, name, objectStoragePath, dbs, true)
+				testutil.SetupDBsAtPath(t, name, objectStoragePath, dbs, true, nil)
 			}
 
 			boltDBIndexClient, indexStorageClient := buildTestClients(t, tempDir)

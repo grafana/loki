@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 	"unsafe"
@@ -31,7 +32,7 @@ type RedisConfig struct {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Endpoint, prefix+"redis.endpoint", "", description+"Redis Server endpoint to use for caching. A comma-separated list of endpoints for Redis Cluster or Redis Sentinel. If empty, no redis will be used.")
+	f.StringVar(&cfg.Endpoint, prefix+"redis.endpoint", "", description+"Redis Server or Cluster configuration endpoint to use for caching. A comma-separated list of endpoints for Redis Cluster or Redis Sentinel. If empty, no redis will be used.")
 	f.StringVar(&cfg.MasterName, prefix+"redis.master-name", "", description+"Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.")
 	f.DurationVar(&cfg.Timeout, prefix+"redis.timeout", 500*time.Millisecond, description+"Maximum time to wait before giving up on redis requests.")
 	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
@@ -51,9 +52,27 @@ type RedisClient struct {
 }
 
 // NewRedisClient creates Redis client
-func NewRedisClient(cfg *RedisConfig) *RedisClient {
+func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
+	endpoints := strings.Split(cfg.Endpoint, ",")
+	// Handle single configuration endpoint which resolves multiple nodes.
+	if len(endpoints) == 1 {
+		host, port, err := net.SplitHostPort(endpoints[0])
+		if err != nil {
+			return nil, err
+		}
+		addrs, err := net.LookupHost(host)
+		if err != nil {
+			return nil, err
+		}
+		if len(addrs) > 1 {
+			endpoints = nil
+			for _, addr := range addrs {
+				endpoints = append(endpoints, net.JoinHostPort(addr, port))
+			}
+		}
+	}
 	opt := &redis.UniversalOptions{
-		Addrs:       strings.Split(cfg.Endpoint, ","),
+		Addrs:       endpoints,
 		MasterName:  cfg.MasterName,
 		Password:    cfg.Password.Value,
 		DB:          cfg.DB,
@@ -68,7 +87,7 @@ func NewRedisClient(cfg *RedisConfig) *RedisClient {
 		expiration: cfg.Expiration,
 		timeout:    cfg.Timeout,
 		rdb:        redis.NewUniversalClient(opt),
-	}
+	}, nil
 }
 
 func (c *RedisClient) Ping(ctx context.Context) error {

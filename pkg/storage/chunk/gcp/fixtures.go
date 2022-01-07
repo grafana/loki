@@ -87,7 +87,7 @@ func (f *fixture) Clients() (
 		if err != nil {
 			return
 		}
-		cClient = objectclient.NewClient(c, nil)
+		cClient = objectclient.NewClient(c, nil, chunk.SchemaConfig{})
 	} else {
 		cClient = newBigtableObjectClient(Config{}, schemaConfig, client)
 	}
