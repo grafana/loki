@@ -422,7 +422,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 	outstanding := dynamoDBReadRequest{}
 	chunksByKey := map[string]chunk.Chunk{}
 	for _, chunk := range chunks {
-		key := chunk.ExternalKey()
+		key := a.schemaCfg.ExternalKey(chunk)
 		chunksByKey[key] = chunk
 		tableName, err := a.schemaCfg.ChunkTableFor(chunk.From)
 		if err != nil {
@@ -581,7 +581,7 @@ func (a dynamoDBStorageClient) writesForChunks(chunks []chunk.Chunk) (dynamoDBWr
 		if err != nil {
 			return nil, err
 		}
-		key := chunks[i].ExternalKey()
+		key := a.schemaCfg.ExternalKey(chunks[i])
 
 		table, err := a.schemaCfg.ChunkTableFor(chunks[i].From)
 		if err != nil {

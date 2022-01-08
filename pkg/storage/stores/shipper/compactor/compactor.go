@@ -194,7 +194,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 			encoder = objectclient.Base64Encoder
 		}
 
-		chunkClient := objectclient.NewClient(objectClient, encoder)
+		chunkClient := objectclient.NewClient(objectClient, encoder, schemaConfig.SchemaConfig)
 
 		retentionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "retention")
 		c.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)

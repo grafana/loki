@@ -76,8 +76,8 @@ type seriesStore struct {
 	writeDedupeCache cache.Cache
 }
 
-func newSeriesStore(cfg StoreConfig, schema SeriesStoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
-	rs, err := newBaseStore(cfg, schema, index, chunks, limits, chunksCache)
+func newSeriesStore(cfg StoreConfig, scfg SchemaConfig, schema SeriesStoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
+	rs, err := newBaseStore(cfg, scfg, schema, index, chunks, limits, chunksCache)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (c *seriesStore) Get(ctx context.Context, userID string, from, through mode
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	keys := keysFromChunks(chunks)
+	keys := keysFromChunks(c.baseStore.schemaCfg, chunks)
 	allChunks, err := fetcher.FetchChunks(ctx, chunks, keys)
 	if err != nil {
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
@@ -301,7 +301,7 @@ func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, throug
 
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
 	filtered := filterChunksByTime(from, through, chunks)
-	filtered, keys := filterChunksByUniqueFingerprint(filtered)
+	filtered, keys := filterChunksByUniqueFingerprint(c.baseStore.schemaCfg, filtered)
 	level.Debug(log).Log("Chunks post filtering", len(chunks))
 
 	chunksPerQuery.Observe(float64(len(filtered)))
@@ -478,7 +478,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	writeChunk := true
 
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
-	found, _, _ := c.fetcher.cache.Fetch(ctx, []string{chunk.ExternalKey()})
+	found, _, _ := c.fetcher.cache.Fetch(ctx, []string{c.baseStore.schemaCfg.ExternalKey(chunk)})
 	if len(found) > 0 {
 		writeChunk = false
 		dedupedChunksTotal.Inc()
@@ -541,7 +541,7 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
 
-	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
+	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.baseStore.schemaCfg.ExternalKey(chunk))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -556,7 +556,7 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 		}
 	}
 
-	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
+	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.baseStore.schemaCfg.ExternalKey(chunk))
 	if err != nil {
 		return nil, nil, err
 	}

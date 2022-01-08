@@ -28,18 +28,20 @@ type Client struct {
 	store               chunk.ObjectClient
 	keyEncoder          KeyEncoder
 	getChunkMaxParallel int
+	schema              chunk.SchemaConfig
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
-func NewClient(store chunk.ObjectClient, encoder KeyEncoder) *Client {
-	return NewClientWithMaxParallel(store, encoder, defaultMaxParallel)
+func NewClient(store chunk.ObjectClient, encoder KeyEncoder, schema chunk.SchemaConfig) *Client {
+	return NewClientWithMaxParallel(store, encoder, defaultMaxParallel, schema)
 }
 
-func NewClientWithMaxParallel(store chunk.ObjectClient, encoder KeyEncoder, maxParallel int) *Client {
+func NewClientWithMaxParallel(store chunk.ObjectClient, encoder KeyEncoder, maxParallel int, schema chunk.SchemaConfig) *Client {
 	return &Client{
 		store:               store,
 		keyEncoder:          encoder,
 		getChunkMaxParallel: maxParallel,
+		schema:              schema,
 	}
 }
 
@@ -54,6 +56,7 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var (
 		chunkKeys []string
 		chunkBufs [][]byte
+		key       string
 	)
 
 	for i := range chunks {
@@ -61,7 +64,9 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 		if err != nil {
 			return err
 		}
-		key := chunks[i].ExternalKey()
+
+		key = o.schema.ExternalKey(chunks[i])
+
 		if o.keyEncoder != nil {
 			key = o.keyEncoder(key)
 		}
@@ -97,7 +102,7 @@ func (o *Client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.C
 }
 
 func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
-	key := c.ExternalKey()
+	key := o.schema.ExternalKey(c)
 	if o.keyEncoder != nil {
 		key = o.keyEncoder(key)
 	}
