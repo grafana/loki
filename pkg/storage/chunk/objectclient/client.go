@@ -102,33 +102,49 @@ func (o *Client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.C
 }
 
 func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
-	if ctx.Err() != nil {
+	var (
+		errChan   = make(chan error)
+		chunkChan = make(chan chunk.Chunk)
+	)
+
+	fetchChunk := func() {
+		key := o.schema.ExternalKey(c)
+		if o.keyEncoder != nil {
+			key = o.keyEncoder(key)
+		}
+
+		readCloser, size, err := o.store.GetObject(ctx, key)
+		if err != nil {
+			errChan <- errors.WithStack(err)
+		}
+
+		defer readCloser.Close()
+
+		// adds bytes.MinRead to avoid allocations when the size is known.
+		// This is because ReadFrom reads bytes.MinRead by bytes.MinRead.
+		buf := bytes.NewBuffer(make([]byte, 0, size+bytes.MinRead))
+		_, err = buf.ReadFrom(readCloser)
+		if err != nil {
+			errChan <- errors.WithStack(err)
+		}
+
+		if err := c.Decode(decodeContext, buf.Bytes()); err != nil {
+			errChan <- errors.WithStack(err)
+		}
+		chunkChan <- c
+	}
+
+	go fetchChunk()
+
+	select {
+	case err := <-errChan:
+		return chunk.Chunk{}, err
+	case c := <-chunkChan:
+		return c, nil
+	case <-ctx.Done():
 		return chunk.Chunk{}, ctx.Err()
 	}
-	key := o.schema.ExternalKey(c)
-	if o.keyEncoder != nil {
-		key = o.keyEncoder(key)
-	}
 
-	readCloser, size, err := o.store.GetObject(ctx, key)
-	if err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
-	}
-
-	defer readCloser.Close()
-
-	// adds bytes.MinRead to avoid allocations when the size is known.
-	// This is because ReadFrom reads bytes.MinRead by bytes.MinRead.
-	buf := bytes.NewBuffer(make([]byte, 0, size+bytes.MinRead))
-	_, err = buf.ReadFrom(readCloser)
-	if err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
-	}
-
-	if err := c.Decode(decodeContext, buf.Bytes()); err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
-	}
-	return c, nil
 }
 
 // GetChunks retrieves the specified chunks from the configured backend
