@@ -88,6 +88,9 @@ func main() {
 		}()
 	}
 
+	// Allocate a block of memory to reduce the frequency of garbage collection.
+	// The larger the ballast, the lower the garbage collection frequency.
+	// https://github.com/grafana/loki/issues/781
 	ballast := make([]byte, config.BallastBytes)
 	runtime.KeepAlive(ballast)
 

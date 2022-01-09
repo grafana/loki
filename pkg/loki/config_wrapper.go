@@ -48,7 +48,7 @@ func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.ConfigFile, "config.file", "", "yaml file to load")
 	f.BoolVar(&c.ConfigExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
 	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
-		"garbage collection.")
+		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at the cost of heap size.")
 	c.Config.RegisterFlags(f)
 }
 
