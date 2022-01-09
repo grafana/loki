@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"runtime"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/version"
@@ -86,6 +87,9 @@ func main() {
 
 		}()
 	}
+
+	ballast := make([]byte, config.BallastBytes)
+	runtime.KeepAlive(ballast)
 
 	// Start Loki
 	t, err := loki.New(config.Config)
