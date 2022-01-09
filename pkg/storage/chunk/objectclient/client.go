@@ -103,9 +103,7 @@ func (o *Client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.C
 
 func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 
-	select {
-	default:
-	case <-ctx.Done():
+	if ctx.Err() != nil {
 		return chunk.Chunk{}, ctx.Err()
 	}
 
