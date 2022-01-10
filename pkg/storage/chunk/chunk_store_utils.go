@@ -106,6 +106,7 @@ type Fetcher struct {
 	maxAsyncBufferSize  int
 
 	asyncQueue chan []Chunk
+	stop       chan struct{}
 }
 
 type decodeRequest struct {
@@ -129,6 +130,7 @@ func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, schema SchemaConfig, s
 		decodeRequests:      make(chan decodeRequest),
 		maxAsyncConcurrency: 16,
 		maxAsyncBufferSize:  1000,
+		stop:                make(chan struct{}, 1),
 	}
 
 	c.wait.Add(chunkDecodeParallelism)
@@ -163,6 +165,8 @@ func (c *Fetcher) asyncQueueProcessLoop() {
 			if cacheErr != nil {
 				level.Warn(util_log.Logger).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 			}
+		case <-c.stop:
+			return
 		}
 	}
 }
@@ -172,7 +176,7 @@ func (c *Fetcher) Stop() {
 	close(c.decodeRequests)
 	c.wait.Wait()
 	c.cache.Stop()
-	close(c.asyncQueue)
+	close(c.stop)
 }
 
 func (c *Fetcher) worker() {
