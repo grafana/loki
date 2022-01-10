@@ -1,5 +1,7 @@
 # A minimal logging API for Go
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/go-logr/logr.svg)](https://pkg.go.dev/github.com/go-logr/logr)
+
 logr offers an(other) opinion on how Go programs and libraries can do logging
 without becoming coupled to a particular logging implementation.  This is not
 an implementation of logging - it is an API.  In fact it is two APIs with two
@@ -11,7 +13,7 @@ defers the actual act of writing logs (to files, to stdout, or whatever) to the
 `LogSink` interface.
 
 The `LogSink` interface is intended for logging library implementers.  It is a
-pure interface which can be implemented by to provide the actual logging
+pure interface which can be implemented by logging frameworks to provide the actual logging
 functionality.
 
 This decoupling allows application and library developers to write code in
@@ -102,14 +104,15 @@ with higher verbosity means more (and less important) logs will be generated.
 
 There are implementations for the following logging libraries:
 
-- **a function**: [funcr](https://github.com/go-logr/logr/funcr)
+- **a function** (can bridge to non-structured libraries): [funcr](https://github.com/go-logr/logr/tree/master/funcr)
 - **github.com/google/glog**: [glogr](https://github.com/go-logr/glogr)
-- **k8s.io/klog**: [klogr](https://git.k8s.io/klog/klogr)
+- **k8s.io/klog** (for Kubernetes): [klogr](https://git.k8s.io/klog/klogr)
 - **go.uber.org/zap**: [zapr](https://github.com/go-logr/zapr)
 - **log** (the Go standard library logger): [stdr](https://github.com/go-logr/stdr)
 - **github.com/sirupsen/logrus**: [logrusr](https://github.com/bombsimon/logrusr)
 - **github.com/wojas/genericr**: [genericr](https://github.com/wojas/genericr) (makes it easy to implement your own backend)
 - **logfmt** (Heroku style [logging](https://www.brandur.org/logfmt)): [logfmtr](https://github.com/iand/logfmtr)
+- **github.com/rs/zerolog**: [zerologr](https://github.com/go-logr/zerologr)
 
 ## FAQ
 
@@ -238,10 +241,20 @@ info-type logs.)
 
 #### How do I choose my keys?
 
+Keys are fairly flexible, and can hold more or less any string
+value. For best compatibility with implementations and consistency
+with existing code in other projects, there are a few conventions you
+should consider.
+
 - Make your keys human-readable.
 - Constant keys are generally a good idea.
 - Be consistent across your codebase.
 - Keys should naturally match parts of the message string.
+- Use lower case for simple keys and
+  [lowerCamelCase](https://en.wiktionary.org/wiki/lowerCamelCase) for
+  more complex ones. Kubernetes is one example of a project that has
+  [adopted that
+  convention](https://github.com/kubernetes/community/blob/HEAD/contributors/devel/sig-instrumentation/migration-to-structured-logging.md#name-arguments).
 
 While key names are mostly unrestricted (and spaces are acceptable),
 it's generally a good idea to stick to printable ascii characters, or at
@@ -251,7 +264,7 @@ least match the general character set of your log lines.
 
 The point of structured logging is to make later log processing easier.  Your
 keys are, effectively, the schema of each log message.  If you use different
-keys across instances of the same log-line, you will make your structured logs
+keys across instances of the same log line, you will make your structured logs
 much harder to use.  `Sprintf()` is for values, not for keys!
 
 #### Why is this not a pure interface?

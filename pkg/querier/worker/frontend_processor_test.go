@@ -2,23 +2,32 @@ package worker
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/util/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/test/bufconn"
+
+	"github.com/grafana/loki/pkg/util/test"
 )
+
+const bufConnSize = 1024 * 1024
 
 func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// We use random port here, hopefully without any gRPC server.
-	cc, err := grpc.DialContext(ctx, "localhost:999", grpc.WithInsecure())
+	listener := bufconn.Listen(bufConnSize)
+	defer listener.Close()
+	cc, err := grpc.DialContext(ctx, "bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}), grpc.WithInsecure())
+
 	require.NoError(t, err)
 
 	cfg := Config{}
@@ -50,8 +59,11 @@ func TestContextCancelStopsProcess(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// We use random port here, hopefully without any gRPC server.
-	cc, err := grpc.DialContext(ctx, "localhost:999", grpc.WithInsecure())
+	listener := bufconn.Listen(bufConnSize)
+	defer listener.Close()
+	cc, err := grpc.DialContext(ctx, "bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}), grpc.WithInsecure())
 	require.NoError(t, err)
 
 	pm := newProcessorManager(ctx, &mockProcessor{}, cc, "test")

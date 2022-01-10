@@ -13,8 +13,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/pkg/util/test"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -23,11 +21,12 @@ import (
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/pkg/util/test"
 )
 
 const testFrontendWorkerConcurrency = 5
 
-func setupFrontend(t *testing.T, reg prometheus.Registerer, schedulerReplyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) (*Frontend, *mockScheduler) {
+func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) (*Frontend, *mockScheduler) {
 	l, err := net.Listen("tcp", "")
 	require.NoError(t, err)
 
@@ -48,7 +47,7 @@ func setupFrontend(t *testing.T, reg prometheus.Registerer, schedulerReplyFunc f
 
 	// logger := log.NewLogfmtLogger(os.Stdout)
 	logger := log.NewNopLogger()
-	f, err := NewFrontend(cfg, nil, logger, reg)
+	f, err := NewFrontend(cfg, nil, logger, nil)
 	require.NoError(t, err)
 
 	frontendv2pb.RegisterFrontendForQuerierServer(server, f)
@@ -99,7 +98,7 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 		userID = "test"
 	)
 
-	f, _ := setupFrontend(t, nil, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
 		// We cannot call QueryResult directly, as Frontend is not yet waiting for the response.
 		// It first needs to be told that enqueuing has succeeded.
 		go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.HTTPResponse{
@@ -124,7 +123,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 		userID = "test"
 	)
 
-	f, _ := setupFrontend(t, nil, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
 		fail := failures.Dec()
 		if fail >= 0 {
 			return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN}
@@ -142,7 +141,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 }
 
 func TestFrontendEnqueueFailure(t *testing.T) {
-	f, _ := setupFrontend(t, nil, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN}
 	})
 
@@ -152,7 +151,7 @@ func TestFrontendEnqueueFailure(t *testing.T) {
 }
 
 func TestFrontendCancellation(t *testing.T) {
-	f, ms := setupFrontend(t, nil, nil)
+	f, ms := setupFrontend(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -178,7 +177,7 @@ func TestFrontendCancellation(t *testing.T) {
 }
 
 func TestFrontendFailedCancellation(t *testing.T) {
-	f, ms := setupFrontend(t, nil, nil)
+	f, ms := setupFrontend(t, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

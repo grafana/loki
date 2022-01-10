@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 )
 
-func setupFrontend(t *testing.T, config Config) (*Frontend, error) {
+func setupFrontend(t *testing.T, config Config) *Frontend {
 	logger := log.NewNopLogger()
 
 	frontend, err := New(config, limits{queriers: 3}, logger, nil)
@@ -29,7 +29,7 @@ func setupFrontend(t *testing.T, config Config) (*Frontend, error) {
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), frontend))
 	})
-	return frontend, nil
+	return frontend
 }
 
 func testReq(ctx context.Context, reqID, user string) *request {
@@ -51,8 +51,7 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	config.MaxOutstandingPerTenant = 10
 	userID := "1"
 
-	f, err := setupFrontend(t, config)
-	require.NoError(t, err)
+	f := setupFrontend(t, config)
 
 	ctx := user.InjectOrgID(context.Background(), userID)
 	expired, cancel := context.WithCancel(ctx)
@@ -77,7 +76,7 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	defer cancel2()
 
 	m := &processServerMock{ctx: ctx2, querierID: "querier"}
-	err = f.Process(m)
+	err := f.Process(m)
 	require.EqualError(t, err, context.DeadlineExceeded.Error())
 
 	// Verify that only non-expired requests were forwarded to querier.
@@ -98,14 +97,13 @@ func TestRoundRobinQueues(t *testing.T) {
 
 	config.MaxOutstandingPerTenant = requests
 
-	f, err := setupFrontend(t, config)
-	require.NoError(t, err)
+	f := setupFrontend(t, config)
 
 	for i := 0; i < requests; i++ {
 		userID := fmt.Sprint(i / tenants)
 		ctx := user.InjectOrgID(context.Background(), userID)
 
-		err = f.queueRequest(ctx, testReq(ctx, fmt.Sprintf("%d", i), userID))
+		err := f.queueRequest(ctx, testReq(ctx, fmt.Sprintf("%d", i), userID))
 		require.NoError(t, err)
 	}
 
@@ -115,7 +113,7 @@ func TestRoundRobinQueues(t *testing.T) {
 	defer cancel()
 
 	m := &processServerMock{ctx: ctx, querierID: "querier"}
-	err = f.Process(m)
+	err := f.Process(m)
 	require.EqualError(t, err, context.DeadlineExceeded.Error())
 
 	require.Len(t, m.requests, requests)
