@@ -39,6 +39,11 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
+const (
+	// RingKey is the key under which we store the ingesters ring in the KVStore.
+	RingKey = "ring"
+)
+
 // ErrReadOnly is returned when the ingester is shutting down and a push was
 // attempted.
 var ErrReadOnly = errors.New("Ingester is shutting down")
@@ -251,7 +256,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	}
 	i.wal = wal
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +313,7 @@ func (i *Ingester) setupAutoForget() {
 
 		var forgetList []string
 		for range ticker.C {
-			err := i.lifecycler.KVStore.CAS(ctx, ring.IngesterRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+			err := i.lifecycler.KVStore.CAS(ctx, RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 				forgetList = forgetList[:0]
 				if in == nil {
 					return nil, false, nil

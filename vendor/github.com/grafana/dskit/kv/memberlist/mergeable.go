@@ -8,10 +8,15 @@ type Mergeable interface {
 	// Merge with other value in place. Returns change, that can be sent to other clients.
 	// If merge doesn't result in any change, returns nil.
 	// Error can be returned if merging with given 'other' value is not possible.
+	// Implementors of this method are permitted to modify the other parameter, as the
+	// memberlist-based KV store will not use the same "other" parameter in multiple Merge calls.
 	//
 	// In order for state merging to work correctly, Merge function must have some properties. When talking about the
 	// result of the merge in the following text, we don't mean the return value ("change"), but the
 	// end-state of receiver. That means Result of A.Merge(B) is end-state of A.
+	//
+	// Memberlist-based KV store will keep the result even if Merge returned no change. Implementations should
+	// be careful about not changing logical value when returning empty change.
 	//
 	// Idempotency:
 	// 		Result of applying the same state "B" to state "A" (A.Merge(B)) multiple times has the same effect as

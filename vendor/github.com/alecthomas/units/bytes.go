@@ -72,6 +72,43 @@ func (b Base2Bytes) Floor() Base2Bytes {
 	}
 }
 
+// Round returns Base2Bytes with all but the first n units zeroed out. So that e.g. 1GiB1MiB1KiB → 1GiB1MiB, if n is 2.
+func (b Base2Bytes) Round(n int) Base2Bytes {
+	idx := 0
+
+	switch {
+	case b > Exbibyte:
+		idx = n
+	case b > Pebibyte:
+		idx = n + 1
+	case b > Tebibyte:
+		idx = n + 2
+	case b > Gibibyte:
+		idx = n + 3
+	case b > Mebibyte:
+		idx = n + 4
+	case b > Kibibyte:
+		idx = n + 5
+	}
+
+	switch idx {
+	case 1:
+		return b - b%Exbibyte
+	case 2:
+		return b - b%Pebibyte
+	case 3:
+		return b - b%Tebibyte
+	case 4:
+		return b - b%Gibibyte
+	case 5:
+		return b - b%Mebibyte
+	case 6:
+		return b - b%Kibibyte
+	default:
+		return b
+	}
+}
+
 var metricBytesUnitMap = MakeUnitMap("B", "B", 1000)
 
 // MetricBytes are SI byte units (1000 bytes in a kilobyte).
@@ -119,6 +156,43 @@ func (b MetricBytes) Floor() MetricBytes {
 		return (b / Megabyte) * Megabyte
 	case b > Kilobyte:
 		return (b / Kilobyte) * Kilobyte
+	default:
+		return b
+	}
+}
+
+// Round returns MetricBytes with all but the first n units zeroed out. So that e.g. 1GB1MB1KB → 1GB1MB, if n is 2.
+func (b MetricBytes) Round(n int) MetricBytes {
+	idx := 0
+
+	switch {
+	case b > Exabyte:
+		idx = n
+	case b > Petabyte:
+		idx = n + 1
+	case b > Terabyte:
+		idx = n + 2
+	case b > Gigabyte:
+		idx = n + 3
+	case b > Megabyte:
+		idx = n + 4
+	case b > Kilobyte:
+		idx = n + 5
+	}
+
+	switch idx {
+	case 1:
+		return b - b%Exabyte
+	case 2:
+		return b - b%Petabyte
+	case 3:
+		return b - b%Terabyte
+	case 4:
+		return b - b%Gigabyte
+	case 5:
+		return b - b%Megabyte
+	case 6:
+		return b - b%Kilobyte
 	default:
 		return b
 	}

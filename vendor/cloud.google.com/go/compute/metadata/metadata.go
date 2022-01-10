@@ -323,7 +323,7 @@ func (c *Client) getETag(suffix string) (value, etag string, err error) {
 		break
 	}
 	if reqErr != nil {
-		return "", "", nil
+		return "", "", reqErr
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotFound {

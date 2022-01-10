@@ -25,9 +25,7 @@ import (
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 )
 
-var (
-	errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
-)
+var errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
 
 // Config for a Frontend.
 type Config struct {
@@ -198,14 +196,6 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 	f.requestQueue.RegisterQuerierConnection(querierID)
 	defer f.requestQueue.UnregisterQuerierConnection(querierID)
 
-	// If the downstream request(from querier -> frontend) is cancelled,
-	// we need to ping the condition variable to unblock getNextRequestForQuerier.
-	// Ideally we'd have ctx aware condition variables...
-	go func() {
-		<-server.Context().Done()
-		f.requestQueue.QuerierDisconnecting()
-	}()
-
 	lastUserIndex := queue.FirstUser()
 
 	for {
@@ -302,7 +292,6 @@ func getQuerierID(server frontendv1pb.Frontend_ProcessServer) (string, error) {
 			Url:    "/invalid_request_sent_by_frontend",
 		},
 	})
-
 	if err != nil {
 		return "", err
 	}
