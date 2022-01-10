@@ -31,7 +31,7 @@ func TestResetConcurrency(t *testing.T) {
 			expectedConcurrency: 2,
 		},
 		{
-			name:                "Test parallelism per target",
+			name:                "Test concurrency equal to parallelism * target when MatchMaxConcurrency is false",
 			parallelism:         4,
 			maxConcurrent:       0,
 			numTargets:          2,
