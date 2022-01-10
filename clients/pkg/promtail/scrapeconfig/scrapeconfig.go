@@ -33,21 +33,21 @@ import (
 
 // Config describes a job to scrape.
 type Config struct {
-	JobName                string                     `yaml:"job_name,omitempty"`
-	PipelineStages         stages.PipelineStages      `yaml:"pipeline_stages,omitempty"`
-	JournalConfig          *JournalTargetConfig       `yaml:"journal,omitempty"`
-	SyslogConfig           *SyslogTargetConfig        `yaml:"syslog,omitempty"`
-	GcplogConfig           *GcplogTargetConfig        `yaml:"gcplog,omitempty"`
-	PushConfig             *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
-	WindowsConfig          *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
-	KafkaConfig            *KafkaTargetConfig         `yaml:"kafka,omitempty"`
-	GelfConfig             *GelfTargetConfig          `yaml:"gelf,omitempty"`
-	CloudflareConfig       *CloudflareConfig          `yaml:"cloudflare,omitempty"`
-	DockerConfig           *DockerConfig              `yaml:"docker,omitempty"`
-	RelabelConfigs         []*relabel.Config          `yaml:"relabel_configs,omitempty"`
+	JobName          string                     `yaml:"job_name,omitempty"`
+	PipelineStages   stages.PipelineStages      `yaml:"pipeline_stages,omitempty"`
+	JournalConfig    *JournalTargetConfig       `yaml:"journal,omitempty"`
+	SyslogConfig     *SyslogTargetConfig        `yaml:"syslog,omitempty"`
+	GcplogConfig     *GcplogTargetConfig        `yaml:"gcplog,omitempty"`
+	PushConfig       *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
+	WindowsConfig    *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
+	KafkaConfig      *KafkaTargetConfig         `yaml:"kafka,omitempty"`
+	GelfConfig       *GelfTargetConfig          `yaml:"gelf,omitempty"`
+	CloudflareConfig *CloudflareConfig          `yaml:"cloudflare,omitempty"`
+	DockerConfig     *DockerConfig              `yaml:"docker,omitempty"`
+	RelabelConfigs   []*relabel.Config          `yaml:"relabel_configs,omitempty"`
 	// List of Docker service discovery configurations.
-	DockerSDConfigs        []*moby.DockerSDConfig     `yaml:"docker_sd_configs,omitempty"`
-	ServiceDiscoveryConfig ServiceDiscoveryConfig     `yaml:",inline"`
+	DockerSDConfigs        []*moby.DockerSDConfig `yaml:"docker_sd_configs,omitempty"`
+	ServiceDiscoveryConfig ServiceDiscoveryConfig `yaml:",inline"`
 }
 
 type ServiceDiscoveryConfig struct {
@@ -336,9 +336,9 @@ type CloudflareConfig struct {
 
 type DockerConfig struct {
 	// Host of the Docker daemon. Defaults to unix:///var/run/docker.sock.
-	Host    string   `yaml:"host",default:"unix:///var/run/docker.sock"`
+	Host string `yaml:"host",default:"unix:///var/run/docker.sock"`
 	// Optional port of the Docker daemon address.
-	Port    int      `yaml:"port", omitempty`
+	Port int `yaml:"port", omitempty`
 	// The id or name of the container.
 	ContainerName string `yaml:"id"`
 	// Labels optionally holds labels to associate with each record read from Docker logs.
