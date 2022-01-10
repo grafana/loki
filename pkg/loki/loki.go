@@ -53,9 +53,10 @@ import (
 
 // Config is the root config for Loki.
 type Config struct {
-	Target      flagext.StringSliceCSV `yaml:"target,omitempty"`
-	AuthEnabled bool                   `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix  string                 `yaml:"http_prefix"`
+	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
+	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
+	HTTPPrefix   string                 `yaml:"http_prefix"`
+	BallastBytes int                    `yaml:"ballast_bytes"`
 
 	Common           common.Config            `yaml:"common,omitempty"`
 	Server           server.Config            `yaml:"server,omitempty"`
@@ -90,6 +91,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
 		"The aliases 'read' and 'write' can be used to only run components related to the read path or write path, respectively.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
+	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
+		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
