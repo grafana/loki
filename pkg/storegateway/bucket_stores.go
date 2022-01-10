@@ -12,6 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -33,11 +37,7 @@ import (
 	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // BucketStores is a multi-tenant wrapper of Thanos BucketStore.
