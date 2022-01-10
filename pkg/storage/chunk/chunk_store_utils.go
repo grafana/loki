@@ -163,7 +163,7 @@ func (c *Fetcher) asyncQueueProcessLoop() {
 		case fromStorage := <-c.asyncQueue:
 			cacheErr := c.writeBackCache(context.Background(), fromStorage)
 			if cacheErr != nil {
-				level.Warn(util_log.Logger).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
+				level.Warn(util_log.Logger).Log("msg", "could not write fetched chunks from storage into chunk cache", "err", cacheErr)
 			}
 		case <-c.stop:
 			return
