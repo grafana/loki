@@ -13,6 +13,10 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
+const (
+	functionLineName = "__line__"
+)
+
 var (
 	_ Stage = &LineFormatter{}
 	_ Stage = &LabelsFormatter{}
@@ -95,22 +99,33 @@ func init() {
 type LineFormatter struct {
 	*template.Template
 	buf *bytes.Buffer
+
+	currentLine []byte
 }
 
 // NewFormatter creates a new log line formatter from a given text template.
 func NewFormatter(tmpl string) (*LineFormatter, error) {
-	t, err := template.New("line").Option("missingkey=zero").Funcs(functionMap).Parse(tmpl)
+	lf := &LineFormatter{
+		buf: bytes.NewBuffer(make([]byte, 4096)),
+	}
+	functions := make(map[string]interface{}, len(functionMap)+1)
+	for k, v := range functionMap {
+		functions[k] = v
+	}
+	functions[functionLineName] = func() string {
+		return unsafeGetString(lf.currentLine)
+	}
+	t, err := template.New("line").Option("missingkey=zero").Funcs(functions).Parse(tmpl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid line template: %w", err)
 	}
-	return &LineFormatter{
-		Template: t,
-		buf:      bytes.NewBuffer(make([]byte, 4096)),
-	}, nil
+	lf.Template = t
+	return lf, nil
 }
 
 func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lf.buf.Reset()
+	lf.currentLine = line
 
 	if err := lf.Template.Execute(lf.buf, lbs.Labels().Map()); err != nil {
 		lbs.SetErr(errTemplateFormat)
