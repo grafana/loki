@@ -102,6 +102,11 @@ func (o *Client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.C
 }
 
 func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
+
+	if ctx.Err() != nil {
+		return chunk.Chunk{}, ctx.Err()
+	}
+
 	key := o.schema.ExternalKey(c)
 	if o.keyEncoder != nil {
 		key = o.keyEncoder(key)
