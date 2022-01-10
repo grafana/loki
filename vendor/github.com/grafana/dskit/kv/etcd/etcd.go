@@ -38,7 +38,7 @@ type Clientv3Facade interface {
 	clientv3.Watcher
 }
 
-// Client implements ring.KVClient for etcd.
+// Client implements kv.Client for etcd.
 type Client struct {
 	cfg    Config
 	codec  codec.Codec

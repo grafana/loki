@@ -33,7 +33,7 @@ func NewDNSWatcher(address string, dnsLookupPeriod time.Duration, notifications 
 		return nil, err
 	}
 
-	watcher, err := resolver.Resolve(address)
+	watcher, err := resolver.Resolve(address, "")
 	if err != nil {
 		return nil, err
 	}

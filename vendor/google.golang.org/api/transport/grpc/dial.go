@@ -142,7 +142,7 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 		// Attempt Direct Path:
 		if o.EnableDirectPath && checkDirectPathEndPoint(endpoint) && isTokenSourceDirectPathCompatible(creds.TokenSource, o) && metadata.OnGCE() {
 			grpcOpts = []grpc.DialOption{
-				grpc.WithCredentialsBundle(grpcgoogle.NewComputeEngineCredentials())}
+				grpc.WithCredentialsBundle(grpcgoogle.NewDefaultCredentialsWithOptions(grpcgoogle.DefaultCredentialsOptions{oauth.TokenSource{creds.TokenSource}}))}
 			if timeoutDialerOption != nil {
 				grpcOpts = append(grpcOpts, timeoutDialerOption)
 			}

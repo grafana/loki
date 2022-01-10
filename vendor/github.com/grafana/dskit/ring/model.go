@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -173,6 +174,14 @@ func (i *InstanceDesc) IsReady(now time.Time, heartbeatTimeout time.Duration) er
 // (see resolveConflicts).
 //
 // This method is part of memberlist.Mergeable interface, and is only used by gossiping ring.
+//
+// The receiver must be normalised, that is, the token lists must sorted and not contain
+// duplicates. The function guarantees that the receiver will be left in this normalised state,
+// so multiple subsequent Merge calls are valid usage.
+//
+// The Mergeable passed as the parameter does not need to be normalised.
+//
+// Note: This method modifies d and mergeable to reduce allocations and copies.
 func (d *Desc) Merge(mergeable memberlist.Mergeable, localCAS bool) (memberlist.Mergeable, error) {
 	return d.mergeWithTime(mergeable, localCAS, time.Now())
 }
@@ -192,15 +201,21 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 		return nil, nil
 	}
 
-	thisIngesterMap := buildNormalizedIngestersMap(d)
-	otherIngesterMap := buildNormalizedIngestersMap(other)
+	normalizeIngestersMap(other)
+
+	thisIngesterMap := d.Ingesters
+	otherIngesterMap := other.Ingesters
 
 	var updated []string
+	tokensChanged := false
 
 	for name, oing := range otherIngesterMap {
 		ting := thisIngesterMap[name]
 		// ting.Timestamp will be 0, if there was no such ingester in our version
 		if oing.Timestamp > ting.Timestamp {
+			if !tokensEqual(ting.Tokens, oing.Tokens) {
+				tokensChanged = true
+			}
 			oing.Tokens = append([]uint32(nil), oing.Tokens...) // make a copy of tokens
 			thisIngesterMap[name] = oing
 			updated = append(updated, name)
@@ -235,7 +250,7 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 	}
 
 	// resolveConflicts allocates lot of memory, so if we can avoid it, do that.
-	if conflictingTokensExist(thisIngesterMap) {
+	if tokensChanged && conflictingTokensExist(thisIngesterMap) {
 		resolveConflicts(thisIngesterMap)
 	}
 
@@ -261,22 +276,18 @@ func (d *Desc) MergeContent() []string {
 	return result
 }
 
-// buildNormalizedIngestersMap will do the following:
+// normalizeIngestersMap will do the following:
 // - sorts tokens and removes duplicates (only within single ingester)
-// - it doesn't modify input ring
-func buildNormalizedIngestersMap(inputRing *Desc) map[string]InstanceDesc {
-	out := map[string]InstanceDesc{}
-
+// - modifies the input ring
+func normalizeIngestersMap(inputRing *Desc) {
 	// Make sure LEFT ingesters have no tokens
 	for n, ing := range inputRing.Ingesters {
 		if ing.State == LEFT {
 			ing.Tokens = nil
+			inputRing.Ingesters[n] = ing
 		}
-		out[n] = ing
-	}
 
-	// Sort tokens, and remove duplicates
-	for name, ing := range out {
+		// Sort tokens, and remove duplicates
 		if len(ing.Tokens) == 0 {
 			continue
 		}
@@ -297,25 +308,39 @@ func buildNormalizedIngestersMap(inputRing *Desc) map[string]InstanceDesc {
 		}
 
 		// write updated value back to map
-		out[name] = ing
+		inputRing.Ingesters[n] = ing
 	}
-
-	return out
 }
 
-func conflictingTokensExist(normalizedIngesters map[string]InstanceDesc) bool {
-	count := 0
-	for _, ing := range normalizedIngesters {
-		count += len(ing.Tokens)
+// tokensEqual checks for equality of two slices. Assumes the slices are sorted.
+func tokensEqual(lhs, rhs []uint32) bool {
+	if len(lhs) != len(rhs) {
+		return false
 	}
+	for i := 0; i < len(lhs); i++ {
+		if lhs[i] != rhs[i] {
+			return false
+		}
+	}
+	return true
+}
 
-	tokensMap := make(map[uint32]bool, count)
+var tokenMapPool = sync.Pool{New: func() interface{} { return make(map[uint32]struct{}) }}
+
+func conflictingTokensExist(normalizedIngesters map[string]InstanceDesc) bool {
+	tokensMap := tokenMapPool.Get().(map[uint32]struct{})
+	defer func() {
+		for k := range tokensMap {
+			delete(tokensMap, k)
+		}
+		tokenMapPool.Put(tokensMap)
+	}()
 	for _, ing := range normalizedIngesters {
 		for _, t := range ing.Tokens {
-			if tokensMap[t] {
+			if _, contains := tokensMap[t]; contains {
 				return true
 			}
-			tokensMap[t] = true
+			tokensMap[t] = struct{}{}
 		}
 	}
 	return false

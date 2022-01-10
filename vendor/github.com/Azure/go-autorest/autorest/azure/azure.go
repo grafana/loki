@@ -68,7 +68,7 @@ func (se ServiceError) Error() string {
 		if err != nil {
 			result += fmt.Sprintf(" Details=%v", se.Details)
 		}
-		result += fmt.Sprintf(" Details=%v", string(d))
+		result += fmt.Sprintf(" Details=%s", d)
 	}
 
 	if se.InnerError != nil {
@@ -76,7 +76,7 @@ func (se ServiceError) Error() string {
 		if err != nil {
 			result += fmt.Sprintf(" InnerError=%v", se.InnerError)
 		}
-		result += fmt.Sprintf(" InnerError=%v", string(d))
+		result += fmt.Sprintf(" InnerError=%s", d)
 	}
 
 	if se.AdditionalInfo != nil {
@@ -84,7 +84,7 @@ func (se ServiceError) Error() string {
 		if err != nil {
 			result += fmt.Sprintf(" AdditionalInfo=%v", se.AdditionalInfo)
 		}
-		result += fmt.Sprintf(" AdditionalInfo=%v", string(d))
+		result += fmt.Sprintf(" AdditionalInfo=%s", d)
 	}
 
 	return result
@@ -335,13 +335,13 @@ func WithErrorUnlessStatusCode(codes ...int) autorest.RespondDecorator {
 				b, decodeErr := autorest.CopyAndDecode(encodedAs, resp.Body, &e)
 				resp.Body = ioutil.NopCloser(&b)
 				if decodeErr != nil {
-					return fmt.Errorf("autorest/azure: error response cannot be parsed: %q error: %v", b.String(), decodeErr)
+					return fmt.Errorf("autorest/azure: error response cannot be parsed: %q error: %v", b, decodeErr)
 				}
 				if e.ServiceError == nil {
 					// Check if error is unwrapped ServiceError
 					decoder := autorest.NewDecoder(encodedAs, bytes.NewReader(b.Bytes()))
 					if err := decoder.Decode(&e.ServiceError); err != nil {
-						return fmt.Errorf("autorest/azure: error response cannot be parsed: %q error: %v", b.String(), err)
+						return fmt.Errorf("autorest/azure: error response cannot be parsed: %q error: %v", b, err)
 					}
 
 					// for example, should the API return the literal value `null` as the response
@@ -364,7 +364,7 @@ func WithErrorUnlessStatusCode(codes ...int) autorest.RespondDecorator {
 					rawBody := map[string]interface{}{}
 					decoder := autorest.NewDecoder(encodedAs, bytes.NewReader(b.Bytes()))
 					if err := decoder.Decode(&rawBody); err != nil {
-						return fmt.Errorf("autorest/azure: error response cannot be parsed: %q error: %v", b.String(), err)
+						return fmt.Errorf("autorest/azure: error response cannot be parsed: %q error: %v", b, err)
 					}
 
 					e.ServiceError = &ServiceError{
