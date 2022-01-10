@@ -38,7 +38,7 @@ func TestResetConcurrency(t *testing.T) {
 			expectedConcurrency: 8,
 		},
 		{
-			name:                "Test Total Parallelism with a remainder",
+			name:                "Test concurrency is correct when numTargets does not divide evenly into maxConcurrent",
 			parallelism:         1,
 			maxConcurrent:       7,
 			numTargets:          4,
