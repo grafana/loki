@@ -8,7 +8,6 @@ import (
 	"time"
 
 	cortexcache "github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 
+	"github.com/grafana/loki/pkg/ruler/base/rulestore/local"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	loki_net "github.com/grafana/loki/pkg/util/net"
