@@ -23,7 +23,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/grafana/loki/pkg/ruler/base/rulespb"
+	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 )
 

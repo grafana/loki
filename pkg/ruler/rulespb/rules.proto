@@ -3,7 +3,7 @@ syntax = "proto3";
 
 package rules;
 
-option go_package = "github.com/grafana/loki/pkg/ruler/base/rulespb";
+option go_package = "github.com/grafana/loki/pkg/ruler/rulespb";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
