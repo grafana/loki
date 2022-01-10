@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	libraryVersion = "1.71.0"
+	libraryVersion = "1.73.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -97,6 +97,20 @@ type ListOptions struct {
 
 	// For paginated result sets, the number of results to include per page.
 	PerPage int `url:"per_page,omitempty"`
+}
+
+// TokenListOptions specifies the optional parameters to various List methods that support token pagination.
+type TokenListOptions struct {
+	// For paginated result sets, page of results to retrieve.
+	Page int `url:"page,omitempty"`
+
+	// For paginated result sets, the number of results to include per page.
+	PerPage int `url:"per_page,omitempty"`
+
+	// For paginated result sets which support tokens, the token provided by the last set
+	// of results in order to retrieve the next set of results. This is expected to be faster
+	// than incrementing or decrementing the page number.
+	Token string `url:"page_token,omitempty"`
 }
 
 // Response is a DigitalOcean response. This wraps the standard http.Response returned from DigitalOcean.

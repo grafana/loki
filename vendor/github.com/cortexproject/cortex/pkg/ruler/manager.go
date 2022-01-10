@@ -53,7 +53,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		return nil, err
 	}
 
-	userManagerMetrics := NewManagerMetrics()
+	userManagerMetrics := NewManagerMetrics(cfg.DisableRuleGroupLabel)
 	if reg != nil {
 		reg.MustRegister(userManagerMetrics)
 	}

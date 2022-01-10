@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/dskit/math"
+	"github.com/grafana/dskit/internal/math"
 	"github.com/grafana/dskit/multierror"
 )
 

@@ -26,7 +26,7 @@
   "description": "Stores and retrieves potentially large, immutable data objects.",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/storage/docs/json_api/",
-  "etag": "\"3133363930393533313437363430303131373733\"",
+  "etag": "\"3137363332383633313735343831303635323033\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -3230,7 +3230,7 @@
       }
     }
   },
-  "revision": "20211018",
+  "revision": "20211201",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "Bucket": {
@@ -3366,7 +3366,7 @@
               "type": "object"
             },
             "publicAccessPrevention": {
-              "description": "The bucket's Public Access Prevention configuration. Currently, 'unspecified' and 'enforced' are supported.",
+              "description": "The bucket's Public Access Prevention configuration. Currently, 'inherited' and 'enforced' are supported.",
               "type": "string"
             },
             "uniformBucketLevelAccess": {
