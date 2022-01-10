@@ -23,9 +23,17 @@ var (
 	errAsyncBufferFull    = errors.New("the async buffer is full")
 	reasonAsyncBufferFull = "async-buffer-full"
 	skipped               = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "loki_chunk_fetcher_cache_skipped_total",
+		Name: "loki_chunk_fetcher_cache_skipped_buffer_full_total",
 		Help: "Total number of operations against cache that have been skipped.",
 	}, []string{"reason"})
+	chunkFetcherCacheQueueEnqueue = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "loki_chunk_fetcher_cache_enqueue_total",
+		Help: "Total number of chunk enqueue cache queue.",
+	})
+	chunkFetcherCacheQueueDequeue = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "loki_chunk_fetcher_cache_dequeue_total",
+		Help: "Total number of chunk dequeue cache queue.",
+	})
 )
 
 const chunkDecodeParallelism = 16
@@ -151,6 +159,7 @@ func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, schema SchemaConfig, s
 func (c *Fetcher) writeBackCacheAsync(fromStorage []Chunk) error {
 	select {
 	case c.asyncQueue <- fromStorage:
+		chunkFetcherCacheQueueEnqueue.Inc()
 		return nil
 	default:
 		return errAsyncBufferFull
@@ -161,6 +170,7 @@ func (c *Fetcher) asyncWriteBackCacheQueueProcessLoop() {
 	for {
 		select {
 		case fromStorage := <-c.asyncQueue:
+			chunkFetcherCacheQueueDequeue.Inc()
 			cacheErr := c.writeBackCache(context.Background(), fromStorage)
 			if cacheErr != nil {
 				level.Warn(util_log.Logger).Log("msg", "could not write fetched chunks from storage into chunk cache", "err", cacheErr)
