@@ -301,7 +301,6 @@ func (m *Manager) updater(ctx context.Context, p *provider, updates chan []*targ
 				<-ctx.Done()
 				return
 			}
-			level.Debug(m.logger).Log("msg", "received targets", "provider", p.name, "targets", len(tgs))
 
 			p.mu.RLock()
 			for s := range p.subs {
@@ -311,7 +310,6 @@ func (m *Manager) updater(ctx context.Context, p *provider, updates chan []*targ
 
 			select {
 			case m.triggerSend <- struct{}{}:
-				level.Debug(m.logger).Log("msg", "send trigger")
 			default:
 			}
 		}
@@ -329,7 +327,6 @@ func (m *Manager) sender() {
 		case <-ticker.C: // Some discoverers send updates too often, so we throttle these with the ticker.
 			select {
 			case <-m.triggerSend:
-				level.Debug(m.logger).Log("msg", "received send trigger")
 				sentUpdates.WithLabelValues(m.name).Inc()
 				select {
 				case m.syncCh <- m.allGroups():

@@ -100,11 +100,8 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 				continue
 			}
 
-			level.Debug(d.logger).Log("msg", "sending targets", "targets", len(tgs))
-
 			select {
 			case ch <- tgs:
-				level.Debug(d.logger).Log("msg", "sent targets")
 			case <-ctx.Done():
 				return
 			}

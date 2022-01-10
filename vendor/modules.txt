@@ -365,6 +365,7 @@ github.com/docker/docker/pkg/plugins/transport
 github.com/docker/docker/pkg/pools
 github.com/docker/docker/pkg/progress
 github.com/docker/docker/pkg/pubsub
+github.com/docker/docker/pkg/stdcopy
 github.com/docker/docker/pkg/streamformatter
 github.com/docker/docker/pkg/stringid
 github.com/docker/docker/pkg/tailfile
