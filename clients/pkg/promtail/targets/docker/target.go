@@ -112,7 +112,7 @@ func (t *Target) start() {
 		if err != nil {
 			level.Error(t.logger).Log("msg", "could not transfer logs", "written", written, "err", err)
 		} else {
-			level.Info(t.logger).Log("msg", "finished transfering logs", "written", written)
+			level.Info(t.logger).Log("msg", "finished transferring logs", "written", written)
 		}
 	}()
 
