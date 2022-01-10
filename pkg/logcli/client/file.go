@@ -185,10 +185,6 @@ func (f *FileClient) GetOrgID() string {
 	return f.orgID
 }
 
-func (f *FileClient) GetQueryTags() string {
-	return f.queryTags
-}
-
 type limiter struct {
 	n int
 }

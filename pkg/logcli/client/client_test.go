@@ -1,6 +1,11 @@
 package client
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func Test_buildURL(t *testing.T) {
 	tests := []struct {
@@ -22,6 +27,48 @@ func Test_buildURL(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("buildURL() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_getHTTPHeader(t *testing.T) {
+	tests := []struct {
+		name    string
+		client  DefaultClient
+		want    http.Header
+		wantErr bool
+	}{
+		{"empty", DefaultClient{}, http.Header{
+			"User-Agent": []string{userAgent},
+		}, false},
+		{"partial-headers", DefaultClient{
+			OrgID:     "124",
+			QueryTags: "source=abc",
+		}, http.Header{
+			"X-Scope-OrgID": []string{"124"},
+			"X-Query-Tags":  []string{"source=abc"},
+			"User-Agent":    []string{userAgent},
+		}, false},
+		// {"basic-auth", DefaultClient{
+		// 	Username: "123",
+		// 	Password: "secure",
+		// }, http.Header{
+		// 	"Authorization": []string{"fake"},
+		// }, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.client.getHTTPHeader()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getHTTPHeader() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			// fmt.Println(tt.want)
+			// fmt.Println(got)
+			for k, _ := range tt.want {
+				ck := http.CanonicalHeaderKey(k)
+				assert.Equal(t, tt.want[k], got[ck])
 			}
 		})
 	}
