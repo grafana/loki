@@ -276,7 +276,7 @@ The `querier` block configures the Loki Querier.
 # Maximum lookback beyond which queries are not sent to ingester.
 # 0 means all queries are sent to ingester.
 # CLI flag: -querier.query-ingesters-within
-[query_ingesters_within: <duration> | default = 2h]
+[query_ingesters_within: <duration> | default = 3h]
 
 # The maximum number of concurrent queries allowed.
 # CLI flag: -querier.max-concurrent
