@@ -8,6 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
@@ -28,6 +29,16 @@ type Config struct {
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
+}
+
+// Validate validates the config.
+func (cfg *Config) Validate() error {
+	if cfg.CacheResults {
+		if err := cfg.ResultsCacheConfig.Validate(); err != nil {
+			return errors.Wrap(err, "invalid ResultsCache config")
+		}
+	}
+	return nil
 }
 
 // Stopper gracefully shutdown resources created
