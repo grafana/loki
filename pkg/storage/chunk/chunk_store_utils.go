@@ -20,9 +20,9 @@ import (
 )
 
 var (
-	errMemcachedAsyncBufferFull = errors.New("the async buffer is full")
-	reasonAsyncBufferFull       = "async-buffer-full"
-	skipped                     = promauto.NewCounterVec(prometheus.CounterOpts{
+	errAsyncBufferFull    = errors.New("the async buffer is full")
+	reasonAsyncBufferFull = "async-buffer-full"
+	skipped               = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "loki_chunk_fetcher_cache_skipped_total",
 		Help: "Total number of operations against cache that have been skipped.",
 	}, []string{"reason"})
@@ -121,15 +121,15 @@ type decodeResponse struct {
 }
 
 // NewChunkFetcher makes a new ChunkFetcher.
-func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, schema SchemaConfig, storage Client) (*Fetcher, error) {
+func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, schema SchemaConfig, storage Client, maxAsyncConcurrency int, maxAsyncBufferSize int) (*Fetcher, error) {
 	c := &Fetcher{
 		schema:              schema,
 		storage:             storage,
 		cache:               cacher,
 		cacheStubs:          cacheStubs,
 		decodeRequests:      make(chan decodeRequest),
-		maxAsyncConcurrency: 16,
-		maxAsyncBufferSize:  1000,
+		maxAsyncConcurrency: maxAsyncConcurrency,
+		maxAsyncBufferSize:  maxAsyncBufferSize,
 		stop:                make(chan struct{}, 1),
 	}
 
@@ -142,7 +142,7 @@ func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, schema SchemaConfig, s
 	// to the max concurrency we have.
 	c.asyncQueue = make(chan []Chunk, c.maxAsyncBufferSize)
 	for i := 0; i < c.maxAsyncConcurrency; i++ {
-		go c.asyncQueueProcessLoop()
+		go c.asyncWriteBackCacheQueueProcessLoop()
 	}
 
 	return c, nil
@@ -153,11 +153,11 @@ func (c *Fetcher) writeBackCacheAsync(fromStorage []Chunk) error {
 	case c.asyncQueue <- fromStorage:
 		return nil
 	default:
-		return errMemcachedAsyncBufferFull
+		return errAsyncBufferFull
 	}
 }
 
-func (c *Fetcher) asyncQueueProcessLoop() {
+func (c *Fetcher) asyncWriteBackCacheQueueProcessLoop() {
 	for {
 		select {
 		case fromStorage := <-c.asyncQueue:
@@ -215,7 +215,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string
 
 	// Always cache any chunks we did get
 	if cacheErr := c.writeBackCacheAsync(fromStorage); cacheErr != nil {
-		if cacheErr == errMemcachedAsyncBufferFull {
+		if cacheErr == errAsyncBufferFull {
 			skipped.WithLabelValues(reasonAsyncBufferFull).Inc()
 		}
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)

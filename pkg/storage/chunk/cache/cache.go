@@ -41,6 +41,11 @@ type Config struct {
 
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
+
+	// MaxAsyncConcurrency specifies the maximum number of SetAsync goroutines.
+	MaxAsyncConcurrency int `yaml:"max_async_concurrency"`
+	// MaxAsyncBufferSize specifies the queue buffer size for SetAsync operations.
+	MaxAsyncBufferSize int `yaml:"max_async_buffer_size"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -50,6 +55,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
+	f.IntVar(&cfg.MaxAsyncConcurrency, prefix+"max-async-concurrency", 16, "The maximum number of concurrent asynchronous operations can occur.")
+	f.IntVar(&cfg.MaxAsyncBufferSize, prefix+"max-async-buffer-size", 500, "The maximum number of enqueued asynchronous operations allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
 	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
 

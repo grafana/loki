@@ -99,7 +99,7 @@ type baseStore struct {
 }
 
 func newBaseStore(cfg StoreConfig, scfg SchemaConfig, schema BaseSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (baseStore, error) {
-	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, scfg, chunks)
+	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, scfg, chunks, cfg.ChunkCacheConfig.MaxAsyncConcurrency, cfg.ChunkCacheConfig.MaxAsyncBufferSize)
 	if err != nil {
 		return baseStore{}, err
 	}
