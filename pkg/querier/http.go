@@ -35,15 +35,6 @@ type QueryResponse struct {
 
 // RangeQueryHandler is a http.HandlerFunc for range queries.
 func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
-	log := spanlogger.FromContext(r.Context())
-	level.Info(log).Log("msg", "range query started")
-	defer func() {
-		level.Info(log).Log("msg", "range query ended")
-	}()
-	go func() {
-		<-r.Context().Done()
-		level.Info(log).Log("msg", "range query done", "err", r.Context().Err())
-	}()
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
