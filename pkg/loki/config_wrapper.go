@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 
-	"github.com/grafana/loki/pkg/ruler/base/rulestore/local"
+	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	loki_net "github.com/grafana/loki/pkg/util/net"

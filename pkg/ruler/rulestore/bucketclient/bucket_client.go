@@ -17,7 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/ruler/base/rulespb"
-	"github.com/grafana/loki/pkg/ruler/base/rulestore"
+	"github.com/grafana/loki/pkg/ruler/rulestore"
 )
 
 const (

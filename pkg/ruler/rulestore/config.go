@@ -9,8 +9,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 
-	"github.com/grafana/loki/pkg/ruler/base/rulestore/configdb"
-	"github.com/grafana/loki/pkg/ruler/base/rulestore/local"
+	"github.com/grafana/loki/pkg/ruler/rulestore/configdb"
+	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 )
 
 // Config configures a rule store.
