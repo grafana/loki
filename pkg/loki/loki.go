@@ -136,7 +136,8 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 
 func (c *Config) registerQueryRangeFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
-
+	// NB: We can remove this after removing Loki's dependency on Cortex and bringing in the queryrange.Config.
+	// That will let us change the defaults there rather than include wrapper functions like this one.
 	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
 	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
 	c.QueryRange.RegisterFlags(throwaway)
