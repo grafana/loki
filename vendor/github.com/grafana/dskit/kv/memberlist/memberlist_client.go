@@ -193,7 +193,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.AdvertiseAddr, prefix+"memberlist.advertise-addr", mlDefaults.AdvertiseAddr, "Gossip address to advertise to other members in the cluster. Used for NAT traversal.")
 	f.IntVar(&cfg.AdvertisePort, prefix+"memberlist.advertise-port", mlDefaults.AdvertisePort, "Gossip port to advertise to other members in the cluster. Used for NAT traversal.")
 
-	cfg.TCPTransport.RegisterFlags(f, prefix)
+	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
 }
 
 func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet) {
@@ -400,6 +400,13 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	// Memberlist uses UDPBufferSize to figure out how many messages it can put into single "packet".
 	// As we don't use UDP for sending packets, we can use higher value here.
 	mlCfg.UDPBufferSize = 10 * 1024 * 1024
+
+	// For our use cases, we don't need a very fast detection of dead nodes. Since we use a TCP transport
+	// and we open a new TCP connection for each packet, we prefer to reduce the probe frequency and increase
+	// the timeout compared to defaults.
+	mlCfg.ProbeInterval = 5 * time.Second // Probe a random node every this interval. This setting is also the total timeout for the direct + indirect probes.
+	mlCfg.ProbeTimeout = 2 * time.Second  // Timeout for the direct probe.
+
 	return mlCfg, nil
 }
 
@@ -902,18 +909,6 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 		return
 	}
 
-	if len(pairData) > 65535 {
-		// Unfortunately, memberlist will happily let us send bigger messages via gossip,
-		// but then it will fail to parse them properly, because its own size field is 2-bytes only.
-		// (github.com/hashicorp/memberlist@v0.1.4/util.go:167, makeCompoundMessage function)
-		//
-		// Typically messages are smaller (when dealing with couple of updates only), but can get bigger
-		// when broadcasting result of push/pull update.
-		level.Debug(m.logger).Log("msg", "broadcast message too big, not broadcasting", "key", key, "version", version, "len", len(pairData))
-		m.numberOfBroadcastMessagesDropped.Inc()
-		return
-	}
-
 	m.addSentMessage(message{
 		Time:    time.Now(),
 		Size:    len(pairData),
@@ -1184,7 +1179,10 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 	m.storeMu.Lock()
 	defer m.storeMu.Unlock()
 
-	curr := m.store[key].Clone()
+	// Note that we do not take a deep copy of curr.value here, it is modified in-place.
+	// This is safe because the entire function runs under the store lock; we do not return
+	// the full state anywhere as is done elsewhere (i.e. Get/WatchKey/CAS).
+	curr := m.store[key]
 	// if casVersion is 0, then there was no previous value, so we will just do normal merge, without localCAS flag set.
 	if casVersion > 0 && curr.version != casVersion {
 		return nil, 0, errVersionMismatch
@@ -1206,7 +1204,7 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 		m.storeRemovedTombstones.WithLabelValues(key).Add(float64(removed))
 
 		// Remove tombstones from change too. If change turns out to be empty after this,
-		// we don't need to change local value either!
+		// we don't need to gossip the change. However, the local value will be always be updated.
 		//
 		// Note that "result" and "change" may actually be the same Mergeable. That is why we
 		// call RemoveTombstones on "result" first, so that we get the correct metrics. Calling
@@ -1223,6 +1221,10 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 		version: newVersion,
 		codecID: codec.CodecID(),
 	}
+
+	// The "changes" returned by Merge() can contain references to the "result"
+	// state. Therefore, make sure we clone it before releasing the lock.
+	change = change.Clone()
 
 	return change, newVersion, nil
 }

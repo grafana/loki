@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -1783,13 +1782,7 @@ func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
 	d := encoding.Decbuf{B: b}
 	n := d.Be32int()
 	l := d.Get()
-	if d.Err() != nil {
-		return 0, nil, d.Err()
-	}
-	if len(l) != 4*n {
-		return 0, nil, fmt.Errorf("unexpected postings length, should be %d bytes for %d postings, got %d bytes", 4*n, n, len(l))
-	}
-	return n, newBigEndianPostings(l), nil
+	return n, newBigEndianPostings(l), d.Err()
 }
 
 // LabelNamesOffsetsFor decodes the offsets of the name symbols for a given series.

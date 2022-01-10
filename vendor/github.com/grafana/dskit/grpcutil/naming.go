@@ -24,13 +24,7 @@ type Update struct {
 	Metadata interface{}
 }
 
-// Resolver creates a Watcher for a target to track its resolution changes.
-type Resolver interface {
-	// Resolve creates a Watcher for target.
-	Resolve(target string) (Watcher, error)
-}
-
-// Watcher watches for the updates on the specified target.
+// Watcher watches for SRV updates on the specified target.
 type Watcher interface {
 	// Next blocks until an update or error happens. It may return one or more
 	// updates. The first call should get the full set of the results. It should

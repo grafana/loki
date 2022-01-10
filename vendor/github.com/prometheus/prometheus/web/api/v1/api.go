@@ -1155,15 +1155,15 @@ type RuleGroup struct {
 	// In order to preserve rule ordering, while exposing type (alerting or recording)
 	// specific properties, both alerting and recording rules are exposed in the
 	// same array.
-	Rules          []Rule    `json:"rules"`
+	Rules          []rule    `json:"rules"`
 	Interval       float64   `json:"interval"`
 	EvaluationTime float64   `json:"evaluationTime"`
 	LastEvaluation time.Time `json:"lastEvaluation"`
 }
 
-type Rule interface{}
+type rule interface{}
 
-type AlertingRule struct {
+type alertingRule struct {
 	// State can be "pending", "firing", "inactive".
 	State          string           `json:"state"`
 	Name           string           `json:"name"`
@@ -1180,7 +1180,7 @@ type AlertingRule struct {
 	Type string `json:"type"`
 }
 
-type RecordingRule struct {
+type recordingRule struct {
 	Name           string           `json:"name"`
 	Query          string           `json:"query"`
 	Labels         labels.Labels    `json:"labels,omitempty"`
@@ -1209,12 +1209,12 @@ func (api *API) rules(r *http.Request) apiFuncResult {
 			Name:           grp.Name(),
 			File:           grp.File(),
 			Interval:       grp.Interval().Seconds(),
-			Rules:          []Rule{},
+			Rules:          []rule{},
 			EvaluationTime: grp.GetEvaluationTime().Seconds(),
 			LastEvaluation: grp.GetLastEvaluation(),
 		}
 		for _, r := range grp.Rules() {
-			var enrichedRule Rule
+			var enrichedRule rule
 
 			lastError := ""
 			if r.LastError() != nil {
@@ -1225,7 +1225,7 @@ func (api *API) rules(r *http.Request) apiFuncResult {
 				if !returnAlerts {
 					break
 				}
-				enrichedRule = AlertingRule{
+				enrichedRule = alertingRule{
 					State:          rule.State().String(),
 					Name:           rule.Name(),
 					Query:          rule.Query().String(),
@@ -1243,7 +1243,7 @@ func (api *API) rules(r *http.Request) apiFuncResult {
 				if !returnRecording {
 					break
 				}
-				enrichedRule = RecordingRule{
+				enrichedRule = recordingRule{
 					Name:           rule.Name(),
 					Query:          rule.Query().String(),
 					Labels:         rule.Labels(),

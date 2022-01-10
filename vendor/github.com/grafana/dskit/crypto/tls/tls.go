@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
-	"io/ioutil"
+	"os"
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -44,7 +44,7 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 	// read ca certificates
 	if cfg.CAPath != "" {
 		var caCertPool *x509.CertPool
-		caCert, err := ioutil.ReadFile(cfg.CAPath)
+		caCert, err := os.ReadFile(cfg.CAPath)
 		if err != nil {
 			return nil, errors.Wrapf(err, "error loading ca cert: %s", cfg.CAPath)
 		}
