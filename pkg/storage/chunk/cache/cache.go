@@ -42,10 +42,10 @@ type Config struct {
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
 
-	// MaxAsyncConcurrency specifies the maximum number of SetAsync goroutines.
-	MaxAsyncConcurrency int `yaml:"max_async_concurrency"`
-	// MaxAsyncBufferSize specifies the queue buffer size for SetAsync operations.
-	MaxAsyncBufferSize int `yaml:"max_async_buffer_size"`
+	// AsyncCacheWriteBackConcurrency specifies the number of goroutines to use when asynchronously writing chunks fetched from the store to the chunk cache.
+	AsyncCacheWriteBackConcurrency int `yaml:"async_cache_write_back_concurrency"`
+	// AsyncCacheWriteBackBufferSize specifies the maximum number of fetched chunks to buffer for writing back to the chunk cache.
+	AsyncCacheWriteBackBufferSize int `yaml:"async_cache_write_back_buffer_size"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
