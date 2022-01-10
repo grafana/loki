@@ -336,9 +336,9 @@ type CloudflareConfig struct {
 
 type DockerConfig struct {
 	// Host of the Docker daemon. Defaults to unix:///var/run/docker.sock.
-	Host string `yaml:"host",default:"unix:///var/run/docker.sock"`
+	Host string `yaml:"host" default:"unix:///var/run/docker.sock"`
 	// Optional port of the Docker daemon address.
-	Port int `yaml:"port", omitempty`
+	Port int `yaml:"port,omitempty"`
 	// The id or name of the container.
 	ContainerName string `yaml:"id"`
 	// Labels optionally holds labels to associate with each record read from Docker logs.
