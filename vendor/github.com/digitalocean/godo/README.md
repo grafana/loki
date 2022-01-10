@@ -118,6 +118,43 @@ func DropletList(ctx context.Context, client *godo.Client) ([]godo.Droplet, erro
 }
 ```
 
+Some endpoints offer token based pagination. For example, to fetch all Registry Repositories:
+
+```go
+func ListRepositoriesV2(ctx context.Context, client *godo.Client, registryName string) ([]*godo.RepositoryV2, error) {
+    // create a list to hold our registries
+    list := []*godo.RepositoryV2{}
+
+    // create options. initially, these will be blank
+    opt := &godo.TokenListOptions{}
+    for {
+        repositories, resp, err := client.Registry.ListRepositoriesV2(ctx, registryName, opt)
+        if err != nil {
+            return nil, err
+        }
+
+        // append the current page's registries to our list
+        list = append(list, repositories...)
+
+        // if we are at the last page, break out the for loop
+        if resp.Links == nil || resp.Links.IsLastPage() {
+            break
+        }
+
+        // grab the next page token
+        nextPageToken, err := resp.Links.NextPageToken()
+        if err != nil {
+            return nil, err
+        }
+
+        // provide the next page token for the next request
+        opt.Token = nextPageToken
+    }
+
+    return list, nil
+}
+```
+
 ## Versioning
 
 Each version of the client is tagged and the version is updated accordingly.

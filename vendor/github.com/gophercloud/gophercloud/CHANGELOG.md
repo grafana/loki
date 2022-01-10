@@ -1,3 +1,19 @@
+## 0.24.0 (December 13, 2021)
+
+UPGRADE NOTES
+
+* Set Go minimum version to 1.14 [GH-2294](https://github.com/gophercloud/gophercloud/pull/2294)
+
+IMPROVEMENTS
+
+* Added `blockstorage/v3/qos.Get` [GH-2283](https://github.com/gophercloud/gophercloud/pull/2283)
+* Added `blockstorage/v3/qos.Update` [GH-2283](https://github.com/gophercloud/gophercloud/pull/2283)
+* Added `blockstorage/v3/qos.DeleteKeys` [GH-2283](https://github.com/gophercloud/gophercloud/pull/2283)
+* Added `blockstorage/v3/qos.Associate` [GH-2284](https://github.com/gophercloud/gophercloud/pull/2284)
+* Added `blockstorage/v3/qos.Disassociate` [GH-2284](https://github.com/gophercloud/gophercloud/pull/2284)
+* Added `blockstorage/v3/qos.DisassociateAll` [GH-2284](https://github.com/gophercloud/gophercloud/pull/2284)
+* Added `blockstorage/v3/qos.ListAssociations` [GH-2284](https://github.com/gophercloud/gophercloud/pull/2284)
+
 ## 0.23.0 (November 12, 2021)
 
 IMPROVEMENTS
