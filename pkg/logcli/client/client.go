@@ -41,6 +41,7 @@ type Client interface {
 	Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error)
 	LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error)
 	GetOrgID() string
+	GetQueryTags() string
 }
 
 // Tripperware can wrap a roundtripper.
@@ -57,6 +58,7 @@ type DefaultClient struct {
 	BearerToken     string
 	BearerTokenFile string
 	Retries         int
+	QueryTags       string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -152,6 +154,10 @@ func (c *DefaultClient) GetOrgID() string {
 	return c.OrgID
 }
 
+func (c *DefaultClient) GetQueryTags() string {
+	return c.QueryTags
+}
+
 func (c *DefaultClient) doQuery(path string, query string, quiet bool) (*loghttp.QueryResponse, error) {
 	var err error
 	var r loghttp.QueryResponse
@@ -182,6 +188,10 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 
 	if c.OrgID != "" {
 		req.Header.Set("X-Scope-OrgID", c.OrgID)
+	}
+
+	if c.QueryTags != "" {
+		req.Header.Set("X-Query-Tags", c.QueryTags)
 	}
 
 	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {

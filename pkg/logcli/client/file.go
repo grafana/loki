@@ -42,6 +42,7 @@ type FileClient struct {
 	labels      []string
 	labelValues []string
 	orgID       string
+	queryTags   string
 	engine      *logql.Engine
 }
 
@@ -182,6 +183,10 @@ func (f *FileClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, 
 
 func (f *FileClient) GetOrgID() string {
 	return f.orgID
+}
+
+func (f *FileClient) GetQueryTags() string {
+	return f.queryTags
 }
 
 type limiter struct {
