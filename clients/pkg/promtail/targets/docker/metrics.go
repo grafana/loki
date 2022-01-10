@@ -2,7 +2,7 @@ package docker
 
 import "github.com/prometheus/client_golang/prometheus"
 
-// Metrics holds a set of gelf metrics.
+// Metrics holds a set of Docker target metrics.
 type Metrics struct {
 	reg prometheus.Registerer
 
@@ -10,7 +10,7 @@ type Metrics struct {
 	dockerErrors  prometheus.Counter
 }
 
-// NewMetrics creates a new set of gelf metrics. If reg is non-nil, the
+// NewMetrics creates a new set of Docker target metrics. If reg is non-nil, the
 // metrics will be registered.
 func NewMetrics(reg prometheus.Registerer) *Metrics {
 	var m Metrics
