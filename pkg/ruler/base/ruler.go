@@ -677,7 +677,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 		groupDesc := &GroupStateDesc{
 			Group: &rulespb.RuleGroupDesc{
 				Name:      group.Name(),
-				Namespace: string(decodedNamespace),
+				Namespace: decodedNamespace,
 				Interval:  interval,
 				User:      userID,
 			},

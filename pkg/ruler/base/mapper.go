@@ -110,7 +110,7 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]rulefmt.RuleGrou
 			continue
 		}
 
-		ruleGroups := ruleConfigs[string(decodedNamespace)]
+		ruleGroups := ruleConfigs[decodedNamespace]
 
 		if ruleGroups == nil {
 			err = m.FS.Remove(fullFileName)

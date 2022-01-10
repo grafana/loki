@@ -2,10 +2,10 @@ package ruler
 
 import (
 	"github.com/go-kit/log"
-	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/logql"
+	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 )
 

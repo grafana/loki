@@ -5,6 +5,9 @@ import (
 	"errors"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,10 +21,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -254,7 +253,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 	q = querier.NewErrorTranslateQueryableWithFn(q, WrapQueryableErrors)
 
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
-		var queryTime prometheus.Counter = nil
+		var queryTime prometheus.Counter
 		if rulerQuerySeconds != nil {
 			queryTime = rulerQuerySeconds.WithLabelValues(userID)
 		}
