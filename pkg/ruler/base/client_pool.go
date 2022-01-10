@@ -1,4 +1,4 @@
-package ruler
+package base
 
 import (
 	"time"

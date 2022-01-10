@@ -6,7 +6,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
-	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+
+	"github.com/grafana/loki/pkg/ruler/base/rulespb"
 )
 
 const (

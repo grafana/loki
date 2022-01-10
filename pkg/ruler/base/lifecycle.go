@@ -1,4 +1,4 @@
-package ruler
+package base
 
 import (
 	"github.com/grafana/dskit/ring"

@@ -7,9 +7,10 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/cortexproject/cortex/pkg/configs/client"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/configdb"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+
+	"github.com/grafana/loki/pkg/ruler/base/rulestore/configdb"
+	"github.com/grafana/loki/pkg/ruler/base/rulestore/local"
 )
 
 // Config configures a rule store.

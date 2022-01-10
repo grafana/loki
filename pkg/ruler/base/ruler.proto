@@ -3,14 +3,13 @@
 // all Rulers in a cluster. It allows cortex to fully serve the `/api/v1/{rules|alerts}`
 // Prometheus API
 syntax = "proto3";
-package ruler;
+package base;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
-import "github.com/cortexproject/cortex/pkg/ruler/rulespb/rules.proto";
-
+import "pkg/ruler/base/rulespb/rules.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;

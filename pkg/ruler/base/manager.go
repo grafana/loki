@@ -1,4 +1,4 @@
-package ruler
+package base
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/grafana/loki/pkg/ruler/base/rulespb"
 )
 
 type DefaultMultiTenantManager struct {

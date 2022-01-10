@@ -1,4 +1,4 @@
-package ruler
+package base
 
 import (
 	"context"
@@ -17,12 +17,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/openstack"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	configClient "github.com/cortexproject/cortex/pkg/configs/client"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/configdb"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+
+	"github.com/grafana/loki/pkg/ruler/base/rulestore"
+	"github.com/grafana/loki/pkg/ruler/base/rulestore/bucketclient"
+	"github.com/grafana/loki/pkg/ruler/base/rulestore/configdb"
+	"github.com/grafana/loki/pkg/ruler/base/rulestore/local"
+	"github.com/grafana/loki/pkg/ruler/base/rulestore/objectclient"
 )
 
 // RuleStoreConfig configures a rule store.
