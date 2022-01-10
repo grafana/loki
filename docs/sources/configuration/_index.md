@@ -378,7 +378,7 @@ The `query_range` block configures query splitting and caching in the Loki query
 
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step
-[align_queries_with_step: <boolean> | default = true]
+[align_queries_with_step: <boolean> | default = false]
 
 results_cache:
   # The CLI flags prefix for this block config is: frontend
@@ -396,7 +396,7 @@ results_cache:
 # Perform query parallelisations based on storage sharding configuration and
 # query ASTs. This feature is supported only by the chunks storage engine.
 # CLI flag: -querier.parallelise-shardable-queries
-[parallelise_shardable_queries: <boolean> | default = true]
+[parallelise_shardable_queries: <boolean> | default = false]
 ```
 
 ## ruler

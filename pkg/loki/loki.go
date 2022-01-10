@@ -147,12 +147,6 @@ func (c *Config) registerQueryRangeFlagsWithChangedDefaultValues(fs *flag.FlagSe
 		switch f.Name {
 		case "querier.split-queries-by-interval":
 			_ = f.Value.Set("30m")
-
-		case "querier.align-querier-with-step":
-			_ = f.Value.Set("true")
-
-		case "querier.parallelise-shardable-queries":
-			_ = f.Value.Set("true")
 		}
 
 		fs.Var(f.Value, f.Name, f.Usage)
