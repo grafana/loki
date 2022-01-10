@@ -5,6 +5,9 @@ import (
 	"sync"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -14,6 +17,15 @@ import (
 	"github.com/grafana/loki/pkg/util/spanlogger"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+)
+
+var (
+	errMemcachedAsyncBufferFull = errors.New("the async buffer is full")
+	reasonAsyncBufferFull       = "async-buffer-full"
+	skipped                     = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "loki_chunk_fetcher_cache_skipped_total",
+		Help: "Total number of operations against cache that have been skipped.",
+	}, []string{"reason"})
 )
 
 const chunkDecodeParallelism = 16
@@ -89,6 +101,11 @@ type Fetcher struct {
 
 	wait           sync.WaitGroup
 	decodeRequests chan decodeRequest
+
+	maxAsyncConcurrency int
+	maxAsyncBufferSize  int
+
+	asyncQueue chan []Chunk
 }
 
 type decodeRequest struct {
@@ -105,11 +122,13 @@ type decodeResponse struct {
 // NewChunkFetcher makes a new ChunkFetcher.
 func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, schema SchemaConfig, storage Client) (*Fetcher, error) {
 	c := &Fetcher{
-		schema:         schema,
-		storage:        storage,
-		cache:          cacher,
-		cacheStubs:     cacheStubs,
-		decodeRequests: make(chan decodeRequest),
+		schema:              schema,
+		storage:             storage,
+		cache:               cacher,
+		cacheStubs:          cacheStubs,
+		decodeRequests:      make(chan decodeRequest),
+		maxAsyncConcurrency: 16,
+		maxAsyncBufferSize:  1000,
 	}
 
 	c.wait.Add(chunkDecodeParallelism)
@@ -117,7 +136,35 @@ func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, schema SchemaConfig, s
 		go c.worker()
 	}
 
+	// Start a number of goroutines - processing async operations - equal
+	// to the max concurrency we have.
+	c.asyncQueue = make(chan []Chunk, c.maxAsyncBufferSize)
+	for i := 0; i < c.maxAsyncConcurrency; i++ {
+		go c.asyncQueueProcessLoop()
+	}
+
 	return c, nil
+}
+
+func (c *Fetcher) writeBackCacheAsync(fromStorage []Chunk) error {
+	select {
+	case c.asyncQueue <- fromStorage:
+		return nil
+	default:
+		return errMemcachedAsyncBufferFull
+	}
+}
+
+func (c *Fetcher) asyncQueueProcessLoop() {
+	for {
+		select {
+		case fromStorage := <-c.asyncQueue:
+			cacheErr := c.writeBackCache(context.Background(), fromStorage)
+			if cacheErr != nil {
+				level.Warn(util_log.Logger).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
+			}
+		}
+	}
 }
 
 // Stop the ChunkFetcher.
@@ -125,6 +172,7 @@ func (c *Fetcher) Stop() {
 	close(c.decodeRequests)
 	c.wait.Wait()
 	c.cache.Stop()
+	close(c.asyncQueue)
 }
 
 func (c *Fetcher) worker() {
@@ -162,7 +210,10 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string
 	}
 
 	// Always cache any chunks we did get
-	if cacheErr := c.writeBackCache(ctx, fromStorage); cacheErr != nil {
+	if cacheErr := c.writeBackCacheAsync(fromStorage); cacheErr != nil {
+		if cacheErr == errMemcachedAsyncBufferFull {
+			skipped.WithLabelValues(reasonAsyncBufferFull).Inc()
+		}
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
