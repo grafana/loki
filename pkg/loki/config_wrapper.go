@@ -46,6 +46,8 @@ func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 	f.StringVar(&c.ConfigFile, "config.file", "", "yaml file to load")
 	f.BoolVar(&c.ConfigExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
+	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
+		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
 	c.Config.RegisterFlags(f)
 }
 
