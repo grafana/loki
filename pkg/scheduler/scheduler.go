@@ -150,31 +150,31 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 	}
 
 	s.queueLength = promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_queue_length",
+		Name: "loki_query_scheduler_queue_length",
 		Help: "Number of queries in the queue.",
 	}, []string{"user"})
 
 	s.discardedRequests = promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_query_scheduler_discarded_requests_total",
+		Name: "loki_query_scheduler_discarded_requests_total",
 		Help: "Total number of query requests discarded.",
 	}, []string{"user"})
 	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, s.queueLength, s.discardedRequests)
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-		Name:    "cortex_query_scheduler_queue_duration_seconds",
+		Name:    "loki_query_scheduler_queue_duration_seconds",
 		Help:    "Time spend by requests in queue before getting picked up by a querier.",
 		Buckets: prometheus.DefBuckets,
 	})
 	s.connectedQuerierClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_connected_querier_clients",
+		Name: "loki_query_scheduler_connected_querier_clients",
 		Help: "Number of querier worker clients currently connected to the query-scheduler.",
 	}, s.requestQueue.GetConnectedQuerierWorkersMetric)
 	s.connectedFrontendClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_connected_frontend_clients",
+		Name: "loki_query_scheduler_connected_frontend_clients",
 		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
 	}, s.getConnectedFrontendClientsMetric)
 	s.schedulerRunning = promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_running",
+		Name: "loki_query_scheduler_running",
 		Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
 	})
 
@@ -211,7 +211,15 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		}
 
 		ringCfg := cfg.SchedulerRing.ToRingConfig(ringReplicationFactor)
-		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", registerer), util_log.Logger)
+		s.ring, err = ring.NewWithStoreClientAndStrategy(
+			ringCfg,
+			ringNameForServer,
+			ringKey,
+			ringStore,
+			ring.NewIgnoreUnhealthyInstancesReplicationStrategy(),
+			prometheus.WrapRegistererWithPrefix("loki_", registerer),
+			util_log.Logger,
+		)
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring client")
 		}
