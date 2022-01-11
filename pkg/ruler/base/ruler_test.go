@@ -49,6 +49,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 
@@ -118,7 +119,7 @@ type emptyChunkStore struct {
 	called bool
 }
 
-func (c *emptyChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+func (c *emptyChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]cortex_chunk.Chunk, error) {
 	c.Lock()
 	defer c.Unlock()
 	c.called = true
@@ -244,8 +245,8 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.Tes
 	return ruler, cleanup
 }
 
-func newTestRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig) (*Ruler, func()) {
-	ruler, cleanup := buildRuler(t, rulerConfig, querierTestConfig, nil)
+func newTestRuler(t *testing.T, rulerConfig Config) (*Ruler, func()) {
+	ruler, cleanup := buildRuler(t, rulerConfig, nil, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
 
 	// Ensure all rules are loaded before usage
@@ -305,7 +306,7 @@ func TestRuler_Rules(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg, nil)
+	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
@@ -1120,7 +1121,7 @@ func TestRuler_ListAllRules(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg, nil)
+	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
