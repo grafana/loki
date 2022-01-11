@@ -27,12 +27,12 @@ var (
 		Help: "Total number of operations against cache that have been skipped.",
 	}, []string{"reason"})
 	chunkFetcherCacheQueueEnqueue = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "loki_chunk_fetcher_cache_enqueue_total",
-		Help: "Total number of chunk enqueue cache queue.",
+		Name: "loki_chunk_fetcher_cache_enqueued_total",
+		Help: "Total number of chunks enqueued to a buffer to be asynchronously written back to the chunk cache.",
 	})
 	chunkFetcherCacheQueueDequeue = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "loki_chunk_fetcher_cache_dequeue_total",
-		Help: "Total number of chunk dequeue cache queue.",
+		Name: "loki_chunk_fetcher_cache_dequeued_total",
+		Help: "Total number of chunks asynchronously dequeued from a buffer and written back to the chunk cache.",
 	})
 )
 
