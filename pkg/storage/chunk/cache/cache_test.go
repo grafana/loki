@@ -124,7 +124,7 @@ func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk
 		},
 	}
 
-	fetcher, err := chunk.NewChunkFetcher(c, false, s, nil)
+	fetcher, err := chunk.NewChunkFetcher(c, false, s, nil, 10, 100)
 	require.NoError(t, err)
 	defer fetcher.Stop()
 
