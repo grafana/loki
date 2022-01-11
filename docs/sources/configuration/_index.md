@@ -93,6 +93,12 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # if true. If false, the OrgID will always be set to "fake".
 [auth_enabled: <boolean> | default = true]
 
+# The amount of virtual memory to reserve as a ballast in order to optimise
+# garbage collection. Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at
+# the cost of heap size. The ballast will not consume physical memory, because it is never read from.
+# It will, however, distort metrics, because it is counted as live memory.
+[ballast_bytes: <int> | default = 0]
+
 # Configures the server of the launched module(s).
 [server: <server>]
 
@@ -1065,7 +1071,7 @@ lifecycler:
 
 # How many flushes can happen concurrently from each stream.
 # CLI flag: -ingester.concurrent-flushes
-[concurrent_flushes: <int> | default = 16]
+[concurrent_flushes: <int> | default = 32]
 
 # How often should the ingester see if there are any blocks to flush
 # CLI flag: -ingester.flush-check-period

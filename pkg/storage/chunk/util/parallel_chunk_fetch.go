@@ -23,6 +23,10 @@ func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chun
 	defer log.Finish()
 	log.LogFields(otlog.Int("requested", len(chunks)))
 
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	queuedChunks := make(chan chunk.Chunk)
 
 	go func() {
