@@ -106,13 +106,14 @@ func (t *Target) start() {
 		defer func() {
 			t.wg.Done()
 			close(out)
+			t.Stop()
 		}()
 
 		written, err := stdcopy.StdCopy(dstout, dsterr, logs)
 		if err != nil {
-			level.Error(t.logger).Log("msg", "could not transfer logs", "written", written, "err", err)
+			level.Error(t.logger).Log("msg", "could not transfer logs", "written", written, "container", t.containerName, "err", err)
 		} else {
-			level.Info(t.logger).Log("msg", "finished transferring logs", "written", written)
+			level.Info(t.logger).Log("msg", "finished transferring logs", "written", written, "container", t.containerName)
 		}
 	}()
 
@@ -171,6 +172,7 @@ func (t *Target) Stop() {
 	t.cancel()
 	t.wg.Wait()
 	t.handler.Stop()
+	level.Debug(t.logger).Log("msg", "stopped Docker target", "container", t.containerName)
 }
 
 func (t *Target) Type() target.TargetType {
@@ -182,7 +184,7 @@ func (t *Target) Ready() bool {
 }
 
 func (t *Target) DiscoveredLabels() model.LabelSet {
-	return nil // TODO
+	return t.labels 
 }
 
 func (t *Target) Labels() model.LabelSet {
@@ -191,7 +193,12 @@ func (t *Target) Labels() model.LabelSet {
 
 // Details returns target-specific details.
 func (t *Target) Details() interface{} {
-	return map[string]string{}
+	return map[string]string{
+		"id":       t.containerName,
+		"error":    t.err.Error(),
+		"position": t.positions.GetString(positions.CursorKey(t.containerName)),
+		"running":  strconv.FormatBool(t.running.Load()),
+	}
 }
 
 type frame struct {
