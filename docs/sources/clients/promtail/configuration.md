@@ -1726,7 +1726,7 @@ oauth2:
 
 Available meta labels:
 
-  * `_meta_docker_container_id`: the id of the container
+  * `__meta_docker_container_id`: the id of the container
   * `__meta_docker_container_name`: the name of the container
   * `__meta_docker_container_network_mode`: the network mode of the container
   * `__meta_docker_container_label_<labelname>`: each label of the container
