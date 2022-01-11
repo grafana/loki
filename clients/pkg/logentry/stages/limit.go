@@ -88,7 +88,7 @@ func (m *limitStage) Run(in chan Entry) chan Entry {
 	go func() {
 		defer close(out)
 		for e := range in {
-			if !m.shouldDrop(e) {
+			if !m.shouldThrottle(e) {
 				out <- e
 				continue
 			}
