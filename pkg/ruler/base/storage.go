@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	promRules "github.com/prometheus/prometheus/rules"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
@@ -24,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore/configdb"
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 // RuleStoreConfig configures a rule store.

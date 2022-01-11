@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
@@ -21,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type testGroup struct {
