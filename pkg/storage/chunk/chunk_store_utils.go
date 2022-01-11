@@ -20,12 +20,11 @@ import (
 )
 
 var (
-	errAsyncBufferFull    = errors.New("the async buffer is full")
-	reasonAsyncBufferFull = "async-buffer-full"
-	skipped               = promauto.NewCounterVec(prometheus.CounterOpts{
+	errAsyncBufferFull = errors.New("the async buffer is full")
+	skipped            = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "loki_chunk_fetcher_cache_skipped_buffer_full_total",
 		Help: "Total number of operations against cache that have been skipped.",
-	}, []string{"reason"})
+	})
 	chunkFetcherCacheQueueEnqueue = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "loki_chunk_fetcher_cache_enqueued_total",
 		Help: "Total number of chunks enqueued to a buffer to be asynchronously written back to the chunk cache.",
@@ -138,7 +137,7 @@ func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, schema SchemaConfig, s
 		decodeRequests:      make(chan decodeRequest),
 		maxAsyncConcurrency: maxAsyncConcurrency,
 		maxAsyncBufferSize:  maxAsyncBufferSize,
-		stop:                make(chan struct{}, 1),
+		stop:                make(chan struct{}),
 	}
 
 	c.wait.Add(chunkDecodeParallelism)
@@ -159,7 +158,7 @@ func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, schema SchemaConfig, s
 func (c *Fetcher) writeBackCacheAsync(fromStorage []Chunk) error {
 	select {
 	case c.asyncQueue <- fromStorage:
-		chunkFetcherCacheQueueEnqueue.Inc()
+		chunkFetcherCacheQueueEnqueue.Add(float64(len(fromStorage)))
 		return nil
 	default:
 		return errAsyncBufferFull
@@ -170,7 +169,7 @@ func (c *Fetcher) asyncWriteBackCacheQueueProcessLoop() {
 	for {
 		select {
 		case fromStorage := <-c.asyncQueue:
-			chunkFetcherCacheQueueDequeue.Inc()
+			chunkFetcherCacheQueueDequeue.Add(float64(len(fromStorage)))
 			cacheErr := c.writeBackCache(context.Background(), fromStorage)
 			if cacheErr != nil {
 				level.Warn(util_log.Logger).Log("msg", "could not write fetched chunks from storage into chunk cache", "err", cacheErr)
@@ -226,7 +225,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string
 	// Always cache any chunks we did get
 	if cacheErr := c.writeBackCacheAsync(fromStorage); cacheErr != nil {
 		if cacheErr == errAsyncBufferFull {
-			skipped.WithLabelValues(reasonAsyncBufferFull).Inc()
+			skipped.Inc()
 		}
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
