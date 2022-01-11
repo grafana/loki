@@ -1661,7 +1661,7 @@ or [journald](https://docs.docker.com/config/containers/logging/journald/) loggi
 Please note that the discovery will not pick up finished containers. That means
 Promtail will not scrape the remaining logs from finished containers after a restart.
 
-The configuration is inherited from [Prometheus' Docker service dicsovery](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#docker_sd_config).
+The configuration is inherited from [Prometheus' Docker service discovery](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#docker_sd_config).
 
 ```yaml
 # Address of the Docker daemon.  Use unix:///var/run/docker.sock for a local setup.
