@@ -685,7 +685,7 @@ ring:
   [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which ruler ring members are considered unhealthy
-  # within the ring. 0 = never (timeout disabled). 
+  # within the ring. 0 = never (timeout disabled).
   # CLI flag: -<prefix>.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -773,7 +773,7 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 # CLI flag: -<prefix>.gcs.request-timeout
 [request_timeout: <duration> | default = 0s]
 
-# Enable HTTP/2 when connecting to GCS.
+# Enable HTTP/2 when connecting to GCS. This is only supported for GET operations.
 # CLI flag: -<prefix>.gcs.enable-http2
 [enable_http2: <bool> | default = true]
 ```

@@ -84,7 +84,12 @@ func newGCSObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.C
 
 func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config, hedging bool, clientFactory ClientFactory) (*storage.BucketHandle, error) {
 	var opts []option.ClientOption
-	httpClient, err := gcsInstrumentation(ctx, storage.ScopeReadWrite, cfg.Insecure, cfg.EnableHTTP2)
+	enableHTTP2 := cfg.EnableHTTP2
+	if !hedging {
+		// enforce http2 for non-hedging bucket (PUT/LIST/DELETE)
+		enableHTTP2 = true
+	}
+	httpClient, err := gcsInstrumentation(ctx, storage.ScopeReadWrite, cfg.Insecure, enableHTTP2)
 	if err != nil {
 		return nil, err
 	}
