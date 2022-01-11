@@ -97,7 +97,7 @@ func (m *limitStage) Run(in chan Entry) chan Entry {
 	return out
 }
 
-func (m *limitStage) shouldDrop(e Entry) bool {
+func (m *limitStage) shouldThrottle(e Entry) bool {
 	isMatchTag := m.isMatchTag(e)
 	if !isMatchTag {
 		return false
