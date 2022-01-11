@@ -1174,7 +1174,7 @@ The `docker` block configures Promtail to pull logs for a Docker container via t
 host: <string>
 
 # Optional port of the Docker daemon address.
-post: <int>
+port: <int>
 
 # The name or id of the container that should be scraped.
 id: <string>

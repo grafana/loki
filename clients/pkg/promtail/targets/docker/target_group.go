@@ -67,7 +67,7 @@ func (tg *targetGroup) addTarget(id string, labels model.LabelSet) error {
 
 	_, ok := tg.targets[id]
 	if ok {
-		level.Debug(tg.logger).Log("msg", "ignoring container", "id", id)
+		level.Debug(tg.logger).Log("msg", "ignoring container that is already scraped", "id", id)
 		return nil
 	}
 
