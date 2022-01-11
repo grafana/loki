@@ -921,7 +921,7 @@ github.com/opentracing/opentracing-go/log
 ## explicit
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
-# github.com/pierrec/lz4/v4 v4.1.7
+# github.com/pierrec/lz4/v4 v4.1.12
 ## explicit; go 1.14
 github.com/pierrec/lz4/v4
 github.com/pierrec/lz4/v4/internal/lz4block
