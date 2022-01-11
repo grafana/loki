@@ -10,10 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	promRules "github.com/prometheus/prometheus/rules"
 
-	"github.com/cortexproject/cortex/pkg/chunk/aws"
-	"github.com/cortexproject/cortex/pkg/chunk/azure"
-	"github.com/cortexproject/cortex/pkg/chunk/gcp"
-	"github.com/cortexproject/cortex/pkg/chunk/openstack"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	configClient "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -24,6 +20,11 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/aws"
+	"github.com/grafana/loki/pkg/storage/chunk/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
+	"github.com/grafana/loki/pkg/storage/chunk/openstack"
 )
 
 // RuleStoreConfig configures a rule store.
@@ -76,7 +77,7 @@ func (cfg *RuleStoreConfig) IsDefaults() bool {
 // NewLegacyRuleStore returns a rule store backend client based on the provided cfg.
 // The client used by the function is based a legacy object store clients that shouldn't
 // be used anymore.
-func NewLegacyRuleStore(cfg RuleStoreConfig, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
+func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
 	if cfg.mock != nil {
 		return cfg.mock, nil
 	}
@@ -96,13 +97,13 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, loader promRules.GroupLoader, logge
 		}
 		return configdb.NewConfigRuleStore(c), nil
 	case "azure":
-		client, err = azure.NewBlobStorage(&cfg.Azure)
+		client, err = azure.NewBlobStorage(&cfg.Azure, hedgeCfg)
 	case "gcs":
-		client, err = gcp.NewGCSObjectClient(context.Background(), cfg.GCS)
+		client, err = gcp.NewGCSObjectClient(context.Background(), cfg.GCS, hedgeCfg)
 	case "s3":
-		client, err = aws.NewS3ObjectClient(cfg.S3)
+		client, err = aws.NewS3ObjectClient(cfg.S3, hedgeCfg)
 	case "swift":
-		client, err = openstack.NewSwiftObjectClient(cfg.Swift)
+		client, err = openstack.NewSwiftObjectClient(cfg.Swift, hedgeCfg)
 	case "local":
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	default:

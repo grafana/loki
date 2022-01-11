@@ -56,6 +56,7 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/tenant"
 )
 
@@ -223,7 +224,7 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 
 func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, rulerAddrMap map[string]*Ruler) (*Ruler, func()) {
 	engine, queryable, pusher, logger, overrides, reg, cleanup := testSetup(t, querierTestConfig)
-	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, promRules.FileLoader{}, log.NewNopLogger())
+	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)

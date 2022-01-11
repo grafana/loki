@@ -52,7 +52,7 @@ func NewRuleStore(client chunk.ObjectClient, loadConcurrency int, logger log.Log
 
 // If existing rule group is supplied, it is Reset and reused. If nil, new RuleGroupDesc is allocated.
 func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rulespb.RuleGroupDesc) (*rulespb.RuleGroupDesc, error) {
-	reader, err := o.client.GetObject(ctx, objectKey)
+	reader, _, err := o.client.GetObject(ctx, objectKey)
 	if err == chunk.ErrStorageObjectNotFound {
 		level.Debug(o.logger).Log("msg", "rule group does not exist", "name", objectKey)
 		return nil, errors.Wrapf(rulestore.ErrGroupNotFound, "get rule group user=%q, namespace=%q, name=%q", rg.GetUser(), rg.GetNamespace(), rg.GetName())
