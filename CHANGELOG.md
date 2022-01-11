@@ -34,6 +34,7 @@
 * [4942](https://github.com/grafana/loki/pull/4942) **cyriltovena**: Allow to disable HTTP/2 for GCS.
 * [4876](https://github.com/grafana/loki/pull/4876) **trevorwhitney**: Docs: add simple, scalable example using docker-compose
 * [4857](https://github.com/grafana/loki/pull/4857) **jordanrushing**: New schema v12 changes chunk key structure
+* [5077](https://github.com/grafana/loki/pull/5077) **trevorwhitney**: Change some default values for better out-of-the-box performance
 
 # 2.4.1 (2021/11/07)
 
