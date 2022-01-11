@@ -154,6 +154,9 @@ func (c *Config) Validate() error {
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid queryrange config")
 	}
+	if err := c.Querier.Validate(); err != nil {
+		return errors.Wrap(err, "invalid querier config")
+	}
 	if err := c.TableManager.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tablemanager config")
 	}
