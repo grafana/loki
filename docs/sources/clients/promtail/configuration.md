@@ -1688,6 +1688,7 @@ tls_config:
 [ filters:
   [ - name: <string>
       values: <string>, [...] ]
+]
 
 # The time after which the containers are refreshed.
 [ refresh_interval: <duration> | default = 60s ]
