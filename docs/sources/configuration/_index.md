@@ -1071,7 +1071,7 @@ lifecycler:
 
 # How many flushes can happen concurrently from each stream.
 # CLI flag: -ingester.concurrent-flushes
-[concurrent_flushes: <int> | default = 16]
+[concurrent_flushes: <int> | default = 32]
 
 # How often should the ingester see if there are any blocks to flush
 # CLI flag: -ingester.flush-check-period
