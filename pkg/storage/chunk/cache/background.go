@@ -5,6 +5,8 @@ import (
 	"flag"
 	"sync"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -121,6 +123,7 @@ func (c *backgroundCache) writeBackLoop() {
 			c.queueLength.Sub(float64(len(bgWrite.keys)))
 			err := c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
 			if err != nil {
+				level.Warn(util_log.Logger).Log("msg", "backgroundCache writeBackLoop Cache.Store fail", "err", err)
 				continue
 			}
 
