@@ -73,8 +73,7 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 	return instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys", len(keys)))
-		err := i.Cache.Store(ctx, keys, bufs)
-		return err
+		return i.Cache.Store(ctx, keys, bufs)
 	})
 }
 
