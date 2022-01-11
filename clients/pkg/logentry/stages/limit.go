@@ -1,6 +1,7 @@
 package stages
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -108,7 +109,7 @@ func (m *limitStage) shouldDrop(e Entry) bool {
 		m.dropCount.WithLabelValues(ratelimitDropReason).Inc()
 		return true
 	}
-	_ = m.rateLimiter.Allow()
+	_ = m.rateLimiter.Wait(context.Background())
 	return false
 }
 
