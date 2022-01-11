@@ -54,7 +54,6 @@ func NewRuleStore(client chunk.ObjectClient, loadConcurrency int, logger log.Log
 func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rulespb.RuleGroupDesc) (*rulespb.RuleGroupDesc, error) {
 	reader, _, err := o.client.GetObject(ctx, objectKey)
 	if err != nil {
-
 		if err.Error() == chunk.ErrStorageObjectNotFound.Error() {
 			level.Debug(o.logger).Log("msg", "rule group does not exist", "name", objectKey)
 			return nil, errors.Wrapf(rulestore.ErrGroupNotFound, "get rule group user=%q, namespace=%q, name=%q", rg.GetUser(), rg.GetNamespace(), rg.GetName())
