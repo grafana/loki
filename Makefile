@@ -425,9 +425,10 @@ fluent-bit-test:
 # fluentd plugin #
 ##################
 fluentd-plugin:
-	gem install bundler --version 1.16.2
+	gem install bundler --version 2.3.4
 	bundle config silence_root_warning true
-	bundle install --gemfile=clients/cmd/fluentd/Gemfile --path=clients/cmd/fluentd/vendor/bundle
+	bundle config set --local path clients/cmd/fluentd/vendor/bundle
+	bundle install --gemfile=clients/cmd/fluentd/Gemfile
 
 fluentd-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluentd/Dockerfile .
@@ -435,9 +436,9 @@ fluentd-image:
 fluentd-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
-fluentd-test: LOKI_URL ?= http://localhost:3100/loki/api/
+fluentd-test: LOKI_URL ?= http://loki:3100
 fluentd-test:
-	LOKI_URL="$(LOKI_URL)" docker-compose -f clients/cmd/fluentd/docker/docker-compose.yml up --build $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+	LOKI_URL="$(LOKI_URL)" docker-compose -f clients/cmd/fluentd/docker/docker-compose.yml up --build
 
 ##################
 # logstash plugin #
