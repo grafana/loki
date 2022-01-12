@@ -274,7 +274,6 @@ github.com/cortexproject/cortex/pkg/querier/batch
 github.com/cortexproject/cortex/pkg/querier/chunkstore
 github.com/cortexproject/cortex/pkg/querier/iterators
 github.com/cortexproject/cortex/pkg/querier/lazyquery
-github.com/cortexproject/cortex/pkg/querier/queryrange
 github.com/cortexproject/cortex/pkg/querier/series
 github.com/cortexproject/cortex/pkg/querier/stats
 github.com/cortexproject/cortex/pkg/storage/bucket

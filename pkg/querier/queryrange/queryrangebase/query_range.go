@@ -1,4 +1,4 @@
-package queryrange
+package queryrangebase
 
 import (
 	"bytes"
@@ -31,8 +31,7 @@ import (
 const StatusSuccess = "success"
 
 var (
-	matrix = model.ValMatrix.String()
-	json   = jsoniter.Config{
+	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: true,

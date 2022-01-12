@@ -1,4 +1,4 @@
-package queryrange
+package queryrangebase
 
 import (
 	"github.com/pkg/errors"

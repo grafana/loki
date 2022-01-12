@@ -9,7 +9,6 @@ import (
 	"os"
 	rt "runtime"
 
-	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/fatih/color"
@@ -36,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	basetripper "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
 	base_ruler "github.com/grafana/loki/pkg/ruler/base"
@@ -258,7 +258,7 @@ type Loki struct {
 	runtimeConfig            *runtimeconfig.Manager
 	MemberlistKV             *memberlist.KVInitService
 	compactor                *compactor.Compactor
-	QueryFrontEndTripperware cortex_tripper.Tripperware
+	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
 
 	HTTPAuthMiddleware middleware.Interface

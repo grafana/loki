@@ -1,4 +1,4 @@
-package queryrange
+package queryrangebase
 
 import (
 	"context"

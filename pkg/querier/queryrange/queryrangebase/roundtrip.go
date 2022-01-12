@@ -13,7 +13,7 @@
 //
 // Mostly lifted from prometheus/web/api/v1/api.go.
 
-package queryrange
+package queryrangebase
 
 import (
 	"context"
@@ -40,8 +40,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 )
-
-const day = 24 * time.Hour
 
 var (
 	// PassthroughMiddleware is a noop middleware
@@ -299,8 +297,8 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 	defer func() {
-		io.Copy(ioutil.Discard, io.LimitReader(response.Body, 1024))
-		_ = response.Body.Close()
+		_, _ = io.Copy(ioutil.Discard, io.LimitReader(response.Body, 1024)) //nolint:errcheck
+		response.Body.Close()
 	}()
 
 	return q.codec.DecodeResponse(ctx, response, r)

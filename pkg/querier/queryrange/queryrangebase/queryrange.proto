@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package queryrange;
+package queryrangebase;
 
-option go_package = "queryrange";
+option go_package = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";

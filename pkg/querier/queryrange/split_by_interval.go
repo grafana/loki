@@ -5,25 +5,24 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/grafana/loki/pkg/tenant"
-
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/tenant"
 )
 
 type lokiResult struct {
-	req queryrange.Request
+	req queryrangebase.Request
 	ch  chan *packedResp
 }
 
 type packedResp struct {
-	resp queryrange.Response
+	resp queryrangebase.Response
 	err  error
 }
 
@@ -43,18 +42,18 @@ func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
 }
 
 type splitByInterval struct {
-	next     queryrange.Handler
+	next     queryrangebase.Handler
 	limits   Limits
-	merger   queryrange.Merger
+	merger   queryrangebase.Merger
 	metrics  *SplitByMetrics
 	splitter Splitter
 }
 
-type Splitter func(req queryrange.Request, interval time.Duration) []queryrange.Request
+type Splitter func(req queryrangebase.Request, interval time.Duration) []queryrangebase.Request
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(limits Limits, merger queryrange.Merger, splitter Splitter, metrics *SplitByMetrics) queryrange.Middleware {
-	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+func SplitByIntervalMiddleware(limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByInterval{
 			next:     next,
 			limits:   limits,
@@ -89,8 +88,8 @@ func (h *splitByInterval) Process(
 	threshold int64,
 	input []*lokiResult,
 	userID string,
-) ([]queryrange.Response, error) {
-	var responses []queryrange.Response
+) ([]queryrangebase.Response, error) {
+	var responses []queryrangebase.Response
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -141,7 +140,7 @@ func (h *splitByInterval) Process(
 	return responses, nil
 }
 
-func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrange.Handler) {
+func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrangebase.Handler) {
 	for data := range ch {
 
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "interval")
@@ -159,7 +158,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 	}
 }
 
-func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	userid, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -214,8 +213,8 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 	return h.merger.MergeResponse(resps...)
 }
 
-func splitByTime(req queryrange.Request, interval time.Duration) []queryrange.Request {
-	var reqs []queryrange.Request
+func splitByTime(req queryrangebase.Request, interval time.Duration) []queryrangebase.Request {
+	var reqs []queryrangebase.Request
 
 	switch r := req.(type) {
 	case *LokiRequest:
@@ -264,8 +263,8 @@ func forInterval(interval time.Duration, start, end time.Time, callback func(sta
 	}
 }
 
-func splitMetricByTime(r queryrange.Request, interval time.Duration) []queryrange.Request {
-	var reqs []queryrange.Request
+func splitMetricByTime(r queryrangebase.Request, interval time.Duration) []queryrangebase.Request {
+	var reqs []queryrangebase.Request
 	lokiReq := r.(*LokiRequest)
 	// step is >= configured split interval, let us just split the query interval by step
 	if lokiReq.Step >= interval.Milliseconds() {
