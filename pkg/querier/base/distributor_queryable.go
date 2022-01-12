@@ -95,7 +95,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	// series in ingesters).
 	// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
 	// See: https://github.com/prometheus/prometheus/pull/8050
-	if sp != nil && sp.Func == "series" {
+	if sp != nil && sp.Func == seriesFunc {
 		ms, err := q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
 		if err != nil {
 			return storage.ErrSeriesSet(err)

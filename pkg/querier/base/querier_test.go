@@ -607,7 +607,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					hints := &storage.SelectHints{
 						Start: util.TimeToMillis(testData.queryStartTime),
 						End:   util.TimeToMillis(testData.queryEndTime),
-						Func:  "series",
+						Func:  seriesFunc,
 					}
 					matcher := labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "test")
 

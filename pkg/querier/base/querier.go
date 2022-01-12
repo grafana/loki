@@ -303,7 +303,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	if sp == nil {
 		// if SelectHints is null, rely on minT, maxT of querier to scope in range for Select stmt
 		sp = &storage.SelectHints{Start: q.mint, End: q.maxt}
-	} else if sp.Func == "series" && !q.queryStoreForLabels {
+	} else if sp.Func == seriesFunc && !q.queryStoreForLabels {
 		// Else if the querier receives a 'series' query, it means only metadata is needed.
 		// Here we expect that metadataQuerier querier will handle that.
 		// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".

@@ -129,7 +129,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				// Select hints are passed by Prometheus when querying /series.
 				var hints *storage.SelectHints
 				if testData.querySeries {
-					hints = &storage.SelectHints{Func: "series"}
+					hints = &storage.SelectHints{Func: seriesFunc}
 				}
 
 				seriesSet := querier.Select(true, hints)
