@@ -131,12 +131,12 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			start := time.Now()
 			tenant, _ := tenant.TenantID(ctx)
 			sp.metrics.inflightRequests.Inc()
-			level.Debug(logger).Log("msg", "tracking inflight request", "tenant", tenant, "type", "enqueue")
+			level.Debug(logger).Log("msg", "tracking inflight request", "tenant", tenant, "op", "enqueue")
 
 			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
 
 			sp.metrics.inflightRequests.Dec()
-			level.Debug(logger).Log("msg", "tracking inflight request", "tenant", tenant, "type", "dequeue", "duration", time.Since(start))
+			level.Debug(logger).Log("msg", "tracking inflight request", "tenant", tenant, "op", "dequeue", "duration", time.Since(start))
 
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {
