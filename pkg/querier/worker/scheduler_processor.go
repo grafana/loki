@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/pkg/tenant"
 )
 
 func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
@@ -128,7 +129,15 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 				logger = util_log.WithContext(ctx, sp.log)
 			)
 
+			start := time.Now()
+			tenant, _ := tenant.TenantID(ctx)
+			sp.metrics.inflightRequests.Inc()
+			level.Debug(logger).Log("msg", "tracking inflight request", "tenant", tenant, "type", "enqueue")
+
 			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
+
+			sp.metrics.inflightRequests.Dec()
+			level.Debug(logger).Log("msg", "tracking inflight request", "tenant", tenant, "type", "dequeue", "duration", time.Since(start))
 
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {

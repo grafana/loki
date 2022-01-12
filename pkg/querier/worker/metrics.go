@@ -6,12 +6,17 @@ import (
 )
 
 type Metrics struct {
+	inflightRequests              prometheus.Gauge
 	frontendClientRequestDuration *prometheus.HistogramVec
 	frontendClientsGauge          prometheus.Gauge
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
+		inflightRequests: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_querier_worker_inflight_queries",
+			Help: "Number of queries being processed by the querier workers",
+		}),
 		frontendClientRequestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_querier_query_frontend_request_duration_seconds",
 			Help:    "Time spend doing requests to frontend.",
