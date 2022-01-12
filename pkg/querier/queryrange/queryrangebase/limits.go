@@ -5,14 +5,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // Limits allows us to specify per-tenant runtime limits on the behavior of
