@@ -212,11 +212,6 @@ func TestFrontendWorkerCancellation(t *testing.T) {
 
 	ms.checkWithLock(func() {
 		require.Equal(t, 2*reqCount, len(ms.msgs))
-
-		// require.True(t, ms.msgs[0].Type == schedulerpb.ENQUEUE)
-		// require.True(t, ms.msgs[1].Type == schedulerpb.CANCEL)
-		// require.True(t, ms.msgs[0].QueryID == ms.msgs[1].QueryID)
-		// fmt.Println(ms.msgs[0].QueryID, ms.msgs[1].QueryID)
 	})
 }
 
