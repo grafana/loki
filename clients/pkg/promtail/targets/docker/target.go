@@ -1,8 +1,10 @@
 package docker
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync"
@@ -74,7 +76,7 @@ func NewTarget(
 		client:  client,
 		running: atomic.NewBool(false),
 	}
-	t.start()
+	go t.start()
 	return t, nil
 }
 
@@ -96,20 +98,19 @@ func (t *Target) start() {
 		return
 	}
 
-	out := make(chan frame)
-	dstout := stdoutWriter{out: out}
-	dsterr := stderrWriter{out: out}
-
 	// Start transferring
+	rstdout, wstdout := io.Pipe()
+	rstderr, wstderr := io.Pipe()
 	t.wg.Add(1)
 	go func() {
 		defer func() {
 			t.wg.Done()
-			close(out)
+			wstdout.Close()
+			wstderr.Close()
 			t.Stop()
 		}()
 
-		written, err := stdcopy.StdCopy(dstout, dsterr, logs)
+		written, err := stdcopy.StdCopy(wstdout, wstderr, logs)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "could not transfer logs", "written", written, "container", t.containerName, "err", err)
 		} else {
@@ -118,42 +119,15 @@ func (t *Target) start() {
 	}()
 
 	// Start processing
-	t.wg.Add(1)
-	go func() {
-		defer func() {
-			t.wg.Done()
-			t.running.Store(false)
-			logs.Close()
-		}()
+	t.wg.Add(2)
+	go t.process(rstdout, "stdout")
+	go t.process(rstderr, "stderr")
 
-		for t.ctx.Err() == nil {
-			select {
-			case f := <-out:
-				if len(f.line) == 0 {
-					continue
-				}
-
-				ts, line, err := extractTs(f.line)
-				if err != nil {
-					level.Error(t.logger).Log("msg", "could not extract timestamp", "err", err)
-					t.metrics.dockerErrors.Inc()
-				}
-
-				t.handler.Chan() <- api.Entry{
-					Labels: t.labels.Clone(),
-					Entry: logproto.Entry{
-						Timestamp: ts,
-						Line:      line,
-					},
-				}
-				t.metrics.dockerEntries.Inc()
-				t.positions.Put(positions.CursorKey(t.containerName), ts.Unix())
-			case <-t.ctx.Done():
-				{
-				}
-			}
-		}
-	}()
+	// Wait until done
+	<-t.ctx.Done()
+	t.running.Store(false)
+	logs.Close()
+	level.Debug(t.logger).Log("msg", "done processing", "container", t.containerName)
 }
 
 func extractTs(line string) (time.Time, string, error) {
@@ -166,6 +140,34 @@ func extractTs(line string) (time.Time, string, error) {
 		return time.Now(), line, fmt.Errorf("Could not parse timestamp from '%s': %w", pair[0], err)
 	}
 	return ts, pair[1], nil
+}
+
+func (t *Target) process(r io.Reader, logStream string) {
+	defer func() {
+		t.wg.Done()
+	}()
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		ts, line, err := extractTs(line)
+		if err != nil {
+			level.Error(t.logger).Log("msg", "could not extract timestamp, skipping line", "err", err)
+			t.metrics.dockerErrors.Inc()
+			continue
+		}
+
+		t.handler.Chan() <- api.Entry{
+			Labels: t.labels.Merge(model.LabelSet{dockerLabelLogStream: model.LabelValue(logStream)}),
+			Entry: logproto.Entry{
+				Timestamp: ts,
+				Line:      line,
+			},
+		}
+		t.metrics.dockerEntries.Inc()
+		t.positions.Put(positions.CursorKey(t.containerName), ts.Unix())
+	}
+
 }
 
 func (t *Target) Stop() {
@@ -184,7 +186,7 @@ func (t *Target) Ready() bool {
 }
 
 func (t *Target) DiscoveredLabels() model.LabelSet {
-	return t.labels 
+	return t.labels
 }
 
 func (t *Target) Labels() model.LabelSet {
@@ -199,29 +201,4 @@ func (t *Target) Details() interface{} {
 		"position": t.positions.GetString(positions.CursorKey(t.containerName)),
 		"running":  strconv.FormatBool(t.running.Load()),
 	}
-}
-
-type frame struct {
-	stream stdcopy.StdType
-	line   string
-}
-
-type stdoutWriter struct {
-	out chan frame
-}
-
-func (w stdoutWriter) Write(p []byte) (n int, err error) {
-	f := frame{stream: stdcopy.Stdout, line: string(p)}
-	w.out <- f
-	return len(f.line), nil
-}
-
-type stderrWriter struct {
-	out chan frame
-}
-
-func (w stderrWriter) Write(p []byte) (n int, err error) {
-	f := frame{stream: stdcopy.Stderr, line: string(p)}
-	w.out <- f
-	return len(f.line), nil
 }
