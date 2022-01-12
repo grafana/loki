@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/dskit/services"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -30,7 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/tenant"
 )
 
-func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
+func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics) (*schedulerProcessor, []services.Service) {
 	p := &schedulerProcessor{
 		log:            log,
 		handler:        handler,
@@ -38,7 +37,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 		querierID:      cfg.QuerierID,
 		grpcConfig:     cfg.GRPCClientConfig,
 
-		metrics: NewMetrics(reg),
+		metrics: metrics,
 	}
 
 	poolConfig := client.PoolConfig{
