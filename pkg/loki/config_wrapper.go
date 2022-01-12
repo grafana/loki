@@ -483,7 +483,7 @@ func applyFIFOCacheConfig(r *ConfigWrapper) {
 	}
 
 	resultsCacheConfig := r.QueryRange.ResultsCacheConfig.CacheConfig
-	if !cache.IsRedisSet(resultsCacheConfig) && cache.IsMemcacheSet(resultsCacheConfig) {
+	if !cache.IsRedisSet(resultsCacheConfig) && !cache.IsMemcacheSet(resultsCacheConfig) {
 		r.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache = true
 		// The query results fifocache is still in Cortex so we couldn't change the flag defaults
 		// so instead we will override them here.

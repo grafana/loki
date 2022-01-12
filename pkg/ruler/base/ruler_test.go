@@ -56,7 +56,6 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	cortex_chunk "github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/tenant"
 )
@@ -119,7 +118,7 @@ type emptyChunkStore struct {
 	called bool
 }
 
-func (c *emptyChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]cortex_chunk.Chunk, error) {
+func (c *emptyChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	c.Lock()
 	defer c.Unlock()
 	c.called = true
