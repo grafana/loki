@@ -10,7 +10,6 @@ import (
 	rt "runtime"
 
 	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
-	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/fatih/color"
@@ -39,6 +38,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
+	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
@@ -251,9 +251,9 @@ type Loki struct {
 	Store                    storage.Store
 	tableManager             *chunk.TableManager
 	frontend                 Frontend
-	ruler                    *cortex_ruler.Ruler
+	ruler                    *base_ruler.Ruler
 	RulerStorage             rulestore.RuleStore
-	rulerAPI                 *cortex_ruler.API
+	rulerAPI                 *base_ruler.API
 	stopper                  queryrange.Stopper
 	runtimeConfig            *runtimeconfig.Manager
 	MemberlistKV             *memberlist.KVInitService

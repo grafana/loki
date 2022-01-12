@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/config"
 	"gopkg.in/yaml.v2"
 
+	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
 )

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv/codec"
@@ -37,6 +36,7 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/ruler"
+	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
@@ -601,7 +601,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		}
 	}
 
-	t.RulerStorage, err = cortex_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, ruler.GroupLoader{}, util_log.Logger)
+	t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, ruler.GroupLoader{}, util_log.Logger)
 
 	return
 }
@@ -634,13 +634,13 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return
 	}
 
-	t.rulerAPI = cortex_ruler.NewAPI(t.ruler, t.RulerStorage, util_log.Logger)
+	t.rulerAPI = base_ruler.NewAPI(t.ruler, t.RulerStorage, util_log.Logger)
 
 	// Expose HTTP endpoints.
 	if t.Cfg.Ruler.EnableAPI {
 
 		t.Server.HTTP.Path("/ruler/ring").Methods("GET", "POST").Handler(t.ruler)
-		cortex_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
+		base_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
 
 		// Prometheus Rule API Routes
 		t.Server.HTTP.Path("/prometheus/api/v1/rules").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.PrometheusRules)))
