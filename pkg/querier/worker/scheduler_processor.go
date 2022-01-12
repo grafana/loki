@@ -18,7 +18,6 @@ import (
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -38,17 +37,8 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 		querierID:      cfg.QuerierID,
 		grpcConfig:     cfg.GRPCClientConfig,
 
-		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_querier_query_frontend_request_duration_seconds",
-			Help:    "Time spend doing requests to frontend.",
-			Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
-		}, []string{"operation", "status_code"}),
+		metrics: NewMetrics(reg),
 	}
-
-	frontendClientsGauge := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_querier_query_frontend_clients",
-		Help: "The current number of clients connected to query-frontend.",
-	})
 
 	poolConfig := client.PoolConfig{
 		CheckInterval:      5 * time.Second,
@@ -56,7 +46,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 		HealthCheckTimeout: 1 * time.Second,
 	}
 
-	p.frontendPool = client.NewPool("frontend", poolConfig, nil, p.createFrontendClient, frontendClientsGauge, log)
+	p.frontendPool = client.NewPool("frontend", poolConfig, nil, p.createFrontendClient, p.metrics.frontendClientsGauge, log)
 	return p, []services.Service{p.frontendPool}
 }
 
@@ -68,8 +58,8 @@ type schedulerProcessor struct {
 	maxMessageSize int
 	querierID      string
 
-	frontendPool                  *client.Pool
-	frontendClientRequestDuration *prometheus.HistogramVec
+	frontendPool *client.Pool
+	metrics      *Metrics
 }
 
 // notifyShutdown implements processor.
@@ -195,7 +185,7 @@ func (sp *schedulerProcessor) createFrontendClient(addr string) (client.PoolClie
 	opts, err := sp.grpcConfig.DialOption([]grpc.UnaryClientInterceptor{
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
-		dskit_middleware.PrometheusGRPCUnaryInstrumentation(sp.frontendClientRequestDuration),
+		dskit_middleware.PrometheusGRPCUnaryInstrumentation(sp.metrics.frontendClientRequestDuration),
 	}, nil)
 	if err != nil {
 		return nil, err
