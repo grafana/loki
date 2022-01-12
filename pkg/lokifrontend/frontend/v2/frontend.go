@@ -220,15 +220,20 @@ enqueueAgain:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
 	}
 
+	fmt.Println("waiting on either cancel or response", "cancelCh", cancelCh)
 	select {
 	case <-ctx.Done():
 		if cancelCh != nil {
-			select {
-			case cancelCh <- freq.queryID:
-				// cancellation sent.
-			default:
-				// failed to cancel, ignore.
-			}
+			// NOTE(kavi): I think we don't need buffer channel.
+			// Let it block, it worker receives it, We don't want to exist RoundTripGRPC without cancelling the frontend worker
+			cancelCh <- freq.queryID
+
+			// select {
+			// case cancelCh <- freq.queryID:
+			// cancellation sent.
+			// default:
+			// 	// failed to cancel, ignore.
+			// }
 		}
 		return nil, ctx.Err()
 
