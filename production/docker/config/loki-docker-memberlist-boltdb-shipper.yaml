@@ -7,7 +7,7 @@ server:
   grpc_listen_address: 0.0.0.0
   http_listen_port: 3100
   grpc_listen_port: 9095
-  log_level: debug
+  log_level: info
 
 memberlist:
   join_members: ["loki-1", "loki-2", "loki-3"]
@@ -27,6 +27,9 @@ ingester:
         store: memberlist
     final_sleep: 0s
   chunk_idle_period: 1h
+  wal:
+    enabled: true
+    dir: /loki/wal
   max_chunk_age: 1h
   chunk_retain_period: 30s
   chunk_encoding: snappy
@@ -54,8 +57,8 @@ storage_config:
   boltdb_shipper:
     # shared_store: s3
     shared_store: filesystem
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/boltdb-cache
+    active_index_directory: /loki/index
+    cache_location: /loki/boltdb-cache
 
   #aws:
   #  s3: s3://us-east-1/mybucket
@@ -100,9 +103,11 @@ query_range:
 
 frontend:
   log_queries_longer_than: 5s
-  # downstream_url: http://loki-1:3100
-  downstream_url: http://loki-gateway:3100
   compress_responses: true
 
 querier:
   query_ingesters_within: 2h
+
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
