@@ -268,7 +268,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	return querier.InitWorkerService(
-		querierWorkerServiceConfig, queryHandlers, alwaysExternalHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
+		querierWorkerServiceConfig, prometheus.DefaultRegisterer, queryHandlers, alwaysExternalHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
 	)
 }
 
