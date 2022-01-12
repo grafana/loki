@@ -273,11 +273,11 @@ The `querier_config` block configures the Loki Querier.
 # Maximum lookback beyond which queries are not sent to ingester.
 # 0 means all queries are sent to ingester.
 # CLI flag: -querier.query-ingesters-within
-[query_ingesters_within: <duration> | default = 0s]
+[query_ingesters_within: <duration> | default = 3h]
 
 # The maximum number of concurrent queries allowed.
 # CLI flag: -querier.max-concurrent
-[max_concurrent: <int> | default = 20]
+[max_concurrent: <int> | default = 10]
 
 # Only query the store, do not attempt to query any ingesters,
 # useful for running a standalone querier pool opearting only against stored data.
@@ -373,7 +373,7 @@ The queryrange_config configures the query splitting and caching in the Loki que
 # to avoid queriers downloading and processing the same chunks. This also
 # determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
-[split_queries_by_interval: <duration> | default = 0s]
+[split_queries_by_interval: <duration> | default = 30m]
 
 # Limit queries that can be sharded.
 # Queries within the time range of now and now minus this sharding lookback
@@ -407,7 +407,7 @@ results_cache:
 # Perform query parallelisations based on storage sharding configuration and
 # query ASTs. This feature is supported only by the chunks storage engine.
 # CLI flag: -querier.parallelise-shardable-queries
-[parallelise_shardable_queries: <boolean> | default = false]
+[parallelise_shardable_queries: <boolean> | default = true]
 ```
 
 ## ruler_config
@@ -1049,7 +1049,7 @@ lifecycler:
 # The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this,
 # the current chunk will be flushed to the store and a new chunk created.
 # CLI flag: -ingester.max-chunk-age
-[max_chunk_age: <duration> | default = 1h]
+[max_chunk_age: <duration> | default = 2h]
 
 # How far in the past an ingester is allowed to query the store for data.
 # This is only useful for running multiple Loki binaries with a shared ring

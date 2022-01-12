@@ -3,6 +3,7 @@
 # 2.4.2 (2021/12/21)
 
 * [4875](https://github.com/grafana/loki/pull/4875) **trevorwhitney**: Loki: fix bug where common replication factor wasn't always getting applied
+* [5077](https://github.com/grafana/loki/pull/5077) **trevorwhitney**: Change some default values for better out-of-the-box performance
 
 # 2.4.1 (2021/11/07)
 
