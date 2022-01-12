@@ -68,7 +68,6 @@ func NewTargetManager(
 				entryHandler:  pipeline.Wrap(pushClient),
 				defaultLabels: cfg.DockerConfig.Labels,
 				host:          cfg.DockerConfig.Host,
-				port:          cfg.DockerConfig.Port,
 			}
 			err = s.addTarget(cfg.DockerConfig.ContainerName, model.LabelSet{})
 			if err != nil {
@@ -98,7 +97,6 @@ func NewTargetManager(
 						entryHandler:  pipeline.Wrap(pushClient),
 						defaultLabels: model.LabelSet{},
 						host:          sdConfig.Host,
-						port:          sdConfig.Port,
 					}
 				}
 				configs[syncerKey] = append(configs[syncerKey], sdConfig)

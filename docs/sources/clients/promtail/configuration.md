@@ -1173,9 +1173,6 @@ The `docker` block configures Promtail to pull logs for a Docker container via t
 # Address of the Docker daemon. It defaults to unix:///var/run/docker.sock.
 host: <string>
 
-# Optional port of the Docker daemon address.
-port: <int>
-
 # The name or id of the container that should be scraped.
 id: <string>
 

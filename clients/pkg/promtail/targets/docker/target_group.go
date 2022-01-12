@@ -23,7 +23,6 @@ type targetGroup struct {
 	targets       map[string]*Target
 	defaultLabels model.LabelSet
 	host          string
-	port          int
 
 	mtx    sync.Mutex
 	client client.APIClient
@@ -56,9 +55,12 @@ func (tg *targetGroup) sync(groups []*targetgroup.Group) {
 // addTarget checks whether the container with given id is already known. If not it's added to the this group
 func (tg *targetGroup) addTarget(id string, labels model.LabelSet) error {
 	if tg.client == nil {
-		// TODO: load client options from config
 		var err error
-		tg.client, err = client.NewClientWithOpts(client.WithHost(tg.host))
+		opts := []client.Opt{
+			client.WithHost(tg.host),
+			client.WithAPIVersionNegotiation(),
+		}
+		tg.client, err = client.NewClientWithOpts(opts...)
 		if err != nil {
 			level.Error(tg.logger).Log("msg", "could not create new Docker client", "err", err)
 			return err
