@@ -331,6 +331,16 @@ The query_frontend_config configures the Loki query-frontend.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
 [max_outstanding_per_tenant: <int> | default = 100]
 
+# In the event a tenant is repeatedly sending queries that lead the querier to crash
+# or be killed due to an out-of-memory error, the crashed querier will be disconnected
+# from the query frontend and a new querier will be immediately assigned to the tenant’s shard.
+# This invalidates the assumption that shuffle sharding can be used to reduce the
+# impact on tenants. This option mitigates the impact by configuring a delay between when
+# a querier disconnects because of a crash and when the crashed querier is actually removed
+# from the tenant's shard.
+# CLI flag: -query-frontend.querier-forget-delay
+[querier_forget_delay: <duration> | default = 0s]
+
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
 [compress_responses: <boolean> | default = false]
@@ -356,7 +366,7 @@ The query_frontend_config configures the Loki query-frontend.
 # query-scheduler instances.
 # Also used to determine how often to poll the scheduler-ring for addresses if configured.
 # CLI flag: -frontend.scheduler-dns-lookup-period
-[scheduler_dns_lookup_period: <duration> | default = 3s]
+[scheduler_dns_lookup_period: <duration> | default = 10s]
 
 # Number of concurrent workers forwarding queries to single query-scheduler.
 # CLI flag: -frontend.scheduler-worker-concurrency
@@ -569,7 +579,7 @@ remote_write:
     [proxy_url: <string>]
 
     # Configure whether HTTP requests follow HTTP 3xx redirects.
-    [follow_redirects: <bool> | default = true]
+    [follow_redirects: <boolean> | default = true]
 
     # Configures the queue used to write to remote storage.
     queue_config:
@@ -720,6 +730,10 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 # The duration after which the requests to GCS should be timed out.
 # CLI flag: -<prefix>.gcs.request-timeout
 [request_timeout: <duration> | default = 0s]
+
+# Enable HTTP/2 when connecting to GCS. This configuration only applies to GET operations.
+# CLI flag: -<prefix>.gcs.enable-http2
+[enable_http2: <boolean> | default = true]
 ```
 
 ## s3_storage_config
@@ -874,6 +888,10 @@ The `frontend_worker_config` configures the worker - running within the Loki que
 # CLI flag: -querier.worker-parallelism
 [parallelism: <int> | default = 10]
 
+# Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.
+# CLI flag: -querier.worker-match-max-concurrent
+[match_max_concurrent: <boolean> | default = false]
+
 # How often to query the frontend_address DNS to resolve frontend addresses.
 # Also used to determine how often to poll the scheduler-ring for addresses if configured.
 # CLI flag: -querier.dns-lookup-period
@@ -967,10 +985,14 @@ lifecycler:
   # CLI flag: -ingester.join-after
   [join_after: <duration> | default = 0s]
 
+  # Observe tokens after generating to resolve collisions. Useful when using a gossip ring.
+  # CLI flag: -ingester.observe-period
+  [observe_period: <duration> | default = 0s]
+
   # Minimum duration to wait before becoming ready. This is to work around race
   # conditions with ingesters exiting and updating the ring.
   # CLI flag: -ingester.min-ready-duration
-  [min_ready_duration: <duration> | default = 1m]
+  [min_ready_duration: <duration> | default = 15s]
 
   # Name of network interfaces to read addresses from.
   # CLI flag: -ingester.lifecycler.interface
@@ -980,12 +1002,12 @@ lifecycler:
 
   # Duration to sleep before exiting to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
-  [final_sleep: <duration> | default = 0s]
+  [final_sleep: <duration> | default = 30s]
 
 # Number of times to try and transfer chunks when leaving before
 # falling back to flushing to the store. Zero = no transfers are done.
 # CLI flag: -ingester.max-transfer-retries
-[max_transfer_retries: <int> | default = 10]
+[max_transfer_retries: <int> | default = 0]
 
 # How many flushes can happen concurrently from each stream.
 # CLI flag: -ingester.concurrent-flushes
@@ -1001,7 +1023,7 @@ lifecycler:
 
 # How long chunks should be retained in-memory after they've been flushed.
 # CLI flag: -ingester.chunks-retain-period
-[chunk_retain_period: <duration> | default = 15m]
+[chunk_retain_period: <duration> | default = 0s]
 
 # How long chunks should sit in-memory with no updates before
 # being flushed if they don't hit the max block size. This means
@@ -1018,10 +1040,10 @@ lifecycler:
 # A target _compressed_ size in bytes for chunks.
 # This is a desired size not an exact size, chunks may be slightly bigger
 # or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period)
-# The default value of 0 for this will create chunks with a fixed 10 blocks,
+# A value of 0 creates chunks with a fixed 10 blocks,
 # A non zero value will create chunks with a variable number of blocks to meet the target size.
 # CLI flag: -ingester.chunk-target-size
-[chunk_target_size: <int> | default = 0]
+[chunk_target_size: <int> | default = 1572864]
 
 # The compression algorithm to use for chunks. (supported: gzip, lz4, snappy)
 # You should choose your algorithm depending on your need:
@@ -1458,7 +1480,7 @@ cassandra:
   # Instruct the Cassandra driver to not attempt to get host
   # info from the system.peers table.
   # CLI flag: -cassandra.disable-initial-host-lookup
-  [disable_initial_host_lookup: <bool> | default = false]
+  [disable_initial_host_lookup: <boolean> | default = false]
 
   # Use SSL when connecting to Cassandra instances.
   # CLI flag: -cassandra.ssl
@@ -1466,7 +1488,7 @@ cassandra:
 
   # Require SSL certificate validation when SSL is enabled.
   # CLI flag: -cassandra.host-verification
-  [host_verification: <bool> | default = true]
+  [host_verification: <boolean> | default = true]
 
   # Path to certificate file to verify the peer when SSL is enabled.
   # CLI flag: -cassandra.ca-path
@@ -1474,7 +1496,7 @@ cassandra:
 
   # Enable password authentication when connecting to Cassandra.
   # CLI flag: -cassandra.auth
-  [auth: <bool> | default = false]
+  [auth: <boolean> | default = false]
 
   # Username for password authentication when auth is true.
   # CLI flag: -cassandra.username
@@ -1684,7 +1706,7 @@ memcached:
 
   # Configures how many keys to fetch in each batch request.
   # CLI flag: -<prefix>.memcached.batchsize
-  batch_size: <int>
+  batch_size: <int> | default = 1024
 
   # Maximum active requests to memcached.
   # CLI flag: -<prefix>.memcached.parallelism
@@ -1720,7 +1742,27 @@ memcached_client:
 
   # Whether or not to use a consistent hash to discover multiple memcached servers.
   # CLI flag: -<prefix>.memcached.consistent-hash
-  [consistent_hash: <bool>]
+  [consistent_hash: <boolean> | default = true]
+
+  # Trip the circuit breaker after this number of consecutive dial failures.
+  # A value of 0 disables the circuit breaker.
+  # CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
+  [circuit_breaker_consecutive_failures: <int> | default = 10]
+
+  # Duration the circuit breaker remains open after tripping.
+  # If set to 0, the duration is 60 seconds.
+  # CLI flag: -<prefix>.memcached.circuit-breaker-timeout
+  [circuit_breaker_timeout: <duration> | default = 10s]
+
+  # Reset the circuit breaker counts after this duration.
+  # A value of 0 never resets the circuit breaker.
+  # CLI flag: -<prefix>.memcached.circuit-breaker-interval
+  [circuit_breaker_interval: <duration> | default = 10s]
+
+  # The maximum size of an item stored in memcached.
+  # Bigger items are not stored. If set to 0, no maximum size is enforced.
+  # CLI flag: -<prefix>.memcached.max-item-size
+  [max_item_size: <int> | default = 0]
 
 redis:
   # Redis Server endpoint to use for caching. A comma-separated list of endpoints
@@ -1734,7 +1776,7 @@ redis:
 
   # Maximum time to wait before giving up on redis requests.
   # CLI flag: -<prefix>.redis.timeout
-  [timeout: <duration> | default = 100ms]
+  [timeout: <duration> | default = 500ms]
 
   # How long keys stay in the redis.
   # CLI flag: -<prefix>.redis.expiration
@@ -1742,7 +1784,7 @@ redis:
 
   # Database index.
   # CLI flag: -<prefix>.redis.db
-  [db: <int>]
+  [db: <int> | default = 0]
 
   # Maximum number of connections in the pool.
   # CLI flag: -<prefix>.redis.pool-size
@@ -1755,6 +1797,10 @@ redis:
   # Enables connecting to redis with TLS.
   # CLI flag: -<prefix>.redis.tls-enabled
   [tls_enabled: <boolean> | default = false]
+
+  # Skip validating server certificate.
+  # CLI flag: -<prefix>.redis.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 
   # Close connections after remaining idle for this duration.
   # If the value is zero, then idle connections are not closed.
@@ -1777,8 +1823,9 @@ fifocache:
   [max_size_items: <int> | default = 0]
 
   # The expiry duration for the cache.
+  # The default value of 0 disables expiration.
   # CLI flag: -<prefix>.fifocache.duration
-  [validity: <duration> | default = 1h]
+  [validity: <duration>]
 ```
 
 ## schema_config
@@ -1869,7 +1916,7 @@ compacts index shards to more performant forms.
 
 # (Experimental) Activate custom (per-stream,per-tenant) retention.
 # CLI flag: -boltdb.shipper.compactor.retention-enabled
-[retention_enabled: <bool> | default = false]
+[retention_enabled: <boolean> | default = false]
 
 # Delay after which chunks will be fully deleted during retention.
 # CLI flag: -boltdb.shipper.compactor.retention-delete-delay
@@ -1941,7 +1988,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 
 # Whether or not old samples will be rejected.
 # CLI flag: -validation.reject-old-samples
-[reject_old_samples: <bool> | default = true]
+[reject_old_samples: <boolean> | default = true]
 
 # Maximum accepted sample age before rejecting.
 # CLI flag: -validation.reject-old-samples.max-age
@@ -1956,14 +2003,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -validation.enforce-metric-name
 [enforce_metric_name: <boolean> | default = true]
 
-# Maximum number of active streams per user, per ingester. 0 to disable.
-# CLI flag: -ingester.max-streams-per-user
-[max_streams_per_user: <int> | default = 0]
-
 # Maximum line size on ingestion path. Example: 256kb.
-# There is no limit when unset.
+# There is no limit when unset or set to 0.
 # CLI flag: -distributor.max-line-size
-[max_line_size: <string> | default = none ]
+[max_line_size: <string> | default = 0 ]
 
 # Truncate log lines when they exceed max_line_size.
 # CLI flag: -distributor.max-line-size-truncate
@@ -1972,6 +2015,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit
 [max_entries_limit_per_query: <int> | default = 5000 ]
+
+# Maximum number of active streams per user, per ingester. 0 to make it unlimited.
+# CLI flag: -ingester.max-streams-per-user
+[max_streams_per_user: <int> | default 0]
 
 # Maximum number of active streams per user, across the cluster. 0 to disable.
 # When the global limit is enabled, each ingester is configured with a dynamic
@@ -1982,7 +2029,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 
 # When true, out-of-order writes are accepted.
 # CLI flag: -ingester.unordered-writes
-[unordered_writes: <bool> | default = true]
+[unordered_writes: <boolean> | default = true]
 
 # Maximum number of chunks that can be fetched by a single query.
 # CLI flag: -store.query-chunk-limit
@@ -2085,7 +2132,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 [max_query_lookback: <duration> | default = 0]
 
 # Disable recording rules remote-write.
-[ruler_remote_write_disabled: <bool> | default = false]
+[ruler_remote_write_disabled: <boolean> | default = false]
 
 # The URL of the endpoint to send samples to.
 [ruler_remote_write_url: <string>]
@@ -2125,7 +2172,22 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 [ruler_remote_write_queue_max_backoff: <duration>]
 # Retry upon receiving a 429 status code from the remote-write storage.
 # This is experimental and might change in the future.
-[ruler_remote_write_queue_retry_on_ratelimit: <bool>]
+
+[ruler_remote_write_queue_retry_on_ratelimit: <boolean>]
+
+# Limit queries that can be sharded.
+# Queries within the time range of now and now minus this sharding lookback
+# are not sharded. The default value of 0s disables the lookback, causing
+# sharding of all queries at all times.
+# CLI flag: -frontend.min-sharding-lookback
+[min_sharding_lookback: <duration> | default = 0s]
+
+# Split queries by an interval and execute in parallel, 0 disables it. You
+# should use in multiple of 24 hours (same as the storage bucketing scheme),
+# to avoid queriers downloading and processing the same chunks. This also
+# determines how cache keys are chosen when result caching is enabled
+# CLI flag: -querier.split-queries-by-interval
+[split_queries_by_interval: <duration> | default = 30m]
 ```
 
 ### grpc_client_config
@@ -2156,7 +2218,7 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 
 # Enable backoff and retry when a rate limit is hit.
 # CLI flag: -<prefix>.backoff-on-ratelimits
-[backoff_on_ratelimits: <bool> | default = false]
+[backoff_on_ratelimits: <boolean> | default = false]
 
 # Configures backoff when enabled.
 backoff_config:
