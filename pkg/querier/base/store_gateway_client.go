@@ -2,9 +2,7 @@ package base
 
 import (
 	"flag"
-	"time"
 
-	"github.com/go-kit/log"
 	"github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring/client"
@@ -65,34 +63,6 @@ func (c *storeGatewayClient) String() string {
 
 func (c *storeGatewayClient) RemoteAddress() string {
 	return c.conn.Target()
-}
-
-func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, clientConfig ClientConfig, logger log.Logger, reg prometheus.Registerer) *client.Pool {
-	// We prefer sane defaults instead of exposing further config options.
-	clientCfg := grpcclient.Config{
-		MaxRecvMsgSize:      100 << 20,
-		MaxSendMsgSize:      16 << 20,
-		GRPCCompression:     "",
-		RateLimit:           0,
-		RateLimitBurst:      0,
-		BackoffOnRatelimits: false,
-		TLSEnabled:          clientConfig.TLSEnabled,
-		TLS:                 clientConfig.TLS,
-	}
-	poolCfg := client.PoolConfig{
-		CheckInterval:      time.Minute,
-		HealthCheckEnabled: true,
-		HealthCheckTimeout: 10 * time.Second,
-	}
-
-	clientsCount := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Namespace:   "cortex",
-		Name:        "storegateway_clients",
-		Help:        "The current number of store-gateway clients in the pool.",
-		ConstLabels: map[string]string{"client": "querier"},
-	})
-
-	return client.NewPool("store-gateway", poolCfg, discovery, newStoreGatewayClientFactory(clientCfg, reg), clientsCount, logger)
 }
 
 type ClientConfig struct {

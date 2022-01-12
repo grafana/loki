@@ -46,7 +46,7 @@ func TestStream(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			result := make(batchStream, len(tc.input1)+len(tc.input2))
 			result = mergeStreams(tc.input1, tc.input2, result, promchunk.BatchSize)
-			require.Equal(t, batchStream(tc.output), result)
+			require.Equal(t, tc.output, result)
 		})
 	}
 }
