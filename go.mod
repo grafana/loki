@@ -59,7 +59,7 @@ require (
 	github.com/klauspost/compress v1.13.6
 	github.com/klauspost/pgzip v1.2.5
 	github.com/minio/minio-go/v7 v7.0.10
-	github.com/mitchellh/mapstructure v1.4.2
+	github.com/mitchellh/mapstructure v1.4.3
 	github.com/modern-go/reflect2 v1.0.2
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/ncw/swift v1.0.52
@@ -68,7 +68,7 @@ require (
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
-	github.com/pierrec/lz4/v4 v4.1.7
+	github.com/pierrec/lz4/v4 v4.1.12
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0
 	github.com/prometheus/client_model v0.2.0
@@ -222,7 +222,6 @@ require (
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
-	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
@@ -282,6 +281,7 @@ require (
 require (
 	github.com/cloudflare/cloudflare-go v0.27.0
 	github.com/gofrs/flock v0.7.1 // indirect
+	github.com/oklog/ulid v1.3.1
 )
 
 // Upgrade to run with gRPC 1.3.0 and above.

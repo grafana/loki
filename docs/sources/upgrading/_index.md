@@ -49,6 +49,14 @@ The response body has the following schema:
 }
 ```
 
+#### Changes to default configuration values
+
+* `parallelise_shardable_queries` under the Query Range config now defaults to `true`, it was `false`.
+* `split_queries_by_interval` under the Query Range config now defaults to `30m`, it was `0s`.
+* `max_chunk_age` for the Ingester now defaults to `2h` instead of `1h`.
+* `query_ingesters_within` under the Queier config now defaults to `3h`, it was previously set to 0, meaning always query ingesters.
+* `max_concurrent` under the Querier config now defaults to `10` instead of `20`, since is should be the same as the Frontend Worker's `parallelism` setting (which is `10`).
+
 ### Promtail
 
 #### `gcplog` labels have changed
