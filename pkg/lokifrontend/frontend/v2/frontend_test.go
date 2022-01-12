@@ -203,7 +203,7 @@ func TestFrontendWorkerCancellation(t *testing.T) {
 
 	// We wait a bit to make sure scheduler receives the cancellation request.
 	// 2 * reqCount because for every request, should also be corresponding cancel request
-	test.Poll(t, time.Second, 2*reqCount, func() interface{} {
+	test.Poll(t, 5*time.Second, 2*reqCount, func() interface{} {
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
 

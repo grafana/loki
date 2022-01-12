@@ -225,8 +225,10 @@ enqueueAgain:
 	case <-ctx.Done():
 		if cancelCh != nil {
 			// NOTE(kavi): I think we don't need buffer channel.
-			// Let it block, it worker receives it, We don't want to exist RoundTripGRPC without cancelling the frontend worker
-			cancelCh <- freq.queryID
+			// Let it block until it's workers receives it, We don't want to exist RoundTripGRPC without cancelling the downstream request started by frontend workers.
+			if f.schedulerWorkers.getWorkersCount() > 0 {
+				cancelCh <- freq.queryID
+			}
 
 			// select {
 			// case cancelCh <- freq.queryID:
