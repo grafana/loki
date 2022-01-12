@@ -1730,6 +1730,7 @@ Available meta labels:
   * `__meta_docker_container_name`: the name of the container
   * `__meta_docker_container_network_mode`: the network mode of the container
   * `__meta_docker_container_label_<labelname>`: each label of the container
+  * `__meta_docker_container_log_stream`: the log stream type `stdout` or `stderr`
   * `__meta_docker_network_id`: the ID of the network
   * `__meta_docker_network_name`: the name of the network
   * `__meta_docker_network_ingress`: whether the network is ingress
