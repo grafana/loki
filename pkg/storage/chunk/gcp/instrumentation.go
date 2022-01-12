@@ -52,7 +52,6 @@ func bigtableInstrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClie
 }
 
 func gcsInstrumentation(ctx context.Context, scope string, insecure bool, http2 bool) (*http.Client, error) {
-	// start with default transport
 	customTransport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
