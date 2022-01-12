@@ -278,7 +278,6 @@ github.com/cortexproject/cortex/pkg/storage/bucket/s3
 github.com/cortexproject/cortex/pkg/storage/bucket/swift
 github.com/cortexproject/cortex/pkg/storage/tsdb
 github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex
-github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb
 github.com/cortexproject/cortex/pkg/tenant
 github.com/cortexproject/cortex/pkg/util
 github.com/cortexproject/cortex/pkg/util/extract
