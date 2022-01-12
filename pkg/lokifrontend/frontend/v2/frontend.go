@@ -226,9 +226,7 @@ enqueueAgain:
 		if cancelCh != nil {
 			// NOTE(kavi): I think we don't need buffer channel.
 			// Let it block until it's workers receives it, We don't want to exist RoundTripGRPC without cancelling the downstream request started by frontend workers.
-			if f.schedulerWorkers.getWorkersCount() > 0 {
-				cancelCh <- freq.queryID
-			}
+			f.schedulerWorkers.sendRequestCancel(freq.queryID, cancelCh)
 
 			// select {
 			// case cancelCh <- freq.queryID:
