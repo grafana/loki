@@ -123,7 +123,7 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(payload[0]['stream'].empty?).to eq true
     expect(payload[0]['values'].count).to eq 1
     expect(payload[0]['values'][0][0]).to eq '1546270458000000000'
-    expect(payload[0]['values'][0][1]).to eq 'message=" rest of line" stream=stdout'
+    expect(payload[0]['values'][0][1]).to eq 'message="� rest of line" stream=stdout'
   end
 
   it 'formats record hash as key_value' do
