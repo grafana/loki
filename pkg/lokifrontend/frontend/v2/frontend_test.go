@@ -176,8 +176,9 @@ func TestFrontendCancellation(t *testing.T) {
 	})
 }
 
-// Bug: If FrontendWorkers are busy, cancellation passed by Query frontend may not reach
+// If FrontendWorkers are busy, cancellation passed by Query frontend may not reach
 // all the frontend workers thus not reaching the scheduler as well.
+// Issue: https://github.com/grafana/loki/issues/5132
 func TestFrontendWorkerCancellation(t *testing.T) {
 	f, ms := setupFrontend(t, nil)
 
