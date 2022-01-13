@@ -12,7 +12,7 @@ import (
 )
 
 var clients = promauto.NewGauge(prometheus.GaugeOpts{
-	Namespace: "cortex",
+	Namespace: "loki",
 	Name:      "distributor_ingester_clients",
 	Help:      "The current number of ingester clients.",
 })
