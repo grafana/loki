@@ -336,6 +336,8 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 						Body: []byte("too many outstanding requests"),
 					},
 				}
+			default:
+				req.enqueue <- enqueueResult{status: failed}
 			}
 
 		case reqID := <-w.cancelCh:
