@@ -2,7 +2,7 @@
 
 package queryrange
 
-import "github.com/cortexproject/cortex/pkg/querier/queryrange"
+import "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 
 // To satisfy queryrange.Response interface(https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L88)
 // we need to have following method as well on response types:
@@ -13,40 +13,40 @@ import "github.com/cortexproject/cortex/pkg/querier/queryrange"
 // It also has issue of generating slices without pointer to the custom type for Repeated customtype fields, see https://github.com/gogo/protobuf/issues/478
 // which is why we also have to do conversion from non-pointer to pointer type.
 
-func (m *LokiLabelNamesResponse) GetHeaders() []*queryrange.PrometheusResponseHeader {
+func (m *LokiLabelNamesResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
 		return convertPrometheusResponseHeadersToPointers(m.Headers)
 	}
 	return nil
 }
 
-func (m *LokiSeriesResponse) GetHeaders() []*queryrange.PrometheusResponseHeader {
+func (m *LokiSeriesResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
 		return convertPrometheusResponseHeadersToPointers(m.Headers)
 	}
 	return nil
 }
 
-func (m *LokiPromResponse) GetHeaders() []*queryrange.PrometheusResponseHeader {
+func (m *LokiPromResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
 		return m.Response.GetHeaders()
 	}
 	return nil
 }
 
-func (m *LokiResponse) GetHeaders() []*queryrange.PrometheusResponseHeader {
+func (m *LokiResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
 		return convertPrometheusResponseHeadersToPointers(m.Headers)
 	}
 	return nil
 }
 
-func convertPrometheusResponseHeadersToPointers(h []queryrange.PrometheusResponseHeader) []*queryrange.PrometheusResponseHeader {
+func convertPrometheusResponseHeadersToPointers(h []queryrangebase.PrometheusResponseHeader) []*queryrangebase.PrometheusResponseHeader {
 	if h == nil {
 		return nil
 	}
 
-	resp := make([]*queryrange.PrometheusResponseHeader, len(h))
+	resp := make([]*queryrangebase.PrometheusResponseHeader, len(h))
 	for i := range h {
 		resp[i] = &h[i]
 	}

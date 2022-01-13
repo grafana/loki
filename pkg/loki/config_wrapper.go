@@ -8,7 +8,6 @@ import (
 	"time"
 
 	cortexcache "github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 
+	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	loki_net "github.com/grafana/loki/pkg/util/net"
@@ -378,7 +378,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "azure"
-			r.Ruler.StoreConfig.Azure = r.Common.Storage.Azure.ToCortexAzureConfig()
+			r.Ruler.StoreConfig.Azure = r.Common.Storage.Azure
 			r.StorageConfig.AzureStorageConfig = r.Common.Storage.Azure
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeAzure
@@ -405,7 +405,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "gcs"
-			r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS.ToCortexGCSConfig()
+			r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS
 			r.StorageConfig.GCSConfig = r.Common.Storage.GCS
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeGCS
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
@@ -417,7 +417,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "s3"
-			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3.ToCortexS3Config()
+			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3
 			r.StorageConfig.AWSStorageConfig.S3Config = r.Common.Storage.S3
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeS3
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
@@ -429,7 +429,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "swift"
-			r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift.ToCortexSwiftConfig()
+			r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift
 			r.StorageConfig.Swift = r.Common.Storage.Swift
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeSwift
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging

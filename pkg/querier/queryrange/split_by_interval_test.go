@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -22,9 +23,9 @@ var nilMetrics = NewSplitByMetrics(nil)
 func Test_splitQuery(t *testing.T) {
 	tests := []struct {
 		name     string
-		req      queryrange.Request
+		req      queryrangebase.Request
 		interval time.Duration
-		want     []queryrange.Request
+		want     []queryrangebase.Request
 	}{
 		{
 			"smaller request than interval",
@@ -33,7 +34,7 @@ func Test_splitQuery(t *testing.T) {
 				EndTs:   time.Date(2019, 12, 9, 12, 30, 0, 0, time.UTC),
 			},
 			time.Hour,
-			[]queryrange.Request{
+			[]queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Date(2019, 12, 9, 12, 0, 0, 1, time.UTC),
 					EndTs:   time.Date(2019, 12, 9, 12, 30, 0, 0, time.UTC),
@@ -47,7 +48,7 @@ func Test_splitQuery(t *testing.T) {
 				EndTs:   time.Date(2019, 12, 9, 13, 1, 0, 0, time.UTC),
 			},
 			time.Hour,
-			[]queryrange.Request{
+			[]queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Date(2019, 12, 9, 12, 1, 0, 0, time.UTC),
 					EndTs:   time.Date(2019, 12, 9, 13, 1, 0, 0, time.UTC),
@@ -61,7 +62,7 @@ func Test_splitQuery(t *testing.T) {
 				EndTs:   time.Date(2019, 12, 9, 13, 0, 0, 2, time.UTC),
 			},
 			time.Hour,
-			[]queryrange.Request{
+			[]queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Date(2019, 12, 9, 12, 0, 0, 1, time.UTC),
 					EndTs:   time.Date(2019, 12, 9, 13, 0, 0, 1, time.UTC),
@@ -79,7 +80,7 @@ func Test_splitQuery(t *testing.T) {
 				EndTs:   time.Date(2019, 12, 9, 16, 0, 0, 2, time.UTC),
 			},
 			2 * time.Hour,
-			[]queryrange.Request{
+			[]queryrangebase.Request{
 				&LokiSeriesRequest{
 					StartTs: time.Date(2019, 12, 9, 12, 0, 0, 1, time.UTC),
 					EndTs:   time.Date(2019, 12, 9, 14, 0, 0, 1, time.UTC),
@@ -106,8 +107,8 @@ func Test_splitMetricQuery(t *testing.T) {
 	const seconds = 1e3 // 1e3 milliseconds per second.
 
 	for i, tc := range []struct {
-		input    queryrange.Request
-		expected []queryrange.Request
+		input    queryrangebase.Request
+		expected []queryrangebase.Request
 		interval time.Duration
 	}{
 		// the step is lower than the interval therefore we should split only once.
@@ -117,7 +118,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				EndTs:   time.Unix(0, 60*time.Minute.Nanoseconds()),
 				Step:    15 * seconds,
 			},
-			expected: []queryrange.Request{
+			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(0, 60*time.Minute.Nanoseconds()),
@@ -132,7 +133,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				EndTs:   time.Unix(60*60, 0),
 				Step:    15 * seconds,
 			},
-			expected: []queryrange.Request{
+			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(60*60, 0),
@@ -147,7 +148,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				EndTs:   time.Unix(24*3600, 0),
 				Step:    15 * seconds,
 			},
-			expected: []queryrange.Request{
+			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(24*3600, 0),
@@ -162,7 +163,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				EndTs:   time.Unix(3*3600, 0),
 				Step:    15 * seconds,
 			},
-			expected: []queryrange.Request{
+			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(3*3600, 0),
@@ -177,7 +178,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				EndTs:   time.Unix(2*24*3600, 0),
 				Step:    15 * seconds,
 			},
-			expected: []queryrange.Request{
+			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix((24*3600)-15, 0),
@@ -197,7 +198,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				EndTs:   time.Unix(2*3*3600, 0),
 				Step:    15 * seconds,
 			},
-			expected: []queryrange.Request{
+			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix((3*3600)-15, 0),
@@ -217,7 +218,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				EndTs:   time.Unix(3*24*3600, 0),
 				Step:    15 * seconds,
 			},
-			expected: []queryrange.Request{
+			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(3*3600, 0),
 					EndTs:   time.Unix((24*3600)-15, 0),
@@ -242,7 +243,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				EndTs:   time.Unix(3*3*3600, 0),
 				Step:    15 * seconds,
 			},
-			expected: []queryrange.Request{
+			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(2*3600, 0),
 					EndTs:   time.Unix((3*3600)-15, 0),
@@ -269,7 +270,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				EndTs:   time.Unix(25*3600, 0),
 				Step:    6 * 3600 * seconds,
 			},
-			expected: []queryrange.Request{
+			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(6*3600, 0),
@@ -304,7 +305,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				EndTs:   time.Unix(3*3600, 0),
 				Step:    6 * 3600 * seconds,
 			},
-			expected: []queryrange.Request{
+			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(3*3600, 0),
@@ -323,7 +324,7 @@ func Test_splitMetricQuery(t *testing.T) {
 
 func Test_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiResponse{
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
@@ -344,7 +345,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 		}, nil
 	})
 
-	l := WithDefaultLimits(fakeLimits{}, queryrange.Config{SplitQueriesByInterval: time.Hour})
+	l := WithDefaultLimits(fakeLimits{}, queryrangebase.Config{SplitQueriesByInterval: time.Hour})
 	split := SplitByIntervalMiddleware(
 		l,
 		LokiCodec,
@@ -494,7 +495,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 
 func Test_series_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiSeriesResponse{
 			Status:  "success",
 			Version: uint32(loghttp.VersionV1),
@@ -512,7 +513,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 		}, nil
 	})
 
-	l := WithDefaultLimits(fakeLimits{}, queryrange.Config{SplitQueriesByInterval: time.Hour})
+	l := WithDefaultLimits(fakeLimits{}, queryrangebase.Config{SplitQueriesByInterval: time.Hour})
 	split := SplitByIntervalMiddleware(
 		l,
 		LokiCodec,
@@ -563,7 +564,7 @@ func Test_ExitEarly(t *testing.T) {
 	var callCt int
 	var mtx sync.Mutex
 
-	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		time.Sleep(time.Millisecond) // artificial delay to minimize race condition exposure in test
 
 		mtx.Lock()
@@ -593,7 +594,7 @@ func Test_ExitEarly(t *testing.T) {
 		}, nil
 	})
 
-	l := WithDefaultLimits(fakeLimits{}, queryrange.Config{SplitQueriesByInterval: time.Hour})
+	l := WithDefaultLimits(fakeLimits{}, queryrangebase.Config{SplitQueriesByInterval: time.Hour})
 	split := SplitByIntervalMiddleware(
 		l,
 		LokiCodec,
@@ -646,7 +647,7 @@ func Test_ExitEarly(t *testing.T) {
 func Test_DoesntDeadlock(t *testing.T) {
 	n := 10
 
-	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiResponse{
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
@@ -672,7 +673,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 
 	l := WithDefaultLimits(fakeLimits{
 		maxQueryParallelism: n,
-	}, queryrange.Config{SplitQueriesByInterval: time.Hour})
+	}, queryrangebase.Config{SplitQueriesByInterval: time.Hour})
 	split := SplitByIntervalMiddleware(
 		l,
 		LokiCodec,
