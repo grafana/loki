@@ -148,12 +148,12 @@ func newASTMapperware(confs ShardingConfigs, next Handler, logger log.Logger, re
 		next:       next,
 		registerer: registerer,
 		mappedASTCounter: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "cortex",
+			Namespace: "loki",
 			Name:      "frontend_mapped_asts_total",
 			Help:      "Total number of queries that have undergone AST mapping",
 		}),
 		shardedQueriesCounter: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "cortex",
+			Namespace: "loki",
 			Name:      "frontend_sharded_queries_total",
 			Help:      "Total number of sharded queries",
 		}),

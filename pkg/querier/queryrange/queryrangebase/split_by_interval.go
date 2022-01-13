@@ -22,7 +22,7 @@ func SplitByIntervalMiddleware(interval IntervalFn, limits Limits, merger Merger
 			merger:   merger,
 			interval: interval,
 			splitByCounter: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-				Namespace: "cortex",
+				Namespace: "loki",
 				Name:      "frontend_split_queries_total",
 				Help:      "Total number of underlying query requests after the split by interval is applied",
 			}),

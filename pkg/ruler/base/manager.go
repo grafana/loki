@@ -67,22 +67,22 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		userManagers:       map[string]RulesManager{},
 		userManagerMetrics: userManagerMetrics,
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace: "cortex",
+			Namespace: "loki",
 			Name:      "ruler_managers_total",
 			Help:      "Total number of managers registered and running in the ruler",
 		}),
 		lastReloadSuccessful: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "cortex",
+			Namespace: "loki",
 			Name:      "ruler_config_last_reload_successful",
 			Help:      "Boolean set to 1 whenever the last configuration reload attempt was successful.",
 		}, []string{"user"}),
 		lastReloadSuccessfulTimestamp: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "cortex",
+			Namespace: "loki",
 			Name:      "ruler_config_last_reload_successful_seconds",
 			Help:      "Timestamp of the last successful configuration reload.",
 		}, []string{"user"}),
 		configUpdatesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
+			Namespace: "loki",
 			Name:      "ruler_config_updates_total",
 			Help:      "Total number of config updates triggered by a user",
 		}, []string{"user"}),
