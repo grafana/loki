@@ -324,6 +324,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 					},
 				}
 			default:
+				level.Error(w.log).Log("msg", "unknown response status from the scheduler", "status", resp.Status, "queryID", req.queryID)
 				req.enqueue <- enqueueResult{status: failed}
 			}
 
