@@ -1,6 +1,7 @@
 package queryrangebase
 
 import (
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -8,8 +9,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/grafana/loki/pkg/querier/series"
 )
 
 // FromResult transforms a promql query result into a samplestream

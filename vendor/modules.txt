@@ -268,14 +268,7 @@ github.com/cortexproject/cortex/pkg/configs/userconfig
 github.com/cortexproject/cortex/pkg/cortexpb
 github.com/cortexproject/cortex/pkg/ingester/client
 github.com/cortexproject/cortex/pkg/prom1/storage/metric
-github.com/cortexproject/cortex/pkg/querier
 github.com/cortexproject/cortex/pkg/querier/astmapper
-github.com/cortexproject/cortex/pkg/querier/batch
-github.com/cortexproject/cortex/pkg/querier/chunkstore
-github.com/cortexproject/cortex/pkg/querier/iterators
-github.com/cortexproject/cortex/pkg/querier/lazyquery
-github.com/cortexproject/cortex/pkg/querier/series
-github.com/cortexproject/cortex/pkg/querier/stats
 github.com/cortexproject/cortex/pkg/storage/bucket
 github.com/cortexproject/cortex/pkg/storage/bucket/azure
 github.com/cortexproject/cortex/pkg/storage/bucket/filesystem
@@ -285,11 +278,8 @@ github.com/cortexproject/cortex/pkg/storage/bucket/s3
 github.com/cortexproject/cortex/pkg/storage/bucket/swift
 github.com/cortexproject/cortex/pkg/storage/tsdb
 github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex
-github.com/cortexproject/cortex/pkg/storegateway
-github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb
 github.com/cortexproject/cortex/pkg/tenant
 github.com/cortexproject/cortex/pkg/util
-github.com/cortexproject/cortex/pkg/util/chunkcompat
 github.com/cortexproject/cortex/pkg/util/extract
 github.com/cortexproject/cortex/pkg/util/limiter
 github.com/cortexproject/cortex/pkg/util/log
