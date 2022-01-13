@@ -205,7 +205,7 @@ func instantValue(vals []Value, out Vector, isRate bool) Vector {
 // The argument "s" is the set of computed smoothed values.
 // The argument "b" is the set of computed trend factors.
 // The argument "d" is the set of raw input values.
-func calcTrendValue(i int, sf, tf, s0, s1, b float64) float64 {
+func calcTrendValue(i int, _, tf, s0, s1, b float64) float64 {
 	if i == 0 {
 		return b
 	}
