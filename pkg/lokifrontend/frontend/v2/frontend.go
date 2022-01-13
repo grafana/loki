@@ -217,7 +217,7 @@ enqueueAgain:
 	select {
 	case <-ctx.Done():
 		if cancelCh != nil {
-			// Let it block until it's workers receives it, We don't want to exist RoundTripGRPC without cancelling the downstream request started by this request.
+			// Let it block until it's workers receives it. We don't want to exit RoundTripGRPC without cancelling the downstream request started by this request.
 			f.schedulerWorkers.sendRequestCancel(freq.queryID, cancelCh)
 		}
 		return nil, ctx.Err()
