@@ -181,8 +181,6 @@ func TestFrontendCancellation(t *testing.T) {
 func TestFrontendWorkerCancellation(t *testing.T) {
 	f, ms := setupFrontend(t, nil)
 
-	// fmt.Println("workers count", f.schedulerWorkers.getWorkersCount(), "max-concurrency per worker", f.cfg.WorkerConcurrency)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
