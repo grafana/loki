@@ -5,15 +5,14 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	promRules "github.com/prometheus/prometheus/rules"
 
-	"github.com/cortexproject/cortex/pkg/configs/client"
-	configClient "github.com/cortexproject/cortex/pkg/configs/client"
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
-
+	"github.com/grafana/loki/pkg/configs/client"
+	configClient "github.com/grafana/loki/pkg/configs/client"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/bucketclient"
 	"github.com/grafana/loki/pkg/ruler/rulestore/configdb"

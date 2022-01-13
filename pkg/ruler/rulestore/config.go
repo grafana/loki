@@ -6,9 +6,9 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 
+	"github.com/grafana/loki/pkg/configs/client"
 	"github.com/grafana/loki/pkg/ruler/rulestore/configdb"
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 )
