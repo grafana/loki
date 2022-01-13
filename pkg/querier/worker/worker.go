@@ -89,6 +89,8 @@ type querierWorker struct {
 	mu sync.Mutex
 	// Set to nil when stop is called... no more managers are created afterwards.
 	managers map[string]*processorManager
+
+	metrics *Metrics
 }
 
 func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, logger log.Logger, reg prometheus.Registerer) (services.Service, error) {
@@ -100,6 +102,7 @@ func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, log
 		cfg.QuerierID = hostname
 	}
 
+	metrics := NewMetrics(cfg, reg)
 	var processor processor
 	var servs []services.Service
 	var address string
@@ -107,12 +110,12 @@ func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, log
 	switch {
 	case rng != nil:
 		level.Info(logger).Log("msg", "Starting querier worker using query-scheduler and scheduler ring for addresses")
-		processor, servs = newSchedulerProcessor(cfg, handler, logger, reg)
+		processor, servs = newSchedulerProcessor(cfg, handler, logger, metrics)
 	case cfg.SchedulerAddress != "":
 		level.Info(logger).Log("msg", "Starting querier worker connected to query-scheduler", "scheduler", cfg.SchedulerAddress)
 
 		address = cfg.SchedulerAddress
-		processor, servs = newSchedulerProcessor(cfg, handler, logger, reg)
+		processor, servs = newSchedulerProcessor(cfg, handler, logger, metrics)
 
 	case cfg.FrontendAddress != "":
 		level.Info(logger).Log("msg", "Starting querier worker connected to query-frontend", "frontend", cfg.FrontendAddress)
@@ -123,15 +126,16 @@ func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, log
 		return nil, errors.New("unable to start the querier worker, need to configure one of frontend_address, scheduler_address, or a ring config in the query_scheduler config block")
 	}
 
-	return newQuerierWorkerWithProcessor(cfg, logger, processor, address, rng, servs)
+	return newQuerierWorkerWithProcessor(cfg, metrics, logger, processor, address, rng, servs)
 }
 
-func newQuerierWorkerWithProcessor(cfg Config, logger log.Logger, processor processor, address string, ring ring.ReadRing, servs []services.Service) (*querierWorker, error) {
+func newQuerierWorkerWithProcessor(cfg Config, metrics *Metrics, logger log.Logger, processor processor, address string, ring ring.ReadRing, servs []services.Service) (*querierWorker, error) {
 	f := &querierWorker{
 		cfg:       cfg,
 		logger:    logger,
 		managers:  map[string]*processorManager{},
 		processor: processor,
+		metrics:   metrics,
 	}
 
 	// Empty address is only used in tests, where individual targets are added manually.
@@ -232,6 +236,9 @@ func (w *querierWorker) AddressRemoved(address string) {
 // Must be called with lock.
 func (w *querierWorker) resetConcurrency() {
 	totalConcurrency := 0
+	defer func() {
+		w.metrics.concurrentWorkers.Set(float64(totalConcurrency))
+	}()
 	index := 0
 
 	for _, m := range w.managers {
