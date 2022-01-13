@@ -84,7 +84,7 @@ func parseS3Log(b *batch, labels map[string]string, obj io.ReadCloser) error {
 	return nil
 }
 
-func checkIfS3Event(ev map[string]interface{}) (events.S3Event, error) {
+func convertToS3Event(ev map[string]interface{}) (events.S3Event, error) {
 	var s3 events.S3Event
 
 	j, _ := json.Marshal(ev)
@@ -115,7 +115,7 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	return labels, nil
 }
 
-func processS3(ctx context.Context, ev events.S3Event) error {
+func processS3Event(ctx context.Context, ev events.S3Event) error {
 
 	batch := newBatch()
 

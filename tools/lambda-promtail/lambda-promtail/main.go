@@ -55,14 +55,14 @@ func init() {
 }
 
 func handler(ctx context.Context, ev map[string]interface{}) error {
-	s3event, err := checkIfS3Event(ev)
+	s3event, err := convertToS3Event(ev)
 	if err == nil {
-		return processS3(ctx, s3event)
+		return processS3Event(ctx, s3event)
 	}
 
-	cwevent, err := checkIfCWEvent(ev)
+	cwevent, err := convertToCWEvent(ev)
 	if err == nil {
-		return processCW(ctx, cwevent)
+		return processCWEvent(ctx, cwevent)
 	}
 
 	fmt.Println("invalid event: %s", ev)

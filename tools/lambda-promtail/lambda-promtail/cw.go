@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-func checkIfCWEvent(ev map[string]interface{}) (events.CloudwatchLogsEvent, error) {
+func convertToCWEvent(ev map[string]interface{}) (events.CloudwatchLogsEvent, error) {
 	var cw events.CloudwatchLogsEvent
 
 	j, _ := json.Marshal(ev)
@@ -25,7 +25,7 @@ func checkIfCWEvent(ev map[string]interface{}) (events.CloudwatchLogsEvent, erro
 	return cw, err
 }
 
-func createCWStream(ctx context.Context, b *batch, ev events.CloudwatchLogsEvent) error {
+func parseCWEvent(ctx context.Context, b *batch, ev events.CloudwatchLogsEvent) error {
 	data, err := ev.AWSLogs.Parse()
 	if err != nil {
 		fmt.Println("error parsing log event: ", err)
@@ -52,10 +52,10 @@ func createCWStream(ctx context.Context, b *batch, ev events.CloudwatchLogsEvent
 	return nil
 }
 
-func processCW(ctx context.Context, ev events.CloudwatchLogsEvent) error {
+func processCWEvent(ctx context.Context, ev events.CloudwatchLogsEvent) error {
 	batch := newBatch()
 
-	err := createCWStream(ctx, batch, ev)
+	err := parseCWEvent(ctx, batch, ev)
 	if err != nil {
 		return err
 	}
