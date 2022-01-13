@@ -111,7 +111,7 @@ Some Loki API endpoints return a result of a matrix, a vector, or a stream:
 query parameters support the following values:
 
 - `query`: The [LogQL](../logql/) query to perform
-- `limit`: The max number of entries to return
+- `limit`: The max number of entries to return. It defaults to `100`.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch. Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
@@ -243,7 +243,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
 accepts the following query parameters in the URL:
 
 - `query`: The [LogQL](../logql/) query to perform
-- `limit`: The max number of entries to return
+- `limit`: The max number of entries to return. It defaults to `100`.
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.  Only applies to query types which produce a matrix response.
@@ -476,7 +476,7 @@ a query. It accepts the following query parameters in the URL:
 - `query`: The [LogQL](../logql/) query to perform
 - `delay_for`: The number of seconds to delay retrieving logs to let slow
     loggers catch up. Defaults to 0 and cannot be larger than 5.
-- `limit`: The max number of entries to return
+- `limit`: The max number of entries to return. It defaults to `100`.
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 
 In microservices mode, `/loki/api/v1/tail` is exposed by the querier.
