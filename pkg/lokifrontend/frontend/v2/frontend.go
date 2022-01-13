@@ -217,8 +217,13 @@ enqueueAgain:
 	select {
 	case <-ctx.Done():
 		if cancelCh != nil {
-			// Let it block until it's workers receives it. We don't want to exit RoundTripGRPC without cancelling the downstream request started by this request.
-			f.schedulerWorkers.sendRequestCancel(freq.queryID, cancelCh)
+			select {
+			case cancelCh <- freq.queryID:
+				// cancellation sent.
+			default:
+				// failed to cancel, ignore.
+				level.Warn(f.log).Log("msg", "failed to send cancellation request to scheduler, queue full")
+			}
 		}
 		return nil, ctx.Err()
 

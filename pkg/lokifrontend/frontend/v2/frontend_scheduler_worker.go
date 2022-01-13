@@ -146,20 +146,6 @@ func (f *frontendSchedulerWorkers) getWorkersCount() int {
 	return len(f.workers)
 }
 
-// sendRequestCancel sends cancellation to the "already scheduled" frontendRequest.
-// It will make sure the frontend worker that is responsible for the `reqID`
-// receives the cancel signal.
-func (f *frontendSchedulerWorkers) sendRequestCancel(reqID uint64, cancelCh chan<- uint64) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	// There can be the case, where Frontend is running without any Frontend workers,
-	// sending cancel shoudn't block in those cases.
-	if len(f.workers) > 0 {
-		cancelCh <- reqID
-	}
-}
-
 func (f *frontendSchedulerWorkers) connectToScheduler(ctx context.Context, address string) (*grpc.ClientConn, error) {
 	// Because we only use single long-running method, it doesn't make sense to inject user ID, send over tracing or add metrics.
 	opts, err := f.cfg.GRPCClientConfig.DialOption(nil, nil)
@@ -205,7 +191,8 @@ func newFrontendSchedulerWorker(conn *grpc.ClientConn, schedulerAddr string, fro
 		schedulerAddr: schedulerAddr,
 		frontendAddr:  frontendAddr,
 		requestCh:     requestCh,
-		cancelCh:      make(chan uint64),
+		// Allow to enqueue enough cancellation requests. ~ 8MB memory size.
+		cancelCh: make(chan uint64, 1000000),
 	}
 	w.ctx, w.cancel = context.WithCancel(context.Background())
 
