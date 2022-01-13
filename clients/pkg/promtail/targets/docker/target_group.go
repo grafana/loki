@@ -14,18 +14,20 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 )
 
+const DockerSource = "Docker"
+
 // targetGroup manages all container targets of one Docker daemon.
 type targetGroup struct {
 	metrics       *Metrics
 	logger        log.Logger
 	positions     positions.Positions
 	entryHandler  api.EntryHandler
-	targets       map[string]*Target
 	defaultLabels model.LabelSet
 	host          string
+	client        client.APIClient
 
-	mtx    sync.Mutex
-	client client.APIClient
+	mtx     sync.Mutex
+	targets map[string]*Target
 }
 
 func (tg *targetGroup) sync(groups []*targetgroup.Group) {
@@ -33,14 +35,14 @@ func (tg *targetGroup) sync(groups []*targetgroup.Group) {
 	defer tg.mtx.Unlock()
 
 	for _, group := range groups {
-		if group.Source != "Docker" {
+		if group.Source != DockerSource {
 			continue
 		}
 
 		for _, t := range group.Targets {
 			containerID, ok := t[dockerLabelContainerID]
 			if !ok {
-				level.Debug(tg.logger).Log("msg", "target did not include container ID")
+				level.Debug(tg.logger).Log("msg", "Docker target did not include container ID")
 				continue
 			}
 

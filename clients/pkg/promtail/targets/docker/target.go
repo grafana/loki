@@ -34,7 +34,6 @@ type Target struct {
 	labels        model.LabelSet
 	metrics       *Metrics
 
-	ctx     context.Context
 	cancel  context.CancelFunc
 	client  client.APIClient
 	wg      sync.WaitGroup
@@ -71,16 +70,15 @@ func NewTarget(
 		labels:        labels,
 		metrics:       metrics,
 
-		ctx:     ctx,
 		cancel:  cancel,
 		client:  client,
 		running: atomic.NewBool(false),
 	}
-	go t.start()
+	go t.processLoop(ctx)
 	return t, nil
 }
 
-func (t *Target) start() {
+func (t *Target) processLoop(ctx context.Context) {
 	t.running.Store(true)
 
 	opts := docker_types.ContainerLogsOptions{
@@ -91,7 +89,7 @@ func (t *Target) start() {
 		Since:      strconv.FormatInt(t.since, 10),
 	}
 
-	logs, err := t.client.ContainerLogs(t.ctx, t.containerName, opts)
+	logs, err := t.client.ContainerLogs(ctx, t.containerName, opts)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "could not fetch logs for container", "container", t.containerName, "err", err)
 		t.err = err
@@ -112,7 +110,7 @@ func (t *Target) start() {
 
 		written, err := stdcopy.StdCopy(wstdout, wstderr, logs)
 		if err != nil {
-			level.Error(t.logger).Log("msg", "could not transfer logs", "written", written, "container", t.containerName, "err", err)
+			level.Warn(t.logger).Log("msg", "could not transfer logs", "written", written, "container", t.containerName, "err", err)
 		} else {
 			level.Info(t.logger).Log("msg", "finished transferring logs", "written", written, "container", t.containerName)
 		}
@@ -124,12 +122,14 @@ func (t *Target) start() {
 	go t.process(rstderr, "stderr")
 
 	// Wait until done
-	<-t.ctx.Done()
+	<-ctx.Done()
 	t.running.Store(false)
 	logs.Close()
-	level.Debug(t.logger).Log("msg", "done processing", "container", t.containerName)
+	level.Debug(t.logger).Log("msg", "done processing Docker logs", "container", t.containerName)
 }
 
+// extractTs tries for read the timestamp from the beginning of the log line.
+// It's expected to follow the format 2006-01-02T15:04:05.999999999Z07:00.
 func extractTs(line string) (time.Time, string, error) {
 	pair := strings.SplitN(line, " ", 2)
 	if len(pair) != 2 {
@@ -166,6 +166,11 @@ func (t *Target) process(r io.Reader, logStream string) {
 		}
 		t.metrics.dockerEntries.Inc()
 		t.positions.Put(positions.CursorKey(t.containerName), ts.Unix())
+	}
+
+	err := scanner.Err()
+	if err != nil {
+		level.Warn(t.logger).Log("msg", "finished scanning logs lines with an error", "err", err)
 	}
 
 }

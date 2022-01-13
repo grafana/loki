@@ -25,10 +25,11 @@ import (
 
 func Test_TargetManager(t *testing.T) {
 	h := func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/_ping" {
+		switch path := r.URL.Path; {
+		case path == "/_ping":
 			_, err := w.Write([]byte("OK"))
 			require.NoError(t, err)
-		} else if strings.HasSuffix(r.URL.Path, "/containers/json") {
+		case strings.HasSuffix(path, "/containers/json"):
 			// Serve container list
 			w.Header().Set("Content-Type", "application/json")
 			containerResponse := []types.Container{{
@@ -45,12 +46,12 @@ func Test_TargetManager(t *testing.T) {
 			}}
 			err := json.NewEncoder(w).Encode(containerResponse)
 			require.NoError(t, err)
-		} else if strings.HasSuffix(r.URL.Path, "/networks") {
+		case strings.HasSuffix(path, "/networks"):
 			// Serve networks
 			w.Header().Set("Content-Type", "application/json")
 			err := json.NewEncoder(w).Encode([]types.NetworkResource{})
 			require.NoError(t, err)
-		} else {
+		default:
 			// Serve container logs
 			dat, err := os.ReadFile("testdata/flog.log")
 			require.NoError(t, err)
