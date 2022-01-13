@@ -33,7 +33,6 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
-
 	"github.com/prometheus/prometheus/util/stats"
 )
 
