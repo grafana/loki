@@ -204,6 +204,7 @@ enqueueAgain:
 
 	select {
 	case <-ctx.Done():
+		level.Warn(f.log).Log("msg", "request enqueued, but not cancelable", "queryID", freq.queryID)
 		return nil, ctx.Err()
 
 	case enqRes := <-freq.enqueue:
@@ -220,20 +221,12 @@ enqueueAgain:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
 	}
 
-	fmt.Println("waiting on either cancel or response", "cancelCh", cancelCh)
 	select {
 	case <-ctx.Done():
 		if cancelCh != nil {
 			// NOTE(kavi): I think we don't need buffer channel.
-			// Let it block until it's workers receives it, We don't want to exist RoundTripGRPC without cancelling the downstream request started by frontend workers.
+			// Let it block until it's workers receives it, We don't want to exist RoundTripGRPC without cancelling the downstream request started by this request.
 			f.schedulerWorkers.sendRequestCancel(freq.queryID, cancelCh)
-
-			// select {
-			// case cancelCh <- freq.queryID:
-			// cancellation sent.
-			// default:
-			// 	// failed to cancel, ignore.
-			// }
 		}
 		return nil, ctx.Err()
 

@@ -177,7 +177,7 @@ func TestFrontendCancellation(t *testing.T) {
 }
 
 // Bug: If FrontendWorkers are busy, cancellation passed by Query frontend may not reach
-// all the frontend workers. (assumming we run multiple frontend workers)
+// all the frontend workers thus not reaching the scheduler as well.
 func TestFrontendWorkerCancellation(t *testing.T) {
 	f, ms := setupFrontend(t, nil)
 

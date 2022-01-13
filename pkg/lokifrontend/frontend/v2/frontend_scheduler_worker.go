@@ -2,7 +2,6 @@ package v2
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -291,7 +290,6 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 			return nil
 
 		case req := <-w.requestCh:
-			fmt.Println("Got the request", req.queryID)
 			err := loop.Send(&schedulerpb.FrontendToScheduler{
 				Type:            schedulerpb.ENQUEUE,
 				QueryID:         req.queryID,
@@ -341,7 +339,6 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 			}
 
 		case reqID := <-w.cancelCh:
-			fmt.Println("Got the cancel as well", reqID)
 			err := loop.Send(&schedulerpb.FrontendToScheduler{
 				Type:    schedulerpb.CANCEL,
 				QueryID: reqID,
