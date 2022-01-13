@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	promRules "github.com/prometheus/prometheus/rules"
 
-	"github.com/grafana/loki/pkg/configs/client"
 	configClient "github.com/grafana/loki/pkg/configs/client"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/bucketclient"
@@ -30,8 +29,8 @@ import (
 // RuleStoreConfig configures a rule store.
 // TODO remove this legacy config in Cortex 1.11.
 type RuleStoreConfig struct {
-	Type     string        `yaml:"type"`
-	ConfigDB client.Config `yaml:"configdb"`
+	Type     string              `yaml:"type"`
+	ConfigDB configClient.Config `yaml:"configdb"`
 
 	// Object Storage Configs
 	Azure azure.BlobStorageConfig `yaml:"azure"`
@@ -120,7 +119,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 // NewRuleStore returns a rule store backend client based on the provided cfg.
 func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, loader promRules.GroupLoader, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
 	if cfg.Backend == configdb.Name {
-		c, err := client.New(cfg.ConfigDB)
+		c, err := configClient.New(cfg.ConfigDB)
 
 		if err != nil {
 			return nil, err
