@@ -15,12 +15,16 @@ queries against a Loki instance.
 Download the `logcli` binary from the
 [Loki releases page](https://github.com/grafana/loki/releases).
 
-### From source
+### Compile from source
 
-Install `logcli` to your `$GOPATH/bin`:
+Clone Github repository and compile `logcli` from source:
 
-```
-go get github.com/grafana/loki/cmd/logcli
+```bash
+git clone https://github.com/grafana/loki.git
+cd loki
+make logcli
+# optionally, move the binary into a directory that is part of $PATH
+cp cmd/logcli/logcli /usr/local/bin/logcli
 ```
 
 ## LogCLI usage
@@ -39,7 +43,7 @@ Otherwise you can point LogCLI to a local instance directly
 without needing a username and password:
 
 ```bash
-$ export LOKI_ADDR=http://localhost:3100
+export LOKI_ADDR=http://localhost:3100
 ```
 
 > Note: If you are running Loki behind a proxy server and you have
