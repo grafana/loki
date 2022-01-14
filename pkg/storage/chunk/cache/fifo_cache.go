@@ -70,7 +70,6 @@ type FifoCache struct {
 	maxSizeItems  int
 	maxSizeBytes  uint64
 	currSizeBytes uint64
-	validity      time.Duration
 
 	entries map[string]*list.Element
 	lru     *list.List
@@ -81,7 +80,6 @@ type FifoCache struct {
 	entriesCurrent  prometheus.Gauge
 	totalGets       prometheus.Counter
 	totalMisses     prometheus.Counter
-	staleGets       prometheus.Counter
 	memoryBytes     prometheus.Gauge
 }
 
@@ -110,7 +108,6 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 	return &FifoCache{
 		maxSizeItems: cfg.MaxSizeItems,
 		maxSizeBytes: maxSizeBytes,
-		validity:     cfg.Validity,
 		entries:      make(map[string]*list.Element),
 		lru:          list.New(),
 
@@ -159,14 +156,6 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 			Subsystem:   "cache",
 			Name:        "misses_total",
 			Help:        "The total number of Get calls that had no valid entry",
-			ConstLabels: prometheus.Labels{"cache": name},
-		}),
-
-		staleGets: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
-			Name:        "stale_gets_total",
-			Help:        "The total number of Get calls that had an entry which expired",
 			ConstLabels: prometheus.Labels{"cache": name},
 		}),
 
@@ -285,13 +274,7 @@ func (c *FifoCache) Get(ctx context.Context, key string) ([]byte, bool) {
 	element, ok := c.entries[key]
 	if ok {
 		entry := element.Value.(*cacheEntry)
-		if c.validity == 0 || time.Since(entry.updated) < c.validity {
-			return entry.value, true
-		}
-
-		c.totalMisses.Inc()
-		c.staleGets.Inc()
-		return nil, false
+		return entry.value, true
 	}
 
 	c.totalMisses.Inc()
