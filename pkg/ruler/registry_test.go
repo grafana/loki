@@ -191,7 +191,7 @@ func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
 
 	// HTTP client config is not currently overrideable, all tenants' configs should inherit base
 	assert.Equal(t, tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Username, "foo")
-	assert.Equal(t, tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Password, promConfig.Secret("<secret>"))
+	assert.Equal(t, tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Password, promConfig.Secret("bar"))
 }
 
 func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
