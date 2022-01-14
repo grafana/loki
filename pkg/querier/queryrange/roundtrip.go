@@ -392,7 +392,7 @@ func NewMetricTripperware(
 		SplitByIntervalMiddleware(limits, codec, splitMetricByTime, splitByMetrics),
 	)
 
-	var c lokicache.Cache
+	var c cache.Cache
 	if cfg.CacheResults {
 		queryCacheMiddleware, cache, err := queryrangebase.NewResultsCacheMiddleware(
 			log,
