@@ -19,8 +19,6 @@ pipeline_stages:
       app:
       msg:
 - limit:
-    source: app
-    value: loki
     rate: 1
     burst: 1
     drop: false
@@ -34,8 +32,6 @@ pipeline_stages:
       app:
       msg:
 - limit:
-    source: app
-    value: loki
     rate: 1
     burst: 1
     drop: true

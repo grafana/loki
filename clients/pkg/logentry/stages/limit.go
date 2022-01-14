@@ -2,12 +2,8 @@ package stages
 
 import (
 	"context"
-	"fmt"
-	"reflect"
-	"regexp"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,22 +11,15 @@ import (
 )
 
 const (
-	ErrLimitStageEmptyConfig        = "limit stage config must contain at least one of `source`, `expression`, `older_than` or `longer_than`"
-	ErrLimitStageInvalidConfig      = "limit stage config error, `value` and `expression` cannot both be defined at the same time."
-	ErrLimitStageInvalidRegex       = "limit stage regex compilation error: %v"
 	ErrLimitStageInvalidRateOrBurst = "limit stage failed to parse rate or burst"
 )
 
 var ratelimitDropReason = "ratelimit_drop_stage"
 
 type LimitConfig struct {
-	Source     *string `mapstructure:"source"`
-	Rate       float64 `mapstructure:"rate"`
-	Burst      int     `mapstructure:"burst"`
-	Drop       bool    `mapstructure:"drop"`
-	Value      *string `mapstructure:"value"`
-	Expression *string `mapstructure:"expression"`
-	regex      *regexp.Regexp
+	Rate  float64 `mapstructure:"rate"`
+	Burst int     `mapstructure:"burst"`
+	Drop  bool    `mapstructure:"drop"`
 }
 
 func newLimitStage(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
@@ -55,20 +44,6 @@ func newLimitStage(logger log.Logger, config interface{}, registerer prometheus.
 }
 
 func validateLimitConfig(cfg *LimitConfig) error {
-	if cfg == nil ||
-		(cfg.Source == nil && cfg.Expression == nil) {
-		return errors.New(ErrLimitStageEmptyConfig)
-	}
-	if cfg.Value != nil && cfg.Expression != nil {
-		return errors.New(ErrLimitStageInvalidConfig)
-	}
-	if cfg.Expression != nil {
-		expr, err := regexp.Compile(*cfg.Expression)
-		if err != nil {
-			return errors.Errorf(ErrLimitStageInvalidRegex, err)
-		}
-		cfg.regex = expr
-	}
 	if cfg.Rate <= 0 || cfg.Burst <= 0 {
 		return errors.Errorf(ErrLimitStageInvalidRateOrBurst)
 	}
@@ -88,21 +63,13 @@ func (m *limitStage) Run(in chan Entry) chan Entry {
 	go func() {
 		defer close(out)
 		for e := range in {
-			if !m.shouldDrop(e) {
+			if !m.shouldThrottle() {
 				out <- e
 				continue
 			}
 		}
 	}()
 	return out
-}
-
-func (m *limitStage) shouldDrop(e Entry) bool {
-	isMatchTag := m.isMatchTag(e)
-	if !isMatchTag {
-		return false
-	}
-	return m.shouldThrottle()
 }
 
 func (m *limitStage) shouldThrottle() bool {
@@ -120,65 +87,4 @@ func (m *limitStage) shouldThrottle() bool {
 // Name implements Stage
 func (m *limitStage) Name() string {
 	return StageTypeLimit
-}
-
-func (m *limitStage) isMatchTag(e Entry) bool {
-	if m.cfg.Source != nil && m.cfg.Expression == nil {
-		if v, ok := e.Extracted[*m.cfg.Source]; ok {
-			if m.cfg.Value == nil {
-				// Found in map, no value set meaning throttle if found in map
-				level.Debug(m.logger).Log("msg", "line met throttle criteria for finding source key in extracted map")
-			} else {
-				if *m.cfg.Value == v {
-					// Found in map with value set for throttle
-					level.Debug(m.logger).Log("msg", "line met throttle criteria for finding source key in extracted map with value matching desired throttle value")
-				} else {
-					// Value doesn't match, don't throttle
-					level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be throttled, source key was found in extracted map but value '%v' did not match desired value '%v'", v, *m.cfg.Value))
-					return false
-				}
-			}
-		} else {
-			// Not found in extact map, don't throttle
-			level.Debug(m.logger).Log("msg", "line will not be throttled, the provided source was not found in the extracted map")
-			return false
-		}
-	}
-
-	if m.cfg.Expression != nil {
-		if m.cfg.Source != nil {
-			if v, ok := e.Extracted[*m.cfg.Source]; ok {
-				s, err := getString(v)
-				if err != nil {
-					level.Debug(m.logger).Log("msg", "Failed to convert extracted map value to string, cannot test regex line will not be throttled.", "err", err, "type", reflect.TypeOf(v))
-					return false
-				}
-				match := m.cfg.regex.FindStringSubmatch(s)
-				if match == nil {
-					// Not a match to the regex, don't throttle
-					level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be throttled, the provided regular expression did not match the value found in the extracted map for source key: %v", *m.cfg.Source))
-					return false
-				}
-				// regex match, will be throttled
-				level.Debug(m.logger).Log("msg", "line met throttle criteria, regex matched the value in the extracted map source key")
-
-			} else {
-				// Not found in extact map, don't throttle
-				level.Debug(m.logger).Log("msg", "line will not be throttled, the provided source was not found in the extracted map")
-				return false
-			}
-		} else {
-			match := m.cfg.regex.FindStringSubmatch(e.Line)
-			if match == nil {
-				// Not a match to the regex, don't throttle
-				level.Debug(m.logger).Log("msg", "line will not be throttled, the provided regular expression did not match the log line")
-				return false
-			}
-			level.Debug(m.logger).Log("msg", "line met throttle criteria, the provided regular expression matched the log line")
-		}
-	}
-
-	// Everything matched, throttle the line
-	level.Debug(m.logger).Log("msg", "all criteria met, line will be throttled")
-	return true
 }
