@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
@@ -48,6 +49,7 @@ func Test_DockerTarget(t *testing.T) {
 		ps,
 		"flog",
 		model.LabelSet{"job": "docker"},
+		[]*relabel.Config{},
 		client,
 	)
 	require.NoError(t, err)
