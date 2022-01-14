@@ -79,6 +79,8 @@ func NewTarget(
 }
 
 func (t *Target) processLoop(ctx context.Context) {
+	t.wg.Add(1)
+	defer t.wg.Done()
 	t.running.Store(true)
 
 	opts := docker_types.ContainerLogsOptions{
@@ -178,7 +180,6 @@ func (t *Target) process(r io.Reader, logStream string) {
 func (t *Target) Stop() {
 	t.cancel()
 	t.wg.Wait()
-	t.handler.Stop()
 	level.Debug(t.logger).Log("msg", "stopped Docker target", "container", t.containerName)
 }
 

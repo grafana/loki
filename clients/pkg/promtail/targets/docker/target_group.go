@@ -113,6 +113,7 @@ func (tg *targetGroup) Stop() {
 	for _, t := range tg.targets {
 		t.Stop()
 	}
+	tg.entryHandler.Stop()
 }
 
 // ActiveTargets return all targets that are ready.
