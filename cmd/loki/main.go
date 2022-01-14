@@ -53,11 +53,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if config.VerifyConfig {
-		level.Info(util_log.Logger).Log("msg", "config is valid")
-		os.Exit(0)
-	}
-
 	if config.PrintConfig {
 		err := logutil.PrintConfig(os.Stderr, &config)
 		if err != nil {
@@ -70,6 +65,11 @@ func main() {
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to log config object", "err", err.Error())
 		}
+	}
+
+	if config.VerifyConfig {
+		level.Info(util_log.Logger).Log("msg", "config is valid")
+		os.Exit(0)
 	}
 
 	if config.Tracing.Enabled {
