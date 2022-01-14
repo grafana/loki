@@ -54,27 +54,7 @@ func NewTargetManager(
 	}
 	configs := map[string]discovery.Configs{}
 	for _, cfg := range scrapeConfigs {
-		if cfg.DockerConfig != nil {
-
-			pipeline, err := stages.NewPipeline(log.With(logger, "component", "docker_pipeline"), cfg.PipelineStages, &cfg.JobName, metrics.reg)
-			if err != nil {
-				return nil, err
-			}
-
-			s := &targetGroup{
-				metrics:       metrics,
-				logger:        logger,
-				targets:       make(map[string]*Target),
-				entryHandler:  pipeline.Wrap(pushClient),
-				defaultLabels: cfg.DockerConfig.Labels,
-				host:          cfg.DockerConfig.Host,
-			}
-			err = s.addTarget(cfg.DockerConfig.ContainerName, model.LabelSet{})
-			if err != nil {
-				return nil, err
-			}
-			tm.groups[cfg.JobName] = s
-		} else if cfg.DockerSDConfigs != nil {
+		if cfg.DockerSDConfigs != nil {
 			pipeline, err := stages.NewPipeline(
 				log.With(logger, "component", "docker_pipeline"),
 				cfg.PipelineStages,

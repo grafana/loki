@@ -97,8 +97,6 @@ func NewTargetManagers(
 			targetScrapeConfigs[GelfConfigs] = append(targetScrapeConfigs[GelfConfigs], cfg)
 		case cfg.CloudflareConfig != nil:
 			targetScrapeConfigs[CloudflareConfigs] = append(targetScrapeConfigs[CloudflareConfigs], cfg)
-		case cfg.DockerConfig != nil:
-			targetScrapeConfigs[DockerConfigs] = append(targetScrapeConfigs[DockerConfigs], cfg)
 		case cfg.DockerSDConfigs != nil:
 			targetScrapeConfigs[DockerSDConfigs] = append(targetScrapeConfigs[DockerSDConfigs], cfg)
 		default:

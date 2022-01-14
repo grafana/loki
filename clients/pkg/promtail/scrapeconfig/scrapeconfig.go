@@ -43,7 +43,6 @@ type Config struct {
 	KafkaConfig      *KafkaTargetConfig         `yaml:"kafka,omitempty"`
 	GelfConfig       *GelfTargetConfig          `yaml:"gelf,omitempty"`
 	CloudflareConfig *CloudflareConfig          `yaml:"cloudflare,omitempty"`
-	DockerConfig     *DockerConfig              `yaml:"docker,omitempty"`
 	RelabelConfigs   []*relabel.Config          `yaml:"relabel_configs,omitempty"`
 	// List of Docker service discovery configurations.
 	DockerSDConfigs        []*moby.DockerSDConfig `yaml:"docker_sd_configs,omitempty"`
@@ -332,15 +331,6 @@ type CloudflareConfig struct {
 	// - extended
 	// - all
 	FieldsType string `yaml:"fields_type"`
-}
-
-type DockerConfig struct {
-	// Host of the Docker daemon. Defaults to unix:///var/run/docker.sock.
-	Host string `yaml:"host" default:"unix:///var/run/docker.sock"`
-	// The id or name of the container.
-	ContainerName string `yaml:"id"`
-	// Labels optionally holds labels to associate with each record read from Docker logs.
-	Labels model.LabelSet `yaml:"labels"`
 }
 
 // GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.

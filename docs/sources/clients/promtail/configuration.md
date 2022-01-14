@@ -331,9 +331,6 @@ job_name: <string>
 # Configuration describing how to pull logs from Cloudflare.
 [cloudflare: <cloudflare>]
 
-# Configuration describing how to pull logs from a Docker container.
-[docker: <docker>]
-
 # Describes how to relabel targets to determine if they should
 # be processed.
 relabel_configs:
@@ -1164,24 +1161,6 @@ All Cloudflare logs are in JSON. Here is an example:
 ```
 
 You can leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
-
-### Docker
-
-The `docker` block configures Promtail to pull logs for a Docker container via the Docker daemon. 
-
-```yaml
-# Address of the Docker daemon. It defaults to unix:///var/run/docker.sock.
-host: <string>
-
-# The name or id of the container that should be scraped.
-id: <string>
-
-# Optional static set of labels to associate with each record read from Docker logs.
-labels:
-  [ <labelname>: <labelvalue> ... ]
-```
-
-If you wish to discover containers or their labels consider using [Docker service discovery]($docker_sd_config).
 
 ### relabel_configs
 
