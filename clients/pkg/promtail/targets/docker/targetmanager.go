@@ -76,6 +76,7 @@ func NewTargetManager(
 						targets:       make(map[string]*Target),
 						entryHandler:  pipeline.Wrap(pushClient),
 						defaultLabels: model.LabelSet{},
+						relabelConfig: cfg.RelabelConfigs,
 						host:          sdConfig.Host,
 					}
 				}

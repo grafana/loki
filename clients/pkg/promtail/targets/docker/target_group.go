@@ -2,6 +2,7 @@ package docker
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/docker/docker/client"
@@ -12,6 +13,8 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 )
 
 const DockerSource = "Docker"
@@ -23,6 +26,7 @@ type targetGroup struct {
 	positions     positions.Positions
 	entryHandler  api.EntryHandler
 	defaultLabels model.LabelSet
+	relabelConfig []*relabel.Config
 	host          string
 	client        client.APIClient
 
@@ -55,7 +59,7 @@ func (tg *targetGroup) sync(groups []*targetgroup.Group) {
 }
 
 // addTarget checks whether the container with given id is already known. If not it's added to the this group
-func (tg *targetGroup) addTarget(id string, labels model.LabelSet) error {
+func (tg *targetGroup) addTarget(id string, discoveredLabels model.LabelSet) error {
 	if tg.client == nil {
 		var err error
 		opts := []client.Opt{
@@ -75,13 +79,28 @@ func (tg *targetGroup) addTarget(id string, labels model.LabelSet) error {
 		return nil
 	}
 
+	// Add all labels from the config.
+	lb := labels.NewBuilder(nil)
+	for k, v := range discoveredLabels {
+		lb.Set(string(k), string(v))
+	}
+	processed := relabel.Process(lb.Labels(), tg.relabelConfig...)
+
+	filtered := make(model.LabelSet)
+	for _, lbl := range processed {
+		if strings.HasPrefix(lbl.Name, "__") {
+			continue
+		}
+		filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+	}
+
 	t, err := NewTarget(
 		tg.metrics,
 		log.With(tg.logger, "target", fmt.Sprintf("docker/%s", id)),
 		tg.entryHandler,
 		tg.positions,
 		id,
-		labels.Merge(tg.defaultLabels),
+		filtered.Merge(tg.defaultLabels),
 		tg.client,
 	)
 	if err != nil {
