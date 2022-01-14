@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -15,6 +13,8 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
@@ -22,10 +22,10 @@ const (
 )
 
 type DownstreamHandler struct {
-	next queryrange.Handler
+	next queryrangebase.Handler
 }
 
-func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrange.Request {
+func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebase.Request {
 	if params.Start() == params.End() {
 		return &LokiInstantRequest{
 			Query:     params.Query(),
@@ -65,7 +65,7 @@ func (h DownstreamHandler) Downstreamer() logql.Downstreamer {
 type instance struct {
 	parallelism int
 	locks       chan struct{}
-	handler     queryrange.Handler
+	handler     queryrangebase.Handler
 }
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
@@ -145,7 +145,7 @@ func (in instance) For(
 }
 
 // convert to matrix
-func sampleStreamToMatrix(streams []queryrange.SampleStream) parser.Value {
+func sampleStreamToMatrix(streams []queryrangebase.SampleStream) parser.Value {
 	xs := make(promql.Matrix, 0, len(streams))
 	for _, stream := range streams {
 		x := promql.Series{}
@@ -167,7 +167,7 @@ func sampleStreamToMatrix(streams []queryrange.SampleStream) parser.Value {
 	return xs
 }
 
-func sampleStreamToVector(streams []queryrange.SampleStream) parser.Value {
+func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 	xs := make(promql.Vector, 0, len(streams))
 	for _, stream := range streams {
 		x := promql.Sample{}
@@ -186,7 +186,7 @@ func sampleStreamToVector(streams []queryrange.SampleStream) parser.Value {
 	return xs
 }
 
-func ResponseToResult(resp queryrange.Response) (logqlmodel.Result, error) {
+func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 	switch r := resp.(type) {
 	case *LokiResponse:
 		if r.Error != "" {

@@ -6,13 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
+	rt "runtime"
 
-	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
-	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -36,23 +35,28 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	basetripper "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
+	base_ruler "github.com/grafana/loki/pkg/ruler/base"
+	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/util/fakeauth"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 // Config is the root config for Loki.
 type Config struct {
-	Target      flagext.StringSliceCSV `yaml:"target,omitempty"`
-	AuthEnabled bool                   `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix  string                 `yaml:"http_prefix"`
+	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
+	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
+	HTTPPrefix   string                 `yaml:"http_prefix"`
+	BallastBytes int                    `yaml:"ballast_bytes"`
 
 	Common           common.Config            `yaml:"common,omitempty"`
 	Server           server.Config            `yaml:"server,omitempty"`
@@ -87,6 +91,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
 		"The aliases 'read' and 'write' can be used to only run components related to the read path or write path, respectively.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
+	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
+		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
@@ -102,7 +108,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
-	c.QueryRange.RegisterFlags(f)
+	c.registerQueryRangeFlagsWithChangedDefaultValues(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
@@ -124,6 +130,28 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 			_ = f.Value.Set("10s")
 
 		case "server.grpc.keepalive.ping-without-stream-allowed":
+			_ = f.Value.Set("true")
+		}
+
+		fs.Var(f.Value, f.Name, f.Usage)
+	})
+}
+
+func (c *Config) registerQueryRangeFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
+	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
+	// NB: We can remove this after removing Loki's dependency on Cortex and bringing in the queryrange.Config.
+	// That will let us change the defaults there rather than include wrapper functions like this one.
+	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
+	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
+	c.QueryRange.RegisterFlags(throwaway)
+
+	throwaway.VisitAll(func(f *flag.Flag) {
+		// Ignore errors when setting new values. We have a test to verify that it works.
+		switch f.Name {
+		case "querier.split-queries-by-interval":
+			_ = f.Value.Set("30m")
+
+		case "querier.parallelise-shardable-queries":
 			_ = f.Value.Set("true")
 		}
 
@@ -217,20 +245,20 @@ type Loki struct {
 	tenantConfigs            *runtime.TenantConfigs
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
-	Ingester                 *ingester.Ingester
+	Ingester                 ingester.Interface
 	Querier                  *querier.Querier
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
 	tableManager             *chunk.TableManager
 	frontend                 Frontend
-	ruler                    *cortex_ruler.Ruler
+	ruler                    *base_ruler.Ruler
 	RulerStorage             rulestore.RuleStore
-	rulerAPI                 *cortex_ruler.API
+	rulerAPI                 *base_ruler.API
 	stopper                  queryrange.Stopper
 	runtimeConfig            *runtimeconfig.Manager
 	MemberlistKV             *memberlist.KVInitService
 	compactor                *compactor.Compactor
-	QueryFrontEndTripperware cortex_tripper.Tripperware
+	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
 
 	HTTPAuthMiddleware middleware.Interface
@@ -293,6 +321,24 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 		configEndpointHandlerFn = opts.CustomConfigEndpointHandlerFn
 	}
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
+}
+
+// ListTargets prints a list of available user visible targets and their
+// dependencies
+func (t *Loki) ListTargets() {
+	green := color.New(color.FgGreen, color.Bold)
+	if rt.GOOS == "windows" {
+		green.DisableColor()
+	}
+	for _, m := range t.ModuleManager.UserVisibleModuleNames() {
+		fmt.Fprintln(os.Stdout, green.Sprint(m))
+
+		for _, n := range t.ModuleManager.DependenciesForModule(m) {
+			if t.ModuleManager.IsUserVisibleModule(n) {
+				fmt.Fprintln(os.Stdout, " ", n)
+			}
+		}
+	}
 }
 
 // Run starts Loki running, and blocks until a Loki stops.
@@ -427,15 +473,15 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 func (t *Loki) setupModuleManager() error {
 	mm := modules.NewManager(util_log.Logger)
 
-	mm.RegisterModule(Server, t.initServer)
-	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig)
-	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
-	mm.RegisterModule(Ring, t.initRing)
-	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(Server, t.initServer, modules.UserInvisibleModule)
+	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
+	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
+	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
+	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
-	mm.RegisterModule(TenantConfigs, t.initTenantConfigs)
+	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
-	mm.RegisterModule(Store, t.initStore)
+	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
@@ -475,7 +521,7 @@ func (t *Loki) setupModuleManager() error {
 		Write:                    {Ingester, Distributor},
 	}
 
-	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
+	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, or read.
 	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}

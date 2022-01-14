@@ -446,10 +446,11 @@ type ObjectClient struct {
 	readSession    *gocql.Session
 	writeSession   *gocql.Session
 	querySemaphore *semaphore.Weighted
+	maxGetParallel int
 }
 
 // NewObjectClient returns a new ObjectClient.
-func NewObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (*ObjectClient, error) {
+func NewObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer, maxGetParallel int) (*ObjectClient, error) {
 	readSession, err := cfg.session("chunks-read", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -471,6 +472,7 @@ func NewObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer promet
 		readSession:    readSession,
 		writeSession:   writeSession,
 		querySemaphore: querySemaphore,
+		maxGetParallel: maxGetParallel,
 	}
 	return client, nil
 }
@@ -482,7 +484,7 @@ func (s *ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) erro
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		key := chunks[i].ExternalKey()
+		key := s.schemaCfg.ExternalKey(chunks[i])
 		tableName, err := s.schemaCfg.ChunkTableFor(chunks[i].From)
 		if err != nil {
 			return err
@@ -501,7 +503,7 @@ func (s *ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) erro
 
 // GetChunks implements chunk.ObjectClient.
 func (s *ObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
-	return util.GetParallelChunks(ctx, input, s.getChunk)
+	return util.GetParallelChunks(ctx, s.maxGetParallel, input, s.getChunk)
 }
 
 func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
@@ -518,7 +520,7 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decode
 	}
 
 	var buf []byte
-	if err := s.readSession.Query(fmt.Sprintf("SELECT value FROM %s WHERE hash = ?", tableName), input.ExternalKey()).
+	if err := s.readSession.Query(fmt.Sprintf("SELECT value FROM %s WHERE hash = ?", tableName), s.schemaCfg.ExternalKey(input)).
 		WithContext(ctx).Scan(&buf); err != nil {
 		return input, errors.WithStack(err)
 	}

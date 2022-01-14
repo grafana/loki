@@ -7,9 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -20,16 +17,19 @@ import (
 	"github.com/grafana/dskit/services"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	querier_stats "github.com/grafana/loki/pkg/querier/stats"
+	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/pkg/tenant"
 )
 
-func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
+func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics) (*schedulerProcessor, []services.Service) {
 	p := &schedulerProcessor{
 		log:            log,
 		handler:        handler,
@@ -37,17 +37,8 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 		querierID:      cfg.QuerierID,
 		grpcConfig:     cfg.GRPCClientConfig,
 
-		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_querier_query_frontend_request_duration_seconds",
-			Help:    "Time spend doing requests to frontend.",
-			Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
-		}, []string{"operation", "status_code"}),
+		metrics: metrics,
 	}
-
-	frontendClientsGauge := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_querier_query_frontend_clients",
-		Help: "The current number of clients connected to query-frontend.",
-	})
 
 	poolConfig := client.PoolConfig{
 		CheckInterval:      5 * time.Second,
@@ -55,7 +46,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 		HealthCheckTimeout: 1 * time.Second,
 	}
 
-	p.frontendPool = client.NewPool("frontend", poolConfig, nil, p.createFrontendClient, frontendClientsGauge, log)
+	p.frontendPool = client.NewPool("frontend", poolConfig, nil, p.createFrontendClient, p.metrics.frontendClientsGauge, log)
 	return p, []services.Service{p.frontendPool}
 }
 
@@ -67,8 +58,8 @@ type schedulerProcessor struct {
 	maxMessageSize int
 	querierID      string
 
-	frontendPool                  *client.Pool
-	frontendClientRequestDuration *prometheus.HistogramVec
+	frontendPool *client.Pool
+	metrics      *Metrics
 }
 
 // notifyShutdown implements processor.
@@ -137,7 +128,15 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 				logger = util_log.WithContext(ctx, sp.log)
 			)
 
+			start := time.Now()
+			tenant, _ := tenant.TenantID(ctx)
+			sp.metrics.inflightRequests.Inc()
+			level.Debug(logger).Log("msg", "tracking inflight request", "tenant", tenant, "op", "enqueue")
+
 			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
+
+			sp.metrics.inflightRequests.Dec()
+			level.Debug(logger).Log("msg", "tracking inflight request", "tenant", tenant, "op", "dequeue", "duration", time.Since(start))
 
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {
@@ -194,7 +193,7 @@ func (sp *schedulerProcessor) createFrontendClient(addr string) (client.PoolClie
 	opts, err := sp.grpcConfig.DialOption([]grpc.UnaryClientInterceptor{
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
-		dskit_middleware.PrometheusGRPCUnaryInstrumentation(sp.frontendClientRequestDuration),
+		dskit_middleware.PrometheusGRPCUnaryInstrumentation(sp.metrics.frontendClientRequestDuration),
 	}, nil)
 	if err != nil {
 		return nil, err

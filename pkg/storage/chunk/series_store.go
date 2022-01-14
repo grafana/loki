@@ -13,11 +13,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 
+	"github.com/grafana/loki/pkg/util/spanlogger"
+
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
@@ -75,8 +76,8 @@ type seriesStore struct {
 	writeDedupeCache cache.Cache
 }
 
-func newSeriesStore(cfg StoreConfig, schema SeriesStoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
-	rs, err := newBaseStore(cfg, schema, index, chunks, limits, chunksCache)
+func newSeriesStore(cfg StoreConfig, scfg SchemaConfig, schema SeriesStoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
+	rs, err := newBaseStore(cfg, scfg, schema, index, chunks, limits, chunksCache)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +123,7 @@ func (c *seriesStore) Get(ctx context.Context, userID string, from, through mode
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	keys := keysFromChunks(chunks)
+	keys := keysFromChunks(c.baseStore.schemaCfg, chunks)
 	allChunks, err := fetcher.FetchChunks(ctx, chunks, keys)
 	if err != nil {
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
@@ -226,6 +227,59 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string
 
 	return labelNames, nil
 }
+func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelValuesForMetricName")
+	defer log.Span.Finish()
+
+	if len(matchers) == 0 {
+		return c.baseStore.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
+	}
+
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	// Otherwise get series which include other matchers
+	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
+	if err != nil {
+		return nil, err
+	}
+	seriesIDsSet := make(map[string]struct{}, len(seriesIDs))
+	for _, i := range seriesIDs {
+		seriesIDsSet[i] = struct{}{}
+	}
+
+	contains := func(id string) bool {
+		_, ok := seriesIDsSet[id]
+		return ok
+	}
+
+	// Fetch label values for label name that are part of the filtered chunks
+	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	if err != nil {
+		return nil, err
+	}
+
+	result := NewUniqueStrings(len(entries))
+	for _, entry := range entries {
+		seriesID, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		if err != nil {
+			return nil, err
+		}
+		if contains(seriesID) {
+			result.Add(string(labelValue))
+		}
+	}
+
+	return result.Strings(), nil
+}
 
 func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupLabelNamesByChunks")
@@ -247,7 +301,7 @@ func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, throug
 
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
 	filtered := filterChunksByTime(from, through, chunks)
-	filtered, keys := filterChunksByUniqueFingerprint(filtered)
+	filtered, keys := filterChunksByUniqueFingerprint(c.baseStore.schemaCfg, filtered)
 	level.Debug(log).Log("Chunks post filtering", len(chunks))
 
 	chunksPerQuery.Observe(float64(len(filtered)))
@@ -424,7 +478,8 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	writeChunk := true
 
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
-	found, _, _, _ := c.fetcher.cache.Fetch(ctx, []string{chunk.ExternalKey()})
+	found, _, _, _ := c.fetcher.cache.Fetch(ctx, []string{c.baseStore.schemaCfg.ExternalKey(chunk)})
+
 	if len(found) > 0 {
 		writeChunk = false
 		dedupedChunksTotal.Inc()
@@ -490,7 +545,7 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
 
-	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
+	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.baseStore.schemaCfg.ExternalKey(chunk))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -505,7 +560,7 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 		}
 	}
 
-	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
+	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.baseStore.schemaCfg.ExternalKey(chunk))
 	if err != nil {
 		return nil, nil, err
 	}

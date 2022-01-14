@@ -8299,6 +8299,21 @@ func (s *BackupSummary) SetTableName(v string) *BackupSummary {
 type BatchExecuteStatementInput struct {
 	_ struct{} `type:"structure"`
 
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response:
+	//
+	//    * INDEXES - The response includes the aggregate ConsumedCapacity for the
+	//    operation, together with ConsumedCapacity for each table and secondary
+	//    index that was accessed. Note that some operations, such as GetItem and
+	//    BatchGetItem, do not access any indexes at all. In these cases, specifying
+	//    INDEXES will only return ConsumedCapacity information for table(s).
+	//
+	//    * TOTAL - The response includes only the aggregate ConsumedCapacity for
+	//    the operation.
+	//
+	//    * NONE - No ConsumedCapacity details are included in the response.
+	ReturnConsumedCapacity *string `type:"string" enum:"ReturnConsumedCapacity"`
+
 	// The list of PartiQL statements representing the batch to run.
 	//
 	// Statements is a required field
@@ -8349,6 +8364,12 @@ func (s *BatchExecuteStatementInput) Validate() error {
 	return nil
 }
 
+// SetReturnConsumedCapacity sets the ReturnConsumedCapacity field's value.
+func (s *BatchExecuteStatementInput) SetReturnConsumedCapacity(v string) *BatchExecuteStatementInput {
+	s.ReturnConsumedCapacity = &v
+	return s
+}
+
 // SetStatements sets the Statements field's value.
 func (s *BatchExecuteStatementInput) SetStatements(v []*BatchStatementRequest) *BatchExecuteStatementInput {
 	s.Statements = v
@@ -8357,6 +8378,10 @@ func (s *BatchExecuteStatementInput) SetStatements(v []*BatchStatementRequest) *
 
 type BatchExecuteStatementOutput struct {
 	_ struct{} `type:"structure"`
+
+	// The capacity units consumed by the entire operation. The values of the list
+	// are ordered according to the ordering of the statements.
+	ConsumedCapacity []*ConsumedCapacity `type:"list"`
 
 	// The response to each PartiQL statement in the batch.
 	Responses []*BatchStatementResponse `type:"list"`
@@ -8378,6 +8403,12 @@ func (s BatchExecuteStatementOutput) String() string {
 // value will be replaced with "sensitive".
 func (s BatchExecuteStatementOutput) GoString() string {
 	return s.String()
+}
+
+// SetConsumedCapacity sets the ConsumedCapacity field's value.
+func (s *BatchExecuteStatementOutput) SetConsumedCapacity(v []*ConsumedCapacity) *BatchExecuteStatementOutput {
+	s.ConsumedCapacity = v
+	return s
 }
 
 // SetResponses sets the Responses field's value.
@@ -8441,8 +8472,8 @@ type BatchGetItemInput struct {
 	// RequestItems is a required field
 	RequestItems map[string]*KeysAndAttributes `min:"1" type:"map" required:"true"`
 
-	// Determines the level of detail about provisioned throughput consumption that
-	// is returned in the response:
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response:
 	//
 	//    * INDEXES - The response includes the aggregate ConsumedCapacity for the
 	//    operation, together with ConsumedCapacity for each table and secondary
@@ -8782,8 +8813,8 @@ type BatchWriteItemInput struct {
 	// RequestItems is a required field
 	RequestItems map[string][]*WriteRequest `min:"1" type:"map" required:"true"`
 
-	// Determines the level of detail about provisioned throughput consumption that
-	// is returned in the response:
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response:
 	//
 	//    * INDEXES - The response includes the aggregate ConsumedCapacity for the
 	//    operation, together with ConsumedCapacity for each table and secondary
@@ -10094,6 +10125,10 @@ type CreateReplicationGroupMemberAction struct {
 	//
 	// RegionName is a required field
 	RegionName *string `type:"string" required:"true"`
+
+	// Replica-specific table class. If not specified, uses the source table's table
+	// class.
+	TableClassOverride *string `type:"string" enum:"TableClass"`
 }
 
 // String returns the string representation.
@@ -10166,6 +10201,12 @@ func (s *CreateReplicationGroupMemberAction) SetProvisionedThroughputOverride(v 
 // SetRegionName sets the RegionName field's value.
 func (s *CreateReplicationGroupMemberAction) SetRegionName(v string) *CreateReplicationGroupMemberAction {
 	s.RegionName = &v
+	return s
+}
+
+// SetTableClassOverride sets the TableClassOverride field's value.
+func (s *CreateReplicationGroupMemberAction) SetTableClassOverride(v string) *CreateReplicationGroupMemberAction {
+	s.TableClassOverride = &v
 	return s
 }
 
@@ -10304,6 +10345,9 @@ type CreateTableInput struct {
 	//    NEW_AND_OLD_IMAGES - Both the new and the old item images of the item
 	//    are written to the stream.
 	StreamSpecification *StreamSpecification `type:"structure"`
+
+	// The table class of the new table. Valid values are STANDARD and STANDARD_INFREQUENT_ACCESS.
+	TableClass *string `type:"string" enum:"TableClass"`
 
 	// The name of the table to create.
 	//
@@ -10463,6 +10507,12 @@ func (s *CreateTableInput) SetSSESpecification(v *SSESpecification) *CreateTable
 // SetStreamSpecification sets the StreamSpecification field's value.
 func (s *CreateTableInput) SetStreamSpecification(v *StreamSpecification) *CreateTableInput {
 	s.StreamSpecification = v
+	return s
+}
+
+// SetTableClass sets the TableClass field's value.
+func (s *CreateTableInput) SetTableClass(v string) *CreateTableInput {
+	s.TableClass = &v
 	return s
 }
 
@@ -10844,8 +10894,8 @@ type DeleteItemInput struct {
 	// Key is a required field
 	Key map[string]*AttributeValue `type:"map" required:"true"`
 
-	// Determines the level of detail about provisioned throughput consumption that
-	// is returned in the response:
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response:
 	//
 	//    * INDEXES - The response includes the aggregate ConsumedCapacity for the
 	//    operation, together with ConsumedCapacity for each table and secondary
@@ -12657,6 +12707,21 @@ type ExecuteStatementInput struct {
 	// The parameters for the PartiQL statement, if any.
 	Parameters []*AttributeValue `min:"1" type:"list"`
 
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response:
+	//
+	//    * INDEXES - The response includes the aggregate ConsumedCapacity for the
+	//    operation, together with ConsumedCapacity for each table and secondary
+	//    index that was accessed. Note that some operations, such as GetItem and
+	//    BatchGetItem, do not access any indexes at all. In these cases, specifying
+	//    INDEXES will only return ConsumedCapacity information for table(s).
+	//
+	//    * TOTAL - The response includes only the aggregate ConsumedCapacity for
+	//    the operation.
+	//
+	//    * NONE - No ConsumedCapacity details are included in the response.
+	ReturnConsumedCapacity *string `type:"string" enum:"ReturnConsumedCapacity"`
+
 	// The PartiQL statement representing the operation to run.
 	//
 	// Statement is a required field
@@ -12721,6 +12786,12 @@ func (s *ExecuteStatementInput) SetParameters(v []*AttributeValue) *ExecuteState
 	return s
 }
 
+// SetReturnConsumedCapacity sets the ReturnConsumedCapacity field's value.
+func (s *ExecuteStatementInput) SetReturnConsumedCapacity(v string) *ExecuteStatementInput {
+	s.ReturnConsumedCapacity = &v
+	return s
+}
+
 // SetStatement sets the Statement field's value.
 func (s *ExecuteStatementInput) SetStatement(v string) *ExecuteStatementInput {
 	s.Statement = &v
@@ -12729,6 +12800,14 @@ func (s *ExecuteStatementInput) SetStatement(v string) *ExecuteStatementInput {
 
 type ExecuteStatementOutput struct {
 	_ struct{} `type:"structure"`
+
+	// The capacity units consumed by an operation. The data returned includes the
+	// total provisioned throughput consumed, along with statistics for the table
+	// and any indexes involved in the operation. ConsumedCapacity is only returned
+	// if the request asked for it. For more information, see Provisioned Throughput
+	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ProvisionedThroughputIntro.html)
+	// in the Amazon DynamoDB Developer Guide.
+	ConsumedCapacity *ConsumedCapacity `type:"structure"`
 
 	// If a read operation was used, this property will contain the result of the
 	// read operation; a map of attribute names and their values. For the write
@@ -12759,6 +12838,12 @@ func (s ExecuteStatementOutput) GoString() string {
 	return s.String()
 }
 
+// SetConsumedCapacity sets the ConsumedCapacity field's value.
+func (s *ExecuteStatementOutput) SetConsumedCapacity(v *ConsumedCapacity) *ExecuteStatementOutput {
+	s.ConsumedCapacity = v
+	return s
+}
+
 // SetItems sets the Items field's value.
 func (s *ExecuteStatementOutput) SetItems(v []map[string]*AttributeValue) *ExecuteStatementOutput {
 	s.Items = v
@@ -12777,6 +12862,12 @@ type ExecuteTransactionInput struct {
 	// Set this value to get remaining results, if NextToken was returned in the
 	// statement response.
 	ClientRequestToken *string `min:"1" type:"string" idempotencyToken:"true"`
+
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response. For more information, see TransactGetItems
+	// (https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactGetItems.html)
+	// and TransactWriteItems (https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactWriteItems.html).
+	ReturnConsumedCapacity *string `type:"string" enum:"ReturnConsumedCapacity"`
 
 	// The list of PartiQL statements representing the transaction to run.
 	//
@@ -12837,6 +12928,12 @@ func (s *ExecuteTransactionInput) SetClientRequestToken(v string) *ExecuteTransa
 	return s
 }
 
+// SetReturnConsumedCapacity sets the ReturnConsumedCapacity field's value.
+func (s *ExecuteTransactionInput) SetReturnConsumedCapacity(v string) *ExecuteTransactionInput {
+	s.ReturnConsumedCapacity = &v
+	return s
+}
+
 // SetTransactStatements sets the TransactStatements field's value.
 func (s *ExecuteTransactionInput) SetTransactStatements(v []*ParameterizedStatement) *ExecuteTransactionInput {
 	s.TransactStatements = v
@@ -12845,6 +12942,10 @@ func (s *ExecuteTransactionInput) SetTransactStatements(v []*ParameterizedStatem
 
 type ExecuteTransactionOutput struct {
 	_ struct{} `type:"structure"`
+
+	// The capacity units consumed by the entire operation. The values of the list
+	// are ordered according to the ordering of the statements.
+	ConsumedCapacity []*ConsumedCapacity `type:"list"`
 
 	// The response to a PartiQL transaction.
 	Responses []*ItemResponse `min:"1" type:"list"`
@@ -12866,6 +12967,12 @@ func (s ExecuteTransactionOutput) String() string {
 // value will be replaced with "sensitive".
 func (s ExecuteTransactionOutput) GoString() string {
 	return s.String()
+}
+
+// SetConsumedCapacity sets the ConsumedCapacity field's value.
+func (s *ExecuteTransactionOutput) SetConsumedCapacity(v []*ConsumedCapacity) *ExecuteTransactionOutput {
+	s.ConsumedCapacity = v
+	return s
 }
 
 // SetResponses sets the Responses field's value.
@@ -13860,8 +13967,8 @@ type GetItemInput struct {
 	// in the Amazon DynamoDB Developer Guide.
 	ProjectionExpression *string `type:"string"`
 
-	// Determines the level of detail about provisioned throughput consumption that
-	// is returned in the response:
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response:
 	//
 	//    * INDEXES - The response includes the aggregate ConsumedCapacity for the
 	//    operation, together with ConsumedCapacity for each table and secondary
@@ -17437,8 +17544,8 @@ type PutItemInput struct {
 	// Item is a required field
 	Item map[string]*AttributeValue `type:"map" required:"true"`
 
-	// Determines the level of detail about provisioned throughput consumption that
-	// is returned in the response:
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response:
 	//
 	//    * INDEXES - The response includes the aggregate ConsumedCapacity for the
 	//    operation, together with ConsumedCapacity for each table and secondary
@@ -17901,8 +18008,8 @@ type QueryInput struct {
 	// in the Amazon DynamoDB Developer Guide.
 	QueryFilter map[string]*Condition `type:"map"`
 
-	// Determines the level of detail about provisioned throughput consumption that
-	// is returned in the response:
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response:
 	//
 	//    * INDEXES - The response includes the aggregate ConsumedCapacity for the
 	//    operation, together with ConsumedCapacity for each table and secondary
@@ -18547,6 +18654,9 @@ type ReplicaDescription struct {
 	// Specifies the progress of a Create, Update, or Delete action on the replica
 	// as a percentage.
 	ReplicaStatusPercentProgress *string `type:"string"`
+
+	// Contains details of the table class.
+	ReplicaTableClassSummary *TableClassSummary `type:"structure"`
 }
 
 // String returns the string representation.
@@ -18612,6 +18722,12 @@ func (s *ReplicaDescription) SetReplicaStatusDescription(v string) *ReplicaDescr
 // SetReplicaStatusPercentProgress sets the ReplicaStatusPercentProgress field's value.
 func (s *ReplicaDescription) SetReplicaStatusPercentProgress(v string) *ReplicaDescription {
 	s.ReplicaStatusPercentProgress = &v
+	return s
+}
+
+// SetReplicaTableClassSummary sets the ReplicaTableClassSummary field's value.
+func (s *ReplicaDescription) SetReplicaTableClassSummary(v *TableClassSummary) *ReplicaDescription {
+	s.ReplicaTableClassSummary = v
 	return s
 }
 
@@ -19131,6 +19247,9 @@ type ReplicaSettingsDescription struct {
 	//
 	//    * ACTIVE - The Region is ready for use.
 	ReplicaStatus *string `type:"string" enum:"ReplicaStatus"`
+
+	// Contains details of the table class.
+	ReplicaTableClassSummary *TableClassSummary `type:"structure"`
 }
 
 // String returns the string representation.
@@ -19199,6 +19318,12 @@ func (s *ReplicaSettingsDescription) SetReplicaStatus(v string) *ReplicaSettings
 	return s
 }
 
+// SetReplicaTableClassSummary sets the ReplicaTableClassSummary field's value.
+func (s *ReplicaSettingsDescription) SetReplicaTableClassSummary(v *TableClassSummary) *ReplicaSettingsDescription {
+	s.ReplicaTableClassSummary = v
+	return s
+}
+
 // Represents the settings for a global table in a Region that will be modified.
 type ReplicaSettingsUpdate struct {
 	_ struct{} `type:"structure"`
@@ -19221,6 +19346,10 @@ type ReplicaSettingsUpdate struct {
 	// Read and Write Requirements (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/WorkingWithTables.html#ProvisionedThroughput)
 	// in the Amazon DynamoDB Developer Guide.
 	ReplicaProvisionedReadCapacityUnits *int64 `min:"1" type:"long"`
+
+	// Replica-specific table class. If not specified, uses the source table's table
+	// class.
+	ReplicaTableClass *string `type:"string" enum:"TableClass"`
 }
 
 // String returns the string representation.
@@ -19296,6 +19425,12 @@ func (s *ReplicaSettingsUpdate) SetReplicaProvisionedReadCapacityAutoScalingSett
 // SetReplicaProvisionedReadCapacityUnits sets the ReplicaProvisionedReadCapacityUnits field's value.
 func (s *ReplicaSettingsUpdate) SetReplicaProvisionedReadCapacityUnits(v int64) *ReplicaSettingsUpdate {
 	s.ReplicaProvisionedReadCapacityUnits = &v
+	return s
+}
+
+// SetReplicaTableClass sets the ReplicaTableClass field's value.
+func (s *ReplicaSettingsUpdate) SetReplicaTableClass(v string) *ReplicaSettingsUpdate {
+	s.ReplicaTableClass = &v
 	return s
 }
 
@@ -20351,8 +20486,8 @@ type ScanInput struct {
 	// in the Amazon DynamoDB Developer Guide.
 	ProjectionExpression *string `type:"string"`
 
-	// Determines the level of detail about provisioned throughput consumption that
-	// is returned in the response:
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response:
 	//
 	//    * INDEXES - The response includes the aggregate ConsumedCapacity for the
 	//    operation, together with ConsumedCapacity for each table and secondary
@@ -21087,6 +21222,47 @@ func (s *TableAutoScalingDescription) SetTableStatus(v string) *TableAutoScaling
 	return s
 }
 
+// Contains details of the table class.
+type TableClassSummary struct {
+	_ struct{} `type:"structure"`
+
+	// The date and time at which the table class was last updated.
+	LastUpdateDateTime *time.Time `type:"timestamp"`
+
+	// The table class of the specified table. Valid values are STANDARD and STANDARD_INFREQUENT_ACCESS.
+	TableClass *string `type:"string" enum:"TableClass"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s TableClassSummary) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s TableClassSummary) GoString() string {
+	return s.String()
+}
+
+// SetLastUpdateDateTime sets the LastUpdateDateTime field's value.
+func (s *TableClassSummary) SetLastUpdateDateTime(v time.Time) *TableClassSummary {
+	s.LastUpdateDateTime = &v
+	return s
+}
+
+// SetTableClass sets the TableClass field's value.
+func (s *TableClassSummary) SetTableClass(v string) *TableClassSummary {
+	s.TableClass = &v
+	return s
+}
+
 // Represents the properties of a table.
 type TableDescription struct {
 	_ struct{} `type:"structure"`
@@ -21265,6 +21441,9 @@ type TableDescription struct {
 	// The Amazon Resource Name (ARN) that uniquely identifies the table.
 	TableArn *string `type:"string"`
 
+	// Contains details of the table class.
+	TableClassSummary *TableClassSummary `type:"structure"`
+
 	// Unique identifier for the table for which the backup was created.
 	TableId *string `type:"string"`
 
@@ -21416,6 +21595,12 @@ func (s *TableDescription) SetStreamSpecification(v *StreamSpecification) *Table
 // SetTableArn sets the TableArn field's value.
 func (s *TableDescription) SetTableArn(v string) *TableDescription {
 	s.TableArn = &v
+	return s
+}
+
+// SetTableClassSummary sets the TableClassSummary field's value.
+func (s *TableDescription) SetTableClassSummary(v *TableClassSummary) *TableDescription {
+	s.TableClassSummary = v
 	return s
 }
 
@@ -22143,8 +22328,8 @@ type TransactWriteItemsInput struct {
 	// exception.
 	ClientRequestToken *string `min:"1" type:"string" idempotencyToken:"true"`
 
-	// Determines the level of detail about provisioned throughput consumption that
-	// is returned in the response:
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response:
 	//
 	//    * INDEXES - The response includes the aggregate ConsumedCapacity for the
 	//    operation, together with ConsumedCapacity for each table and secondary
@@ -23458,8 +23643,8 @@ type UpdateItemInput struct {
 	// Key is a required field
 	Key map[string]*AttributeValue `type:"map" required:"true"`
 
-	// Determines the level of detail about provisioned throughput consumption that
-	// is returned in the response:
+	// Determines the level of detail about either provisioned or on-demand throughput
+	// consumption that is returned in the response:
 	//
 	//    * INDEXES - The response includes the aggregate ConsumedCapacity for the
 	//    operation, together with ConsumedCapacity for each table and secondary
@@ -23775,6 +23960,10 @@ type UpdateReplicationGroupMemberAction struct {
 	//
 	// RegionName is a required field
 	RegionName *string `type:"string" required:"true"`
+
+	// Replica-specific table class. If not specified, uses the source table's table
+	// class.
+	TableClassOverride *string `type:"string" enum:"TableClass"`
 }
 
 // String returns the string representation.
@@ -23850,6 +24039,12 @@ func (s *UpdateReplicationGroupMemberAction) SetRegionName(v string) *UpdateRepl
 	return s
 }
 
+// SetTableClassOverride sets the TableClassOverride field's value.
+func (s *UpdateReplicationGroupMemberAction) SetTableClassOverride(v string) *UpdateReplicationGroupMemberAction {
+	s.TableClassOverride = &v
+	return s
+}
+
 // Represents the input of an UpdateTable operation.
 type UpdateTableInput struct {
 	_ struct{} `type:"structure"`
@@ -23907,6 +24102,10 @@ type UpdateTableInput struct {
 	// that already has a stream, or if you try to disable a stream on a table that
 	// doesn't have a stream.
 	StreamSpecification *StreamSpecification `type:"structure"`
+
+	// The table class of the table to be updated. Valid values are STANDARD and
+	// STANDARD_INFREQUENT_ACCESS.
+	TableClass *string `type:"string" enum:"TableClass"`
 
 	// The name of the table to be updated.
 	//
@@ -24030,6 +24229,12 @@ func (s *UpdateTableInput) SetSSESpecification(v *SSESpecification) *UpdateTable
 // SetStreamSpecification sets the StreamSpecification field's value.
 func (s *UpdateTableInput) SetStreamSpecification(v *StreamSpecification) *UpdateTableInput {
 	s.StreamSpecification = v
+	return s
+}
+
+// SetTableClass sets the TableClass field's value.
+func (s *UpdateTableInput) SetTableClass(v string) *UpdateTableInput {
+	s.TableClass = &v
 	return s
 }
 
@@ -24845,8 +25050,8 @@ func ReplicaStatus_Values() []string {
 	}
 }
 
-// Determines the level of detail about provisioned throughput consumption that
-// is returned in the response:
+// Determines the level of detail about either provisioned or on-demand throughput
+// consumption that is returned in the response:
 //
 //    * INDEXES - The response includes the aggregate ConsumedCapacity for the
 //    operation, together with ConsumedCapacity for each table and secondary
@@ -25063,6 +25268,22 @@ func StreamViewType_Values() []string {
 		StreamViewTypeOldImage,
 		StreamViewTypeNewAndOldImages,
 		StreamViewTypeKeysOnly,
+	}
+}
+
+const (
+	// TableClassStandard is a TableClass enum value
+	TableClassStandard = "STANDARD"
+
+	// TableClassStandardInfrequentAccess is a TableClass enum value
+	TableClassStandardInfrequentAccess = "STANDARD_INFREQUENT_ACCESS"
+)
+
+// TableClass_Values returns all elements of the TableClass enum
+func TableClass_Values() []string {
+	return []string{
+		TableClassStandard,
+		TableClassStandardInfrequentAccess,
 	}
 }
 

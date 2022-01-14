@@ -9,9 +9,8 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 
-	"github.com/cortexproject/cortex/pkg/util/math"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/math"
 )
 
 type bigtableObjectClient struct {
@@ -55,7 +54,7 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 		if err != nil {
 			return err
 		}
-		key := chunks[i].ExternalKey()
+		key := s.schemaCfg.ExternalKey(chunks[i])
 		tableName, err := s.schemaCfg.ChunkTableFor(chunks[i].From)
 		if err != nil {
 			return err
@@ -94,7 +93,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 		if err != nil {
 			return nil, err
 		}
-		key := c.ExternalKey()
+		key := s.schemaCfg.ExternalKey(c)
 		keys[tableName] = append(keys[tableName], key)
 		if _, ok := chunks[tableName]; !ok {
 			chunks[tableName] = map[string]chunk.Chunk{}

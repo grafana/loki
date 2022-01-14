@@ -34,4 +34,4 @@ Some features of the deployment:
    docker-compose -f ./docker-compose-ha-memberlist.yaml down
    ```
 
-   Remove the chunk data under `./chunks/`.
+   Remove the data under `./loki`.

@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
 var emptyStats = `"stats": {
@@ -51,6 +51,7 @@ var emptyStats = `"stats": {
 		"bytesProcessedPerSecond": 0,
 		"execTime": 0,
 		"linesProcessedPerSecond": 0,
+		"queueTime": 0,
 		"totalBytesProcessed":0,
 		"totalLinesProcessed":0
 	}
@@ -65,11 +66,11 @@ func Test_encodePromResponse(t *testing.T) {
 		{
 			"matrix",
 			&LokiPromResponse{
-				Response: &queryrange.PrometheusResponse{
-					Status: string(queryrange.StatusSuccess),
-					Data: queryrange.PrometheusData{
+				Response: &queryrangebase.PrometheusResponse{
+					Status: string(queryrangebase.StatusSuccess),
+					Data: queryrangebase.PrometheusData{
 						ResultType: loghttp.ResultTypeMatrix,
-						Result: []queryrange.SampleStream{
+						Result: []queryrangebase.SampleStream{
 							{
 								Labels: []cortexpb.LabelAdapter{
 									{Name: "foo", Value: "bar"},
@@ -113,11 +114,11 @@ func Test_encodePromResponse(t *testing.T) {
 		{
 			"vector",
 			&LokiPromResponse{
-				Response: &queryrange.PrometheusResponse{
-					Status: string(queryrange.StatusSuccess),
-					Data: queryrange.PrometheusData{
+				Response: &queryrangebase.PrometheusResponse{
+					Status: string(queryrangebase.StatusSuccess),
+					Data: queryrangebase.PrometheusData{
 						ResultType: loghttp.ResultTypeVector,
-						Result: []queryrange.SampleStream{
+						Result: []queryrangebase.SampleStream{
 							{
 								Labels: []cortexpb.LabelAdapter{
 									{Name: "foo", Value: "bar"},

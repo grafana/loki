@@ -45,7 +45,7 @@ func Test_Hedging(t *testing.T) {
 			20 * time.Nanosecond,
 			3,
 			func(c *SwiftObjectClient) {
-				_, _ = c.GetObject(context.Background(), "foo")
+				_, _, _ = c.GetObject(context.Background(), "foo")
 			},
 		},
 		{
@@ -54,7 +54,7 @@ func Test_Hedging(t *testing.T) {
 			0,
 			0,
 			func(c *SwiftObjectClient) {
-				_, _ = c.GetObject(context.Background(), "foo")
+				_, _, _ = c.GetObject(context.Background(), "foo")
 			},
 		},
 	} {
@@ -99,8 +99,9 @@ func Test_Hedging(t *testing.T) {
 					RequestTimeout: 10 * time.Second,
 				},
 			}, hedging.Config{
-				At:   tc.hedgeAt,
-				UpTo: tc.upTo,
+				At:           tc.hedgeAt,
+				UpTo:         tc.upTo,
+				MaxPerSecond: 1000,
 			})
 			require.NoError(t, err)
 			tc.do(c)

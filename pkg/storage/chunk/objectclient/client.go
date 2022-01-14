@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"io/ioutil"
 
 	"github.com/pkg/errors"
 
@@ -22,17 +21,27 @@ var Base64Encoder = func(key string) string {
 	return base64.StdEncoding.EncodeToString([]byte(key))
 }
 
+const defaultMaxParallel = 150
+
 // Client is used to store chunks in object store backends
 type Client struct {
-	store      chunk.ObjectClient
-	keyEncoder KeyEncoder
+	store               chunk.ObjectClient
+	keyEncoder          KeyEncoder
+	getChunkMaxParallel int
+	schema              chunk.SchemaConfig
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
-func NewClient(store chunk.ObjectClient, encoder KeyEncoder) *Client {
+func NewClient(store chunk.ObjectClient, encoder KeyEncoder, schema chunk.SchemaConfig) *Client {
+	return NewClientWithMaxParallel(store, encoder, defaultMaxParallel, schema)
+}
+
+func NewClientWithMaxParallel(store chunk.ObjectClient, encoder KeyEncoder, maxParallel int, schema chunk.SchemaConfig) *Client {
 	return &Client{
-		store:      store,
-		keyEncoder: encoder,
+		store:               store,
+		keyEncoder:          encoder,
+		getChunkMaxParallel: maxParallel,
+		schema:              schema,
 	}
 }
 
@@ -47,6 +56,7 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var (
 		chunkKeys []string
 		chunkBufs [][]byte
+		key       string
 	)
 
 	for i := range chunks {
@@ -54,7 +64,9 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 		if err != nil {
 			return err
 		}
-		key := chunks[i].ExternalKey()
+
+		key = o.schema.ExternalKey(chunks[i])
+
 		if o.keyEncoder != nil {
 			key = o.keyEncoder(key)
 		}
@@ -82,28 +94,40 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 
 // GetChunks retrieves the specified chunks from the configured backend
 func (o *Client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	return util.GetParallelChunks(ctx, chunks, o.getChunk)
+	getChunkMaxParallel := o.getChunkMaxParallel
+	if getChunkMaxParallel == 0 {
+		getChunkMaxParallel = defaultMaxParallel
+	}
+	return util.GetParallelChunks(ctx, getChunkMaxParallel, chunks, o.getChunk)
 }
 
 func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
-	key := c.ExternalKey()
+
+	if ctx.Err() != nil {
+		return chunk.Chunk{}, ctx.Err()
+	}
+
+	key := o.schema.ExternalKey(c)
 	if o.keyEncoder != nil {
 		key = o.keyEncoder(key)
 	}
 
-	readCloser, err := o.store.GetObject(ctx, key)
+	readCloser, size, err := o.store.GetObject(ctx, key)
 	if err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
 
 	defer readCloser.Close()
 
-	buf, err := ioutil.ReadAll(readCloser)
+	// adds bytes.MinRead to avoid allocations when the size is known.
+	// This is because ReadFrom reads bytes.MinRead by bytes.MinRead.
+	buf := bytes.NewBuffer(make([]byte, 0, size+bytes.MinRead))
+	_, err = buf.ReadFrom(readCloser)
 	if err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
 
-	if err := c.Decode(decodeContext, buf); err != nil {
+	if err := c.Decode(decodeContext, buf.Bytes()); err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
 	return c, nil

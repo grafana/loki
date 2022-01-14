@@ -27,7 +27,13 @@ message Summary {
   // Total lines processed.
   int64 totalLinesProcessed = 4 [(gogoproto.jsontag) = "totalLinesProcessed"];
   // Execution time in seconds.
+  // In addition to internal calculations this is also returned by the HTTP API.
+  // Grafana expects time values to be returned in seconds as float.
   double execTime = 5 [(gogoproto.jsontag) = "execTime"];
+  // Queue time in seconds.
+  // In addition to internal calculations this is also returned by the HTTP API.
+  // Grafana expects time values to be returned in seconds as float.
+  double queueTime = 6 [(gogoproto.jsontag) = "queueTime"];
 }
 
 message Querier {

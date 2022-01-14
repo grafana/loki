@@ -186,7 +186,7 @@ var componentsPool = sync.Pool{
 	},
 }
 
-// parseChunkTimeRangeValue returns the chunkID and labelValue for chunk time
+// parseChunkTimeRangeValue returns the chunkID (seriesID since v9) and labelValue for chunk time
 // range values.
 func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
 	chunkID string, labelValue model.LabelValue, err error,

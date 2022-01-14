@@ -107,7 +107,7 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 			lbls = append(lbls, labels.Label{Name: lbl.Name, Value: lbl.Value})
 		}
 
-		instance := i.getOrCreateInstance(chunkSet.UserId)
+		instance := i.GetOrCreateInstance(chunkSet.UserId)
 		for _, chunk := range chunkSet.Chunks {
 			if err := instance.consumeChunk(userCtx, lbls, chunk); err != nil {
 				return err
@@ -149,7 +149,7 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 // transfer, as claiming tokens would possibly end up with this ingester owning no tokens, due to conflict
 // resolution in ring merge function. Hopefully the leaving ingester will retry transfer again.
 func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIngesterID string) error {
-	v, err := i.lifecycler.KVStore.Get(ctx, ring.IngesterRingKey)
+	v, err := i.lifecycler.KVStore.Get(ctx, RingKey)
 	if err != nil {
 		return errors.Wrap(err, "get ring")
 	}
@@ -297,7 +297,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 // findTransferTarget finds an ingester in a PENDING state to use for transferring
 // chunks to.
 func (i *Ingester) findTransferTarget(ctx context.Context) (*ring.InstanceDesc, error) {
-	ringDesc, err := i.lifecycler.KVStore.Get(ctx, ring.IngesterRingKey)
+	ringDesc, err := i.lifecycler.KVStore.Get(ctx, RingKey)
 	if err != nil {
 		return nil, err
 	}

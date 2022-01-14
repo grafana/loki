@@ -16,7 +16,8 @@ import (
 	instr "github.com/weaveworks/common/instrument"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/math"
+
+	"github.com/grafana/loki/pkg/util/math"
 )
 
 // MemcachedConfig is config to make a Memcached

@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,6 +25,8 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	ruler "github.com/grafana/loki/pkg/ruler/base"
+	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/util"
 )
 
@@ -244,10 +244,6 @@ func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 
 	if r.Record.Value == "" && r.Alert.Value == "" {
 		return errors.Errorf("one of 'record' or 'alert' must be set")
-	}
-
-	if r.Record.Value != "" && r.Alert.Value != "" {
-		return errors.Errorf("only one of 'record' or 'alert' must be set")
 	}
 
 	if r.Expr.Value == "" {

@@ -163,9 +163,9 @@ func (t *testStore) HasChunk(c chunk.Chunk) bool {
 
 	chunkIDs := make(map[string]struct{})
 	for _, chk := range chunks {
-		chunkIDs[chk.ExternalKey()] = struct{}{}
+		chunkIDs[t.schemaCfg.ExternalKey(chk)] = struct{}{}
 	}
-	return len(chunkIDs) == 1 && c.ExternalKey() == chunks[0].ExternalKey()
+	return len(chunkIDs) == 1 && t.schemaCfg.ExternalKey(c) == t.schemaCfg.ExternalKey(chunks[0])
 }
 
 func (t *testStore) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
@@ -229,6 +229,7 @@ func newTestStore(t testing.TB) *testStore {
 			FSConfig: local.FSConfig{
 				Directory: chunkDir,
 			},
+			MaxParallelGetChunk: 150,
 		},
 		BoltDBShipperConfig: shipper.Config{
 			ActiveIndexDirectory: indexDir,

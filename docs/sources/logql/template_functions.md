@@ -5,7 +5,6 @@ weight: 30
 
 # Template functions
 
-
 The [text template](https://golang.org/pkg/text/template) format used in `| line_format` and `| label_format` support the usage of functions.
 
 All labels are added as variables in the template engine. They can be referenced using they label name prefixed by a `.`(e.g `.label_name`). For example the following template will output the value of the path label:
@@ -13,6 +12,8 @@ All labels are added as variables in the template engine. They can be referenced
 ```template
 {{ .path }}
 ```
+
+Additionally you can also access the log line using the [`__line__`](#__line__) function.
 
 You can take advantage of [pipeline](https://golang.org/pkg/text/template/#hdr-Pipelines) to join together multiple functions.
 In a chained pipeline, the result of each command is passed as the last argument of the following command.
@@ -22,6 +23,22 @@ Example:
 ```template
 {{ .path | replace " " "_" | trunc 5 | upper }}
 ```
+
+## __line__
+
+This function returns the current log line.
+
+Signature:
+
+`line() string`
+
+Examples:
+
+```template
+"{{ __line__ | lower }}"
+`{{ __line__ }}`
+```
+
 
 ## ToLower and ToUpper
 
@@ -631,7 +648,7 @@ Example of a query to print a newline per queries stored as a json array in the 
 
 ## date
 
-`date` returns a textual representation of the time value formatted according to the provided [golang datetime layout](https://pkg.go.dev/time#pkg-constants). 
+`date` returns a textual representation of the time value formatted according to the provided [golang datetime layout](https://pkg.go.dev/time#pkg-constants).
 
 ```template
 { date "2006-01-02" now }}

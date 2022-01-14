@@ -88,10 +88,10 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	}
 
 	for name, dbs := range tables {
-		testutil.SetupDBTablesAtPath(t, name, tablesPath, dbs, false)
+		testutil.SetupDBsAtPath(t, name, tablesPath, dbs, false, nil)
 
 		// setup exact same copy of dbs for comparison.
-		testutil.SetupDBTablesAtPath(t, name, tablesCopyPath, dbs, false)
+		testutil.SetupDBsAtPath(t, name, tablesCopyPath, dbs, false, nil)
 	}
 
 	compactor := setupTestCompactor(t, tempDir)
@@ -106,6 +106,6 @@ func TestCompactor_RunCompaction(t *testing.T) {
 		require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
 
 		// verify we have all the kvs in compacted db which were there in source dbs.
-		compareCompactedDB(t, filepath.Join(tablesPath, name, files[0].Name()), filepath.Join(tablesCopyPath, name))
+		compareCompactedTable(t, filepath.Join(tablesPath, name), filepath.Join(tablesCopyPath, name))
 	}
 }

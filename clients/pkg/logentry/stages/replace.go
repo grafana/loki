@@ -190,7 +190,7 @@ func (r *replaceStage) getReplacedEntry(matchAllIndex [][]int, input string, td 
 				return "", nil, err
 			}
 			st := buf.String()
-			if previousInputEndIndex == 0 || previousInputEndIndex < matchIndex[i] {
+			if previousInputEndIndex == 0 || previousInputEndIndex <= matchIndex[i] {
 				result += input[previousInputEndIndex:matchIndex[i]] + st
 				previousInputEndIndex = matchIndex[i+1]
 			}

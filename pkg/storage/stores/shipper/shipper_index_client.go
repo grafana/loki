@@ -11,11 +11,12 @@ import (
 	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/util/spanlogger"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
@@ -48,7 +49,7 @@ const (
 type boltDBIndexClient interface {
 	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 	NewWriteBatch() chunk.WriteBatch
-	WriteToDB(ctx context.Context, db *bbolt.DB, writes local.TableWrites) error
+	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 	Stop()
 }
 

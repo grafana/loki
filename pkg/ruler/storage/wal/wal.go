@@ -176,9 +176,7 @@ func (w *Storage) replayWAL() error {
 }
 
 func (w *Storage) loadWAL(r *wal.Reader) (err error) {
-	var (
-		dec record.Decoder
-	)
+	var dec record.Decoder
 
 	var (
 		decoded    = make(chan interface{}, 10)
@@ -237,7 +235,7 @@ func (w *Storage) loadWAL(r *wal.Reader) (err error) {
 		}
 	}()
 
-	var biggestRef = chunks.HeadSeriesRef(w.ref.Load())
+	biggestRef := chunks.HeadSeriesRef(w.ref.Load())
 
 	for d := range decoded {
 		switch v := d.(type) {
@@ -517,13 +515,11 @@ func (w *Storage) recordSize() {
 func dirSize(path string) (int64, error) {
 	var size int64
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-
 		if err != nil {
 			return err
 		}
 
 		if !info.IsDir() {
-
 			size += info.Size()
 		}
 

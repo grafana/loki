@@ -20,7 +20,7 @@ SHELL = /usr/bin/env bash
 #
 # Can be used from command line by using "GOMOD= make" (empty = no -mod parameter), or "GOMOD=vendor make" (default).
 
-GOMOD?=vendor
+GOMOD ?= vendor
 ifeq ($(strip $(GOMOD)),) # Is empty?
 	MOD_FLAG=
 	GOLANGCI_ARG=
@@ -28,6 +28,8 @@ else
 	MOD_FLAG=-mod=$(GOMOD)
 	GOLANGCI_ARG=--modules-download-mode=$(GOMOD)
 endif
+
+GOTEST ?= go test
 
 #############
 # Variables #
@@ -272,7 +274,7 @@ lint:
 ########
 
 test: all
-	GOGC=10 go test -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./...
+	GOGC=10 $(GOTEST) -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./...
 
 #########
 # Clean #
@@ -352,12 +354,14 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
+	@# The store-gateway RPC is based on Thanos which uses relative references to other protos, so we need
+	@# to configure all such relative paths. `gogo/protobuf` is used by it.
 	case "$@" in	\
 		vendor*)			\
 			protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
 			;;					\
 		*)						\
-			protoc -I .:./vendor:./$(@D) --gogoslick_out=Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,plugins=grpc,paths=source_relative:./ ./$(patsubst %.pb.go,%.proto,$@); \
+			protoc -I .:./vendor/github.com/gogo/protobuf:./vendor/github.com/thanos-io/thanos/pkg:./vendor:./$(@D) --gogoslick_out=Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,plugins=grpc,paths=source_relative:./ ./$(patsubst %.pb.go,%.proto,$@); \
 			;;					\
 		esac
 endif
@@ -421,9 +425,10 @@ fluent-bit-test:
 # fluentd plugin #
 ##################
 fluentd-plugin:
-	gem install bundler --version 1.16.2
+	gem install bundler --version 2.3.4
 	bundle config silence_root_warning true
-	bundle install --gemfile=clients/cmd/fluentd/Gemfile --path=clients/cmd/fluentd/vendor/bundle
+	bundle config set --local path clients/cmd/fluentd/vendor/bundle
+	bundle install --gemfile=clients/cmd/fluentd/Gemfile
 
 fluentd-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluentd/Dockerfile .
@@ -431,9 +436,9 @@ fluentd-image:
 fluentd-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
-fluentd-test: LOKI_URL ?= http://localhost:3100/loki/api/
+fluentd-test: LOKI_URL ?= http://loki:3100
 fluentd-test:
-	LOKI_URL="$(LOKI_URL)" docker-compose -f clients/cmd/fluentd/docker/docker-compose.yml up --build $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+	LOKI_URL="$(LOKI_URL)" docker-compose -f clients/cmd/fluentd/docker/docker-compose.yml up --build
 
 ##################
 # logstash plugin #
@@ -554,7 +559,7 @@ endif
 
 benchmark-store:
 	go run $(MOD_FLAG) ./pkg/storage/hack/main.go
-	go test $(MOD_FLAG) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
+	$(GOTEST) $(MOD_FLAG) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
 
 # regenerate drone yaml
 drone:
@@ -637,8 +642,8 @@ endif
 # usage: FUZZ_TESTCASE_PATH=/tmp/testcase make test-fuzz
 # this will run the fuzzing using /tmp/testcase and save benchmark locally.
 test-fuzz:
-	go test -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
-		-run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s
+	$(GOTEST) -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
+	  -run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s
 
 format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \

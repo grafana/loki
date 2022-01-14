@@ -41,7 +41,7 @@ func (f *fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient,
 		return nil, nil, nil, schemaConfig, nil, err
 	}
 
-	objectClient, err := NewObjectClient(cfg, schemaConfig, nil)
+	objectClient, err := NewObjectClient(cfg, schemaConfig, nil, 150)
 	if err != nil {
 		return nil, nil, nil, schemaConfig, nil, err
 	}
