@@ -218,7 +218,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) []queryrang
 
 	switch r := req.(type) {
 	case *LokiRequest:
-		forInterval(interval, r.StartTs, r.EndTs, func(start, end time.Time) {
+		forInterval(interval, r.StartTs, r.EndTs, false, func(start, end time.Time) {
 			reqs = append(reqs, &LokiRequest{
 				Query:     r.Query,
 				Limit:     r.Limit,
@@ -230,7 +230,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) []queryrang
 			})
 		})
 	case *LokiSeriesRequest:
-		forInterval(interval, r.StartTs, r.EndTs, func(start, end time.Time) {
+		forInterval(interval, r.StartTs, r.EndTs, true, func(start, end time.Time) {
 			reqs = append(reqs, &LokiSeriesRequest{
 				Match:   r.Match,
 				Path:    r.Path,
@@ -240,7 +240,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) []queryrang
 			})
 		})
 	case *LokiLabelNamesRequest:
-		forInterval(interval, r.StartTs, r.EndTs, func(start, end time.Time) {
+		forInterval(interval, r.StartTs, r.EndTs, true, func(start, end time.Time) {
 			reqs = append(reqs, &LokiLabelNamesRequest{
 				Path:    r.Path,
 				StartTs: start,
@@ -253,11 +253,26 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) []queryrang
 	return reqs
 }
 
-func forInterval(interval time.Duration, start, end time.Time, callback func(start, end time.Time)) {
+func forInterval(interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time)) {
+	// align the start time by split interval for better query performance of metadata queries and
+	// better cache-ability of query types that are cached.
+	ogStart := start
+	startNs := start.UnixNano()
+	start = time.Unix(0, startNs-startNs%interval.Nanoseconds())
+	firstInterval := true
+
 	for start := start; start.Before(end); start = start.Add(interval) {
 		newEnd := start.Add(interval)
-		if newEnd.After(end) {
+		if !newEnd.Before(end) {
 			newEnd = end
+		} else if endTimeInclusive {
+			newEnd = newEnd.Add(-time.Millisecond)
+		}
+
+		if firstInterval {
+			callback(ogStart, newEnd)
+			firstInterval = false
+			continue
 		}
 		callback(start, newEnd)
 	}
@@ -268,7 +283,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) []query
 	lokiReq := r.(*LokiRequest)
 	// step is >= configured split interval, let us just split the query interval by step
 	if lokiReq.Step >= interval.Milliseconds() {
-		forInterval(time.Duration(lokiReq.Step*1e6), lokiReq.StartTs, lokiReq.EndTs, func(start, end time.Time) {
+		forInterval(time.Duration(lokiReq.Step*1e6), lokiReq.StartTs, lokiReq.EndTs, false, func(start, end time.Time) {
 			reqs = append(reqs, &LokiRequest{
 				Query:     lokiReq.Query,
 				Limit:     lokiReq.Limit,
@@ -283,7 +298,12 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) []query
 		return reqs
 	}
 
-	for start := lokiReq.StartTs; start.Before(lokiReq.EndTs); start = nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * time.Millisecond) {
+	// nextIntervalBoundary always moves ahead in a multiple of steps but the time it returns would not be step aligned.
+	// To have step aligned intervals for better cache-ability of results, let us step align the start time which make all the split intervals step aligned.
+	startNs := lokiReq.StartTs.UnixNano()
+	start := time.Unix(0, startNs-startNs%(r.GetStep()*1e6))
+
+	for start := start; start.Before(lokiReq.EndTs); start = nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * time.Millisecond) {
 		end := nextIntervalBoundary(start, r.GetStep(), interval)
 		if end.Add(time.Duration(r.GetStep())*time.Millisecond).After(lokiReq.EndTs) || end.Add(time.Duration(r.GetStep())*time.Millisecond) == lokiReq.EndTs {
 			end = lokiReq.EndTs
@@ -298,6 +318,9 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) []query
 			EndTs:     end,
 		})
 	}
+
+	// change the start time to original time
+	reqs[0] = reqs[0].WithStartEnd(lokiReq.GetStart(), reqs[0].GetEnd())
 	return reqs
 }
 
