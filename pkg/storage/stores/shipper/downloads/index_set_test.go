@@ -12,12 +12,13 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
-func buildTestIndexSet(t *testing.T, tableName, userID, path string) (*indexSet, *local.BoltIndexClient, stopFunc) {
+const tableName = "test"
+
+func buildTestIndexSet(t *testing.T, userID, path string) (*indexSet, stopFunc) {
 	boltDBIndexClient, storageClient := buildTestClients(t, path)
 	cachePath := filepath.Join(path, cacheDirName)
 
@@ -28,7 +29,7 @@ func buildTestIndexSet(t *testing.T, tableName, userID, path string) (*indexSet,
 
 	require.NoError(t, idxSet.Init())
 
-	return idxSet.(*indexSet), boltDBIndexClient, func() {
+	return idxSet.(*indexSet), func() {
 		idxSet.Close()
 		boltDBIndexClient.Stop()
 	}
@@ -36,12 +37,11 @@ func buildTestIndexSet(t *testing.T, tableName, userID, path string) (*indexSet,
 
 func TestIndexSet_Init(t *testing.T) {
 	tempDir := t.TempDir()
-	tableName := "test"
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 	testDBs := map[string]testutil.DBRecords{}
 
 	checkIndexSet := func() {
-		indexSet, _, stopFunc := buildTestIndexSet(t, tableName, userID, tempDir)
+		indexSet, stopFunc := buildTestIndexSet(t, userID, tempDir)
 		require.Len(t, indexSet.dbs, len(testDBs))
 		testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, indexSet, 0, len(testDBs)*10)
 		stopFunc()
@@ -82,7 +82,6 @@ func TestIndexSet_Init(t *testing.T) {
 
 func TestIndexSet_doConcurrentDownload(t *testing.T) {
 	tempDir := t.TempDir()
-	tableName := "test"
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 
 	for _, tc := range []int{0, 10, maxDownloadConcurrency, maxDownloadConcurrency * 2} {
@@ -99,7 +98,7 @@ func TestIndexSet_doConcurrentDownload(t *testing.T) {
 
 			testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName, userID), testDBs, true, nil)
 
-			indexSet, _, stopFunc := buildTestIndexSet(t, tableName, userID, tempDir)
+			indexSet, stopFunc := buildTestIndexSet(t, userID, tempDir)
 			defer func() {
 				stopFunc()
 			}()

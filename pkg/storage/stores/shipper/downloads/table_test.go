@@ -185,7 +185,7 @@ func TestTable_MultiQueries_Response(t *testing.T) {
 
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 
-	testutil.SetupTable(t, filepath.Join(objectStoragePath, "test"), testutil.DBsConfig{
+	testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), testutil.DBsConfig{
 		DBRecordsStart:    0,
 		NumUnCompactedDBs: 5,
 	}, testutil.PerUserDBsConfig{
@@ -197,7 +197,7 @@ func TestTable_MultiQueries_Response(t *testing.T) {
 		NumUsers: 1,
 	})
 
-	table, _, stopFunc := buildTestTable(t, "test", tempDir)
+	table, _, stopFunc := buildTestTable(t, tableName, tempDir)
 	defer func() {
 		stopFunc()
 	}()
@@ -264,10 +264,10 @@ func TestTable_EnsureQueryReadiness(t *testing.T) {
 	}
 
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-	tablePathInStorage := filepath.Join(objectStoragePath, "test")
+	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 	testutil.SetupDBsAtPath(t, tablePathInStorage, dbsToSetup, true, nil)
 
-	table, _, stopFunc := buildTestTable(t, "test", tempDir)
+	table, _, stopFunc := buildTestTable(t, tableName, tempDir)
 	defer func() {
 		stopFunc()
 	}()
@@ -300,7 +300,6 @@ func TestTable_Sync(t *testing.T) {
 	tempDir := t.TempDir()
 
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-	tableName := "test"
 	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 
 	// list of dbs to create except newDB that would be added later as part of updates
@@ -323,7 +322,7 @@ func TestTable_Sync(t *testing.T) {
 	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName), testDBs, false, nil)
 
 	// create table instance
-	table, boltdbClient, stopFunc := buildTestTable(t, "test", tempDir)
+	table, boltdbClient, stopFunc := buildTestTable(t, tableName, tempDir)
 	defer func() {
 		stopFunc()
 	}()
@@ -367,7 +366,7 @@ func TestTable_QueryResponse(t *testing.T) {
 	tempDir := t.TempDir()
 
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-	tablePathInStorage := filepath.Join(objectStoragePath, "test")
+	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 
 	commonDBs := map[string]testutil.DBRecords{
 		"db1": {
@@ -410,7 +409,7 @@ func TestTable_QueryResponse(t *testing.T) {
 	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, true, nil)
 	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, true, nil)
 
-	table, _, stopFunc := buildTestTable(t, "test", tempDir)
+	table, _, stopFunc := buildTestTable(t, tableName, tempDir)
 	defer func() {
 		stopFunc()
 	}()
@@ -439,7 +438,6 @@ func TestLoadTable(t *testing.T) {
 	}()
 
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-	tableName := "test"
 	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 
 	commonDBs := make(map[string]testutil.DBRecords)

@@ -402,9 +402,8 @@ func (t *indexSet) doConcurrentDownload(ctx context.Context, files []storage.Ind
 			if t.baseIndexSet.IsFileNotFoundErr(err) {
 				level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing file %s, possibly removed during compaction", fileName))
 				return nil
-			} else {
-				return err
 			}
+			return err
 		}
 
 		downloadedFilesMtx.Lock()
