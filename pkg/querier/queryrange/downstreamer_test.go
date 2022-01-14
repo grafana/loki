@@ -13,7 +13,6 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
-	cortexpb "github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -23,8 +22,8 @@ import (
 func testSampleStreams() []queryrangebase.SampleStream {
 	return []queryrangebase.SampleStream{
 		{
-			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-			Samples: []cortexpb.Sample{
+			Labels: []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+			Samples: []logproto.Sample{
 				{
 					Value:     0,
 					Timestamp: 0,
@@ -40,8 +39,8 @@ func testSampleStreams() []queryrangebase.SampleStream {
 			},
 		},
 		{
-			Labels: []cortexpb.LabelAdapter{{Name: "bazz", Value: "buzz"}},
-			Samples: []cortexpb.Sample{
+			Labels: []logproto.LabelAdapter{{Name: "bazz", Value: "buzz"}},
+			Samples: []logproto.Sample{
 				{
 					Value:     4,
 					Timestamp: 4,

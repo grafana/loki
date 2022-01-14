@@ -13,7 +13,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
-	cortexpb "github.com/grafana/loki/pkg/logproto"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -117,7 +116,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(logproto.Stream{
-			Labels: cortexpb.FromLabelAdaptersToLabels(series.Labels).String(),
+			Labels: logproto.FromLabelAdaptersToLabels(series.Labels).String(),
 		}, nil)
 
 		if err != nil {

@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	cortexpb "github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
@@ -148,7 +148,7 @@ func TestLoadRules(t *testing.T) {
 				{User: "user1", Namespace: "hello", Name: "first testGroup", Interval: time.Minute, Rules: []*rulespb.RuleDesc{
 					{
 						For:    5 * time.Minute,
-						Labels: []cortexpb.LabelAdapter{{Name: "label1", Value: "value1"}},
+						Labels: []logproto.LabelAdapter{{Name: "label1", Value: "value1"}},
 					},
 				}},
 				{User: "user1", Namespace: "hello", Name: "second testGroup", Interval: 2 * time.Minute},

@@ -15,7 +15,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	cortexpb "github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/tenant"
@@ -199,7 +199,7 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 	sl.rw.Lock()
 	var hash uint64
 	for _, s := range promResponse.Response.Data.Result {
-		lbs := cortexpb.FromLabelAdaptersToLabels(s.Labels)
+		lbs := logproto.FromLabelAdaptersToLabels(s.Labels)
 		hash, sl.buf = lbs.HashWithoutLabels(sl.buf, []string(nil)...)
 		sl.hashes[hash] = struct{}{}
 	}

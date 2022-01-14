@@ -16,7 +16,6 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	cortexpb "github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
@@ -966,12 +965,12 @@ var (
 
 	sampleStreams = []queryrangebase.SampleStream{
 		{
-			Labels:  []cortexpb.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
-			Samples: []cortexpb.Sample{{Value: 0.013333333333333334, Timestamp: 1568404331324}},
+			Labels:  []logproto.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
+			Samples: []logproto.Sample{{Value: 0.013333333333333334, Timestamp: 1568404331324}},
 		},
 		{
-			Labels:  []cortexpb.LabelAdapter{{Name: "filename", Value: "/var/hostlog/syslog"}, {Name: "job", Value: "varlogs"}},
-			Samples: []cortexpb.Sample{{Value: 3.45, Timestamp: 1568404331324}, {Value: 4.45, Timestamp: 1568404331339}},
+			Labels:  []logproto.LabelAdapter{{Name: "filename", Value: "/var/hostlog/syslog"}, {Name: "job", Value: "varlogs"}},
+			Samples: []logproto.Sample{{Value: 3.45, Timestamp: 1568404331324}, {Value: 4.45, Timestamp: 1568404331339}},
 		},
 	}
 	streamsString = `{
@@ -1247,11 +1246,11 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 func generateMatrix() (res []queryrangebase.SampleStream) {
 	for i := 0; i < 100; i++ {
 		s := queryrangebase.SampleStream{
-			Labels:  []cortexpb.LabelAdapter{},
-			Samples: []cortexpb.Sample{},
+			Labels:  []logproto.LabelAdapter{},
+			Samples: []logproto.Sample{},
 		}
 		for j := 0; j < 1000; j++ {
-			s.Samples = append(s.Samples, cortexpb.Sample{
+			s.Samples = append(s.Samples, logproto.Sample{
 				Value:     float64(j),
 				Timestamp: int64(j),
 			})

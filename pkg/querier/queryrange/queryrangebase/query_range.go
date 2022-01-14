@@ -23,7 +23,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
-	cortexpb "github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -357,12 +357,12 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 func (s *SampleStream) UnmarshalJSON(data []byte) error {
 	var stream struct {
 		Metric model.Metric      `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
+		Values []logproto.Sample `json:"values"`
 	}
 	if err := json.Unmarshal(data, &stream); err != nil {
 		return err
 	}
-	s.Labels = cortexpb.FromMetricsToLabelAdapters(stream.Metric)
+	s.Labels = logproto.FromMetricsToLabelAdapters(stream.Metric)
 	s.Samples = stream.Values
 	return nil
 }
@@ -371,9 +371,9 @@ func (s *SampleStream) UnmarshalJSON(data []byte) error {
 func (s *SampleStream) MarshalJSON() ([]byte, error) {
 	stream := struct {
 		Metric model.Metric      `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
+		Values []logproto.Sample `json:"values"`
 	}{
-		Metric: cortexpb.FromLabelAdaptersToMetric(s.Labels),
+		Metric: logproto.FromLabelAdaptersToMetric(s.Labels),
 		Values: s.Samples,
 	}
 	return json.Marshal(stream)
@@ -383,7 +383,7 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	output := map[string]*SampleStream{}
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
-			metric := cortexpb.FromLabelAdaptersToLabels(stream.Labels).String()
+			metric := logproto.FromLabelAdaptersToLabels(stream.Labels).String()
 			existing, ok := output[metric]
 			if !ok {
 				existing = &SampleStream{
@@ -426,7 +426,7 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 // return a sub slice whose first element's is the smallest timestamp that is strictly
 // bigger than the given minTs. Empty slice is returned if minTs is bigger than all the
 // timestamps in samples.
-func sliceSamples(samples []cortexpb.Sample, minTs int64) []cortexpb.Sample {
+func sliceSamples(samples []logproto.Sample, minTs int64) []logproto.Sample {
 	if len(samples) <= 0 || minTs < samples[0].Timestamp {
 		return samples
 	}

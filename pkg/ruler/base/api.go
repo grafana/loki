@@ -20,7 +20,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v3"
 
-	cortexpb "github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/tenant"
@@ -170,8 +170,8 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 				alerts := make([]*Alert, 0, len(rl.Alerts))
 				for _, a := range rl.Alerts {
 					alerts = append(alerts, &Alert{
-						Labels:      cortexpb.FromLabelAdaptersToLabels(a.Labels),
-						Annotations: cortexpb.FromLabelAdaptersToLabels(a.Annotations),
+						Labels:      logproto.FromLabelAdaptersToLabels(a.Labels),
+						Annotations: logproto.FromLabelAdaptersToLabels(a.Annotations),
 						State:       a.GetState(),
 						ActiveAt:    &a.ActiveAt,
 						Value:       strconv.FormatFloat(a.Value, 'e', -1, 64),
@@ -182,8 +182,8 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 					Name:           rl.Rule.GetAlert(),
 					Query:          rl.Rule.GetExpr(),
 					Duration:       rl.Rule.For.Seconds(),
-					Labels:         cortexpb.FromLabelAdaptersToLabels(rl.Rule.Labels),
-					Annotations:    cortexpb.FromLabelAdaptersToLabels(rl.Rule.Annotations),
+					Labels:         logproto.FromLabelAdaptersToLabels(rl.Rule.Labels),
+					Annotations:    logproto.FromLabelAdaptersToLabels(rl.Rule.Annotations),
 					Alerts:         alerts,
 					Health:         rl.GetHealth(),
 					LastError:      rl.GetLastError(),
@@ -195,7 +195,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 				grp.Rules[i] = recordingRule{
 					Name:           rl.Rule.GetRecord(),
 					Query:          rl.Rule.GetExpr(),
-					Labels:         cortexpb.FromLabelAdaptersToLabels(rl.Rule.Labels),
+					Labels:         logproto.FromLabelAdaptersToLabels(rl.Rule.Labels),
 					Health:         rl.GetHealth(),
 					LastError:      rl.GetLastError(),
 					LastEvaluation: rl.GetEvaluationTimestamp(),
@@ -252,8 +252,8 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 			if rl.Rule.Alert != "" {
 				for _, a := range rl.Alerts {
 					alerts = append(alerts, &Alert{
-						Labels:      cortexpb.FromLabelAdaptersToLabels(a.Labels),
-						Annotations: cortexpb.FromLabelAdaptersToLabels(a.Annotations),
+						Labels:      logproto.FromLabelAdaptersToLabels(a.Labels),
+						Annotations: logproto.FromLabelAdaptersToLabels(a.Annotations),
 						State:       a.GetState(),
 						ActiveAt:    &a.ActiveAt,
 						Value:       strconv.FormatFloat(a.Value, 'e', -1, 64),

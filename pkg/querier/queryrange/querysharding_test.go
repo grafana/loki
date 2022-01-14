@@ -17,7 +17,6 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	cortexpb "github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -268,8 +267,8 @@ func Test_InstantSharding(t *testing.T) {
 				ResultType: loghttp.ResultTypeVector,
 				Result: []queryrangebase.SampleStream{
 					{
-						Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-						Samples: []cortexpb.Sample{{Value: 10, Timestamp: 10}},
+						Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+						Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
 					},
 				},
 			},
@@ -287,16 +286,16 @@ func Test_InstantSharding(t *testing.T) {
 		ResultType: loghttp.ResultTypeVector,
 		Result: []queryrangebase.SampleStream{
 			{
-				Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-				Samples: []cortexpb.Sample{{Value: 10, Timestamp: 10}},
+				Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+				Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
 			},
 			{
-				Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-				Samples: []cortexpb.Sample{{Value: 10, Timestamp: 10}},
+				Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+				Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
 			},
 			{
-				Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-				Samples: []cortexpb.Sample{{Value: 10, Timestamp: 10}},
+				Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+				Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
 			},
 		},
 	}, response.(*LokiPromResponse).Response.Data)

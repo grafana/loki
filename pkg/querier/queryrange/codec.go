@@ -21,7 +21,6 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	cortexpb "github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -738,15 +737,15 @@ func toProtoMatrix(m loghttp.Matrix) []queryrangebase.SampleStream {
 	}
 
 	for _, stream := range m {
-		samples := make([]cortexpb.Sample, 0, len(stream.Values))
+		samples := make([]logproto.Sample, 0, len(stream.Values))
 		for _, s := range stream.Values {
-			samples = append(samples, cortexpb.Sample{
+			samples = append(samples, logproto.Sample{
 				Value:     float64(s.Value),
 				Timestamp: int64(s.Timestamp),
 			})
 		}
 		res = append(res, queryrangebase.SampleStream{
-			Labels:  cortexpb.FromMetricsToLabelAdapters(stream.Metric),
+			Labels:  logproto.FromMetricsToLabelAdapters(stream.Metric),
 			Samples: samples,
 		})
 	}
@@ -761,11 +760,11 @@ func toProtoVector(v loghttp.Vector) []queryrangebase.SampleStream {
 	}
 	for _, s := range v {
 		res = append(res, queryrangebase.SampleStream{
-			Samples: []cortexpb.Sample{{
+			Samples: []logproto.Sample{{
 				Value:     float64(s.Value),
 				Timestamp: int64(s.Timestamp),
 			}},
-			Labels: cortexpb.FromMetricsToLabelAdapters(s.Metric),
+			Labels: logproto.FromMetricsToLabelAdapters(s.Metric),
 		})
 	}
 	return res

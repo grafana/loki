@@ -11,7 +11,6 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
-	cortexpb "github.com/grafana/loki/pkg/logproto"
 )
 
 func Test_Encoding_Series(t *testing.T) {
@@ -323,7 +322,7 @@ func Test_EncodingCheckpoint(t *testing.T) {
 	s := &Series{
 		UserID:      "fake",
 		Fingerprint: 123,
-		Labels:      cortexpb.FromLabelsToLabelAdapters(ls),
+		Labels:      logproto.FromLabelsToLabelAdapters(ls),
 		To:          time.Unix(10, 0),
 		LastLine:    "lastLine",
 		Chunks: []Chunk{

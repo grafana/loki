@@ -26,7 +26,7 @@ import (
 	"github.com/uber/jaeger-client-go"
 	"github.com/weaveworks/common/httpgrpc"
 
-	cortexpb "github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -631,7 +631,7 @@ func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
 func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, bool) {
 	result := SampleStream{
 		Labels:  stream.Labels,
-		Samples: make([]cortexpb.Sample, 0, len(stream.Samples)),
+		Samples: make([]logproto.Sample, 0, len(stream.Samples)),
 	}
 	for _, sample := range stream.Samples {
 		if start <= sample.Timestamp && sample.Timestamp <= end {

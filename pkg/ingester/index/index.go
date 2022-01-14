@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	cortexpb "github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
@@ -76,8 +76,8 @@ func validateShard(totalShards uint32, shard *astmapper.ShardAnnotation) error {
 // Add a fingerprint under the specified labels.
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (ii *InvertedIndex) Add(labels []cortexpb.LabelAdapter, fp model.Fingerprint) labels.Labels {
-	shardIndex := labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(labels))
+func (ii *InvertedIndex) Add(labels []logproto.LabelAdapter, fp model.Fingerprint) labels.Labels {
+	shardIndex := labelsSeriesIDHash(logproto.FromLabelAdaptersToLabels(labels))
 	shard := ii.shards[shardIndex%ii.totalShards]
 	return shard.add(labels, fp) // add() returns 'interned' values so the original labels are not retained
 }
@@ -234,7 +234,7 @@ func copyString(s string) string {
 // add metric to the index; return all the name/value pairs as a fresh
 // sorted slice, referencing 'interned' strings from the index so that
 // no references are retained to the memory of `metric`.
-func (shard *indexShard) add(metric []cortexpb.LabelAdapter, fp model.Fingerprint) labels.Labels {
+func (shard *indexShard) add(metric []logproto.LabelAdapter, fp model.Fingerprint) labels.Labels {
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 

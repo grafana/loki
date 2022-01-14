@@ -22,7 +22,7 @@ import (
 	prompool "github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	cortexpb "github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/pool"
 )
@@ -270,7 +270,7 @@ func (s *streamIterator) Next() bool {
 
 	s.current.UserID = currentInstance.id
 	s.current.Fingerprint = uint64(stream.fp)
-	s.current.Labels = cortexpb.FromLabelsToLabelAdapters(stream.labels)
+	s.current.Labels = logproto.FromLabelsToLabelAdapters(stream.labels)
 
 	s.current.To = stream.lastLine.ts
 	s.current.LastLine = stream.lastLine.content
