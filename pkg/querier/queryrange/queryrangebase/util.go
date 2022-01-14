@@ -4,10 +4,10 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/grafana/loki/pkg/tenant"
 )
 
 // RequestResponse contains a request response and the respective request that was used.

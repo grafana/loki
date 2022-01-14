@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
@@ -22,9 +24,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // StatusSuccess Prometheus success result.

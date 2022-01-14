@@ -176,6 +176,44 @@ func TestFrontendCancellation(t *testing.T) {
 	})
 }
 
+// If FrontendWorkers are busy, cancellation passed by Query frontend may not reach
+// all the frontend workers thus not reaching the scheduler as well.
+// Issue: https://github.com/grafana/loki/issues/5132
+func TestFrontendWorkerCancellation(t *testing.T) {
+	f, ms := setupFrontend(t, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	// send multiple requests > maxconcurrency of scheduler. So that it keeps all the frontend worker busy in serving requests.
+	reqCount := testFrontendWorkerConcurrency + 5
+	var wg sync.WaitGroup
+	for i := 0; i < reqCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+			require.EqualError(t, err, context.DeadlineExceeded.Error())
+			require.Nil(t, resp)
+		}()
+	}
+
+	wg.Wait()
+
+	// We wait a bit to make sure scheduler receives the cancellation request.
+	// 2 * reqCount because for every request, should also be corresponding cancel request
+	test.Poll(t, 5*time.Second, 2*reqCount, func() interface{} {
+		ms.mu.Lock()
+		defer ms.mu.Unlock()
+
+		return len(ms.msgs)
+	})
+
+	ms.checkWithLock(func() {
+		require.Equal(t, 2*reqCount, len(ms.msgs))
+	})
+}
+
 func TestFrontendFailedCancellation(t *testing.T) {
 	f, ms := setupFrontend(t, nil)
 
