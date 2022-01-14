@@ -25,6 +25,7 @@ const (
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
 	millisecondsInDay  = int64(24 * time.Hour / time.Millisecond)
 	v12                = "v12"
+	v13                = "v13"
 )
 
 var (
@@ -207,7 +208,7 @@ func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
 		return newStoreSchema(buckets, v6Entries{}), nil
 	case "v9":
 		return newSeriesStoreSchema(buckets, v9Entries{}), nil
-	case "v10", "v11", v12:
+	case "v10", "v11", v12, v13:
 		if cfg.RowShards == 0 {
 			return nil, fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
@@ -217,8 +218,10 @@ func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
 			return newSeriesStoreSchema(buckets, v10), nil
 		} else if cfg.Schema == "v11" {
 			return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
-		} else { // v12
+		} else if cfg.Schema == v12 {
 			return newSeriesStoreSchema(buckets, v12Entries{v11Entries{v10}}), nil
+		} else { // v13
+			return newSeriesStoreSchema(buckets, v13Entries{v12Entries{v11Entries{v10}}}), nil
 		}
 	default:
 		return nil, errInvalidSchemaVersion
@@ -496,9 +499,9 @@ func (cfg *PeriodicTableConfig) tableForPeriod(i int64) string {
 func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
 	p, err := cfg.SchemaForTime(chunk.From)
 	v, _ := p.VersionAsInt()
-	if err == nil && v >= 12 {
+	if err == nil && v == 12 {
 		return cfg.newerExternalKey(chunk)
-	} else if chunk.ChecksumSet {
+	} else if chunk.ChecksumSet || v == 13 {
 		return cfg.newExternalKey(chunk)
 	} else {
 		return cfg.legacyExternalKey(chunk)

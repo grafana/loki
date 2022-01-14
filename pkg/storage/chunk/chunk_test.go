@@ -472,6 +472,26 @@ func TestChunkKeys(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "v13",
+			chunk: Chunk{
+				Fingerprint: 100,
+				UserID:      "fake",
+				From:        model.TimeFromUnix(1000),
+				Through:     model.TimeFromUnix(5000),
+				ChecksumSet: true,
+				Checksum:    12345,
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v13",
+						RowShards: 16,
+					},
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			key := tc.schemaCfg.ExternalKey(tc.chunk)
@@ -481,6 +501,59 @@ func TestChunkKeys(t *testing.T) {
 			require.Equal(t, key, tc.schemaCfg.ExternalKey(newChunk))
 		})
 	}
+}
+
+func TestV13CanParseNewAndNewerChunkKey(t *testing.T) {
+	oldSchema := SchemaConfig{
+		[]PeriodConfig{
+			{
+				From:      DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+		"fake",
+	}
+	newSchema := SchemaConfig{
+		[]PeriodConfig{
+			{
+				From:      DayTime{Time: 0},
+				Schema:    "v13",
+				RowShards: 16,
+			},
+		},
+		"fake",
+	}
+	newerSchema := SchemaConfig{
+		[]PeriodConfig{
+			{
+				From:      DayTime{Time: 0},
+				Schema:    "v12",
+				RowShards: 16,
+			},
+		},
+		"fake",
+	}
+	chunk := Chunk{
+		Fingerprint: 100,
+		UserID:      "fake",
+		From:        model.TimeFromUnix(1000),
+		Through:     model.TimeFromUnix(5000),
+		ChecksumSet: true,
+		Checksum:    12345,
+	}
+
+	oldKey := oldSchema.ExternalKey(chunk)
+	newKey := newSchema.ExternalKey(chunk)
+	newerKey := newerSchema.ExternalKey(chunk)
+	require.Equal(t, oldKey, newKey)
+	require.NotEqual(t, newKey, newerKey)
+
+	oldChunk, oldErr := ParseExternalKey("fake", oldKey)
+	newChunk, newErr := ParseExternalKey("fake", newerKey)
+	require.NoError(t, oldErr)
+	require.NoError(t, newErr)
+	require.Equal(t, oldChunk, newChunk)
 }
 
 func BenchmarkParseNewerExternalKey(b *testing.B) {
