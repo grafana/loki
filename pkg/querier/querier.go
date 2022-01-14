@@ -50,7 +50,7 @@ type Config struct {
 	Engine                        logql.EngineOpts `yaml:"engine,omitempty"`
 	MaxConcurrent                 int              `yaml:"max_concurrent"`
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
-	QueryMemoryOnly               bool             `yaml:"query_memory_only"`
+	QueryIngesterOnly               bool             `yaml:"query_ingester_only"`
 }
 
 // RegisterFlags register flags.
