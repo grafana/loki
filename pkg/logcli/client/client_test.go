@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/base64"
 	"net/http"
 	"testing"
 
@@ -39,23 +40,25 @@ func Test_getHTTPHeader(t *testing.T) {
 		want    http.Header
 		wantErr bool
 	}{
-		{"empty", DefaultClient{}, http.Header{
-			"User-Agent": []string{userAgent},
-		}, false},
+		{"empty", DefaultClient{}, http.Header{}, false},
 		{"partial-headers", DefaultClient{
 			OrgID:     "124",
 			QueryTags: "source=abc",
 		}, http.Header{
 			"X-Scope-OrgID": []string{"124"},
 			"X-Query-Tags":  []string{"source=abc"},
-			"User-Agent":    []string{userAgent},
 		}, false},
-		// {"basic-auth", DefaultClient{
-		// 	Username: "123",
-		// 	Password: "secure",
-		// }, http.Header{
-		// 	"Authorization": []string{"fake"},
-		// }, false},
+		{"basic-auth", DefaultClient{
+			Username: "123",
+			Password: "secure",
+		}, http.Header{
+			"Authorization": []string{"Basic " + base64.StdEncoding.EncodeToString([]byte("123:secure"))},
+		}, false},
+		{"bearer-token", DefaultClient{
+			BearerToken: "secureToken",
+		}, http.Header{
+			"Authorization": []string{"Bearer " + "secureToken"},
+		}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -64,8 +67,10 @@ func Test_getHTTPHeader(t *testing.T) {
 				t.Errorf("getHTTPHeader() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			// fmt.Println(tt.want)
-			// fmt.Println(got)
+
+			// User-Agent should be set all the time.
+			assert.Equal(t, got["User-Agent"], []string{userAgent})
+
 			for k, _ := range tt.want {
 				ck := http.CanonicalHeaderKey(k)
 				assert.Equal(t, tt.want[k], got[ck])
