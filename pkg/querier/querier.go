@@ -50,7 +50,7 @@ type Config struct {
 	Engine                        logql.EngineOpts `yaml:"engine,omitempty"`
 	MaxConcurrent                 int              `yaml:"max_concurrent"`
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
-	QueryIngesterOnly               bool             `yaml:"query_ingester_only"`
+	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 }
 
 // RegisterFlags register flags.
@@ -62,12 +62,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Queriers should only query the store and not try to query any ingesters")
-	f.BoolVar(&cfg.QueryMemoryOnly, "querier.query-memory-only", false, "Queriers should only query the ingesters and not try to query any store")
+	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "Queriers should only query the ingesters and not try to query any store")
 }
 
 // Validate validates the config.
 func (cfg *Config) Validate() error {
-	if cfg.QueryStoreOnly && cfg.QueryMemoryOnly {
+	if cfg.QueryStoreOnly && cfg.QueryIngesterOnly {
 		return errors.New("querier.query_store_only and querier.query_store_only cannot both be true")
 	}
 	return nil
@@ -131,7 +131,7 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 		iters = append(iters, ingesterIters...)
 	}
 
-	if !q.cfg.QueryMemoryOnly && storeQueryInterval != nil {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 		level.Debug(spanlogger.FromContext(ctx)).Log(
@@ -176,7 +176,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 		iters = append(iters, ingesterIters...)
 	}
 
-	if !q.cfg.QueryMemoryOnly && storeQueryInterval != nil {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 
@@ -289,7 +289,7 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 	}
 
 	var storeValues []string
-	if !q.cfg.QueryMemoryOnly {
+	if !q.cfg.QueryIngesterOnly {
 		from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
 		if req.Values {
 			storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
@@ -409,7 +409,7 @@ func (q *Querier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) 
 		}()
 	}
 
-	if !q.cfg.QueryMemoryOnly {
+	if !q.cfg.QueryIngesterOnly {
 		go func() {
 			storeValues, err := q.seriesForMatchers(ctx, req.Start, req.End, req.GetGroups(), req.Shards)
 			if err != nil {
