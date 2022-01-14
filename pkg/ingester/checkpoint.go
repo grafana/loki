@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -23,6 +22,7 @@ import (
 	prompool "github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	cortexpb "github.com/grafana/loki/pkg/logproto"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/pool"
 )

@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	cortexpb "github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
@@ -967,11 +967,11 @@ var (
 	sampleStreams = []queryrangebase.SampleStream{
 		{
 			Labels:  []cortexpb.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
-			Samples: []cortexpb.Sample{{Value: 0.013333333333333334, TimestampMs: 1568404331324}},
+			Samples: []cortexpb.Sample{{Value: 0.013333333333333334, Timestamp: 1568404331324}},
 		},
 		{
 			Labels:  []cortexpb.LabelAdapter{{Name: "filename", Value: "/var/hostlog/syslog"}, {Name: "job", Value: "varlogs"}},
-			Samples: []cortexpb.Sample{{Value: 3.45, TimestampMs: 1568404331324}, {Value: 4.45, TimestampMs: 1568404331339}},
+			Samples: []cortexpb.Sample{{Value: 3.45, Timestamp: 1568404331324}, {Value: 4.45, Timestamp: 1568404331339}},
 		},
 	}
 	streamsString = `{
@@ -1252,8 +1252,8 @@ func generateMatrix() (res []queryrangebase.SampleStream) {
 		}
 		for j := 0; j < 1000; j++ {
 			s.Samples = append(s.Samples, cortexpb.Sample{
-				Value:       float64(j),
-				TimestampMs: int64(j),
+				Value:     float64(j),
+				Timestamp: int64(j),
 			})
 		}
 		res = append(res, s)

@@ -5,10 +5,10 @@ import (
 	"io"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	cortexpb "github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
@@ -76,8 +76,8 @@ func Test_encodePromResponse(t *testing.T) {
 									{Name: "foo", Value: "bar"},
 								},
 								Samples: []cortexpb.Sample{
-									{Value: 1, TimestampMs: 1000},
-									{Value: 1, TimestampMs: 2000},
+									{Value: 1, Timestamp: 1000},
+									{Value: 1, Timestamp: 2000},
 								},
 							},
 							{
@@ -85,8 +85,8 @@ func Test_encodePromResponse(t *testing.T) {
 									{Name: "foo", Value: "buzz"},
 								},
 								Samples: []cortexpb.Sample{
-									{Value: 4, TimestampMs: 1000},
-									{Value: 5, TimestampMs: 2000},
+									{Value: 4, Timestamp: 1000},
+									{Value: 5, Timestamp: 2000},
 								},
 							},
 						},
@@ -124,7 +124,7 @@ func Test_encodePromResponse(t *testing.T) {
 									{Name: "foo", Value: "bar"},
 								},
 								Samples: []cortexpb.Sample{
-									{Value: 1, TimestampMs: 1000},
+									{Value: 1, Timestamp: 1000},
 								},
 							},
 							{
@@ -132,7 +132,7 @@ func Test_encodePromResponse(t *testing.T) {
 									{Name: "foo", Value: "buzz"},
 								},
 								Samples: []cortexpb.Sample{
-									{Value: 4, TimestampMs: 1000},
+									{Value: 4, Timestamp: 1000},
 								},
 							},
 						},

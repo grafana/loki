@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
@@ -14,6 +13,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
+	cortexpb "github.com/grafana/loki/pkg/logproto"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 

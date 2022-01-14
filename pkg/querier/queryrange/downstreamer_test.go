@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
+	cortexpb "github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -26,16 +26,16 @@ func testSampleStreams() []queryrangebase.SampleStream {
 			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
 			Samples: []cortexpb.Sample{
 				{
-					Value:       0,
-					TimestampMs: 0,
+					Value:     0,
+					Timestamp: 0,
 				},
 				{
-					Value:       1,
-					TimestampMs: 1,
+					Value:     1,
+					Timestamp: 1,
 				},
 				{
-					Value:       2,
-					TimestampMs: 2,
+					Value:     2,
+					Timestamp: 2,
 				},
 			},
 		},
@@ -43,16 +43,16 @@ func testSampleStreams() []queryrangebase.SampleStream {
 			Labels: []cortexpb.LabelAdapter{{Name: "bazz", Value: "buzz"}},
 			Samples: []cortexpb.Sample{
 				{
-					Value:       4,
-					TimestampMs: 4,
+					Value:     4,
+					Timestamp: 4,
 				},
 				{
-					Value:       5,
-					TimestampMs: 5,
+					Value:     5,
+					Timestamp: 5,
 				},
 				{
-					Value:       6,
-					TimestampMs: 6,
+					Value:     6,
+					Timestamp: 6,
 				},
 			},
 		},

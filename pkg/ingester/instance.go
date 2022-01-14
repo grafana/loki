@@ -7,7 +7,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	cutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -23,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	cortexpb "github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
