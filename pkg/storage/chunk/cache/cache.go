@@ -24,13 +24,6 @@ type Cache interface {
 	Stop()
 }
 
-type Cache2 interface {
-	Store(ctx context.Context, key []string, buf [][]byte) error
-	Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error)
-	Stop()
-}
-
-
 // Config for building Caches.
 type Config struct {
 	EnableFifoCache bool `yaml:"enable_fifocache"`
