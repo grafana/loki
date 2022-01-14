@@ -277,7 +277,6 @@ github.com/cortexproject/cortex/pkg/storage/bucket/http
 github.com/cortexproject/cortex/pkg/storage/bucket/s3
 github.com/cortexproject/cortex/pkg/storage/bucket/swift
 github.com/cortexproject/cortex/pkg/storage/tsdb
-github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex
 github.com/cortexproject/cortex/pkg/tenant
 github.com/cortexproject/cortex/pkg/util
 github.com/cortexproject/cortex/pkg/util/extract
@@ -637,7 +636,6 @@ github.com/grafana/dskit/ring/client
 github.com/grafana/dskit/ring/shard
 github.com/grafana/dskit/ring/util
 github.com/grafana/dskit/runtimeconfig
-github.com/grafana/dskit/runutil
 github.com/grafana/dskit/services
 github.com/grafana/dskit/spanlogger
 # github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
