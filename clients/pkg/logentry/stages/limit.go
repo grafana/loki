@@ -88,7 +88,7 @@ func (m *limitStage) Run(in chan Entry) chan Entry {
 	go func() {
 		defer close(out)
 		for e := range in {
-			if !m.shouldThrottle(e) {
+			if !m.shouldDrop(e) {
 				out <- e
 				continue
 			}
@@ -97,11 +97,15 @@ func (m *limitStage) Run(in chan Entry) chan Entry {
 	return out
 }
 
-func (m *limitStage) shouldThrottle(e Entry) bool {
+func (m *limitStage) shouldDrop(e Entry) bool {
 	isMatchTag := m.isMatchTag(e)
 	if !isMatchTag {
 		return false
 	}
+	return m.shouldThrottle()
+}
+
+func (m *limitStage) shouldThrottle() bool {
 	if m.cfg.Drop {
 		if m.rateLimiter.Allow() {
 			return false
