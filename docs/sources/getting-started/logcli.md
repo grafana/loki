@@ -15,15 +15,19 @@ queries against a Loki instance.
 Download the `logcli` binary from the
 [Loki releases page](https://github.com/grafana/loki/releases).
 
-### Compile from source
+### Build LogCLI from source
 
-Clone Github repository and compile `logcli` from source:
+Clone the Loki repository and build `logcli` from source:
 
 ```bash
 git clone https://github.com/grafana/loki.git
 cd loki
 make logcli
-# optionally, move the binary into a directory that is part of $PATH
+```
+
+Optionally, move the binary into a directory that is part of your `$PATH`.
+
+```bash
 cp cmd/logcli/logcli /usr/local/bin/logcli
 ```
 
