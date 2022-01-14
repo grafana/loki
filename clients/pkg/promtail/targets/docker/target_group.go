@@ -2,7 +2,6 @@ package docker
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/docker/docker/client"
@@ -13,7 +12,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 )
 
@@ -79,34 +77,21 @@ func (tg *targetGroup) addTarget(id string, discoveredLabels model.LabelSet) err
 		return nil
 	}
 
-	// Add all labels from the config.
-	lb := labels.NewBuilder(nil)
-	for k, v := range discoveredLabels {
-		lb.Set(string(k), string(v))
-	}
-	processed := relabel.Process(lb.Labels(), tg.relabelConfig...)
-
-	filtered := make(model.LabelSet)
-	for _, lbl := range processed {
-		if strings.HasPrefix(lbl.Name, "__") {
-			continue
-		}
-		filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-	}
-
 	t, err := NewTarget(
 		tg.metrics,
 		log.With(tg.logger, "target", fmt.Sprintf("docker/%s", id)),
 		tg.entryHandler,
 		tg.positions,
 		id,
-		filtered.Merge(tg.defaultLabels),
+		discoveredLabels.Merge(tg.defaultLabels),
+		tg.relabelConfig,
 		tg.client,
 	)
 	if err != nil {
 		return err
 	}
 	tg.targets[id] = t
+	level.Error(tg.logger).Log("msg", "added Docker target", "containerID", id)
 	return nil
 }
 

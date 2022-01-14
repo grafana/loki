@@ -16,6 +16,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -32,6 +34,7 @@ type Target struct {
 	positions     positions.Positions
 	containerName string
 	labels        model.LabelSet
+	relabelConfig []*relabel.Config
 	metrics       *Metrics
 
 	cancel  context.CancelFunc
@@ -48,6 +51,7 @@ func NewTarget(
 	position positions.Positions,
 	containerName string,
 	labels model.LabelSet,
+	relabelConfig []*relabel.Config,
 	client client.APIClient,
 ) (*Target, error) {
 
@@ -68,6 +72,7 @@ func NewTarget(
 		positions:     position,
 		containerName: containerName,
 		labels:        labels,
+		relabelConfig: relabelConfig,
 		metrics:       metrics,
 
 		cancel:  cancel,
@@ -159,8 +164,24 @@ func (t *Target) process(r io.Reader, logStream string) {
 			continue
 		}
 
+		// Add all labels from the config, relabel and filter them.
+		lb := labels.NewBuilder(nil)
+		for k, v := range t.labels {
+			lb.Set(string(k), string(v))
+		}
+		lb.Set(dockerLabelLogStream, logStream)
+		processed := relabel.Process(lb.Labels(), t.relabelConfig...)
+
+		filtered := make(model.LabelSet)
+		for _, lbl := range processed {
+			if strings.HasPrefix(lbl.Name, "__") {
+				continue
+			}
+			filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+		}
+
 		t.handler.Chan() <- api.Entry{
-			Labels: t.labels.Merge(model.LabelSet{dockerLabelLogStream: model.LabelValue(logStream)}),
+			Labels: filtered,
 			Entry: logproto.Entry{
 				Timestamp: ts,
 				Line:      line,

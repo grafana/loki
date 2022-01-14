@@ -1718,6 +1718,23 @@ Available meta labels:
   * `__meta_docker_port_public`: the external port if a port-mapping exists
   * `__meta_docker_port_public_ip`: the public IP if a port-mapping exists
 
+These labels can be used during relabelling. For instance, the following configuration scrapes the container named `flog` and removes the leading `/` form the container name.
+
+```yaml
+scrape_configs:
+  - job_name: flog_scrape 
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: name
+            values: [flog] 
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+```
+
 
 ## target_config
 
