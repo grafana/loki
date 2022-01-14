@@ -122,29 +122,21 @@ func (m *limitStage) isMatchTag(e Entry) bool {
 	if m.cfg.Source != nil && m.cfg.Expression == nil {
 		if v, ok := e.Extracted[*m.cfg.Source]; ok {
 			if m.cfg.Value == nil {
-				// Found in map, no value set meaning drop if found in map
-				if Debug {
-					level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map")
-				}
+				// Found in map, no value set meaning throttle if found in map
+				level.Debug(m.logger).Log("msg", "line met throttle criteria for finding source key in extracted map")
 			} else {
 				if *m.cfg.Value == v {
-					// Found in map with value set for drop
-					if Debug {
-						level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map with value matching desired drop value")
-					}
+					// Found in map with value set for throttle
+					level.Debug(m.logger).Log("msg", "line met throttle criteria for finding source key in extracted map with value matching desired throttle value")
 				} else {
-					// Value doesn't match, don't drop
-					if Debug {
-						level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, source key was found in extracted map but value '%v' did not match desired value '%v'", v, *m.cfg.Value))
-					}
+					// Value doesn't match, don't throttle
+					level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be throttled, source key was found in extracted map but value '%v' did not match desired value '%v'", v, *m.cfg.Value))
 					return false
 				}
 			}
 		} else {
-			// Not found in extact map, don't drop
-			if Debug {
-				level.Debug(m.logger).Log("msg", "line will not be dropped, the provided source was not found in the extracted map")
-			}
+			// Not found in extact map, don't throttle
+			level.Debug(m.logger).Log("msg", "line will not be throttled, the provided source was not found in the extracted map")
 			return false
 		}
 	}
@@ -154,49 +146,35 @@ func (m *limitStage) isMatchTag(e Entry) bool {
 			if v, ok := e.Extracted[*m.cfg.Source]; ok {
 				s, err := getString(v)
 				if err != nil {
-					if Debug {
-						level.Debug(m.logger).Log("msg", "Failed to convert extracted map value to string, cannot test regex line will not be dropped.", "err", err, "type", reflect.TypeOf(v))
-					}
+					level.Debug(m.logger).Log("msg", "Failed to convert extracted map value to string, cannot test regex line will not be throttled.", "err", err, "type", reflect.TypeOf(v))
 					return false
 				}
 				match := m.cfg.regex.FindStringSubmatch(s)
 				if match == nil {
-					// Not a match to the regex, don't drop
-					if Debug {
-						level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, the provided regular expression did not match the value found in the extracted map for source key: %v", *m.cfg.Source))
-					}
+					// Not a match to the regex, don't throttle
+					level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be throttled, the provided regular expression did not match the value found in the extracted map for source key: %v", *m.cfg.Source))
 					return false
 				}
-				// regex match, will be dropped
-				if Debug {
-					level.Debug(m.logger).Log("msg", "line met drop criteria, regex matched the value in the extracted map source key")
-				}
+				// regex match, will be throttled
+				level.Debug(m.logger).Log("msg", "line met throttle criteria, regex matched the value in the extracted map source key")
 
 			} else {
-				// Not found in extact map, don't drop
-				if Debug {
-					level.Debug(m.logger).Log("msg", "line will not be dropped, the provided source was not found in the extracted map")
-				}
+				// Not found in extact map, don't throttle
+				level.Debug(m.logger).Log("msg", "line will not be throttled, the provided source was not found in the extracted map")
 				return false
 			}
 		} else {
 			match := m.cfg.regex.FindStringSubmatch(e.Line)
 			if match == nil {
-				// Not a match to the regex, don't drop
-				if Debug {
-					level.Debug(m.logger).Log("msg", "line will not be dropped, the provided regular expression did not match the log line")
-				}
+				// Not a match to the regex, don't throttle
+				level.Debug(m.logger).Log("msg", "line will not be throttled, the provided regular expression did not match the log line")
 				return false
 			}
-			if Debug {
-				level.Debug(m.logger).Log("msg", "line met drop criteria, the provided regular expression matched the log line")
-			}
+			level.Debug(m.logger).Log("msg", "line met throttle criteria, the provided regular expression matched the log line")
 		}
 	}
 
-	// Everything matched, drop the line
-	if Debug {
-		level.Debug(m.logger).Log("msg", "all criteria met, line will be dropped")
-	}
+	// Everything matched, throttle the line
+	level.Debug(m.logger).Log("msg", "all criteria met, line will be throttled")
 	return true
 }
