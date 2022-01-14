@@ -3,7 +3,7 @@ title: limit
 ---
 # `limit` stage
 
-The `limit` stage is a ratelimit stage that lets you throttle logs based on several options. 
+The `limit` stage is a rate limiting stage throttles logs based on several options. 
 
 ## Limit stage schema
 
