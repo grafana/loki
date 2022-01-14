@@ -559,7 +559,7 @@ func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Du
 }
 
 func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
-	found, bufs, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)})
+	found, bufs, _, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)})
 	if len(found) != 1 {
 		return nil, false
 	}
@@ -600,7 +600,7 @@ func (s resultsCache) put(ctx context.Context, key string, extents []Extent) {
 		return
 	}
 
-	s.cache.Store(ctx, []string{cache.HashKey(key)}, [][]byte{buf})
+	_ = s.cache.Store(ctx, []string{cache.HashKey(key)}, [][]byte{buf})
 }
 
 func jaegerTraceID(ctx context.Context) string {
