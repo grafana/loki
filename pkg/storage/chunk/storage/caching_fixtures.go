@@ -30,7 +30,7 @@ func (f fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, 
 	logger := log.NewNopLogger()
 	indexClient = newCachingIndexClient(indexClient, cache.NewFifoCache("index-fifo", cache.FifoCacheConfig{
 		MaxSizeItems: 500,
-		Validity:     5 * time.Minute,
+		TTL:          5 * time.Minute,
 	}, reg, logger), 5*time.Minute, limits, logger, false)
 	return indexClient, chunkClient, tableClient, schemaConfig, closer, err
 }

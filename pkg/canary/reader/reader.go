@@ -129,7 +129,6 @@ func NewReader(writer io.Writer,
 			fmt.Fprintf(rd.w, "shutting down reader\n")
 			rd.shuttingDown = true
 			_ = rd.conn.Close()
-			rd.conn = nil
 		}
 	}()
 
