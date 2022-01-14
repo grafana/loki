@@ -71,7 +71,7 @@ func Test_getHTTPHeader(t *testing.T) {
 			// User-Agent should be set all the time.
 			assert.Equal(t, got["User-Agent"], []string{userAgent})
 
-			for k, _ := range tt.want {
+			for k := range tt.want {
 				ck := http.CanonicalHeaderKey(k)
 				assert.Equal(t, tt.want[k], got[ck])
 			}

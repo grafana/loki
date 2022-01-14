@@ -42,7 +42,6 @@ type FileClient struct {
 	labels      []string
 	labelValues []string
 	orgID       string
-	queryTags   string
 	engine      *logql.Engine
 }
 
