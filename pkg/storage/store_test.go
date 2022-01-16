@@ -191,7 +191,7 @@ func getLocalStore() Store {
 	}
 
 	storeConfig := Config{
-		Config: storage.Config{
+		Config: storage.NewConfig(){
 			BoltDBConfig: chunk_local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
 			FSConfig:     chunk_local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 		},
@@ -809,7 +809,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	secondStoreDate := parseDate("2019-01-02")
 
 	config := Config{
-		Config: storage.Config{
+		Config: storage.NewConfig(){
 			FSConfig: chunk_local.FSConfig{Directory: path.Join(tempDir, "chunks")},
 		},
 		BoltDBShipperConfig: boltdbShipperConfig,

@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 
@@ -34,6 +35,18 @@ type ConfigWrapper struct {
 	LogConfig       bool
 	ConfigFile      string
 	ConfigExpandEnv bool
+}
+
+func NewDefaultConfig() ConfigWrapper {
+	defaults := ConfigWrapper{}
+	defaults.StorageConfig.StorageConfigs = make(map[string]storage.StorageConfig)
+	defaults.StorageConfig.StorageConfigs["gcs"] = storage.StorageConfig{}
+	defaults.StorageConfig.StorageConfigs["filesystem"] = storage.StorageConfig{}
+	defaults.StorageConfig.StorageConfigs["aws"] = storage.StorageConfig{}
+	defaults.StorageConfig.StorageConfigs["azure"] = storage.StorageConfig{}
+	defaults.StorageConfig.StorageConfigs["cassandra"] = storage.StorageConfig{}
+	defaults.StorageConfig.StorageConfigs["swift"] = storage.StorageConfig{}
+	return defaults
 }
 
 func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
@@ -64,7 +77,7 @@ const memberlistStr = "memberlist"
 // with the minimal amount of config options for most use cases. It also aims to reduce redundancy where
 // some values are set multiple times through the Loki config.
 func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
-	defaults := ConfigWrapper{}
+	defaults := NewDefaultConfig()
 	flagext.DefaultValues(&defaults)
 
 	return func(dst cfg.Cloneable) error {
@@ -367,12 +380,13 @@ var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in 
 // configuration file, applyStorageConfig will not override them.
 // If multiple storage configurations are provided, applyStorageConfig will return an error
 func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
-	var applyConfig func(*ConfigWrapper, *chunk_storage.StorageConfig)
-
-	// only one config is allowed
-	configsFound := 0
 
 	for _, storageConfig := range defaults.StorageConfig.StorageConfigs {
+		var applyConfig func(*ConfigWrapper, *chunk_storage.StorageConfig)
+
+		// only one config is allowed
+		configsFound := 0
+
 		if !reflect.DeepEqual(cfg.Common.Storage.Azure, storageConfig.AzureStorageConfig) {
 			configsFound++
 

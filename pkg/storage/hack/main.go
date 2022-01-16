@@ -44,7 +44,7 @@ func main() {
 
 func getStore() (lstore.Store, error) {
 	storeConfig := lstore.Config{
-		Config: storage.Config{
+		Config: storage.NewConfig(){
 			BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
 			FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 		},

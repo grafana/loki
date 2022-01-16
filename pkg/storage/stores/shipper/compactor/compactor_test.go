@@ -31,7 +31,7 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 
 	require.NoError(t, cfg.Validate())
 
-	c, err := NewCompactor(cfg, storage.Config{FSConfig: local.FSConfig{Directory: tempDir}}, loki_storage.SchemaConfig{}, nil, nil)
+	c, err := NewCompactor(cfg, storage.NewConfig(){FSConfig: local.FSConfig{Directory: tempDir}}, loki_storage.SchemaConfig{}, nil, nil)
 	require.NoError(t, err)
 
 	return c

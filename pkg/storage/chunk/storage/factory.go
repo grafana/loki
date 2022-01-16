@@ -94,7 +94,7 @@ type StorageConfig struct {
 // Config chooses which storage client to use.
 type Config struct {
 	Engine         string                   `yaml:"engine"`
-	StorageConfigs map[string]StorageConfig `yaml:"backend"`
+	StorageConfigs map[string]StorageConfig `yaml:"backends"`
 
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 

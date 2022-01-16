@@ -126,7 +126,7 @@ type testObjectClient struct {
 }
 
 func newTestObjectClient(path string) chunk.ObjectClient {
-	c, err := chunk_storage.NewObjectClient("filesystem", chunk_storage.Config{
+	c, err := chunk_storage.NewObjectClient("filesystem", chunk_storage.NewConfig(){
 		FSConfig: local.FSConfig{
 			Directory: path,
 		},
@@ -221,8 +221,8 @@ func newTestStore(t testing.TB) *testStore {
 
 	require.NoError(t, schemaCfg.SchemaConfig.Validate())
 
-	config := storage.Config{
-		Config: chunk_storage.Config{
+	config := storage.NewConfig() {
+		Config: chunk_storage.Config {
 			BoltDBConfig: local.BoltDBConfig{
 				Directory: indexDir,
 			},
