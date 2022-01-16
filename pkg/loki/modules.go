@@ -316,7 +316,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 		t.Cfg.TableManager.IndexTables.ReadScale.Enabled ||
 		t.Cfg.TableManager.ChunkTables.InactiveReadScale.Enabled ||
 		t.Cfg.TableManager.IndexTables.InactiveReadScale.Enabled) &&
-		t.Cfg.StorageConfig.AWSStorageConfig.Metrics.URL == "" {
+		!storage.HasMetricsUrl(t.Cfg.TableManager.StorageName, t.Cfg.StorageConfig.Config) {
 		level.Error(util_log.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
 		os.Exit(1)
 	}
@@ -328,7 +328,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 		return nil, err
 	}
 
-	bucketClient, err := storage.NewBucketClient(t.Cfg.StorageConfig.Config)
+	bucketClient, err := storage.NewBucketClient(t.Cfg.TableManager.StorageName, t.Cfg.StorageConfig.Config)
 	util_log.CheckFatal("initializing bucket client", err)
 
 	t.tableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.SchemaConfig.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)

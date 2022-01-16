@@ -367,80 +367,82 @@ var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in 
 // configuration file, applyStorageConfig will not override them.
 // If multiple storage configurations are provided, applyStorageConfig will return an error
 func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
-	var applyConfig func(*ConfigWrapper)
+	var applyConfig func(*ConfigWrapper, *chunk_storage.StorageConfig)
 
 	// only one config is allowed
 	configsFound := 0
 
-	if !reflect.DeepEqual(cfg.Common.Storage.Azure, defaults.StorageConfig.AzureStorageConfig) {
-		configsFound++
+	for _, storageConfig := range defaults.StorageConfig.StorageConfigs {
+		if !reflect.DeepEqual(cfg.Common.Storage.Azure, storageConfig.AzureStorageConfig) {
+			configsFound++
 
-		applyConfig = func(r *ConfigWrapper) {
-			r.Ruler.StoreConfig.Type = "azure"
-			r.Ruler.StoreConfig.Azure = r.Common.Storage.Azure
-			r.StorageConfig.AzureStorageConfig = r.Common.Storage.Azure
-			r.StorageConfig.Hedging = r.Common.Storage.Hedging
-			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeAzure
+			applyConfig = func(r *ConfigWrapper, cfg *chunk_storage.StorageConfig) {
+				r.Ruler.StoreConfig.Type = "azure"
+				r.Ruler.StoreConfig.Azure = r.Common.Storage.Azure
+				cfg.AzureStorageConfig = r.Common.Storage.Azure
+				r.StorageConfig.Hedging = r.Common.Storage.Hedging
+				r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeAzure
+			}
 		}
-	}
 
-	filesystemDefaults := common.FilesystemConfig{}
-	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
-	filesystemDefaults.RegisterFlagsWithPrefix("", throwaway)
+		filesystemDefaults := common.FilesystemConfig{}
+		throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
+		filesystemDefaults.RegisterFlagsWithPrefix("", throwaway)
 
-	if !reflect.DeepEqual(cfg.Common.Storage.FSConfig, filesystemDefaults) {
-		configsFound++
+		if !reflect.DeepEqual(cfg.Common.Storage.FSConfig, filesystemDefaults) {
+			configsFound++
 
-		applyConfig = func(r *ConfigWrapper) {
-			r.Ruler.StoreConfig.Type = "local"
-			r.Ruler.StoreConfig.Local = local.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
-			r.StorageConfig.FSConfig.Directory = r.Common.Storage.FSConfig.ChunksDirectory
-			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeFileSystem
+			applyConfig = func(r *ConfigWrapper, cfg *chunk_storage.StorageConfig) {
+				r.Ruler.StoreConfig.Type = "local"
+				r.Ruler.StoreConfig.Local = local.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
+				cfg.FSConfig.Directory = r.Common.Storage.FSConfig.ChunksDirectory
+				r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeFileSystem
+			}
 		}
-	}
 
-	if !reflect.DeepEqual(cfg.Common.Storage.GCS, defaults.StorageConfig.GCSConfig) {
-		configsFound++
+		if !reflect.DeepEqual(cfg.Common.Storage.GCS, storageConfig.GCSConfig) {
+			configsFound++
 
-		applyConfig = func(r *ConfigWrapper) {
-			r.Ruler.StoreConfig.Type = "gcs"
-			r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS
-			r.StorageConfig.GCSConfig = r.Common.Storage.GCS
-			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeGCS
-			r.StorageConfig.Hedging = r.Common.Storage.Hedging
+			applyConfig = func(r *ConfigWrapper, cfg *chunk_storage.StorageConfig) {
+				r.Ruler.StoreConfig.Type = "gcs"
+				r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS
+				cfg.GCSConfig = r.Common.Storage.GCS
+				r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeGCS
+				r.StorageConfig.Hedging = r.Common.Storage.Hedging
+			}
 		}
-	}
 
-	if !reflect.DeepEqual(cfg.Common.Storage.S3, defaults.StorageConfig.AWSStorageConfig.S3Config) {
-		configsFound++
+		if !reflect.DeepEqual(cfg.Common.Storage.S3, storageConfig.AWSStorageConfig.S3Config) {
+			configsFound++
 
-		applyConfig = func(r *ConfigWrapper) {
-			r.Ruler.StoreConfig.Type = "s3"
-			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3
-			r.StorageConfig.AWSStorageConfig.S3Config = r.Common.Storage.S3
-			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeS3
-			r.StorageConfig.Hedging = r.Common.Storage.Hedging
+			applyConfig = func(r *ConfigWrapper, cfg *chunk_storage.StorageConfig) {
+				r.Ruler.StoreConfig.Type = "s3"
+				r.Ruler.StoreConfig.S3 = r.Common.Storage.S3
+				cfg.AWSStorageConfig.S3Config = r.Common.Storage.S3
+				r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeS3
+				r.StorageConfig.Hedging = r.Common.Storage.Hedging
+			}
 		}
-	}
 
-	if !reflect.DeepEqual(cfg.Common.Storage.Swift, defaults.StorageConfig.Swift) {
-		configsFound++
+		if !reflect.DeepEqual(cfg.Common.Storage.Swift, storageConfig.Swift) {
+			configsFound++
 
-		applyConfig = func(r *ConfigWrapper) {
-			r.Ruler.StoreConfig.Type = "swift"
-			r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift
-			r.StorageConfig.Swift = r.Common.Storage.Swift
-			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeSwift
-			r.StorageConfig.Hedging = r.Common.Storage.Hedging
+			applyConfig = func(r *ConfigWrapper, cfg *chunk_storage.StorageConfig) {
+				r.Ruler.StoreConfig.Type = "swift"
+				r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift
+				cfg.Swift = r.Common.Storage.Swift
+				r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeSwift
+				r.StorageConfig.Hedging = r.Common.Storage.Hedging
+			}
 		}
-	}
 
-	if configsFound > 1 {
-		return ErrTooManyStorageConfigs
-	}
+		if configsFound > 1 {
+			return ErrTooManyStorageConfigs
+		}
 
-	if applyConfig != nil {
-		applyConfig(cfg)
+		if applyConfig != nil {
+			applyConfig(cfg, &storageConfig)
+		}
 	}
 
 	return nil

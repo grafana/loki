@@ -100,6 +100,8 @@ type TableManagerConfig struct {
 
 	IndexTables ProvisionConfig `yaml:"index_tables_provisioning"`
 	ChunkTables ProvisionConfig `yaml:"chunk_tables_provisioning"`
+
+	StorageName string `yaml:"storage"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface. To support RetentionPeriod.

@@ -78,9 +78,8 @@ type StoreLimits interface {
 	MaxQueryLength(userID string) time.Duration
 }
 
-// Config chooses which storage client to use.
-type Config struct {
-	Engine                 string                  `yaml:"engine"`
+type StorageConfig struct {
+	StorageType            string                  `yaml:"type"`
 	AWSStorageConfig       aws.StorageConfig       `yaml:"aws"`
 	AzureStorageConfig     azure.BlobStorageConfig `yaml:"azure"`
 	GCPStorageConfig       gcp.Config              `yaml:"bigtable"`
@@ -89,6 +88,13 @@ type Config struct {
 	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
 	FSConfig               local.FSConfig          `yaml:"filesystem"`
 	Swift                  openstack.SwiftConfig   `yaml:"swift"`
+	GrpcConfig             grpc.Config             `yaml:"grpc_store"`
+}
+
+// Config chooses which storage client to use.
+type Config struct {
+	Engine         string                   `yaml:"engine"`
+	StorageConfigs map[string]StorageConfig `yaml:"backend"`
 
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
@@ -96,23 +102,21 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	GrpcConfig grpc.Config `yaml:"grpc_store"`
-
 	Hedging hedging.Config `yaml:"hedging"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.AWSStorageConfig.RegisterFlags(f)
-	cfg.AzureStorageConfig.RegisterFlags(f)
-	cfg.GCPStorageConfig.RegisterFlags(f)
-	cfg.GCSConfig.RegisterFlags(f)
-	cfg.CassandraStorageConfig.RegisterFlags(f)
-	cfg.BoltDBConfig.RegisterFlags(f)
-	cfg.FSConfig.RegisterFlags(f)
-	cfg.Swift.RegisterFlags(f)
-	cfg.GrpcConfig.RegisterFlags(f)
-	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
+	//cfg.AWSStorageConfig.RegisterFlags(f)
+	//cfg.AzureStorageConfig.RegisterFlags(f)
+	//cfg.GCPStorageConfig.RegisterFlags(f)
+	//cfg.GCSConfig.RegisterFlags(f)
+	//cfg.CassandraStorageConfig.RegisterFlags(f)
+	//cfg.BoltDBConfig.RegisterFlags(f)
+	//cfg.FSConfig.RegisterFlags(f)
+	//cfg.Swift.RegisterFlags(f)
+	//cfg.GrpcConfig.RegisterFlags(f)
+	//cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 
 	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or blocks.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading.", f)
@@ -126,23 +130,26 @@ func (cfg *Config) Validate() error {
 	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineBlocks {
 		return errors.New("unsupported storage engine")
 	}
-	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Cassandra Storage config")
-	}
-	if err := cfg.GCPStorageConfig.Validate(util_log.Logger); err != nil {
-		return errors.Wrap(err, "invalid GCP Storage Storage config")
-	}
-	if err := cfg.Swift.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Swift Storage config")
-	}
 	if err := cfg.IndexQueriesCacheConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Index Queries Cache config")
 	}
-	if err := cfg.AzureStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Azure Storage config")
-	}
-	if err := cfg.AWSStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid AWS Storage config")
+
+	for _, storageConfig := range cfg.StorageConfigs {
+		if err := storageConfig.CassandraStorageConfig.Validate(); err != nil {
+			return errors.Wrap(err, "invalid Cassandra Storage config")
+		}
+		if err := storageConfig.GCPStorageConfig.Validate(util_log.Logger); err != nil {
+			return errors.Wrap(err, "invalid GCP Storage Storage config")
+		}
+		if err := storageConfig.Swift.Validate(); err != nil {
+			return errors.Wrap(err, "invalid Swift Storage config")
+		}
+		if err := storageConfig.AzureStorageConfig.Validate(); err != nil {
+			return errors.Wrap(err, "invalid Azure Storage config")
+		}
+		if err := storageConfig.AWSStorageConfig.Validate(); err != nil {
+			return errors.Wrap(err, "invalid AWS Storage config")
+		}
 	}
 	return nil
 }
@@ -236,92 +243,101 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		}
 	}
 
-	switch name {
-	case StorageTypeInMemory:
-		store := chunk.NewMockStorage()
-		return store, nil
-	case StorageTypeAWS, StorageTypeAWSDynamo:
-		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
-			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
+	if val, ok := cfg.StorageConfigs[name]; ok {
+		switch val.StorageType {
+		case StorageTypeInMemory:
+			store := chunk.NewMockStorage()
+			return store, nil
+		case StorageTypeAWS, StorageTypeAWSDynamo:
+			if val.AWSStorageConfig.DynamoDB.URL == nil {
+				return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
+			}
+			path := strings.TrimPrefix(val.AWSStorageConfig.DynamoDB.URL.Path, "/")
+			if len(path) > 0 {
+				level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+			}
+			return aws.NewDynamoDBIndexClient(val.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
+		case StorageTypeGCP:
+			return gcp.NewStorageClientV1(context.Background(), val.GCPStorageConfig, schemaCfg)
+		case StorageTypeGCPColumnKey, StorageTypeBigTable:
+			return gcp.NewStorageClientColumnKey(context.Background(), val.GCPStorageConfig, schemaCfg)
+		case StorageTypeBigTableHashed:
+			val.GCPStorageConfig.DistributeKeys = true
+			return gcp.NewStorageClientColumnKey(context.Background(), val.GCPStorageConfig, schemaCfg)
+		case StorageTypeCassandra:
+			return cassandra.NewStorageClient(val.CassandraStorageConfig, schemaCfg, registerer)
+		case StorageTypeBoltDB:
+			return local.NewBoltDBIndexClient(val.BoltDBConfig)
+		case StorageTypeGrpc:
+			return grpc.NewStorageClient(val.GrpcConfig, schemaCfg)
+		default:
+			return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", name, StorageTypeAWS, StorageTypeCassandra, StorageTypeInMemory, StorageTypeGCP, StorageTypeBigTable, StorageTypeBigTableHashed)
 		}
-		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
-		if len(path) > 0 {
-			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
-		}
-		return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
-	case StorageTypeGCP:
-		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case StorageTypeGCPColumnKey, StorageTypeBigTable:
-		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case StorageTypeBigTableHashed:
-		cfg.GCPStorageConfig.DistributeKeys = true
-		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case StorageTypeCassandra:
-		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
-	case StorageTypeBoltDB:
-		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
-	case StorageTypeGrpc:
-		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
-	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", name, StorageTypeAWS, StorageTypeCassandra, StorageTypeInMemory, StorageTypeGCP, StorageTypeBigTable, StorageTypeBigTableHashed)
 	}
+
+	return nil, fmt.Errorf("Unrecognized storage backend %v", name)
+
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
 func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (chunk.Client, error) {
-	switch name {
-	case StorageTypeInMemory:
-		return chunk.NewMockStorage(), nil
-	case StorageTypeAWS, StorageTypeS3:
-		c, err := aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
-		if err != nil {
-			return nil, err
+	if val, ok := cfg.StorageConfigs[name]; ok {
+		switch val.StorageType {
+		case StorageTypeInMemory:
+			return chunk.NewMockStorage(), nil
+		case StorageTypeAWS, StorageTypeS3:
+			c, err := aws.NewS3ObjectClient(val.AWSStorageConfig.S3Config, cfg.Hedging)
+			if err != nil {
+				return nil, err
+			}
+			return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+		case StorageTypeAWSDynamo:
+			if val.AWSStorageConfig.DynamoDB.URL == nil {
+				return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
+			}
+			path := strings.TrimPrefix(val.AWSStorageConfig.DynamoDB.URL.Path, "/")
+			if len(path) > 0 {
+				level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+			}
+			return aws.NewDynamoDBChunkClient(val.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
+		case StorageTypeAzure:
+			c, err := azure.NewBlobStorage(&val.AzureStorageConfig, cfg.Hedging)
+			if err != nil {
+				return nil, err
+			}
+			return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+		case StorageTypeGCP:
+			return gcp.NewBigtableObjectClient(context.Background(), val.GCPStorageConfig, schemaCfg)
+		case StorageTypeGCPColumnKey, StorageTypeBigTable, StorageTypeBigTableHashed:
+			return gcp.NewBigtableObjectClient(context.Background(), val.GCPStorageConfig, schemaCfg)
+		case StorageTypeGCS:
+			c, err := gcp.NewGCSObjectClient(context.Background(), val.GCSConfig, cfg.Hedging)
+			if err != nil {
+				return nil, err
+			}
+			return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+		case StorageTypeSwift:
+			c, err := openstack.NewSwiftObjectClient(val.Swift, cfg.Hedging)
+			if err != nil {
+				return nil, err
+			}
+			return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+		case StorageTypeCassandra:
+			return cassandra.NewObjectClient(val.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
+		case StorageTypeFileSystem:
+			store, err := local.NewFSObjectClient(val.FSConfig)
+			if err != nil {
+				return nil, err
+			}
+			return objectclient.NewClientWithMaxParallel(store, objectclient.Base64Encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+		case StorageTypeGrpc:
+			return grpc.NewStorageClient(val.GrpcConfig, schemaCfg)
+		default:
+			return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v", name, StorageTypeAWS, StorageTypeAzure, StorageTypeCassandra, StorageTypeInMemory, StorageTypeGCP, StorageTypeBigTable, StorageTypeBigTableHashed, StorageTypeGrpc)
 		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-	case StorageTypeAWSDynamo:
-		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
-			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
-		}
-		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
-		if len(path) > 0 {
-			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
-		}
-		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
-	case StorageTypeAzure:
-		c, err := azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
-		if err != nil {
-			return nil, err
-		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-	case StorageTypeGCP:
-		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case StorageTypeGCPColumnKey, StorageTypeBigTable, StorageTypeBigTableHashed:
-		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case StorageTypeGCS:
-		c, err := gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging)
-		if err != nil {
-			return nil, err
-		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-	case StorageTypeSwift:
-		c, err := openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
-		if err != nil {
-			return nil, err
-		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-	case StorageTypeCassandra:
-		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
-	case StorageTypeFileSystem:
-		store, err := local.NewFSObjectClient(cfg.FSConfig)
-		if err != nil {
-			return nil, err
-		}
-		return objectclient.NewClientWithMaxParallel(store, objectclient.Base64Encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
-	case StorageTypeGrpc:
-		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
-	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v", name, StorageTypeAWS, StorageTypeAzure, StorageTypeCassandra, StorageTypeInMemory, StorageTypeGCP, StorageTypeBigTable, StorageTypeBigTableHashed, StorageTypeGrpc)
 	}
+
+	return nil, fmt.Errorf("Unrecognized storage backend %v", name)
 }
 
 // NewTableClient makes a new table client based on the configuration.
@@ -332,56 +348,76 @@ func NewTableClient(name string, cfg Config, registerer prometheus.Registerer) (
 		}
 	}
 
-	switch name {
-	case StorageTypeInMemory:
-		return chunk.NewMockStorage(), nil
-	case StorageTypeAWS, StorageTypeAWSDynamo:
-		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
-			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
+	if val, ok := cfg.StorageConfigs[name]; ok {
+		switch val.StorageType {
+		case StorageTypeInMemory:
+			return chunk.NewMockStorage(), nil
+		case StorageTypeAWS, StorageTypeAWSDynamo:
+			if val.AWSStorageConfig.DynamoDB.URL == nil {
+				return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
+			}
+			path := strings.TrimPrefix(val.AWSStorageConfig.DynamoDB.URL.Path, "/")
+			if len(path) > 0 {
+				level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+			}
+			return aws.NewDynamoDBTableClient(val.AWSStorageConfig.DynamoDBConfig, registerer)
+		case StorageTypeGCP, StorageTypeGCPColumnKey, StorageTypeBigTable, StorageTypeBigTableHashed:
+			return gcp.NewTableClient(context.Background(), val.GCPStorageConfig)
+		case StorageTypeCassandra:
+			return cassandra.NewTableClient(context.Background(), val.CassandraStorageConfig, registerer)
+		case StorageTypeBoltDB:
+			return local.NewTableClient(val.BoltDBConfig.Directory)
+		case StorageTypeGrpc:
+			return grpc.NewTableClient(val.GrpcConfig)
+		default:
+			return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v", name, StorageTypeAWS, StorageTypeCassandra, StorageTypeInMemory, StorageTypeGCP, StorageTypeBigTable, StorageTypeBigTableHashed, StorageTypeGrpc)
 		}
-		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
-		if len(path) > 0 {
-			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
-		}
-		return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
-	case StorageTypeGCP, StorageTypeGCPColumnKey, StorageTypeBigTable, StorageTypeBigTableHashed:
-		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
-	case StorageTypeCassandra:
-		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig, registerer)
-	case StorageTypeBoltDB:
-		return local.NewTableClient(cfg.BoltDBConfig.Directory)
-	case StorageTypeGrpc:
-		return grpc.NewTableClient(cfg.GrpcConfig)
-	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v", name, StorageTypeAWS, StorageTypeCassandra, StorageTypeInMemory, StorageTypeGCP, StorageTypeBigTable, StorageTypeBigTableHashed, StorageTypeGrpc)
 	}
+
+	return nil, fmt.Errorf("Unrecognized storage backend %v", name)
 }
 
 // NewBucketClient makes a new bucket client based on the configuration.
-func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
-	if storageConfig.FSConfig.Directory != "" {
-		return local.NewFSObjectClient(storageConfig.FSConfig)
+func NewBucketClient(name string, storageConfig Config) (chunk.BucketClient, error) {
+
+	if val, ok := storageConfig.StorageConfigs[name]; ok {
+		if val.FSConfig.Directory != "" {
+			return local.NewFSObjectClient(val.FSConfig)
+		}
 	}
 
 	return nil, nil
 }
 
+func HasMetricsUrl(name string, storageConfig Config) bool {
+	if val, ok := storageConfig.StorageConfigs[name]; ok {
+		if val.AWSStorageConfig.Metrics.URL != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // NewObjectClient makes a new StorageClient of the desired types.
 func NewObjectClient(name string, cfg Config) (chunk.ObjectClient, error) {
-	switch name {
-	case StorageTypeAWS, StorageTypeS3:
-		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
-	case StorageTypeGCS:
-		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging)
-	case StorageTypeAzure:
-		return azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
-	case StorageTypeSwift:
-		return openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
-	case StorageTypeInMemory:
-		return chunk.NewMockStorage(), nil
-	case StorageTypeFileSystem:
-		return local.NewFSObjectClient(cfg.FSConfig)
-	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, StorageTypeAWS, StorageTypeS3, StorageTypeGCS, StorageTypeAzure, StorageTypeFileSystem)
+	if val, ok := cfg.StorageConfigs[name]; ok {
+		switch name {
+		case StorageTypeAWS, StorageTypeS3:
+			return aws.NewS3ObjectClient(val.AWSStorageConfig.S3Config, cfg.Hedging)
+		case StorageTypeGCS:
+			return gcp.NewGCSObjectClient(context.Background(), val.GCSConfig, cfg.Hedging)
+		case StorageTypeAzure:
+			return azure.NewBlobStorage(&val.AzureStorageConfig, cfg.Hedging)
+		case StorageTypeSwift:
+			return openstack.NewSwiftObjectClient(val.Swift, cfg.Hedging)
+		case StorageTypeInMemory:
+			return chunk.NewMockStorage(), nil
+		case StorageTypeFileSystem:
+			return local.NewFSObjectClient(val.FSConfig)
+		default:
+			return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, StorageTypeAWS, StorageTypeS3, StorageTypeGCS, StorageTypeAzure, StorageTypeFileSystem)
+		}
 	}
+
+	return nil, fmt.Errorf("Unrecognized storage backend %v", name)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"sort"
 	"time"
 
@@ -136,11 +137,15 @@ func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, regist
 // NewTableClient creates a TableClient for managing tables for index/chunk store.
 // ToDo: Add support in Cortex for registering custom table client like index client.
 func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
-	if name == shipper.BoltDBShipperType {
-		name = "boltdb"
-		cfg.FSConfig = chunk_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
+	if val, ok := cfg.StorageConfigs[name]; ok {
+		if name == shipper.BoltDBShipperType {
+			name = "boltdb"
+			val.FSConfig = chunk_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
+		}
+		return storage.NewTableClient(name, cfg.Config, prometheus.DefaultRegisterer)
 	}
-	return storage.NewTableClient(name, cfg.Config, prometheus.DefaultRegisterer)
+
+	return nil, fmt.Errorf("Unrecognized storage backend %v", name)
 }
 
 // decodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,
