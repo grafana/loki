@@ -14,7 +14,7 @@ const (
 	LokiConfigFileName = "config.yaml"
 	// LokiRuntimeConfigFileName is the name of the runtime config file in the configmap
 	LokiRuntimeConfigFileName = "runtime-config.yaml"
-	// LokiConfigMountDir is the path that is mounted from the configmap
+	// LokiConfigMountDir is the path that is mounted from loki config configmap
 	LokiConfigMountDir = "/etc/loki/config"
 )
 

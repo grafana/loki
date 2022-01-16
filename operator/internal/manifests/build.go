@@ -44,6 +44,11 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	rulerObjs, err := BuildRuler(opts)
+	if err != nil {
+		return nil, err
+	}
+
 	indexGatewayObjs, err := BuildIndexGateway(opts)
 	if err != nil {
 		return nil, err
@@ -55,6 +60,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	res = append(res, querierObjs...)
 	res = append(res, compactorObjs...)
 	res = append(res, queryFrontendObjs...)
+	res = append(res, rulerObjs...)
 	res = append(res, indexGatewayObjs...)
 	res = append(res, BuildLokiGossipRingService(opts.Name))
 

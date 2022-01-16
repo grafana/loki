@@ -161,6 +161,24 @@ func randomConfigOptions() manifests.Options {
 						},
 					},
 				},
+				Ruler: &lokiv1beta1.LokiRulerComponentSpec{
+					LokiComponentSpec: lokiv1beta1.LokiComponentSpec{
+						Replicas: rand.Int31(),
+						NodeSelector: map[string]string{
+							uuid.New().String(): uuid.New().String(),
+						},
+						Tolerations: []corev1.Toleration{
+							{
+								Key:               uuid.New().String(),
+								Operator:          corev1.TolerationOpEqual,
+								Value:             uuid.New().String(),
+								Effect:            corev1.TaintEffectNoExecute,
+								TolerationSeconds: pointer.Int64Ptr(rand.Int63()),
+							},
+						},
+					},
+					PrometheusEndpoint: uuid.New().String(),
+				},
 				IndexGateway: &lokiv1beta1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 					NodeSelector: map[string]string{

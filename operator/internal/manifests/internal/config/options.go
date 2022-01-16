@@ -19,6 +19,7 @@ type Options struct {
 	IndexGateway     Address
 	StorageDirectory string
 	ObjectStorage    ObjectStorage
+	Prometheus       Prometheus
 	QueryParallelism Parallelism
 	WriteAheadLog    WriteAheadLog
 }
@@ -38,6 +39,11 @@ type ObjectStorage struct {
 	Buckets         string
 	AccessKeyID     string
 	AccessKeySecret string
+}
+
+// Prometheus config.
+type Prometheus struct {
+	Endpoint string
 }
 
 // Parallelism for query processing parallelism

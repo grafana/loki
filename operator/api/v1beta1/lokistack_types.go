@@ -253,6 +253,18 @@ type LokiComponentSpec struct {
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 }
 
+// LokiRulerComponentSpec defines the requirements to configure ruler component
+type LokiRulerComponentSpec struct {
+	LokiComponentSpec `json:",inline"`
+
+	// PrometheusEndpoint defines the recording rules metrics push endpoint
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:hidden"
+	PrometheusEndpoint string `json:"prometheusEndpoint,omitempty"`
+}
+
 // LokiTemplateSpec defines the template of all requirements to configure
 // scheduling of all Loki components to be deployed.
 type LokiTemplateSpec struct {
@@ -291,6 +303,13 @@ type LokiTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Frontend pods"
 	QueryFrontend *LokiComponentSpec `json:"queryFrontend,omitempty"`
+
+	// Ruler defines the ruler component spec.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Ruler pods"
+	Ruler *LokiRulerComponentSpec `json:"ruler,omitempty"`
 
 	// Gateway defines the lokistack gateway component spec.
 	//
