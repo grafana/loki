@@ -278,6 +278,7 @@ require (
 )
 
 require (
+	github.com/ViaQ/logerr v1.0.11
 	github.com/cloudflare/cloudflare-go v0.27.0
 	github.com/gofrs/flock v0.7.1 // indirect
 	github.com/gogo/status v1.1.0

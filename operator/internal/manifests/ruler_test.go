@@ -49,3 +49,5 @@ func TestNewRulerDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 	require.Contains(t, annotations, expected)
 	require.Equal(t, annotations[expected], "deadbeef")
 }
+
+// TODO:	add more tests
