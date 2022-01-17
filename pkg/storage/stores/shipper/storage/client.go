@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 )
 
 const delimiter = "/"
@@ -39,8 +40,7 @@ type Client interface {
 }
 
 type indexStorageClient struct {
-	objectClient  chunk.ObjectClient
-	storagePrefix string
+	objectClient chunk.ObjectClient
 }
 
 type IndexFile struct {
@@ -49,11 +49,15 @@ type IndexFile struct {
 }
 
 func NewIndexStorageClient(objectClient chunk.ObjectClient, storagePrefix string) Client {
-	return &indexStorageClient{objectClient: objectClient, storagePrefix: storagePrefix}
+	objectClient = newPrefixedObjectClient(objectClient, storagePrefix)
+	if _, ok := objectClient.(*local.FSObjectClient); !ok {
+		objectClient = newCachedObjectClient(objectClient)
+	}
+	return &indexStorageClient{objectClient: objectClient}
 }
 
 func (s *indexStorageClient) ListTables(ctx context.Context) ([]string, error) {
-	_, tables, err := s.objectClient.List(ctx, s.storagePrefix, delimiter)
+	_, tables, err := s.objectClient.List(ctx, "", delimiter)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +74,7 @@ func (s *indexStorageClient) ListFiles(ctx context.Context, tableName string) ([
 	// The forward slash here needs to stay because we are trying to list contents of a directory without which
 	// we will get the name of the same directory back with hosted object stores.
 	// This is due to the object stores not having a concept of directories.
-	objects, users, err := s.objectClient.List(ctx, s.storagePrefix+tableName+delimiter, delimiter)
+	objects, users, err := s.objectClient.List(ctx, tableName+delimiter, delimiter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -99,7 +103,7 @@ func (s *indexStorageClient) ListUserFiles(ctx context.Context, tableName, userI
 	// The forward slash here needs to stay because we are trying to list contents of a directory without which
 	// we will get the name of the same directory back with hosted object stores.
 	// This is due to the object stores not having a concept of directories.
-	objects, _, err := s.objectClient.List(ctx, s.storagePrefix+path.Join(tableName, userID)+delimiter, delimiter)
+	objects, _, err := s.objectClient.List(ctx, path.Join(tableName, userID)+delimiter, delimiter)
 	if err != nil {
 		return nil, err
 	}
@@ -120,29 +124,29 @@ func (s *indexStorageClient) ListUserFiles(ctx context.Context, tableName, userI
 }
 
 func (s *indexStorageClient) GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error) {
-	reader, _, err := s.objectClient.GetObject(ctx, s.storagePrefix+path.Join(tableName, fileName))
+	reader, _, err := s.objectClient.GetObject(ctx, path.Join(tableName, fileName))
 	return reader, err
 }
 
 func (s *indexStorageClient) GetUserFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error) {
-	readCloser, _, err := s.objectClient.GetObject(ctx, s.storagePrefix+path.Join(tableName, userID, fileName))
+	readCloser, _, err := s.objectClient.GetObject(ctx, path.Join(tableName, userID, fileName))
 	return readCloser, err
 }
 
 func (s *indexStorageClient) PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error {
-	return s.objectClient.PutObject(ctx, s.storagePrefix+path.Join(tableName, fileName), file)
+	return s.objectClient.PutObject(ctx, path.Join(tableName, fileName), file)
 }
 
 func (s *indexStorageClient) PutUserFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error {
-	return s.objectClient.PutObject(ctx, s.storagePrefix+path.Join(tableName, userID, fileName), file)
+	return s.objectClient.PutObject(ctx, path.Join(tableName, userID, fileName), file)
 }
 
 func (s *indexStorageClient) DeleteFile(ctx context.Context, tableName, fileName string) error {
-	return s.objectClient.DeleteObject(ctx, s.storagePrefix+path.Join(tableName, fileName))
+	return s.objectClient.DeleteObject(ctx, path.Join(tableName, fileName))
 }
 
 func (s *indexStorageClient) DeleteUserFile(ctx context.Context, tableName, userID, fileName string) error {
-	return s.objectClient.DeleteObject(ctx, s.storagePrefix+path.Join(tableName, userID, fileName))
+	return s.objectClient.DeleteObject(ctx, path.Join(tableName, userID, fileName))
 }
 
 func (s *indexStorageClient) IsFileNotFoundErr(err error) bool {
