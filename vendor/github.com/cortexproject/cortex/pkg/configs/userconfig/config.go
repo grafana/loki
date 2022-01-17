@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
-
-	"gopkg.in/yaml.v3"
-
 	"github.com/go-kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
+	"gopkg.in/yaml.v3"
 
 	legacy_promql "github.com/cortexproject/cortex/pkg/configs/legacy_promql"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"

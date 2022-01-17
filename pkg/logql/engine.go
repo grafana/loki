@@ -8,20 +8,23 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/pkg/util/spanlogger"
+
+	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 var (
@@ -113,13 +116,14 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	defer timer.ObserveDuration()
 
 	// records query statistics
-	var statResult stats.Result
 	start := time.Now()
-	ctx = stats.NewContext(ctx)
+	statsCtx, ctx := stats.NewContext(ctx)
 
 	data, err := q.Eval(ctx)
 
-	statResult = stats.Snapshot(ctx, time.Since(start))
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+
+	statResult := statsCtx.Result(time.Since(start), queueTime)
 	statResult.Log(level.Debug(log))
 
 	status := "200"

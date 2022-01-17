@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
+	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
 func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
@@ -23,6 +24,10 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 	cfg.WorkingDirectory = filepath.Join(tempDir, workingDirName)
 	cfg.SharedStoreType = "filesystem"
 	cfg.RetentionEnabled = false
+
+	if loopbackIFace, err := loki_net.LoopbackInterfaceName(); err == nil {
+		cfg.CompactorRing.InstanceInterfaceNames = append(cfg.CompactorRing.InstanceInterfaceNames, loopbackIFace)
+	}
 
 	require.NoError(t, cfg.Validate())
 
@@ -83,14 +88,14 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	}
 
 	for name, dbs := range tables {
-		testutil.SetupDBTablesAtPath(t, name, tablesPath, dbs, false)
+		testutil.SetupDBsAtPath(t, name, tablesPath, dbs, false, nil)
 
 		// setup exact same copy of dbs for comparison.
-		testutil.SetupDBTablesAtPath(t, name, tablesCopyPath, dbs, false)
+		testutil.SetupDBsAtPath(t, name, tablesCopyPath, dbs, false, nil)
 	}
 
 	compactor := setupTestCompactor(t, tempDir)
-	err = compactor.RunCompaction(context.Background())
+	err = compactor.RunCompaction(context.Background(), true)
 	require.NoError(t, err)
 
 	for name := range tables {
@@ -101,6 +106,6 @@ func TestCompactor_RunCompaction(t *testing.T) {
 		require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
 
 		// verify we have all the kvs in compacted db which were there in source dbs.
-		compareCompactedDB(t, filepath.Join(tablesPath, name, files[0].Name()), filepath.Join(tablesCopyPath, name))
+		compareCompactedTable(t, filepath.Join(tablesPath, name), filepath.Join(tablesCopyPath, name))
 	}
 }

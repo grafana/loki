@@ -143,7 +143,7 @@ type heapSampleIterator struct {
 	heap       *sampleIteratorHeap
 	is         []SampleIterator
 	prefetched bool
-	stats      *stats.ChunkData
+	stats      *stats.Context
 
 	tuples     []sampletuple
 	curr       logproto.Sample
@@ -154,10 +154,11 @@ type heapSampleIterator struct {
 // NewHeapSampleIterator returns a new iterator which uses a heap to merge together
 // entries for multiple iterators.
 func NewHeapSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
+	h := sampleIteratorHeap(make([]SampleIterator, 0, len(is)))
 	return &heapSampleIterator{
-		stats:  stats.GetChunkData(ctx),
+		stats:  stats.FromContext(ctx),
 		is:     is,
-		heap:   &sampleIteratorHeap{},
+		heap:   &h,
 		tuples: make([]sampletuple, 0, len(is)),
 	}
 }
@@ -210,6 +211,16 @@ func (i *heapSampleIterator) Next() bool {
 		return false
 	}
 
+	// shortcut for the last iterator.
+	if i.heap.Len() == 1 {
+		i.curr = i.heap.Peek().Sample()
+		i.currLabels = i.heap.Peek().Labels()
+		if !i.heap.Peek().Next() {
+			i.heap.Pop()
+		}
+		return true
+	}
+
 	// We support multiple entries with the same timestamp, and we want to
 	// preserve their original order. We look at all the top entries in the
 	// heap with the same timestamp, and pop the ones whose common value
@@ -244,7 +255,7 @@ func (i *heapSampleIterator) Next() bool {
 		}
 		// we count as duplicates only if the tuple is not the one (t) used to fill the current entry
 		if i.tuples[j] != t {
-			i.stats.TotalDuplicates++
+			i.stats.AddDuplicates(1)
 		}
 		i.requeue(i.tuples[j].SampleIterator, false)
 	}
@@ -302,6 +313,7 @@ func NewSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
 }
 
 func (i *sampleQueryClientIterator) Next() bool {
+	ctx := i.client.Context()
 	for i.curr == nil || !i.curr.Next() {
 		batch, err := i.client.Recv()
 		if err == io.EOF {
@@ -310,10 +322,9 @@ func (i *sampleQueryClientIterator) Next() bool {
 			i.err = err
 			return false
 		}
-
-		i.curr = NewSampleQueryResponseIterator(i.client.Context(), batch)
+		stats.JoinIngesters(ctx, batch.Stats)
+		i.curr = NewSampleQueryResponseIterator(ctx, batch)
 	}
-
 	return true
 }
 
@@ -359,7 +370,6 @@ func (w *withCloseSampleIterator) Close() error {
 		if err := w.closeFn(); err != nil {
 			w.errs = append(w.errs, err)
 		}
-
 	})
 	if len(w.errs) == 0 {
 		return nil

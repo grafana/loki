@@ -29,7 +29,7 @@ func (b *boltDBShipperTableClient) Stop() {
 }
 
 func (b *boltDBShipperTableClient) DeleteTable(ctx context.Context, tableName string) error {
-	files, err := b.indexStorageClient.ListFiles(ctx, tableName)
+	files, _, err := b.indexStorageClient.ListFiles(ctx, tableName)
 	if err != nil {
 		return err
 	}

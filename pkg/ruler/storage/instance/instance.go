@@ -20,7 +20,7 @@ import (
 	"github.com/oklog/run"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/remote"
@@ -42,7 +42,7 @@ var (
 // Default configuration values
 var (
 	DefaultConfig = Config{
-		Dir:                 "wal",
+		Dir:                 "ruler-wal",
 		TruncateFrequency:   60 * time.Minute,
 		MinAge:              5 * time.Minute,
 		MaxAge:              4 * time.Hour,

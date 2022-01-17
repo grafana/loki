@@ -17,7 +17,7 @@
 
 package promql
 
-import "github.com/prometheus/prometheus/pkg/textparse"
+import "github.com/prometheus/prometheus/model/textparse"
 
 // PromQL parser fuzzing instrumentation for use with
 // https://github.com/dvyukov/go-fuzz.

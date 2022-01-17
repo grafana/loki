@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/validation"
@@ -90,10 +90,12 @@ func Test_expirationChecker_Expired(t *testing.T) {
 
 func TestFindLatestRetentionStartTime(t *testing.T) {
 	const dayDuration = 24 * time.Hour
+	now := model.Now()
 	for _, tc := range []struct {
-		name                               string
-		limit                              fakeLimits
-		expectedEarliestRetentionStartTime time.Duration
+		name                                   string
+		limit                                  fakeLimits
+		expectedLatestRetentionStartTime       model.Time
+		expectedLatestRetentionStartTimeByUser map[string]model.Time
 	}{
 		{
 			name: "only default retention set",
@@ -102,7 +104,8 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					retentionPeriod: 7 * dayDuration,
 				},
 			},
-			expectedEarliestRetentionStartTime: 7 * dayDuration,
+			expectedLatestRetentionStartTime:       now.Add(-7 * dayDuration),
+			expectedLatestRetentionStartTimeByUser: map[string]model.Time{},
 		},
 		{
 			name: "default retention period smallest",
@@ -120,7 +123,11 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					"1": {retentionPeriod: 15 * dayDuration},
 				},
 			},
-			expectedEarliestRetentionStartTime: 7 * dayDuration,
+			expectedLatestRetentionStartTime: now.Add(-7 * dayDuration),
+			expectedLatestRetentionStartTimeByUser: map[string]model.Time{
+				"0": now.Add(-12 * dayDuration),
+				"1": now.Add(-15 * dayDuration),
+			},
 		},
 		{
 			name: "default stream retention period smallest",
@@ -138,7 +145,11 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					"1": {retentionPeriod: 5 * dayDuration},
 				},
 			},
-			expectedEarliestRetentionStartTime: 3 * dayDuration,
+			expectedLatestRetentionStartTime: now.Add(-3 * dayDuration),
+			expectedLatestRetentionStartTimeByUser: map[string]model.Time{
+				"0": now.Add(-7 * dayDuration),
+				"1": now.Add(-5 * dayDuration),
+			},
 		},
 		{
 			name: "user retention retention period smallest",
@@ -170,7 +181,11 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					},
 				},
 			},
-			expectedEarliestRetentionStartTime: 5 * dayDuration,
+			expectedLatestRetentionStartTime: now.Add(-5 * dayDuration),
+			expectedLatestRetentionStartTimeByUser: map[string]model.Time{
+				"0": now.Add(-10 * dayDuration),
+				"1": now.Add(-5 * dayDuration),
+			},
 		},
 		{
 			name: "user stream retention period smallest",
@@ -202,16 +217,22 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					},
 				},
 			},
-			expectedEarliestRetentionStartTime: 2 * dayDuration,
+			expectedLatestRetentionStartTime: now.Add(-2 * dayDuration),
+			expectedLatestRetentionStartTimeByUser: map[string]model.Time{
+				"0": now.Add(-10 * dayDuration),
+				"1": now.Add(-2 * dayDuration),
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expectedEarliestRetentionStartTime, findSmallestRetentionPeriod(tc.limit))
+			latestRetentionStartTime, latestRetentionStartTimeByUser := findLatestRetentionStartTime(now, tc.limit)
+			require.Equal(t, tc.expectedLatestRetentionStartTime, latestRetentionStartTime)
+			require.Equal(t, tc.expectedLatestRetentionStartTimeByUser, latestRetentionStartTimeByUser)
 		})
 	}
 }
 
-func TestExpirationChecker_IntervalHasExpiredChunks(t *testing.T) {
+func TestExpirationChecker_IntervalMayHaveExpiredChunks(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
 		expirationChecker expirationChecker
@@ -252,7 +273,7 @@ func TestExpirationChecker_IntervalHasExpiredChunks(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.hasExpiredChunks, tc.expirationChecker.IntervalHasExpiredChunks(tc.interval))
+			require.Equal(t, tc.hasExpiredChunks, tc.expirationChecker.IntervalMayHaveExpiredChunks(tc.interval, ""))
 		})
 	}
 }

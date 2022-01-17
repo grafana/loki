@@ -49,7 +49,7 @@ func TestIndexStorageClient(t *testing.T) {
 			expectedFiles, ok := tablesToSetup[table]
 			require.True(t, ok)
 
-			filesInStorage, err := indexStorageClient.ListFiles(context.Background(), table)
+			filesInStorage, _, err := indexStorageClient.ListFiles(context.Background(), table)
 			require.NoError(t, err)
 			require.Len(t, filesInStorage, len(expectedFiles))
 

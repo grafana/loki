@@ -23,7 +23,7 @@ type StorageActionsServiceOp struct {
 	client *Client
 }
 
-// StorageAttachment represents the attachement of a block storage
+// StorageAttachment represents the attachment of a block storage
 // volume to a specific Droplet under the device name.
 type StorageAttachment struct {
 	DropletID int `json:"droplet_id"`

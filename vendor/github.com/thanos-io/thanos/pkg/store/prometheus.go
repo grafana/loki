@@ -17,24 +17,24 @@ import (
 	"sync"
 
 	"github.com/blang/semver/v4"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/thanos-io/thanos/pkg/component"
-	thanoshttp "github.com/thanos-io/thanos/pkg/http"
+	"github.com/thanos-io/thanos/pkg/httpconfig"
 	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/runutil"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/store/storepb/prompb"
 	"github.com/thanos-io/thanos/pkg/tracing"
@@ -48,8 +48,8 @@ type PrometheusStore struct {
 	buffers          sync.Pool
 	component        component.StoreAPI
 	externalLabelsFn func() labels.Labels
-	timestamps       func() (mint int64, maxt int64)
 	promVersion      func() string
+	timestamps       func() (mint int64, maxt int64)
 
 	remoteReadAcceptableResponses []prompb.ReadRequest_ResponseType
 
@@ -84,8 +84,8 @@ func NewPrometheusStore(
 		client:                        client,
 		component:                     component,
 		externalLabelsFn:              externalLabelsFn,
-		timestamps:                    timestamps,
 		promVersion:                   promVersion,
+		timestamps:                    timestamps,
 		remoteReadAcceptableResponses: []prompb.ReadRequest_ResponseType{prompb.ReadRequest_STREAMED_XOR_CHUNKS, prompb.ReadRequest_SAMPLES},
 		buffers: sync.Pool{New: func() interface{} {
 			b := make([]byte, 0, initialBufSize)
@@ -441,7 +441,7 @@ func (p *PrometheusStore) startPromRemoteRead(ctx context.Context, q *prompb.Que
 	preq.Header.Set("Content-Type", "application/x-stream-protobuf")
 	preq.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
 
-	preq.Header.Set("User-Agent", thanoshttp.ThanosUserAgent)
+	preq.Header.Set("User-Agent", httpconfig.ThanosUserAgent)
 	presp, err = p.client.Do(preq.WithContext(ctx))
 	if err != nil {
 		return nil, errors.Wrap(err, "send request")
@@ -606,4 +606,24 @@ func (p *PrometheusStore) LabelValues(ctx context.Context, r *storepb.LabelValue
 
 	sort.Strings(vals)
 	return &storepb.LabelValuesResponse{Values: vals}, nil
+}
+
+func (p *PrometheusStore) LabelSet() []labelpb.ZLabelSet {
+	lset := p.externalLabelsFn()
+
+	labels := make([]labelpb.ZLabel, 0, len(lset))
+	labels = append(labels, labelpb.ZLabelsFromPromLabels(lset)...)
+
+	labelset := []labelpb.ZLabelSet{}
+	if len(labels) > 0 {
+		labelset = append(labelset, labelpb.ZLabelSet{
+			Labels: labels,
+		})
+	}
+
+	return labelset
+}
+
+func (p *PrometheusStore) Timestamps() (mint int64, maxt int64) {
+	return p.timestamps()
 }

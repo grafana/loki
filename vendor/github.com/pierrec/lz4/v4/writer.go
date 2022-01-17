@@ -49,12 +49,12 @@ func (w *Writer) Apply(options ...Option) (err error) {
 	default:
 		return lz4errors.ErrOptionClosedOrError
 	}
+	w.Reset(w.src)
 	for _, o := range options {
 		if err = o(w); err != nil {
 			return
 		}
 	}
-	w.Reset(w.src)
 	return
 }
 

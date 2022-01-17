@@ -6,16 +6,16 @@ import (
 	"strings"
 	"time"
 
-	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
-	"github.com/cortexproject/cortex/pkg/ring"
-	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/dskit/ring"
+	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -48,7 +48,7 @@ func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryD
 func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, clientFactory ring_client.PoolFactory) (*IngesterQuerier, error) {
 	iq := IngesterQuerier{
 		ring:            ring,
-		pool:            cortex_distributor.NewPool(clientCfg.PoolConfig, ring, clientFactory, util_log.Logger),
+		pool:            clientpool.NewPool(clientCfg.PoolConfig, ring, clientFactory, util_log.Logger),
 		extraQueryDelay: extraQueryDelay,
 	}
 
@@ -101,7 +101,8 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 
 func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
 	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Query(ctx, params.QueryRequest, stats.CollectTrailer(ctx))
+		stats.FromContext(ctx).AddIngesterReached(1)
+		return client.Query(ctx, params.QueryRequest)
 	})
 	if err != nil {
 		return nil, err
@@ -116,7 +117,8 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 
 func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
 	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
-		return client.QuerySample(ctx, params.SampleQueryRequest, stats.CollectTrailer(ctx))
+		stats.FromContext(ctx).AddIngesterReached(1)
+		return client.QuerySample(ctx, params.SampleQueryRequest)
 	})
 	if err != nil {
 		return nil, err
@@ -273,7 +275,6 @@ func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.T
 			End:      through.Time(),
 		})
 	})
-
 	if err != nil {
 		return nil, err
 	}

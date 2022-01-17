@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/distributor"
-	"github.com/cortexproject/cortex/pkg/ring"
-	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/ring"
+	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
+	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -86,7 +86,7 @@ func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory 
 // mockIngesterClientConfig returns an ingester client config suitable for testing
 func mockIngesterClientConfig() client.Config {
 	return client.Config{
-		PoolConfig: distributor.PoolConfig{
+		PoolConfig: clientpool.PoolConfig{
 			ClientCleanupPeriod:  1 * time.Minute,
 			HealthCheckIngesters: false,
 			RemoteTimeout:        1 * time.Second,
@@ -245,7 +245,7 @@ func (s *storeMock) PutOne(ctx context.Context, from, through model.Time, chunk 
 	return errors.New("storeMock.PutOne() has not been mocked")
 }
 
-func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
+func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, labelName)
 	return args.Get(0).([]string), args.Error(1)
 }

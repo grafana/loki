@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/thanos/pkg/cacheutil"
 	"gopkg.in/yaml.v2"
+
+	"github.com/thanos-io/thanos/pkg/cacheutil"
 )
 
 type IndexCacheProvider string

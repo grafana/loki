@@ -19,8 +19,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -34,6 +32,8 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
@@ -422,7 +422,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 	outstanding := dynamoDBReadRequest{}
 	chunksByKey := map[string]chunk.Chunk{}
 	for _, chunk := range chunks {
-		key := chunk.ExternalKey()
+		key := a.schemaCfg.ExternalKey(chunk)
 		chunksByKey[key] = chunk
 		tableName, err := a.schemaCfg.ChunkTableFor(chunk.From)
 		if err != nil {
@@ -581,7 +581,7 @@ func (a dynamoDBStorageClient) writesForChunks(chunks []chunk.Chunk) (dynamoDBWr
 		if err != nil {
 			return nil, err
 		}
-		key := chunks[i].ExternalKey()
+		key := a.schemaCfg.ExternalKey(chunks[i])
 
 		table, err := a.schemaCfg.ChunkTableFor(chunks[i].From)
 		if err != nil {

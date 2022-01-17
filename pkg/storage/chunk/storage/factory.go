@@ -21,10 +21,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/grpc"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
-	"github.com/grafana/loki/pkg/storage/chunk/purger"
 )
 
 // Supported storage engines
@@ -94,10 +94,11 @@ type Config struct {
 
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
-
-	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store"`
+	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
 	GrpcConfig grpc.Config `yaml:"grpc_store"`
+
+	Hedging hedging.Config `yaml:"hedging"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -109,14 +110,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CassandraStorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
-	cfg.DeleteStoreConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
 	cfg.GrpcConfig.RegisterFlags(f)
+	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 
 	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or blocks.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading.", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
+	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
 }
 
 // Validate config and returns error on failure
@@ -271,7 +273,11 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 	case StorageTypeInMemory:
 		return chunk.NewMockStorage(), nil
 	case StorageTypeAWS, StorageTypeS3:
-		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config))
+		c, err := aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeAWSDynamo:
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -282,35 +288,40 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		}
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case StorageTypeAzure:
-		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig))
+		c, err := azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeGCP:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case StorageTypeGCPColumnKey, StorageTypeBigTable, StorageTypeBigTableHashed:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case StorageTypeGCS:
-		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig))
+		c, err := gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeSwift:
-		return newChunkClientFromStore(openstack.NewSwiftObjectClient(cfg.Swift))
+		c, err := openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeCassandra:
-		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
+		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
 	case StorageTypeFileSystem:
 		store, err := local.NewFSObjectClient(cfg.FSConfig)
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClient(store, objectclient.Base64Encoder), nil
+		return objectclient.NewClientWithMaxParallel(store, objectclient.Base64Encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v", name, StorageTypeAWS, StorageTypeAzure, StorageTypeCassandra, StorageTypeInMemory, StorageTypeGCP, StorageTypeBigTable, StorageTypeBigTableHashed, StorageTypeGrpc)
 	}
-}
-
-func newChunkClientFromStore(store chunk.ObjectClient, err error) (chunk.Client, error) {
-	if err != nil {
-		return nil, err
-	}
-	return objectclient.NewClient(store, nil), nil
 }
 
 // NewTableClient makes a new table client based on the configuration.
@@ -359,13 +370,13 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 func NewObjectClient(name string, cfg Config) (chunk.ObjectClient, error) {
 	switch name {
 	case StorageTypeAWS, StorageTypeS3:
-		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config)
+		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
 	case StorageTypeGCS:
-		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig)
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging)
 	case StorageTypeAzure:
-		return azure.NewBlobStorage(&cfg.AzureStorageConfig)
+		return azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
 	case StorageTypeSwift:
-		return openstack.NewSwiftObjectClient(cfg.Swift)
+		return openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
 	case StorageTypeInMemory:
 		return chunk.NewMockStorage(), nil
 	case StorageTypeFileSystem:

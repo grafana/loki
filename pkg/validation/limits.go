@@ -9,7 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
@@ -19,10 +19,19 @@ import (
 )
 
 const (
-	// Local ingestion rate strategy
+	// LocalRateLimitStrat represents a ingestion rate limiting strategy that enforces the limit
+	// on a per distributor basis.
+	//
+	// The actual effective rate limit will be N times higher, where N is the number of distributor replicas.
 	LocalIngestionRateStrategy = "local"
 
-	// Global ingestion rate strategy
+	// GlobalRateLimitStrat represents a ingestion rate limiting strategy that enforces the rate
+	// limiting globally, configuring a per-distributor local rate limiter as "ingestion_rate / N",
+	// where N is the number of distributor replicas (it's automatically adjusted if the
+	// number of replicas change).
+	//
+	// The global strategy requires the distributors to form their own ring, which
+	// is used to keep track of the current number of healthy distributor replicas.
 	GlobalIngestionRateStrategy = "global"
 
 	bytesInMB = 1048576
@@ -251,7 +260,12 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 	}, nil
 }
 
-func (o *Overrides) AllByUserID() map[string]*Limits { return o.tenantLimits.AllByUserID() }
+func (o *Overrides) AllByUserID() map[string]*Limits {
+	if o.tenantLimits != nil {
+		return o.tenantLimits.AllByUserID()
+	}
+	return nil
+}
 
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
 // to each distributor instance (local) or evenly shared across the cluster (global).

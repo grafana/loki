@@ -5,6 +5,7 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
@@ -57,6 +58,9 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 
 	cfg.Setup()
 
+	if cfg.LimitConfig.ReadlineRateEnabled {
+		stages.SetReadLineRateLimiter(cfg.LimitConfig.ReadlineRate, cfg.LimitConfig.ReadlineBurst, cfg.LimitConfig.ReadlineRateDrop)
+	}
 	var err error
 	if dryRun {
 		promtail.client, err = client.NewLogger(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfigs...)

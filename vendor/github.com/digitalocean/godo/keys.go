@@ -117,7 +117,7 @@ func (s *KeysServiceOp) GetByID(ctx context.Context, keyID int) (*Key, *Response
 	return s.get(ctx, path)
 }
 
-// GetByFingerprint gets a Key by by fingerprint
+// GetByFingerprint gets a Key by fingerprint
 func (s *KeysServiceOp) GetByFingerprint(ctx context.Context, fingerprint string) (*Key, *Response, error) {
 	if len(fingerprint) < 1 {
 		return nil, nil, NewArgError("fingerprint", "cannot not be empty")

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -335,34 +335,38 @@ func (e *LineFilterExpr) String() string {
 }
 
 func (e *LineFilterExpr) Filter() (log.Filterer, error) {
-	var f log.Filterer
 
-	switch e.Op {
-	case OpFilterIP:
-		var err error
-		f, err = log.NewIPLineFilter(e.Match, e.Ty)
-		if err != nil {
-			return nil, err
-		}
-	default:
-		var err error // to avoid `f` being shadowed.
-		f, err = log.NewFilter(e.Match, e.Ty)
-		if err != nil {
-			return nil, err
+	acc := make([]log.Filterer, 0)
+	for curr := e; curr != nil; curr = curr.Left {
+
+		switch curr.Op {
+		case OpFilterIP:
+			var err error
+			next, err := log.NewIPLineFilter(curr.Match, curr.Ty)
+			if err != nil {
+				return nil, err
+			}
+			acc = append(acc, next)
+		default:
+			next, err := log.NewFilter(curr.Match, curr.Ty)
+			if err != nil {
+				return nil, err
+			}
+			acc = append(acc, next)
 		}
 	}
 
-	if e.Left != nil {
-		nextFilter, err := e.Left.Filter()
-		if err != nil {
-			return nil, err
-		}
-		if nextFilter != nil {
-			f = log.NewAndFilter(nextFilter, f)
-		}
+	if len(acc) == 1 {
+		return acc[0], nil
 	}
 
-	return f, nil
+	// The accumulation is right to left so it needs to be reversed.
+	for i := len(acc)/2 - 1; i >= 0; i-- {
+		opp := len(acc) - 1 - i
+		acc[i], acc[opp] = acc[opp], acc[i]
+	}
+
+	return log.NewAndFilters(acc), nil
 }
 
 func (e *LineFilterExpr) Stage() (log.Stage, error) {

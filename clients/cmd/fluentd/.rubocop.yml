@@ -1,6 +1,7 @@
 require: rubocop-rspec
 
 AllCops:
+  NewCops: disable
   Exclude:
     - 'bin/**'
     - 'test/**/*.rb'

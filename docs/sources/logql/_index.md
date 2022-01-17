@@ -37,7 +37,7 @@ Between a vector and a literal, the operator is applied to the value of every da
 Between two vectors, a binary arithmetic operator is applied to each entry in the left-hand side vector and its matching element in the right-hand vector.
 The result is propagated into the result vector with the grouping labels becoming the output label set. Entries for which no matching entry in the right-hand vector can be found are not part of the result.
 
-Pay special attention to [operator order](#operator-order) when chaining arithmetic operators.
+Pay special attention to [operator order](#order-of-operations) when chaining arithmetic operators.
 
 #### Arithmetic Examples
 
@@ -50,7 +50,7 @@ Implement a health check with a simple query:
 Double the rate of a a log stream's entries:
 
 ```logql
-sum(rate({app="foo"})) * 2
+sum(rate({app="foo"}[1m])) * 2
 ```
 
 Get proportion of warning logs to error logs for the `foo` app

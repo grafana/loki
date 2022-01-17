@@ -180,7 +180,7 @@ func (d DropletCreateImage) MarshalJSON() ([]byte, error) {
 // DropletCreateVolume identifies a volume to attach for the create request.
 type DropletCreateVolume struct {
 	ID string
-	// Deprecated: You must pass a the volume's ID when creating a Droplet.
+	// Deprecated: You must pass the volume's ID when creating a Droplet.
 	Name string
 }
 

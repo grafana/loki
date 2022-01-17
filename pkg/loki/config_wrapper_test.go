@@ -10,22 +10,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	cortex_aws "github.com/cortexproject/cortex/pkg/chunk/aws"
-	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
-	cortex_gcp "github.com/cortexproject/cortex/pkg/chunk/gcp"
-	cortex_local "github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
-	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
-
+	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/loki/common"
+	"github.com/grafana/loki/pkg/storage/chunk/aws"
+	"github.com/grafana/loki/pkg/storage/chunk/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
+
+// Can't use a totally empty yaml file or it causes weird behavior in the unmarshalling.
+const minimalConfig = `---
+schema_config:
+  configs:
+    - from: 2021-08-01
+      schema: v11`
 
 func configWrapperFromYAML(t *testing.T, configFileString string, args []string) (ConfigWrapper, ConfigWrapper, error) {
 	config := ConfigWrapper{}
@@ -87,7 +92,7 @@ common:
   path_prefix: /opt/loki`
 			config, _ := testContext(configFileString, nil)
 
-			assert.EqualValues(t, "/opt/loki/rules", config.Ruler.RulePath)
+			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 		})
@@ -98,7 +103,7 @@ common:
   path_prefix: /opt/loki/`
 			config, _ := testContext(configFileString, nil)
 
-			assert.EqualValues(t, "/opt/loki/rules", config.Ruler.RulePath)
+			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 		})
@@ -192,7 +197,7 @@ memberlist:
 		//    gcs: gcp.GCSConfig
 		//    s3: aws.S3Config
 		//    swift: openstack.SwiftConfig
-		//    filesystem: local.FSConfig
+		//    filesystem: Filesystem
 
 		t.Run("does not automatically configure cloud object storage", func(t *testing.T) {
 			config, defaults := testContext(emptyConfigString, nil)
@@ -249,9 +254,9 @@ memberlist:
 
 			assert.Equal(t, "s3", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []cortex_aws.S3Config{
+			for _, actual := range []aws.S3Config{
 				config.Ruler.StoreConfig.S3,
-				config.StorageConfig.AWSStorageConfig.S3Config.ToCortexS3Config(),
+				config.StorageConfig.AWSStorageConfig.S3Config,
 			} {
 				require.NotNil(t, actual.S3.URL)
 				assert.Equal(t, *expected, *actual.S3.URL)
@@ -266,7 +271,7 @@ memberlist:
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
-				assert.Equal(t, cortex_aws.SignatureVersionV4, actual.SignatureVersion,
+				assert.Equal(t, aws.SignatureVersionV4, actual.SignatureVersion,
 					"signature version should equal default value")
 				assert.Equal(t, 90*time.Second, actual.HTTPConfig.IdleConnTimeout,
 					"idle connection timeout should equal default value")
@@ -297,9 +302,9 @@ memberlist:
 
 			assert.Equal(t, "gcs", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []cortex_gcp.GCSConfig{
+			for _, actual := range []gcp.GCSConfig{
 				config.Ruler.StoreConfig.GCS,
-				config.StorageConfig.GCSConfig.ToCortexGCSConfig(),
+				config.StorageConfig.GCSConfig,
 			} {
 				assert.Equal(t, "foobar", actual.BucketName)
 				assert.Equal(t, 27, actual.ChunkBufferSize)
@@ -338,9 +343,9 @@ memberlist:
 
 			assert.Equal(t, "azure", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []cortex_azure.BlobStorageConfig{
+			for _, actual := range []azure.BlobStorageConfig{
 				config.Ruler.StoreConfig.Azure,
-				config.StorageConfig.AzureStorageConfig.ToCortexAzureConfig(),
+				config.StorageConfig.AzureStorageConfig,
 			} {
 				assert.Equal(t, "AzureGlobal", actual.Environment,
 					"should equal default environment since unspecified in config")
@@ -395,7 +400,7 @@ memberlist:
 
 			assert.Equal(t, "swift", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []cortex_swift.Config{
+			for _, actual := range []swift.Config{
 				config.Ruler.StoreConfig.Swift.Config,
 				config.StorageConfig.Swift.Config,
 			} {
@@ -439,18 +444,15 @@ memberlist:
 			fsConfig := `common:
   storage:
     filesystem:
-      directory: /tmp/foo`
+      chunks_directory: /tmp/chunks
+      rules_directory: /tmp/rules`
 
 			config, defaults := testContext(fsConfig, nil)
 
 			assert.Equal(t, "local", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []cortex_local.Config{
-				config.Ruler.StoreConfig.Local,
-				config.StorageConfig.FSConfig.ToCortexLocalConfig(),
-			} {
-				assert.Equal(t, "/tmp/foo", actual.Directory)
-			}
+			assert.Equal(t, "/tmp/rules", config.Ruler.StoreConfig.Local.Directory)
+			assert.Equal(t, "/tmp/chunks", config.StorageConfig.FSConfig.Directory)
 
 			//should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
@@ -609,7 +611,8 @@ storage_config:
 					configString: `common:
   storage:
     filesystem:
-      directory: /tmp/foo`,
+      chunks_directory: /tmp/chunks
+      rules_directory: /tmp/rules`,
 					expected: storage.StorageTypeFileSystem,
 				},
 			} {
@@ -745,6 +748,27 @@ schema_config:
 		assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
 		assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
 	})
+
+	t.Run("ingester final sleep config", func(t *testing.T) {
+		t.Run("defaults to 0s", func(t *testing.T) {
+			config, _ := testContext(emptyConfigString, nil)
+
+			assert.Equal(t, 0*time.Second, config.Ingester.LifecyclerConfig.FinalSleep)
+		})
+
+		t.Run("honors values from config file and command line", func(t *testing.T) {
+			config, _ := testContext(emptyConfigString, []string{"--ingester.final-sleep", "5s"})
+			assert.Equal(t, 5*time.Second, config.Ingester.LifecyclerConfig.FinalSleep)
+
+			const finalSleepConfig = `---
+ingester:
+  lifecycler:
+    final_sleep: 12s`
+
+			config, _ = testContext(finalSleepConfig, nil)
+			assert.Equal(t, 12*time.Second, config.Ingester.LifecyclerConfig.FinalSleep)
+		})
+	})
 }
 
 func TestDefaultFIFOCacheBehavior(t *testing.T) {
@@ -876,17 +900,6 @@ query_range:
 	})
 }
 
-// Can't use a totally empty yaml file or it causes weird behavior in the unmarhsalling.
-const minimalConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      schema: v11
- 
-memberlist: 
-  join_members: 
-    - loki.loki-dev-single-binary.svc.cluster.local`
-
 func TestDefaultUnmarshal(t *testing.T) {
 	t.Run("with a minimal config file and no command line args, defaults are use", func(t *testing.T) {
 		file, err := ioutil.TempFile("", "config.yaml")
@@ -911,12 +924,15 @@ func TestDefaultUnmarshal(t *testing.T) {
 }
 
 func Test_applyIngesterRingConfig(t *testing.T) {
-
 	t.Run("Attempt to catch changes to a RingConfig", func(t *testing.T) {
 		msgf := "%s has changed, this is a crude attempt to catch mapping errors missed in config_wrapper.applyIngesterRingConfig when a ring config changes. Please add a new mapping and update the expected value in this test."
 
-		assert.Equal(t, 8, reflect.TypeOf(distributor.RingConfig{}).NumField(), fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
-		assert.Equal(t, 12, reflect.TypeOf(util.RingConfig{}).NumField(), fmt.Sprintf(msgf, reflect.TypeOf(util.RingConfig{}).String()))
+		assert.Equal(t, 8,
+			reflect.TypeOf(distributor.RingConfig{}).NumField(),
+			fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
+		assert.Equal(t, 12,
+			reflect.TypeOf(util.RingConfig{}).NumField(),
+			fmt.Sprintf(msgf, reflect.TypeOf(util.RingConfig{}).String()))
 	})
 
 	t.Run("compactor and scheduler tokens file should not be configured if persist_tokens is false", func(t *testing.T) {
@@ -946,7 +962,7 @@ common:
 		assert.Equal(t, "/loki/scheduler.tokens", config.QueryScheduler.SchedulerRing.TokensFilePath)
 	})
 
-	t.Run("common config ignored if actual values set", func(t *testing.T) {
+	t.Run("ingester config not applied to other rings if actual values set", func(t *testing.T) {
 		yamlContent := `
 ingester:
   lifecycler:
@@ -969,6 +985,45 @@ common:
 		assert.Equal(t, "/sched/tokes", config.QueryScheduler.SchedulerRing.TokensFilePath)
 	})
 
+	t.Run("ingester ring configuration is used for other rings when no common ring or memberlist config is provided", func(t *testing.T) {
+		yamlContent := `
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: etcd`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+	})
+
+	t.Run("memberlist configuration takes precedence over copying ingester config", func(t *testing.T) {
+		yamlContent := `
+memberlist:
+  join_members:
+    - 127.0.0.1
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: etcd`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+
+		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+
+		assert.Equal(t, "memberlist", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "memberlist", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "memberlist", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "memberlist", config.CompactorConfig.CompactorRing.KVStore.Store)
+	})
 }
 
 func TestRingInterfaceNames(t *testing.T) {
@@ -980,13 +1035,14 @@ func TestRingInterfaceNames(t *testing.T) {
 		config, _, err := configWrapperFromYAML(t, minimalConfig, []string{})
 		assert.NoError(t, err)
 
+		assert.Contains(t, config.Common.Ring.InstanceInterfaceNames, defaultIface)
 		assert.Contains(t, config.Ingester.LifecyclerConfig.InfNames, defaultIface)
 		assert.Contains(t, config.Distributor.DistributorRing.InstanceInterfaceNames, defaultIface)
 		assert.Contains(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, defaultIface)
 		assert.Contains(t, config.Ruler.Ring.InstanceInterfaceNames, defaultIface)
 	})
 
-	t.Run("if ingestor interface is set, it overrides other rings default interfaces", func(t *testing.T) {
+	t.Run("if ingester interface is set, it overrides other rings default interfaces", func(t *testing.T) {
 		yamlContent := `ingester:
   lifecycler:
     interface_names:
@@ -1054,10 +1110,12 @@ func TestLoopbackAppendingToFrontendV2(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, defaultIface)
 
-	t.Run("by default, loopback should be in FrontendV2 interface names", func(t *testing.T) {
+	t.Run("when using common or ingester ring configs, loopback should be added to interface names", func(t *testing.T) {
 		config, _, err := configWrapperFromYAML(t, minimalConfig, []string{})
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Frontend.FrontendV2.InfNames)
+		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Common.Ring.InstanceInterfaceNames)
 	})
 
 	t.Run("loopback shouldn't be in FrontendV2 interface names if set by user", func(t *testing.T) {
@@ -1095,4 +1153,330 @@ func Test_tokensFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCommonRingConfigSection(t *testing.T) {
+	t.Run("if only common ring is provided, reuse it for all rings", func(t *testing.T) {
+		yamlContent := `common:
+  ring:
+    kvstore:
+      store: etcd`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+	})
+
+	t.Run("if common ring is provided, reuse it for all rings that aren't explicitly set", func(t *testing.T) {
+		yamlContent := `common:
+  ring:
+    kvstore:
+      store: etcd
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "inmemory", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+	})
+
+	t.Run("if only ingester ring is provided, reuse it for all rings", func(t *testing.T) {
+		yamlContent := `ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: etcd`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+	})
+
+	t.Run("if a ring is explicitly configured, don't override any part of it with ingester config", func(t *testing.T) {
+		yamlContent := `
+distributor:
+  ring:
+    kvstore:
+      store: etcd
+ingester:
+  lifecycler:
+    heartbeat_period: 5m
+    ring:
+      kvstore:
+        store: inmemory`
+
+		config, defaults, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, defaults.Distributor.DistributorRing.HeartbeatPeriod, config.Distributor.DistributorRing.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.Ingester.LifecyclerConfig.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.Ruler.Ring.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.QueryScheduler.SchedulerRing.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.CompactorConfig.CompactorRing.HeartbeatPeriod)
+	})
+
+	t.Run("if a ring is explicitly configured, merge common config with unconfigured parts of explicitly configured ring", func(t *testing.T) {
+		yamlContent := `
+common:
+  ring:
+    heartbeat_period: 5m
+    kvstore:
+      store: inmemory
+distributor:
+  ring:
+    kvstore:
+      store: etcd`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.Distributor.DistributorRing.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.Ingester.LifecyclerConfig.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.Ruler.Ring.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.QueryScheduler.SchedulerRing.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.CompactorConfig.CompactorRing.HeartbeatPeriod)
+	})
+
+	t.Run("ring configs provided via command line take precedence", func(t *testing.T) {
+		yamlContent := `common:
+  ring:
+    kvstore:
+      store: consul`
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{
+			"--distributor.ring.store", "etcd",
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "consul", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "consul", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "consul", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "consul", config.CompactorConfig.CompactorRing.KVStore.Store)
+	})
+
+	t.Run("common ring config take precedence over common memberlist config", func(t *testing.T) {
+		yamlContent := `memberlist:
+  join_members:
+    - 127.0.0.1
+common:
+  ring:
+    kvstore:
+      store: etcd`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+	})
+}
+
+func Test_applyChunkRetain(t *testing.T) {
+	t.Run("chunk retain is unchanged if no index queries cache is defined", func(t *testing.T) {
+		yamlContent := ``
+		config, defaults, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, defaults.Ingester.RetainPeriod, config.Ingester.RetainPeriod)
+	})
+
+	t.Run("chunk retain is set to IndexCacheValidity + 1 minute", func(t *testing.T) {
+		yamlContent := `
+storage_config:
+  index_cache_validity: 10m
+  index_queries_cache_config:
+    memcached:
+      batch_size: 256
+      parallelism: 10
+    memcached_client:
+      consistent_hash: true
+      host: memcached-index-queries.loki-bigtable.svc.cluster.local
+      service: memcached-client
+`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, 11*time.Minute, config.Ingester.RetainPeriod)
+	})
+
+}
+
+func Test_replicationFactor(t *testing.T) {
+	t.Run("replication factor is applied when using memberlist", func(t *testing.T) {
+		yamlContent := `memberlist:
+  join_members:
+    - foo.bar.example.com
+common:
+  replication_factor: 1`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, config.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor)
+	})
+}
+
+func Test_instanceAddr(t *testing.T) {
+	t.Run("common instance addr isn't applied when addresses are explicitly set", func(t *testing.T) {
+		yamlContent := `distributor:
+  ring:
+    instance_addr: mydistributor
+ingester:
+  lifecycler:
+    address: myingester
+ruler:
+  ring:
+    instance_addr: myruler
+query_scheduler:
+  scheduler_ring:
+    instance_addr: myscheduler
+frontend:
+  address: myqueryfrontend
+compactor:
+  compactor_ring:
+    instance_addr: mycompactor
+common:
+  instance_addr: 99.99.99.99
+  ring:
+    instance_addr: mycommonring`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "mydistributor", config.Distributor.DistributorRing.InstanceAddr)
+		assert.Equal(t, "myingester", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "myruler", config.Ruler.Ring.InstanceAddr)
+		assert.Equal(t, "myscheduler", config.QueryScheduler.SchedulerRing.InstanceAddr)
+		assert.Equal(t, "myqueryfrontend", config.Frontend.FrontendV2.Addr)
+		assert.Equal(t, "mycompactor", config.CompactorConfig.CompactorRing.InstanceAddr)
+	})
+
+	t.Run("common instance addr is applied when addresses are not explicitly set", func(t *testing.T) {
+		yamlContent := `common:
+  instance_addr: 99.99.99.99`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "99.99.99.99", config.Distributor.DistributorRing.InstanceAddr)
+		assert.Equal(t, "99.99.99.99", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "99.99.99.99", config.Ruler.Ring.InstanceAddr)
+		assert.Equal(t, "99.99.99.99", config.QueryScheduler.SchedulerRing.InstanceAddr)
+		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr)
+		assert.Equal(t, "99.99.99.99", config.CompactorConfig.CompactorRing.InstanceAddr)
+	})
+
+	t.Run("common instance addr doesn't supersede instance addr from common ring", func(t *testing.T) {
+		yamlContent := `common:
+  instance_addr: 99.99.99.99
+  ring:
+    instance_addr: 22.22.22.22`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "22.22.22.22", config.Distributor.DistributorRing.InstanceAddr)
+		assert.Equal(t, "22.22.22.22", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "22.22.22.22", config.Ruler.Ring.InstanceAddr)
+		assert.Equal(t, "22.22.22.22", config.QueryScheduler.SchedulerRing.InstanceAddr)
+		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr) // not a ring.
+		assert.Equal(t, "22.22.22.22", config.CompactorConfig.CompactorRing.InstanceAddr)
+	})
+}
+
+func Test_instanceInterfaceNames(t *testing.T) {
+	t.Run("common instance net interfaces aren't applied when explicitly set at other sections", func(t *testing.T) {
+		yamlContent := `distributor:
+  ring:
+    instance_interface_names:
+    - mydistributor
+ingester:
+  lifecycler:
+    interface_names:
+    - myingester
+ruler:
+  ring:
+    instance_interface_names:
+    - myruler
+query_scheduler:
+  scheduler_ring:
+    instance_interface_names:
+    - myscheduler
+frontend:
+  instance_interface_names:
+  - myfrontend
+compactor:
+  compactor_ring:
+    instance_interface_names:
+    - mycompactor
+common:
+  instance_interface_names:
+  - mycommoninf
+  ring:
+    instance_interface_names:
+    - mycommonring`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"mydistributor"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"myingester"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"myruler"}, config.Ruler.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"myscheduler"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"myfrontend"}, config.Frontend.FrontendV2.InfNames)
+		assert.Equal(t, []string{"mycompactor"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+	})
+
+	t.Run("common instance net interfaces is applied when others net interfaces are not explicitly set", func(t *testing.T) {
+		yamlContent := `common:
+  instance_interface_names:
+  - commoninterface`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"commoninterface"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"commoninterface"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"commoninterface"}, config.Ruler.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"commoninterface"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"commoninterface"}, config.Frontend.FrontendV2.InfNames)
+		assert.Equal(t, []string{"commoninterface"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+	})
+
+	t.Run("common instance net interface doesn't supersede net interface from common ring", func(t *testing.T) {
+		yamlContent := `common:
+  instance_interface_names:
+  - ringsshouldntusethis
+  ring:
+    instance_interface_names:
+    - ringsshouldusethis`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ruler.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldntusethis"}, config.Frontend.FrontendV2.InfNames) // not a ring.
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+	})
 }

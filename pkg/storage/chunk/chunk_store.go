@@ -14,16 +14,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/extract"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/util/extract"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 var (
@@ -87,6 +87,9 @@ func (cfg *StoreConfig) Validate(logger log.Logger) error {
 
 type baseStore struct {
 	cfg StoreConfig
+	// todo (callum) it looks like baseStore is created off a specific schema struct implementation, so perhaps we can store something else here
+	// other than the entire set of schema period configs
+	schemaCfg SchemaConfig
 
 	index   IndexClient
 	chunks  Client
@@ -95,19 +98,20 @@ type baseStore struct {
 	fetcher *Fetcher
 }
 
-func newBaseStore(cfg StoreConfig, schema BaseSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (baseStore, error) {
-	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, chunks)
+func newBaseStore(cfg StoreConfig, scfg SchemaConfig, schema BaseSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (baseStore, error) {
+	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, scfg, chunks, cfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, cfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize)
 	if err != nil {
 		return baseStore{}, err
 	}
 
 	return baseStore{
-		cfg:     cfg,
-		index:   index,
-		chunks:  chunks,
-		schema:  schema,
-		limits:  limits,
-		fetcher: fetcher,
+		cfg:       cfg,
+		schemaCfg: scfg,
+		index:     index,
+		chunks:    chunks,
+		schema:    schema,
+		limits:    limits,
+		fetcher:   fetcher,
 	}, nil
 }
 
@@ -124,8 +128,8 @@ type store struct {
 	schema StoreSchema
 }
 
-func newStore(cfg StoreConfig, schema StoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (Store, error) {
-	rs, err := newBaseStore(cfg, schema, index, chunks, limits, chunksCache)
+func newStore(cfg StoreConfig, scfg SchemaConfig, schema StoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (Store, error) {
+	rs, err := newBaseStore(cfg, scfg, schema, index, chunks, limits, chunksCache)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +182,7 @@ func (c *store) calculateIndexEntries(userID string, from, through model.Time, c
 		return nil, ErrMetricNameLabelMissing
 	}
 
-	entries, err := c.schema.GetWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
+	entries, err := c.schema.GetWriteEntries(from, through, userID, metricName, chunk.Metric, c.baseStore.schemaCfg.ExternalKey(chunk))
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +223,7 @@ func (c *store) GetChunkRefs(ctx context.Context, userID string, from, through m
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
-func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName, labelName string) ([]string, error) {
+func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelValues")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "labelName", labelName)
@@ -231,25 +235,30 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 		return nil, nil
 	}
 
-	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
-	if err != nil {
-		return nil, err
-	}
-
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
-	if err != nil {
-		return nil, err
-	}
-
-	var result UniqueStrings
-	for _, entry := range entries {
-		_, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+	if len(matchers) == 0 {
+		queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
 		if err != nil {
 			return nil, err
 		}
-		result.Add(string(labelValue))
+
+		entries, err := c.lookupEntriesByQueries(ctx, queries)
+		if err != nil {
+			return nil, err
+		}
+
+		var result UniqueStrings
+		for _, entry := range entries {
+			_, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+			if err != nil {
+				return nil, err
+			}
+			result.Add(string(labelValue))
+		}
+		return result.Strings(), nil
 	}
-	return result.Strings(), nil
+
+	return nil, errors.New("unimplemented: Matchers are not supported by chunk store")
+
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
@@ -273,7 +282,7 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
 	filtered := filterChunksByTime(from, through, chunks)
-	filtered, keys := filterChunksByUniqueFingerprint(filtered)
+	filtered, keys := filterChunksByUniqueFingerprint(c.baseStore.schemaCfg, filtered)
 	level.Debug(log).Log("msg", "Chunks post filtering", "chunks", len(chunks))
 
 	// Now fetch the actual chunk data from Memcache / S3
@@ -287,8 +296,6 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 
 func (c *baseStore) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
 	//nolint:ineffassign,staticcheck //Leaving ctx even though we don't currently use it, we want to make it available for when we might need it and hopefully will ensure us using the correct context at that time
-	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
-	defer log.Span.Finish()
 
 	if *through < *from {
 		return false, QueryError(fmt.Sprintf("invalid query, through < from (%s < %s)", through, from))
@@ -303,13 +310,13 @@ func (c *baseStore) validateQueryTimeRange(ctx context.Context, userID string, f
 
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
-		level.Info(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
+		level.Info(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
 		return true, nil
 	}
 
 	if through.After(now.Add(5 * time.Minute)) {
 		// time-span end is in future ... regard as legal
-		level.Info(log).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
+		level.Info(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
 		*through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
 	}
 
@@ -317,9 +324,6 @@ func (c *baseStore) validateQueryTimeRange(ctx context.Context, userID string, f
 }
 
 func (c *baseStore) validateQuery(ctx context.Context, userID string, from *model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
-	log, ctx := spanlogger.New(ctx, "store.validateQuery")
-	defer log.Span.Finish()
-
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, from, through)
 	if err != nil {
 		return "", nil, false, err
@@ -361,7 +365,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	keys := keysFromChunks(filtered)
+	keys := keysFromChunks(c.baseStore.schemaCfg, filtered)
 	allChunks, err := c.fetcher.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		return nil, err
@@ -440,10 +444,6 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 }
 
 func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
-	formattedMatcher := formatMatcher(matcher)
-	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", formattedMatcher)
-	defer log.Span.Finish()
-
 	var err error
 	var queries []IndexQuery
 	var labelName string
@@ -459,11 +459,10 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formattedMatcher, "queries", len(queries))
+	unfilteredQueries := len(queries)
 
 	if filter != nil {
 		queries = filter(queries)
-		level.Debug(log).Log("matcher", formattedMatcher, "filteredQueries", len(queries))
 	}
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
@@ -474,13 +473,20 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	} else if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formattedMatcher, "entries", len(entries))
 
 	ids, err := c.parseIndexEntries(ctx, entries, matcher)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formattedMatcher, "ids", len(ids))
+	level.Debug(util_log.WithContext(ctx, util_log.Logger)).
+		Log(
+			"msg", "Store.lookupIdsByMetricNameMatcher",
+			"matcher", formatMatcher(matcher),
+			"queries", unfilteredQueries,
+			"filteredQueries", len(queries),
+			"entries", len(entries),
+			"ids", len(ids),
+		)
 
 	return ids, nil
 }
@@ -496,9 +502,6 @@ func formatMatcher(matcher *labels.Matcher) string {
 }
 
 func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
-	log, ctx := spanlogger.New(ctx, "store.lookupEntriesByQueries")
-	defer log.Span.Finish()
-
 	// Nothing to do if there are no queries.
 	if len(queries) == 0 {
 		return nil, nil

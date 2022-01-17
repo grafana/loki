@@ -11,7 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	errors2 "github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/loghttp"

@@ -25,12 +25,12 @@ func NewDayValue(t model.Time) DayValue {
 
 // String implements flag.Value
 func (v DayValue) String() string {
-	return v.Time.Time().Format(time.RFC3339)
+	return v.Time.Time().UTC().Format(time.RFC3339)
 }
 
 // Set implements flag.Value
 func (v *DayValue) Set(s string) error {
-	t, err := time.Parse("2006-01-02", s)
+	t, err := time.ParseInLocation("2006-01-02", s, time.UTC)
 	if err != nil {
 		return err
 	}
@@ -55,5 +55,5 @@ func (v *DayValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // MarshalYAML implements yaml.Marshaler.
 func (v DayValue) MarshalYAML() (interface{}, error) {
-	return v.Time.Time().Format("2006-01-02"), nil
+	return v.Time.Time().UTC().Format("2006-01-02"), nil
 }

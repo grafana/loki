@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -57,6 +57,7 @@ type Config struct {
 	SharedStoreType           string          `yaml:"shared_store"`
 	SharedStoreKeyPrefix      string          `yaml:"shared_store_key_prefix"`
 	CompactionInterval        time.Duration   `yaml:"compaction_interval"`
+	ApplyRetentionInterval    time.Duration   `yaml:"apply_retention_interval"`
 	RetentionEnabled          bool            `yaml:"retention_enabled"`
 	RetentionDeleteDelay      time.Duration   `yaml:"retention_delete_delay"`
 	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
@@ -71,12 +72,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
 	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
+	f.DurationVar(&cfg.ApplyRetentionInterval, "boltdb.shipper.compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
 	f.DurationVar(&cfg.RetentionDeleteDelay, "boltdb.shipper.compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
 	f.BoolVar(&cfg.RetentionEnabled, "boltdb.shipper.compactor.retention-enabled", false, "(Experimental) Activate custom (per-stream,per-tenant) retention.")
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
-	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "compactors/", f)
+	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
 }
 
 // Validate verifies the config does not contain inappropriate values
@@ -84,6 +86,10 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxCompactionParallelism < 1 {
 		return errors.New("max compaction parallelism must be >= 1")
 	}
+	if cfg.RetentionEnabled && cfg.ApplyRetentionInterval != 0 && cfg.ApplyRetentionInterval%cfg.CompactionInterval != 0 {
+		return errors.New("interval for applying retention should either be set to a 0 or a multiple of compaction interval")
+	}
+
 	return shipper_util.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
 }
 
@@ -131,7 +137,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	if err != nil {
 		return nil, errors.Wrap(err, "create KV store client")
 	}
-	lifecyclerCfg, err := cfg.CompactorRing.ToLifecyclerConfig(ringNumTokens)
+	lifecyclerCfg, err := cfg.CompactorRing.ToLifecyclerConfig(ringNumTokens, util_log.Logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid ring lifecycler config")
 	}
@@ -149,13 +155,9 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	}
 
 	ringCfg := cfg.CompactorRing.ToRingConfig(ringReplicationFactor)
-	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", r), util_log.Logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ring client")
-	}
-
-	if r != nil {
-		r.MustRegister(compactor.ring)
 	}
 
 	compactor.subservices, err = services.NewManager(compactor.ringLifecycler, compactor.ring)
@@ -192,7 +194,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 			encoder = objectclient.Base64Encoder
 		}
 
-		chunkClient := objectclient.NewClient(objectClient, encoder)
+		chunkClient := objectclient.NewClient(objectClient, encoder, schemaConfig.SchemaConfig)
 
 		retentionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "retention")
 		c.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
@@ -292,7 +294,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 			return nil
 		case <-syncTicker.C:
 			bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
-			rs, err := c.ring.Get(ringKeyOfLeader, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
+			rs, err := c.ring.Get(ringKeyOfLeader, ring.Write, bufDescs, bufHosts, bufZones)
 			if err != nil {
 				level.Error(util_log.Logger).Log("msg", "error asking ring for who should run the compactor, will check again", "err", err)
 				continue
@@ -342,12 +344,24 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 		break
 	}
 
+	lastRetentionRunAt := time.Unix(0, 0)
 	runCompaction := func() {
-		err := c.RunCompaction(ctx)
+		applyRetention := false
+		if c.cfg.RetentionEnabled && time.Since(lastRetentionRunAt) >= c.cfg.ApplyRetentionInterval {
+			level.Info(util_log.Logger).Log("msg", "applying retention with compaction")
+			applyRetention = true
+		}
+
+		err := c.RunCompaction(ctx, applyRetention)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 		}
+
+		if applyRetention {
+			lastRetentionRunAt = time.Now()
+		}
 	}
+
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -384,20 +398,21 @@ func (c *Compactor) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), c.subservices)
 }
 
-func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
-	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient, c.cfg.RetentionEnabled, c.tableMarker)
+func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRetention bool) error {
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient,
+		c.tableMarker, c.expirationChecker)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err
 	}
 
 	interval := retention.ExtractIntervalFromTableName(tableName)
-	intervalHasExpiredChunks := false
-	if c.cfg.RetentionEnabled {
-		intervalHasExpiredChunks = c.expirationChecker.IntervalHasExpiredChunks(interval)
+	intervalMayHaveExpiredChunks := false
+	if c.cfg.RetentionEnabled && applyRetention {
+		intervalMayHaveExpiredChunks = c.expirationChecker.IntervalMayHaveExpiredChunks(interval, "")
 	}
 
-	err = table.compact(intervalHasExpiredChunks)
+	err = table.compact(intervalMayHaveExpiredChunks)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err
@@ -405,7 +420,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 	return nil
 }
 
-func (c *Compactor) RunCompaction(ctx context.Context) error {
+func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) error {
 	status := statusSuccess
 	start := time.Now()
 
@@ -419,6 +434,9 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 		if status == statusSuccess {
 			c.metrics.compactTablesOperationDurationSeconds.Set(runtime.Seconds())
 			c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
+			if applyRetention {
+				c.metrics.applyRetentionLastSuccess.SetToCurrentTime()
+			}
 		}
 
 		if c.cfg.RetentionEnabled {
@@ -457,7 +475,7 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 					}
 
 					level.Info(util_log.Logger).Log("msg", "compacting table", "table-name", tableName)
-					err = c.CompactTable(ctx, tableName)
+					err = c.CompactTable(ctx, tableName, applyRetention)
 					if err != nil {
 						return
 					}
@@ -531,8 +549,8 @@ func (e *expirationChecker) MarkPhaseFinished() {
 	e.deletionExpiryChecker.MarkPhaseFinished()
 }
 
-func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bool {
-	return e.retentionExpiryChecker.IntervalHasExpiredChunks(interval) || e.deletionExpiryChecker.IntervalHasExpiredChunks(interval)
+func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
+	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, "") || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval, "")
 }
 
 func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime model.Time, now model.Time) bool {

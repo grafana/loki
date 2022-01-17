@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
 
 const (
@@ -159,28 +160,27 @@ func (cfg *HTTPConfig) ToCortexHTTPConfig() cortex_aws.HTTPConfig {
 }
 
 type S3ObjectClient struct {
-	cfg         S3Config
+	cfg S3Config
+
 	bucketNames []string
 	S3          s3iface.S3API
+	hedgedS3    s3iface.S3API
 	sseConfig   *SSEParsedConfig
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
-func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
-	s3Config, bucketNames, err := buildS3Config(cfg)
+func NewS3ObjectClient(cfg S3Config, hedgingCfg hedging.Config) (*S3ObjectClient, error) {
+	bucketNames, err := buckets(cfg)
+	if err != nil {
+		return nil, err
+	}
+	s3Client, err := buildS3Client(cfg, hedgingCfg, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to build s3 config")
 	}
-
-	sess, err := session.NewSession(s3Config)
+	s3ClientHedging, err := buildS3Client(cfg, hedgingCfg, true)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create new s3 session")
-	}
-
-	s3Client := s3.New(sess)
-
-	if cfg.SignatureVersion == SignatureVersionV2 {
-		s3Client.Handlers.Sign.Swap(v4.SignRequestHandler.Name, v2SignRequestHandler(cfg))
+		return nil, errors.Wrap(err, "failed to build s3 config")
 	}
 
 	sseCfg, err := buildSSEParsedConfig(cfg)
@@ -191,6 +191,7 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 	client := S3ObjectClient{
 		cfg:         cfg,
 		S3:          s3Client,
+		hedgedS3:    s3ClientHedging,
 		bucketNames: bucketNames,
 		sseConfig:   sseCfg,
 	}
@@ -234,7 +235,7 @@ func v2SignRequestHandler(cfg S3Config) request.NamedHandler {
 	}
 }
 
-func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
+func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S3, error) {
 	var s3Config *aws.Config
 	var err error
 
@@ -242,7 +243,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	if cfg.S3.URL != nil {
 		s3Config, err = awscommon.ConfigFromURL(cfg.S3.URL)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	} else {
 		s3Config = &aws.Config{}
@@ -266,7 +267,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||
 		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" {
-		return nil, nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
+		return nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
 	}
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
@@ -282,7 +283,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 		tlsConfig.RootCAs = x509.NewCertPool()
 		data, err := os.ReadFile(cfg.HTTPConfig.CAFile)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		tlsConfig.RootCAs.AppendCertsFromPEM(data)
 	}
@@ -298,9 +299,9 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 			KeepAlive: 30 * time.Second,
 			DualStack: true,
 		}).DialContext,
-		MaxIdleConns:          100,
+		MaxIdleConns:          200,
 		IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
-		MaxIdleConnsPerHost:   100,
+		MaxIdleConnsPerHost:   200,
 		TLSHandshakeTimeout:   3 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		ResponseHeaderTimeout: cfg.HTTPConfig.ResponseHeaderTimeout,
@@ -310,11 +311,34 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	if cfg.Inject != nil {
 		transport = cfg.Inject(transport)
 	}
-
-	s3Config = s3Config.WithHTTPClient(&http.Client{
+	httpClient := &http.Client{
 		Transport: transport,
-	})
+	}
 
+	if hedging {
+		httpClient, err = hedgingCfg.ClientWithRegisterer(httpClient, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	s3Config = s3Config.WithHTTPClient(httpClient)
+
+	sess, err := session.NewSession(s3Config)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create new s3 session")
+	}
+
+	s3Client := s3.New(sess)
+
+	if cfg.SignatureVersion == SignatureVersionV2 {
+		s3Client.Handlers.Sign.Swap(v4.SignRequestHandler.Name, v2SignRequestHandler(cfg))
+	}
+
+	return s3Client, nil
+}
+
+func buckets(cfg S3Config) ([]string, error) {
 	// bucketnames
 	var bucketNames []string
 	if cfg.S3.URL != nil {
@@ -326,10 +350,9 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	}
 
 	if len(bucketNames) == 0 {
-		return nil, nil, errors.New("at least one bucket name must be specified")
+		return nil, errors.New("at least one bucket name must be specified")
 	}
-
-	return s3Config, bucketNames, nil
+	return bucketNames, nil
 }
 
 // Stop fulfills the chunk.ObjectClient interface
@@ -337,15 +360,15 @@ func (a *S3ObjectClient) Stop() {}
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
 func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
-	_, err := a.S3.DeleteObject(&s3.DeleteObjectInput{
-		Bucket: aws.String(a.bucketFromKey(objectKey)),
-		Key:    aws.String(objectKey),
-	})
-	if err != nil {
-		return err
-	}
+	return instrument.CollectedRequest(ctx, "S3.DeleteObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		deleteObjectInput := &s3.DeleteObjectInput{
+			Bucket: aws.String(a.bucketFromKey(objectKey)),
+			Key:    aws.String(objectKey),
+		}
 
-	return nil
+		_, err := a.S3.DeleteObjectWithContext(ctx, deleteObjectInput)
+		return err
+	})
 }
 
 // bucketFromKey maps a key to a bucket name
@@ -361,8 +384,8 @@ func (a *S3ObjectClient) bucketFromKey(key string) string {
 	return a.bucketNames[hash%uint32(len(a.bucketNames))]
 }
 
-// GetObject returns a reader for the specified object key from the configured S3 bucket.
-func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+// GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
+func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var resp *s3.GetObjectOutput
 
 	// Map the key into a bucket
@@ -372,22 +395,26 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	err := ctx.Err()
 	for retries.Ongoing() {
 		if ctx.Err() != nil {
-			return nil, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
+			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
 		}
 		err = instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
-			resp, requestErr = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
+			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 				Bucket: aws.String(bucket),
 				Key:    aws.String(objectKey),
 			})
 			return requestErr
 		})
+		var size int64
+		if resp.ContentLength != nil {
+			size = *resp.ContentLength
+		}
 		if err == nil {
-			return resp.Body, nil
+			return resp.Body, size, nil
 		}
 		retries.Wait()
 	}
-	return nil, errors.Wrap(err, "failed to get s3 object")
+	return nil, 0, errors.Wrap(err, "failed to get s3 object")
 }
 
 // PutObject into the store

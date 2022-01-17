@@ -29,6 +29,15 @@ const (
 
 	// WindowsTargetType is a Windows event target
 	WindowsTargetType = TargetType("WindowsEvent")
+
+	// KafkaTargetType is a Kafka target
+	KafkaTargetType = TargetType("Kafka")
+
+	// GelfTargetType is a gelf target
+	GelfTargetType = TargetType("gelf")
+
+	// CloudflareTargetType is a Cloudflare target
+	CloudflareTargetType = TargetType("Cloudflare")
 )
 
 // Target is a promtail scrape target

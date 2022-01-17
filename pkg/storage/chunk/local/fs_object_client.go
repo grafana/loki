@@ -13,9 +13,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
-	cortex_local "github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
+	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 )
@@ -35,8 +35,8 @@ func (cfg *FSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, prefix+"local.chunk-directory", "", "Directory to store chunks in.")
 }
 
-func (cfg *FSConfig) ToCortexLocalConfig() cortex_local.Config {
-	return cortex_local.Config{
+func (cfg *FSConfig) ToCortexLocalConfig() local.Config {
+	return local.Config{
 		Directory: cfg.Directory,
 	}
 }
@@ -67,13 +67,16 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 func (FSObjectClient) Stop() {}
 
 // GetObject from the store
-func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, error) {
+func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	fl, err := os.Open(filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey)))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-
-	return fl, nil
+	stats, err := fl.Stat()
+	if err != nil {
+		return nil, 0, err
+	}
+	return fl, stats.Size(), nil
 }
 
 // PutObject into the store

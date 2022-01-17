@@ -18,13 +18,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/clients/pkg/logentry/metric"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	lokiutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/build"
 )
 
 const (
@@ -39,7 +39,7 @@ const (
 	HostLabel    = "host"
 )
 
-var UserAgent = fmt.Sprintf("promtail/%s", version.Version)
+var UserAgent = fmt.Sprintf("promtail/%s", build.Version)
 
 type metrics struct {
 	encodedBytes     *prometheus.CounterVec

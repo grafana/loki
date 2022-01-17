@@ -1,6 +1,6 @@
 package logproto
 
-import "github.com/prometheus/prometheus/pkg/labels"
+import "github.com/prometheus/prometheus/model/labels"
 
 // Note, this is not very efficient and use should be minimized as it requires label construction on each comparison
 type SeriesIdentifiers []SeriesIdentifier

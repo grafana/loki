@@ -11,7 +11,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   query_frontend_container::
     container.new('query-frontend', $._images.query_frontend) +
-    container.withPorts($.util.defaultPorts) +
+    container.withPorts($.util.grpclbDefaultPorts) +
     container.withArgsMixin(k.util.mapToFlags($.query_frontend_args)) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
@@ -21,10 +21,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     // sharded queries may need to do a nonzero amount of aggregation on the frontend.
     if $._config.queryFrontend.sharded_queries_enabled then
       k.util.resourcesRequests('2', '2Gi') +
-      k.util.resourcesLimits(null, '6Gi') +
-      container.withEnvMap({
-        JAEGER_REPORTER_MAX_QUEUE_SIZE: '5000',
-      })
+      k.util.resourcesLimits(null, '6Gi')
     else k.util.resourcesRequests('2', '600Mi') +
          k.util.resourcesLimits(null, '1200Mi'),
 
@@ -43,7 +40,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   local service = k.core.v1.service,
 
   query_frontend_service:
-    k.util.serviceFor($.query_frontend_deployment) +
+    $.util.grpclbServiceFor($.query_frontend_deployment) +
     // Make sure that query frontend worker, running in the querier, do resolve
     // each query-frontend pod IP and NOT the service IP. To make it, we do NOT
     // use the service cluster IP so that when the service DNS is resolved it

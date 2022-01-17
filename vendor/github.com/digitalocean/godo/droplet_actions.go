@@ -7,7 +7,7 @@ import (
 	"net/url"
 )
 
-// ActionRequest reprents DigitalOcean Action Request
+// ActionRequest represents DigitalOcean Action Request
 type ActionRequest map[string]interface{}
 
 // DropletActionsService is an interface for interfacing with the Droplet actions

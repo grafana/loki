@@ -17,8 +17,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-
-	"github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -43,6 +41,18 @@ func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", flags)
 }
 
+type fileTargetEventType string
+
+const (
+	fileTargetEventWatchStart fileTargetEventType = "WATCH_START"
+	fileTargetEventWatchStop  fileTargetEventType = "WATCH_STOP"
+)
+
+type fileTargetEvent struct {
+	path      string
+	eventType fileTargetEventType
+}
+
 // FileTarget describes a particular set of logs.
 // nolint:revive
 type FileTarget struct {
@@ -54,11 +64,12 @@ type FileTarget struct {
 	labels           model.LabelSet
 	discoveredLabels model.LabelSet
 
-	watcher *fsnotify.Watcher
-	watches map[string]struct{}
-	path    string
-	quit    chan struct{}
-	done    chan struct{}
+	fileEventWatcher   chan fsnotify.Event
+	targetEventHandler chan fileTargetEvent
+	watches            map[string]struct{}
+	path               string
+	quit               chan struct{}
+	done               chan struct{}
 
 	tails map[string]*tailer
 
@@ -75,29 +86,26 @@ func NewFileTarget(
 	labels model.LabelSet,
 	discoveredLabels model.LabelSet,
 	targetConfig *Config,
+	fileEventWatcher chan fsnotify.Event,
+	targetEventHandler chan fileTargetEvent,
 ) (*FileTarget, error) {
-
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, errors.Wrap(err, "filetarget.fsnotify.NewWatcher")
-	}
-
 	t := &FileTarget{
-		logger:           logger,
-		metrics:          metrics,
-		watcher:          watcher,
-		path:             path,
-		labels:           labels,
-		discoveredLabels: discoveredLabels,
-		handler:          api.AddLabelsMiddleware(labels).Wrap(handler),
-		positions:        positions,
-		quit:             make(chan struct{}),
-		done:             make(chan struct{}),
-		tails:            map[string]*tailer{},
-		targetConfig:     targetConfig,
+		logger:             logger,
+		metrics:            metrics,
+		path:               path,
+		labels:             labels,
+		discoveredLabels:   discoveredLabels,
+		handler:            api.AddLabelsMiddleware(labels).Wrap(handler),
+		positions:          positions,
+		quit:               make(chan struct{}),
+		done:               make(chan struct{}),
+		tails:              map[string]*tailer{},
+		targetConfig:       targetConfig,
+		fileEventWatcher:   fileEventWatcher,
+		targetEventHandler: targetEventHandler,
 	}
 
-	err = t.sync()
+	err := t.sync()
 	if err != nil {
 		return nil, errors.Wrap(err, "filetarget.sync")
 	}
@@ -116,14 +124,6 @@ func (t *FileTarget) Stop() {
 	close(t.quit)
 	<-t.done
 	t.handler.Stop()
-}
-
-// UpdatePath updates the filetarget path
-// returns true if the path was changed
-func (t *FileTarget) UpdatePath(path string) bool {
-	curPath := t.path
-	t.path = path
-	return curPath != path
 }
 
 // Type implements a Target
@@ -152,7 +152,6 @@ func (t *FileTarget) Details() interface{} {
 
 func (t *FileTarget) run() {
 	defer func() {
-		util.LogError("closing watcher", t.watcher.Close)
 		for _, v := range t.tails {
 			v.stop()
 		}
@@ -164,24 +163,13 @@ func (t *FileTarget) run() {
 
 	for {
 		select {
-		case event := <-t.watcher.Events:
+		case event := <-t.fileEventWatcher:
 			switch event.Op {
 			case fsnotify.Create:
-				matched, err := doublestar.Match(t.path, event.Name)
-				if err != nil {
-					level.Error(t.logger).Log("msg", "failed to match file", "error", err, "filename", event.Name)
-					continue
-				}
-				if !matched {
-					level.Debug(t.logger).Log("msg", "new file does not match glob", "filename", event.Name)
-					continue
-				}
 				t.startTailing([]string{event.Name})
 			default:
 				// No-op we only care about Create events
 			}
-		case err := <-t.watcher.Errors:
-			level.Error(t.logger).Log("msg", "error from fswatch", "error", err)
 		case <-ticker.C:
 			err := t.sync()
 			if err != nil {
@@ -256,8 +244,9 @@ func (t *FileTarget) startWatching(dirs map[string]struct{}) {
 			continue
 		}
 		level.Debug(t.logger).Log("msg", "watching new directory", "directory", dir)
-		if err := t.watcher.Add(dir); err != nil {
-			level.Error(t.logger).Log("msg", "error adding directory to watcher", "error", err)
+		t.targetEventHandler <- fileTargetEvent{
+			path:      dir,
+			eventType: fileTargetEventWatchStart,
 		}
 	}
 }
@@ -268,9 +257,9 @@ func (t *FileTarget) stopWatching(dirs map[string]struct{}) {
 			continue
 		}
 		level.Debug(t.logger).Log("msg", "removing directory from watcher", "directory", dir)
-		err := t.watcher.Remove(dir)
-		if err != nil {
-			level.Error(t.logger).Log("msg", " failed to remove directory from watcher", "error", err)
+		t.targetEventHandler <- fileTargetEvent{
+			path:      dir,
+			eventType: fileTargetEventWatchStop,
 		}
 	}
 }
