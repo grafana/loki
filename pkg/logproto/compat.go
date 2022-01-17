@@ -227,14 +227,14 @@ func SampleJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 
 func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	if !iter.ReadArray() {
-		iter.ReportError("cortexpb.Sample", "expected [")
+		iter.ReportError("logproto.Sample", "expected [")
 		return
 	}
 
 	t := model.Time(iter.ReadFloat64() * float64(time.Second/time.Millisecond))
 
 	if !iter.ReadArray() {
-		iter.ReportError("cortexpb.Sample", "expected ,")
+		iter.ReportError("logproto.Sample", "expected ,")
 		return
 	}
 
@@ -242,7 +242,7 @@ func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	ss := *(*string)(unsafe.Pointer(&bs))
 	v, err := strconv.ParseFloat(ss, 64)
 	if err != nil {
-		iter.ReportError("cortexpb.Sample", err.Error())
+		iter.ReportError("logproto.Sample", err.Error())
 		return
 	}
 
@@ -252,7 +252,7 @@ func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	}
 
 	if iter.ReadArray() {
-		iter.ReportError("cortexpb.Sample", "expected ]")
+		iter.ReportError("logproto.Sample", "expected ]")
 	}
 
 	*(*Sample)(ptr) = Sample{
@@ -262,6 +262,6 @@ func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 }
 
 func init() {
-	jsoniter.RegisterTypeEncoderFunc("cortexpb.Sample", SampleJsoniterEncode, func(unsafe.Pointer) bool { return false })
-	jsoniter.RegisterTypeDecoderFunc("cortexpb.Sample", SampleJsoniterDecode)
+	jsoniter.RegisterTypeEncoderFunc("logproto.Sample", SampleJsoniterEncode, func(unsafe.Pointer) bool { return false })
+	jsoniter.RegisterTypeDecoderFunc("logproto.Sample", SampleJsoniterDecode)
 }
