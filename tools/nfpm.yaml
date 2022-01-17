@@ -1,11 +1,7 @@
-# nfpm example config file
-#
-# check https://nfpm.goreleaser.com/configuration for detailed usage
-#
 name: "logcli"
 arch: "amd64"
 platform: "linux"
-version: "v2.3.0"
+version: ${CIRCLE_TAG}
 section: "default"
 provides:
 - logcli 
