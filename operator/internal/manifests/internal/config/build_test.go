@@ -90,7 +90,6 @@ limits_config:
   max_cache_freshness_per_query: 10m
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
-  split_queries_by_interval: 30m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -116,6 +115,7 @@ query_range:
       enable_fifocache: true
       fifocache:
         max_size_bytes: 500MB
+  split_queries_by_interval: 30m
   parallelise_shardable_queries: true
 schema_config:
   configs:
@@ -306,7 +306,6 @@ limits_config:
   max_cache_freshness_per_query: 10m
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
-  split_queries_by_interval: 30m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -332,6 +331,7 @@ query_range:
       enable_fifocache: true
       fifocache:
         max_size_bytes: 500MB
+  split_queries_by_interval: 30m
   parallelise_shardable_queries: true
 schema_config:
   configs:
