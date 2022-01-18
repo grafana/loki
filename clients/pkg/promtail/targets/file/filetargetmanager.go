@@ -321,8 +321,13 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 			delete(s.targets, key)
 
 			// close related file event watcher
-			close(s.fileEventWatchers[target.path])
-			delete(s.fileEventWatchers, target.path)
+			k := target.path
+			if _, ok := s.fileEventWatchers[k]; ok {
+				close(s.fileEventWatchers[k])
+				delete(s.fileEventWatchers, k)
+			} else {
+				level.Warn(s.log).Log("msg", "failed to remove file event watcher", "path", k)
+			}
 		}
 	}
 	s.droppedTargets = dropped
