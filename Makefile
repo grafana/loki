@@ -252,7 +252,11 @@ dist: clean
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
-publish: dist
+packages: dist
+	nfpm package -f tools/nfpm.yaml -p rpm -t dist/
+	nfpm package -f tools/nfpm.yaml -p deb -t dist/
+
+publish: packages
 	./tools/release
 
 ########
