@@ -59,7 +59,6 @@ func NewTargetManagers(
 	client api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *file.Config,
-	clientConfigs ...client.Config,
 ) (*TargetManagers, error) {
 	var targetManagers []targetManager
 	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
