@@ -6,11 +6,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
+	"gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
@@ -446,4 +448,55 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	if len(client.Received()) != 20 {
 		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Received()))
 	}
+}
+
+func TestDeadlockTargetManager(t *testing.T) {
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	targetEventHandler := make(chan fileTargetEvent)
+	defer func() {
+		close(targetEventHandler)
+	}()
+
+	syncer := &targetSyncer{
+		metrics:           NewMetrics(nil),
+		log:               log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)),
+		positions:         nil,
+		entryHandler:      client,
+		hostname:          "localhost",
+		fileEventWatchers: make(map[string]chan fsnotify.Event),
+		targets:           make(map[string]*FileTarget),
+		targetConfig: &Config{
+			SyncPeriod: time.Hour,
+		},
+	}
+
+	syncer.sync([]*targetgroup.Group{
+		{
+			Targets: []model.LabelSet{
+				{
+					hostLabel: "localhost",
+					pathLabel: "baz",
+					"job":     "bar",
+				},
+			},
+		},
+	}, targetEventHandler)
+
+	require.Equal(t, len(syncer.targets), 1)
+	require.Equal(t, len(syncer.fileEventWatchers), 1)
+
+	syncer.sync([]*targetgroup.Group{
+		{
+			Targets: []model.LabelSet{
+				{},
+			},
+		},
+	}, targetEventHandler)
+
+	syncer.sendFileCreateEvent(fsnotify.Event{Name: "baz"})
+
+	require.Equal(t, len(syncer.targets), 0)
+	require.Equal(t, len(syncer.fileEventWatchers), 0)
 }
