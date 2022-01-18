@@ -291,6 +291,19 @@ spec:
         path: template.queryFrontend.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Ruler defines the ruler component spec.
+        displayName: Ruler pods
+        path: template.ruler
+      - description: PrometheusEndpoint defines the recording rules metrics push endpoint
+        displayName: Prometheus Endpoint
+        path: template.ruler.prometheusEndpoint
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.ruler.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
       - description: Tenants defines the per-tenant authentication and authorization
           spec for the lokistack-gateway component.
         displayName: Tenants Configuration

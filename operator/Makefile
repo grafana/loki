@@ -70,7 +70,7 @@ endif
 
 all: generate lint manager bin/loki-broker
 
-OCI_RUNTIME ?= $(shell which podman || which docker)
+OCI_RUNTIME ?= $(shell which docker)
 
 ##@ General
 
@@ -194,7 +194,7 @@ olm-deploy-example-storage-secret:
 	hack/deploy-example-secret.sh $(CLUSTER_LOGGING_NS)
 
 .PHONY: olm-deploy-example
-olm-deploy-example: olm-deploy olm-deploy-example-storage-secret olm-deploy-example-rules-configmap
+olm-deploy-example: olm-deploy olm-deploy-example-rules-configmap
 	kubectl -n $(CLUSTER_LOGGING_NS) create -f hack/lokistack_dev.yaml
 
 .PHONY: olm-undeploy
