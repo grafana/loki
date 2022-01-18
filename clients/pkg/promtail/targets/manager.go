@@ -60,18 +60,17 @@ func NewTargetManagers(
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *file.Config,
 ) (*TargetManagers, error) {
-	var targetManagers []targetManager
-	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
-
 	if targetConfig.Stdin {
 		level.Debug(logger).Log("msg", "configured to read from stdin")
 		stdin, err := stdin.NewStdinTargetManager(reg, logger, app, client, scrapeConfigs)
 		if err != nil {
 			return nil, err
 		}
-		targetManagers = append(targetManagers, stdin)
-		return &TargetManagers{targetManagers: targetManagers}, nil
+		return &TargetManagers{targetManagers: []targetManager{stdin}}, nil
 	}
+
+	var targetManagers []targetManager
+	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
 
 	for _, cfg := range scrapeConfigs {
 		switch {
