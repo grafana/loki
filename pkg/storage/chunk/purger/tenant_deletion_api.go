@@ -15,8 +15,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+
+	"github.com/grafana/loki/pkg/tenant"
 )
 
 type TenantDeletionAPI struct {

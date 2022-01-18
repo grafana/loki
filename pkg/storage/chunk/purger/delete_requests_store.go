@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type (

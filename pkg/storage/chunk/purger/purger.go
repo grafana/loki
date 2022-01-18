@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
@@ -21,9 +23,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 const (
@@ -616,7 +616,7 @@ func (p *Purger) putDeletePlans(ctx context.Context, userID, requestID string, p
 func (p *Purger) getDeletePlan(ctx context.Context, userID, requestID string, planNo int) (*DeletePlan, error) {
 	objectKey := buildObjectKeyForPlan(userID, requestID, planNo)
 
-	readCloser, err := p.objectClient.GetObject(ctx, objectKey)
+	readCloser, _, err := p.objectClient.GetObject(ctx, objectKey)
 	if err != nil {
 		return nil, err
 	}
@@ -682,7 +682,7 @@ func groupChunks(chunks []chunk.Chunk, deleteFrom, deleteThrough model.Time, inc
 	metricToChunks := make(map[string]ChunksGroup)
 
 	for _, chk := range chunks {
-		chunkID := chk.ExternalKey()
+		chunkID := chk.Fingerprint.String()
 
 		if _, ok := includedChunkIDs[chunkID]; ok {
 			continue

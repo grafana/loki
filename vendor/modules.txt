@@ -259,7 +259,6 @@ github.com/cortexproject/cortex/pkg/chunk/encoding
 github.com/cortexproject/cortex/pkg/chunk/gcp
 github.com/cortexproject/cortex/pkg/chunk/objectclient
 github.com/cortexproject/cortex/pkg/chunk/openstack
-github.com/cortexproject/cortex/pkg/chunk/purger
 github.com/cortexproject/cortex/pkg/chunk/testutils
 github.com/cortexproject/cortex/pkg/chunk/util
 github.com/cortexproject/cortex/pkg/configs/client

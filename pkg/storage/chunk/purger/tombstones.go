@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,8 +15,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const tombstonesReloadDuration = 5 * time.Minute
