@@ -2,6 +2,7 @@ package querytee
 
 import (
 	"context"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -11,8 +12,6 @@ import (
 
 	"github.com/pkg/errors"
 )
-
-const orgIDHeader = "X-Scope-OrgId"
 
 // ProxyBackend holds the information of a single backend.
 type ProxyBackend struct {
@@ -46,32 +45,31 @@ func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, pref
 				MaxIdleConns:        100,
 				MaxIdleConnsPerHost: 100, // see https://github.com/golang/go/issues/13801
 				IdleConnTimeout:     90 * time.Second,
+				DisableCompression:  true,
 			},
 		},
 	}
 }
 
-func (b *ProxyBackend) ForwardRequest(orig *http.Request) (int, []byte, error) {
-	req, err := b.createBackendRequest(orig)
-	if err != nil {
-		return 0, nil, err
-	}
-
+func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) (int, []byte, error) {
+	req := b.createBackendRequest(orig, body)
 	return b.doBackendRequest(req)
 }
 
-func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, error) {
-	req, err := http.NewRequest(orig.Method, orig.URL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
+func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadCloser) *http.Request {
+	req := orig.Clone(context.Background())
+	req.Body = body
+	// RequestURI can't be set on a cloned request. It's only for handlers.
+	req.RequestURI = ""
 	// Replace the endpoint with the backend one.
 	req.URL.Scheme = b.endpoint.Scheme
 	req.URL.Host = b.endpoint.Host
 
 	// Prepend the endpoint path to the request path.
 	req.URL.Path = path.Join(b.endpoint.Path, req.URL.Path)
+
+	// Set the correct host header for the backend
+	req.Header.Set("Host", b.endpoint.Host)
 
 	// Replace the auth:
 	// - If the endpoint has user and password, use it.
@@ -81,6 +79,7 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, 
 	endpointUser := b.endpoint.User.Username()
 	endpointPass, _ := b.endpoint.User.Password()
 
+	req.Header.Del("Authorization")
 	if endpointUser != "" && endpointPass != "" {
 		req.SetBasicAuth(endpointUser, endpointPass)
 	} else if endpointUser != "" {
@@ -89,12 +88,10 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request) (*http.Request, 
 		req.SetBasicAuth(clientUser, clientPass)
 	}
 
-	// If there is X-Scope-OrgId header in the request, forward it. This is done even if there was username/password.
-	if orgID := orig.Header.Get(orgIDHeader); orgID != "" {
-		req.Header.Set(orgIDHeader, orgID)
-	}
+	// Remove Accept-Encoding header to avoid sending compressed responses
+	req.Header.Del("Accept-Encoding")
 
-	return req, nil
+	return req
 }
 
 func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) {

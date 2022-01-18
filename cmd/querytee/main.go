@@ -59,7 +59,11 @@ func main() {
 }
 
 func lokiReadRoutes(cfg Config) []querytee.Route {
-	samplesComparator := querytee.NewSamplesComparator(cfg.ProxyConfig.ValueComparisonTolerance)
+	samplesComparator := querytee.NewSamplesComparator(querytee.SampleComparisonOptions{
+		Tolerance:         cfg.ProxyConfig.ValueComparisonTolerance,
+		UseRelativeError:  cfg.ProxyConfig.UseRelativeError,
+		SkipRecentSamples: cfg.ProxyConfig.SkipRecentSamples,
+	})
 	samplesComparator.RegisterSamplesType(loghttp.ResultTypeStream, compareStreams)
 
 	return []querytee.Route{
