@@ -43,14 +43,14 @@ func newtombstonesLoaderMetrics(r prometheus.Registerer) *tombstonesLoaderMetric
 
 // TombstonesSet holds all the pending delete requests for a user
 type TombstonesSet struct {
-	tombstones                               []DeleteRequest
+	tombstones                               []deleteRequest
 	oldestTombstoneStart, newestTombstoneEnd model.Time // Used as optimization to find whether we want to iterate over tombstones or not
 }
 
 // Used for easier injection of mocks.
 type DeleteStoreAPI interface {
 	getCacheGenerationNumbers(ctx context.Context, user string) (*cacheGenNumbers, error)
-	GetPendingDeleteRequestsForUser(ctx context.Context, id string) ([]DeleteRequest, error)
+	getPendingDeleteRequestsForUser(ctx context.Context, id string) ([]deleteRequest, error)
 }
 
 // TombstonesLoader loads delete requests and gen numbers from store and keeps checking for updates.
@@ -210,7 +210,7 @@ func (tl *TombstonesLoader) loadPendingTombstones(userID string) error {
 		return nil
 	}
 
-	pendingDeleteRequests, err := tl.deleteStore.GetPendingDeleteRequestsForUser(context.Background(), userID)
+	pendingDeleteRequests, err := tl.deleteStore.getPendingDeleteRequestsForUser(context.Background(), userID)
 	if err != nil {
 		tl.metrics.deleteRequestsLoadFailures.Inc()
 		return errors.Wrap(err, "error loading delete requests")

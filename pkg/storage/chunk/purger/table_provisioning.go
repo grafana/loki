@@ -7,7 +7,7 @@ import (
 )
 
 // TableProvisioningConfig holds config for table throuput and autoscaling. Currently only used by DynamoDB.
-type TableProvisioningConfig struct {
+type tableProvisioningConfig struct {
 	chunk.ActiveTableProvisionConfig `yaml:",inline"`
 	TableTags                        chunk.Tags `yaml:"tags"`
 }
@@ -15,7 +15,7 @@ type TableProvisioningConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 // Adding a separate RegisterFlags here instead of using it from embedded chunk.ActiveTableProvisionConfig to be able to manage defaults separately.
 // Defaults for WriteScale and ReadScale are shared for now to avoid adding further complexity since autoscaling is disabled anyways by default.
-func (cfg *TableProvisioningConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
+func (cfg *tableProvisioningConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 	// default values ActiveTableProvisionConfig
 	cfg.ProvisionedWriteThroughput = 1
 	cfg.ProvisionedReadThroughput = 300
@@ -25,6 +25,6 @@ func (cfg *TableProvisioningConfig) RegisterFlags(argPrefix string, f *flag.Flag
 	f.Var(&cfg.TableTags, argPrefix+".tags", "Tag (of the form key=value) to be added to the tables. Supported by DynamoDB")
 }
 
-func (cfg DeleteStoreConfig) GetTables() []chunk.TableDesc {
+func (cfg deleteStoreConfig) getTables() []chunk.TableDesc {
 	return []chunk.TableDesc{cfg.ProvisionConfig.BuildTableDesc(cfg.RequestsTableName, cfg.ProvisionConfig.TableTags)}
 }

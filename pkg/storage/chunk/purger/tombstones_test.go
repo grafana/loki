@@ -6,11 +6,40 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
+
+const (
+	userID            = "userID"
+	modelTimeDay      = model.Time(millisecondPerDay)
+	millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
+)
+
+func setupTestDeleteStore(t *testing.T) *deleteStore {
+	var (
+		deleteStoreConfig deleteStoreConfig
+		tbmConfig         chunk.TableManagerConfig
+		schemaCfg         = chunk.DefaultSchemaConfig("", "v10", 0)
+	)
+	flagext.DefaultValues(&deleteStoreConfig)
+	flagext.DefaultValues(&tbmConfig)
+
+	mockStorage := chunk.NewMockStorage()
+
+	extraTables := []chunk.ExtraTables{{TableClient: mockStorage, Tables: deleteStoreConfig.getTables()}}
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, mockStorage, nil, extraTables, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, tableManager.SyncTables(context.Background()))
+
+	return newDeleteStore(deleteStoreConfig, mockStorage)
+}
 
 func TestTombstonesLoader(t *testing.T) {
 	deleteRequestSelectors := []string{"foo"}
@@ -225,6 +254,6 @@ func (f *store) getCacheGenerationNumbers(ctx context.Context, user string) (*ca
 	return &cacheGenNumbers{}, f.err
 }
 
-func (f *store) GetPendingDeleteRequestsForUser(ctx context.Context, id string) ([]DeleteRequest, error) {
+func (f *store) getPendingDeleteRequestsForUser(ctx context.Context, id string) ([]deleteRequest, error) {
 	return nil, nil
 }
