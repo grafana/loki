@@ -118,7 +118,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(logproto.Stream{
 			Labels: cortexpb.FromLabelAdaptersToLabels(series.Labels).String(),
-		}, true, nil)
+		}, nil)
 
 		if err != nil {
 			return err
@@ -167,7 +167,6 @@ func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) er
 		logproto.Stream{
 			Labels: series.Labels.String(),
 		},
-		true,
 		nil,
 	)
 	if err != nil {
