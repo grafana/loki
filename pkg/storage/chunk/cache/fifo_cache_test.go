@@ -51,7 +51,8 @@ func TestFifoCacheEviction(t *testing.T) {
 			keys = append(keys, key)
 			values = append(values, value)
 		}
-		c.Store(ctx, keys, values)
+		err := c.Store(ctx, keys, values)
+		require.NoError(t, err)
 		require.Len(t, c.entries, cnt)
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
@@ -93,7 +94,8 @@ func TestFifoCacheEviction(t *testing.T) {
 			keys = append(keys, key)
 			values = append(values, value)
 		}
-		c.Store(ctx, keys, values)
+		err = c.Store(ctx, keys, values)
+		require.NoError(t, err)
 		require.Len(t, c.entries, cnt)
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(2))
@@ -139,7 +141,8 @@ func TestFifoCacheEviction(t *testing.T) {
 			copy(value, vstr)
 			values = append(values, value)
 		}
-		c.Store(ctx, keys, values)
+		err = c.Store(ctx, keys, values)
+		require.NoError(t, err)
 		require.Len(t, c.entries, cnt)
 
 		for i := cnt; i < cnt+evicted; i++ {
@@ -189,9 +192,10 @@ func TestFifoCacheExpiry(t *testing.T) {
 		c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger())
 		ctx := context.Background()
 
-		c.Store(ctx,
+		err := c.Store(ctx,
 			[]string{key1, key2, key4, key3, key2, key1},
 			[][]byte{genBytes(16), []byte("dummy"), genBytes(20), data3, data2, data1})
+		require.NoError(t, err)
 
 		value, ok := c.Get(ctx, key1)
 		require.True(t, ok)

@@ -279,7 +279,9 @@ module Fluent
             formatted_labels = []
             record.each do |k, v|
               # Remove non UTF-8 characters by force-encoding the string
-              v = v.encode('utf-8', invalid: :replace)
+              if v.is_a?(String)
+                v = v.encode('utf-8', invalid: :replace)
+              end
               # Escape double quotes and backslashes by prefixing them with a backslash
               v = v.to_s.gsub(%r{(["\\])}, '\\\\\1')
               if v.include?(' ') || v.include?('=')

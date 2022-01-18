@@ -180,7 +180,7 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 }
 
 // Fetch implements Cache.
-func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string) {
+func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
 	found, missing, bufs = make([]string, 0, len(keys)), make([]string, 0, len(keys)), make([][]byte, 0, len(keys))
 	for _, key := range keys {
 		val, ok := c.Get(ctx, key)
@@ -196,7 +196,7 @@ func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, b
 }
 
 // Store implements Cache.
-func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) {
+func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) error {
 	c.entriesAdded.Inc()
 
 	c.lock.Lock()
@@ -205,6 +205,7 @@ func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) {
 	for i := range keys {
 		c.put(keys[i], values[i])
 	}
+	return nil
 }
 
 // Stop implements Cache.

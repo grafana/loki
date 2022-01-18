@@ -1,6 +1,7 @@
 package cloudflare
 
 import (
+	"context"
 	"errors"
 	"os"
 	"sort"
@@ -97,6 +98,52 @@ func Test_CloudflareTarget(t *testing.T) {
 	// Make sure we save the last position.
 	newPos, _ := ps.Get(positions.CursorKey(cfg.ZoneID))
 	require.Greater(t, newPos, end.UnixNano())
+}
+
+func Test_RetryErrorIterating(t *testing.T) {
+	var (
+		w        = log.NewSyncWriter(os.Stderr)
+		logger   = log.NewLogfmtLogger(w)
+		end      = time.Unix(0, time.Hour.Nanoseconds())
+		start    = time.Unix(0, end.Add(-30*time.Minute).UnixNano())
+		client   = fake.New(func() {})
+		cfClient = newFakeCloudflareClient()
+	)
+	cfClient.On("LogpullReceived", mock.Anything, start, end).Return(&fakeLogIterator{
+		logs: []string{
+			`{"EdgeStartTimestamp":1, "EdgeRequestHost":"foo.com"}`,
+			`error`,
+		},
+	}, nil).Once()
+	// setup response for the first pull batch of 1 minutes.
+	cfClient.On("LogpullReceived", mock.Anything, start, end).Return(&fakeLogIterator{
+		logs: []string{
+			`{"EdgeStartTimestamp":1, "EdgeRequestHost":"foo.com"}`,
+			`{"EdgeStartTimestamp":2, "EdgeRequestHost":"foo.com"}`,
+			`{"EdgeStartTimestamp":3, "EdgeRequestHost":"foo.com"}`,
+		},
+	}, nil).Once()
+	// replace the client.
+	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
+		return cfClient, nil
+	}
+	// retries as fast as possible.
+	defaultBackoff.MinBackoff = 0
+	defaultBackoff.MaxBackoff = 0
+	ta := &Target{
+		logger:  logger,
+		handler: client,
+		client:  cfClient,
+		config: &scrapeconfig.CloudflareConfig{
+			Labels: make(model.LabelSet),
+		},
+		metrics: NewMetrics(prometheus.DefaultRegisterer),
+	}
+
+	require.NoError(t, ta.pull(context.Background(), start, end))
+	require.Eventually(t, func() bool {
+		return len(client.Received()) == 4
+	}, 5*time.Second, 100*time.Millisecond)
 }
 
 func Test_CloudflareTargetError(t *testing.T) {
