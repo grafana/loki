@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
@@ -34,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/iterators"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/purger"
 	"github.com/grafana/loki/pkg/util/chunkcompat"
 )
 

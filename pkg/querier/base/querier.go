@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -30,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/lazyquery"
 	"github.com/grafana/loki/pkg/querier/series"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/purger"
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )

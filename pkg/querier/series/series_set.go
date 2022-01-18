@@ -19,13 +19,13 @@ package series
 import (
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/grafana/loki/pkg/storage/chunk/purger"
 )
 
 // ConcreteSeriesSet implements storage.SeriesSet.

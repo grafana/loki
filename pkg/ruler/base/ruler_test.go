@@ -21,7 +21,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 
 	"go.uber.org/atomic"
@@ -57,6 +56,7 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
+	"github.com/grafana/loki/pkg/storage/chunk/purger"
 	"github.com/grafana/loki/pkg/tenant"
 )
 
