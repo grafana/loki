@@ -12,6 +12,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/tenant"
 )
@@ -49,7 +50,7 @@ type splitByInterval struct {
 	splitter Splitter
 }
 
-type Splitter func(req queryrangebase.Request, interval time.Duration) []queryrangebase.Request
+type Splitter func(req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
 func SplitByIntervalMiddleware(limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
@@ -102,7 +103,7 @@ func (h *splitByInterval) Process(
 	}
 
 	// don't spawn unnecessary goroutines
-	var p = parallelism
+	p := parallelism
 	if len(input) < parallelism {
 		p = len(input)
 	}
@@ -170,7 +171,10 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return h.next.Do(ctx, r)
 	}
 
-	intervals := h.splitter(r, interval)
+	intervals, err := h.splitter(r, interval)
+	if err != nil {
+		return nil, err
+	}
 	h.metrics.splits.Observe(float64(len(intervals)))
 
 	// no interval should not be processed by the frontend.
@@ -180,6 +184,10 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogFields(otlog.Int("n_intervals", len(intervals)))
+	}
+
+	if len(intervals) == 1 {
+		return h.next.Do(ctx, intervals[0])
 	}
 
 	var limit int64
@@ -213,7 +221,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	return h.merger.MergeResponse(resps...)
 }
 
-func splitByTime(req queryrangebase.Request, interval time.Duration) []queryrangebase.Request {
+func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
 	var reqs []queryrangebase.Request
 
 	switch r := req.(type) {
@@ -248,9 +256,9 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) []queryrang
 			})
 		})
 	default:
-		return nil
+		return nil, nil
 	}
-	return reqs
+	return reqs, nil
 }
 
 func forInterval(interval time.Duration, start, end time.Time, callback func(start, end time.Time)) {
@@ -263,8 +271,42 @@ func forInterval(interval time.Duration, start, end time.Time, callback func(sta
 	}
 }
 
-func splitMetricByTime(r queryrangebase.Request, interval time.Duration) []queryrangebase.Request {
+// maxRangeVector returns the maximum range vector duration within a LogQL query.
+func maxRangeVector(q string) (time.Duration, error) {
+	expr, err := logql.ParseSampleExpr(q)
+	if err != nil {
+		return 0, err
+	}
+	var max time.Duration
+	expr.Walk(func(e interface{}) {
+		if r, ok := e.(*logql.LogRange); ok && r.Interval > max {
+			max = r.Interval
+		}
+	})
+	return max, nil
+}
+
+// reduceSplitIntervalForRangeVector reduce the split interval for range query based on the range vector.
+// Large range vector will be not split into smaller intervals which can cause the queries to be slow by over-processing data.
+func reduceSplitIntervalForRangeVector(r queryrangebase.Request, interval time.Duration) (time.Duration, error) {
+	maxRange, err := maxRangeVector(r.GetQuery())
+	if err != nil {
+		return 0, err
+	}
+	if maxRange > interval {
+		return maxRange, nil
+	}
+	return interval, nil
+}
+
+func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
 	var reqs []queryrangebase.Request
+
+	interval, err := reduceSplitIntervalForRangeVector(r, interval)
+	if err != nil {
+		return nil, err
+	}
+
 	lokiReq := r.(*LokiRequest)
 	// step is >= configured split interval, let us just split the query interval by step
 	if lokiReq.Step >= interval.Milliseconds() {
@@ -280,7 +322,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) []query
 			})
 		})
 
-		return reqs
+		return reqs, nil
 	}
 
 	for start := lokiReq.StartTs; start.Before(lokiReq.EndTs); start = nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * time.Millisecond) {
@@ -298,7 +340,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) []query
 			EndTs:     end,
 		})
 	}
-	return reqs
+	return reqs, nil
 }
 
 // Round up to the step before the next interval boundary.
