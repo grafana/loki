@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
+
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
-
-	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"

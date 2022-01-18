@@ -43,6 +43,10 @@ RUN GO111MODULE=on go get github.com/fatih/faillint@v1.5.0
 FROM golang:1.17.2 as ghr
 RUN GO111MODULE=on go get github.com/tcnksm/ghr
 
+# Install nfpm (https://nfpm.goreleaser.com) for creating .deb and .rpm packages.
+FROM golang:1.17.2 as nfpm
+RUN GO111MODULE=on go get github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.11.3
+
 FROM golang:1.17.2-buster
 RUN apt-get update && \
     apt-get install -qy \
@@ -59,6 +63,7 @@ COPY --from=golangci /bin/golangci-lint /usr/local/bin
 COPY --from=drone /usr/local/bin/drone /usr/bin/drone
 COPY --from=faillint /go/bin/faillint /usr/bin/faillint
 COPY --from=ghr /go/bin/ghr /usr/bin/ghr
+COPY --from=nfpm /go/bin/nfpm /usr/bin/nfpm
 
 # Install some necessary dependencies.
 # Forcing GO111MODULE=on is required to specify dependencies at specific versions using the go mod notation.

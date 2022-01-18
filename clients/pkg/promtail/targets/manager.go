@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/cloudflare"
@@ -59,20 +58,18 @@ func NewTargetManagers(
 	client api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *file.Config,
-	clientConfigs ...client.Config,
 ) (*TargetManagers, error) {
-	var targetManagers []targetManager
-	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
-
 	if targetConfig.Stdin {
 		level.Debug(logger).Log("msg", "configured to read from stdin")
 		stdin, err := stdin.NewStdinTargetManager(reg, logger, app, client, scrapeConfigs)
 		if err != nil {
 			return nil, err
 		}
-		targetManagers = append(targetManagers, stdin)
-		return &TargetManagers{targetManagers: targetManagers}, nil
+		return &TargetManagers{targetManagers: []targetManager{stdin}}, nil
 	}
+
+	var targetManagers []targetManager
+	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
 
 	for _, cfg := range scrapeConfigs {
 		switch {

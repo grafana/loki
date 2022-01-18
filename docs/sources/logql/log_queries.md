@@ -506,7 +506,7 @@ If we have the following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(m
 
 The above query will give us the `line` as `1.1.1.1 200 3`
 
-See [template functions](template_functions/) to learn about available functions in the template format.
+See [template functions](../template_functions/) to learn about available functions in the template format.
 
 ### Labels format expression
 
@@ -576,4 +576,3 @@ The result would be:
 2020-10-23T20:32:18.094668233Z	650.22401ms	    traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
 2020-10-23T20:32:18.068866235Z	624.008132ms	traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
 ```
-

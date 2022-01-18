@@ -38,6 +38,7 @@ func Test_InitQuerierService(t *testing.T) {
 
 		querierWorkerService, err := InitWorkerService(
 			config,
+			nil,
 			mockQueryHandlers,
 			alwaysExternalHandlers,
 			externalRouter,
