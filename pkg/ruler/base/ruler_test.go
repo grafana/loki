@@ -47,9 +47,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 
+	"github.com/grafana/loki/pkg/logproto"
 	querier "github.com/grafana/loki/pkg/querier/base"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
@@ -164,7 +164,7 @@ func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Eng
 
 	// Mock the pusher
 	pusher := newPusherMock()
-	pusher.MockPush(&cortexpb.WriteResponse{}, nil)
+	pusher.MockPush(&logproto.WriteResponse{}, nil)
 
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
