@@ -4,7 +4,6 @@ import (
 	"flag"
 	"os"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -12,6 +11,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/tools/querytee"
 )
 
@@ -31,7 +31,7 @@ func main() {
 
 	util_log.InitLogger(&server.Config{
 		LogLevel: cfg.LogLevel,
-	})
+	}, prometheus.DefaultRegisterer)
 
 	// Run the instrumentation server.
 	registry := prometheus.NewRegistry()

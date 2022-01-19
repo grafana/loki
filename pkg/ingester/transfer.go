@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	lokiutil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (

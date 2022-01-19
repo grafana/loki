@@ -14,8 +14,7 @@ import (
 	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/util/log"
-
+	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 )
 

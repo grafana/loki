@@ -6,12 +6,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/prometheus/prometheus/model/labels"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const maxMappedFP = 1 << 20 // About 1M fingerprints reserved for mapping.

@@ -6,10 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/grafana/loki/pkg/util/log"
 )
 
 // LogError logs any error returned by f; useful when deferring Close etc.

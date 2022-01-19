@@ -14,16 +14,15 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
-	"github.com/grafana/loki/pkg/tenant"
-
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/tenant"
 	listutil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -91,13 +90,13 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 		limits:          limits,
 	}
 
-	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits)
+	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits, util_log.Logger)
 
 	return &querier, nil
 }
 
 func (q *Querier) SetQueryable(queryable logql.Querier) {
-	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits)
+	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits, util_log.Logger)
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
