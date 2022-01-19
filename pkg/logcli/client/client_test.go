@@ -64,7 +64,7 @@ func Test_getHTTPRequestHeader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.client.getHTTPRequestHeader()
 			if (err != nil) != tt.wantErr {
-				t.Errorf("getHTTPHeader() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("getHTTPRequestHeader() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
