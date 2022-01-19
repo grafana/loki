@@ -681,4 +681,3 @@ check-example-config-doc: generate-example-config-doc
 		echo -e "(Don't forget to check in the generated files when finished)\n"; \
 		exit 1; \
 	fi
-	
