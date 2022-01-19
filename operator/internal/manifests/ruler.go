@@ -130,6 +130,9 @@ func NewRulerDeployment(opts Options) *appsv1.Deployment {
 						MountPath: dataDirectory,
 					},
 				},
+				TerminationMessagePath:   "/dev/termination-log",
+				TerminationMessagePolicy: "File",
+				ImagePullPolicy:          "IfNotPresent",
 			},
 		},
 	}

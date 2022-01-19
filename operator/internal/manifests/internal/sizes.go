@@ -244,7 +244,7 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 			},
 			Ruler: &lokiv1beta1.LokiRulerComponentSpec{
 				LokiComponentSpec: lokiv1beta1.LokiComponentSpec{
-					Replicas: 0,
+					Replicas: 1,
 				},
 			},
 			Gateway: &lokiv1beta1.LokiComponentSpec{
