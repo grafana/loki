@@ -8,7 +8,7 @@ import (
 	"unicode"
 
 	"github.com/dustin/go-humanize"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 )

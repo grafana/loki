@@ -13,6 +13,7 @@ Parsing stages:
   - [regex](regex/): Extract data using a regular expression.
   - [json](json/): Extract data by parsing the log line as JSON.
   - [replace](replace/): Replace data using a regular expression.
+  - [multiline](multiline/): Merge multiple lines into a multiline block.
 
 Transform stages:
 
@@ -26,6 +27,7 @@ Action stages:
   - [labeldrop](labeldrop/): Drop label set for the log entry.
   - [labelallow](labelallow/): Allow label set for the log entry.
   - [labels](labels/): Update the label set for the log entry.
+  - [static_labels](static_labels/): Add static-labels to the log entry. 
   - [metrics](metrics/): Calculate metrics based on extracted data.
   - [tenant](tenant/): Set the tenant ID value to use for the log entry.
 

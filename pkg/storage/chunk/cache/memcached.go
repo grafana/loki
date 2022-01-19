@@ -9,15 +9,15 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
 
-	"github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/grafana/dskit/spanlogger"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
+	"github.com/grafana/loki/pkg/util/math"
 )
 
 // MemcachedConfig is config to make a Memcached
@@ -81,7 +81,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 				res := &result{
 					batchID: input.batchID,
 				}
-				res.found, res.bufs, res.missed = c.fetch(input.ctx, input.keys)
+				res.found, res.bufs, res.missed, res.err = c.fetch(input.ctx, input.keys)
 				input.resultCh <- res
 			}
 
@@ -103,6 +103,7 @@ type result struct {
 	found   []string
 	bufs    [][]byte
 	missed  []string
+	err     error
 	batchID int // For ordering results.
 }
 
@@ -121,40 +122,32 @@ func memcacheStatusCode(err error) string {
 }
 
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
-func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
+func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
 	if c.cfg.BatchSize == 0 {
-		found, bufs, missed = c.fetch(ctx, keys)
+		found, bufs, missed, err = c.fetch(ctx, keys)
 		return
 	}
-	_ = instr.CollectedRequest(ctx, "Memcache.GetBatched", c.requestDuration, memcacheStatusCode, func(ctx context.Context) error {
-		found, bufs, missed = c.fetchKeysBatched(ctx, keys)
-		return nil
-	})
+
+	start := time.Now()
+	found, bufs, missed, err = c.fetchKeysBatched(ctx, keys)
+	c.requestDuration.After(ctx, "Memcache.GetBatched", memcacheStatusCode(err), start)
 	return
 }
 
-func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
-	var items map[string]*memcache.Item
-	const method = "Memcache.GetMulti"
-	err := instr.CollectedRequest(ctx, method, c.requestDuration, memcacheStatusCode, func(innerCtx context.Context) error {
-		log, _ := spanlogger.New(innerCtx, c.logger, method)
-		defer log.Finish()
-		log.LogFields(otlog.Int("keys requested", len(keys)))
-
-		var err error
-		items, err = c.memcache.GetMulti(keys)
-
-		log.LogFields(otlog.Int("keys found", len(items)))
-
-		// Memcached returns partial results even on error.
-		if err != nil {
-			log.Error(err)
-			level.Error(log).Log("msg", "Failed to get keys from memcached", "err", err)
-		}
-		return err
-	})
+func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+	var (
+		start = time.Now()
+		items map[string]*memcache.Item
+	)
+	items, err = c.memcache.GetMulti(keys)
+	c.requestDuration.After(ctx, "Memcache.GetMulti", memcacheStatusCode(err), start)
 	if err != nil {
-		return found, bufs, keys
+		level.Error(util_log.WithContext(ctx, c.logger)).Log(
+			"msg", "Failed to get keys from memcached",
+			"keys requested", len(keys),
+			"err", err,
+		)
+		return found, bufs, keys, err
 	}
 
 	for _, key := range keys {
@@ -169,7 +162,7 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 	return
 }
 
-func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
+func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
 	resultsCh := make(chan *result)
 	batchSize := c.cfg.BatchSize
 
@@ -204,15 +197,19 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 		found = append(found, result.found...)
 		bufs = append(bufs, result.bufs...)
 		missed = append(missed, result.missed...)
+		if result.err != nil {
+			err = result.err
+		}
 	}
 
 	return
 }
 
 // Store stores the key in the cache.
-func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
+func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) error {
+	var err error
 	for i := range keys {
-		err := instr.CollectedRequest(ctx, "Memcache.Put", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
+		cacheErr := instr.CollectedRequest(ctx, "Memcache.Put", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
 			item := memcache.Item{
 				Key:        keys[i],
 				Value:      bufs[i],
@@ -220,10 +217,12 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 			}
 			return c.memcache.Set(&item)
 		})
-		if err != nil {
+		if cacheErr != nil {
 			level.Error(c.logger).Log("msg", "failed to put to memcached", "name", c.name, "err", err)
+			err = cacheErr
 		}
 	}
+	return err
 }
 
 // Stop does nothing.

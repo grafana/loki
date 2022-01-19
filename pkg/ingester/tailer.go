@@ -6,9 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/dslog"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -76,17 +75,11 @@ func (t *tailer) loop() {
 	var err error
 	var ok bool
 
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
-
 	for {
 		select {
-		case <-ticker.C:
-			err := t.conn.Context().Err()
-			if err != nil {
-				t.close()
-				return
-			}
+		case <-t.conn.Context().Done():
+			t.close()
+			return
 		case <-t.closeChan:
 			return
 		case stream, ok = <-t.sendChan:
@@ -102,7 +95,7 @@ func (t *tailer) loop() {
 			if err != nil {
 				// Don't log any error due to tail client closing the connection
 				if !util.IsConnCanceled(err) {
-					level.Error(dslog.WithContext(t.conn.Context(), util_log.Logger)).Log("msg", "Error writing to tail client", "err", err)
+					level.Error(util_log.WithContext(t.conn.Context(), util_log.Logger)).Log("msg", "Error writing to tail client", "err", err)
 				}
 				t.close()
 				return

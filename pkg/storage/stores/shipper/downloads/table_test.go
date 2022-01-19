@@ -33,10 +33,10 @@ func newStorageClientWithFakeObjectsInList(storageClient StorageClient) StorageC
 	return storageClientWithFakeObjectsInList{storageClient}
 }
 
-func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, error) {
-	files, err := o.StorageClient.ListFiles(ctx, tableName)
+func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, []string, error) {
+	files, _, err := o.StorageClient.ListFiles(ctx, tableName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	files = append(files, storage.IndexFile{
@@ -44,7 +44,7 @@ func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, table
 		ModifiedAt: time.Now(),
 	})
 
-	return files, nil
+	return files, []string{}, nil
 }
 
 type stopFunc func()
@@ -109,7 +109,7 @@ func TestTable_MultiQueries(t *testing.T) {
 		},
 	}
 
-	testutil.SetupDBTablesAtPath(t, "test", objectStoragePath, testDBs, true)
+	testutil.SetupDBsAtPath(t, "test", objectStoragePath, testDBs, true, nil)
 
 	table, _, stopFunc := buildTestTable(t, "test", tempDir)
 	defer func() {
@@ -155,7 +155,7 @@ func TestTable_Sync(t *testing.T) {
 	}
 
 	// setup the table in storage with some records
-	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, testDBs, false)
+	testutil.SetupDBsAtPath(t, tableName, objectStoragePath, testDBs, false, nil)
 
 	// create table instance
 	table, boltdbClient, stopFunc := buildTestTable(t, "test", tempDir)
@@ -174,7 +174,7 @@ func TestTable_Sync(t *testing.T) {
 
 	// remove deleteDB and add the newDB
 	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, deleteDB)))
-	testutil.AddRecordsToDB(t, filepath.Join(tablePathInStorage, newDB), boltdbClient, 20, 10)
+	testutil.AddRecordsToDB(t, filepath.Join(tablePathInStorage, newDB), boltdbClient, 20, 10, nil)
 
 	// sync the table
 	require.NoError(t, table.Sync(context.Background()))
@@ -246,7 +246,7 @@ func TestTable_doParallelDownload(t *testing.T) {
 				}
 			}
 
-			testutil.SetupDBTablesAtPath(t, fmt.Sprint(tc), objectStoragePath, testDBs, true)
+			testutil.SetupDBsAtPath(t, fmt.Sprint(tc), objectStoragePath, testDBs, true, nil)
 
 			table, _, stopFunc := buildTestTable(t, fmt.Sprint(tc), tempDir)
 			defer func() {
@@ -293,7 +293,7 @@ func TestTable_DuplicateIndex(t *testing.T) {
 		},
 	}
 
-	testutil.SetupDBTablesAtPath(t, "test", objectStoragePath, testDBs, true)
+	testutil.SetupDBsAtPath(t, "test", objectStoragePath, testDBs, true, nil)
 
 	table, _, stopFunc := buildTestTable(t, "test", tempDir)
 	defer func() {
@@ -330,7 +330,7 @@ func TestLoadTable(t *testing.T) {
 	}
 
 	// setup the table in storage with some records
-	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, dbs, false)
+	testutil.SetupDBsAtPath(t, tableName, objectStoragePath, dbs, false, nil)
 
 	boltDBIndexClient, storageClient := buildTestClients(t, tempDir)
 	cachePath := filepath.Join(tempDir, cacheDirName)
@@ -365,7 +365,7 @@ func TestLoadTable(t *testing.T) {
 		}
 	}
 
-	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, dbs, false)
+	testutil.SetupDBsAtPath(t, tableName, objectStoragePath, dbs, false, nil)
 
 	// try loading the table, it should skip loading corrupt file and reload it from storage.
 	table, err = LoadTable(context.Background(), tableName, cachePath, storageClient, boltDBIndexClient, newMetrics(nil))

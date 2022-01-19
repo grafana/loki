@@ -12,10 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/grafana/loki/pkg/tenant"
+
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logql"
@@ -51,7 +53,7 @@ func main() {
 	flag.Parse()
 
 	// Create a set of defaults
-	if err := cfg.Unmarshal(&defaultsConfig, cfg.Defaults()); err != nil {
+	if err := cfg.Unmarshal(&defaultsConfig, cfg.Defaults(flag.CommandLine)); err != nil {
 		log.Println("Failed parsing defaults config:", err)
 		os.Exit(1)
 	}
@@ -134,7 +136,7 @@ func main() {
 	ctx := context.Background()
 	// This is a little weird but it was the easiest way to guarantee the userID is in the right format
 	ctx = user.InjectOrgID(ctx, *source)
-	userID, err := tenant.ID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -169,7 +171,8 @@ func main() {
 	syncRanges := calcSyncRanges(parsedFrom.UnixNano(), parsedTo.UnixNano(), shardByNs.Nanoseconds())
 	log.Printf("With a shard duration of %v, %v ranges have been calculated.\n", shardByNs, len(syncRanges))
 
-	cm := newChunkMover(ctx, s, d, *source, *dest, matchers, *batch)
+	// Pass dest schema config, the destination determines the new chunk external keys using potentially a different schema config.
+	cm := newChunkMover(ctx, destConfig.SchemaConfig.SchemaConfig, s, d, *source, *dest, matchers, *batch)
 	syncChan := make(chan *syncRange)
 	errorChan := make(chan error)
 	statsChan := make(chan stats)
@@ -262,6 +265,7 @@ type stats struct {
 
 type chunkMover struct {
 	ctx        context.Context
+	schema     chunk.SchemaConfig
 	source     storage.Store
 	dest       storage.Store
 	sourceUser string
@@ -270,9 +274,10 @@ type chunkMover struct {
 	batch      int
 }
 
-func newChunkMover(ctx context.Context, source, dest storage.Store, sourceUser, destUser string, matchers []*labels.Matcher, batch int) *chunkMover {
+func newChunkMover(ctx context.Context, s chunk.SchemaConfig, source, dest storage.Store, sourceUser, destUser string, matchers []*labels.Matcher, batch int) *chunkMover {
 	cm := &chunkMover{
 		ctx:        ctx,
+		schema:     s,
 		source:     source,
 		dest:       dest,
 		sourceUser: sourceUser,
@@ -317,9 +322,11 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 					chks := make([]chunk.Chunk, 0, len(chunks))
 
 					// FetchChunks requires chunks to be ordered by external key.
-					sort.Slice(chunks, func(l, m int) bool { return chunks[l].ExternalKey() < chunks[m].ExternalKey() })
+					sort.Slice(chunks, func(x, y int) bool {
+						return m.schema.ExternalKey(chunks[x]) < m.schema.ExternalKey(chunks[y])
+					})
 					for _, chk := range chunks {
-						key := chk.ExternalKey()
+						key := m.schema.ExternalKey(chk)
 						keys = append(keys, key)
 						chks = append(chks, chk)
 					}

@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"github.com/dustin/go-humanize"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"go.uber.org/atomic"
 
 	util_log "github.com/grafana/loki/pkg/util/log"

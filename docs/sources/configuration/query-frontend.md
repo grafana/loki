@@ -9,11 +9,11 @@ This aims to be a general purpose example; there are a number of substitutions t
 
 ## Use case
 
-It's a common occurrence to start running Loki as a single binary while trying it out in order to simplify deployments and defer learning the (initially unnecessary) nitty gritty details. As we become more comfortable with its paradigms and begin migrating towards a more production ready deployment there are a number of things to be aware of. A common bottleneck is on the read path: queries that executed effortlessly on small data sets may churn to a halt on larger ones. Sometimes we can solve this with more queriers. However, that doesn't help when our queries are too large for a single querier to execute. Then we need the query frontend.
+It's a common occurrence to start running Grafana Loki as a single binary while trying it out in order to simplify deployments and defer learning the (initially unnecessary) nitty gritty details. As we become more comfortable with its paradigms and begin migrating towards a more production ready deployment there are a number of things to be aware of. A common bottleneck is on the read path: queries that executed effortlessly on small data sets may churn to a halt on larger ones. Sometimes we can solve this with more queriers. However, that doesn't help when our queries are too large for a single querier to execute. Then we need the query frontend.
 
 ### Parallelization
 
-One of the most important functions of the query frontend is the ability to split larger queries into smaller ones, execute them in parallel, and stitch the results back together. How often it splits them is determined by the `querier.split-queries-by-interval` flag or the yaml config `queryrange.split_queriers_by_interval`. With this set to `1h`, the frontend will dissect a day long query into 24 one hour queries, distribute them to the queriers, and collect the results. This is immensely helpful in production environments as it not only allows us to perform larger queries via aggregation, but also evens the work distribution across queriers so that one or two are not stuck with impossibly large queries while others are left idle.
+One of the most important functions of the query frontend is the ability to split larger queries into smaller ones, execute them in parallel, and stitch the results back together. How often it splits them is determined by the `querier.split-queries-by-interval` flag or the yaml config `query_range.split_queriers_by_interval`. With this set to `1h`, the frontend will dissect a day long query into 24 one hour queries, distribute them to the queriers, and collect the results. This is immensely helpful in production environments as it not only allows us to perform larger queries via aggregation, but also evens the work distribution across queriers so that one or two are not stuck with impossibly large queries while others are left idle.
 
 ## Kubernetes Deployment
 
@@ -43,8 +43,6 @@ data:
       # make queries more cache-able by aligning them with their step intervals
       align_queries_with_step: true
       max_retries: 5
-      # parallelize queries in 15min intervals
-      split_queries_by_interval: 15m
       cache_results: true
 
       results_cache:
@@ -57,6 +55,8 @@ data:
 
     limits_config:
       max_cache_freshness_per_query: '10m'
+      # parallelize queries in 15min intervals
+      split_queries_by_interval: 15m
 
     frontend:
       log_queries_longer_than: 5s

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -20,7 +20,7 @@ import (
 
 const userID = "1"
 
-func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
+func fillCache(t *testing.T, scfg chunk.SchemaConfig, cache cache.Cache) ([]string, []chunk.Chunk) {
 	const chunkLen = 13 * 3600 // in seconds
 
 	// put a set of chunks, larger than background batch size, with varying timestamps and values
@@ -68,12 +68,13 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 		err = cleanChunk.Decode(chunk.NewDecodeContext(), buf)
 		require.NoError(t, err)
 
-		keys = append(keys, c.ExternalKey())
+		keys = append(keys, scfg.ExternalKey(c))
 		bufs = append(bufs, buf)
 		chunks = append(chunks, cleanChunk)
 	}
 
-	cache.Store(context.Background(), keys, bufs)
+	err := cache.Store(context.Background(), keys, bufs)
+	require.NoError(t, err)
 	return keys, chunks
 }
 
@@ -82,7 +83,7 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []ch
 		index := rand.Intn(len(keys))
 		key := keys[index]
 
-		found, bufs, missingKeys := cache.Fetch(context.Background(), []string{key})
+		found, bufs, missingKeys, _ := cache.Fetch(context.Background(), []string{key})
 		require.Len(t, found, 1)
 		require.Len(t, bufs, 1)
 		require.Len(t, missingKeys, 0)
@@ -97,7 +98,7 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []ch
 
 func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []chunk.Chunk) {
 	// test getting them all
-	found, bufs, missingKeys := cache.Fetch(context.Background(), keys)
+	found, bufs, missingKeys, _ := cache.Fetch(context.Background(), keys)
 	require.Len(t, found, len(keys))
 	require.Len(t, bufs, len(keys))
 	require.Len(t, missingKeys, 0)
@@ -114,27 +115,42 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 }
 
 func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk.Chunk) {
-	fetcher, err := chunk.NewChunkFetcher(c, false, nil)
+	s := chunk.SchemaConfig{
+		Configs: []chunk.PeriodConfig{
+			{
+				From:      chunk.DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+
+	fetcher, err := chunk.NewChunkFetcher(c, false, s, nil, 10, 100)
 	require.NoError(t, err)
 	defer fetcher.Stop()
 
 	found, err := fetcher.FetchChunks(context.Background(), chunks, keys)
 	require.NoError(t, err)
-	sort.Sort(byExternalKey(found))
-	sort.Sort(byExternalKey(chunks))
+	sort.Sort(byExternalKey{found, s})
+	sort.Sort(byExternalKey{chunks, s})
 	require.Equal(t, chunks, found)
 }
 
-type byExternalKey []chunk.Chunk
+type byExternalKey struct {
+	chunks []chunk.Chunk
+	scfg   chunk.SchemaConfig
+}
 
-func (a byExternalKey) Len() int           { return len(a) }
-func (a byExternalKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byExternalKey) Less(i, j int) bool { return a[i].ExternalKey() < a[j].ExternalKey() }
+func (a byExternalKey) Len() int      { return len(a.chunks) }
+func (a byExternalKey) Swap(i, j int) { a.chunks[i], a.chunks[j] = a.chunks[j], a.chunks[i] }
+func (a byExternalKey) Less(i, j int) bool {
+	return a.scfg.ExternalKey(a.chunks[i]) < a.scfg.ExternalKey(a.chunks[j])
+}
 
 func testCacheMiss(t *testing.T, cache cache.Cache) {
 	for i := 0; i < 100; i++ {
 		key := strconv.Itoa(rand.Int()) // arbitrary key which should fail: no chunk key is a single integer
-		found, bufs, missing := cache.Fetch(context.Background(), []string{key})
+		found, bufs, missing, _ := cache.Fetch(context.Background(), []string{key})
 		require.Empty(t, found)
 		require.Empty(t, bufs)
 		require.Len(t, missing, 1)
@@ -142,7 +158,16 @@ func testCacheMiss(t *testing.T, cache cache.Cache) {
 }
 
 func testCache(t *testing.T, cache cache.Cache) {
-	keys, chunks := fillCache(t, cache)
+	s := chunk.SchemaConfig{
+		Configs: []chunk.PeriodConfig{
+			{
+				From:      chunk.DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+	keys, chunks := fillCache(t, s, cache)
 	t.Run("Single", func(t *testing.T) {
 		testCacheSingle(t, cache, keys, chunks)
 	})

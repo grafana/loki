@@ -5,6 +5,10 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/Shopify/sarama"
+	"github.com/grafana/dskit/flagext"
+
+	promconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/aws"
@@ -20,7 +24,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/openstack"
 	"github.com/prometheus/prometheus/discovery/triton"
 	"github.com/prometheus/prometheus/discovery/zookeeper"
-	"github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
@@ -36,6 +40,9 @@ type Config struct {
 	GcplogConfig           *GcplogTargetConfig        `yaml:"gcplog,omitempty"`
 	PushConfig             *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
 	WindowsConfig          *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
+	KafkaConfig            *KafkaTargetConfig         `yaml:"kafka,omitempty"`
+	GelfConfig             *GelfTargetConfig          `yaml:"gelf,omitempty"`
+	CloudflareConfig       *CloudflareConfig          `yaml:"cloudflare,omitempty"`
 	RelabelConfigs         []*relabel.Config          `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig ServiceDiscoveryConfig     `yaml:",inline"`
 }
@@ -173,6 +180,8 @@ type SyslogTargetConfig struct {
 
 	// MaxMessageLength sets the maximum limit to the length of syslog messages
 	MaxMessageLength int `yaml:"max_message_length"`
+
+	TLSConfig promconfig.TLSConfig `yaml:"tls_config,omitempty"`
 }
 
 // WindowsEventsTargetConfig describes a scrape config that listen for windows event logs.
@@ -218,6 +227,110 @@ type WindowsEventsTargetConfig struct {
 	Labels model.LabelSet `yaml:"labels"`
 }
 
+type KafkaTargetConfig struct {
+	// Labels optionally holds labels to associate with each log line.
+	Labels model.LabelSet `yaml:"labels"`
+
+	// UseIncomingTimestamp sets the timestamp to the incoming kafka messages
+	// timestamp if it's set.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// The list of brokers to connect to kafka (Required).
+	Brokers []string `yaml:"brokers"`
+
+	// The consumer group id (Required).
+	GroupID string `yaml:"group_id"`
+
+	// Kafka Topics to consume (Required).
+	Topics []string `yaml:"topics"`
+
+	// Kafka version. Default to 2.2.1
+	Version string `yaml:"version"`
+
+	// Rebalancing strategy to use. (e.g sticky, roundrobin or range)
+	Assignor string `yaml:"assignor"`
+
+	// Authentication strategy with Kafka brokers
+	Authentication KafkaAuthentication `yaml:"authentication"`
+}
+
+// KafkaAuthenticationType specifies method to authenticate with Kafka brokers
+type KafkaAuthenticationType string
+
+const (
+	// KafkaAuthenticationTypeNone represents using no authentication
+	KafkaAuthenticationTypeNone = "none"
+	// KafkaAuthenticationTypeSSL represents using SSL/TLS to authenticate
+	KafkaAuthenticationTypeSSL = "ssl"
+	// KafkaAuthenticationTypeSASL represents using SASL to authenticate
+	KafkaAuthenticationTypeSASL = "sasl"
+)
+
+// KafkaAuthentication describe the configuration for authentication with Kafka brokers
+type KafkaAuthentication struct {
+	// Type is authentication type
+	// Possible values: none, sasl and ssl (defaults to none).
+	Type KafkaAuthenticationType `yaml:"type"`
+
+	// TLSConfig is used for TLS encryption and authentication with Kafka brokers
+	TLSConfig promconfig.TLSConfig `yaml:"tls_config,omitempty"`
+
+	// SASLConfig is used for SASL authentication with Kafka brokers
+	SASLConfig KafkaSASLConfig `yaml:"sasl_config,omitempty"`
+}
+
+// KafkaSASLConfig describe the SASL configuration for authentication with Kafka brokers
+type KafkaSASLConfig struct {
+	// SASL mechanism. Supports PLAIN, SCRAM-SHA-256 and SCRAM-SHA-512
+	Mechanism sarama.SASLMechanism `yaml:"mechanism"`
+
+	// SASL Username
+	User string `yaml:"user"`
+
+	// SASL Password for the User
+	Password flagext.Secret `yaml:"password"`
+
+	// UseTLS sets whether TLS is used with SASL
+	UseTLS bool `yaml:"use_tls"`
+
+	// TLSConfig is used for SASL over TLS. It is used only when UseTLS is true
+	TLSConfig promconfig.TLSConfig `yaml:",inline"`
+}
+
+// GelfTargetConfig describes a scrape config that read GELF messages on UDP.
+type GelfTargetConfig struct {
+	// ListenAddress is the address to listen on UDP for gelf messages. (Default to `:12201`)
+	ListenAddress string `yaml:"listen_address"`
+
+	// Labels optionally holds labels to associate with each record read from gelf messages.
+	Labels model.LabelSet `yaml:"labels"`
+
+	// UseIncomingTimestamp sets the timestamp to the incoming gelf messages
+	// timestamp if it's set.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+}
+
+type CloudflareConfig struct {
+	// APIToken is the API key for the Cloudflare account.
+	APIToken string `yaml:"api_token"`
+	// ZoneID is the ID of the zone to use.
+	ZoneID string `yaml:"zone_id"`
+	// Labels optionally holds labels to associate with each record read from cloudflare logs.
+	Labels model.LabelSet `yaml:"labels"`
+	// The amount of workers to use for parsing cloudflare logs. Default to 3.
+	Workers int `yaml:"workers"`
+	// The timerange to fetch for each pull request that will be spread across workers. Default 1m.
+	PullRange model.Duration `yaml:"pull_range"`
+	// Fields to fetch from cloudflare logs.
+	// Default to default fields.
+	// Available fields type:
+	// - default
+	// - minimal
+	// - extended
+	// - all
+	FieldsType string `yaml:"fields_type"`
+}
+
 // GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.
 type GcplogTargetConfig struct {
 	// ProjectID is the Cloud project id
@@ -260,7 +373,6 @@ func (c *Config) HasServiceDiscoveryConfig() bool {
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
-
 	*c = DefaultScrapeConfig
 
 	type plain Config

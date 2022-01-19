@@ -33,7 +33,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"golang.org/x/sys/windows"

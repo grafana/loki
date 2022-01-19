@@ -11,14 +11,15 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/dslog"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sony/gobreaker"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // MemcachedClient interface exists for mocking memcacheClient.
@@ -144,7 +145,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	}
 
 	if len(cfg.Addresses) > 0 {
-		dslog.WarnExperimentalUse("DNS-based memcached service discovery", logger)
+		util_log.WarnExperimentalUse("DNS-based memcached service discovery", logger)
 		newClient.addresses = strings.Split(cfg.Addresses, ",")
 	}
 

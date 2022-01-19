@@ -4,12 +4,15 @@ weight: 200
 ---
 # Installation
 
+> **Note:** You can use [Grafana Cloud](https://grafana.com/products/cloud/features/#cloud-logs) to avoid installing, maintaining, and scaling your own instance of Grafana Loki. The free forever plan includes 50GB of free logs. [Create an account to get started](https://grafana.com/auth/sign-up/create-user?pg=docs-loki&plcmt=in-text).
+
 ## Installation methods
 
 Instructions for different methods of installing Loki and Promtail.
 
 - [Install using Tanka (recommended)](tanka/)
-- [Install through Helm](helm/)
+- [Microservices deployment with Helm](microservices-helm/)
+- [Simple scalable deployment with Helm](simple-scalable-helm/)
 - [Install through Docker or Docker Compose](docker/)
 - [Install and run locally](local/)
 - [Install from source](install-from-source/)

@@ -248,8 +248,10 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 					Summary: stats.Summary{
 						BytesProcessedPerSecond: 1238,
 					},
-					Store: stats.Store{
-						TotalChunksRef: 1234123123,
+					Querier: stats.Querier{
+						Store: stats.Store{
+							TotalChunksRef: 1234123123,
+						},
 					},
 				},
 			},

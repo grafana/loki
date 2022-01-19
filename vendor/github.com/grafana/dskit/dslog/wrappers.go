@@ -6,7 +6,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/weaveworks/common/tracing"
 
-	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/loki/pkg/tenant"
 )
 
 // WithUserID returns a Logger that has information about the current user in

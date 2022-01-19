@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"

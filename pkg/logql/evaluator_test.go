@@ -203,15 +203,7 @@ func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 			require.Equal(t, tc.expected, mergeBinOp(tc.op, tc.lhs, tc.rhs, false, false))
 			require.Equal(t, tc.expected, mergeBinOp(tc.op, tc.lhs, tc.rhs, false, true))
 
-			// vector-vector comparing when not filtering should propagate the labels for nil right hand side matches,
-			// but set the value to zero.
-			require.Equal(
-				t,
-				&promql.Sample{
-					Point: promql.Point{V: 0},
-				},
-				mergeBinOp(tc.op, tc.lhs, nil, false, true),
-			)
+			require.Nil(t, mergeBinOp(tc.op, tc.lhs, nil, false, true))
 
 			//  test filtered variants
 			if tc.expected.V == 0 {

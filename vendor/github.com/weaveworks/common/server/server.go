@@ -273,8 +273,8 @@ func New(cfg Config) (*Server, error) {
 
 	grpcStreamMiddleware := []grpc.StreamServerInterceptor{
 		serverLog.StreamServerInterceptor,
-		middleware.StreamServerInstrumentInterceptor(requestDuration),
 		otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer()),
+		middleware.StreamServerInstrumentInterceptor(requestDuration),
 	}
 	grpcStreamMiddleware = append(grpcStreamMiddleware, cfg.GRPCStreamMiddleware...)
 

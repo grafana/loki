@@ -3,7 +3,8 @@ package promtail
 import (
 	"sync"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
+	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
@@ -56,29 +57,20 @@ func New(cfg config.Config, dryRun bool, reg prometheus.Registerer, opts ...Opti
 		o(promtail)
 	}
 
-	if cfg.ClientConfig.URL.URL != nil {
-		// if a single client config is used we add it to the multiple client config for backward compatibility
-		cfg.ClientConfigs = append(cfg.ClientConfigs, cfg.ClientConfig)
-	}
+	cfg.Setup()
 
-	// This is a bit crude but if the Loki Push API target is specified,
-	// force the log level to match the promtail log level
-	for i := range cfg.ScrapeConfig {
-		if cfg.ScrapeConfig[i].PushConfig != nil {
-			cfg.ScrapeConfig[i].PushConfig.Server.LogLevel = cfg.ServerConfig.LogLevel
-			cfg.ScrapeConfig[i].PushConfig.Server.LogFormat = cfg.ServerConfig.LogFormat
-		}
+	if cfg.LimitConfig.ReadlineRateEnabled {
+		stages.SetReadLineRateLimiter(cfg.LimitConfig.ReadlineRate, cfg.LimitConfig.ReadlineBurst, cfg.LimitConfig.ReadlineRateDrop)
 	}
-
 	var err error
 	if dryRun {
-		promtail.client, err = client.NewLogger(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfig.ExternalLabels, cfg.ClientConfigs...)
+		promtail.client, err = client.NewLogger(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		promtail.client, err = client.NewMulti(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfig.ExternalLabels, cfg.ClientConfigs...)
+		promtail.client, err = client.NewMulti(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}

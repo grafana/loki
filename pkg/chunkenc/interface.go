@@ -17,10 +17,15 @@ import (
 var (
 	ErrChunkFull       = errors.New("chunk full")
 	ErrOutOfOrder      = errors.New("entry out of order")
+	ErrTooFarBehind    = errors.New("entry too far behind")
 	ErrInvalidSize     = errors.New("invalid size")
 	ErrInvalidFlag     = errors.New("invalid flag")
 	ErrInvalidChecksum = errors.New("invalid chunk checksum")
 )
+
+func IsOutOfOrderErr(err error) bool {
+	return err == ErrOutOfOrder || err == ErrTooFarBehind
+}
 
 // Encoding is the identifier for a chunk encoding.
 type Encoding byte

@@ -8,19 +8,20 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
-func testSampleStreams() []queryrange.SampleStream {
-	return []queryrange.SampleStream{
+func testSampleStreams() []queryrangebase.SampleStream {
+	return []queryrangebase.SampleStream{
 		{
 			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
 			Samples: []cortexpb.Sample{
@@ -106,7 +107,7 @@ func TestSampleStreamToMatrix(t *testing.T) {
 func TestResponseToResult(t *testing.T) {
 	for _, tc := range []struct {
 		desc     string
-		input    queryrange.Response
+		input    queryrangebase.Response
 		err      bool
 		expected logqlmodel.Result
 	}{
@@ -119,12 +120,12 @@ func TestResponseToResult(t *testing.T) {
 					}},
 				},
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 			},
 			expected: logqlmodel.Result{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 				Data: logqlmodel.Streams{{
 					Labels: `{foo="bar"}`,
@@ -143,17 +144,17 @@ func TestResponseToResult(t *testing.T) {
 			desc: "LokiPromResponse",
 			input: &LokiPromResponse{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
-				Response: &queryrange.PrometheusResponse{
-					Data: queryrange.PrometheusData{
+				Response: &queryrangebase.PrometheusResponse{
+					Data: queryrangebase.PrometheusData{
 						Result: testSampleStreams(),
 					},
 				},
 			},
 			expected: logqlmodel.Result{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 				Data: sampleStreamToMatrix(testSampleStreams()),
 			},
@@ -161,7 +162,7 @@ func TestResponseToResult(t *testing.T) {
 		{
 			desc: "LokiPromResponseError",
 			input: &LokiPromResponse{
-				Response: &queryrange.PrometheusResponse{
+				Response: &queryrangebase.PrometheusResponse{
 					Error:     "foo",
 					ErrorType: "bar",
 				},
@@ -309,7 +310,7 @@ func TestInstanceDownstream(t *testing.T) {
 				}},
 			},
 			Statistics: stats.Result{
-				Summary: stats.Summary{ExecTime: 1},
+				Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 			},
 		}
 	}
@@ -322,10 +323,10 @@ func TestInstanceDownstream(t *testing.T) {
 		},
 	}
 
-	var got queryrange.Request
-	var want queryrange.Request
-	handler := queryrange.HandlerFunc(
-		func(_ context.Context, req queryrange.Request) (queryrange.Response, error) {
+	var got queryrangebase.Request
+	var want queryrangebase.Request
+	handler := queryrangebase.HandlerFunc(
+		func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req
@@ -344,4 +345,35 @@ func TestInstanceDownstream(t *testing.T) {
 
 	require.Nil(t, err)
 	require.Equal(t, []logqlmodel.Result{expected}, results)
+}
+
+func TestCancelWhileWaitingResponse(t *testing.T) {
+	mkIn := func() *instance { return DownstreamHandler{nil}.Downstreamer().(*instance) }
+	in := mkIn()
+
+	queries := make([]logql.DownstreamQuery, in.parallelism+1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Launch the For call in a goroutine because it blocks and we need to be able to cancel the context
+	// to prove it will exit when the context is canceled.
+	b := atomic.NewBool(false)
+	go func() {
+		_, _ = in.For(ctx, queries, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
+			// Intended to keep the For method from returning unless the context is canceled.
+			time.Sleep(100 * time.Second)
+			return logqlmodel.Result{}, nil
+		})
+		// Should only reach here if the For method returns after the context is canceled.
+		b.Store(true)
+	}()
+
+	// Cancel the parent call
+	cancel()
+	require.Eventually(t, func() bool {
+		return b.Load()
+	}, 5*time.Second, 10*time.Millisecond,
+		"The parent context calling the Downstreamer For method was canceled "+
+			"but the For method did not return as expected.")
+
 }

@@ -40,7 +40,7 @@
           {
             alert: 'PromtailFileLagging',
             expr: |||
-              abs(promtail_file_bytes_total - promtail_read_bytes_total) > 1e6
+              promtail_stream_lag_seconds > 10
             |||,
             'for': '15m',
             labels: {
@@ -48,7 +48,7 @@
             },
             annotations: {
               message: |||
-                {{ $labels.instance }} {{ $labels.job }} {{ $labels.path }} has been lagging by more than 1MB for more than 15m.
+                {{ $labels.instance }} {{ $labels.job }} {{ $labels.path }} has been lagging by more than 10 seconds for more than 15m.
               |||,
             },
           },

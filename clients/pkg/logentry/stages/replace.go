@@ -8,8 +8,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -190,7 +190,7 @@ func (r *replaceStage) getReplacedEntry(matchAllIndex [][]int, input string, td 
 				return "", nil, err
 			}
 			st := buf.String()
-			if previousInputEndIndex == 0 || previousInputEndIndex < matchIndex[i] {
+			if previousInputEndIndex == 0 || previousInputEndIndex <= matchIndex[i] {
 				result += input[previousInputEndIndex:matchIndex[i]] + st
 				previousInputEndIndex = matchIndex[i+1]
 			}

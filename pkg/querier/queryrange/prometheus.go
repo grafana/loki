@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -14,29 +13,30 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
 var (
 	jsonStd   = jsoniter.ConfigCompatibleWithStandardLibrary
-	extractor = queryrange.PrometheusResponseExtractor{}
+	extractor = queryrangebase.PrometheusResponseExtractor{}
 )
 
 // PrometheusExtractor implements Extractor interface
 type PrometheusExtractor struct{}
 
 // Extract wraps the original prometheus cache extractor
-func (PrometheusExtractor) Extract(start, end int64, from queryrange.Response) queryrange.Response {
+func (PrometheusExtractor) Extract(start, end int64, from queryrangebase.Response) queryrangebase.Response {
 	response := extractor.Extract(start, end, from.(*LokiPromResponse).Response)
 	return &LokiPromResponse{
-		Response: response.(*queryrange.PrometheusResponse),
+		Response: response.(*queryrangebase.PrometheusResponse),
 	}
 }
 
 // ResponseWithoutHeaders wraps the original prometheus caching without headers
-func (PrometheusExtractor) ResponseWithoutHeaders(resp queryrange.Response) queryrange.Response {
+func (PrometheusExtractor) ResponseWithoutHeaders(resp queryrangebase.Response) queryrangebase.Response {
 	response := extractor.ResponseWithoutHeaders(resp.(*LokiPromResponse).Response)
 	return &LokiPromResponse{
-		Response: response.(*queryrange.PrometheusResponse),
+		Response: response.(*queryrangebase.PrometheusResponse),
 	}
 }
 
@@ -113,7 +113,7 @@ func (p *LokiPromResponse) marshalMatrix() ([]byte, error) {
 	return jsonStd.Marshal(struct {
 		Status string `json:"status"`
 		Data   struct {
-			queryrange.PrometheusData
+			queryrangebase.PrometheusData
 			Statistics stats.Result `json:"stats,omitempty"`
 		} `json:"data,omitempty"`
 		ErrorType string `json:"errorType,omitempty"`
@@ -121,7 +121,7 @@ func (p *LokiPromResponse) marshalMatrix() ([]byte, error) {
 	}{
 		Error: p.Response.Error,
 		Data: struct {
-			queryrange.PrometheusData
+			queryrangebase.PrometheusData
 			Statistics stats.Result `json:"stats,omitempty"`
 		}{
 			PrometheusData: p.Response.Data,

@@ -12,23 +12,24 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/tracing"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/thanos-io/thanos/pkg/component"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/thanos-io/thanos/pkg/tracing"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type ctxKey int
@@ -38,13 +39,13 @@ const StoreMatcherKey = ctxKey(0)
 
 // Client holds meta information about a store.
 type Client interface {
-	// Client to access the store.
+	// StoreClient to access the store.
 	storepb.StoreClient
 
 	// LabelSets that each apply to some data exposed by the backing store.
 	LabelSets() []labels.Labels
 
-	// Minimum and maximum time range of data in the store.
+	// TimeRange returns minimum and maximum time range of data in the store.
 	TimeRange() (mint int64, maxt int64)
 
 	String() string
@@ -166,6 +167,56 @@ func (s *ProxyStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.I
 	return res, nil
 }
 
+func (s *ProxyStore) LabelSet() []labelpb.ZLabelSet {
+	stores := s.stores()
+	if len(stores) == 0 {
+		return []labelpb.ZLabelSet{}
+	}
+
+	mergedLabelSets := make(map[uint64]labelpb.ZLabelSet, len(stores))
+	for _, st := range stores {
+		for _, lset := range st.LabelSets() {
+			mergedLabelSet := labelpb.ExtendSortedLabels(lset, s.selectorLabels)
+			mergedLabelSets[mergedLabelSet.Hash()] = labelpb.ZLabelSet{Labels: labelpb.ZLabelsFromPromLabels(mergedLabelSet)}
+		}
+	}
+
+	labelSets := make([]labelpb.ZLabelSet, 0, len(mergedLabelSets))
+	for _, v := range mergedLabelSets {
+		labelSets = append(labelSets, v)
+	}
+
+	// We always want to enforce announcing the subset of data that
+	// selector-labels represents. If no label-sets are announced by the
+	// store-proxy's discovered stores, then we still want to enforce
+	// announcing this subset by announcing the selector as the label-set.
+	selectorLabels := labelpb.ZLabelsFromPromLabels(s.selectorLabels)
+	if len(labelSets) == 0 && len(selectorLabels) > 0 {
+		labelSets = append(labelSets, labelpb.ZLabelSet{Labels: selectorLabels})
+	}
+
+	return labelSets
+}
+func (s *ProxyStore) TimeRange() (int64, int64) {
+	stores := s.stores()
+	if len(stores) == 0 {
+		return math.MinInt64, math.MaxInt64
+	}
+
+	var minTime, maxTime int64 = math.MaxInt64, math.MinInt64
+	for _, s := range stores {
+		storeMinTime, storeMaxTime := s.TimeRange()
+		if storeMinTime < minTime {
+			minTime = storeMinTime
+		}
+		if storeMaxTime > maxTime {
+			maxTime = storeMaxTime
+		}
+	}
+
+	return minTime, maxTime
+}
+
 // cancelableRespSender is a response channel that does need to be exhausted on cancel.
 type cancelableRespSender struct {
 	ctx context.Context
@@ -243,20 +294,27 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 
 			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
 
-			// This is used to cancel this stream when one operations takes too long.
+			// This is used to cancel this stream when one operation takes too long.
 			seriesCtx, closeSeries := context.WithCancel(gctx)
 			seriesCtx = grpc_opentracing.ClientAddContextTags(seriesCtx, opentracing.Tags{
 				"target": st.Addr(),
 			})
 			defer closeSeries()
 
+			storeID := labelpb.PromLabelSetsToString(st.LabelSets())
+			if storeID == "" {
+				storeID = "Store Gateway"
+			}
+			span, seriesCtx := tracing.StartSpan(seriesCtx, "proxy.series", tracing.Tags{
+				"store.id":   storeID,
+				"store.addr": st.Addr(),
+			})
+
 			sc, err := st.Series(seriesCtx, r)
 			if err != nil {
-				storeID := labelpb.PromLabelSetsToString(st.LabelSets())
-				if storeID == "" {
-					storeID = "Store Gateway"
-				}
 				err = errors.Wrapf(err, "fetch series for %s %s", storeID, st)
+				span.SetTag("err", err.Error())
+				span.Finish()
 				if r.PartialResponseDisabled {
 					level.Error(reqLogger).Log("err", err, "msg", "partial response disabled; aborting request")
 					return err
@@ -267,7 +325,7 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 
 			// Schedule streamSeriesSet that translates gRPC streamed response
 			// into seriesSet (if series) or respCh if warnings.
-			seriesSet = append(seriesSet, startStreamSeriesSet(seriesCtx, reqLogger, closeSeries,
+			seriesSet = append(seriesSet, startStreamSeriesSet(seriesCtx, reqLogger, span, closeSeries,
 				wg, sc, respSender, st.String(), !r.PartialResponseDisabled, s.responseTimeout, s.metrics.emptyStreamResponses))
 		}
 
@@ -354,6 +412,7 @@ func frameCtx(responseTimeout time.Duration) (context.Context, context.CancelFun
 func startStreamSeriesSet(
 	ctx context.Context,
 	logger log.Logger,
+	span tracing.Span,
 	closeSeries context.CancelFunc,
 	wg *sync.WaitGroup,
 	stream storepb.Store_SeriesClient,
@@ -377,8 +436,18 @@ func startStreamSeriesSet(
 
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		defer close(s.recvCh)
+		seriesStats := &storepb.SeriesStatsCounter{}
+		bytesProcessed := 0
+
+		defer func() {
+			span.SetTag("processed.series", seriesStats.Series)
+			span.SetTag("processed.chunks", seriesStats.Chunks)
+			span.SetTag("processed.samples", seriesStats.Samples)
+			span.SetTag("processed.bytes", bytesProcessed)
+			span.Finish()
+			close(s.recvCh)
+			wg.Done()
+		}()
 
 		numResponses := 0
 		defer func() {
@@ -400,42 +469,53 @@ func startStreamSeriesSet(
 				}
 			}
 		}()
-		for {
+		// The `defer` only executed when function return, we do `defer cancel` in for loop,
+		// so make the loop body as a function, release timers created by context as early.
+		handleRecvResponse := func() (next bool) {
 			frameTimeoutCtx, cancel := frameCtx(s.responseTimeout)
 			defer cancel()
 			var rr *recvResponse
 			select {
 			case <-ctx.Done():
 				s.handleErr(errors.Wrapf(ctx.Err(), "failed to receive any data from %s", s.name), done)
-				return
+				return false
 			case <-frameTimeoutCtx.Done():
 				s.handleErr(errors.Wrapf(frameTimeoutCtx.Err(), "failed to receive any data in %s from %s", s.responseTimeout.String(), s.name), done)
-				return
+				return false
 			case rr = <-rCh:
 			}
 
 			if rr.err == io.EOF {
 				close(done)
-				return
+				return false
 			}
 
 			if rr.err != nil {
 				s.handleErr(errors.Wrapf(rr.err, "receive series from %s", s.name), done)
-				return
+				return false
 			}
 			numResponses++
+			bytesProcessed += rr.r.Size()
 
 			if w := rr.r.GetWarning(); w != "" {
 				s.warnCh.send(storepb.NewWarnSeriesResponse(errors.New(w)))
 			}
 
 			if series := rr.r.GetSeries(); series != nil {
+				seriesStats.Count(series)
+
 				select {
 				case s.recvCh <- series:
 				case <-ctx.Done():
 					s.handleErr(errors.Wrapf(ctx.Err(), "failed to receive any data from %s", s.name), done)
-					return
+					return false
 				}
+			}
+			return true
+		}
+		for {
+			if !handleRecvResponse() {
+				return
 			}
 		}
 	}()
@@ -568,6 +648,7 @@ func (s *ProxyStore) LabelNames(ctx context.Context, r *storepb.LabelNamesReques
 				PartialResponseDisabled: r.PartialResponseDisabled,
 				Start:                   r.Start,
 				End:                     r.End,
+				Matchers:                r.Matchers,
 			})
 			if err != nil {
 				err = errors.Wrapf(err, "fetch label names from store %s", st)

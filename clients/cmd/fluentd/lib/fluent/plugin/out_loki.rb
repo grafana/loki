@@ -278,6 +278,10 @@ module Fluent
           when :key_value
             formatted_labels = []
             record.each do |k, v|
+              # Remove non UTF-8 characters by force-encoding the string
+              if v.is_a?(String)
+                v = v.encode('utf-8', invalid: :replace)
+              end
               # Escape double quotes and backslashes by prefixing them with a backslash
               v = v.to_s.gsub(%r{(["\\])}, '\\\\\1')
               if v.include?(' ') || v.include?('=')
@@ -292,7 +296,6 @@ module Fluent
         line
       end
 
-      #
       # convert a line to loki line with labels
       def line_to_loki(record)
         chunk_labels = {}
@@ -343,10 +346,8 @@ module Fluent
       # iterate through each chunk and create a loki stream entry
       def chunk_to_loki(chunk)
         streams = {}
-        last_time = nil
         chunk.each do |time, record|
           # each chunk has a unique set of labels
-          last_time = time if last_time.nil?
           result = line_to_loki(record)
           chunk_labels = result[:labels]
           # initialize a new stream with the chunk_labels if it does not exist

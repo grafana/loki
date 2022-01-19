@@ -11,17 +11,17 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/spanlogger"
-	"github.com/grafana/dskit/tenant"
+	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/tenant"
 	listutil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -56,8 +56,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Limit the duration for which live tailing request would be served")
 	f.DurationVar(&cfg.QueryTimeout, "querier.query-timeout", 1*time.Minute, "Timeout when querying backends (ingesters or storage) during the execution of a query request")
 	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
-	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
-	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
+	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries.")
 	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Queriers should only query the store and not try to query any ingesters")
 }
 
@@ -255,7 +255,7 @@ func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval
 
 // Label does the heavy lifting for a Label query.
 func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	userID, err := tenant.ID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +291,6 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 	}
 
 	results := append(ingesterValues, storeValues)
-
 	return &logproto.LabelResponse{
 		Values: listutil.MergeStringLists(results...),
 	}, nil
@@ -359,7 +358,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 
 // Series fetches any matching series for a list of matcher sets
 func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	userID, err := tenant.ID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +484,7 @@ func (q *Querier) seriesForMatcher(ctx context.Context, from, through time.Time,
 }
 
 func (q *Querier) validateQueryRequest(ctx context.Context, req logql.QueryParams) (time.Time, time.Time, error) {
-	userID, err := tenant.ID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
@@ -533,7 +532,7 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 }
 
 func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
-	userID, err := tenant.ID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}

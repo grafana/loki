@@ -6,8 +6,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
@@ -56,6 +56,11 @@ const (
 
 	// Too many HA clusters is one of the reasons for discarding samples.
 	TooManyHAClusters = "too_many_ha_clusters"
+
+	// DroppedByRelabelConfiguration Samples can also be discarded because of relabeling configuration
+	DroppedByRelabelConfiguration = "relabel_configuration"
+	// DroppedByUserConfigurationOverride Samples discarded due to user configuration removing label __name__
+	DroppedByUserConfigurationOverride = "user_label_removal_configuration"
 
 	// The combined length of the label names and values of an Exemplar's LabelSet MUST NOT exceed 128 UTF-8 characters
 	// https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#exemplars

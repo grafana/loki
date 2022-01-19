@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	util_log "github.com/grafana/loki/pkg/util/log"

@@ -11,10 +11,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/dslog"
+	"github.com/go-kit/log/level"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/log"
 )
 
 type MockStorageMode int
@@ -32,9 +31,10 @@ const (
 
 // MockStorage is a fake in-memory StorageClient.
 type MockStorage struct {
-	mtx     sync.RWMutex
-	tables  map[string]*mockTable
-	objects map[string][]byte
+	mtx       sync.RWMutex
+	tables    map[string]*mockTable
+	objects   map[string][]byte
+	schemaCfg SchemaConfig
 
 	numIndexWrites int
 	numChunkWrites int
@@ -54,6 +54,15 @@ type mockItem struct {
 // NewMockStorage creates a new MockStorage.
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
+		schemaCfg: SchemaConfig{
+			Configs: []PeriodConfig{
+				{
+					From:      DayTime{Time: 0},
+					Schema:    "v11",
+					RowShards: 16,
+				},
+			},
+		},
 		tables:  map[string]*mockTable{},
 		objects: map[string][]byte{},
 	}
@@ -187,7 +196,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	for _, req := range mockBatch.inserts {
 		table, ok := m.tables[req.tableName]
 		if !ok {
-			return fmt.Errorf("table not found")
+			return fmt.Errorf("table not found: %s", req.tableName)
 		}
 
 		// Check for duplicate writes by RangeKey in same batch
@@ -197,7 +206,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 		}
 		seenWrites[key] = true
 
-		level.Debug(dslog.WithContext(ctx, util_log.Logger)).Log("msg", "write", "hash", req.hashValue, "range", req.rangeValue)
+		level.Debug(log.WithContext(ctx, log.Logger)).Log("msg", "write", "hash", req.hashValue, "range", req.rangeValue)
 
 		items := table.items[req.hashValue]
 
@@ -224,7 +233,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	for _, req := range mockBatch.deletes {
 		table, ok := m.tables[req.tableName]
 		if !ok {
-			return fmt.Errorf("table not found")
+			return fmt.Errorf("table not found: %s", req.tableName)
 		}
 
 		items := table.items[req.hashValue]
@@ -270,12 +279,12 @@ func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, call
 }
 
 func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func(ReadBatch) (shouldContinue bool)) error {
-	logger := dslog.WithContext(ctx, util_log.Logger)
+	logger := log.WithContext(ctx, log.Logger)
 	level.Debug(logger).Log("msg", "QueryPages", "query", query.HashValue)
 
 	table, ok := m.tables[query.TableName]
 	if !ok {
-		return fmt.Errorf("table not found")
+		return fmt.Errorf("table not found: %s", query.TableName)
 	}
 
 	items, ok := table.items[query.HashValue]
@@ -361,7 +370,7 @@ func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
 		if err != nil {
 			return err
 		}
-		m.objects[chunks[i].ExternalKey()] = buf
+		m.objects[m.schemaCfg.ExternalKey(chunks[i])] = buf
 	}
 	return nil
 }
@@ -378,7 +387,7 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	decodeContext := NewDecodeContext()
 	result := []Chunk{}
 	for _, chunk := range chunkSet {
-		key := chunk.ExternalKey()
+		key := m.schemaCfg.ExternalKey(chunk)
 		buf, ok := m.objects[key]
 		if !ok {
 			return nil, errStorageObjectNotFound
@@ -400,20 +409,20 @@ func (m *MockStorage) DeleteChunk(ctx context.Context, userID, chunkID string) e
 	return m.DeleteObject(ctx, chunkID)
 }
 
-func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
 	if m.mode == MockStorageModeWriteOnly {
-		return nil, errPermissionDenied
+		return nil, 0, errPermissionDenied
 	}
 
 	buf, ok := m.objects[objectKey]
 	if !ok {
-		return nil, errStorageObjectNotFound
+		return nil, 0, errStorageObjectNotFound
 	}
 
-	return ioutil.NopCloser(bytes.NewReader(buf)), nil
+	return ioutil.NopCloser(bytes.NewReader(buf)), int64(len(buf)), nil
 }
 
 func (m *MockStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
@@ -490,7 +499,7 @@ func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]Sto
 		prefixes[commonPrefix] = struct{}{}
 	}
 
-	var commonPrefixes = []StorageCommonPrefix(nil)
+	commonPrefixes := []StorageCommonPrefix(nil)
 	for p := range prefixes {
 		commonPrefixes = append(commonPrefixes, StorageCommonPrefix(p))
 	}

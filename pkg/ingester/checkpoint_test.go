@@ -11,7 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/grafana/dskit/services"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -26,7 +26,7 @@ import (
 )
 
 // small util for ensuring data exists as we expect
-func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time, i *Ingester) {
+func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time, i Interface) {
 	result := mockQuerierServer{
 		ctx: ctx,
 	}
@@ -330,11 +330,15 @@ func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
 }
 
 func expectCheckpoint(t *testing.T, walDir string, shouldExist bool, max time.Duration) {
+	once := make(chan struct{}, 1)
+	once <- struct{}{}
+
 	deadline := time.After(max)
 	for {
 		select {
 		case <-deadline:
 			require.Fail(t, "timeout while waiting for checkpoint existence:", shouldExist)
+		case <-once: // Trick to ensure we check immediately before deferring to ticker.
 		default:
 			<-time.After(max / 10) // check 10x over the duration
 		}
@@ -496,16 +500,12 @@ func Benchmark_SeriesIterator(b *testing.B) {
 	streams := buildStreams()
 	instances := make([]*instance, 10)
 
-	limits, err := validation.NewOverrides(validation.Limits{
-		MaxLocalStreamsPerUser: 1000,
-		IngestionRateMB:        1e4,
-		IngestionBurstSizeMB:   1e4,
-	}, nil)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	for i := range instances {
-		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, nil, noopWAL{}, NilMetrics, nil, nil)
+		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
 
 		require.NoError(b,
 			inst.Push(context.Background(), &logproto.PushRequest{
@@ -637,7 +637,7 @@ func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
 
 			if waitForCheckpoint {
 				// Ensure we have checkpointed now
-				expectCheckpoint(t, walDir, true, ingesterConfig.WAL.CheckpointDuration*2) // give a bit of buffer
+				expectCheckpoint(t, walDir, true, ingesterConfig.WAL.CheckpointDuration*10) // give a bit of buffer
 
 				// Add some more data after the checkpoint
 				tmp := end

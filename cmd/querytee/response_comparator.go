@@ -4,14 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/go-kit/kit/log/level"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/log/level"
 	jsoniter "github.com/json-iterator/go"
 
 	"github.com/grafana/loki/pkg/loghttp"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/tools/querytee"
 )
 
-func compareStreams(expectedRaw, actualRaw json.RawMessage, tolerance float64) error {
+func compareStreams(expectedRaw, actualRaw json.RawMessage, opts querytee.SampleComparisonOptions) error {
 	var expected, actual loghttp.Streams
 
 	err := jsoniter.Unmarshal(expectedRaw, &expected)

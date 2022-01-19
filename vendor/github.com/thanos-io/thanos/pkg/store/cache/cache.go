@@ -9,7 +9,8 @@ import (
 	"strconv"
 
 	"github.com/oklog/ulid"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -34,11 +35,11 @@ type IndexCache interface {
 	FetchMultiPostings(ctx context.Context, blockID ulid.ULID, keys []labels.Label) (hits map[labels.Label][]byte, misses []labels.Label)
 
 	// StoreSeries stores a single series.
-	StoreSeries(ctx context.Context, blockID ulid.ULID, id uint64, v []byte)
+	StoreSeries(ctx context.Context, blockID ulid.ULID, id storage.SeriesRef, v []byte)
 
 	// FetchMultiSeries fetches multiple series - each identified by ID - from the cache
 	// and returns a map containing cache hits, along with a list of missing IDs.
-	FetchMultiSeries(ctx context.Context, blockID ulid.ULID, ids []uint64) (hits map[uint64][]byte, misses []uint64)
+	FetchMultiSeries(ctx context.Context, blockID ulid.ULID, ids []storage.SeriesRef) (hits map[storage.SeriesRef][]byte, misses []storage.SeriesRef)
 }
 
 type cacheKey struct {

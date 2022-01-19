@@ -9,9 +9,8 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -28,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -261,7 +261,7 @@ func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	userid, err := tenant.ID(ctx)
+	userid, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}
@@ -278,8 +278,8 @@ func (s *mockStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	return nil, nil
 }
 
-func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
-	return nil, nil, nil
+func (s *mockStore) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+	return nil, nil
 }
 
 func (s *mockStore) GetSchemaConfigs() []chunk.PeriodConfig {
@@ -288,6 +288,41 @@ func (s *mockStore) GetSchemaConfigs() []chunk.PeriodConfig {
 
 func (s *mockStore) SetChunkFilterer(_ storage.RequestChunkFilterer) {
 }
+
+// chunk.Store methods
+func (s *mockStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
+	return nil
+}
+
+func (s *mockStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	return nil, nil
+}
+
+func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+	return nil, nil, nil
+}
+
+func (s *mockStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+	return []string{"val1", "val2"}, nil
+}
+
+func (s *mockStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+	return nil, nil
+}
+
+func (s *mockStore) GetChunkFetcher(tm model.Time) *chunk.Fetcher {
+	return nil
+}
+
+func (s *mockStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+	return nil
+}
+
+func (s *mockStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+	return nil
+}
+
+func (s *mockStore) Stop() {}
 
 type mockQuerierServer struct {
 	ctx   context.Context
@@ -507,4 +542,146 @@ func TestValidate(t *testing.T) {
 			require.Equal(t, tc.expected, tc.in)
 		})
 	}
+}
+
+func Test_InMemoryLabels(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	req := logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar",bar="baz1"}`,
+			},
+			{
+				Labels: `{foo="bar",bar="baz2"}`,
+			},
+		},
+	}
+	for i := 0; i < 10; i++ {
+		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+		req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	res, err := i.Label(ctx, &logproto.LabelRequest{
+		Name:   "bar",
+		Values: true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"baz1", "baz2"}, res.Values)
+
+	res, err = i.Label(ctx, &logproto.LabelRequest{})
+	require.NoError(t, err)
+	require.Equal(t, []string{"bar", "foo"}, res.Values)
+}
+
+func InMemoryLabels(t *testing.T, labelFilterer LabelValueFilterer, expectedValues []string) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	ingesterConfig.QueryStore = true
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+	i.labelFilter = labelFilterer
+	future := time.Now().Local().Add(time.Minute * 5)
+	i.periodicConfigs = []chunk.PeriodConfig{
+		{
+			From: chunk.DayTime{
+				Time: model.TimeFromUnix(future.Unix()),
+			},
+		},
+	}
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	req := logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar",bar="baz1"}`,
+			},
+			{
+				Labels: `{foo="bar",bar="baz2"}`,
+			},
+		},
+	}
+	for i := 0; i < 10; i++ {
+		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+		req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	start := time.Now().Add(-5 * time.Minute)
+	end := time.Now()
+	res, err := i.Label(ctx, &logproto.LabelRequest{
+		Name:   "bar",
+		Values: true,
+		Start:  &start,
+		End:    &end,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, expectedValues, res.Values)
+
+	res, err = i.Label(ctx, &logproto.LabelRequest{})
+	require.NoError(t, err)
+	require.Equal(t, []string{"bar", "foo"}, res.Values)
+}
+
+func Test_InMemoryLabels_WithoutLabelFilter(t *testing.T) {
+	expectedValues := []string{"baz1", "baz2", "val1", "val2"}
+
+	InMemoryLabels(t, nil, expectedValues)
+}
+
+// DummyLabelValuedFilterer adds i to the front of the label value
+type DummyLabelValueFilterer struct{}
+
+func (*DummyLabelValueFilterer) Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error) {
+	var updatedValues []string
+
+	for _, v := range labelValues {
+		updatedValues = append(updatedValues, fmt.Sprintf("i%v", v))
+	}
+
+	return updatedValues, nil
+}
+
+func Test_InMemoryLabels_WithLabelFilter(t *testing.T) {
+	labelFilter := DummyLabelValueFilterer{}
+	expectedValues := []string{"ibaz1", "ibaz2", "ival1", "ival2"}
+
+	InMemoryLabels(t, &labelFilter, expectedValues)
 }

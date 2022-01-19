@@ -7,12 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"os"
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -145,7 +145,7 @@ func (om *Manager) loop(ctx context.Context) error {
 // loadConfig loads configuration using the loader function, and if successful,
 // stores it as current configuration and notifies listeners.
 func (om *Manager) loadConfig() error {
-	buf, err := ioutil.ReadFile(om.cfg.LoadPath)
+	buf, err := os.ReadFile(om.cfg.LoadPath)
 	if err != nil {
 		om.configLoadSuccess.Set(0)
 		return errors.Wrap(err, "read file")

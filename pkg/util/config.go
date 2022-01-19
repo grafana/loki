@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
 

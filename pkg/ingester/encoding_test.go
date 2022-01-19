@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 

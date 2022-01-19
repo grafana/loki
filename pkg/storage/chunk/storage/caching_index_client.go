@@ -5,17 +5,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
-	"github.com/grafana/dskit/spanlogger"
-	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 var (
@@ -95,7 +95,7 @@ func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.Ind
 		return nil
 	}
 
-	userID, err := tenant.ID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}
@@ -198,8 +198,12 @@ func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.Ind
 				callback(query, batch)
 			}
 		}
-		s.cacheStore(ctx, keys, batches)
-		return cardinalityErr
+
+		err := s.cacheStore(ctx, keys, batches)
+		if cardinalityErr != nil {
+			return cardinalityErr
+		}
+		return err
 	}
 }
 
@@ -269,7 +273,7 @@ func isChunksQuery(q chunk.IndexQuery) bool {
 	return len(q.RangeValueStart) != 0
 }
 
-func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) {
+func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) error {
 	cachePuts.Add(float64(len(keys)))
 
 	// We're doing the hashing to handle unicode and key len properly.
@@ -282,17 +286,17 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 		if err != nil {
 			level.Warn(s.logger).Log("msg", "error marshalling ReadBatch", "err", err)
 			cacheEncodeErrs.Inc()
-			return
+			return err
 		}
 		bufs = append(bufs, out)
 	}
 
-	s.cache.Store(ctx, hashed, bufs)
+	return s.cache.Store(ctx, hashed, bufs)
 }
 
 func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
-	log, ctx := spanlogger.New(ctx, s.logger, "cachingIndexClient.cacheFetch")
-	defer log.Finish()
+	log := spanlogger.FromContext(ctx)
+	level.Debug(log).Log("requested", len(keys))
 
 	cacheGets.Add(float64(len(keys)))
 
@@ -312,7 +316,7 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 	// Look up the hashes in a single batch.  If we get an error, we just "miss" all
 	// of the keys.  Eventually I want to push all the errors to the leafs of the cache
 	// tree, to the caches only return found & missed.
-	foundHashes, bufs, _ := s.cache.Fetch(ctx, hashes)
+	foundHashes, bufs, _, _ := s.cache.Fetch(ctx, hashes)
 
 	// Reverse the hash, unmarshal the index entries, check we got what we expected
 	// and that its still valid.

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -270,9 +270,9 @@ type mockCache struct {
 	cache.Cache
 }
 
-func (m *mockCache) Store(ctx context.Context, keys []string, buf [][]byte) {
+func (m *mockCache) Store(ctx context.Context, keys []string, buf [][]byte) error {
 	m.storedKeys = append(m.storedKeys, keys...)
-	m.Cache.Store(ctx, keys, buf)
+	return m.Cache.Store(ctx, keys, buf)
 }
 
 func buildQueryKey(q chunk.IndexQuery) string {

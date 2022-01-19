@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -64,7 +65,9 @@ func (t *deleteRequestsTable) init() error {
 
 	_, err := os.Stat(t.dbPath)
 	if err != nil {
-		err = shipper_util.GetFileFromStorage(context.Background(), t.indexStorageClient, DeleteRequestsTableName, deleteRequestsIndexFileName, t.dbPath, true)
+		err = shipper_util.DownloadFileFromStorage(func() (io.ReadCloser, error) {
+			return t.indexStorageClient.GetFile(context.Background(), DeleteRequestsTableName, deleteRequestsIndexFileName)
+		}, shipper_util.IsCompressedFile(deleteRequestsIndexFileName), t.dbPath, true, util_log.Logger)
 		if err != nil && !t.indexStorageClient.IsFileNotFoundErr(err) {
 			return err
 		}
@@ -168,7 +171,7 @@ func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch chunk.WriteB
 	}
 
 	for _, tableWrites := range boltWriteBatch.Writes {
-		if err := t.boltdbIndexClient.WriteToDB(ctx, t.db, tableWrites); err != nil {
+		if err := t.boltdbIndexClient.WriteToDB(ctx, t.db, nil, tableWrites); err != nil {
 			return err
 		}
 	}

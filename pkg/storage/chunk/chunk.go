@@ -3,7 +3,6 @@ package chunk
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"hash/crc32"
 	"reflect"
 	"strconv"
@@ -16,7 +15,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	errs "github.com/weaveworks/common/errors"
 
 	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
@@ -89,18 +88,20 @@ func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_
 // Post-checksums, externals keys become the same across DynamoDB, Memcache
 // and S3.  Numbers become hex encoded.  Keys look like:
 // `<user id>/<fingerprint>:<start time>:<end time>:<checksum>`.
+//
+// v12+, fingerprint is now a prefix to support better read and write request parallelization:
+// `<user>/<fprint>/<start>:<end>:<checksum>`
 func ParseExternalKey(userID, externalKey string) (Chunk, error) {
-	if !strings.Contains(externalKey, "/") {
+	if !strings.Contains(externalKey, "/") { // pre-checksum
 		return parseLegacyChunkID(userID, externalKey)
+	} else if strings.Count(externalKey, "/") == 2 { // v12+
+		return parseNewerExternalKey(userID, externalKey)
+	} else { // post-checksum
+		return parseNewExternalKey(userID, externalKey)
 	}
-	chunk, err := parseNewExternalKey(userID, externalKey)
-	if err != nil {
-		return Chunk{}, err
-	}
-
-	return chunk, nil
 }
 
+// pre-checksum
 func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 3 {
@@ -126,6 +127,7 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	}, nil
 }
 
+// post-checksum
 func parseNewExternalKey(userID, key string) (Chunk, error) {
 	userIdx := strings.Index(key, "/")
 	if userIdx == -1 || userIdx+1 >= len(key) {
@@ -176,9 +178,66 @@ func parseNewExternalKey(userID, key string) (Chunk, error) {
 	}, nil
 }
 
+// v12+
+func parseNewerExternalKey(userID, key string) (Chunk, error) {
+	// Parse user
+	userIdx := strings.Index(key, "/")
+	if userIdx == -1 || userIdx+1 >= len(key) {
+		return Chunk{}, errInvalidChunkID(key)
+	}
+	if userID != key[:userIdx] {
+		return Chunk{}, errors.WithStack(ErrWrongMetadata)
+	}
+	hexParts := key[userIdx+1:]
+	partsBytes := unsafeGetBytes(hexParts)
+	// Parse fingerprint
+	h, i := readOneHexPart(partsBytes)
+	if i == 0 || i+1 >= len(partsBytes) {
+		return Chunk{}, errors.Wrap(errInvalidChunkID(key), "decoding fingerprint")
+	}
+	fingerprint, err := strconv.ParseUint(unsafeGetString(h), 16, 64)
+	if err != nil {
+		return Chunk{}, errors.Wrap(err, "parsing fingerprint")
+	}
+	partsBytes = partsBytes[i+1:]
+	// Parse start
+	h, i = readOneHexPart(partsBytes)
+	if i == 0 || i+1 >= len(partsBytes) {
+		return Chunk{}, errors.Wrap(errInvalidChunkID(key), "decoding start")
+	}
+	from, err := strconv.ParseInt(unsafeGetString(h), 16, 64)
+	if err != nil {
+		return Chunk{}, errors.Wrap(err, "parsing start")
+	}
+	partsBytes = partsBytes[i+1:]
+	// Parse through
+	h, i = readOneHexPart(partsBytes)
+	if i == 0 || i+1 >= len(partsBytes) {
+		return Chunk{}, errors.Wrap(errInvalidChunkID(key), "decoding through")
+	}
+	through, err := strconv.ParseInt(unsafeGetString(h), 16, 64)
+	if err != nil {
+		return Chunk{}, errors.Wrap(err, "parsing through")
+	}
+	partsBytes = partsBytes[i+1:]
+	// Parse checksum
+	checksum, err := strconv.ParseUint(unsafeGetString(partsBytes), 16, 64)
+	if err != nil {
+		return Chunk{}, errors.Wrap(err, "parsing checksum")
+	}
+	return Chunk{
+		UserID:      userID,
+		Fingerprint: model.Fingerprint(fingerprint),
+		From:        model.Time(from),
+		Through:     model.Time(through),
+		Checksum:    uint32(checksum),
+		ChecksumSet: true,
+	}, nil
+}
+
 func readOneHexPart(hex []byte) (part []byte, i int) {
 	for i < len(hex) {
-		if hex[i] != ':' {
+		if hex[i] != ':' && hex[i] != '/' {
 			i++
 			continue
 		}
@@ -197,21 +256,6 @@ func unsafeGetBytes(s string) []byte {
 
 func unsafeGetString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
-}
-
-// ExternalKey returns the key you can use to fetch this chunk from external
-// storage. For newer chunks, this key includes a checksum.
-func (c *Chunk) ExternalKey() string {
-	// Some chunks have a checksum stored in dynamodb, some do not.  We must
-	// generate keys appropriately.
-	if c.ChecksumSet {
-		// This is the inverse of parseNewExternalKey.
-		return fmt.Sprintf("%s/%x:%x:%x:%x", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through), c.Checksum)
-	}
-	// This is the inverse of parseLegacyExternalKey, with "<user id>/" prepended.
-	// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
-	// See comment on parseExternalKey.
-	return fmt.Sprintf("%s/%d:%d:%d", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through))
 }
 
 var writerPool = sync.Pool{

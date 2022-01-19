@@ -8,21 +8,24 @@ import (
 	"sort"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/spanlogger"
-	"github.com/grafana/dskit/tenant"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/pkg/util/spanlogger"
+
+	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 var (
@@ -79,9 +82,6 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 
 // Query creates a new LogQL query. Instant/Range type is derived from the parameters.
 func (ng *Engine) Query(params Params) Query {
-	if ng.logger == nil {
-		panic("doof")
-	}
 	return &query{
 		logger:    ng.logger,
 		timeout:   ng.timeout,
@@ -113,9 +113,6 @@ type query struct {
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
-	if q.logger == nil {
-		panic("oof")
-	}
 	log, ctx := spanlogger.New(ctx, q.logger, "query.Exec")
 	defer log.Finish()
 
@@ -124,13 +121,14 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	defer timer.ObserveDuration()
 
 	// records query statistics
-	var statResult stats.Result
 	start := time.Now()
-	ctx = stats.NewContext(ctx)
+	statsCtx, ctx := stats.NewContext(ctx)
 
 	data, err := q.Eval(ctx)
 
-	statResult = stats.Snapshot(ctx, time.Since(start))
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+
+	statResult := statsCtx.Result(time.Since(start), queueTime)
 	statResult.Log(level.Debug(log))
 
 	status := "200"
@@ -188,7 +186,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.
 		return q.evalLiteral(ctx, lit)
 	}
 
-	userID, err := tenant.ID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -438,37 +438,6 @@ Option:
 	return edns, off, nil
 }
 
-func makeDataOpt(code uint16) EDNS0 {
-	switch code {
-	case EDNS0NSID:
-		return new(EDNS0_NSID)
-	case EDNS0SUBNET:
-		return new(EDNS0_SUBNET)
-	case EDNS0COOKIE:
-		return new(EDNS0_COOKIE)
-	case EDNS0EXPIRE:
-		return new(EDNS0_EXPIRE)
-	case EDNS0UL:
-		return new(EDNS0_UL)
-	case EDNS0LLQ:
-		return new(EDNS0_LLQ)
-	case EDNS0DAU:
-		return new(EDNS0_DAU)
-	case EDNS0DHU:
-		return new(EDNS0_DHU)
-	case EDNS0N3U:
-		return new(EDNS0_N3U)
-	case EDNS0PADDING:
-		return new(EDNS0_PADDING)
-	case EDNS0EDE:
-		return new(EDNS0_EDE)
-	default:
-		e := new(EDNS0_LOCAL)
-		e.Code = code
-		return e
-	}
-}
-
 func packDataOpt(options []EDNS0, msg []byte, off int) (int, error) {
 	for _, el := range options {
 		b, err := el.pack()
@@ -812,6 +781,8 @@ func unpackDataAplPrefix(msg []byte, off int) (APLPrefix, int, error) {
 	if off+afdlen > len(msg) {
 		return APLPrefix{}, len(msg), &Error{err: "overflow unpacking APL address"}
 	}
+
+	// Address MUST NOT contain trailing zero bytes per RFC3123 Sections 4.1 and 4.2.
 	off += copy(ip, msg[off:off+afdlen])
 	if afdlen > 0 {
 		last := ip[afdlen-1]
@@ -822,10 +793,6 @@ func unpackDataAplPrefix(msg []byte, off int) (APLPrefix, int, error) {
 	ipnet := net.IPNet{
 		IP:   ip,
 		Mask: net.CIDRMask(int(prefix), 8*len(ip)),
-	}
-	network := ipnet.IP.Mask(ipnet.Mask)
-	if !network.Equal(ipnet.IP) {
-		return APLPrefix{}, len(msg), &Error{err: "invalid APL address length"}
 	}
 
 	return APLPrefix{

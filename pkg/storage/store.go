@@ -7,25 +7,24 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -198,12 +197,12 @@ func (s *store) SetChunkFilterer(chunkFilterer RequestChunkFilterer) {
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
 func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*LazyChunk, error) {
-	userID, err := tenant.ID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	storeStats := stats.GetStoreData(ctx)
+	stats := stats.FromContext(ctx)
 
 	chks, fetchers, err := s.GetChunkRefs(ctx, userID, from, through, matchers...)
 	if err != nil {
@@ -214,7 +213,7 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 	var filtered int
 	for i := range chks {
 		prefiltered += len(chks[i])
-		storeStats.TotalChunksRef += int64(len(chks[i]))
+		stats.AddChunksRef(int64(len(chks[i])))
 		chks[i] = filterChunksByTime(from, through, chks[i])
 		filtered += len(chks[i])
 	}
@@ -296,7 +295,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 	}
 
 	for _, group := range groups {
-		err = fetchLazyChunks(ctx, group, util_log.Logger)
+		err = fetchLazyChunks(ctx, s.schemaCfg.SchemaConfig, group)
 		if err != nil {
 			return nil, err
 		}
@@ -304,6 +303,9 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 	outer:
 		for _, chk := range group {
 			for _, matcher := range matchers {
+				if matcher.Name == astmapper.ShardLabel || matcher.Name == labels.MetricName {
+					continue
+				}
 				if !matcher.Matches(chk.Chunk.Metric.Get(matcher.Name)) {
 					continue outer
 				}
@@ -355,7 +357,7 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newLogBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
+	return newLogBatchIterator(ctx, s.schemaCfg.SchemaConfig, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
 }
 
 func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -387,7 +389,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
+	return newSampleBatchIterator(ctx, s.schemaCfg.SchemaConfig, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
 }
 
 func (s *store) GetSchemaConfigs() []chunk.PeriodConfig {

@@ -11,8 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/spanlogger"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -142,10 +141,8 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQue
 }
 
 func (tm *TableManager) query(ctx context.Context, tableName string, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
-	log, ctx := spanlogger.New(ctx, util_log.Logger, "Shipper.Downloads.Query")
-	defer log.Span.Finish()
-
-	level.Debug(log).Log("table-name", tableName)
+	logger := util_log.WithContext(ctx, util_log.Logger)
+	level.Debug(logger).Log("table-name", tableName)
 
 	table := tm.getOrCreateTable(ctx, tableName)
 
@@ -156,7 +153,7 @@ func (tm *TableManager) query(ctx context.Context, tableName string, queries []c
 			tm.tablesMtx.Lock()
 			defer tm.tablesMtx.Unlock()
 
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("table %s has some problem, cleaning it up", tableName), "err", table.Err())
+			level.Error(logger).Log("msg", fmt.Sprintf("table %s has some problem, cleaning it up", tableName), "err", table.Err())
 
 			delete(tm.tables, tableName)
 			return table.Err()

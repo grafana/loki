@@ -4,7 +4,7 @@ weight: 1010
 ---
 # Storage
 
-Unlike other logging systems, Loki is built around the idea of only indexing
+Unlike other logging systems, Grafana Loki is built around the idea of only indexing
 metadata about your logs: labels (just like Prometheus labels). Log data itself
 is then compressed and stored in chunks in object stores such as S3 or GCS, or
 even locally on the filesystem. A small index and highly compressed chunks
@@ -307,6 +307,7 @@ storage_config:
     # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
     container_name: <container-name>
     request_timeout: 0
+    use_managed_identity: <true|false>
   boltdb_shipper:
     active_index_directory: /data/loki/boltdb-shipper-active
     cache_location: /data/loki/boltdb-shipper-cache

@@ -9,13 +9,14 @@ import (
 	"unsafe"
 
 	"github.com/dustin/go-humanize"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/dslog"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -39,9 +40,9 @@ type FifoCacheConfig struct {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.StringVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", "", description+"Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be applied.")
+	f.StringVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", "1GB", description+"Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be applied.")
 	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"Maximum number of entries in the cache.")
-	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
+	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", time.Hour, description+"The expiry duration for the cache.")
 
 	f.IntVar(&cfg.DeprecatedSize, prefix+"fifocache.size", 0, "Deprecated (use max-size-items or max-size-bytes instead): "+description+"The number of entries to cache. ")
 }
@@ -92,7 +93,7 @@ type cacheEntry struct {
 
 // NewFifoCache returns a new initialised FifoCache of size.
 func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, logger log.Logger) *FifoCache {
-	dslog.WarnExperimentalUse("In-memory (FIFO) cache", logger)
+	util_log.WarnExperimentalUse("In-memory (FIFO) cache", logger)
 
 	if cfg.DeprecatedSize > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
@@ -180,7 +181,7 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 }
 
 // Fetch implements Cache.
-func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string) {
+func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
 	found, missing, bufs = make([]string, 0, len(keys)), make([]string, 0, len(keys)), make([][]byte, 0, len(keys))
 	for _, key := range keys {
 		val, ok := c.Get(ctx, key)
@@ -196,7 +197,7 @@ func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, b
 }
 
 // Store implements Cache.
-func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) {
+func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) error {
 	c.entriesAdded.Inc()
 
 	c.lock.Lock()
@@ -205,6 +206,7 @@ func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) {
 	for i := range keys {
 		c.put(keys[i], values[i])
 	}
+	return nil
 }
 
 // Stop implements Cache.

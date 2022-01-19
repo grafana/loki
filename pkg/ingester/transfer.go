@@ -6,14 +6,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/dslog"
+	"github.com/grafana/dskit/ring"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 
@@ -38,7 +37,7 @@ var (
 // TransferChunks receives all chunks from another ingester. The Ingester
 // must be in PENDING state or else the call will fail.
 func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer) error {
-	logger := dslog.WithContext(stream.Context(), util_log.Logger)
+	logger := util_log.WithContext(stream.Context(), util_log.Logger)
 	// Prevent a shutdown from happening until we've completely finished a handoff
 	// from a leaving ingester.
 	i.shutdownMtx.Lock()
@@ -108,7 +107,7 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 			lbls = append(lbls, labels.Label{Name: lbl.Name, Value: lbl.Value})
 		}
 
-		instance := i.getOrCreateInstance(chunkSet.UserId)
+		instance := i.GetOrCreateInstance(chunkSet.UserId)
 		for _, chunk := range chunkSet.Chunks {
 			if err := instance.consumeChunk(userCtx, lbls, chunk); err != nil {
 				return err
@@ -150,7 +149,7 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 // transfer, as claiming tokens would possibly end up with this ingester owning no tokens, due to conflict
 // resolution in ring merge function. Hopefully the leaving ingester will retry transfer again.
 func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIngesterID string) error {
-	v, err := i.lifecycler.KVStore.Get(ctx, ring.IngesterRingKey)
+	v, err := i.lifecycler.KVStore.Get(ctx, RingKey)
 	if err != nil {
 		return errors.Wrap(err, "get ring")
 	}
@@ -199,7 +198,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 			return nil
 		}
 
-		level.Error(dslog.WithContext(ctx, util_log.Logger)).Log("msg", "transfer failed", "err", err)
+		level.Error(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "transfer failed", "err", err)
 		backoff.Wait()
 	}
 
@@ -207,7 +206,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 }
 
 func (i *Ingester) transferOut(ctx context.Context) error {
-	logger := dslog.WithContext(ctx, util_log.Logger)
+	logger := util_log.WithContext(ctx, util_log.Logger)
 	targetIngester, err := i.findTransferTarget(ctx)
 	if err != nil {
 		return fmt.Errorf("cannot find ingester to transfer chunks to: %v", err)
@@ -298,7 +297,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 // findTransferTarget finds an ingester in a PENDING state to use for transferring
 // chunks to.
 func (i *Ingester) findTransferTarget(ctx context.Context) (*ring.InstanceDesc, error) {
-	ringDesc, err := i.lifecycler.KVStore.Get(ctx, ring.IngesterRingKey)
+	ringDesc, err := i.lifecycler.KVStore.Get(ctx, RingKey)
 	if err != nil {
 		return nil, err
 	}

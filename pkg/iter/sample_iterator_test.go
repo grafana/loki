@@ -2,14 +2,19 @@ package iter
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"math/rand"
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
 )
 
 func TestNewPeekingSampleIterator(t *testing.T) {
@@ -91,6 +96,7 @@ var varSeries = logproto.Series{
 		sample(1), sample(2), sample(3),
 	},
 }
+
 var carSeries = logproto.Series{
 	Labels: `{foo="car"}`,
 	Samples: []logproto.Sample{
@@ -142,7 +148,6 @@ func (f *fakeSampleClient) Recv() (*logproto.SampleQueryResponse, error) {
 func (fakeSampleClient) Context() context.Context { return context.Background() }
 func (fakeSampleClient) CloseSend() error         { return nil }
 func TestNewSampleQueryClientIterator(t *testing.T) {
-
 	it := NewSampleQueryClientIterator(&fakeSampleClient{
 		series: [][]logproto.Series{
 			{varSeries},
@@ -222,4 +227,90 @@ func TestNonOverlappingSampleClose(t *testing.T) {
 
 	require.Equal(t, true, a.closed.Load())
 	require.Equal(t, true, b.closed.Load())
+}
+
+func TestSampleIteratorWithClose_CloseIdempotent(t *testing.T) {
+	c := 0
+	closeFn := func() error {
+		c++
+		return nil
+	}
+	ni := noOpIterator{}
+	it := SampleIteratorWithClose(ni, closeFn)
+	// Multiple calls to close should result in c only ever having been incremented one time from 0 to 1
+	err := it.Close()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, c)
+	err = it.Close()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, c)
+	err = it.Close()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, c)
+}
+
+type alwaysErrorIterator struct {
+	noOpIterator
+}
+
+func (alwaysErrorIterator) Close() error {
+	return errors.New("i always error")
+}
+
+func TestSampleIteratorWithClose_ReturnsError(t *testing.T) {
+	closeFn := func() error {
+		return errors.New("i broke")
+	}
+	ei := alwaysErrorIterator{}
+	it := SampleIteratorWithClose(ei, closeFn)
+	err := it.Close()
+	// Verify that a proper multi error is returned when both the iterator and the close function return errors
+	if me, ok := err.(util.MultiError); ok {
+		assert.True(t, len(me) == 2, "Expected 2 errors, one from the iterator and one from the close function")
+		assert.EqualError(t, me[0], "i always error")
+		assert.EqualError(t, me[1], "i broke")
+	} else {
+		t.Error("Expected returned error to be of type util.MultiError")
+	}
+	// A second call to Close should return the same error
+	err2 := it.Close()
+	assert.Equal(t, err, err2)
+}
+
+func BenchmarkHeapSampleIterator(b *testing.B) {
+	var (
+		ctx          = context.Background()
+		series       []logproto.Series
+		entriesCount = 10000
+		seriesCount  = 100
+	)
+	for i := 0; i < seriesCount; i++ {
+		series = append(series, logproto.Series{
+			Labels: fmt.Sprintf(`{i="%d"}`, i),
+		})
+	}
+	for i := 0; i < entriesCount; i++ {
+		series[i%seriesCount].Samples = append(series[i%seriesCount].Samples, logproto.Sample{
+			Timestamp: int64(seriesCount - i),
+			Value:     float64(i),
+		})
+	}
+	rand.Shuffle(len(series), func(i, j int) {
+		series[i], series[j] = series[j], series[i]
+	})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		var itrs []SampleIterator
+		for i := 0; i < seriesCount; i++ {
+			itrs = append(itrs, NewSeriesIterator(series[i]))
+		}
+		b.StartTimer()
+		it := NewHeapSampleIterator(ctx, itrs)
+		for it.Next() {
+			it.Sample()
+		}
+		it.Close()
+	}
 }

@@ -30,7 +30,32 @@ func writeConf() {
 		err error
 	)
 
-	if cfg, err = getUserConfigFromWindowsSyscall(); err != nil {
+	// Try from IE first.
+	if ieCfg, err := getUserConfigFromWindowsSyscall(); err == nil {
+		defer globalFreeWrapper(ieCfg.lpszProxy)
+		defer globalFreeWrapper(ieCfg.lpszProxyBypass)
+		defer globalFreeWrapper(ieCfg.lpszAutoConfigUrl)
+
+		proxy = StringFromUTF16Ptr(ieCfg.lpszProxy)
+		proxyByPass = StringFromUTF16Ptr(ieCfg.lpszProxyBypass)
+		autoConfigUrl = StringFromUTF16Ptr(ieCfg.lpszAutoConfigUrl)
+		autoDetect = ieCfg.fAutoDetect
+	}
+
+	if proxy == "" && !autoDetect{
+		// Try WinHTTP default proxy.
+		if defaultCfg, err := getDefaultProxyConfiguration(); err == nil {
+			defer globalFreeWrapper(defaultCfg.lpszProxy)
+			defer globalFreeWrapper(defaultCfg.lpszProxyBypass)
+
+			// Always set both of these (they are a pair, it doesn't make sense to set one here and keep the value of the other from above)
+			proxy = StringFromUTF16Ptr(defaultCfg.lpszProxy)
+			proxyByPass = StringFromUTF16Ptr(defaultCfg.lpszProxyBypass)
+		}
+	}
+
+	if proxy == "" && !autoDetect {
+		// Fall back to IE registry or manual detection if nothing is found there..
 		regedit, _ := readRegedit() // If the syscall fails, backup to manual detection.
 		windowsProxyConf = parseRegedit(regedit)
 		return
@@ -135,7 +160,27 @@ func parseRegedit(regedit regeditValues) ProxyConf {
 }
 
 func readRegedit() (values regeditValues, err error) {
-	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Internet Settings`, registry.QUERY_VALUE)
+	var proxySettingsPerUser uint64 = 1 // 1 is the default value to consider current user
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Policies\Microsoft\Windows\CurrentVersion\Internet Settings`, registry.QUERY_VALUE)
+	if err == nil {
+		//We had used the below variable tempPrxUsrSettings, because the Golang method GetIntegerValue
+		//sets the value to zero even it fails.
+		tempPrxUsrSettings, _, err := k.GetIntegerValue("ProxySettingsPerUser")
+		if err == nil {
+			//consider the value of tempPrxUsrSettings if it is a success
+			proxySettingsPerUser = tempPrxUsrSettings
+		}
+		k.Close()
+	}
+
+	var hkey registry.Key
+	if proxySettingsPerUser == 0 {
+		hkey = registry.LOCAL_MACHINE
+	} else {
+		hkey = registry.CURRENT_USER
+	}
+
+	k, err = registry.OpenKey(hkey, `Software\Microsoft\Windows\CurrentVersion\Internet Settings`, registry.QUERY_VALUE)
 	if err != nil {
 		return
 	}

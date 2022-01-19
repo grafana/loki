@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -179,9 +178,7 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	for _, res := range results {
-		if err := stats.JoinResults(ctx, res.Statistics); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "unable to merge downstream results", "err", err)
-		}
+		stats.JoinResults(ctx, res.Statistics)
 	}
 
 	return results, nil

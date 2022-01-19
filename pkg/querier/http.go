@@ -5,11 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
-	"github.com/grafana/dskit/dslog"
-	"github.com/grafana/dskit/tenant"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -17,6 +15,7 @@ import (
 	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
@@ -65,7 +64,6 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		serverutil.WriteError(err, w)
 		return
 	}
-
 	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
 		serverutil.WriteError(err, w)
 		return
@@ -200,7 +198,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
-	logger := dslog.WithContext(r.Context(), util_log.Logger)
+	logger := util_log.WithContext(r.Context(), util_log.Logger)
 
 	req, err := loghttp.ParseTailQuery(r)
 	if err != nil {
@@ -219,6 +217,18 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		level.Error(logger).Log("msg", "Error in upgrading websocket", "err", err)
 		return
 	}
+
+	tenantID, err := tenant.TenantID(r.Context())
+	if err != nil {
+		level.Error(logger).Log("msg", "error getting tenant id", "err", err)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+	level.Info(logger).Log("msg", "starting to tail logs", "tenant", tenantID, "selectors", req.Query)
+
+	defer func() {
+		level.Info(logger).Log("msg", "ended tailing logs", "tenant", tenantID, "selectors", req.Query)
+	}()
 
 	defer func() {
 		if err := conn.Close(); err != nil {
@@ -348,7 +358,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 }
 
 func (q *Querier) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
-	userID, err := tenant.ID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}

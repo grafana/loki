@@ -6,13 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/go-kit/log"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/spanlogger"
-	"github.com/grafana/dskit/tenant"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
@@ -20,7 +17,11 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/tenant"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
 
@@ -30,10 +31,10 @@ var errInvalidShardingRange = errors.New("Query does not fit in a single shardin
 func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs ShardingConfigs,
-	middlewareMetrics *queryrange.InstrumentMiddlewareMetrics,
+	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
 	limits Limits,
-) queryrange.Middleware {
+) queryrangebase.Middleware {
 
 	noshards := !hasShards(confs)
 
@@ -43,32 +44,33 @@ func NewQueryShardMiddleware(
 			"msg", "no configuration with shard found",
 			"confs", fmt.Sprintf("%+v", confs),
 		)
-		return queryrange.PassthroughMiddleware
+		return queryrangebase.PassthroughMiddleware
 	}
 
-	mapperware := queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return newASTMapperware(confs, next, logger, shardingMetrics, limits)
 	})
 
-	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &shardSplitter{
 			limits: limits,
-			shardingware: queryrange.MergeMiddlewares(
-				queryrange.InstrumentMiddleware("shardingware", middlewareMetrics),
+			shardingware: queryrangebase.MergeMiddlewares(
+				queryrangebase.InstrumentMiddleware("shardingware", middlewareMetrics),
 				mapperware,
 			).Wrap(next),
 			now:  time.Now,
-			next: queryrange.InstrumentMiddleware("sharding-bypass", middlewareMetrics).Wrap(next),
+			next: queryrangebase.InstrumentMiddleware("sharding-bypass", middlewareMetrics).Wrap(next),
 		}
 	})
 }
 
 func newASTMapperware(
 	confs ShardingConfigs,
-	next queryrange.Handler,
+	next queryrangebase.Handler,
 	logger log.Logger,
 	metrics *logql.ShardingMetrics,
 	limits logql.Limits,
+	logger log.Logger,
 ) *astMapperware {
 
 	return &astMapperware{
@@ -83,21 +85,19 @@ func newASTMapperware(
 type astMapperware struct {
 	confs   ShardingConfigs
 	logger  log.Logger
-	next    queryrange.Handler
+	next    queryrangebase.Handler
 	ng      *logql.ShardedEngine
 	metrics *logql.ShardingMetrics
 }
 
-func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	conf, err := ast.confs.GetConf(r)
+	logger := util_log.WithContext(ctx, ast.logger)
 	// cannot shard with this timerange
 	if err != nil {
-		level.Warn(ast.logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
+		level.Warn(logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
 		return ast.next.Do(ctx, r)
 	}
-
-	shardedLog, ctx := spanlogger.New(ctx, ast.logger, "shardedEngine")
-	defer shardedLog.Finish()
 
 	mapper, err := logql.NewShardMapper(int(conf.RowShards), ast.metrics)
 	if err != nil {
@@ -106,10 +106,10 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 
 	noop, parsed, err := mapper.Parse(r.GetQuery())
 	if err != nil {
-		level.Warn(shardedLog).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
+		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
 		return nil, err
 	}
-	level.Debug(shardedLog).Log("no-op", noop, "mapped", parsed.String())
+	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
 
 	if noop {
 		// the ast can't be mapped to a sharded equivalent
@@ -146,9 +146,9 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	switch res.Data.Type() {
 	case parser.ValueTypeMatrix:
 		return &LokiPromResponse{
-			Response: &queryrange.PrometheusResponse{
+			Response: &queryrangebase.PrometheusResponse{
 				Status: loghttp.QueryStatusSuccess,
-				Data: queryrange.PrometheusData{
+				Data: queryrangebase.PrometheusData{
 					ResultType: loghttp.ResultTypeMatrix,
 					Result:     toProtoMatrix(value.(loghttp.Matrix)),
 				},
@@ -170,9 +170,9 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	case parser.ValueTypeVector:
 		return &LokiPromResponse{
 			Statistics: res.Statistics,
-			Response: &queryrange.PrometheusResponse{
+			Response: &queryrangebase.PrometheusResponse{
 				Status: loghttp.QueryStatusSuccess,
-				Data: queryrange.PrometheusData{
+				Data: queryrangebase.PrometheusData{
 					ResultType: loghttp.ResultTypeVector,
 					Result:     toProtoVector(value.(loghttp.Vector)),
 				},
@@ -187,14 +187,14 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 // This is used to send nonsharded requests to the ingesters in order to not overload them.
 // TODO(owen-d): export in cortex so we don't duplicate code
 type shardSplitter struct {
-	limits       Limits             // delimiter for splitting sharded vs non-sharded queries
-	shardingware queryrange.Handler // handler for sharded queries
-	next         queryrange.Handler // handler for non-sharded queries
-	now          func() time.Time   // injectable time.Now
+	limits       Limits                 // delimiter for splitting sharded vs non-sharded queries
+	shardingware queryrangebase.Handler // handler for sharded queries
+	next         queryrangebase.Handler // handler for non-sharded queries
+	now          func() time.Time       // injectable time.Now
 }
 
-func (splitter *shardSplitter) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
-	userid, err := tenant.ID(ctx)
+func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	userid, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -243,7 +243,7 @@ func (confs ShardingConfigs) ValidRange(start, end int64) (chunk.PeriodConfig, e
 }
 
 // GetConf will extract a shardable config corresponding to a request and the shardingconfigs
-func (confs ShardingConfigs) GetConf(r queryrange.Request) (chunk.PeriodConfig, error) {
+func (confs ShardingConfigs) GetConf(r queryrangebase.Request) (chunk.PeriodConfig, error) {
 	conf, err := confs.ValidRange(r.GetStart(), r.GetEnd())
 	// query exists across multiple sharding configs
 	if err != nil {
@@ -262,11 +262,11 @@ func (confs ShardingConfigs) GetConf(r queryrange.Request) (chunk.PeriodConfig, 
 func NewSeriesQueryShardMiddleware(
 	logger log.Logger,
 	confs ShardingConfigs,
-	middlewareMetrics *queryrange.InstrumentMiddlewareMetrics,
+	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
-	limits queryrange.Limits,
-	merger queryrange.Merger,
-) queryrange.Middleware {
+	limits queryrangebase.Limits,
+	merger queryrangebase.Merger,
+) queryrangebase.Middleware {
 
 	noshards := !hasShards(confs)
 
@@ -276,10 +276,10 @@ func NewSeriesQueryShardMiddleware(
 			"msg", "no configuration with shard found",
 			"confs", fmt.Sprintf("%+v", confs),
 		)
-		return queryrange.PassthroughMiddleware
+		return queryrangebase.PassthroughMiddleware
 	}
-	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-		return queryrange.InstrumentMiddleware("sharding", middlewareMetrics).Wrap(
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return queryrangebase.InstrumentMiddleware("sharding", middlewareMetrics).Wrap(
 			&seriesShardingHandler{
 				confs:   confs,
 				logger:  logger,
@@ -295,13 +295,13 @@ func NewSeriesQueryShardMiddleware(
 type seriesShardingHandler struct {
 	confs   ShardingConfigs
 	logger  log.Logger
-	next    queryrange.Handler
+	next    queryrangebase.Handler
 	metrics *logql.ShardingMetrics
-	limits  queryrange.Limits
-	merger  queryrange.Merger
+	limits  queryrangebase.Limits
+	merger  queryrangebase.Merger
 }
 
-func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	conf, err := ss.confs.GetConf(r)
 	// cannot shard with this timerange
 	if err != nil {
@@ -321,7 +321,7 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrange.Request) (
 	ss.metrics.Shards.WithLabelValues("series").Inc()
 	ss.metrics.ShardFactor.Observe(float64(conf.RowShards))
 
-	requests := make([]queryrange.Request, 0, conf.RowShards)
+	requests := make([]queryrangebase.Request, 0, conf.RowShards)
 	for i := 0; i < int(conf.RowShards); i++ {
 		shardedRequest := *req
 		shardedRequest.Shards = []string{astmapper.ShardAnnotation{
@@ -330,11 +330,11 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrange.Request) (
 		}.String()}
 		requests = append(requests, &shardedRequest)
 	}
-	requestResponses, err := queryrange.DoRequests(ctx, ss.next, requests, ss.limits)
+	requestResponses, err := queryrangebase.DoRequests(ctx, ss.next, requests, ss.limits)
 	if err != nil {
 		return nil, err
 	}
-	responses := make([]queryrange.Response, 0, len(requestResponses))
+	responses := make([]queryrangebase.Response, 0, len(requestResponses))
 	for _, res := range requestResponses {
 		responses = append(responses, res.Response)
 	}

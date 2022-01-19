@@ -131,7 +131,7 @@ type Discovery struct {
 
 // NewDiscovery returns a new Marathon Discovery.
 func NewDiscovery(conf SDConfig, logger log.Logger) (*Discovery, error) {
-	rt, err := config.NewRoundTripperFromConfig(conf.HTTPClientConfig, "marathon_sd", config.WithHTTP2Disabled())
+	rt, err := config.NewRoundTripperFromConfig(conf.HTTPClientConfig, "marathon_sd")
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +478,6 @@ func targetsForApp(app *app) []model.LabelSet {
 
 // Generate a target endpoint string in host:port format.
 func targetEndpoint(task *task, port uint32, containerNet bool) string {
-
 	var host string
 
 	// Use the task's ipAddress field when it's in a container network
@@ -493,7 +492,6 @@ func targetEndpoint(task *task, port uint32, containerNet bool) string {
 
 // Get a list of ports and a list of labels from a PortMapping.
 func extractPortMapping(portMappings []portMapping, containerNet bool) ([]uint32, []map[string]string) {
-
 	ports := make([]uint32, len(portMappings))
 	labels := make([]map[string]string, len(portMappings))
 

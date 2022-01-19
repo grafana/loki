@@ -3,7 +3,7 @@ title: Table manager
 ---
 # Table Manager
 
-Loki supports storing indexes and chunks in table-based data storages. When
+Grafana Loki supports storing indexes and chunks in table-based data storages. When
 such a storage type is used, multiple tables are created over the time: each
 table - also called periodic table - contains the data for a specific time
 range.
@@ -22,7 +22,7 @@ time range exceeds the retention period.
 The Table Manager supports the following backends:
 
 - **Index store**
-  - [Single Store (boltdb-shipper)](boltdb-shipper/)
+  - [Single Store (boltdb-shipper)](../boltdb-shipper/)
   - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
   - [Google Bigtable](https://cloud.google.com/bigtable)
   - [Apache Cassandra](https://cassandra.apache.org)
@@ -38,7 +38,7 @@ to store chunks, are not managed by the Table Manager, and a custom bucket polic
 should be set to delete old data.
 
 For detailed information on configuring the Table Manager, refer to the
-[`table_manager`](../../../configuration#table_manager_config)
+[`table_manager`](../../../configuration#table_manager)
 section in the Loki configuration document.
 
 
@@ -104,7 +104,7 @@ order to make sure that the new table is ready once the current table end
 period is reached.
 
 The `creation_grace_period` property - in the
-[`table_manager`](../../../configuration#table_manager_config)
+[`table_manager`](../../../configuration#table_manager)
 configuration block - defines how long before a table should be created.
 
 
@@ -148,7 +148,7 @@ documentation.
 A table can be active or inactive.
 
 A table is considered **active** if the current time is within the range:
-- Table start period - [`creation_grace_period`](../../../configuration#table_manager_config)
+- Table start period - [`creation_grace_period`](../../../configuration#table_manager)
 - Table end period + max chunk age (hardcoded to `12h`)
 
 ![active_vs_inactive_tables](../table-manager-active-vs-inactive-tables.png)
@@ -199,13 +199,13 @@ The Table Manager can be executed in two ways:
 
 ### Monolithic mode
 
-When Loki runs in [monolithic mode](../../../architecture#modes-of-operation),
+When Loki runs in [monolithic mode](../../../fundamentals/architecture#modes-of-operation),
 the Table Manager is also started as component of the entire stack.
 
 
 ### Microservices mode
 
-When Loki runs in [microservices mode](../../../architecture#modes-of-operation),
+When Loki runs in [microservices mode](../../../fundamentals/architecture#modes-of-operation),
 the Table Manager should be started as separate service named `table-manager`.
 
 You can check out a production grade deployment example at

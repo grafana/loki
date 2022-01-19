@@ -9,16 +9,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/spanlogger"
+	"github.com/go-kit/log/level"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 type ctxKeyType string
@@ -30,7 +29,7 @@ var (
 		logql.RecordMetrics(data.ctx, data.params, data.status, *data.statistics, data.result)
 	})
 	// StatsHTTPMiddleware is an http middleware to record stats for query_range filter.
-	StatsHTTPMiddleware middleware.Interface = statsHTTPMiddleware(defaultMetricRecorder)
+	StatsHTTPMiddleware = statsHTTPMiddleware(defaultMetricRecorder)
 )
 
 type metricRecorder interface {
@@ -78,10 +77,10 @@ func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
 }
 
 // StatsCollectorMiddleware compute the stats summary based on the actual duration of the request and inject it in the request context.
-func StatsCollectorMiddleware(logger log.Logger) queryrange.Middleware {
-	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-		return queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
-			logger := spanlogger.FromContext(ctx, logger)
+func StatsCollectorMiddleware() queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			logger := spanlogger.FromContext(ctx)
 			start := time.Now()
 
 			// execute the request
@@ -102,9 +101,10 @@ func StatsCollectorMiddleware(logger log.Logger) queryrange.Middleware {
 				}
 			}
 			if statistics != nil {
-				// Re-calculate the summary then log and record metrics for the current query
-				statistics.ComputeSummary(time.Since(start))
-				statistics.Log(logger)
+				// Re-calculate the summary: the queueTime result is already merged so should not be updated
+				// Log and record metrics for the current query
+				statistics.ComputeSummary(time.Since(start), 0)
+				statistics.Log(level.Debug(logger))
 			}
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {

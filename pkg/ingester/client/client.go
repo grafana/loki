@@ -5,8 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/distributor"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/grafana/dskit/grpcclient"
 	dsmiddleware "github.com/grafana/dskit/middleware"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/opentracing/opentracing-go"
@@ -16,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -41,7 +41,7 @@ type ClosableHealthAndIngesterClient struct {
 
 // Config for an ingester client.
 type Config struct {
-	PoolConfig                   distributor.PoolConfig         `yaml:"pool_config,omitempty"`
+	PoolConfig                   clientpool.PoolConfig          `yaml:"pool_config,omitempty"`
 	RemoteTimeout                time.Duration                  `yaml:"remote_timeout,omitempty"`
 	GRPCClientConfig             grpcclient.Config              `yaml:"grpc_client_config"`
 	GRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor  `yaml:"-"`

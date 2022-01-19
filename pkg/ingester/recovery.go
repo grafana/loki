@@ -6,8 +6,9 @@ import (
 	"sync"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"golang.org/x/net/context"
@@ -112,7 +113,7 @@ func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 func (r *ingesterRecoverer) Series(series *Series) error {
 	return r.ing.replayController.WithBackPressure(func() error {
 
-		inst := r.ing.getOrCreateInstance(series.UserID)
+		inst := r.ing.GetOrCreateInstance(series.UserID)
 
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(logproto.Stream{
@@ -128,13 +129,11 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		stream.lastLine.content = series.LastLine
 		stream.entryCt = series.EntryCt
 		stream.highestTs = series.HighestTs
-		// Always set during replay, then reset to desired value afterward.
-		// This allows replaying unordered WALs into ordered configurations.
-		stream.unorderedWrites = true
 
 		if err != nil {
 			return err
 		}
+		memoryChunks.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredEntriesTotal.Add(float64(entriesAdded))
 		r.ing.replayController.Add(int64(bytesAdded))
@@ -144,7 +143,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		// will use this original reference.
 		got, _ := r.users.LoadOrStore(series.UserID, &sync.Map{})
 		streamsMap := got.(*sync.Map)
-		streamsMap.Store(series.Fingerprint, stream)
+		streamsMap.Store(chunks.HeadSeriesRef(series.Fingerprint), stream)
 
 		return nil
 	})
@@ -162,7 +161,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 // the fingerprint reported in the WAL record, not the potentially differing one assigned during
 // stream creation.
 func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) error {
-	inst := r.ing.getOrCreateInstance(userID)
+	inst := r.ing.GetOrCreateInstance(userID)
 
 	stream, err := inst.getOrCreateStream(
 		logproto.Stream{
@@ -274,7 +273,7 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 		}
 
 		for _, entries := range rec.RefEntries {
-			worker := int(entries.Ref % uint64(len(inputs)))
+			worker := int(uint64(entries.Ref) % uint64(len(inputs)))
 			inputs[worker] <- recoveryInput{
 				userID: rec.UserID,
 				data:   entries,

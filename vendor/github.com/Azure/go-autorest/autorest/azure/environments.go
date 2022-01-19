@@ -49,6 +49,8 @@ type ResourceIdentifier struct {
 	Storage             string `json:"storage"`
 	Synapse             string `json:"synapse"`
 	ServiceBus          string `json:"serviceBus"`
+	SQLDatabase         string `json:"sqlDatabase"`
+	CosmosDB            string `json:"cosmosDB"`
 }
 
 // Environment represents a set of endpoints for each of Azure's Clouds.
@@ -121,6 +123,8 @@ var (
 			Storage:             "https://storage.azure.com/",
 			Synapse:             "https://dev.azuresynapse.net",
 			ServiceBus:          "https://servicebus.azure.net/",
+			SQLDatabase:         "https://database.windows.net/",
+			CosmosDB:            "https://cosmos.azure.com",
 		},
 	}
 
@@ -162,6 +166,8 @@ var (
 			Storage:             "https://storage.azure.com/",
 			Synapse:             NotAvailable,
 			ServiceBus:          "https://servicebus.azure.net/",
+			SQLDatabase:         "https://database.usgovcloudapi.net/",
+			CosmosDB:            "https://cosmos.azure.com",
 		},
 	}
 
@@ -203,6 +209,8 @@ var (
 			Storage:             "https://storage.azure.com/",
 			Synapse:             "https://dev.azuresynapse.net",
 			ServiceBus:          "https://servicebus.azure.net/",
+			SQLDatabase:         "https://database.chinacloudapi.cn/",
+			CosmosDB:            "https://cosmos.azure.com",
 		},
 	}
 
@@ -244,6 +252,8 @@ var (
 			Storage:             "https://storage.azure.com/",
 			Synapse:             NotAvailable,
 			ServiceBus:          "https://servicebus.azure.net/",
+			SQLDatabase:         "https://database.cloudapi.de/",
+			CosmosDB:            "https://cosmos.azure.com",
 		},
 	}
 )

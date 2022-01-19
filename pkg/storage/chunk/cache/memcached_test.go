@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -52,9 +52,10 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 		keys = append(keys, fmt.Sprint(i))
 		bufs = append(bufs, []byte(fmt.Sprint(i)))
 	}
-	memcache.Store(ctx, keys, bufs)
+	err := memcache.Store(ctx, keys, bufs)
+	require.NoError(t, err)
 
-	found, bufs, missing := memcache.Fetch(ctx, keysIncMissing)
+	found, bufs, missing, _ := memcache.Fetch(ctx, keysIncMissing)
 	for i := 0; i < numKeys; i++ {
 		if i%5 == 0 {
 			require.Equal(t, fmt.Sprint(i), missing[0])
@@ -126,10 +127,11 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 		keys = append(keys, fmt.Sprint(i))
 		bufs = append(bufs, []byte(fmt.Sprint(i)))
 	}
-	memcache.Store(ctx, keys, bufs)
+	err := memcache.Store(ctx, keys, bufs)
+	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
-		found, bufs, missing := memcache.Fetch(ctx, keysIncMissing)
+		found, bufs, missing, _ := memcache.Fetch(ctx, keysIncMissing)
 
 		require.Equal(t, len(found), len(bufs))
 		for i := range found {

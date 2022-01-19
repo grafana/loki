@@ -3,10 +3,10 @@ title: HTTP API
 weight: 900
 ---
 
-# Loki HTTP API
+# Grafana Loki HTTP API
 
-Loki exposes an HTTP API for pushing, querying, and tailing log data.
-Note that [authenticating](../operations/authentication/) against the API is
+Grafana Loki exposes an HTTP API for pushing, querying, and tailing log data.
+Note that authenticating against the API is
 out of scope for Loki.
 
 ## Microservices mode
@@ -56,6 +56,7 @@ These endpoints are exposed by the querier and the frontend:
 While these endpoints are exposed by just the distributor:
 
 - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
+- [`GET /distributor/ring`](#get-distributorring)
 
 And these endpoints are exposed by just the ingester:
 
@@ -82,6 +83,9 @@ These endpoints are exposed by the ruler:
 - [`GET /prometheus/api/v1/rules`](#list-rules)
 - [`GET /prometheus/api/v1/alerts`](#list-alerts)
 
+These endpoints are exposed by the compactor:
+- [`GET /compactor/ring`](#get-compactorring)
+
 A [list of clients](../clients) can be found in the clients documentation.
 
 ## Matrix, vector, and streams
@@ -107,7 +111,7 @@ Some Loki API endpoints return a result of a matrix, a vector, or a stream:
 query parameters support the following values:
 
 - `query`: The [LogQL](../logql/) query to perform
-- `limit`: The max number of entries to return
+- `limit`: The max number of entries to return. It defaults to `100`.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch. Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
@@ -157,7 +161,7 @@ And `<stream value>` is:
 }
 ```
 
-See [statistics](#Statistics) for information about the statistics returned by Loki.
+See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
 
@@ -239,7 +243,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
 accepts the following query parameters in the URL:
 
 - `query`: The [LogQL](../logql/) query to perform
-- `limit`: The max number of entries to return
+- `limit`: The max number of entries to return. It defaults to `100`.
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.  Only applies to query types which produce a matrix response.
@@ -302,7 +306,7 @@ And `<stream value>` is:
 }
 ```
 
-See [statistics](#Statistics) for information about the statistics returned by Loki.
+See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
 
@@ -472,7 +476,7 @@ a query. It accepts the following query parameters in the URL:
 - `query`: The [LogQL](../logql/) query to perform
 - `delay_for`: The number of seconds to delay retrieving logs to let slow
     loggers catch up. Defaults to 0 and cannot be larger than 5.
-- `limit`: The max number of entries to return
+- `limit`: The max number of entries to return. It defaults to `100`.
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 
 In microservices mode, `/loki/api/v1/tail` is exposed by the querier.
@@ -635,7 +639,7 @@ Response:
 }
 ```
 
-See [statistics](#Statistics) for information about the statistics returned by Loki.
+See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
 
@@ -799,6 +803,14 @@ but instead flushed to our chunk backend.
 
 In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
 
+### `GET /distributor/ring`
+
+Displays a web page with the distributor hash ring status, including the state, healthy and last heartbeat time of each distributor.
+
+### `GET /compactor/ring`
+
+Displays a web page with the compactor hash ring status, including the state, healthy and last heartbeat time of each compactor.
+
 ## `GET /metrics`
 
 `/metrics` exposes Prometheus metrics. See
@@ -929,6 +941,7 @@ The example belows show all possible statistics returned with their respective d
         "bytesProcessedPerSecond": 0, // Total of bytes processed per second
         "execTime": 0, // Total execution time in seconds (float)
         "linesProcessedPerSecond": 0, // Total lines processed per second
+        "queueTime": 0, // Total queue time in seconds (float)
         "totalBytesProcessed":0, // Total amount of bytes processed overall for this request
         "totalLinesProcessed":0 // Total amount of lines processed overall for this request
       }
@@ -951,7 +964,6 @@ Displays a web page with the ruler hash ring status, including the state, health
 
 ### List rule groups
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 GET /loki/api/v1/rules
@@ -999,8 +1011,6 @@ List all rules configured for the authenticated tenant. This endpoint returns a 
 
 ### Get rule groups by namespace
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
-
 ```
 GET /loki/api/v1/rules/{namespace}
 ```
@@ -1024,8 +1034,6 @@ rules:
 
 ### Get rule group
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
-
 ```
 GET /loki/api/v1/rules/{namespace}/{groupName}
 ```
@@ -1033,8 +1041,6 @@ GET /loki/api/v1/rules/{namespace}/{groupName}
 Returns the rule group matching the request namespace and group name.
 
 ### Set rule group
-
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 POST /loki/api/v1/rules/{namespace}
@@ -1073,8 +1079,6 @@ Deletes a rule group by namespace and group name. This endpoints returns `202` o
 
 ### Delete namespace
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
-
 ```
 DELETE /loki/api/v1/rules/{namespace}
 ```
@@ -1082,8 +1086,6 @@ DELETE /loki/api/v1/rules/{namespace}
 Deletes all the rule groups in a namespace (including the namespace itself). This endpoint returns `202` on success.
 
 ### List rules
-
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 GET /prometheus/api/v1/rules
@@ -1094,8 +1096,6 @@ Prometheus-compatible rules endpoint to list alerting and recording rules that a
 For more information, refer to the [Prometheus rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) documentation.
 
 ### List alerts
-
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 GET /prometheus/api/v1/alerts

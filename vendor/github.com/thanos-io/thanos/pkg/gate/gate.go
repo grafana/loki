@@ -9,7 +9,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	promgate "github.com/prometheus/prometheus/pkg/gate"
+	promgate "github.com/prometheus/prometheus/util/gate"
 )
 
 var (
@@ -53,7 +53,7 @@ type Gate interface {
 // whether requests are being blocked or not. For clients that call
 // gate.(*Keeper).NewGate only once, it is recommended to use gate.New()
 // instead. Otherwise it is recommended to use the
-// github.com/prometheus/prometheus/pkg/gate package directly and wrap the
+// github.com/prometheus/prometheus/util/gate package directly and wrap the
 // returned gate with gate.InstrumentGateDuration().
 type Keeper struct {
 	reg prometheus.Registerer
@@ -79,7 +79,7 @@ func (k *Keeper) NewGate(maxConcurrent int) Gate {
 // executed concurrently.
 //
 // The gate implementation is based on the
-// github.com/prometheus/prometheus/pkg/gate package.
+// github.com/prometheus/prometheus/util/gate package.
 //
 // It can be called several times but not with the same registerer otherwise it
 // will panic when trying to register the same metric multiple times.

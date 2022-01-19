@@ -67,8 +67,18 @@ pipeline_stages:
       replace: ''
 `
 
+var testReplaceAdjacentCaptureGroups = `
+---
+pipeline_stages:
+  -
+    replace:
+      expression: '(a|b|c)'
+      replace: ''
+`
+
 var testReplaceLogLine = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
 var testReplaceLogJSONLine = `{"time":"2019-01-01T01:00:00.000000001Z", "level": "info", "msg": "11.11.11.11 - \"POST /loki/api/push/ HTTP/1.1\" 200 932 \"-\" \"Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6\""}`
+var testReplaceLogLineAdjacentCaptureGroups = `abc`
 
 func TestPipeline_Replace(t *testing.T) {
 	t.Parallel()
@@ -141,6 +151,12 @@ func TestPipeline_Replace(t *testing.T) {
 			testReplaceLogLine,
 			map[string]interface{}{},
 			`11.11.11.11 - [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`,
+		},
+		"successfully run a pipeline with adjacent capture groups": {
+			testReplaceAdjacentCaptureGroups,
+			testReplaceLogLineAdjacentCaptureGroups,
+			map[string]interface{}{},
+			``,
 		},
 	}
 

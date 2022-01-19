@@ -6,7 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 // ModelLabelSetToMap convert a model.LabelSet to a map[string]string

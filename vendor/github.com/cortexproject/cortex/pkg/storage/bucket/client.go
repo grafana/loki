@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
@@ -78,7 +78,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Filesystem.RegisterFlagsWithPrefix(prefix, f)
 
-	f.StringVar(&cfg.Backend, prefix+"backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(cfg.supportedBackends(), ", ")))
+	f.StringVar(&cfg.Backend, prefix+"backend", S3, fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(cfg.supportedBackends(), ", ")))
 }
 
 func (cfg *Config) Validate() error {

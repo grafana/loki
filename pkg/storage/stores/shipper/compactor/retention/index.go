@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
+	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
