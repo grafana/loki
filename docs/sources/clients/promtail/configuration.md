@@ -1670,10 +1670,10 @@ tls_config:
 # The time after which the containers are refreshed.
 [ refresh_interval: <duration> | default = 60s ]
 
-# Authentication information used to authenticate to the Docker daemon.
-# Note that `basic_auth` and `authorization` options are
-# mutually exclusive.
-# password and password_file are mutually exclusive.
+# Authentication information used by Promtail to authenticate itself to the
+# Docker daemon.
+# Note that `basic_auth` and `authorization` options are mutually exclusive.
+# `password` and `password_file` are mutually exclusive.
 
 # Optional HTTP basic authentication information.
 basic_auth:
