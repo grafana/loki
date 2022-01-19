@@ -116,6 +116,7 @@ func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 	defer c.tablesMtx.Unlock()
 
 	c.tables = map[string]*table{}
+	c.tableNames = []chunk.StorageCommonPrefix{}
 
 	for _, object := range objects {
 		ss := strings.Split(object.Key, delimiter)

@@ -48,9 +48,9 @@ type IndexFile struct {
 	ModifiedAt time.Time
 }
 
-func NewIndexStorageClient(objectClient chunk.ObjectClient, storagePrefix string) Client {
-	objectClient = newPrefixedObjectClient(objectClient, storagePrefix)
-	if _, ok := objectClient.(*local.FSObjectClient); !ok {
+func NewIndexStorageClient(origObjectClient chunk.ObjectClient, storagePrefix string) Client {
+	objectClient := newPrefixedObjectClient(origObjectClient, storagePrefix)
+	if _, ok := origObjectClient.(*local.FSObjectClient); !ok {
 		objectClient = newCachedObjectClient(objectClient)
 	}
 	return &indexStorageClient{objectClient: objectClient}

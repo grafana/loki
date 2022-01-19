@@ -68,25 +68,25 @@ func TestCachedObjectClient(t *testing.T) {
 	objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), "", "")
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
-	require.Equal(t, objects, []chunk.StorageObject{})
-	require.Equal(t, commonPrefixes, []chunk.StorageCommonPrefix{"table1", "table2", "table3"})
+	require.Equal(t, []chunk.StorageObject{}, objects)
+	require.Equal(t, []chunk.StorageCommonPrefix{"table1", "table2", "table3"}, commonPrefixes)
 
 	// list objects in all 3 tables
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table1/", "")
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
-	require.Equal(t, objects, []chunk.StorageObject{
+	require.Equal(t, []chunk.StorageObject{
 		{Key: "table1/db1.gz"},
 		{Key: "table1/db2.gz"},
-	})
+	}, objects)
 	require.Equal(t, []chunk.StorageCommonPrefix{}, commonPrefixes)
 
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table2/", "")
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
-	require.Equal(t, objects, []chunk.StorageObject{
+	require.Equal(t, []chunk.StorageObject{
 		{Key: "table2/db1.gz"},
-	})
+	}, objects)
 	require.Equal(t, []chunk.StorageCommonPrefix{"table2/user1"}, commonPrefixes)
 
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/", "")
@@ -144,8 +144,8 @@ func TestCachedObjectClient_errors(t *testing.T) {
 	objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), "", "")
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
-	require.Equal(t, objects, []chunk.StorageObject{})
-	require.Equal(t, commonPrefixes, []chunk.StorageCommonPrefix{"table1"})
+	require.Equal(t, []chunk.StorageObject{}, objects)
+	require.Equal(t, []chunk.StorageCommonPrefix{"table1"}, commonPrefixes)
 
 	// timeout the cache and call List concurrently with objectClient throwing an error
 	// objectClient must receive just one request and all the cachedObjectClient.List calls should get an error
@@ -175,8 +175,8 @@ func TestCachedObjectClient_errors(t *testing.T) {
 			objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "", "")
 			require.NoError(t, err)
 			require.Equal(t, 3, objectClient.listCallsCount)
-			require.Equal(t, objects, []chunk.StorageObject{})
-			require.Equal(t, commonPrefixes, []chunk.StorageCommonPrefix{"table1"})
+			require.Equal(t, []chunk.StorageObject{}, objects)
+			require.Equal(t, []chunk.StorageCommonPrefix{"table1"}, commonPrefixes)
 		}()
 	}
 	wg.Wait()
