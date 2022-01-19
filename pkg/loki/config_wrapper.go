@@ -218,11 +218,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Ruler.Ring.InstanceID = rc.InstanceID
 		r.Ruler.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
 		r.Ruler.Ring.KVStore = rc.KVStore
-
-		// TODO(tjw): temporary fix until dskit is updated: https://github.com/grafana/dskit/pull/101
-		// The ruler's default ring key is "ring", so if if registers under the same common prefix
-		// as the ingester, queriers will try to query it, resulting in failed queries.
-		r.Ruler.Ring.KVStore.Prefix = "/rulers"
 	}
 
 	// Query Scheduler
