@@ -1719,7 +1719,7 @@ Available meta labels:
   * `__meta_docker_port_public`: the external port if a port-mapping exists
   * `__meta_docker_port_public_ip`: the public IP if a port-mapping exists
 
-These labels can be used during relabelling. For instance, the following configuration scrapes the container named `flog` and removes the leading `/` form the container name.
+These labels can be used during relabeling. For instance, the following configuration scrapes the container named `flog` and removes the leading slash (`/`) from the container name.
 
 ```yaml
 scrape_configs:
