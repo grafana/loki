@@ -1,0 +1,292 @@
+[[- /*
+This template uses square brackets as delimiters for consistency with the other template files:
+prometheus_alerts.yaml.tmpl and prometheus_recording_rules.yaml.tmpl
+*/ -]]
+[[`# This file was generated from test.yaml.tmpl
+# Please run "make prom-template-to-test" to regenerate it.`]]
+
+rule_files:
+  - ./rules-[[.Stack.Size]].yaml
+  - ./alerts-[[.Stack.Size]].yaml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+
+    input_series:
+      - series: 'loki_request_duration_seconds_count{status_code="500", namespace="my-ns", job="ingester", route="my-route"}'
+        values: '1+1x20'
+      - series: 'loki_request_duration_seconds_count{status_code="200", namespace="my-ns", job="ingester", route="my-route"}'
+        values: '1+3x20'
+      - series: 'loki_panic_total{namespace="my-ns", job="ingester"}'
+        values: '0 1 1 2+0x10'
+
+      - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="1"}'
+        values: '0+10x20'
+      - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="5"}'
+        values: '0+50x20'
+      - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="10"}'
+        values: '0+100x20'
+      - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="+Inf"}'
+        values: '0+100x20'
+
+
+      - series: 'loki_discarded_samples_total{namespace="my-ns", tenant="my-tenant1", reason="my-reason"}'
+        # 4 discards per minute -> 120 discards per 30 minutes -> raise alert
+        values: '0+4x50'
+      - series: 'loki_discarded_samples_total{namespace="my-ns", tenant="my-tenant2", reason="my-reason"}'
+        # 3 discards per minute -> 90 discards per 30 minutes -> Don't raise alert
+        values: '0+3x50'
+
+      - series: 'container_cpu_usage_seconds_total{namespace="my-ns", container="loki-my-container1"}'
+        values: '0+4800x20 0+5880x20' # 80*60 98*60
+      - series: 'kube_pod_container_resource_limits{namespace="my-ns", container="loki-my-container1", resource="cpu"}'
+        values: '100+0x20  100+0x20'
+
+      - series: 'container_memory_working_set_bytes{namespace="my-ns", container="loki-my-container1"}'
+        values: '80+0x20  98+0x20'
+      - series: 'kube_pod_container_resource_limits{namespace="my-ns", container="loki-my-container1", resource="memory"}'
+        values: '100+0x20 100+0x20'
+
+      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", operation="WRITE", le="1"}'
+        values: '0+10x20'
+      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", operation="WRITE", le="5"}'
+        values: '0+50x20'
+      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", operation="WRITE", le="10"}'
+        values: '0+100x20'
+      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", operation="WRITE", le="+Inf"}'
+        values: '0+100x20'
+
+      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", operation="QUERY", le="1"}'
+        values: '0+10x20'
+      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", operation="QUERY", le="5"}'
+        values: '0+50x20'
+      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", operation="QUERY", le="10"}'
+        values: '0+100x20'
+      - series: 'loki_boltdb_shipper_request_duration_seconds_bucket{namespace="my-ns", operation="QUERY", le="+Inf"}'
+        values: '0+100x20'
+
+# The following series are used for the dynamic alerts
+      - series: 'loki_distributor_bytes_received_total{namespace="my-ns"}'
+[[- $writeBytesPerSecond := 0]]
+[[- if eq $.Stack.Size "1x.extra-small" ]]
+        # 2 MB/s = 120 MB/minute
+        values: '0+120e6x20'
+  [[- $writeBytesPerSecond = 2000000]]
+[[- else if eq .Stack.Size "1x.small"]]
+        # 6 MB/s = 360 MB/minute
+        values: '0+360e6x20'
+  [[- $writeBytesPerSecond = 6000000]]
+[[- else if eq .Stack.Size "1x.medium"]]
+        # 21 MB/s = 1260 MB/minute
+        values: '0+1260e6x20'
+  [[- $writeBytesPerSecond = 21000000]]
+[[- end]]
+
+      - series: 'loki_request_duration_seconds_count{namespace="my-ns",job="query-frontend",route="loki_api_v1_series"}'
+[[- $readQueriesPerSecond := 0]]
+[[- if eq $.Stack.Size "1x.extra-small" ]]
+        # 2 queries per second = 120 queries per minute
+        values: '0+120x20'
+  [[- $readQueriesPerSecond = 2]]
+[[- else if eq .Stack.Size "1x.small"]]
+        # 51 queries per second = 3600 queries per minute
+        values: '0+3060x20'
+  [[- $readQueriesPerSecond = 51]]
+[[- else if eq .Stack.Size "1x.medium"]]
+        # 101 queries per second = 6060 queries per minute
+        values: '0+6060x20'
+  [[- $readQueriesPerSecond = 101]]
+[[- end]]
+
+    # Unit test for alerting rules.
+    alert_rule_test:
+      # --------- LokiRequestErrors ---------
+      - eval_time: 16m
+        alertname: LokiRequestErrors
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: ingester
+              route: my-route
+              severity: critical
+            exp_annotations:
+              summary: "At least 10% of requests are responded by 5xx server errors."
+              message: "ingester my-route is experiencing 25.00% errors."
+              runbook_url: "TBD"
+
+      # --------- LokiRequestPanics ---------
+      - eval_time: 10m
+        alertname: LokiRequestPanics
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: ingester
+              severity: critical
+            exp_annotations:
+              summary: "A panic was triggered."
+              message: "ingester is experiencing an increase of 2 panics."
+              runbook_url: "TBD"
+
+      # --------- LokiRequestLatency ---------
+      # LokiRequestLatency is defined with `"for": 15m` so `eval_time: 16m` should suffice, but it is
+      #  flaky (15% chance to fail). with `eval_time: 17m` it doesn't fail.
+      - eval_time: 17m
+        alertname: LokiRequestLatency
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: ingester
+              route: my-route
+              severity: critical
+            exp_annotations:
+              summary: "The 99th percentile is experiencing high latency (higher than 1 second)."
+              message: "ingester my-route is experiencing 9.90s 99th percentile latency."
+              runbook_url: "TBD"
+
+      # --------- LokiTenantRateLimit ---------
+      - eval_time: 46m
+        alertname: LokiTenantRateLimit
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              tenant: my-tenant1
+              reason: my-reason
+              severity: warning
+            exp_annotations:
+              summary: "A tenant is experiencing rate limiting. The number of discarded logs per tenant and reason over the last 30 minutes is above 100."
+              message: "my-tenant1 is experiencing rate limiting for reason 'my-reason': 120"
+              runbook_url: "TBD"
+
+      # --------- LokiCPUHigh (warning) ---------
+      - eval_time: 11m
+        alertname: LokiCPUHigh
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              container: loki-my-container1
+              severity: warning
+            exp_annotations:
+              summary: "Loki's CPU usage is high (above 75% for 5 minutes)"
+              message: "loki-my-container1 CPU usage is high: 80%"
+              runbook_url: "TBD"
+
+      # --------- LokiCPUHigh (critical) ---------
+      - eval_time: 31m
+        alertname: LokiCPUHigh
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              container: loki-my-container1
+              severity: warning
+            exp_annotations:
+              summary: "Loki's CPU usage is high (above 75% for 5 minutes)"
+              message: "loki-my-container1 CPU usage is high: 98%"
+              runbook_url: "TBD"
+          - exp_labels:
+              namespace: my-ns
+              container: loki-my-container1
+              severity: critical
+            exp_annotations:
+              summary: "Loki's CPU usage is high (above 95% for 5 minutes)"
+              message: "loki-my-container1 CPU usage is high: 98%"
+              runbook_url: "TBD"
+
+      # --------- LokiMemoryHigh (warning) ---------
+      - eval_time: 11m
+        alertname: LokiMemoryHigh
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              container: loki-my-container1
+              severity: warning
+            exp_annotations:
+              summary: "Loki's memory usage is high (above 75% of the configured limit for 5 minutes)"
+              message: "loki-my-container1 memory usage is high: 80%"
+              runbook_url: "TBD"
+
+      # --------- LokiMemoryHigh (critical) ---------
+      - eval_time: 31m
+        alertname: LokiMemoryHigh
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              container: loki-my-container1
+              severity: warning
+            exp_annotations:
+              summary: "Loki's memory usage is high (above 75% of the configured limit for 5 minutes)"
+              message: "loki-my-container1 memory usage is high: 98%"
+              runbook_url: "TBD"
+          - exp_labels:
+              namespace: my-ns
+              container: loki-my-container1
+              severity: critical
+            exp_annotations:
+              summary: "Loki's memory usage is high (above 95% of the configured limit for 5 minutes)"
+              message: "loki-my-container1 memory usage is high: 98%"
+              runbook_url: "TBD"
+
+      # --------- LokiStorageSlowWrite ---------
+      - eval_time: 11m
+        alertname: LokiStorageSlowWrite
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              operation: WRITE
+              severity: warning
+            exp_annotations:
+              summary: "The 99th percentile (9.9s) is experiencing slow write"
+              message: "The 99th percentile (9.9s) is experiencing slow write"
+              runbook_url: "TBD"
+
+      # --------- LokiStorageSlowRead ---------
+      - eval_time: 11m
+        alertname: LokiStorageSlowRead
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              operation: QUERY
+              severity: warning
+            exp_annotations:
+              summary: "The 99th percentile (9.9s) is experiencing slow read"
+              message: "The 99th percentile (9.9s) is experiencing slow read"
+              runbook_url: "TBD"
+
+      # --------- LokiWritePathHighLoad ---------
+      - eval_time: 11m
+        alertname: LokiWritePathHighLoad
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              severity: warning
+            exp_annotations:
+              summary: "The write path of Loki is loaded"
+              message: "The write path of Loki is loaded: [[$writeBytesPerSecond]] B/s"
+              runbook_url: "TBD"
+
+      # --------- LokiReadPathHighLoad ---------
+      - eval_time: 11m
+        alertname: LokiReadPathHighLoad
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              severity: warning
+            exp_annotations:
+              summary: "The read path of Loki is loaded"
+              message: "The read path of Loki is loaded: [[$readQueriesPerSecond]] QPS"
+              runbook_url: "TBD"
+
+    promql_expr_test:
+      - eval_time: 16m
+        expr: |
+          namespace_job_route:loki_request_duration_seconds:99quantile
+        exp_samples:
+          - labels: |
+              {
+                __name__="namespace_job_route:loki_request_duration_seconds:99quantile",
+                job="ingester",
+                namespace="my-ns",
+                route="my-route"
+              }
+            value: 9.9

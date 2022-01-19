@@ -116,15 +116,28 @@ generate: $(CONTROLLER_GEN) ## Generate controller and crd code
 manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
-test: deps generate go-generate lint manifests ## Run tests
+test: deps generate go-generate lint lint-prom manifests ## Run tests
 test: $(GO_FILES)
 	go test ./... -coverprofile cover.out
+
+.PHONY: prom-template-to-test
+prom-template-to-test: ## Run prom-template-to-test
+	go run ./internal/manifests/internal/alerts/test/prom-template-to-test.go
+
+.PHONY: test-unit-prom
+test-unit-prom: $(PROMTOOL) prom-template-to-test ## Run prometheus unit tests
+	@$(PROMTOOL) test rules ./internal/manifests/internal/alerts/test/generated/test-*.yaml
 
 scorecard: generate go-generate bundle ## Run scorecard test
 	$(OPERATOR_SDK) scorecard bundle
 
 lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 	$(GOLANGCI_LINT) run ./...
+
+.PHONY: lint-prom
+lint-prom: $(PROMTOOL) prom-template-to-test ## Run promtool check against recording rules and alerts.
+	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/test/generated/rules-*.yaml
+	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/test/generated/alerts-*.yaml
 
 fmt: $(GOFUMPT) ## Run gofumpt on source code.
 	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;

@@ -328,3 +328,19 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 		},
 	},
 }
+
+// WritePathHighLoadThresholdTable defines the threshold for the LokiWritePathHighLoad alert for each size
+var WritePathHighLoadThresholdTable = map[lokiv1beta1.LokiStackSizeType]float64{
+	// Units are bytes per second
+	lokiv1beta1.SizeOneXExtraSmall: 1_000_000,
+	lokiv1beta1.SizeOneXSmall:      5_000_000,
+	lokiv1beta1.SizeOneXMedium:     20_000_000,
+}
+
+// ReadPathHighLoadThresholdTable defines the threshold for the LokiReadPathHighLoad alert for each size
+var ReadPathHighLoadThresholdTable = map[lokiv1beta1.LokiStackSizeType]float64{
+	// Units ares queries per second
+	lokiv1beta1.SizeOneXExtraSmall: 1,
+	lokiv1beta1.SizeOneXSmall:      50,
+	lokiv1beta1.SizeOneXMedium:     100,
+}

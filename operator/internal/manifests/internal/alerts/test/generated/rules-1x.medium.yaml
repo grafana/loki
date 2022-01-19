@@ -1,0 +1,14 @@
+---
+"groups":
+- "name": logging_loki.rules
+  "rules":
+  - record: namespace_job_route:loki_request_duration_seconds:99quantile
+    "expr": |
+      histogram_quantile(0.99,
+          sum(
+              rate(
+                  loki_request_duration_seconds_bucket[1m]
+              )
+          )
+          by (le, namespace, job, route)
+      )
