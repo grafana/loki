@@ -24,8 +24,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-
-	"github.com/grafana/loki/pkg/storage/chunk/purger"
 )
 
 // ConcreteSeriesSet implements storage.SeriesSet.
@@ -194,44 +192,6 @@ type byLabels []storage.Series
 func (b byLabels) Len() int           { return len(b) }
 func (b byLabels) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 func (b byLabels) Less(i, j int) bool { return labels.Compare(b[i].Labels(), b[j].Labels()) < 0 }
-
-type DeletedSeriesSet struct {
-	seriesSet     storage.SeriesSet
-	tombstones    *purger.TombstonesSet
-	queryInterval model.Interval
-}
-
-func NewDeletedSeriesSet(seriesSet storage.SeriesSet, tombstones *purger.TombstonesSet, queryInterval model.Interval) storage.SeriesSet {
-	return &DeletedSeriesSet{
-		seriesSet:     seriesSet,
-		tombstones:    tombstones,
-		queryInterval: queryInterval,
-	}
-}
-
-func (d DeletedSeriesSet) Next() bool {
-	return d.seriesSet.Next()
-}
-
-func (d DeletedSeriesSet) At() storage.Series {
-	series := d.seriesSet.At()
-	deletedIntervals := d.tombstones.GetDeletedIntervals(series.Labels(), d.queryInterval.Start, d.queryInterval.End)
-
-	// series is deleted for whole query range so return empty series
-	if len(deletedIntervals) == 1 && deletedIntervals[0] == d.queryInterval {
-		return NewEmptySeries(series.Labels())
-	}
-
-	return NewDeletedSeries(series, deletedIntervals)
-}
-
-func (d DeletedSeriesSet) Err() error {
-	return d.seriesSet.Err()
-}
-
-func (d DeletedSeriesSet) Warnings() storage.Warnings {
-	return nil
-}
 
 type DeletedSeries struct {
 	series           storage.Series
