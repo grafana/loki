@@ -52,7 +52,9 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]chun
 		return nil, nil, fmt.Errorf("invalid prefix %s", prefix)
 	}
 
-	if !c.cacheBuiltAt.Add(cacheTimeout).After(time.Now()) {
+	if time.Since(c.cacheBuiltAt) >= cacheTimeout {
+		// when the cache is expired, only one concurrent call must be able to rebuild it
+		// all other calls will wait until the cache is built successfully or failed with an error
 		select {
 		case c.rebuildCacheChan <- struct{}{}:
 			c.err = nil
@@ -62,7 +64,7 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]chun
 				level.Error(util_log.Logger).Log("msg", "failed to build cache", "err", c.err)
 			}
 		default:
-			for !c.cacheBuiltAt.Add(cacheTimeout).After(time.Now()) && c.err == nil {
+			for time.Since(c.cacheBuiltAt) >= cacheTimeout && c.err == nil {
 				time.Sleep(time.Millisecond)
 			}
 		}
@@ -103,7 +105,7 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]chun
 }
 
 func (c *cachedObjectClient) buildCache(ctx context.Context) error {
-	if c.cacheBuiltAt.Add(cacheTimeout).After(time.Now()) {
+	if time.Since(c.cacheBuiltAt) < cacheTimeout {
 		return nil
 	}
 
