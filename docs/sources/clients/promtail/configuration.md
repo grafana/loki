@@ -1660,7 +1660,7 @@ tls_config:
 
 # Optional filters to limit the discovery process to a subset of available
 # resources.
-# The available filters are listed in the upstream documentation:
+# The available filters are listed in the Docker documentation:
 # Containers: https://docs.docker.com/engine/api/v1.41/#operation/ContainerList
 [ filters:
   [ - name: <string>
