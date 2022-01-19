@@ -178,7 +178,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		return err
 	}
 
-	h, err := c.getHTTPHeader()
+	h, err := c.getHTTPRequestHeader()
 	if err != nil {
 		return err
 	}
@@ -232,7 +232,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-func (c *DefaultClient) getHTTPHeader() (http.Header, error) {
+func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	h := make(http.Header)
 
 	if c.Username != "" && c.Password != "" {
@@ -286,21 +286,18 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 		return nil, err
 	}
 
-	if strings.HasPrefix(us, "https") {
-		us = strings.Replace(us, "https", "wss", 1)
-	} else if strings.HasPrefix(us, "http") {
+	if strings.HasPrefix(us, "http") {
 		us = strings.Replace(us, "http", "ws", 1)
 	}
+
 	if !quiet {
 		log.Println(us)
 	}
 
-	h, err := c.getHTTPHeader()
+	h, err := c.getHTTPRequestHeader()
 	if err != nil {
 		return nil, err
 	}
-
-	// h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password))}}
 
 	ws := websocket.Dialer{
 		TLSClientConfig: tlsConfig,
