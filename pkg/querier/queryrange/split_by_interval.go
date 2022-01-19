@@ -253,6 +253,10 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) []queryrang
 	return reqs
 }
 
+// forInterval splits the given start and end time into given interval.
+// When endTimeInclusive is true, it would keep a gap of 1ms between the splits.
+// The only queries that have both start and end time inclusive are metadata queries,
+// and without keeping a gap, we would end up querying duplicate data in adjacent queries.
 func forInterval(interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time)) {
 	// align the start time by split interval for better query performance of metadata queries and
 	// better cache-ability of query types that are cached.
@@ -319,8 +323,10 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) []query
 		})
 	}
 
-	// change the start time to original time
-	reqs[0] = reqs[0].WithStartEnd(lokiReq.GetStart(), reqs[0].GetEnd())
+	if len(reqs) != 0 {
+		// change the start time to original time
+		reqs[0] = reqs[0].WithStartEnd(lokiReq.GetStart(), reqs[0].GetEnd())
+	}
 	return reqs
 }
 
