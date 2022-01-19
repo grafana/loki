@@ -184,6 +184,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.PerTenantOverridePeriod.Set("10s")
 	f.Var(&l.PerTenantOverridePeriod, "limits.per-user-override-period", "Period with this to reload the overrides.")
+
+	_ = l.QuerySplitDuration.Set("30m")
+	f.Var(&l.QuerySplitDuration, "limits.split-queries-by-interval", "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks. This also determines how cache keys are chosen when result caching is enabled")
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -380,7 +383,12 @@ func (o *Overrides) MinShardingLookback(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MinShardingLookback)
 }
 
-// QuerySplitDuration returns the tenant specific splitby interval applied in the query frontend.
+// QuerySplitDurationDefault returns the default global split by interval applied in the query frontend.
+func (o *Overrides) QuerySplitDurationDefault() time.Duration {
+	return time.Duration(o.defaultLimits.QuerySplitDuration)
+}
+
+// QuerySplitDuration returns the tenant specific split by interval applied in the query frontend.
 func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QuerySplitDuration)
 }

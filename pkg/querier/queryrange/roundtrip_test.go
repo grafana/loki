@@ -33,10 +33,9 @@ import (
 var (
 	testTime   = time.Date(2019, 12, 02, 11, 10, 10, 10, time.UTC)
 	testConfig = Config{queryrangebase.Config{
-		SplitQueriesByInterval: 4 * time.Hour,
-		AlignQueriesWithStep:   true,
-		MaxRetries:             3,
-		CacheResults:           true,
+		AlignQueriesWithStep: true,
+		MaxRetries:           3,
+		CacheResults:         true,
 		ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 			CacheConfig: cache.Config{
 				EnableFifoCache: true,
@@ -109,7 +108,7 @@ var (
 
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1}, chunk.SchemaConfig{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, splitDefault: 4 * time.Hour}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -402,7 +401,7 @@ func TestUnhandledPath(t *testing.T) {
 }
 
 func TestRegexpParamsSupport(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, chunk.SchemaConfig{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1, splitDefault: 4 * time.Hour}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -552,15 +551,23 @@ type fakeLimits struct {
 	maxQueryLookback        time.Duration
 	maxEntriesLimitPerQuery int
 	maxSeries               int
+	splitDefault            time.Duration
 	splits                  map[string]time.Duration
 	minShardingLookback     time.Duration
 }
 
+func (f fakeLimits) QuerySplitDurationDefault() time.Duration {
+	return f.splitDefault
+}
+
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
 	if f.splits == nil {
-		return 0
+		return f.splitDefault
 	}
-	return f.splits[key]
+	if val, ok := f.splits[key]; ok {
+		return val
+	}
+	return f.splitDefault
 }
 
 func (f fakeLimits) MaxQueryLength(string) time.Duration {

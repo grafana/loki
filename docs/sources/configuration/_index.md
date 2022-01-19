@@ -387,8 +387,13 @@ The `frontend` block configures the Loki query-frontend.
 The `query_range` block configures query splitting and caching in the Loki query-frontend.
 
 ```yaml
+# Deprecated: Split queries by an interval and execute in parallel, 0 disables it.
+# Use -limit.split-queries-by-interval instead.
+# CLI flag: -querier.split-queries-by-interval
+[split_queries_by_interval: <duration> | default = 30m]
+  
 # Deprecated: Split queries by day and execute in parallel.
-# Use -querier.split-queries-by-interval instead.
+# Use -limit.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
 [split_queries_by_day: <boolean> | default = false]
 
@@ -2267,7 +2272,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # should use in multiple of 24 hours (same as the storage bucketing scheme),
 # to avoid queriers downloading and processing the same chunks. This also
 # determines how cache keys are chosen when result caching is enabled
-# CLI flag: -querier.split-queries-by-interval
+# CLI flag: -limit.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
 ```
 

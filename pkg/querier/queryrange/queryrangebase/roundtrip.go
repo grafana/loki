@@ -54,6 +54,7 @@ var (
 
 // Config for query_range middleware chain.
 type Config struct {
+	// Deprecated: SplitQueriesByInterval will be removed in the next major release
 	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`
 	AlignQueriesWithStep   bool          `yaml:"align_queries_with_step"`
 	ResultsCacheConfig     `yaml:"results_cache"`
@@ -67,11 +68,18 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
-	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks. This also determines how cache keys are chosen when result caching is enabled")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", false, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
+
+	// TODO(ssncferreira): delete when querier.split-queries-by-interval is fully deprecated.
+	dur, err := time.ParseDuration("30m")
+	if err != nil {
+		dur = 0
+	}
+	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", dur, "Deprecated: Split queries by an interval and execute in parallel, 0 disables it. Use -limit.split-queries-by-interval instead.")
+
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 

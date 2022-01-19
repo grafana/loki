@@ -34,6 +34,7 @@ var (
 type Limits interface {
 	queryrangebase.Limits
 	logql.Limits
+	QuerySplitDurationDefault() time.Duration
 	QuerySplitDuration(string) time.Duration
 	MaxQuerySeries(string) int
 	MaxEntriesLimitPerQuery(string) int
@@ -58,15 +59,14 @@ func (l limits) QuerySplitDuration(user string) time.Duration {
 }
 
 // WithDefaults will construct a Limits with a default value for QuerySplitDuration when no overrides are present.
-func WithDefaultLimits(l Limits, conf queryrangebase.Config) Limits {
+func WithDefaultLimits(l Limits) Limits {
 	res := limits{
 		Limits:    l,
 		overrides: true,
 	}
 
-	if conf.SplitQueriesByInterval != 0 {
-		res.splitDuration = conf.SplitQueriesByInterval
-	}
+	// Set as the default split by interval value
+	res.splitDuration = l.QuerySplitDurationDefault()
 
 	return res
 }

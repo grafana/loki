@@ -149,9 +149,6 @@ func (c *Config) registerQueryRangeFlagsWithChangedDefaultValues(fs *flag.FlagSe
 	throwaway.VisitAll(func(f *flag.Flag) {
 		// Ignore errors when setting new values. We have a test to verify that it works.
 		switch f.Name {
-		case "querier.split-queries-by-interval":
-			_ = f.Value.Set("30m")
-
 		case "querier.parallelise-shardable-queries":
 			_ = f.Value.Set("true")
 		}
