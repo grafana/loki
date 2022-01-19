@@ -145,6 +145,9 @@ func (c *seriesStore) Get(ctx context.Context, userID string, from, through mode
 }
 
 func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	if ctx.Err() != nil {
+		return nil, nil, ctx.Err()
+	}
 	log, ctx := spanlogger.New(ctx, "SeriesStore.GetChunkRefs")
 	defer log.Span.Finish()
 

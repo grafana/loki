@@ -1,7 +1,10 @@
 package querytee
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"sync"
@@ -50,8 +53,6 @@ func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *Proxy
 }
 
 func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	level.Debug(p.logger).Log("msg", "Received request", "path", r.URL.Path, "query", r.URL.RawQuery)
-
 	// Send the same request to all backends.
 	resCh := make(chan *backendResponse, len(p.backends))
 	go p.executeBackendRequests(r, resCh)
@@ -72,22 +73,49 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *backendResponse) {
-	responses := make([]*backendResponse, 0, len(p.backends))
-
 	var (
-		wg  = sync.WaitGroup{}
-		mtx = sync.Mutex{}
+		wg           = sync.WaitGroup{}
+		err          error
+		body         []byte
+		responses    = make([]*backendResponse, 0, len(p.backends))
+		responsesMtx = sync.Mutex{}
+		query        = r.URL.RawQuery
 	)
-	wg.Add(len(p.backends))
 
+	if r.Body != nil {
+		body, err = ioutil.ReadAll(r.Body)
+		if err != nil {
+			level.Warn(p.logger).Log("msg", "Unable to read request body", "err", err)
+			return
+		}
+		if err := r.Body.Close(); err != nil {
+			level.Warn(p.logger).Log("msg", "Unable to close request body", "err", err)
+		}
+
+		r.Body = ioutil.NopCloser(bytes.NewReader(body))
+		if err := r.ParseForm(); err != nil {
+			level.Warn(p.logger).Log("msg", "Unable to parse form", "err", err)
+		}
+		query = r.Form.Encode()
+	}
+
+	level.Debug(p.logger).Log("msg", "Received request", "path", r.URL.Path, "query", query)
+
+	wg.Add(len(p.backends))
 	for _, b := range p.backends {
 		b := b
 
 		go func() {
 			defer wg.Done()
+			var (
+				bodyReader io.ReadCloser
+				start      = time.Now()
+			)
+			if len(body) > 0 {
+				bodyReader = ioutil.NopCloser(bytes.NewReader(body))
+			}
 
-			start := time.Now()
-			status, body, err := b.ForwardRequest(r)
+			status, body, err := b.ForwardRequest(r, bodyReader)
 			elapsed := time.Since(start)
 
 			res := &backendResponse{
@@ -103,14 +131,14 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 				lvl = level.Warn
 			}
 
-			lvl(p.logger).Log("msg", "Backend response", "path", r.URL.Path, "query", r.URL.RawQuery, "backend", b.name, "status", status, "elapsed", elapsed)
+			lvl(p.logger).Log("msg", "Backend response", "path", r.URL.Path, "query", query, "backend", b.name, "status", status, "elapsed", elapsed)
 			p.metrics.requestDuration.WithLabelValues(res.backend.name, r.Method, p.routeName, strconv.Itoa(res.statusCode())).Observe(elapsed.Seconds())
 
 			// Keep track of the response if required.
 			if p.comparator != nil {
-				mtx.Lock()
+				responsesMtx.Lock()
 				responses = append(responses, res)
-				mtx.Unlock()
+				responsesMtx.Unlock()
 			}
 
 			resCh <- res
