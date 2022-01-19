@@ -20,9 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var (
-	errMinBackends = errors.New("at least 1 backend is required")
-)
+var errMinBackends = errors.New("at least 1 backend is required")
 
 type ProxyConfig struct {
 	ServerServicePort              int
@@ -31,7 +29,9 @@ type ProxyConfig struct {
 	BackendReadTimeout             time.Duration
 	CompareResponses               bool
 	ValueComparisonTolerance       float64
+	UseRelativeError               bool
 	PassThroughNonRegisteredRoutes bool
+	SkipRecentSamples              time.Duration
 }
 
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
@@ -41,6 +41,8 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
 	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare responses between preferred and secondary endpoints for supported routes.")
 	f.Float64Var(&cfg.ValueComparisonTolerance, "proxy.value-comparison-tolerance", 0.000001, "The tolerance to apply when comparing floating point values in the responses. 0 to disable tolerance and require exact match (not recommended).")
+	f.BoolVar(&cfg.UseRelativeError, "proxy.compare-use-relative-error", false, "Use relative error tolerance when comparing floating point values.")
+	f.DurationVar(&cfg.SkipRecentSamples, "proxy.compare-skip-recent-samples", 60*time.Second, "The window from now to skip comparing samples. 0 to disable.")
 	f.BoolVar(&cfg.PassThroughNonRegisteredRoutes, "proxy.passthrough-non-registered-routes", false, "Passthrough requests for non-registered routes to preferred backend.")
 }
 
