@@ -241,7 +241,12 @@ func (r *ingesterRecoverer) Close() {
 			if !isAllowed && old {
 				err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(isAllowed))
 				if err != nil {
-					return err
+					level.Warn(util_log.Logger).Log(
+						"msg", "error converting headblock",
+						"err", err.Error(),
+						"stream", s.labels.String(),
+						"component", "ingesterRecoverer",
+					)
 				}
 			}
 
