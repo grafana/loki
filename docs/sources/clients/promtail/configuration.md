@@ -1629,9 +1629,9 @@ metadata and a single tag).
 
 ### docker_sd_config
 
-Docker service discovery configurations allow retrieving targets from a Docker daemon.
-It will only watch containers of the daemon referenced with the host parameter. That
-means it should run on each node in a distributed setup. The containers must run with
+Docker service discovery allows retrieving targets from a Docker daemon.
+It will only watch containers of the Docker daemon referenced with the host parameter. Docker
+service discovery should run on each node in a distributed setup. The containers must run with
 either the [json-file](https://docs.docker.com/config/containers/logging/json-file/)
 or [journald](https://docs.docker.com/config/containers/logging/journald/) logging driver.
 
