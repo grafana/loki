@@ -271,8 +271,8 @@ func forInterval(interval time.Duration, start, end time.Time, callback func(sta
 	}
 }
 
-// maxRangeVector returns the maximum range vector duration within a LogQL query.
-func maxRangeVector(q string) (time.Duration, error) {
+// maxRangeVectorDuration returns the maximum range vector duration within a LogQL query.
+func maxRangeVectorDuration(q string) (time.Duration, error) {
 	expr, err := logql.ParseSampleExpr(q)
 	if err != nil {
 		return 0, err
@@ -289,7 +289,7 @@ func maxRangeVector(q string) (time.Duration, error) {
 // reduceSplitIntervalForRangeVector reduce the split interval for range query based on the range vector.
 // Large range vector will be not split into smaller intervals which can cause the queries to be slow by over-processing data.
 func reduceSplitIntervalForRangeVector(r queryrangebase.Request, interval time.Duration) (time.Duration, error) {
-	maxRange, err := maxRangeVector(r.GetQuery())
+	maxRange, err := maxRangeVectorDuration(r.GetQuery())
 	if err != nil {
 		return 0, err
 	}
