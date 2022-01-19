@@ -46,6 +46,7 @@ type WorkerServiceConfig struct {
 //
 func InitWorkerService(
 	cfg WorkerServiceConfig,
+	reg prometheus.Registerer,
 	queryRoutesToHandlers map[string]http.Handler,
 	alwaysExternalRoutesToHandlers map[string]http.Handler,
 	externalRouter *mux.Router,
@@ -105,7 +106,8 @@ func InitWorkerService(
 			cfg.SchedulerRing,
 			httpgrpc_server.NewServer(externalHandler),
 			util_log.Logger,
-			prometheus.DefaultRegisterer)
+			reg,
+		)
 	}
 
 	// Since we must be running a querier with either a frontend and/or scheduler at this point, if no scheduler ring, frontend, or scheduler address
@@ -136,7 +138,8 @@ func InitWorkerService(
 		cfg.SchedulerRing,
 		httpgrpc_server.NewServer(internalHandler),
 		util_log.Logger,
-		prometheus.DefaultRegisterer)
+		reg,
+	)
 }
 
 func querierRunningStandalone(cfg WorkerServiceConfig) bool {

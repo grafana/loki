@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -35,10 +36,9 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/tenant"
 )
 
 var (
@@ -76,9 +76,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Validate validates the config.
 func (cfg *Config) Validate() error {
 	if cfg.CacheResults {
-		if cfg.SplitQueriesByInterval <= 0 {
-			return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
-		}
 		if err := cfg.ResultsCacheConfig.Validate(); err != nil {
 			return errors.Wrap(err, "invalid ResultsCache config")
 		}

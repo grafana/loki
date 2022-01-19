@@ -9,9 +9,10 @@ import (
 	jsoniter "github.com/json-iterator/go"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/tools/querytee"
 )
 
-func compareStreams(expectedRaw, actualRaw json.RawMessage, tolerance float64) error {
+func compareStreams(expectedRaw, actualRaw json.RawMessage, opts querytee.SampleComparisonOptions) error {
 	var expected, actual loghttp.Streams
 
 	err := jsoniter.Unmarshal(expectedRaw, &expected)

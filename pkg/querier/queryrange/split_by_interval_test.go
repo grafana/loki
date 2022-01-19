@@ -182,12 +182,14 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(0, 0),
 				EndTs:   time.Unix(0, 60*time.Minute.Nanoseconds()),
 				Step:    15 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(0, 60*time.Minute.Nanoseconds()),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 			},
 			interval: 24 * time.Hour,
@@ -197,12 +199,14 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(0, 0),
 				EndTs:   time.Unix(60*60, 0),
 				Step:    15 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(60*60, 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 			},
 			interval: 3 * time.Hour,
@@ -212,12 +216,14 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(0, 0),
 				EndTs:   time.Unix(24*3600, 0),
 				Step:    15 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(24*3600, 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 			},
 			interval: 24 * time.Hour,
@@ -227,12 +233,14 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(0, 0),
 				EndTs:   time.Unix(3*3600, 0),
 				Step:    15 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(3*3600, 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 			},
 			interval: 3 * time.Hour,
@@ -242,17 +250,20 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(0, 0),
 				EndTs:   time.Unix(2*24*3600, 0),
 				Step:    15 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix((24*3600)-15, 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix((24 * 3600), 0),
 					EndTs:   time.Unix((2 * 24 * 3600), 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 			},
 			interval: 24 * time.Hour,
@@ -262,17 +273,20 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(0, 0),
 				EndTs:   time.Unix(2*3*3600, 0),
 				Step:    15 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix((3*3600)-15, 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix((3 * 3600), 0),
 					EndTs:   time.Unix((2 * 3 * 3600), 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 			},
 			interval: 3 * time.Hour,
@@ -282,22 +296,26 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(3*3600, 0),
 				EndTs:   time.Unix(3*24*3600, 0),
 				Step:    15 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(3*3600, 0),
 					EndTs:   time.Unix((24*3600)-15, 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(24*3600, 0),
 					EndTs:   time.Unix((2*24*3600)-15, 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(2*24*3600, 0),
 					EndTs:   time.Unix(3*24*3600, 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 			},
 			interval: 24 * time.Hour,
@@ -307,26 +325,31 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(2*3600, 0),
 				EndTs:   time.Unix(3*3*3600, 0),
 				Step:    15 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(2*3600, 0),
 					EndTs:   time.Unix((3*3600)-15, 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(3*3600, 0),
 					EndTs:   time.Unix((2*3*3600)-15, 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(2*3*3600, 0),
 					EndTs:   time.Unix(3*3*3600, 0),
 					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 			},
 			interval: 3 * time.Hour,
 		},
+
 		// step not a multiple of interval
 		// start time already step aligned
 		{
@@ -334,22 +357,26 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(2*3600-9, 0), // 2h mod 17s = 9s
 				EndTs:   time.Unix(3*3*3600, 0),
 				Step:    17 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(2*3600-9, 0),
 					EndTs:   time.Unix((3*3600)-5, 0), // 3h mod 17s = 5s
 					Step:    17 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix((3*3600)+12, 0),
 					EndTs:   time.Unix((2*3*3600)-10, 0), // 6h mod 17s = 10s
 					Step:    17 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(2*3*3600+7, 0),
 					EndTs:   time.Unix(3*3*3600, 0),
 					Step:    17 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 			},
 			interval: 3 * time.Hour,
@@ -360,22 +387,26 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(2*3600, 0),
 				EndTs:   time.Unix(3*3*3600, 0),
 				Step:    17 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(2*3600, 0),
 					EndTs:   time.Unix((3*3600)-5, 0), // 3h mod 17s = 5s
 					Step:    17 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix((3*3600)+12, 0),
 					EndTs:   time.Unix((2*3*3600)-10, 0), // 6h mod 17s = 10s
 					Step:    17 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(2*3*3600+7, 0),
 					EndTs:   time.Unix(3*3*3600, 0),
 					Step:    17 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 			},
 			interval: 3 * time.Hour,
@@ -387,32 +418,38 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(0, 0),
 				EndTs:   time.Unix(25*3600, 0),
 				Step:    6 * 3600 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(6*3600, 0),
 					Step:    6 * 3600 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(6*3600, 0),
 					EndTs:   time.Unix(12*3600, 0),
 					Step:    6 * 3600 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(12*3600, 0),
 					EndTs:   time.Unix(18*3600, 0),
 					Step:    6 * 3600 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(18*3600, 0),
 					EndTs:   time.Unix(24*3600, 0),
 					Step:    6 * 3600 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(24*3600, 0),
 					EndTs:   time.Unix(25*3600, 0),
 					Step:    6 * 3600 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
 				},
 			},
 			interval: 15 * time.Minute,
@@ -422,19 +459,68 @@ func Test_splitMetricQuery(t *testing.T) {
 				StartTs: time.Unix(0, 0),
 				EndTs:   time.Unix(3*3600, 0),
 				Step:    6 * 3600 * seconds,
+				Query:   `rate({app="foo"}[1m])`,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
 					EndTs:   time.Unix(3*3600, 0),
 					Step:    6 * 3600 * seconds,
+					Query:   `rate({app="foo"}[1m])`,
+				},
+			},
+			interval: 15 * time.Minute,
+		},
+		// reduce split by to 6h instead of 1h
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(2*3600, 0),
+				EndTs:   time.Unix(3*3*3600, 0),
+				Step:    15 * seconds,
+				Query:   `rate({app="foo"}[6h])`,
+			},
+			expected: []queryrangebase.Request{
+				&LokiRequest{
+					StartTs: time.Unix(2*3600, 0),
+					EndTs:   time.Unix((6*3600)-15, 0),
+					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[6h])`,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(6*3600, 0),
+					EndTs:   time.Unix(3*3*3600, 0),
+					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[6h])`,
+				},
+			},
+			interval: 1 * time.Hour,
+		},
+		// range vector too large we don't want to split it
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(2*3600, 0),
+				EndTs:   time.Unix(3*3*3600, 0),
+				Step:    15 * seconds,
+				Query:   `rate({app="foo"}[7d])`,
+			},
+			expected: []queryrangebase.Request{
+				&LokiRequest{
+					StartTs: time.Unix(2*3600, 0),
+					EndTs:   time.Unix(3*3*3600, 0),
+					Step:    15 * seconds,
+					Query:   `rate({app="foo"}[7d])`,
 				},
 			},
 			interval: 15 * time.Minute,
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			splits := splitMetricByTime(tc.input, tc.interval)
+			splits, err := splitMetricByTime(tc.input, tc.interval)
+			require.NoError(t, err)
+			for i, s := range splits {
+				s := s.(*LokiRequest)
+				t.Logf(" want: %d start:%s end:%s \n", i, s.StartTs, s.EndTs)
+			}
 			require.Equal(t, tc.expected, splits)
 		})
 	}

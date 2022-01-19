@@ -319,6 +319,15 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 			target.Stop()
 			s.metrics.targetsActive.Add(-1.)
 			delete(s.targets, key)
+
+			// close related file event watcher
+			k := target.path
+			if _, ok := s.fileEventWatchers[k]; ok {
+				close(s.fileEventWatchers[k])
+				delete(s.fileEventWatchers, k)
+			} else {
+				level.Warn(s.log).Log("msg", "failed to remove file event watcher", "path", k)
+			}
 		}
 	}
 	s.droppedTargets = dropped
@@ -376,6 +385,7 @@ func (s *targetSyncer) ready() bool {
 	}
 	return false
 }
+
 func (s *targetSyncer) stop() {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -385,6 +395,7 @@ func (s *targetSyncer) stop() {
 		target.Stop()
 		delete(s.targets, key)
 	}
+
 	for key, watcher := range s.fileEventWatchers {
 		close(watcher)
 		delete(s.fileEventWatchers, key)

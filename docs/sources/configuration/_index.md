@@ -93,7 +93,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # if true. If false, the OrgID will always be set to "fake".
 [auth_enabled: <boolean> | default = true]
 
-# The amount of virtual memory to reserve as a ballast in order to optimise
+# The amount of virtual memory in bytes to reserve as ballast in order to optimize
 # garbage collection. Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at
 # the cost of heap size. The ballast will not consume physical memory, because it is never read from.
 # It will, however, distort metrics, because it is counted as live memory.

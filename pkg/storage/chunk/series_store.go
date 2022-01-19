@@ -145,6 +145,9 @@ func (c *seriesStore) Get(ctx context.Context, userID string, from, through mode
 }
 
 func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	if ctx.Err() != nil {
+		return nil, nil, ctx.Err()
+	}
 	log, ctx := spanlogger.New(ctx, "SeriesStore.GetChunkRefs")
 	defer log.Span.Finish()
 
@@ -478,7 +481,8 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	writeChunk := true
 
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
-	found, _, _ := c.fetcher.cache.Fetch(ctx, []string{c.baseStore.schemaCfg.ExternalKey(chunk)})
+	found, _, _, _ := c.fetcher.cache.Fetch(ctx, []string{c.baseStore.schemaCfg.ExternalKey(chunk)})
+
 	if len(found) > 0 {
 		writeChunk = false
 		dedupedChunksTotal.Inc()
@@ -527,7 +531,10 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	}
 
 	bufs := make([][]byte, len(keysToCache))
-	c.writeDedupeCache.Store(ctx, keysToCache, bufs)
+	err = c.writeDedupeCache.Store(ctx, keysToCache, bufs)
+	if err != nil {
+		level.Warn(log).Log("msg", "could not Store store in write dedupe cache", "err", err)
+	}
 	return nil
 }
 
@@ -545,7 +552,7 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 	if err != nil {
 		return nil, nil, err
 	}
-	_, _, missing := c.writeDedupeCache.Fetch(ctx, keys)
+	_, _, missing, _ := c.writeDedupeCache.Fetch(ctx, keys)
 	// keys and labelEntries are matched in order, but Fetch() may
 	// return missing keys in any order so check against all of them.
 	for _, missingKey := range missing {

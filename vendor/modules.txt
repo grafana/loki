@@ -268,14 +268,7 @@ github.com/cortexproject/cortex/pkg/configs/userconfig
 github.com/cortexproject/cortex/pkg/cortexpb
 github.com/cortexproject/cortex/pkg/ingester/client
 github.com/cortexproject/cortex/pkg/prom1/storage/metric
-github.com/cortexproject/cortex/pkg/querier
 github.com/cortexproject/cortex/pkg/querier/astmapper
-github.com/cortexproject/cortex/pkg/querier/batch
-github.com/cortexproject/cortex/pkg/querier/chunkstore
-github.com/cortexproject/cortex/pkg/querier/iterators
-github.com/cortexproject/cortex/pkg/querier/lazyquery
-github.com/cortexproject/cortex/pkg/querier/series
-github.com/cortexproject/cortex/pkg/querier/stats
 github.com/cortexproject/cortex/pkg/storage/bucket
 github.com/cortexproject/cortex/pkg/storage/bucket/azure
 github.com/cortexproject/cortex/pkg/storage/bucket/filesystem
@@ -284,19 +277,14 @@ github.com/cortexproject/cortex/pkg/storage/bucket/http
 github.com/cortexproject/cortex/pkg/storage/bucket/s3
 github.com/cortexproject/cortex/pkg/storage/bucket/swift
 github.com/cortexproject/cortex/pkg/storage/tsdb
-github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex
-github.com/cortexproject/cortex/pkg/storegateway
-github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb
 github.com/cortexproject/cortex/pkg/tenant
 github.com/cortexproject/cortex/pkg/util
-github.com/cortexproject/cortex/pkg/util/chunkcompat
 github.com/cortexproject/cortex/pkg/util/extract
 github.com/cortexproject/cortex/pkg/util/limiter
 github.com/cortexproject/cortex/pkg/util/log
 github.com/cortexproject/cortex/pkg/util/math
 github.com/cortexproject/cortex/pkg/util/spanlogger
 github.com/cortexproject/cortex/pkg/util/validation
-github.com/cortexproject/cortex/tools/querytee
 # github.com/cristalhq/hedgedhttp v0.7.0
 ## explicit; go 1.16
 github.com/cristalhq/hedgedhttp
@@ -446,7 +434,7 @@ github.com/envoyproxy/protoc-gen-validate/validate
 # github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 ## explicit
 github.com/facette/natsort
-# github.com/fatih/color v1.12.0
+# github.com/fatih/color v1.13.0
 ## explicit; go 1.13
 github.com/fatih/color
 # github.com/felixge/fgprof v0.9.1
@@ -647,7 +635,6 @@ github.com/grafana/dskit/ring/client
 github.com/grafana/dskit/ring/shard
 github.com/grafana/dskit/ring/util
 github.com/grafana/dskit/runtimeconfig
-github.com/grafana/dskit/runutil
 github.com/grafana/dskit/services
 github.com/grafana/dskit/spanlogger
 # github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
@@ -795,7 +782,7 @@ github.com/json-iterator/go
 # github.com/julienschmidt/httprouter v1.3.0
 ## explicit; go 1.7
 github.com/julienschmidt/httprouter
-# github.com/klauspost/compress v1.13.6
+# github.com/klauspost/compress v1.14.1
 ## explicit; go 1.15
 github.com/klauspost/compress
 github.com/klauspost/compress/flate
@@ -820,7 +807,7 @@ github.com/leodido/ragel-machinery/parser
 github.com/mailru/easyjson/buffer
 github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
-# github.com/mattn/go-colorable v0.1.8
+# github.com/mattn/go-colorable v0.1.9
 ## explicit; go 1.13
 github.com/mattn/go-colorable
 # github.com/mattn/go-ieproxy v0.0.1
