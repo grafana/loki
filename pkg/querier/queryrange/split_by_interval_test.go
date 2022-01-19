@@ -162,7 +162,9 @@ func Test_splitQuery(t *testing.T) {
 				for _, interval := range intervals.expected {
 					want = append(want, tc.requestBuilderFunc(interval.start, interval.end))
 				}
-				require.Equal(t, want, splitByTime(inp, time.Hour))
+				splits, err := splitByTime(inp, time.Hour)
+				require.NoError(t, err)
+				require.Equal(t, want, splits)
 			})
 		}
 	}

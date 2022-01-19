@@ -369,7 +369,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 		// change the start time to original time
 		reqs[0] = reqs[0].WithStartEnd(lokiReq.GetStart(), reqs[0].GetEnd())
 	}
-	return reqs
+	return reqs, nil
 }
 
 // Round up to the step before the next interval boundary.
