@@ -621,7 +621,7 @@ spec:
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
-                image: quay.io/jacobsakran/loki-operator:v0.0.1
+                image: quay.io/openshift-logging/loki-operator:v0.0.1
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
