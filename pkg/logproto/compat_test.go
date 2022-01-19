@@ -9,10 +9,8 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/textparse"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/thanos/pkg/testutil"
 )
 
 // This test verifies that jsoninter uses our custom method for marshalling.
@@ -71,37 +69,6 @@ func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v interface{}
 	require.NoError(t, err)
 	require.Equal(t, int64(0), sample.Timestamp)
 	require.True(t, math.IsNaN(sample.Value))
-}
-
-func TestMetricMetadataToMetricTypeToMetricType(t *testing.T) {
-	tc := []struct {
-		desc     string
-		input    MetricMetadata_MetricType
-		expected textparse.MetricType
-	}{
-		{
-			desc:     "with a single-word metric",
-			input:    COUNTER,
-			expected: textparse.MetricTypeCounter,
-		},
-		{
-			desc:     "with a two-word metric",
-			input:    STATESET,
-			expected: textparse.MetricTypeStateset,
-		},
-		{
-			desc:     "with an unknown metric",
-			input:    MetricMetadata_MetricType(100),
-			expected: textparse.MetricTypeUnknown,
-		},
-	}
-
-	for _, tt := range tc {
-		t.Run(tt.desc, func(t *testing.T) {
-			m := MetricMetadataMetricTypeToMetricType(tt.input)
-			testutil.Equals(t, tt.expected, m)
-		})
-	}
 }
 
 func TestFromLabelAdaptersToLabels(t *testing.T) {

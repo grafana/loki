@@ -12,9 +12,7 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/textparse"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -117,60 +115,11 @@ func FromMetricsToLabelAdapters(metric model.Metric) []LabelAdapter {
 	return result
 }
 
-func FromExemplarsToExemplarProtos(es []exemplar.Exemplar) []Exemplar {
-	result := make([]Exemplar, 0, len(es))
-	for _, e := range es {
-		result = append(result, Exemplar{
-			Labels:      FromLabelsToLabelAdapters(e.Labels),
-			Value:       e.Value,
-			TimestampMs: e.Ts,
-		})
-	}
-	return result
-}
-
-func FromExemplarProtosToExemplars(es []Exemplar) []exemplar.Exemplar {
-	result := make([]exemplar.Exemplar, 0, len(es))
-	for _, e := range es {
-		result = append(result, exemplar.Exemplar{
-			Labels: FromLabelAdaptersToLabels(e.Labels),
-			Value:  e.Value,
-			Ts:     e.TimestampMs,
-		})
-	}
-	return result
-}
-
 type byLabel []LabelAdapter
 
 func (s byLabel) Len() int           { return len(s) }
 func (s byLabel) Less(i, j int) bool { return strings.Compare(s[i].Name, s[j].Name) < 0 }
 func (s byLabel) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-// MetricMetadataMetricTypeToMetricType converts a metric type from our internal client
-// to a Prometheus one.
-func MetricMetadataMetricTypeToMetricType(mt MetricMetadata_MetricType) textparse.MetricType {
-	switch mt {
-	case UNKNOWN:
-		return textparse.MetricTypeUnknown
-	case COUNTER:
-		return textparse.MetricTypeCounter
-	case GAUGE:
-		return textparse.MetricTypeGauge
-	case HISTOGRAM:
-		return textparse.MetricTypeHistogram
-	case GAUGEHISTOGRAM:
-		return textparse.MetricTypeGaugeHistogram
-	case SUMMARY:
-		return textparse.MetricTypeSummary
-	case INFO:
-		return textparse.MetricTypeInfo
-	case STATESET:
-		return textparse.MetricTypeStateset
-	default:
-		return textparse.MetricTypeUnknown
-	}
-}
 
 // isTesting is only set from tests to get special behaviour to verify that custom sample encode and decode is used,
 // both when using jsonitor or standard json package.
