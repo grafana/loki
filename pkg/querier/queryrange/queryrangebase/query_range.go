@@ -31,7 +31,8 @@ import (
 const StatusSuccess = "success"
 
 var (
-	json = jsoniter.Config{
+	matrix = model.ValMatrix.String()
+	json   = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: true,
