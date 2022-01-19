@@ -359,7 +359,8 @@ consul_sd_configs:
 consulagent_sd_configs:
   [ - <consulagent_sd_config> ... ]
 
-# Describes how to use the Docker daemon API to discover containers running on the same host as Promtail.
+# Describes how to use the Docker daemon API to discover containers running on
+# the same host as Promtail.
 docker_sd_configs:
   [ - <docker_sd_config> ... ]
 ```
