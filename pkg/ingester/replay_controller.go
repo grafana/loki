@@ -24,7 +24,7 @@ func (f *replayFlusher) Flush() {
 
 	for _, instance := range instances {
 
-		instance.streams.ForEach(func(s *stream) (bool, error) {
+		_ = instance.streams.ForEach(func(s *stream) (bool, error) {
 			f.i.removeFlushedChunks(instance, s, false)
 			return true, nil
 		})

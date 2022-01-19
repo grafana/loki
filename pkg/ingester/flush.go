@@ -170,7 +170,7 @@ func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
 }
 
 func (i *Ingester) sweepInstance(instance *instance, immediate, mayRemoveStreams bool) {
-	instance.streams.ForEach(func(s *stream) (bool, error) {
+	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
 		i.sweepStream(instance, s, immediate)
 		i.removeFlushedChunks(instance, s, mayRemoveStreams)
 		return true, nil

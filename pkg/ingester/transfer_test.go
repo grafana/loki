@@ -70,7 +70,7 @@ func TestTransferOut(t *testing.T) {
 		lines := []string{}
 
 		// Get all the lines back and make sure the blocks transferred successfully
-		ing2.instances["test"].streams.ForEach(func(s *stream) (bool, error) {
+		_ = ing2.instances["test"].streams.ForEach(func(s *stream) (bool, error) {
 			it, err := s.Iterator(
 				context.TODO(),
 				nil,

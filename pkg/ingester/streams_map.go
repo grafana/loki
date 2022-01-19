@@ -68,33 +68,36 @@ func (m *streamsMap) Len() int {
 func (m *streamsMap) load(mp *sync.Map, key interface{}) (*stream, bool) {
 	if v, ok := mp.Load(key); ok {
 		return v.(*stream), true
-	} else {
-		return nil, false
 	}
+	return nil, false
 }
 
 func (m *streamsMap) loadOrStoreNew(mp *sync.Map, key interface{}, newStreamFn func() (*stream, error)) (*stream, bool, error) {
-	if s, ok := m.load(mp, key); ok {
+	s, ok := m.load(mp, key)
+
+	if ok {
 		return s, true, nil
-	} else {
-		m.consistencyMtx.Lock()
-		defer m.consistencyMtx.Unlock()
-		// Double check
-		if s, ok := m.load(mp, key); ok {
-			return s, true, nil
-		} else {
-			s, err := newStreamFn()
-			if err != nil {
-				return nil, false, err
-			}
-			if labelsString, ok := key.(string); ok {
-				m.streams.Store(labelsString, s)
-			} else {
-				m.streams.Store(s.labelsString, s)
-			}
-			m.streamsByFP.Store(s.fp, s)
-			m.streamsCounter.Inc()
-			return s, false, nil
-		}
 	}
+
+	m.consistencyMtx.Lock()
+	defer m.consistencyMtx.Unlock()
+	// Double check
+	s, ok = m.load(mp, key)
+
+	if ok {
+		return s, true, nil
+	}
+
+	s, err := newStreamFn()
+	if err != nil {
+		return nil, false, err
+	}
+	if labelsString, ok := key.(string); ok {
+		m.streams.Store(labelsString, s)
+	} else {
+		m.streams.Store(s.labelsString, s)
+	}
+	m.streamsByFP.Store(s.fp, s)
+	m.streamsCounter.Inc()
+	return s, false, nil
 }
