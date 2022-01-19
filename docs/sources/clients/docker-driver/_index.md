@@ -63,4 +63,4 @@ docker plugin rm loki
 
 The driver keeps all logs in memory and will drop log entries if Loki is not reachable and if the quantity of `max_retries` has been exceeded. To avoid the dropping of log entries, setting `max_retries` to zero allows unlimited retries; the drive will continue trying forever until Loki is again reachable. Trying forever may have undesired consequences, because the Docker daemon will wait for the Loki driver to process all logs of a container, until the container is removed. Thus, the Docker daemon might wait forever if the container is stuck.
 
-Consider using Promtail's [Docker target](../promtail/configuration/#docker) or [Docker service discovery](../promtail/configuration/#docker_sd_config) to avoid this issue.
+Use Promtail's [Docker target](../promtail/configuration/#docker) or [Docker service discovery](../promtail/configuration/#docker_sd_config) to avoid this issue.
