@@ -198,6 +198,9 @@ Since the ingester is a component of the write path, you should see that the `/r
 
 You won't see any members listed on the ingester ring page if you look at the read nodes (`localhost:3100/ring` for `loki_read1` or `localhost:3101/ring` for `loki_read2`, or `localhost:3101/ring` for `loki_read3`). This is because the read nodes do not have ingesters and they have no way of knowing about the ingesters on the write nodes. 
 
+Below is a screenshot of what an empty ingester ring looks like:
+![empty ingester ring](../empty_ingester.png)
+
 Now, try the same but for the endpoints `/scheduler/ring` and `/compactor/ring`, which contain the state of the query scheduler and compactor rings, respectively. You should see 1 element scheduler and compactor rings when checking each of the read nodes (check `localhost:3100/scheduler/ring`, `localhost:3101/scheduler/ring`, and `localhost:3102/scheduler/ring`). The 1 element represents the fact that each individual read node has a query-scheduler and a compactor, but it does not know about the query-scheduler and compactor on the other read nodes. 
 
 You’ll get a 404 error when you check these same endpoints (`/scheduler/ring` and `/compactor/ring`) on the write nodes because the write nodes do not have a compactor or a scheduler. 
@@ -252,7 +255,13 @@ Access the different ring pages (ex: `/ring`, `/compactor/ring`, `/scheduler/rin
 
 This time, you'll notice that all nodes (both read and write) have the correct picture of the ingester ring. It has 3 members (the 3 Loki `write` nodes). 
 
+Below is an example screenshot of what the ingester ring will look like now that memberlist is properly configured:
+![full ingester ring](../full_ingester_ring.png)
+
 The `/compactor/ring` and `/scheduler/ring` endpoints will still only be accessible on the read nodes (`localhost:3100`, `localhost:3101`, and `localhost:3102`). However you'll notice all the read nodes now have the correct picture of the compactor ring and the scheduler ring. Each of these rings has 3 members (the 3 Loki `read` nodes). 
+
+Below is an example screenshot of what the query-scheduler ring will look like now that memberlist is properly configured:
+![full scheduler ring](../full_scheduler_ring.png)
 
 This is great! We're seeing that all the information about the ingester, compactor, and query-scheduler rings is being correctly gossiped through node `loki-read1`. All of the other nodes have a correct view of the system through `loki-read1`. 
 
