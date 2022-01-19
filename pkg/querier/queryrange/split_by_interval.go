@@ -286,8 +286,8 @@ func maxRangeVector(q string) (time.Duration, error) {
 	return max, nil
 }
 
-// reduceSplitIntervalForRangeVector reduce the split interval for range query based on the range vector.
-// Large range vector will be not split into smaller intervals which can cause the queries to be slow by over-processing data.
+// reduceSplitIntervalForRangeVector reduces the split interval for a range query based on the duration of the range vector.
+// Large range vector durations will not be split into smaller intervals because it can cause the queries to be slow by over-processing data.
 func reduceSplitIntervalForRangeVector(r queryrangebase.Request, interval time.Duration) (time.Duration, error) {
 	maxRange, err := maxRangeVector(r.GetQuery())
 	if err != nil {
