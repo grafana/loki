@@ -461,10 +461,10 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
-  //Use localhost as the frontend for single binary and simple scalable modes if not otherwise set
-  if (t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read)) && t.Cfg.Frontend.FrontendV2.Addr == "" {
-    t.Cfg.Frontend.FrontendV2.Addr = "127.0.0.1"
-  }
+	//Use localhost as the frontend for single binary and simple scalable modes if not otherwise set
+	if (t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read)) && t.Cfg.Frontend.FrontendV2.Addr == "" {
+		t.Cfg.Frontend.FrontendV2.Addr = "127.0.0.1"
+	}
 
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.Cfg.Frontend))
 
