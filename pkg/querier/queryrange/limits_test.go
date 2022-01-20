@@ -238,7 +238,8 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 
 func Test_MaxQueryLookBack(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{
-		maxQueryLookback: 1 * time.Hour,
+		maxQueryLookback:    1 * time.Hour,
+		maxQueryParallelism: 1,
 	}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()

@@ -117,6 +117,7 @@ func Test_shardSplitter(t *testing.T) {
 				now:  func() time.Time { return end },
 				limits: fakeLimits{
 					minShardingLookback: tc.lookback,
+					maxQueryParallelism: 1,
 				},
 			}
 
@@ -156,7 +157,7 @@ func Test_astMapper(t *testing.T) {
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
-		fakeLimits{maxSeries: math.MaxInt32},
+		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
 	)
 
 	resp, err := mware.Do(context.Background(), defaultReq().WithQuery(`{food="bar"}`))
@@ -185,7 +186,7 @@ func Test_ShardingByPass(t *testing.T) {
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
-		fakeLimits{maxSeries: math.MaxInt32},
+		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
 	)
 
 	_, err := mware.Do(context.Background(), defaultReq().WithQuery(`1+1`))
