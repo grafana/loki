@@ -15,7 +15,7 @@ This document describes the rules and governance of the project. It is meant to 
 
 - **The Loki project**: The sum of all activities performed under this governance, concerning one or more repositories or the community.
 
-- **The Loki Operator sub-project**: The sum of all activities performed under this governance, concerning the repository subfolder `operator` or the community.
+- **The Loki SIG (Special Interest Group) Operator**: The sum of all activities performed under this governance, concerning the repository subfolder `operator` or its specific community.
 
 ## Values
 
