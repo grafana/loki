@@ -149,13 +149,11 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	var appendErr error
 	for _, s := range req.Streams {
 
-		stream, err := i.getOrCreateStream(s, record)
+		err := i.executeWithGetOrCreateStream(s, record, func(stream *stream) error {
+			_, err := stream.Push(ctx, s.Entries, record, 0, false)
+			return err
+		})
 		if err != nil {
-			appendErr = err
-			continue
-		}
-
-		if _, err := stream.Push(ctx, s.Entries, record, 0); err != nil {
 			appendErr = err
 			continue
 		}
@@ -180,78 +178,130 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-// getOrCreateStream returns the stream or creates it. Must hold streams mutex if not asked to lock.
-func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
-	s, _, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
-		// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
-		// reducing the stream limits, for instance.
-		var err error
-		if record != nil {
-			err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, i.streams.Len())
-		}
+func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
+	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
+	// reducing the stream limits, for instance.
+	var err error
+	if record != nil {
+		err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, i.streams.Len())
+	}
 
-		if err != nil {
-			if i.configs.LogStreamCreation(i.instanceID) {
-				level.Debug(util_log.Logger).Log(
-					"msg", "failed to create stream, exceeded limit",
-					"org_id", i.instanceID,
-					"err", err,
-					"stream", pushReqStream.Labels,
-				)
-			}
-
-			validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
-			bytes := 0
-			for _, e := range pushReqStream.Entries {
-				bytes += len(e.Line)
-			}
-			validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
-		}
-
-		labels, err := logql.ParseLabels(pushReqStream.Labels)
-		if err != nil {
-			if i.configs.LogStreamCreation(i.instanceID) {
-				level.Debug(util_log.Logger).Log(
-					"msg", "failed to create stream, failed to parse labels",
-					"org_id", i.instanceID,
-					"err", err,
-					"stream", pushReqStream.Labels,
-				)
-			}
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-		fp := i.getHashForLabels(labels)
-
-		sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(labels), fp)
-		s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
-
-		// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
-		if record != nil {
-			record.Series = append(record.Series, tsdb_record.RefSeries{
-				Ref:    chunks.HeadSeriesRef(fp),
-				Labels: sortedLabels,
-			})
-		} else {
-			// If the record is nil, this is a WAL recovery.
-			i.metrics.recoveredStreamsTotal.Inc()
-		}
-
-		memoryStreams.WithLabelValues(i.instanceID).Inc()
-		i.streamsCreatedTotal.Inc()
-		i.addTailersToNewStream(s)
-
+	if err != nil {
 		if i.configs.LogStreamCreation(i.instanceID) {
 			level.Debug(util_log.Logger).Log(
-				"msg", "successfully created stream",
+				"msg", "failed to create stream, exceeded limit",
 				"org_id", i.instanceID,
+				"err", err,
 				"stream", pushReqStream.Labels,
 			)
 		}
-		return s, nil
+
+		validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
+		bytes := 0
+		for _, e := range pushReqStream.Entries {
+			bytes += len(e.Line)
+		}
+		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
+	}
+
+	labels, err := logql.ParseLabels(pushReqStream.Labels)
+	if err != nil {
+		if i.configs.LogStreamCreation(i.instanceID) {
+			level.Debug(util_log.Logger).Log(
+				"msg", "failed to create stream, failed to parse labels",
+				"org_id", i.instanceID,
+				"err", err,
+				"stream", pushReqStream.Labels,
+			)
+		}
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	fp := i.getHashForLabels(labels)
+
+	sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(labels), fp)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
+
+	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
+	if record != nil {
+		record.Series = append(record.Series, tsdb_record.RefSeries{
+			Ref:    chunks.HeadSeriesRef(fp),
+			Labels: sortedLabels,
+		})
+	} else {
+		// If the record is nil, this is a WAL recovery.
+		i.metrics.recoveredStreamsTotal.Inc()
+	}
+
+	memoryStreams.WithLabelValues(i.instanceID).Inc()
+	i.streamsCreatedTotal.Inc()
+	i.addTailersToNewStream(s)
+
+	if i.configs.LogStreamCreation(i.instanceID) {
+		level.Debug(util_log.Logger).Log(
+			"msg", "successfully created stream",
+			"org_id", i.instanceID,
+			"stream", pushReqStream.Labels,
+		)
+	}
+
+	return s, nil
+}
+
+// getOrCreateStream returns the stream or creates it.
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
+	s, _, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
+		return i.createStream(pushReqStream, record)
 	})
 
 	return s, err
+}
+
+// executeWithGetOrCreateStream executes fn after find or create stream, with chunkMtx locked.
+// Use this to keep Load and Delete consistency for streams while executing fn.
+// If fn doesn't care about stream deletion from streams, use getOrCreateStream directly(e.g. ingesterRecoverer).
+func (i *instance) executeWithGetOrCreateStream(pushReqStream logproto.Stream, record *WALRecord, fn func(*stream) error) error {
+	var s *stream
+	prev, loaded, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
+		prev, err := i.createStream(pushReqStream, record)
+		if err != nil {
+			return nil, err
+		}
+		// Lock before adding to maps
+		prev.chunkMtx.Lock()
+		return prev, nil
+	})
+	if err != nil {
+		return err
+	}
+	if !loaded {
+		defer prev.chunkMtx.Unlock()
+		s = prev
+	} else {
+		prev.chunkMtx.Lock()
+		defer prev.chunkMtx.Unlock()
+		// Double check with prev locked
+		s, loaded, err = i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
+			s, err := i.createStream(pushReqStream, record)
+			if err != nil {
+				return nil, err
+			}
+			s.chunkMtx.Lock()
+			return s, nil
+		})
+		if err != nil {
+			return err
+		}
+		if prev != s {
+			if loaded {
+				// s is not created in this push request, lock it
+				s.chunkMtx.Lock()
+			}
+			defer s.chunkMtx.Unlock()
+		}
+	}
+
+	return fn(s)
 }
 
 // removeStream removes a stream from the instance.
