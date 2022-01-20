@@ -203,8 +203,8 @@ func TestTable_Compaction(t *testing.T) {
 			tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 			tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
 
-			testutil.SetupTable(t, tableName, objectStoragePath, commonDBsConfig, perUserDBsConfig)
-			testutil.SetupTable(t, fmt.Sprintf("%s-copy", tableName), objectStoragePath, commonDBsConfig, perUserDBsConfig)
+			testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
+			testutil.SetupTable(t, filepath.Join(objectStoragePath, fmt.Sprintf("%s-copy", tableName)), commonDBsConfig, perUserDBsConfig)
 
 			// do the compaction
 			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
@@ -363,8 +363,8 @@ func TestTable_CompactionRetention(t *testing.T) {
 				}
 				perUserDBsConfig.NumUsers = 10
 
-				testutil.SetupTable(t, tableName, objectStoragePath, commonDBsConfig, perUserDBsConfig)
-				testutil.SetupTable(t, fmt.Sprintf("%s-copy", tableName), objectStoragePath, commonDBsConfig, perUserDBsConfig)
+				testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
+				testutil.SetupTable(t, filepath.Join(objectStoragePath, fmt.Sprintf("%s-copy", tableName)), commonDBsConfig, perUserDBsConfig)
 
 				// do the compaction
 				objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
@@ -443,7 +443,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 		}
 	}
 
-	testutil.SetupDBsAtPath(t, tableName, objectStoragePath, dbsToSetup, true, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName), dbsToSetup, true, nil)
 
 	// put a non-boltdb file in the table which should cause the compaction to fail in the middle because it would fail to open that file with boltdb client.
 	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, "fail.txt"), []byte("fail the compaction"), 0666))
@@ -657,7 +657,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				perUserDBsConfig.NumUnCompactedDBs = tt.dbCount
 			}
 			perUserDBsConfig.NumUsers = 10
-			testutil.SetupTable(t, tableName, objectStoragePath, commonDBsConfig, perUserDBsConfig)
+			testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
 
 			if !tt.compactedDBMtime.IsZero() && tt.dbCount == 1 {
 				err := filepath.WalkDir(tablePathInStorage, func(path string, d fs.DirEntry, err error) error {
@@ -670,7 +670,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				require.NoError(t, err)
 			}
 			// setup exact same copy of dbs for comparison.
-			testutil.SetupTable(t, fmt.Sprintf("%s-copy", tableName), objectStoragePath, commonDBsConfig, perUserDBsConfig)
+			testutil.SetupTable(t, filepath.Join(objectStoragePath, fmt.Sprintf("%s-copy", tableName)), commonDBsConfig, perUserDBsConfig)
 
 			// do the compaction
 			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
