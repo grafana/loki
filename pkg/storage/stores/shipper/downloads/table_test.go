@@ -68,7 +68,7 @@ func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, storag
 	return boltDBIndexClient, storage.NewIndexStorageClient(fsObjectClient, "")
 }
 
-func buildTestTable(t *testing.T, tableName, path string) (*Table, *local.BoltIndexClient, stopFunc) {
+func buildTestTable(t *testing.T, path string) (*Table, *local.BoltIndexClient, stopFunc) {
 	boltDBIndexClient, storageClient := buildTestClients(t, path)
 	cachePath := filepath.Join(path, cacheDirName)
 
@@ -197,7 +197,7 @@ func TestTable_MultiQueries_Response(t *testing.T) {
 		NumUsers: 1,
 	})
 
-	table, _, stopFunc := buildTestTable(t, tableName, tempDir)
+	table, _, stopFunc := buildTestTable(t, tempDir)
 	defer func() {
 		stopFunc()
 	}()
@@ -267,7 +267,7 @@ func TestTable_EnsureQueryReadiness(t *testing.T) {
 	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 	testutil.SetupDBsAtPath(t, tablePathInStorage, dbsToSetup, true, nil)
 
-	table, _, stopFunc := buildTestTable(t, tableName, tempDir)
+	table, _, stopFunc := buildTestTable(t, tempDir)
 	defer func() {
 		stopFunc()
 	}()
@@ -322,7 +322,7 @@ func TestTable_Sync(t *testing.T) {
 	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName), testDBs, false, nil)
 
 	// create table instance
-	table, boltdbClient, stopFunc := buildTestTable(t, tableName, tempDir)
+	table, boltdbClient, stopFunc := buildTestTable(t, tempDir)
 	defer func() {
 		stopFunc()
 	}()
@@ -409,7 +409,7 @@ func TestTable_QueryResponse(t *testing.T) {
 	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, true, nil)
 	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, true, nil)
 
-	table, _, stopFunc := buildTestTable(t, tableName, tempDir)
+	table, _, stopFunc := buildTestTable(t, tempDir)
 	defer func() {
 		stopFunc()
 	}()
