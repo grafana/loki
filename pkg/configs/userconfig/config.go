@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -16,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	legacy_promql "github.com/grafana/loki/pkg/configs/legacy_promql"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // An ID is the ID of a single users's Cortex configuration. When a

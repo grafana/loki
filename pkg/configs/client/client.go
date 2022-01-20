@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	dstls "github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/flagext"
@@ -21,6 +20,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/configs/userconfig"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
