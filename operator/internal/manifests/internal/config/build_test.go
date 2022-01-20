@@ -8,6 +8,7 @@ import (
 )
 
 func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {
+	//  TODO: update the ruler's url
 	expCfg := `
 ---
 auth_enabled: true
@@ -16,6 +17,19 @@ chunk_store_config:
     enable_fifocache: true
     fifocache:
       max_size_bytes: 500MB
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /etc/loki/rules
+  ring:
+    kvstore:
+      store: memberlist
+  rule_path: /tmp/loki/scratch
+  remote_write:
+    enabled: true
+    client:
+      url: 
 compactor:
   compaction_interval: 2h
   shared_store: s3
@@ -216,7 +230,11 @@ overrides:
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
 		},
+		Prometheus: Prometheus{
+			Endpoint: "", //  TODO: update the endpoint
+		},
 	}
+
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
@@ -224,6 +242,7 @@ overrides:
 }
 
 func TestBuild_ConfigAndRuntimeConfig_BothGenerated(t *testing.T) {
+	//  TODO: update the ruler's url
 	expCfg := `
 ---
 auth_enabled: true
@@ -232,6 +251,19 @@ chunk_store_config:
     enable_fifocache: true
     fifocache:
       max_size_bytes: 500MB
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /etc/loki/rules
+  ring:
+    kvstore:
+      store: memberlist
+  rule_path: /tmp/loki/scratch
+  remote_write:
+    enabled: true
+    client:
+      url: 
 compactor:
   compaction_interval: 2h
   shared_store: s3
@@ -449,7 +481,11 @@ overrides:
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
 		},
+		Prometheus: Prometheus{
+			Endpoint: "", //  TODO: update the endpoint
+		},
 	}
+
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
@@ -509,6 +545,9 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 		WriteAheadLog: WriteAheadLog{
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
+		},
+		Prometheus: Prometheus{
+			Endpoint: "", //  TODO: update the endpoint
 		},
 	}
 	cfg, rCfg, err := Build(opts)

@@ -17,7 +17,7 @@ ruler:
   remote_write:
     enabled: true
     client:
-      url: {{ .Stack.Template.Ruler.PrometheusEndpoint }}
+      url: {{ .Prometheus.Endpoint }}
 compactor:
   compaction_interval: 2h
   shared_store: s3
