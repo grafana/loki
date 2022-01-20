@@ -61,7 +61,7 @@ The current team members are:
 - Tom Braack - [sh0rez](https://github.com/sh0rez) ([Grafana Labs](https://grafana.com/))
 - Tom Wilkie - [tomwilkie](https://github.com/tomwilkie) ([Grafana Labs](https://grafana.com/))
 
-The current SIG operator team members are:
+The current Loki SIG Operator team members are:
 - Brett Jones - [blockloop](https://github.com/blockloop/) ([InVision](https://www.invisionapp.com/))
 - Cyril Tovena - [cyriltovena](https://github.com/cyriltovena) ([Grafana Labs](https://grafana.com/))
 - Gerard Vanloo - [Red-GV](https://github.com/Red-GV) ([IBM](https://www.ibm.com))
