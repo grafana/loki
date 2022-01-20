@@ -28,6 +28,10 @@ const (
 	limitErrTmpl = "maximum of series (%d) reached for a single query"
 )
 
+var (
+	ErrMaxQueryParalellism = fmt.Errorf("proto: max query parallelism")
+)
+
 // Limits extends the cortex limits interface with support for per tenant splitby parameters
 type Limits interface {
 	queryrangebase.Limits
@@ -282,6 +286,9 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 
 	parallelism := rt.limits.MaxQueryParallelism(userid)
+	if parallelism < 1 {
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, ErrMaxQueryParalellism.Error())
+	}
 
 	for i := 0; i < parallelism; i++ {
 		wg.Add(1)

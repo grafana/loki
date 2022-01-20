@@ -571,9 +571,6 @@ func (f fakeLimits) MaxQueryLength(string) time.Duration {
 }
 
 func (f fakeLimits) MaxQueryParallelism(string) int {
-	if f.maxQueryParallelism == 0 {
-		return 1
-	}
 	return f.maxQueryParallelism
 }
 

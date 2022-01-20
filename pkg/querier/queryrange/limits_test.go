@@ -207,6 +207,35 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	).RoundTrip(r)
 }
 
+func Test_MaxQueryParallelismDisable(t *testing.T) {
+	maxQueryParallelism := 0
+	f, err := newfakeRoundTripper()
+	require.Nil(t, err)
+
+	f.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		// simulate some work
+		time.Sleep(20 * time.Millisecond)
+	}))
+	ctx := user.InjectOrgID(context.Background(), "foo")
+
+	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
+	require.Nil(t, err)
+
+	_, err = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+				for i := 0; i < 10; i++ {
+					go func() {
+						_, _ = next.Do(c, &LokiRequest{})
+					}()
+				}
+				return nil, nil
+			})
+		}),
+	).RoundTrip(r)
+	require.Error(t, err)
+}
+
 func Test_MaxQueryLookBack(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{
 		maxQueryLookback: 1 * time.Hour,
