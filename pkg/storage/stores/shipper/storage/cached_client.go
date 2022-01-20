@@ -33,15 +33,38 @@ type cachedObjectClient struct {
 	tablesMtx    sync.RWMutex
 	cacheBuiltAt time.Time
 
-	rebuildCacheChan chan struct{}
-	err              error
+	buildCacheChan chan struct{}
+	buildCacheWg   sync.WaitGroup
+	err            error
 }
 
 func newCachedObjectClient(downstreamClient chunk.ObjectClient) *cachedObjectClient {
 	return &cachedObjectClient{
-		ObjectClient:     downstreamClient,
-		tables:           map[string]*table{},
-		rebuildCacheChan: make(chan struct{}, 1),
+		ObjectClient:   downstreamClient,
+		tables:         map[string]*table{},
+		buildCacheChan: make(chan struct{}, 1),
+	}
+}
+
+// buildCacheOnce makes sure we build the cache just once when it is called concurrently.
+// We have a buffered channel here with a capacity of 1 to make sure only one concurrent call makes it through.
+// We also have a sync.WaitGroup to make sure all the concurrent calls to buildCacheOnce wait until the cache gets rebuilt since
+// we are doing read-through cache, and we do not want to serve stale results.
+func (c *cachedObjectClient) buildCacheOnce(ctx context.Context) {
+	c.buildCacheWg.Add(1)
+	defer c.buildCacheWg.Done()
+
+	// when the cache is expired, only one concurrent call must be able to rebuild it
+	// all other calls will wait until the cache is built successfully or failed with an error
+	select {
+	case c.buildCacheChan <- struct{}{}:
+		c.err = nil
+		c.err = c.buildCache(ctx)
+		<-c.buildCacheChan
+		if c.err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to build cache", "err", c.err)
+		}
+	default:
 	}
 }
 
@@ -53,22 +76,11 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]chun
 	}
 
 	if time.Since(c.cacheBuiltAt) >= cacheTimeout {
-		// when the cache is expired, only one concurrent call must be able to rebuild it
-		// all other calls will wait until the cache is built successfully or failed with an error
-		select {
-		case c.rebuildCacheChan <- struct{}{}:
-			c.err = nil
-			c.err = c.buildCache(ctx)
-			<-c.rebuildCacheChan
-			if c.err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to build cache", "err", c.err)
-			}
-		default:
-			for time.Since(c.cacheBuiltAt) >= cacheTimeout && c.err == nil {
-				time.Sleep(time.Millisecond)
-			}
-		}
+		c.buildCacheOnce(ctx)
 	}
+
+	// wait for cache build operation to finish, if running
+	c.buildCacheWg.Wait()
 
 	if c.err != nil {
 		return nil, nil, c.err
@@ -77,33 +89,37 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]chun
 	c.tablesMtx.RLock()
 	defer c.tablesMtx.RUnlock()
 
+	// list of tables were requested
 	if prefix == "" {
 		return []chunk.StorageObject{}, c.tableNames, nil
-	} else if len(ss) == 1 {
+	}
+
+	// common objects and list of users having objects in a table were requested
+	if len(ss) == 1 {
 		tableName := ss[0]
-		table, ok := c.tables[tableName]
-		if !ok {
-			return []chunk.StorageObject{}, []chunk.StorageCommonPrefix{}, nil
+		if table, ok := c.tables[tableName]; ok {
+			return table.commonObjects, table.userIDs, nil
 		}
 
-		return table.commonObjects, table.userIDs, nil
-	} else {
-		tableName := ss[0]
-		table, ok := c.tables[tableName]
-		if !ok {
-			return []chunk.StorageObject{}, []chunk.StorageCommonPrefix{}, nil
-		}
+		return []chunk.StorageObject{}, []chunk.StorageCommonPrefix{}, nil
+	}
 
-		userID := ss[1]
-		objects, ok := table.userObjects[userID]
-		if !ok {
-			return []chunk.StorageObject{}, []chunk.StorageCommonPrefix{}, nil
-		}
+	// user objects in a table were requested
+	tableName := ss[0]
+	table, ok := c.tables[tableName]
+	if !ok {
+		return []chunk.StorageObject{}, []chunk.StorageCommonPrefix{}, nil
+	}
 
+	userID := ss[1]
+	if objects, ok := table.userObjects[userID]; ok {
 		return objects, []chunk.StorageCommonPrefix{}, nil
 	}
+
+	return []chunk.StorageObject{}, []chunk.StorageCommonPrefix{}, nil
 }
 
+// buildCache builds the cache if expired
 func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 	if time.Since(c.cacheBuiltAt) < cacheTimeout {
 		return nil
@@ -125,6 +141,7 @@ func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 		if len(ss) < 2 || len(ss) > 3 {
 			return fmt.Errorf("invalid key: %s", object.Key)
 		}
+		
 		tableName := ss[0]
 		tbl, ok := c.tables[tableName]
 		if !ok {
