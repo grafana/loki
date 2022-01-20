@@ -50,7 +50,7 @@ var (
 
 const (
 	// ringKey is the key under which we store the rulers ring in the KVStore.
-	ringKey = "ring"
+	ringKey = "rulers"
 
 	// Number of concurrent group list and group loads operations.
 	loadRulesConcurrency  = 10
