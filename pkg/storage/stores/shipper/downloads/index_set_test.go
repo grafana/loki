@@ -9,11 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const tableName = "test"

@@ -14,7 +14,7 @@ All components of Loki expose the following metrics:
 
 | Metric Name                     | Metric Type | Description                              |
 | ------------------------------- | ----------- | ---------------------------------------- |
-| `log_messages_total`            | Counter     | Total number of messages logged by Loki. |
+| `loki_log_messages_total`       | Counter     | Total number of messages logged by Loki. |
 | `loki_request_duration_seconds` | Histogram   | Number of received HTTP requests.        |
 
 The Loki Distributors expose the following metrics:

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -13,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // LazyChunk loads the chunk when it is accessed.
