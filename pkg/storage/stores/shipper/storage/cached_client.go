@@ -141,7 +141,7 @@ func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 		if len(ss) < 2 || len(ss) > 3 {
 			return fmt.Errorf("invalid key: %s", object.Key)
 		}
-		
+
 		tableName := ss[0]
 		tbl, ok := c.tables[tableName]
 		if !ok {
