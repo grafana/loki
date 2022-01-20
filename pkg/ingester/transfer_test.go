@@ -55,7 +55,7 @@ func TestTransferOut(t *testing.T) {
 
 	assert.Len(t, ing.instances, 1)
 	if assert.Contains(t, ing.instances, "test") {
-		assert.Len(t, ing.instances["test"].streams, 2)
+		assert.Equal(t, ing.instances["test"].streams.Len(), 2)
 	}
 
 	// Create a new ingester and transfer data to it
@@ -65,31 +65,31 @@ func TestTransferOut(t *testing.T) {
 
 	assert.Len(t, ing2.instances, 1)
 	if assert.Contains(t, ing2.instances, "test") {
-		assert.Len(t, ing2.instances["test"].streams, 2)
+		assert.Equal(t, ing2.instances["test"].streams.Len(), 2)
 
 		lines := []string{}
 
 		// Get all the lines back and make sure the blocks transferred successfully
-		ing2.instances["test"].streamsMtx.RLock()
-		for _, stream := range ing2.instances["test"].streams {
-			it, err := stream.Iterator(
+		_ = ing2.instances["test"].streams.ForEach(func(s *stream) (bool, error) {
+			it, err := s.Iterator(
 				context.TODO(),
 				nil,
 				time.Unix(0, 0),
 				time.Unix(10, 0),
 				logproto.FORWARD,
-				log.NewNoopPipeline().ForStream(stream.labels),
+				log.NewNoopPipeline().ForStream(s.labels),
 			)
 			if !assert.NoError(t, err) {
-				continue
+				return true, nil
 			}
 
 			for it.Next() {
 				entry := it.Entry()
 				lines = append(lines, entry.Line)
 			}
-		}
-		ing2.instances["test"].streamsMtx.RUnlock()
+			return true, nil
+		})
+
 		sort.Strings(lines)
 
 		assert.Equal(

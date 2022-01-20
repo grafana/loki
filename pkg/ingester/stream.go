@@ -176,9 +176,14 @@ func (s *stream) Push(
 	// with a counter value less than or equal to it's own.
 	// It is set to zero and thus bypassed outside of WAL replays.
 	counter int64,
+	// Lock chunkMtx while pushing.
+	// If this is false, chunkMtx must be held outside Push.
+	lockChunk bool,
 ) (int, error) {
-	s.chunkMtx.Lock()
-	defer s.chunkMtx.Unlock()
+	if lockChunk {
+		s.chunkMtx.Lock()
+		defer s.chunkMtx.Unlock()
+	}
 
 	isReplay := counter > 0
 	if isReplay && counter <= s.entryCt {
