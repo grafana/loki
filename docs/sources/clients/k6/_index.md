@@ -1,5 +1,5 @@
 ---
-title: k6 Loki Extension
+title: k6
 weight: 90
 ---
 # k6 Loki Extension

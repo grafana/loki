@@ -1,5 +1,6 @@
 ---
 title: Query scenario
+weight: 30
 ---
 
 # Running the queries using xk6-loki extension

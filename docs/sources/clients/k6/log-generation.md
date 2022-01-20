@@ -1,7 +1,8 @@
 ---
-title: Log Generation
+title: Log generation
+weight: 10
 ---
-# Log Generation
+# Log generation
 
 When pushing logs using the method `pushParametrized()` the Loki extension will
 generate batches of streams in a random fashion. This function takes three
