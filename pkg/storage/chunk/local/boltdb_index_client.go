@@ -238,12 +238,16 @@ func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, cal
 		return err
 	}
 
-	return b.QueryDB(ctx, db, query, callback)
+	return b.QueryDB(ctx, db, defaultBucketName, query, callback)
 }
 
-func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query chunk.IndexQuery,
+	callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	return db.View(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket(defaultBucketName)
+		if len(bucketName) == 0 {
+			bucketName = defaultBucketName
+		}
+		bucket := tx.Bucket(bucketName)
 		if bucket == nil {
 			return nil
 		}

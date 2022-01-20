@@ -183,7 +183,7 @@ func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery,
 		return err
 	}
 
-	userIDBytes := []byte(userID)
+	userIDBytes := shipper_util.YoloBuf(userID)
 
 	err = t.dbsMtx.rLock(ctx)
 	if err != nil {

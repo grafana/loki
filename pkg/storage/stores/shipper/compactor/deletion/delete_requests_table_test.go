@@ -45,7 +45,7 @@ func TestDeleteRequestsTable(t *testing.T) {
 	require.NoError(t, testDeleteRequestsTable.BatchWrite(context.Background(), batch))
 
 	// see if right records were written
-	testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, testDeleteRequestsTable.db, testDeleteRequestsTable.boltdbIndexClient, 0, 10)
+	testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, testDeleteRequestsTable.db, nil, testDeleteRequestsTable.boltdbIndexClient, 0, 10)
 
 	// upload the file to the storage
 	require.NoError(t, testDeleteRequestsTable.uploadFile())
@@ -78,7 +78,7 @@ func TestDeleteRequestsTable(t *testing.T) {
 	require.NotEmpty(t, testDeleteRequestsTable.dbPath)
 
 	// validate records in local db
-	testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, testDeleteRequestsTable.db, testDeleteRequestsTable.boltdbIndexClient, 0, 20)
+	testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, testDeleteRequestsTable.db, nil, testDeleteRequestsTable.boltdbIndexClient, 0, 20)
 }
 
 func checkRecordsInStorage(t *testing.T, storageFilePath string, start, numRecords int) {
@@ -104,5 +104,5 @@ func checkRecordsInStorage(t *testing.T, storageFilePath string, start, numRecor
 
 	defer boltdbIndexClient.Stop()
 
-	testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, tempDB, boltdbIndexClient, start, numRecords)
+	testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, tempDB, nil, boltdbIndexClient, start, numRecords)
 }

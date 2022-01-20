@@ -183,7 +183,7 @@ func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch chunk.WriteB
 
 func (t *deleteRequestsTable) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	for _, query := range queries {
-		if err := t.boltdbIndexClient.QueryDB(ctx, t.db, query, callback); err != nil {
+		if err := t.boltdbIndexClient.QueryDB(ctx, t.db, nil, query, callback); err != nil {
 			return err
 		}
 	}

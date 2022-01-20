@@ -64,16 +64,16 @@ func TestSingleTableQuery(t *testing.T, userID string, queries []chunk.IndexQuer
 }
 
 type SingleDBQuerier interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 }
 
-func TestSingleDBQuery(t *testing.T, query chunk.IndexQuery, db *bbolt.DB, querier SingleDBQuerier, start, numRecords int) {
+func TestSingleDBQuery(t *testing.T, query chunk.IndexQuery, db *bbolt.DB, bucketName []byte, querier SingleDBQuerier, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
 	fetchedRecords := make(map[string]string)
 
-	err := querier.QueryDB(context.Background(), db, query, makeTestCallback(t, minValue, maxValue, fetchedRecords))
+	err := querier.QueryDB(context.Background(), db, bucketName, query, makeTestCallback(t, minValue, maxValue, fetchedRecords))
 
 	require.NoError(t, err)
 	require.Len(t, fetchedRecords, numRecords)

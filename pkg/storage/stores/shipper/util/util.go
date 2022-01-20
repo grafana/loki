@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"unsafe"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
@@ -246,4 +247,8 @@ func IsCompressedFile(filename string) bool {
 
 func LoggerWithFilename(logger log.Logger, filename string) log.Logger {
 	return log.With(logger, "file-name", filename)
+}
+
+func YoloBuf(s string) []byte {
+	return *((*[]byte)(unsafe.Pointer(&s)))
 }
