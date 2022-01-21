@@ -78,6 +78,9 @@ func ConfigOptions(opt Options) config.Options {
 			Directory:             walDirectory,
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
+		Prometheus: config.Prometheus{
+			Endpoint: "", // TODO: update the endpoint
+		},
 	}
 }
 
