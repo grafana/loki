@@ -46,6 +46,34 @@ For more information on adding `log-filter` refer this [document](https://cloud.
 
 We cover more advanced `log-filter` [below](#Advanced-Log-filter)
 
+## Grant Log Sink the Pub/Sub Publisher role to the topic.
+
+First we need to find the writer identity service account of the log sink that we just created
+
+```bash
+$ gcloud logging sinks describe \
+ --format='value(writerIdentity)' $SINK_NAME
+```
+
+e.g:
+```bash
+$ gcloud logging sinks describe \
+ --format='value(writerIdentity)' cloud-logs
+```
+
+Then we create a IAM policy binding to allow log sink to publish messages to the topic.
+
+```bash
+$ gcloud pubsub topics add-iam-policy-binding $TOPIC_ID \
+--member=$WRITER_IDENTITY --role=roles/pubsub.publisher
+```
+
+e.g.:
+```bash
+$ gcloud pubsub topics add-iam-policy-binding cloud-logs \
+--member=serviceAccount:p97323568341-442148@gcp-sa-logging.iam.gserviceaccount.com --role=roles/pubsub.publisher
+```
+
 ## Create Pubsub subscription for Grafana Loki
 
 We create subscription for the pubsub topic we create above and Promtail uses this subscription to consume log messages.
@@ -58,9 +86,9 @@ $ gcloud pubsub subscriptions create cloud-logs --topic=$TOPIC_ID \
 
 e.g:
 ```bash
-$ gcloud pubsub subscriptions create cloud-logs --topic=pubsub.googleapis.com/projects/my-project/topics/cloud-logs \
---ack-deadline=10s \
---message-retention-duration=7d \
+$ gcloud pubsub subscriptions create cloud-logs --topic=projects/my-project/topics/cloud-logs \
+--ack-deadline=10 \
+--message-retention-duration=7d
 ```
 
 For more fine grained options, refer to the `gcloud pubsub subscriptions --help`
