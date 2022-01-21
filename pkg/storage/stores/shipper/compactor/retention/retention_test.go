@@ -165,7 +165,7 @@ func Test_Retention(t *testing.T) {
 			for i, e := range tt.alive {
 				require.Equal(t, e, store.HasChunk(tt.chunks[i]), "chunk %d should be %t", i, e)
 				if !e {
-					expectDeleted = append(expectDeleted, tt.chunks[i].ExternalKey())
+					expectDeleted = append(expectDeleted, store.schemaCfg.ExternalKey(tt.chunks[i]))
 				}
 			}
 			sort.Strings(expectDeleted)
@@ -370,7 +370,7 @@ func TestChunkRewriter(t *testing.T) {
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{tt.chunk}))
 			store.Stop()
 
-			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.Base64Encoder)
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.Base64Encoder, schemaCfg.SchemaConfig)
 			for _, indexTable := range store.indexTables() {
 				err := indexTable.DB.Update(func(tx *bbolt.Tx) error {
 					bucket := tx.Bucket(bucketName)
@@ -381,7 +381,7 @@ func TestChunkRewriter(t *testing.T) {
 					cr, err := newChunkRewriter(chunkClient, store.schemaCfg.SchemaConfig.Configs[0], indexTable.name, bucket)
 					require.NoError(t, err)
 
-					wroteChunks, err := cr.rewriteChunk(context.Background(), entryFromChunk(tt.chunk), tt.rewriteIntervals)
+					wroteChunks, err := cr.rewriteChunk(context.Background(), entryFromChunk(store.schemaCfg.SchemaConfig, tt.chunk), tt.rewriteIntervals)
 					require.NoError(t, err)
 					if len(tt.rewriteIntervals) == 0 {
 						require.False(t, wroteChunks)
@@ -400,7 +400,7 @@ func TestChunkRewriter(t *testing.T) {
 			for _, interval := range tt.rewriteIntervals {
 				expectedChk := createChunk(t, tt.chunk.UserID, labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, interval.Start, interval.End)
 				for i, chk := range chunks {
-					if chk.ExternalKey() == expectedChk.ExternalKey() {
+					if store.schemaCfg.ExternalKey(chk) == store.schemaCfg.ExternalKey(expectedChk) {
 						chunks = append(chunks[:i], chunks[i+1:]...)
 						break
 					}
@@ -409,7 +409,7 @@ func TestChunkRewriter(t *testing.T) {
 
 			// the source chunk should still be there in the store
 			require.Len(t, chunks, 1)
-			require.Equal(t, tt.chunk.ExternalKey(), chunks[0].ExternalKey())
+			require.Equal(t, store.schemaCfg.ExternalKey(tt.chunk), store.schemaCfg.ExternalKey(chunks[0]))
 			store.Stop()
 		})
 	}
@@ -639,7 +639,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			require.NoError(t, store.Put(context.TODO(), tc.chunks))
 			chunksExpiry := map[string]chunkExpiry{}
 			for i, chunk := range tc.chunks {
-				chunksExpiry[chunk.ExternalKey()] = tc.expiry[i]
+				chunksExpiry[store.schemaCfg.ExternalKey(chunk)] = tc.expiry[i]
 			}
 
 			expirationChecker := newMockExpirationChecker(chunksExpiry)
@@ -649,7 +649,11 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			tables := store.indexTables()
 			require.Len(t, tables, len(tc.expectedDeletedSeries))
 
+<<<<<<< HEAD
 			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.Base64Encoder)
+=======
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir), objectclient.Base64Encoder, schemaCfg.SchemaConfig)
+>>>>>>> main
 
 			for i, table := range tables {
 				seriesCleanRecorder := newSeriesCleanRecorder()

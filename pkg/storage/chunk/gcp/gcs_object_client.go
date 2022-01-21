@@ -23,8 +23,8 @@ type ClientFactory func(ctx context.Context, opts ...option.ClientOption) (*stor
 type GCSObjectClient struct {
 	cfg GCSConfig
 
-	bucket        *storage.BucketHandle
-	hedgingBucket *storage.BucketHandle
+	defaultBucket *storage.BucketHandle
+	getsBuckets   *storage.BucketHandle
 }
 
 // GCSConfig is config for the GCS Chunk Client.
@@ -67,30 +67,33 @@ func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.C
 }
 
 func newGCSObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config, clientFactory ClientFactory) (*GCSObjectClient, error) {
-	bucket, err := newBucketHandle(ctx, cfg, hedgingCfg, false, clientFactory)
+	// Disabling http2 and hedging is not allowed for POST/LIST/DELETE requests.
+	// This is because there's no benefit for these requests.
+	// Those requests are handled by the default bucket handle.
+	bucket, err := newBucketHandle(ctx, cfg, hedgingCfg, true, false, clientFactory)
 	if err != nil {
 		return nil, err
 	}
-	hedgingBucket, err := newBucketHandle(ctx, cfg, hedgingCfg, true, clientFactory)
+	getsBucket, err := newBucketHandle(ctx, cfg, hedgingCfg, cfg.EnableHTTP2, true, clientFactory)
 	if err != nil {
 		return nil, err
 	}
 	return &GCSObjectClient{
 		cfg:           cfg,
-		bucket:        bucket,
-		hedgingBucket: hedgingBucket,
+		defaultBucket: bucket,
+		getsBuckets:   getsBucket,
 	}, nil
 }
 
-func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config, hedging bool, clientFactory ClientFactory) (*storage.BucketHandle, error) {
+func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config, enableHTTP2, hedging bool, clientFactory ClientFactory) (*storage.BucketHandle, error) {
 	var opts []option.ClientOption
-	httpClient, err := gcsInstrumentation(ctx, storage.ScopeReadWrite, cfg.Insecure, cfg.EnableHTTP2)
+	httpClient, err := gcsInstrumentation(ctx, storage.ScopeReadWrite, cfg.Insecure, enableHTTP2)
 	if err != nil {
 		return nil, err
 	}
 
 	if hedging {
-		httpClient, err = hedgingCfg.ClientWithRegisterer(httpClient, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
+		httpClient, err = hedgingCfg.ClientWithRegisterer(httpClient, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +133,7 @@ func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 }
 
 func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, size int64, err error) {
-	reader, err := s.hedgingBucket.Object(objectKey).NewReader(ctx)
+	reader, err := s.getsBuckets.Object(objectKey).NewReader(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -140,7 +143,7 @@ func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc i
 
 // PutObject puts the specified bytes into the configured GCS bucket at the provided key
 func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	writer := s.bucket.Object(objectKey).NewWriter(ctx)
+	writer := s.defaultBucket.Object(objectKey).NewWriter(ctx)
 	// Default GCSChunkSize is 8M and for each call, 8M is allocated xD
 	// By setting it to 0, we just upload the object in a single a request
 	// which should work for our chunk sizes.
@@ -170,7 +173,7 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 		}
 	}
 
-	iter := s.bucket.Objects(ctx, q)
+	iter := s.defaultBucket.Objects(ctx, q)
 	for {
 		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()
@@ -201,7 +204,7 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 
 // DeleteObject deletes the specified object key from the configured GCS bucket.
 func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
-	err := s.bucket.Object(objectKey).Delete(ctx)
+	err := s.defaultBucket.Object(objectKey).Delete(ctx)
 	if err != nil {
 		return err
 	}

@@ -49,8 +49,8 @@ func Test_ChunkIterator(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.Equal(t, []ChunkEntry{
-				entryFromChunk(c1),
-				entryFromChunk(c2),
+				entryFromChunk(store.schemaCfg.SchemaConfig, c1),
+				entryFromChunk(store.schemaCfg.SchemaConfig, c2),
 			}, actual)
 
 			// second pass we delete c2
@@ -65,7 +65,7 @@ func Test_ChunkIterator(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.Equal(t, []ChunkEntry{
-				entryFromChunk(c1),
+				entryFromChunk(store.schemaCfg.SchemaConfig, c1),
 			}, actual)
 		})
 	}
@@ -77,6 +77,7 @@ func Test_SeriesCleaner(t *testing.T) {
 		t.Run(tt.schema, func(t *testing.T) {
 			cm := storage.NewClientMetrics()
 			defer cm.Unregister()
+			testSchema := chunk.SchemaConfig{Configs: []chunk.PeriodConfig{tt.config}}
 			store := newTestStore(t, cm)
 			c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
 			c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, tt.from, tt.from.Add(1*time.Hour))
@@ -106,19 +107,19 @@ func Test_SeriesCleaner(t *testing.T) {
 
 			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
 				cleaner := newSeriesCleaner(tx.Bucket(bucketName), tt.config, tables[0].name)
-				if err := cleaner.Cleanup(entryFromChunk(c2).UserID, c2.Metric); err != nil {
+				if err := cleaner.Cleanup(entryFromChunk(testSchema, c2).UserID, c2.Metric); err != nil {
 					return err
 				}
 
 				// remove series for c1 without __name__ label, which should work just fine
-				return cleaner.Cleanup(entryFromChunk(c1).UserID, c1.Metric.WithoutLabels(labels.MetricName))
+				return cleaner.Cleanup(entryFromChunk(testSchema, c1).UserID, c1.Metric.WithoutLabels(labels.MetricName))
 			})
 			require.NoError(t, err)
 
 			err = tables[0].DB.View(func(tx *bbolt.Tx) error {
 				return tx.Bucket(bucketName).ForEach(func(k, _ []byte) error {
-					c1SeriesID := entryFromChunk(c1).SeriesID
-					c2SeriesID := entryFromChunk(c2).SeriesID
+					c1SeriesID := entryFromChunk(testSchema, c1).SeriesID
+					c2SeriesID := entryFromChunk(testSchema, c2).SeriesID
 					series, ok, err := parseLabelIndexSeriesID(decodeKey(k))
 					if !ok {
 						return nil
@@ -141,12 +142,12 @@ func Test_SeriesCleaner(t *testing.T) {
 	}
 }
 
-func entryFromChunk(c chunk.Chunk) ChunkEntry {
+func entryFromChunk(s chunk.SchemaConfig, c chunk.Chunk) ChunkEntry {
 	return ChunkEntry{
 		ChunkRef: ChunkRef{
 			UserID:   []byte(c.UserID),
 			SeriesID: labelsSeriesID(c.Metric),
-			ChunkID:  []byte(c.ExternalKey()),
+			ChunkID:  []byte(s.ExternalKey(c)),
 			From:     c.From,
 			Through:  c.Through,
 		},

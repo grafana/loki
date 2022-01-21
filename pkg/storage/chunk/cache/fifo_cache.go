@@ -8,7 +8,6 @@ import (
 	"time"
 	"unsafe"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -16,6 +15,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -92,7 +93,7 @@ type cacheEntry struct {
 
 // NewFifoCache returns a new initialised FifoCache of size.
 func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, logger log.Logger) *FifoCache {
-	util_log.WarnExperimentalUse("In-memory (FIFO) cache")
+	util_log.WarnExperimentalUse("In-memory (FIFO) cache", logger)
 
 	if cfg.DeprecatedSize > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
@@ -180,7 +181,7 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 }
 
 // Fetch implements Cache.
-func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string) {
+func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
 	found, missing, bufs = make([]string, 0, len(keys)), make([]string, 0, len(keys)), make([][]byte, 0, len(keys))
 	for _, key := range keys {
 		val, ok := c.Get(ctx, key)
@@ -196,7 +197,7 @@ func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, b
 }
 
 // Store implements Cache.
-func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) {
+func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) error {
 	c.entriesAdded.Inc()
 
 	c.lock.Lock()
@@ -205,6 +206,7 @@ func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) {
 	for i := range keys {
 		c.put(keys[i], values[i])
 	}
+	return nil
 }
 
 // Stop implements Cache.

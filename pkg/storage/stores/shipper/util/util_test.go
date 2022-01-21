@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func Test_GetFileFromStorage(t *testing.T) {
@@ -35,7 +37,10 @@ func Test_GetFileFromStorage(t *testing.T) {
 
 	indexStorageClient := storage.NewIndexStorageClient(objectClient, "")
 
-	require.NoError(t, GetFileFromStorage(context.Background(), indexStorageClient, tableName, "src", filepath.Join(tempDir, "dest"), false))
+	require.NoError(t, DownloadFileFromStorage(filepath.Join(tempDir, "dest"), false,
+		false, util_log.Logger, func() (io.ReadCloser, error) {
+			return indexStorageClient.GetFile(context.Background(), tableName, "src")
+		}))
 
 	// verify the contents of the downloaded file.
 	b, err := ioutil.ReadFile(filepath.Join(tempDir, "dest"))
@@ -48,7 +53,10 @@ func Test_GetFileFromStorage(t *testing.T) {
 	require.NoError(t, err)
 
 	// get the compressed file from storage
-	require.NoError(t, GetFileFromStorage(context.Background(), indexStorageClient, tableName, "src.gz", filepath.Join(tempDir, "dest.gz"), false))
+	require.NoError(t, DownloadFileFromStorage(filepath.Join(tempDir, "dest.gz"), true,
+		false, util_log.Logger, func() (io.ReadCloser, error) {
+			return indexStorageClient.GetFile(context.Background(), tableName, "src.gz")
+		}))
 
 	// verify the contents of the downloaded gz file.
 	b, err = ioutil.ReadFile(filepath.Join(tempDir, "dest.gz"))

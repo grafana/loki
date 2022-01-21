@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
@@ -30,7 +29,12 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
+)
+
+const (
+	ringKey = "distributor"
 )
 
 var maxLabelCacheSize = 100000
@@ -113,7 +117,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 			return nil, errors.Wrap(err, "create distributor KV store client")
 		}
 
-		distributorsLifecycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+		distributorsLifecycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
 		if err != nil {
 			return nil, errors.Wrap(err, "create distributor lifecycler")
 		}

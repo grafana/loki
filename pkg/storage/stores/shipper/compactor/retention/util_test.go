@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -25,6 +24,7 @@ import (
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -164,9 +164,9 @@ func (t *testStore) HasChunk(c chunk.Chunk) bool {
 
 	chunkIDs := make(map[string]struct{})
 	for _, chk := range chunks {
-		chunkIDs[chk.ExternalKey()] = struct{}{}
+		chunkIDs[t.schemaCfg.ExternalKey(chk)] = struct{}{}
 	}
-	return len(chunkIDs) == 1 && c.ExternalKey() == chunks[0].ExternalKey()
+	return len(chunkIDs) == 1 && t.schemaCfg.ExternalKey(c) == t.schemaCfg.ExternalKey(chunks[0])
 }
 
 func (t *testStore) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
@@ -204,7 +204,7 @@ func newTestStore(t testing.TB, clientMetrics chunk_storage.ClientMetrics) *test
 	t.Helper()
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg)
+	util_log.InitLogger(cfg, nil)
 	workdir := t.TempDir()
 	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")

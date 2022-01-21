@@ -64,35 +64,34 @@ type instrumentedCache struct {
 	requestDuration                   *instr.HistogramCollector
 }
 
-func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
+func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
 	for j := range bufs {
 		i.storedValueSize.Observe(float64(len(bufs[j])))
 	}
 
 	method := i.name + ".store"
-	_ = instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
+	return instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys", len(keys)))
-		i.Cache.Store(ctx, keys, bufs)
-		return nil
+		return i.Cache.Store(ctx, keys, bufs)
 	})
 }
 
-func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string) {
+func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
 	var (
-		found   []string
-		bufs    [][]byte
-		missing []string
-		method  = i.name + ".fetch"
+		found    []string
+		bufs     [][]byte
+		missing  []string
+		fetchErr error
+		method   = i.name + ".fetch"
 	)
 
-	_ = instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
+	err := instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
-
-		found, bufs, missing = i.Cache.Fetch(ctx, keys)
+		found, bufs, missing, fetchErr = i.Cache.Fetch(ctx, keys)
 		sp.LogFields(otlog.Int("keys found", len(found)), otlog.Int("keys missing", len(keys)-len(found)))
-		return nil
+		return fetchErr
 	})
 
 	i.fetchedKeys.Add(float64(len(keys)))
@@ -101,7 +100,7 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		i.fetchedValueSize.Observe(float64(len(bufs[j])))
 	}
 
-	return found, bufs, missing
+	return found, bufs, missing, err
 }
 
 func (i *instrumentedCache) Stop() {

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/config"
 	"gopkg.in/yaml.v2"
 
+	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
 )
@@ -73,6 +73,12 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 		return nil, err
 	}
 
+	// BasicAuth.Password has a type of Secret (github.com/prometheus/common/config/config.go),
+	// so when its value is marshaled it is obfuscated as "<secret>".
+	// Here we copy the original password into the cloned config.
+	if n.Client.HTTPClientConfig.BasicAuth != nil {
+		n.Client.HTTPClientConfig.BasicAuth.Password = c.Client.HTTPClientConfig.BasicAuth.Password
+	}
 	return n, nil
 }
 

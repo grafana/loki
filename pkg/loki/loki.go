@@ -9,10 +9,7 @@ import (
 	"os"
 	rt "runtime"
 
-	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
-	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -37,8 +34,10 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	basetripper "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
+	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
@@ -48,15 +47,17 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/util/fakeauth"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 // Config is the root config for Loki.
 type Config struct {
-	Target      flagext.StringSliceCSV `yaml:"target,omitempty"`
-	AuthEnabled bool                   `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix  string                 `yaml:"http_prefix"`
+	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
+	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
+	HTTPPrefix   string                 `yaml:"http_prefix"`
+	BallastBytes int                    `yaml:"ballast_bytes"`
 
 	Common           common.Config            `yaml:"common,omitempty"`
 	Server           server.Config            `yaml:"server,omitempty"`
@@ -91,6 +92,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
 		"The aliases 'read' and 'write' can be used to only run components related to the read path or write path, respectively.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
+	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
+		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
@@ -106,7 +109,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
-	c.QueryRange.RegisterFlags(f)
+	c.registerQueryRangeFlagsWithChangedDefaultValues(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
@@ -135,6 +138,28 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 	})
 }
 
+func (c *Config) registerQueryRangeFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
+	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
+	// NB: We can remove this after removing Loki's dependency on Cortex and bringing in the queryrange.Config.
+	// That will let us change the defaults there rather than include wrapper functions like this one.
+	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
+	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
+	c.QueryRange.RegisterFlags(throwaway)
+
+	throwaway.VisitAll(func(f *flag.Flag) {
+		// Ignore errors when setting new values. We have a test to verify that it works.
+		switch f.Name {
+		case "querier.split-queries-by-interval":
+			_ = f.Value.Set("30m")
+
+		case "querier.parallelise-shardable-queries":
+			_ = f.Value.Set("true")
+		}
+
+		fs.Var(f.Value, f.Name, f.Usage)
+	})
+}
+
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
 // This is primarily used to parse a different flag set without mutating the original *Config.
 func (c *Config) Clone() flagext.Registerer {
@@ -154,6 +179,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid queryrange config")
+	}
+	if err := c.Querier.Validate(); err != nil {
+		return errors.Wrap(err, "invalid querier config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tablemanager config")
@@ -227,14 +255,14 @@ type Loki struct {
 	Store                    storage.Store
 	tableManager             *chunk.TableManager
 	frontend                 Frontend
-	ruler                    *cortex_ruler.Ruler
+	ruler                    *base_ruler.Ruler
 	RulerStorage             rulestore.RuleStore
-	rulerAPI                 *cortex_ruler.API
+	rulerAPI                 *base_ruler.API
 	stopper                  queryrange.Stopper
 	runtimeConfig            *runtimeconfig.Manager
 	MemberlistKV             *memberlist.KVInitService
 	compactor                *compactor.Compactor
-	QueryFrontEndTripperware cortex_tripper.Tripperware
+	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
 
 	clientMetrics chunk_storage.ClientMetrics

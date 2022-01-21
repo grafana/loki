@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
@@ -18,7 +16,9 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
 
@@ -30,7 +30,7 @@ func TestLimits(t *testing.T) {
 	require.Equal(t, l.QuerySplitDuration("a"), time.Minute)
 	require.Equal(t, l.QuerySplitDuration("b"), time.Duration(0))
 
-	wrapped := WithDefaultLimits(l, queryrange.Config{
+	wrapped := WithDefaultLimits(l, queryrangebase.Config{
 		SplitQueriesByInterval: time.Hour,
 	})
 
@@ -160,8 +160,8 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	require.Nil(t, err)
 
 	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
-		queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-			return queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				var wg sync.WaitGroup
 				for i := 0; i < 10; i++ {
 					wg.Add(1)
@@ -194,8 +194,8 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	require.Nil(t, err)
 
 	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
-		queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-			return queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				for i := 0; i < 10; i++ {
 					go func() {
 						_, _ = next.Do(c, &LokiRequest{})

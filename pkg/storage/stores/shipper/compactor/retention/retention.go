@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -16,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -276,6 +276,7 @@ type chunkRewriter struct {
 	chunkClient chunk.Client
 	tableName   string
 	bucket      *bbolt.Bucket
+	scfg        chunk.SchemaConfig
 
 	seriesStoreSchema chunk.SeriesStoreSchema
 }
@@ -296,6 +297,7 @@ func newChunkRewriter(chunkClient chunk.Client, schemaCfg chunk.PeriodConfig,
 		chunkClient:       chunkClient,
 		tableName:         tableName,
 		bucket:            bucket,
+		scfg:              chunk.SchemaConfig{Configs: []chunk.PeriodConfig{schemaCfg}},
 		seriesStoreSchema: seriesStoreSchema,
 	}, nil
 }
@@ -343,7 +345,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 			return false, err
 		}
 
-		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(interval.Start, interval.End, userID, "logs", newChunk.Metric, newChunk.ExternalKey())
+		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(interval.Start, interval.End, userID, "logs", newChunk.Metric, c.scfg.ExternalKey(newChunk))
 		if err != nil {
 			return false, err
 		}

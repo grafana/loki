@@ -252,7 +252,11 @@ dist: clean
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
-publish: dist
+packages: dist
+	nfpm package -f tools/nfpm.yaml -p rpm -t dist/
+	nfpm package -f tools/nfpm.yaml -p deb -t dist/
+
+publish: packages
 	./tools/release
 
 ########
@@ -354,12 +358,14 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
+	@# The store-gateway RPC is based on Thanos which uses relative references to other protos, so we need
+	@# to configure all such relative paths. `gogo/protobuf` is used by it.
 	case "$@" in	\
 		vendor*)			\
 			protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
 			;;					\
 		*)						\
-			protoc -I .:./vendor:./$(@D) --gogoslick_out=Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,plugins=grpc,paths=source_relative:./ ./$(patsubst %.pb.go,%.proto,$@); \
+			protoc -I .:./vendor/github.com/gogo/protobuf:./vendor/github.com/thanos-io/thanos/pkg:./vendor:./$(@D) --gogoslick_out=Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,plugins=grpc,paths=source_relative:./ ./$(patsubst %.pb.go,%.proto,$@); \
 			;;					\
 		esac
 endif
@@ -423,9 +429,10 @@ fluent-bit-test:
 # fluentd plugin #
 ##################
 fluentd-plugin:
-	gem install bundler --version 1.16.2
+	gem install bundler --version 2.3.4
 	bundle config silence_root_warning true
-	bundle install --gemfile=clients/cmd/fluentd/Gemfile --path=clients/cmd/fluentd/vendor/bundle
+	bundle config set --local path clients/cmd/fluentd/vendor/bundle
+	bundle install --gemfile=clients/cmd/fluentd/Gemfile
 
 fluentd-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluentd/Dockerfile .
@@ -433,9 +440,9 @@ fluentd-image:
 fluentd-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
-fluentd-test: LOKI_URL ?= http://localhost:3100/loki/api/
+fluentd-test: LOKI_URL ?= http://loki:3100
 fluentd-test:
-	LOKI_URL="$(LOKI_URL)" docker-compose -f clients/cmd/fluentd/docker/docker-compose.yml up --build $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+	LOKI_URL="$(LOKI_URL)" docker-compose -f clients/cmd/fluentd/docker/docker-compose.yml up --build
 
 ##################
 # logstash plugin #

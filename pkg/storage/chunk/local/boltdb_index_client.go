@@ -15,14 +15,13 @@ import (
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
-	bucketName          = []byte("index")
+	defaultBucketName   = []byte("index")
 	ErrUnexistentBoltDB = errors.New("boltdb file does not exist")
 )
 
@@ -171,9 +170,12 @@ func (b *BoltIndexClient) GetDB(name string, operation int) (*bbolt.DB, error) {
 	return db, nil
 }
 
-func (b *BoltIndexClient) WriteToDB(ctx context.Context, db *bbolt.DB, writes TableWrites) error {
+func (b *BoltIndexClient) WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes TableWrites) error {
 	return db.Update(func(tx *bbolt.Tx) error {
 		var b *bbolt.Bucket
+		if len(bucketName) == 0 {
+			bucketName = defaultBucketName
+		}
 
 		// a bucket should already exist for deletes, for other writes we create one otherwise.
 		if len(writes.deletes) != 0 {
@@ -212,7 +214,7 @@ func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch
 			return err
 		}
 
-		err = b.WriteToDB(ctx, db, writes)
+		err = b.WriteToDB(ctx, db, nil, writes)
 		if err != nil {
 			return err
 		}
@@ -240,7 +242,7 @@ func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, cal
 
 func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	return db.View(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket(bucketName)
+		bucket := tx.Bucket(defaultBucketName)
 		if bucket == nil {
 			return nil
 		}

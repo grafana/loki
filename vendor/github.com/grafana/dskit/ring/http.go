@@ -103,6 +103,24 @@ func (r *Ring) forget(ctx context.Context, id string) error {
 	return r.KVClient.CAS(ctx, r.key, unregister)
 }
 
+type ingesterDesc struct {
+	ID                  string   `json:"id"`
+	State               string   `json:"state"`
+	Address             string   `json:"address"`
+	HeartbeatTimestamp  string   `json:"timestamp"`
+	RegisteredTimestamp string   `json:"registered_timestamp"`
+	Zone                string   `json:"zone"`
+	Tokens              []uint32 `json:"tokens"`
+	NumTokens           int      `json:"-"`
+	Ownership           float64  `json:"-"`
+}
+
+type httpResponse struct {
+	Ingesters  []ingesterDesc `json:"shards"`
+	Now        time.Time      `json:"now"`
+	ShowTokens bool           `json:"-"`
+}
+
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method == http.MethodPost {
 		ingesterID := req.FormValue("forget")
@@ -132,7 +150,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	sort.Strings(ingesterIDs)
 
 	now := time.Now()
-	ingesters := []interface{}{}
+	var ingesters []ingesterDesc
 	_, owned := r.countTokens()
 	for _, id := range ingesterIDs {
 		ing := r.ringDesc.Ingesters[id]
@@ -148,17 +166,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			registeredTimestamp = ing.GetRegisteredAt().String()
 		}
 
-		ingesters = append(ingesters, struct {
-			ID                  string   `json:"id"`
-			State               string   `json:"state"`
-			Address             string   `json:"address"`
-			HeartbeatTimestamp  string   `json:"timestamp"`
-			RegisteredTimestamp string   `json:"registered_timestamp"`
-			Zone                string   `json:"zone"`
-			Tokens              []uint32 `json:"tokens"`
-			NumTokens           int      `json:"-"`
-			Ownership           float64  `json:"-"`
-		}{
+		ingesters = append(ingesters, ingesterDesc{
 			ID:                  id,
 			State:               state,
 			Address:             ing.Addr,
@@ -173,11 +181,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	tokensParam := req.URL.Query().Get("tokens")
 
-	renderHTTPResponse(w, struct {
-		Ingesters  []interface{} `json:"shards"`
-		Now        time.Time     `json:"now"`
-		ShowTokens bool          `json:"-"`
-	}{
+	renderHTTPResponse(w, httpResponse{
 		Ingesters:  ingesters,
 		Now:        now,
 		ShowTokens: tokensParam == "true",
@@ -186,7 +190,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 // RenderHTTPResponse either responds with json or a rendered html page using the passed in template
 // by checking the Accepts header
-func renderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Template, r *http.Request) {
+func renderHTTPResponse(w http.ResponseWriter, v httpResponse, t *template.Template, r *http.Request) {
 	accept := r.Header.Get("Accept")
 	if strings.Contains(accept, "application/json") {
 		writeJSONResponse(w, v)
@@ -200,7 +204,7 @@ func renderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Templa
 }
 
 // WriteJSONResponse writes some JSON as a HTTP response.
-func writeJSONResponse(w http.ResponseWriter, v interface{}) {
+func writeJSONResponse(w http.ResponseWriter, v httpResponse) {
 	w.Header().Set("Content-Type", "application/json")
 
 	data, err := json.Marshal(v)

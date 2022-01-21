@@ -16,10 +16,10 @@ import (
 
 	cortex_openstack "github.com/cortexproject/cortex/pkg/chunk/openstack"
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
-	"github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
+	"github.com/grafana/loki/pkg/util/log"
 )
 
 var defaultTransport http.RoundTripper = &http.Transport{
@@ -63,7 +63,7 @@ func (cfg *SwiftConfig) ToCortexSwiftConfig() cortex_openstack.SwiftConfig {
 
 // NewSwiftObjectClient makes a new chunk.Client that writes chunks to OpenStack Swift.
 func NewSwiftObjectClient(cfg SwiftConfig, hedgingCfg hedging.Config) (*SwiftObjectClient, error) {
-	log.WarnExperimentalUse("OpenStack Swift Storage")
+	log.WarnExperimentalUse("OpenStack Swift Storage", log.Logger)
 
 	c, err := createConnection(cfg, hedgingCfg, false)
 	if err != nil {
@@ -113,7 +113,7 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 	}
 	if hedging {
 		var err error
-		c.Transport, err = hedgingCfg.RoundTripperWithRegisterer(c.Transport, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
+		c.Transport, err = hedgingCfg.RoundTripperWithRegisterer(c.Transport, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
 		if err != nil {
 			return nil, err
 		}

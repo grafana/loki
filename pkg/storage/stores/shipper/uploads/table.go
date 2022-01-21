@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
@@ -22,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -39,7 +39,7 @@ var bucketName = []byte("index")
 
 type BoltDBIndexClient interface {
 	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
-	WriteToDB(ctx context.Context, db *bbolt.DB, writes local.TableWrites) error
+	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 }
 
 type StorageClient interface {
@@ -255,7 +255,7 @@ func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrit
 		return err
 	}
 
-	return lt.boltdbIndexClient.WriteToDB(ctx, db, writes)
+	return lt.boltdbIndexClient.WriteToDB(ctx, db, bucketName, writes)
 }
 
 // Stop closes all the open dbs.

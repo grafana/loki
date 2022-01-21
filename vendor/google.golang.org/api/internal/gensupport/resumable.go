@@ -12,32 +12,6 @@ import (
 	"net/http"
 	"sync"
 	"time"
-
-	gax "github.com/googleapis/gax-go/v2"
-)
-
-// Backoff is an interface around gax.Backoff's Pause method, allowing tests to provide their
-// own implementation.
-type Backoff interface {
-	Pause() time.Duration
-}
-
-// These are declared as global variables so that tests can overwrite them.
-var (
-	retryDeadline = 32 * time.Second
-	backoff       = func() Backoff {
-		return &gax.Backoff{Initial: 100 * time.Millisecond}
-	}
-	// isRetryable is a platform-specific hook, specified in retryable_linux.go
-	syscallRetryable func(error) bool = func(err error) bool { return false }
-)
-
-const (
-	// statusTooManyRequests is returned by the storage API if the
-	// per-project limits have been temporarily exceeded. The request
-	// should be retried.
-	// https://cloud.google.com/storage/docs/json_api/v1/status-codes#standardcodes
-	statusTooManyRequests = 429
 )
 
 // ResumableUpload is used by the generated APIs to provide resumable uploads.
@@ -57,6 +31,9 @@ type ResumableUpload struct {
 
 	// Callback is an optional function that will be periodically called with the cumulative number of bytes uploaded.
 	Callback func(int64)
+
+	// Retry optionally configures retries for requests made against the upload.
+	Retry *RetryConfig
 }
 
 // Progress returns the number of bytes uploaded at this point.
@@ -176,13 +153,15 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 		}
 		return resp, nil
 	}
+	// Configure retryable error criteria.
+	errorFunc := rx.Retry.errorFunc()
 
 	// Send all chunks.
 	for {
 		var pause time.Duration
 
-		// Each chunk gets its own initialized-at-zero retry.
-		bo := backoff()
+		// Each chunk gets its own initialized-at-zero backoff.
+		bo := rx.Retry.backoff()
 		quitAfter := time.After(retryDeadline)
 
 		// Retry loop for a single chunk.
@@ -206,7 +185,7 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 			}
 
 			// Check if we should retry the request.
-			if !shouldRetry(status, err) {
+			if !errorFunc(status, err) {
 				break
 			}
 
@@ -225,34 +204,4 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 
 		return prepareReturn(resp, err)
 	}
-}
-
-// shouldRetry indicates whether an error is retryable for the purposes of this
-// package, following guidance from
-// https://cloud.google.com/storage/docs/exponential-backoff .
-func shouldRetry(status int, err error) bool {
-	if 500 <= status && status <= 599 {
-		return true
-	}
-	if status == statusTooManyRequests {
-		return true
-	}
-	if err == io.ErrUnexpectedEOF {
-		return true
-	}
-	// Transient network errors should be retried.
-	if syscallRetryable(err) {
-		return true
-	}
-	if err, ok := err.(interface{ Temporary() bool }); ok {
-		if err.Temporary() {
-			return true
-		}
-	}
-	// If Go 1.13 error unwrapping is available, use this to examine wrapped
-	// errors.
-	if err, ok := err.(interface{ Unwrap() error }); ok {
-		return shouldRetry(status, err.Unwrap())
-	}
-	return false
 }

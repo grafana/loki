@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	cortexflag "github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -13,6 +12,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func TestNewLogger(t *testing.T) {

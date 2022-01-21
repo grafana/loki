@@ -156,26 +156,37 @@ func (t *Target) pull(ctx context.Context, start, end time.Time) error {
 			backoff.Wait()
 			continue
 		}
-		defer it.Close()
-		for it.Next() {
+		if err := func() error {
+			defer it.Close()
+			var lineRead int64
+			for it.Next() {
+				line := it.Line()
+				ts, err := jsonparser.GetInt(line, "EdgeStartTimestamp")
+				if err != nil {
+					ts = time.Now().UnixNano()
+				}
+				t.handler.Chan() <- api.Entry{
+					Labels: t.config.Labels.Clone(),
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(0, ts),
+						Line:      string(line),
+					},
+				}
+				lineRead++
+				t.metrics.Entries.Inc()
+			}
 			if it.Err() != nil {
+				level.Warn(t.logger).Log("msg", "failed iterating over logs", "err", it.Err(), "start", start, "end", end, "retries", backoff.NumRetries(), "lineRead", lineRead)
 				return it.Err()
 			}
-			line := it.Line()
-			ts, err := jsonparser.GetInt(line, "EdgeStartTimestamp")
-			if err != nil {
-				ts = time.Now().UnixNano()
-			}
-			t.handler.Chan() <- api.Entry{
-				Labels: t.config.Labels.Clone(),
-				Entry: logproto.Entry{
-					Timestamp: time.Unix(0, ts),
-					Line:      string(line),
-				},
-			}
-			t.metrics.Entries.Inc()
+			return nil
+		}(); err != nil {
+			errs.Add(err)
+			backoff.Wait()
+			continue
 		}
 		return nil
+
 	}
 	return errs.Err()
 }

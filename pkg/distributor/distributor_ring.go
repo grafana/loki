@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // RingConfig masks the ring lifecycler config which contains

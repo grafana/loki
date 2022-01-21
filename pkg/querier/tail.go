@@ -5,13 +5,13 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/iter"
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (

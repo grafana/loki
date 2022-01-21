@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -24,6 +23,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/tenant"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 )
@@ -192,21 +192,15 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	retries := f.cfg.WorkerConcurrency + 1 // To make sure we hit at least two different schedulers.
 
 enqueueAgain:
+	var cancelCh chan<- uint64
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 
 	case f.requestsCh <- freq:
 		// Enqueued, let's wait for response.
-	}
+		enqRes := <-freq.enqueue
 
-	var cancelCh chan<- uint64
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-
-	case enqRes := <-freq.enqueue:
 		if enqRes.status == waitForResponse {
 			cancelCh = enqRes.cancelCh
 			break // go wait for response.
@@ -228,6 +222,7 @@ enqueueAgain:
 				// cancellation sent.
 			default:
 				// failed to cancel, ignore.
+				level.Warn(f.log).Log("msg", "failed to send cancellation request to scheduler, queue full")
 			}
 		}
 		return nil, ctx.Err()

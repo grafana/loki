@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -21,8 +20,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -35,8 +32,15 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/tenant"
 	errUtil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
+)
+
+const (
+	// RingKey is the key under which we store the ingesters ring in the KVStore.
+	RingKey = "ring"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -95,7 +99,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.WAL.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 0, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
-	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 16, "")
+	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "")
@@ -106,7 +110,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 0, "How often to cut chunks to synchronize ingesters.")
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "Maximum number of ignored stream errors to return. 0 to return all errors.")
-	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", time.Hour, "Maximum chunk age before flushing.")
+	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 2*time.Hour, "Maximum chunk age before flushing.")
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
 	f.BoolVar(&cfg.AutoForgetUnhealthy, "ingester.autoforget-unhealthy", false, "Enable to remove unhealthy ingesters from the ring after `ring.kvstore.heartbeat_timeout`")
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
@@ -251,7 +255,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	}
 	i.wal = wal
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +312,7 @@ func (i *Ingester) setupAutoForget() {
 
 		var forgetList []string
 		for range ticker.C {
-			err := i.lifecycler.KVStore.CAS(ctx, ring.IngesterRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+			err := i.lifecycler.KVStore.CAS(ctx, RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 				forgetList = forgetList[:0]
 				if in == nil {
 					return nil, false, nil
@@ -686,11 +690,16 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 		return nil, err
 	}
 
+	// todo (Callum) ingester should maybe store the whole schema config?
+	s := chunk.SchemaConfig{
+		Configs: i.periodicConfigs,
+	}
+
 	// build the response
 	resp := logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
 	for _, chunks := range chunksGroups {
 		for _, chk := range chunks {
-			resp.ChunkIDs = append(resp.ChunkIDs, chk.ExternalKey())
+			resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk))
 		}
 	}
 

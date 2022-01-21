@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
@@ -25,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -49,7 +49,7 @@ const (
 type boltDBIndexClient interface {
 	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 	NewWriteBatch() chunk.WriteBatch
-	WriteToDB(ctx context.Context, db *bbolt.DB, writes local.TableWrites) error
+	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 	Stop()
 }
 

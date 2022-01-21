@@ -191,7 +191,8 @@ func newFrontendSchedulerWorker(conn *grpc.ClientConn, schedulerAddr string, fro
 		schedulerAddr: schedulerAddr,
 		frontendAddr:  frontendAddr,
 		requestCh:     requestCh,
-		cancelCh:      make(chan uint64),
+		// Allow to enqueue enough cancellation requests. ~ 8MB memory size.
+		cancelCh: make(chan uint64, 1000000),
 	}
 	w.ctx, w.cancel = context.WithCancel(context.Background())
 
@@ -322,6 +323,9 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 						Body: []byte("too many outstanding requests"),
 					},
 				}
+			default:
+				level.Error(w.log).Log("msg", "unknown response status from the scheduler", "status", resp.Status, "queryID", req.queryID)
+				req.enqueue <- enqueueResult{status: failed}
 			}
 
 		case reqID := <-w.cancelCh:

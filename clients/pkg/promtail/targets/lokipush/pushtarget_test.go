@@ -70,7 +70,7 @@ func TestLokiPushTarget(t *testing.T) {
 		},
 	}
 
-	pt, err := NewPushTarget(logger, eh, rlbl, "job1", config)
+	pt, err := NewPushTarget(logger, eh, rlbl, "job1", config, nil)
 	require.NoError(t, err)
 
 	// Build a client to send logs
@@ -162,7 +162,7 @@ func TestPlaintextPushTarget(t *testing.T) {
 		KeepTimestamp: true,
 	}
 
-	pt, err := NewPushTarget(logger, eh, []*relabel.Config{}, "job2", config)
+	pt, err := NewPushTarget(logger, eh, []*relabel.Config{}, "job2", config, nil)
 	require.NoError(t, err)
 
 	// Send some logs

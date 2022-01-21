@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
@@ -37,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/ruler"
+	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
@@ -52,6 +51,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -128,7 +128,7 @@ func (t *Loki) initServer() (services.Service, error) {
 func (t *Loki) initRing() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer))
+	t.ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ingester.RingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer))
 	if err != nil {
 		return
 	}
@@ -204,7 +204,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.HTTPAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
 
-	t.Server.HTTP.Path("/distributor/ring").Methods("GET").Handler(t.distributor)
+	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 
 	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(pushHandler)
@@ -268,7 +268,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	return querier.InitWorkerService(
-		querierWorkerServiceConfig, queryHandlers, alwaysExternalHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
+		querierWorkerServiceConfig, prometheus.DefaultRegisterer, queryHandlers, alwaysExternalHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
 	)
 }
 
@@ -329,7 +329,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 	}
 
 	bucketClient, err := storage.NewBucketClient(t.Cfg.StorageConfig.Config)
-	util_log.CheckFatal("initializing bucket client", err)
+	util_log.CheckFatal("initializing bucket client", err, util_log.Logger)
 
 	t.tableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.SchemaConfig.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -395,7 +395,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			}
 			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
 			// Only queriers should use the AsyncStore, it should never be used in ingesters.
-			chunkStore = loki_storage.NewAsyncStore(chunkStore, t.ingesterQuerier,
+			chunkStore = loki_storage.NewAsyncStore(chunkStore, t.Cfg.SchemaConfig.SchemaConfig, t.ingesterQuerier,
 				calculateAsyncStoreQueryIngestersWithin(t.Cfg.Querier.QueryIngestersWithin, boltdbShipperMinIngesterQueryStoreDuration),
 			)
 		case t.Cfg.isModuleEnabled(All):
@@ -601,7 +601,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		}
 	}
 
-	t.RulerStorage, err = cortex_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, ruler.GroupLoader{}, util_log.Logger)
+	t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, ruler.GroupLoader{}, util_log.Logger)
 
 	return
 }
@@ -619,7 +619,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.overrides)
+	engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.overrides, util_log.Logger)
 
 	t.ruler, err = ruler.NewRuler(
 		t.Cfg.Ruler,
@@ -634,13 +634,13 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return
 	}
 
-	t.rulerAPI = cortex_ruler.NewAPI(t.ruler, t.RulerStorage, util_log.Logger)
+	t.rulerAPI = base_ruler.NewAPI(t.ruler, t.RulerStorage, util_log.Logger)
 
 	// Expose HTTP endpoints.
 	if t.Cfg.Ruler.EnableAPI {
 
 		t.Server.HTTP.Path("/ruler/ring").Methods("GET", "POST").Handler(t.ruler)
-		cortex_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
+		base_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
 
 		// Prometheus Rule API Routes
 		t.Server.HTTP.Path("/prometheus/api/v1/rules").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.PrometheusRules)))
@@ -668,7 +668,8 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 func (t *Loki) initMemberlistKV() (services.Service, error) {
 	reg := prometheus.DefaultRegisterer
-	t.Cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
+
+	t.Cfg.MemberlistKV.MetricsRegisterer = reg
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}

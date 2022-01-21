@@ -58,7 +58,7 @@ func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 				t.Run(fmt.Sprintf("%s / %s / %s / %s", tc.metricName, tc.labelName, schema, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running labelValues with metricName", tc.metricName, "with labelName", tc.labelName, "with schema", schema)
 					storeCfg := storeCase.configFn()
-					store := newTestChunkStoreConfig(t, schema, storeCfg)
+					store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
 
 					if err := store.Put(ctx, []Chunk{

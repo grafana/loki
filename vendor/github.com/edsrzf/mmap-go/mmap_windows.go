@@ -22,8 +22,9 @@ import (
 // We keep this map so that we can get back the original handle from the memory address.
 
 type addrinfo struct {
-	file    windows.Handle
-	mapview windows.Handle
+	file     windows.Handle
+	mapview  windows.Handle
+	writable bool
 }
 
 var handleLock sync.Mutex
@@ -32,13 +33,16 @@ var handleMap = map[uintptr]*addrinfo{}
 func mmap(len int, prot, flags, hfile uintptr, off int64) ([]byte, error) {
 	flProtect := uint32(windows.PAGE_READONLY)
 	dwDesiredAccess := uint32(windows.FILE_MAP_READ)
+	writable := false
 	switch {
 	case prot&COPY != 0:
 		flProtect = windows.PAGE_WRITECOPY
 		dwDesiredAccess = windows.FILE_MAP_COPY
+		writable = true
 	case prot&RDWR != 0:
 		flProtect = windows.PAGE_READWRITE
 		dwDesiredAccess = windows.FILE_MAP_WRITE
+		writable = true
 	}
 	if prot&EXEC != 0 {
 		flProtect <<= 4
@@ -63,12 +67,14 @@ func mmap(len int, prot, flags, hfile uintptr, off int64) ([]byte, error) {
 	fileOffsetLow := uint32(off & 0xFFFFFFFF)
 	addr, errno := windows.MapViewOfFile(h, dwDesiredAccess, fileOffsetHigh, fileOffsetLow, uintptr(len))
 	if addr == 0 {
+		windows.CloseHandle(windows.Handle(h))
 		return nil, os.NewSyscallError("MapViewOfFile", errno)
 	}
 	handleLock.Lock()
 	handleMap[addr] = &addrinfo{
-		file:    windows.Handle(hfile),
-		mapview: h,
+		file:     windows.Handle(hfile),
+		mapview:  h,
+		writable: writable,
 	}
 	handleLock.Unlock()
 
@@ -96,8 +102,13 @@ func (m MMap) flush() error {
 		return errors.New("unknown base address")
 	}
 
-	errno = windows.FlushFileBuffers(handle.file)
-	return os.NewSyscallError("FlushFileBuffers", errno)
+	if handle.writable && handle.file != windows.Handle(^uintptr(0)) {
+		if err := windows.FlushFileBuffers(handle.file); err != nil {
+			return os.NewSyscallError("FlushFileBuffers", err)
+		}
+	}
+
+	return nil
 }
 
 func (m MMap) lock() error {

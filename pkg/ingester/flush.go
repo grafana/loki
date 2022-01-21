@@ -9,6 +9,7 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -16,14 +17,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/grafana/loki/pkg/tenant"
-
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/tenant"
 	loki_util "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -170,16 +168,13 @@ func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
 }
 
 func (i *Ingester) sweepInstance(instance *instance, immediate, mayRemoveStreams bool) {
-	instance.streamsMtx.Lock()
-	defer instance.streamsMtx.Unlock()
-
-	for _, stream := range instance.streams {
-		i.sweepStream(instance, stream, immediate)
-		i.removeFlushedChunks(instance, stream, mayRemoveStreams)
-	}
+	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
+		i.sweepStream(instance, s, immediate)
+		i.removeFlushedChunks(instance, s, mayRemoveStreams)
+		return true, nil
+	})
 }
 
-// must hold streamsMtx
 func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate bool) {
 	stream.chunkMtx.RLock()
 	defer stream.chunkMtx.RUnlock()
@@ -253,9 +248,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 }
 
 func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *sync.RWMutex) {
-	instance.streamsMtx.Lock()
-	stream, ok := instance.streamsByFP[fp]
-	instance.streamsMtx.Unlock()
+	stream, ok := instance.streams.LoadByFP(fp)
 
 	if !ok {
 		return nil, nil, nil
@@ -304,7 +297,6 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 	return false, ""
 }
 
-// must hold streamsMtx
 func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRemoveStream bool) {
 	now := time.Now()
 

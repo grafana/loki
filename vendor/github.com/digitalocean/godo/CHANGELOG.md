@@ -1,5 +1,13 @@
 # Change Log
 
+## [v1.73.0] - 2021-12-03
+
+- #501 - @CollinShoop - Add support for Registry ListManifests and ListRepositoriesV2
+
+## [v1.72.0] - 2021-11-29
+
+- #500 - @ElanHasson - APPS-4420: Add PreservePathPrefix to AppRouteSpec
+
 ## [v1.71.0] - 2021-11-09
 
 - #498 - @bojand - apps: update spec to include log destinations

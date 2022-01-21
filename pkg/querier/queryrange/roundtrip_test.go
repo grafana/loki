@@ -13,9 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -26,18 +23,21 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
 
 var (
 	testTime   = time.Date(2019, 12, 02, 11, 10, 10, 10, time.UTC)
-	testConfig = Config{queryrange.Config{
+	testConfig = Config{queryrangebase.Config{
 		SplitQueriesByInterval: 4 * time.Hour,
 		AlignQueriesWithStep:   true,
 		MaxRetries:             3,
 		CacheResults:           true,
-		ResultsCacheConfig: queryrange.ResultsCacheConfig{
+		ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 			CacheConfig: cache.Config{
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{
@@ -456,26 +456,26 @@ func TestPostQueries(t *testing.T) {
 	req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
 	require.NoError(t, err)
 	_, err = newRoundTripper(
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected default roundtripper called")
 			return nil, nil
 		}),
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, nil
 		}),
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected metric roundtripper called")
 			return nil, nil
 		}),
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected series roundtripper called")
 			return nil, nil
 		}),
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected labels roundtripper called")
 			return nil, nil
 		}),
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected instant roundtripper called")
 			return nil, nil
 		}),

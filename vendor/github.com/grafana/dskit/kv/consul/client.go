@@ -59,7 +59,7 @@ type kv interface {
 	Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMeta, error)
 }
 
-// Client is a KV.Client for Consul.
+// Client is a kv.Client for Consul.
 type Client struct {
 	kv
 	codec         codec.Codec

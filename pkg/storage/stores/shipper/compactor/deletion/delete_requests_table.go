@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,13 +13,12 @@ import (
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type deleteRequestsTable struct {
@@ -65,7 +65,10 @@ func (t *deleteRequestsTable) init() error {
 
 	_, err := os.Stat(t.dbPath)
 	if err != nil {
-		err = shipper_util.GetFileFromStorage(context.Background(), t.indexStorageClient, DeleteRequestsTableName, deleteRequestsIndexFileName, t.dbPath, true)
+		err = shipper_util.DownloadFileFromStorage(t.dbPath, true,
+			true, shipper_util.LoggerWithFilename(util_log.Logger, deleteRequestsIndexFileName), func() (io.ReadCloser, error) {
+				return t.indexStorageClient.GetFile(context.Background(), DeleteRequestsTableName, deleteRequestsIndexFileName)
+			})
 		if err != nil && !t.indexStorageClient.IsFileNotFoundErr(err) {
 			return err
 		}
@@ -169,7 +172,7 @@ func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch chunk.WriteB
 	}
 
 	for _, tableWrites := range boltWriteBatch.Writes {
-		if err := t.boltdbIndexClient.WriteToDB(ctx, t.db, tableWrites); err != nil {
+		if err := t.boltdbIndexClient.WriteToDB(ctx, t.db, nil, tableWrites); err != nil {
 			return err
 		}
 	}

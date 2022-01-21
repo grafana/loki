@@ -12,8 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
@@ -25,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // Supported storage engines
@@ -292,7 +291,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, clien
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeAWSDynamo:
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -307,7 +306,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, clien
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeGCP:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case StorageTypeGCPColumnKey, StorageTypeBigTable, StorageTypeBigTableHashed:
@@ -317,13 +316,13 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, clien
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeSwift:
 		c, err := openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeCassandra:
 		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
 	case StorageTypeFileSystem:
@@ -331,7 +330,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, clien
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(store, objectclient.Base64Encoder, cfg.MaxParallelGetChunk), nil
+		return objectclient.NewClientWithMaxParallel(store, objectclient.Base64Encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:

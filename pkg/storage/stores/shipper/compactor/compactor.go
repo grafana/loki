@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
@@ -28,6 +27,7 @@ import (
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -194,7 +194,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 			encoder = objectclient.Base64Encoder
 		}
 
-		chunkClient := objectclient.NewClient(objectClient, encoder)
+		chunkClient := objectclient.NewClient(objectClient, encoder, schemaConfig.SchemaConfig)
 
 		retentionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "retention")
 		c.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
@@ -399,7 +399,8 @@ func (c *Compactor) stopping(_ error) error {
 }
 
 func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRetention bool) error {
-	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient, c.cfg.RetentionEnabled, c.tableMarker)
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient,
+		c.tableMarker, c.expirationChecker)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err
@@ -408,7 +409,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 	interval := retention.ExtractIntervalFromTableName(tableName)
 	intervalMayHaveExpiredChunks := false
 	if c.cfg.RetentionEnabled && applyRetention {
-		intervalMayHaveExpiredChunks = c.expirationChecker.IntervalMayHaveExpiredChunks(interval)
+		intervalMayHaveExpiredChunks = c.expirationChecker.IntervalMayHaveExpiredChunks(interval, "")
 	}
 
 	err = table.compact(intervalMayHaveExpiredChunks)
@@ -548,8 +549,8 @@ func (e *expirationChecker) MarkPhaseFinished() {
 	e.deletionExpiryChecker.MarkPhaseFinished()
 }
 
-func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval) bool {
-	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval) || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval)
+func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
+	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, "") || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval, "")
 }
 
 func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime model.Time, now model.Time) bool {

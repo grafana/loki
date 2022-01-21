@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (

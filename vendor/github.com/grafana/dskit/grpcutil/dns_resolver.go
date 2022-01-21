@@ -29,8 +29,8 @@ var (
 
 // NewDNSResolverWithFreq creates a DNS Resolver that can resolve DNS names, and
 // create watchers that poll the DNS server using the frequency set by freq.
-func NewDNSResolverWithFreq(freq time.Duration, logger log.Logger) (Resolver, error) {
-	return &dnsResolver{
+func NewDNSResolverWithFreq(freq time.Duration, logger log.Logger) (*Resolver, error) {
+	return &Resolver{
 		logger: logger,
 		freq:   freq,
 	}, nil
@@ -38,12 +38,12 @@ func NewDNSResolverWithFreq(freq time.Duration, logger log.Logger) (Resolver, er
 
 // NewDNSResolver creates a DNS Resolver that can resolve DNS names, and create
 // watchers that poll the DNS server using the default frequency defined by defaultFreq.
-func NewDNSResolver(logger log.Logger) (Resolver, error) {
+func NewDNSResolver(logger log.Logger) (*Resolver, error) {
 	return NewDNSResolverWithFreq(defaultFreq, logger)
 }
 
-// dnsResolver handles name resolution for names following the DNS scheme
-type dnsResolver struct {
+// Resolver handles name resolution for names following the DNS scheme.
+type Resolver struct {
 	logger log.Logger
 	// frequency of polling the DNS server that the watchers created by this resolver will use.
 	freq time.Duration
@@ -101,8 +101,12 @@ func parseTarget(target string) (host, port string, err error) {
 	return "", "", fmt.Errorf("invalid target address %v", target)
 }
 
-// Resolve creates a watcher that watches the name resolution of the target.
-func (r *dnsResolver) Resolve(target string) (Watcher, error) {
+// Resolve creates a watcher that watches the SRV/hostname record resolution of the target.
+//
+// If service is not empty, the watcher will first attempt to resolve an SRV record.
+// If that fails, or service is empty, hostname record resolution is attempted instead.
+// If target can be parsed as an IP address, the watcher will return it, and will not send any more updates afterwards.
+func (r *Resolver) Resolve(target, service string) (Watcher, error) {
 	host, port, err := parseTarget(target)
 	if err != nil {
 		return nil, err
@@ -119,22 +123,24 @@ func (r *dnsResolver) Resolve(target string) (Watcher, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &dnsWatcher{
-		r:      r,
-		logger: r.logger,
-		host:   host,
-		port:   port,
-		ctx:    ctx,
-		cancel: cancel,
-		t:      time.NewTimer(0),
+		r:       r,
+		logger:  r.logger,
+		host:    host,
+		port:    port,
+		service: service,
+		ctx:     ctx,
+		cancel:  cancel,
+		t:       time.NewTimer(0),
 	}, nil
 }
 
 // dnsWatcher watches for the name resolution update for a specific target
 type dnsWatcher struct {
-	r      *dnsResolver
-	logger log.Logger
-	host   string
-	port   string
+	r       *Resolver
+	logger  log.Logger
+	host    string
+	port    string
+	service string
 	// The latest resolved address set
 	curAddrs map[string]*Update
 	ctx      context.Context
@@ -164,26 +170,6 @@ func (i *ipWatcher) Close() {
 	close(i.updateChan)
 }
 
-// AddressType indicates the address type returned by name resolution.
-type AddressType uint8
-
-const (
-	// Backend indicates the server is a backend server.
-	Backend AddressType = iota
-	// GRPCLB indicates the server is a grpclb load balancer.
-	GRPCLB
-)
-
-// AddrMetadataGRPCLB contains the information the name resolver for grpclb should provide. The
-// name resolver used by the grpclb balancer is required to provide this type of metadata in
-// its address updates.
-type AddrMetadataGRPCLB struct {
-	// AddrType is the type of server (grpc load balancer or backend).
-	AddrType AddressType
-	// ServerName is the name of the grpc load balancer. Used for authentication.
-	ServerName string
-}
-
 // compileUpdate compares the old resolved addresses and newly resolved addresses,
 // and generates an update list
 func (w *dnsWatcher) compileUpdate(newAddrs map[string]*Update) []*Update {
@@ -203,27 +189,30 @@ func (w *dnsWatcher) compileUpdate(newAddrs map[string]*Update) []*Update {
 }
 
 func (w *dnsWatcher) lookupSRV() map[string]*Update {
+	if w.service == "" {
+		return nil
+	}
+
 	newAddrs := make(map[string]*Update)
-	_, srvs, err := lookupSRV(w.ctx, "grpclb", "tcp", w.host)
+	_, srvs, err := lookupSRV(w.ctx, w.service, "tcp", w.host)
 	if err != nil {
 		level.Info(w.logger).Log("msg", "failed DNS SRV record lookup", "err", err)
 		return nil
 	}
 	for _, s := range srvs {
-		lbAddrs, err := lookupHost(w.ctx, s.Target)
+		addrs, err := lookupHost(w.ctx, s.Target)
 		if err != nil {
-			level.Warn(w.logger).Log("msg", "failed load balancer address DNS lookup", "err", err)
+			level.Warn(w.logger).Log("msg", "failed SRV target DNS lookup", "target", s.Target, "err", err)
 			continue
 		}
-		for _, a := range lbAddrs {
+		for _, a := range addrs {
 			a, ok := formatIP(a)
 			if !ok {
 				level.Error(w.logger).Log("failed IP parsing", "err", err)
 				continue
 			}
 			addr := a + ":" + strconv.Itoa(int(s.Port))
-			newAddrs[addr] = &Update{Addr: addr,
-				Metadata: AddrMetadataGRPCLB{AddrType: GRPCLB, ServerName: s.Target}}
+			newAddrs[addr] = &Update{Addr: addr}
 		}
 	}
 	return newAddrs
@@ -251,8 +240,7 @@ func (w *dnsWatcher) lookupHost() map[string]*Update {
 func (w *dnsWatcher) lookup() []*Update {
 	newAddrs := w.lookupSRV()
 	if newAddrs == nil {
-		// If failed to get any balancer address (either no corresponding SRV for the
-		// target, or caused by failure during resolution/parsing of the balancer target),
+		// If we failed to get any valid addresses from SRV record lookup,
 		// return any A record info available.
 		newAddrs = w.lookupHost()
 	}

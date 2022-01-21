@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -13,8 +14,7 @@ import (
 	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/util/log"
-
+	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 )
 
@@ -23,6 +23,7 @@ const (
 	secondsInDay       = int64(24 * time.Hour / time.Second)
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
 	millisecondsInDay  = int64(24 * time.Hour / time.Millisecond)
+	v12                = "v12"
 )
 
 var (
@@ -42,6 +43,22 @@ type PeriodConfig struct {
 	IndexTables PeriodicTableConfig `yaml:"index"`
 	ChunkTables PeriodicTableConfig `yaml:"chunks"`
 	RowShards   uint32              `yaml:"row_shards"`
+
+	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
+	schemaInt *int `yaml:"-"`
+}
+
+// UnmarshalYAML implements yaml.Unmarshaller.
+func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type plain PeriodConfig
+	err := unmarshal((*plain)(cfg))
+	if err != nil {
+		return err
+	}
+
+	// call VersionAsInt after unmarshaling to errcheck schema version and populate PeriodConfig.schemaInt
+	_, err = cfg.VersionAsInt()
+	return err
 }
 
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from
@@ -189,17 +206,19 @@ func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
 		return newStoreSchema(buckets, v6Entries{}), nil
 	case "v9":
 		return newSeriesStoreSchema(buckets, v9Entries{}), nil
-	case "v10", "v11":
+	case "v10", "v11", v12:
 		if cfg.RowShards == 0 {
-			return nil, fmt.Errorf("Must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
+			return nil, fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
 
 		v10 := v10Entries{rowShards: cfg.RowShards}
 		if cfg.Schema == "v10" {
 			return newSeriesStoreSchema(buckets, v10), nil
+		} else if cfg.Schema == "v11" {
+			return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
+		} else { // v12
+			return newSeriesStoreSchema(buckets, v12Entries{v11Entries{v10}}), nil
 		}
-
-		return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
 	default:
 		return nil, errInvalidSchemaVersion
 	}
@@ -304,6 +323,19 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 		})
 	}
 	return result
+}
+
+func (cfg *PeriodConfig) VersionAsInt() (int, error) {
+	// Read memoized schema version. This is called during unmarshaling,
+	// but may be nil in the case of testware.
+	if cfg.schemaInt != nil {
+		return *cfg.schemaInt, nil
+	}
+
+	v := strings.Trim(cfg.Schema, "v")
+	n, err := strconv.Atoi(v)
+	cfg.schemaInt = &n
+	return n, err
 }
 
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
@@ -435,6 +467,17 @@ func (cfg SchemaConfig) ChunkTableFor(t model.Time) (string, error) {
 	return "", fmt.Errorf("no chunk table found for time %v", t)
 }
 
+// SchemaForTime returns the Schema PeriodConfig to use for a given point in time.
+func (cfg SchemaConfig) SchemaForTime(t model.Time) (PeriodConfig, error) {
+	for i := range cfg.Configs {
+		// TODO: callum, confirm we can rely on the schema configs being sorted in this order.
+		if t >= cfg.Configs[i].From.Time && (i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From.Time) {
+			return cfg.Configs[i], nil
+		}
+	}
+	return PeriodConfig{}, fmt.Errorf("no schema config found for time %v", t)
+}
+
 // TableFor calculates the table shard for a given point in time.
 func (cfg *PeriodicTableConfig) TableFor(t model.Time) string {
 	if cfg.Period == 0 { // non-periodic
@@ -446,4 +489,35 @@ func (cfg *PeriodicTableConfig) TableFor(t model.Time) string {
 
 func (cfg *PeriodicTableConfig) tableForPeriod(i int64) string {
 	return cfg.Prefix + strconv.Itoa(int(i))
+}
+
+// Generate the appropriate external key based on cfg.Schema, chunk.Checksum, and chunk.From
+func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
+	p, err := cfg.SchemaForTime(chunk.From)
+	v, _ := p.VersionAsInt()
+	if err == nil && v >= 12 {
+		return cfg.newerExternalKey(chunk)
+	} else if chunk.ChecksumSet {
+		return cfg.newExternalKey(chunk)
+	} else {
+		return cfg.legacyExternalKey(chunk)
+	}
+}
+
+// pre-checksum
+func (cfg SchemaConfig) legacyExternalKey(chunk Chunk) string {
+	// This is the inverse of chunk.parseLegacyExternalKey, with "<user id>/" prepended.
+	// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
+	return fmt.Sprintf("%d:%d:%d", (chunk.Fingerprint), int64(chunk.From), int64(chunk.Through))
+}
+
+// post-checksum
+func (cfg SchemaConfig) newExternalKey(chunk Chunk) string {
+	// This is the inverse of chunk.parseNewExternalKey.
+	return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+}
+
+// v12+
+func (cfg SchemaConfig) newerExternalKey(chunk Chunk) string {
+	return fmt.Sprintf("%s/%x/%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
 }

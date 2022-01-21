@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cespare/xxhash/v2"
@@ -32,6 +30,7 @@ import (
 	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -887,7 +886,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		err := store.PutOne(ctx, chk.From, chk.Through, chk)
 		require.NoError(t, err)
 
-		addedChunkIDs[chk.ExternalKey()] = struct{}{}
+		addedChunkIDs[schemaConfig.ExternalKey(chk)] = struct{}{}
 	}
 
 	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
@@ -919,7 +918,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 
 	// check whether we got back all the chunks which were added
 	for i := range chunks {
-		_, ok := addedChunkIDs[chunks[i].ExternalKey()]
+		_, ok := addedChunkIDs[schemaConfig.ExternalKey(chunks[i])]
 		require.True(t, ok)
 	}
 }

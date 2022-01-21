@@ -15,18 +15,17 @@ import (
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest/adal"
+	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/dskit/flagext"
 	"github.com/mattn/go-ieproxy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 
-	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/grafana/dskit/flagext"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -185,7 +184,7 @@ type BlobStorage struct {
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
 func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingCfg hedging.Config) (*BlobStorage, error) {
-	log.WarnExperimentalUse("Azure Blob Storage")
+	log.WarnExperimentalUse("Azure Blob Storage", log.Logger)
 	blobStorage := &BlobStorage{
 		cfg:     cfg,
 		metrics: metrics,
@@ -320,7 +319,7 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 	})
 
 	if hedging {
-		client, err := hedgingCfg.ClientWithRegisterer(client, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
+		client, err := hedgingCfg.ClientWithRegisterer(client, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
 		if err != nil {
 			return nil, err
 		}
