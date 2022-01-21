@@ -45,7 +45,7 @@ func TestCachingStorageClientBasic(t *testing.T) {
 	require.NoError(t, err)
 	logger := log.NewNopLogger()
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, nil, logger)
-	client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger, false)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger, false, 10, 100)
 	queries := []chunk.IndexQuery{{
 		TableName: "table",
 		HashValue: "baz",
@@ -53,7 +53,9 @@ func TestCachingStorageClientBasic(t *testing.T) {
 	err = client.QueryPages(ctx, queries, func(_ chunk.IndexQuery, _ chunk.ReadBatch) bool {
 		return true
 	})
+
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
@@ -61,6 +63,7 @@ func TestCachingStorageClientBasic(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 }
 
@@ -77,7 +80,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 	require.NoError(t, err)
 	logger := log.NewNopLogger()
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, nil, logger)
-	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits, logger, false)
+	client := newCachingIndexClient(store, cache, 10000*time.Millisecond, limits, logger, false, 10, 100)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo"},
 		{TableName: "table", HashValue: "bar"},
@@ -92,6 +95,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
+	time.Sleep(1000 * time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
@@ -105,11 +109,12 @@ func TestTempCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
+	time.Sleep(1000 * time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
 	// If we do the query after validity, it should see the queries.
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10000 * time.Millisecond)
 	results = 0
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
@@ -119,6 +124,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
+	time.Sleep(1000 * time.Millisecond)
 	assert.EqualValues(t, 2*len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 }
@@ -136,7 +142,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 	require.NoError(t, err)
 	logger := log.NewNopLogger()
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, nil, logger)
-	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits, logger, false)
+	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits, logger, false, 10, 100)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", Immutable: true},
 		{TableName: "table", HashValue: "bar", Immutable: true},
@@ -151,6 +157,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
@@ -164,6 +171,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
@@ -178,6 +186,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 }
@@ -188,13 +197,14 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	require.NoError(t, err)
 	logger := log.NewNopLogger()
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, nil, logger)
-	client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger, false)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger, false, 10, 100)
 	queries := []chunk.IndexQuery{{TableName: "table", HashValue: "foo"}}
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		assert.False(t, batch.Iterator().Next())
 		return true
 	})
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
@@ -203,6 +213,7 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 }
 
@@ -227,7 +238,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 	require.NoError(t, err)
 	logger := log.NewNopLogger()
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, nil, logger)
-	client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger, false)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger, false, 10, 100)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("baz")},
@@ -245,6 +256,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 	assert.EqualValues(t, store.results, results)
 
@@ -261,6 +273,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 	assert.EqualValues(t, store.results, results)
 }
@@ -408,7 +421,7 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 				cache := &mockCache{
 					Cache: cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, Validity: 10 * time.Second}, nil, logger),
 				}
-				client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger, disableBroadQueries)
+				client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger, disableBroadQueries, 10, 100)
 				var callbackQueries []chunk.IndexQuery
 
 				err = client.QueryPages(ctx, tc.queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
@@ -416,6 +429,7 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 					return true
 				})
 				require.NoError(t, err)
+				time.Sleep(100 * time.Millisecond)
 
 				// we do a callback per query sent not per query done to the index store. See if we got as many callbacks as the number of actual queries.
 				sort.Slice(tc.queries, func(i, j int) bool {
@@ -442,6 +456,7 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 					return true
 				})
 				require.NoError(t, err)
+				time.Sleep(100 * time.Millisecond)
 
 				// verify the callback queries again
 				sort.Slice(callbackQueries, func(i, j int) bool {

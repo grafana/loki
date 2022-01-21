@@ -205,7 +205,7 @@ func TestCardinalityLimit(t *testing.T) {
 		limits, err := defaultLimits()
 		require.NoError(t, err)
 
-		client = newCachingIndexClient(client, cache.NewMockCache(), time.Minute, limits, log.NewNopLogger(), false)
+		client = newCachingIndexClient(client, cache.NewMockCache(), time.Minute, limits, log.NewNopLogger(), false, 10, 100)
 		batch := client.NewWriteBatch()
 		for i := 0; i < 10; i++ {
 			batch.Add(tableName, "bar", []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i)))

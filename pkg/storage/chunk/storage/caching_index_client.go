@@ -5,9 +5,11 @@ import (
 	"sync"
 	"time"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -21,7 +23,8 @@ import (
 )
 
 var (
-	cacheCorruptErrs = promauto.NewCounter(prometheus.CounterOpts{
+	errAsyncBufferFull = errors.New("the async buffer is full")
+	cacheCorruptErrs   = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "querier_index_cache_corruptions_total",
 		Help:      "The number of cache corruptions for the index cache.",
@@ -46,6 +49,14 @@ var (
 		Name:      "querier_index_cache_encode_errors_total",
 		Help:      "The number of errors for the index cache while encoding the body.",
 	})
+	cacheClientQueueEnqueue = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "querier_index_client_cache_enqueued_total",
+		Help: "Total number of index enqueued to a buffer to be asynchronously written back to the index cache.",
+	})
+	cacheClientQueueDequeue = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "querier_index_client_cache_dequeued_total",
+		Help: "Total number of index dequeued to a buffer to be asynchronously written back to the index cache.",
+	})
 )
 
 const sep = "\xff"
@@ -57,26 +68,45 @@ type cachingIndexClient struct {
 	limits              StoreLimits
 	logger              log.Logger
 	disableBroadQueries bool
+	asyncQueue          chan cacheEntry
+	maxAsyncConcurrency int
+	maxAsyncBufferSize  int
+	stop                chan struct{}
 }
 
-func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits, logger log.Logger, disableBroadQueries bool) chunk.IndexClient {
+func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits, logger log.Logger, disableBroadQueries bool, maxAsyncConcurrency int, maxAsyncBufferSize int) chunk.IndexClient {
 	if c == nil || cache.IsEmptyTieredCache(c) {
 		return client
 	}
 
-	return &cachingIndexClient{
+	cacheClient := &cachingIndexClient{
 		IndexClient:         client,
 		cache:               cache.NewSnappy(c, logger),
 		validity:            validity,
 		limits:              limits,
 		logger:              logger,
 		disableBroadQueries: disableBroadQueries,
+		maxAsyncConcurrency: maxAsyncConcurrency,
+		maxAsyncBufferSize:  maxAsyncBufferSize,
+		stop:                make(chan struct{}),
 	}
+	cacheClient.asyncQueue = make(chan cacheEntry, cacheClient.maxAsyncBufferSize)
+	for i := 0; i < cacheClient.maxAsyncConcurrency; i++ {
+		go cacheClient.asyncWriteBackCacheQueueProcessLoop()
+	}
+
+	return cacheClient
+}
+
+type cacheEntry struct {
+	keys    []string
+	batches []ReadBatch
 }
 
 func (s *cachingIndexClient) Stop() {
 	s.cache.Stop()
 	s.IndexClient.Stop()
+	close(s.stop)
 }
 
 func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
@@ -201,7 +231,7 @@ func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.Ind
 			}
 		}
 
-		err := s.cacheStore(ctx, keys, batches)
+		err := s.cacheStoreAsync(keys, batches)
 		if cardinalityErr != nil {
 			return cardinalityErr
 		}
@@ -273,6 +303,31 @@ func (b *readBatchIterator) Value() []byte {
 func isChunksQuery(q chunk.IndexQuery) bool {
 	// RangeValueStart would only be set for chunks query.
 	return len(q.RangeValueStart) != 0
+}
+
+func (s *cachingIndexClient) cacheStoreAsync(keys []string, batches []ReadBatch) error {
+	select {
+	case s.asyncQueue <- cacheEntry{keys, batches}:
+		cacheClientQueueEnqueue.Add(float64(len(batches)))
+		return nil
+	default:
+		return errAsyncBufferFull
+	}
+}
+
+func (s *cachingIndexClient) asyncWriteBackCacheQueueProcessLoop() {
+	for {
+		select {
+		case cacheEntry := <-s.asyncQueue:
+			cacheClientQueueDequeue.Add(float64(len(cacheEntry.batches)))
+			cacheErr := s.cacheStore(context.Background(), cacheEntry.keys, cacheEntry.batches)
+			if cacheErr != nil {
+				level.Warn(util_log.Logger).Log("msg", "could not write fetched index from storage into index cache", "err", cacheErr)
+			}
+		case <-s.stop:
+			return
+		}
+	}
 }
 
 func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) error {
