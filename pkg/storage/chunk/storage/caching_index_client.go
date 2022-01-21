@@ -50,10 +50,12 @@ var (
 		Help:      "The number of errors for the index cache while encoding the body.",
 	})
 	cacheClientQueueEnqueue = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
 		Name: "querier_index_client_cache_enqueued_total",
 		Help: "Total number of index enqueued to a buffer to be asynchronously written back to the index cache.",
 	})
 	cacheClientQueueDequeue = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
 		Name: "querier_index_client_cache_dequeued_total",
 		Help: "Total number of index dequeued to a buffer to be asynchronously written back to the index cache.",
 	})
