@@ -649,11 +649,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			tables := store.indexTables()
 			require.Len(t, tables, len(tc.expectedDeletedSeries))
 
-<<<<<<< HEAD
-			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.Base64Encoder)
-=======
-			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir), objectclient.Base64Encoder, schemaCfg.SchemaConfig)
->>>>>>> main
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.Base64Encoder, schemaCfg.SchemaConfig)
 
 			for i, table := range tables {
 				seriesCleanRecorder := newSeriesCleanRecorder()
