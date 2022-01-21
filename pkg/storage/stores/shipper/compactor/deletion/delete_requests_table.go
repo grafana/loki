@@ -97,6 +97,10 @@ func (t *deleteRequestsTable) loop() {
 	}
 }
 
+func (t *deleteRequestsTable) AsyncQueueLength() int {
+	return 0
+}
+
 func (t *deleteRequestsTable) uploadFile() error {
 	level.Debug(util_log.Logger).Log("msg", "uploading delete requests db")
 
