@@ -16,6 +16,10 @@ type StorageClient struct {
 	connection *grpc.ClientConn
 }
 
+func (s *StorageClient) AsyncQueueLength() int {
+	return 0
+}
+
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
 	grpcClient, conn, err := connectToGrpcServer(cfg.Address)

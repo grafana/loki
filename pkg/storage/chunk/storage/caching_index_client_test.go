@@ -32,6 +32,10 @@ func (m *mockStore) QueryPages(ctx context.Context, queries []chunk.IndexQuery, 
 	return nil
 }
 
+func (m *mockStore) AsyncQueueLength() int {
+	return 0
+}
+
 func TestCachingStorageClientBasic(t *testing.T) {
 	store := &mockStore{
 		results: ReadBatch{
@@ -55,7 +59,9 @@ func TestCachingStorageClientBasic(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
@@ -63,7 +69,9 @@ func TestCachingStorageClientBasic(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 }
 
@@ -95,7 +103,9 @@ func TestTempCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	time.Sleep(1000 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
@@ -109,7 +119,9 @@ func TestTempCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	time.Sleep(1000 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
@@ -124,7 +136,9 @@ func TestTempCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	time.Sleep(1000 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 2*len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 }
@@ -157,7 +171,9 @@ func TestPermCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
@@ -171,7 +187,9 @@ func TestPermCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
@@ -186,7 +204,9 @@ func TestPermCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 }
@@ -204,7 +224,9 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
@@ -213,7 +235,9 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 }
 
@@ -256,7 +280,9 @@ func TestCachingStorageClientCollision(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 	assert.EqualValues(t, store.results, results)
 
@@ -273,7 +299,9 @@ func TestCachingStorageClientCollision(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		return client.AsyncQueueLength() == 0
+	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 	assert.EqualValues(t, store.results, results)
 }
@@ -429,7 +457,9 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 					return true
 				})
 				require.NoError(t, err)
-				time.Sleep(100 * time.Millisecond)
+				assert.Eventually(t, func() bool {
+					return client.AsyncQueueLength() == 0
+				}, time.Second, 10*time.Millisecond)
 
 				// we do a callback per query sent not per query done to the index store. See if we got as many callbacks as the number of actual queries.
 				sort.Slice(tc.queries, func(i, j int) bool {
@@ -456,7 +486,9 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 					return true
 				})
 				require.NoError(t, err)
-				time.Sleep(100 * time.Millisecond)
+				assert.Eventually(t, func() bool {
+					return client.AsyncQueueLength() == 0
+				}, time.Second, 10*time.Millisecond)
 
 				// verify the callback queries again
 				sort.Slice(callbackQueries, func(i, j int) bool {

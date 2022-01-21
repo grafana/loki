@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -49,13 +49,13 @@ var (
 	})
 	cacheClientQueueEnqueue = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
-		Name: "querier_index_client_cache_enqueued_total",
-		Help: "Total number of index enqueued to a buffer to be asynchronously written back to the index cache.",
+		Name:      "querier_index_client_cache_enqueued_total",
+		Help:      "Total number of index enqueued to a buffer to be asynchronously written back to the index cache.",
 	})
 	cacheClientQueueDequeue = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
-		Name: "querier_index_client_cache_dequeued_total",
-		Help: "Total number of index dequeued to a buffer to be asynchronously written back to the index cache.",
+		Name:      "querier_index_client_cache_dequeued_total",
+		Help:      "Total number of index dequeued to a buffer to be asynchronously written back to the index cache.",
 	})
 )
 
@@ -119,6 +119,10 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 	}
 
 	return s.doQueries(ctx, queries, callback)
+}
+
+func (s *cachingIndexClient) AsyncQueueLength() int {
+	return len(s.asyncQueue)
 }
 
 func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback,
@@ -231,9 +235,12 @@ func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.Ind
 			}
 		}
 
-		err := s.cacheStoreAsync(keys, batches)
+		cacheErr := s.cacheStoreAsync(keys, batches)
 		if cardinalityErr != nil {
 			return cardinalityErr
+		}
+		if cacheErr != nil {
+			level.Warn(util_log.Logger).Log("msg", "could not write fetched index from storage into index cache", "err", cacheErr)
 		}
 		return err
 	}

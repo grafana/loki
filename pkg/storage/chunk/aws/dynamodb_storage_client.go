@@ -113,6 +113,10 @@ type dynamoDBStorageClient struct {
 	metrics *dynamoDBMetrics
 }
 
+func (a dynamoDBStorageClient) AsyncQueueLength() int {
+	return 0
+}
+
 // NewDynamoDBIndexClient makes a new DynamoDB-backed IndexClient.
 func NewDynamoDBIndexClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig, reg prometheus.Registerer) (chunk.IndexClient, error) {
 	return newDynamoDBStorageClient(cfg, schemaCfg, reg)

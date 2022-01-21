@@ -54,6 +54,10 @@ type BoltIndexClient struct {
 	wait   sync.WaitGroup
 }
 
+func (b *BoltIndexClient) AsyncQueueLength() int {
+	return 0
+}
+
 // NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
 func NewBoltDBIndexClient(cfg BoltDBConfig) (*BoltIndexClient, error) {
 	if err := chunk_util.EnsureDirectory(cfg.Directory); err != nil {
