@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 )
 
 // RuleStoreConfig configures a rule store.
@@ -77,7 +78,7 @@ func (cfg *RuleStoreConfig) IsDefaults() bool {
 // NewLegacyRuleStore returns a rule store backend client based on the provided cfg.
 // The client used by the function is based a legacy object store clients that shouldn't
 // be used anymore.
-func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
+func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetrics storage.ClientMetrics, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
 	if cfg.mock != nil {
 		return cfg.mock, nil
 	}
@@ -97,7 +98,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, loader pro
 		}
 		return configdb.NewConfigRuleStore(c), nil
 	case "azure":
-		client, err = azure.NewBlobStorage(&cfg.Azure, hedgeCfg)
+		client, err = azure.NewBlobStorage(&cfg.Azure, clientMetrics.AzureMetrics, hedgeCfg)
 	case "gcs":
 		client, err = gcp.NewGCSObjectClient(context.Background(), cfg.GCS, hedgeCfg)
 	case "s3":

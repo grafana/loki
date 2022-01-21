@@ -57,6 +57,7 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
+	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/tenant"
 )
 
@@ -222,9 +223,9 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 	}
 }
 
-func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, rulerAddrMap map[string]*Ruler) (*Ruler, func()) {
+func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, clientMetrics chunk_storage.ClientMetrics, rulerAddrMap map[string]*Ruler) (*Ruler, func()) {
 	engine, queryable, pusher, logger, overrides, reg, cleanup := testSetup(t, querierTestConfig)
-	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, promRules.FileLoader{}, log.NewNopLogger())
+	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)
@@ -245,7 +246,9 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.Tes
 }
 
 func newTestRuler(t *testing.T, rulerConfig Config) (*Ruler, func()) {
-	ruler, cleanup := buildRuler(t, rulerConfig, nil, nil)
+	m := chunk_storage.NewClientMetrics()
+	defer m.Unregister()
+	ruler, cleanup := buildRuler(t, rulerConfig, nil, m, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
 
 	// Ensure all rules are loaded before usage
@@ -416,8 +419,9 @@ func TestGetRules(t *testing.T) {
 						Mock: kvStore,
 					},
 				}
-
-				r, cleanUp := buildRuler(t, cfg, nil, rulerAddrMap)
+				m := chunk_storage.NewClientMetrics()
+				defer m.Unregister()
+				r, cleanUp := buildRuler(t, cfg, nil, m, rulerAddrMap)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
 				t.Cleanup(cleanUp)
 				rulerAddrMap[id] = r
@@ -920,7 +924,9 @@ func TestSharding(t *testing.T) {
 					DisabledTenants:  tc.disabledUsers,
 				}
 
-				r, cleanup := buildRuler(t, cfg, nil, nil)
+				m := chunk_storage.NewClientMetrics()
+				defer m.Unregister()
+				r, cleanup := buildRuler(t, cfg, nil, m, nil)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
 				t.Cleanup(cleanup)
 
@@ -1277,8 +1283,10 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 		querier.UseAlwaysQueryable(querier.NewChunkStoreQueryable(querierConfig, &emptyChunkStore{})),
 	}
 
+	m := chunk_storage.NewClientMetrics()
+	defer m.Unregister()
 	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
-	r, rcleanup := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, nil)
+	r, rcleanup := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, m, nil)
 	r.syncRules(context.Background(), rulerSyncReasonInitial)
 	defer rcleanup()
 

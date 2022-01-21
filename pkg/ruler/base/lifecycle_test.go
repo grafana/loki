@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/util/test"
 )
 
@@ -24,7 +25,9 @@ func TestRulerShutdown(t *testing.T) {
 	config, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r, rcleanup := buildRuler(t, config, nil, nil)
+	m := storage.NewClientMetrics()
+	defer m.Unregister()
+	r, rcleanup := buildRuler(t, config, nil, m, nil)
 	defer rcleanup()
 
 	r.cfg.EnableSharding = true
@@ -59,7 +62,9 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	ctx := context.Background()
 	config, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
-	r, rcleanup := buildRuler(t, config, nil, nil)
+	m := storage.NewClientMetrics()
+	defer m.Unregister()
+	r, rcleanup := buildRuler(t, config, nil, m, nil)
 	defer rcleanup()
 	r.cfg.EnableSharding = true
 	r.cfg.Ring.HeartbeatPeriod = 100 * time.Millisecond
