@@ -57,6 +57,7 @@ type DefaultClient struct {
 	BearerToken     string
 	BearerTokenFile string
 	Retries         int
+	QueryTags       string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -177,33 +178,11 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		return err
 	}
 
-	req.SetBasicAuth(c.Username, c.Password)
-	req.Header.Set("User-Agent", userAgent)
-
-	if c.OrgID != "" {
-		req.Header.Set("X-Scope-OrgID", c.OrgID)
+	h, err := c.getHTTPRequestHeader()
+	if err != nil {
+		return err
 	}
-
-	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
-		return fmt.Errorf("at most one of HTTP basic auth (username/password), bearer-token & bearer-token-file is allowed to be configured")
-	}
-
-	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
-		return fmt.Errorf("at most one of the options bearer-token & bearer-token-file is allowed to be configured")
-	}
-
-	if c.BearerToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.BearerToken)
-	}
-
-	if c.BearerTokenFile != "" {
-		b, err := ioutil.ReadFile(c.BearerTokenFile)
-		if err != nil {
-			return fmt.Errorf("unable to read authorization credentials file %s: %s", c.BearerTokenFile, err)
-		}
-		bearerToken := strings.TrimSpace(string(b))
-		req.Header.Set("Authorization", "Bearer "+bearerToken)
-	}
+	req.Header = h
 
 	// Parse the URL to extract the host
 	clientConfig := config.HTTPClientConfig{
@@ -253,30 +232,24 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Conn, error) {
-	us, err := buildURL(c.Address, path, query)
-	if err != nil {
-		return nil, err
+func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
+	h := make(http.Header)
+
+	if c.Username != "" && c.Password != "" {
+		h.Set(
+			"Authorization",
+			"Basic "+base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password)),
+		)
 	}
 
-	tlsConfig, err := config.NewTLSConfig(&c.TLSConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	if strings.HasPrefix(us, "https") {
-		us = strings.Replace(us, "https", "wss", 1)
-	} else if strings.HasPrefix(us, "http") {
-		us = strings.Replace(us, "http", "ws", 1)
-	}
-	if !quiet {
-		log.Println(us)
-	}
-
-	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password))}}
+	h.Set("User-Agent", userAgent)
 
 	if c.OrgID != "" {
 		h.Set("X-Scope-OrgID", c.OrgID)
+	}
+
+	if c.QueryTags != "" {
+		h.Set("X-Query-Tags", c.QueryTags)
 	}
 
 	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
@@ -298,6 +271,32 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 		}
 		bearerToken := strings.TrimSpace(string(b))
 		h.Set("Authorization", "Bearer "+bearerToken)
+	}
+	return h, nil
+}
+
+func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Conn, error) {
+	us, err := buildURL(c.Address, path, query)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsConfig, err := config.NewTLSConfig(&c.TLSConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.HasPrefix(us, "http") {
+		us = strings.Replace(us, "http", "ws", 1)
+	}
+
+	if !quiet {
+		log.Println(us)
+	}
+
+	h, err := c.getHTTPRequestHeader()
+	if err != nil {
+		return nil, err
 	}
 
 	ws := websocket.Dialer{

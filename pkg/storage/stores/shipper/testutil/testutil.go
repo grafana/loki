@@ -51,13 +51,13 @@ type SingleTableQuerier interface {
 	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
 }
 
-func TestSingleTableQuery(t *testing.T, queries []chunk.IndexQuery, querier SingleTableQuerier, start, numRecords int) {
+func TestSingleTableQuery(t *testing.T, userID string, queries []chunk.IndexQuery, querier SingleTableQuerier, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
 	fetchedRecords := make(map[string]string)
 
-	err := querier.MultiQueries(user.InjectOrgID(context.Background(), "fake"), queries, makeTestCallback(t, minValue, maxValue, fetchedRecords))
+	err := querier.MultiQueries(user.InjectOrgID(context.Background(), userID), queries, makeTestCallback(t, minValue, maxValue, fetchedRecords))
 
 	require.NoError(t, err)
 	require.Len(t, fetchedRecords, numRecords)
@@ -83,13 +83,13 @@ type MultiTableQuerier interface {
 	QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
 }
 
-func TestMultiTableQuery(t *testing.T, queries []chunk.IndexQuery, querier MultiTableQuerier, start, numRecords int) {
+func TestMultiTableQuery(t *testing.T, userID string, queries []chunk.IndexQuery, querier MultiTableQuerier, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
 	fetchedRecords := make(map[string]string)
 
-	err := querier.QueryPages(user.InjectOrgID(context.Background(), "fake"), queries, makeTestCallback(t, minValue, maxValue, fetchedRecords))
+	err := querier.QueryPages(user.InjectOrgID(context.Background(), userID), queries, makeTestCallback(t, minValue, maxValue, fetchedRecords))
 
 	require.NoError(t, err)
 	require.Len(t, fetchedRecords, numRecords)
@@ -146,26 +146,25 @@ type DBRecords struct {
 	Start, NumRecords int
 }
 
-func SetupDBsAtPath(t *testing.T, tableName, path string, dbs map[string]DBRecords, compressRandomFiles bool, bucketName []byte) string {
+func SetupDBsAtPath(t *testing.T, path string, dbs map[string]DBRecords, compressRandomFiles bool, bucketName []byte) string {
 	t.Helper()
 	boltIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: path})
 	require.NoError(t, err)
 
 	defer boltIndexClient.Stop()
 
-	tablePath := filepath.Join(path, tableName)
-	require.NoError(t, chunk_util.EnsureDirectory(tablePath))
+	require.NoError(t, chunk_util.EnsureDirectory(path))
 
 	var i int
 	for name, dbRecords := range dbs {
-		AddRecordsToDB(t, filepath.Join(tablePath, name), boltIndexClient, dbRecords.Start, dbRecords.NumRecords, bucketName)
+		AddRecordsToDB(t, filepath.Join(path, name), boltIndexClient, dbRecords.Start, dbRecords.NumRecords, bucketName)
 		if compressRandomFiles && i%2 == 0 {
-			compressFile(t, filepath.Join(tablePath, name))
+			compressFile(t, filepath.Join(path, name))
 		}
 		i++
 	}
 
-	return tablePath
+	return path
 }
 
 func compressFile(t *testing.T, filepath string) {
@@ -210,6 +209,7 @@ func DecompressFile(t *testing.T, src, dest string) {
 }
 
 type DBsConfig struct {
+	DBRecordsStart                     int
 	NumUnCompactedDBs, NumCompactedDBs int
 }
 
@@ -226,7 +226,7 @@ func (c PerUserDBsConfig) String() string {
 	return fmt.Sprintf("Per User DBs - UCDBs: %d, CDBs: %d, Users: %d", c.NumUnCompactedDBs, c.NumCompactedDBs, c.NumUsers)
 }
 
-func SetupTable(t *testing.T, name, path string, commonDBsConfig DBsConfig, perUserDBsConfig PerUserDBsConfig) {
+func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBsConfig PerUserDBsConfig) {
 	numRecordsPerDB := 100
 
 	commonDBsWithDefaultBucket := map[string]DBRecords{}
@@ -235,52 +235,57 @@ func SetupTable(t *testing.T, name, path string, commonDBsConfig DBsConfig, perU
 
 	for i := 0; i < commonDBsConfig.NumUnCompactedDBs; i++ {
 		commonDBsWithDefaultBucket[fmt.Sprint(i)] = DBRecords{
-			Start:      i * numRecordsPerDB,
-			NumRecords: (i + 1) * numRecordsPerDB,
+			Start:      commonDBsConfig.DBRecordsStart + i*numRecordsPerDB,
+			NumRecords: numRecordsPerDB,
 		}
 	}
 
 	for i := 0; i < commonDBsConfig.NumCompactedDBs; i++ {
 		commonDBsWithDefaultBucket[fmt.Sprintf("compactor-%d", i)] = DBRecords{
-			Start:      i * numRecordsPerDB,
+			Start:      commonDBsConfig.DBRecordsStart + i*numRecordsPerDB,
 			NumRecords: ((i + 1) * numRecordsPerDB) * 2,
 		}
 	}
 
 	for i := 0; i < perUserDBsConfig.NumUnCompactedDBs; i++ {
-		commonDBsWithPerUserBucket[fmt.Sprintf("per-user-bucket-db-%d", i)] = map[string]DBRecords{}
+		dbName := fmt.Sprintf("per-user-bucket-db-%d", i)
+		commonDBsWithPerUserBucket[dbName] = map[string]DBRecords{}
 		for j := 0; j < perUserDBsConfig.NumUsers; j++ {
-			commonDBsWithPerUserBucket[fmt.Sprintf("per-user-bucket-db-%d", i)][fmt.Sprintf("user-%d", j)] = DBRecords{
-				Start:      i * numRecordsPerDB,
-				NumRecords: (i + 1) * numRecordsPerDB,
+			commonDBsWithPerUserBucket[dbName][BuildUserID(j)] = DBRecords{
+				Start:      perUserDBsConfig.DBRecordsStart + i*numRecordsPerDB,
+				NumRecords: numRecordsPerDB,
 			}
 		}
 	}
 
 	for i := 0; i < perUserDBsConfig.NumCompactedDBs; i++ {
 		for j := 0; j < perUserDBsConfig.NumUsers; j++ {
-			userID := fmt.Sprintf("user-%d", j)
+			userID := BuildUserID(j)
 			if i == 0 {
 				perUserDBs[userID] = map[string]DBRecords{}
 			}
 			perUserDBs[userID][fmt.Sprintf("compactor-%d", i)] = DBRecords{
-				Start:      i * numRecordsPerDB,
+				Start:      perUserDBsConfig.DBRecordsStart + i*numRecordsPerDB,
 				NumRecords: (i + 1) * numRecordsPerDB,
 			}
 		}
 	}
 
-	SetupDBsAtPath(t, name, path, commonDBsWithDefaultBucket, true, defaultBucketName)
+	SetupDBsAtPath(t, path, commonDBsWithDefaultBucket, true, defaultBucketName)
 
 	for dbName, userRecords := range commonDBsWithPerUserBucket {
 		for userID, dbRecords := range userRecords {
-			SetupDBsAtPath(t, name, path, map[string]DBRecords{
+			SetupDBsAtPath(t, path, map[string]DBRecords{
 				dbName: dbRecords,
 			}, false, []byte(userID))
 		}
 	}
 
 	for userID, dbRecords := range perUserDBs {
-		SetupDBsAtPath(t, userID, filepath.Join(path, name), dbRecords, true, defaultBucketName)
+		SetupDBsAtPath(t, filepath.Join(path, userID), dbRecords, true, defaultBucketName)
 	}
+}
+
+func BuildUserID(id int) string {
+	return fmt.Sprintf("user-%d", id)
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
@@ -45,47 +46,25 @@ func TestTableManager_QueryPages(t *testing.T) {
 
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 
-	tables := map[string]map[string]testutil.DBRecords{
-		"table1": {
-			"db1": {
-				Start:      0,
-				NumRecords: 10,
-			},
-			"db2": {
-				Start:      10,
-				NumRecords: 10,
-			},
-			"db3": {
-				Start:      20,
-				NumRecords: 10,
-			},
-		},
-		"table2": {
-			"db1": {
-				Start:      30,
-				NumRecords: 10,
-			},
-			"db2": {
-				Start:      40,
-				NumRecords: 10,
-			},
-			"db3": {
-				Start:      50,
-				NumRecords: 10,
-			},
-		},
-	}
-
 	var queries []chunk.IndexQuery
-	for name, dbs := range tables {
+	for i, name := range []string{"table1", "table2"} {
+		testutil.SetupTable(t, filepath.Join(objectStoragePath, name), testutil.DBsConfig{
+			NumUnCompactedDBs: 5,
+			DBRecordsStart:    i * 1000,
+		}, testutil.PerUserDBsConfig{
+			DBsConfig: testutil.DBsConfig{
+				NumUnCompactedDBs: 5,
+				DBRecordsStart:    i*1000 + 500,
+			},
+			NumUsers: 1,
+		})
 		queries = append(queries, chunk.IndexQuery{TableName: name})
-		testutil.SetupDBsAtPath(t, name, objectStoragePath, dbs, true, nil)
 	}
 
 	tableManager, stopFunc := buildTestTableManager(t, tempDir)
 	defer stopFunc()
 
-	testutil.TestMultiTableQuery(t, queries, tableManager, 0, 60)
+	testutil.TestMultiTableQuery(t, testutil.BuildUserID(0), queries, tableManager, 0, 2000)
 }
 
 func TestTableManager_cleanupCache(t *testing.T) {
@@ -104,7 +83,7 @@ func TestTableManager_cleanupCache(t *testing.T) {
 	nonExpiredTableName := "non-expired-table"
 
 	// query for above 2 tables which should set them up in table manager
-	err = tableManager.QueryPages(context.Background(), []chunk.IndexQuery{
+	err = tableManager.QueryPages(user.InjectOrgID(context.Background(), "fake"), []chunk.IndexQuery{
 		{TableName: expiredTableName},
 		{TableName: nonExpiredTableName},
 	}, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
@@ -122,7 +101,9 @@ func TestTableManager_cleanupCache(t *testing.T) {
 	// change the last used at time of expiredTable to before the ttl.
 	expiredTable, ok := tableManager.tables[expiredTableName]
 	require.True(t, ok)
-	expiredTable.lastUsedAt = time.Now().Add(-(tableManager.cfg.CacheTTL + time.Minute))
+	for _, idxSet := range expiredTable.indexSets {
+		idxSet.(*indexSet).lastUsedAt = time.Now().Add(-(tableManager.cfg.CacheTTL + time.Minute))
+	}
 
 	// call the cleanupCache and verify that we still have nonExpiredTable and expiredTable is gone.
 	require.NoError(t, tableManager.cleanupCache())
@@ -174,7 +155,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			}
 
 			for name, dbs := range tables {
-				testutil.SetupDBsAtPath(t, name, objectStoragePath, dbs, true, nil)
+				testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, name), dbs, true, nil)
 			}
 
 			boltDBIndexClient, indexStorageClient := buildTestClients(t, tempDir)

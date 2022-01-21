@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	lokiutil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -223,13 +223,13 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 	ic := c.(logproto.IngesterClient)
 
 	ctx = user.InjectOrgID(ctx, "-1")
-	stream, err := ic.TransferChunks(ctx)
+	s, err := ic.TransferChunks(ctx)
 	if err != nil {
 		return errors.Wrap(err, "TransferChunks")
 	}
 
 	for instanceID, inst := range i.instances {
-		for _, istream := range inst.streams {
+		err := inst.streams.ForEach(func(istream *stream) (bool, error) {
 			err = func() error {
 				istream.chunkMtx.Lock()
 				defer istream.chunkMtx.Unlock()
@@ -259,7 +259,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 						Data: bb,
 					}
 
-					err = stream.Send(&logproto.TimeSeriesChunk{
+					err = s.Send(&logproto.TimeSeriesChunk{
 						Chunks:         chunks,
 						UserId:         instanceID,
 						Labels:         lbls,
@@ -275,12 +275,16 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 				return nil
 			}()
 			if err != nil {
-				return err
+				return false, err
 			}
+			return true, nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 
-	_, err = stream.CloseAndRecv()
+	_, err = s.CloseAndRecv()
 	if err != nil {
 		return errors.Wrap(err, "CloseAndRecv")
 	}

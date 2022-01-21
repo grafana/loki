@@ -11,12 +11,11 @@ import (
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const userIndexReadinessTimeout = 15 * time.Minute
@@ -108,9 +107,11 @@ func (is *indexSet) initUserIndexSet(workingDir string) {
 			seedFileIdx = 0
 		}
 		compactedDBName = filepath.Join(workingDir, is.sourceObjects[seedFileIdx].Name)
-		is.err = shipper_util.DownloadFileFromStorage(func() (io.ReadCloser, error) {
-			return is.baseIndexSet.GetFile(ctx, is.tableName, is.userID, is.sourceObjects[seedFileIdx].Name)
-		}, shipper_util.IsCompressedFile(is.sourceObjects[seedFileIdx].Name), compactedDBName, false, is.logger)
+		is.err = shipper_util.DownloadFileFromStorage(compactedDBName, shipper_util.IsCompressedFile(is.sourceObjects[seedFileIdx].Name),
+			false, shipper_util.LoggerWithFilename(is.logger, is.sourceObjects[seedFileIdx].Name),
+			func() (io.ReadCloser, error) {
+				return is.baseIndexSet.GetFile(ctx, is.tableName, is.userID, is.sourceObjects[seedFileIdx].Name)
+			})
 		if is.err != nil {
 			return
 		}
@@ -133,9 +134,11 @@ func (is *indexSet) initUserIndexSet(workingDir string) {
 		}
 		downloadAt := filepath.Join(workingDir, object.Name)
 
-		is.err = shipper_util.DownloadFileFromStorage(func() (io.ReadCloser, error) {
-			return is.baseIndexSet.GetFile(ctx, is.tableName, is.userID, object.Name)
-		}, shipper_util.IsCompressedFile(object.Name), downloadAt, false, is.logger)
+		is.err = shipper_util.DownloadFileFromStorage(downloadAt, shipper_util.IsCompressedFile(object.Name),
+			false, shipper_util.LoggerWithFilename(is.logger, object.Name),
+			func() (io.ReadCloser, error) {
+				return is.baseIndexSet.GetFile(ctx, is.tableName, is.userID, object.Name)
+			})
 		if is.err != nil {
 			return
 		}
