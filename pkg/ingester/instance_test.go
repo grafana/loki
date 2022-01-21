@@ -143,7 +143,7 @@ func TestSyncPeriod(t *testing.T) {
 	require.NoError(t, err)
 
 	// let's verify results
-	s, err := inst.getOrCreateStream(pr.Streams[0], false, recordPool.GetRecord())
+	s, err := inst.getOrCreateStream(pr.Streams[0], recordPool.GetRecord())
 	require.NoError(t, err)
 
 	// make sure each chunk spans max 'sync period' time
@@ -181,7 +181,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	}
 
 	for _, testStream := range testStreams {
-		stream, err := instance.getOrCreateStream(testStream, false, recordPool.GetRecord())
+		stream, err := instance.getOrCreateStream(testStream, recordPool.GetRecord())
 		require.NoError(t, err)
 		chunk := newStream(cfg, limiter, "fake", 0, nil, true, NilMetrics).NewChunk()
 		for _, entry := range testStream.Entries {

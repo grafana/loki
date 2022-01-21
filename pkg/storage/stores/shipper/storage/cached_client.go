@@ -10,9 +10,8 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (

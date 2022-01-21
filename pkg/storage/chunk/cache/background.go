@@ -5,12 +5,13 @@ import (
 	"flag"
 	"sync"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // BackgroundConfig is config for a Background Cache.

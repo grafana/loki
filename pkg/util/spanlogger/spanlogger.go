@@ -6,9 +6,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/spanlogger"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/tenant"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
