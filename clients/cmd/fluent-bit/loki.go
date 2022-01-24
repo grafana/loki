@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -78,7 +79,7 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 			return nil
 		}
 	}
-	line, err := createLine(records, l.cfg.lineFormat)
+	line, err := l.createLine(records, l.cfg.lineFormat)
 	if err != nil {
 		return fmt.Errorf("error creating line: %v", err)
 	}
@@ -220,9 +221,21 @@ func removeKeys(records map[string]interface{}, keys []string) {
 	}
 }
 
-func createLine(records map[string]interface{}, f format) (string, error) {
+func (l *loki) createLine(records map[string]interface{}, f format) (string, error) {
 	switch f {
 	case jsonFormat:
+		for k, v := range records {
+			if s, ok := v.(string); ok && strings.Contains(s, "{") {
+				var data interface{}
+				err := json.Unmarshal([]byte(s), &data)
+				if err != nil {
+					// keep this debug as it can be very verbose
+					level.Debug(l.logger).Log("msg", "error unmarshalling json", "err", err)
+					continue
+				}
+				records[k] = data
+			}
+		}
 		js, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(records)
 		if err != nil {
 			return "", err
