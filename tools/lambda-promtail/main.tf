@@ -46,6 +46,15 @@ resource "aws_iam_role_policy" "logs" {
   })
 }
 
+data "aws_iam_policy" "lambda_vpc_execution" {
+  name = "AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_vpc_execution" {
+  role       = aws_iam_role.iam_for_lambda.name
+  policy_arn = data.aws_iam_policy.lambda_vpc_execution.arn
+}
+
 resource "aws_lambda_function" "lambda_promtail" {
   image_uri     = var.lambda_promtail_image
   function_name = "lambda_promtail"
