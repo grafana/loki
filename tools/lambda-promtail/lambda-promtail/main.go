@@ -71,7 +71,7 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 		err := d.Decode(t)
 
 		if err == nil {
-			return t, err
+			return t, nil
 		}
 
 		reader.Seek(0, 0)
