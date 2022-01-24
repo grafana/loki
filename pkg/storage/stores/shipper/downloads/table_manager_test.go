@@ -143,19 +143,22 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 
 			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 
-			tables := map[string]map[string]testutil.DBRecords{}
+			tables := map[string]map[string]testutil.DBConfig{}
 			activeTableNumber := getActiveTableNumber()
 			for i := 0; i < 10; i++ {
-				tables[fmt.Sprintf("table_%d", activeTableNumber-int64(i))] = map[string]testutil.DBRecords{
+				tables[fmt.Sprintf("table_%d", activeTableNumber-int64(i))] = map[string]testutil.DBConfig{
 					"db": {
-						Start:      i * 10,
-						NumRecords: 10,
+						CompressFile: i%2 == 0,
+						DBRecords: testutil.DBRecords{
+							Start:      i * 10,
+							NumRecords: 10,
+						},
 					},
 				}
 			}
 
 			for name, dbs := range tables {
-				testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, name), dbs, true, nil)
+				testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, name), dbs, nil)
 			}
 
 			boltDBIndexClient, indexStorageClient := buildTestClients(t, tempDir)

@@ -56,28 +56,36 @@ func TestLoadTables(t *testing.T) {
 	testutil.AddRecordsToDB(t, filepath.Join(indexPath, "table0"), boltDBIndexClient, 0, 10, nil)
 
 	// table1 with 2 dbs
-	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table1"), map[string]testutil.DBRecords{
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table1"), map[string]testutil.DBConfig{
 		"db1": {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      20,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      20,
+				NumRecords: 10,
+			},
 		},
-	}, false, nil)
+	}, nil)
 
 	// table2 with 2 dbs
-	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table2"), map[string]testutil.DBRecords{
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table2"), map[string]testutil.DBConfig{
 		"db1": {
-			Start:      30,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      30,
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      40,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      40,
+				NumRecords: 10,
+			},
 		},
-	}, false, nil)
+	}, nil)
 
 	expectedTables := map[string]struct {
 		start, numRecords int
