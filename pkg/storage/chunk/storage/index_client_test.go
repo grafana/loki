@@ -44,7 +44,10 @@ func TestIndexBasic(t *testing.T) {
 			})
 			require.NoError(t, err)
 			assert.Eventually(t, func() bool {
-				return client.AsyncQueueLength() == 0
+				if asyncClient, ok := client.(IndexAsyncClient); ok {
+					return asyncClient.AsyncQueueLength() == 0
+				}
+				return true
 			}, time.Second, 10*time.Millisecond)
 			require.Equal(t, []chunk.IndexEntry{
 				{RangeValue: []byte(fmt.Sprintf("range%d", i))},
@@ -191,7 +194,10 @@ func TestQueryPages(t *testing.T) {
 						return true
 					})
 					assert.Eventually(t, func() bool {
-						return client.AsyncQueueLength() == 0
+						if asyncClient, ok := client.(IndexAsyncClient); ok {
+							return asyncClient.AsyncQueueLength() == 0
+						}
+						return true
 					}, time.Second, 10*time.Millisecond)
 					require.NoError(t, err)
 					require.Equal(t, tt.want, have)
@@ -233,7 +239,10 @@ func TestCardinalityLimit(t *testing.T) {
 		})
 		require.Error(t, err, "cardinality limit exceeded for {}; 10 entries, more than limit of 5")
 		assert.Eventually(t, func() bool {
-			return client.AsyncQueueLength() == 0
+			if asyncClient, ok := client.(IndexAsyncClient); ok {
+				return asyncClient.AsyncQueueLength() == 0
+			}
+			return true
 		}, time.Second, 10*time.Millisecond)
 		require.Equal(t, 0, have)
 	})

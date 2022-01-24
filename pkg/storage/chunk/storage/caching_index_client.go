@@ -98,6 +98,10 @@ func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity tim
 	return cacheClient
 }
 
+type IndexAsyncClient interface {
+	AsyncQueueLength() int
+}
+
 type cacheEntry struct {
 	keys    []string
 	batches []ReadBatch

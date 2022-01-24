@@ -24,7 +24,6 @@ type IndexClient interface {
 
 	// For the read path.
 	QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error
-	AsyncQueueLength() int
 }
 
 // Client is for storing and retrieving chunks.

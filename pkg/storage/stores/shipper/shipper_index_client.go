@@ -221,10 +221,6 @@ func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error 
 	})
 }
 
-func (s *Shipper) AsyncQueueLength() int {
-	return 0
-}
-
 func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	return instrument.CollectedRequest(ctx, "Shipper.Query", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
 		spanLogger := spanlogger.FromContext(ctx)

@@ -32,10 +32,6 @@ func (m *mockStore) QueryPages(ctx context.Context, queries []chunk.IndexQuery, 
 	return nil
 }
 
-func (m *mockStore) AsyncQueueLength() int {
-	return 0
-}
-
 func TestCachingStorageClientBasic(t *testing.T) {
 	store := &mockStore{
 		results: ReadBatch{
@@ -60,7 +56,10 @@ func TestCachingStorageClientBasic(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 
@@ -70,7 +69,10 @@ func TestCachingStorageClientBasic(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 }
@@ -104,7 +106,10 @@ func TestTempCachingStorageClient(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
@@ -120,7 +125,10 @@ func TestTempCachingStorageClient(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
@@ -137,7 +145,10 @@ func TestTempCachingStorageClient(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 2*len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
@@ -172,7 +183,10 @@ func TestPermCachingStorageClient(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
@@ -188,7 +202,10 @@ func TestPermCachingStorageClient(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
@@ -205,7 +222,10 @@ func TestPermCachingStorageClient(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
@@ -225,7 +245,10 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 
@@ -236,7 +259,10 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 }
@@ -281,7 +307,10 @@ func TestCachingStorageClientCollision(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 	assert.EqualValues(t, store.results, results)
@@ -300,7 +329,10 @@ func TestCachingStorageClientCollision(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		return client.AsyncQueueLength() == 0
+		if asyncClient, ok := client.(IndexAsyncClient); ok {
+			return asyncClient.AsyncQueueLength() == 0
+		}
+		return true
 	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 	assert.EqualValues(t, store.results, results)
@@ -458,7 +490,10 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 				})
 				require.NoError(t, err)
 				assert.Eventually(t, func() bool {
-					return client.AsyncQueueLength() == 0
+					if asyncClient, ok := client.(IndexAsyncClient); ok {
+						return asyncClient.AsyncQueueLength() == 0
+					}
+					return true
 				}, time.Second, 10*time.Millisecond)
 
 				// we do a callback per query sent not per query done to the index store. See if we got as many callbacks as the number of actual queries.
@@ -487,7 +522,10 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 				})
 				require.NoError(t, err)
 				assert.Eventually(t, func() bool {
-					return client.AsyncQueueLength() == 0
+					if asyncClient, ok := client.(IndexAsyncClient); ok {
+						return asyncClient.AsyncQueueLength() == 0
+					}
+					return true
 				}, time.Second, 10*time.Millisecond)
 
 				// verify the callback queries again

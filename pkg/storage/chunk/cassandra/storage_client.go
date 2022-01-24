@@ -259,10 +259,6 @@ type StorageClient struct {
 	querySemaphore *semaphore.Weighted
 }
 
-func (s *StorageClient) AsyncQueueLength() int {
-	return 0
-}
-
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (*StorageClient, error) {
 	readSession, err := cfg.session("index-read", registerer)

@@ -41,10 +41,6 @@ type MockStorage struct {
 	mode           MockStorageMode
 }
 
-func (m *MockStorage) AsyncQueueLength() int {
-	return 0
-}
-
 type mockTable struct {
 	items       map[string][]mockItem
 	write, read int64

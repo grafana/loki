@@ -78,10 +78,6 @@ func (s *GatewayClient) Stop() {
 	s.conn.Close()
 }
 
-func (s *GatewayClient) AsyncQueueLength() int {
-	return 0
-}
-
 func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	errs := make(chan error)
 

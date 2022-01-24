@@ -68,10 +68,6 @@ type storageClientColumnKey struct {
 	keysFn    keysFn
 }
 
-func (s *storageClientColumnKey) AsyncQueueLength() int {
-	return 0
-}
-
 // storageClientV1 implements chunk.storageClient for GCP.
 type storageClientV1 struct {
 	storageClientColumnKey
