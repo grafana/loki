@@ -37,7 +37,7 @@ func buildTestIndexSet(t *testing.T, userID, path string) (*indexSet, stopFunc) 
 func TestIndexSet_Init(t *testing.T) {
 	tempDir := t.TempDir()
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-	testDBs := map[string]testutil.DBRecords{}
+	testDBs := map[string]testutil.DBConfig{}
 
 	checkIndexSet := func() {
 		indexSet, stopFunc := buildTestIndexSet(t, userID, tempDir)
@@ -51,13 +51,16 @@ func TestIndexSet_Init(t *testing.T) {
 
 	// setup some dbs in object storage
 	for i := 0; i < 10; i++ {
-		testDBs[fmt.Sprint(i)] = testutil.DBRecords{
-			Start:      i * 10,
-			NumRecords: 10,
+		testDBs[fmt.Sprint(i)] = testutil.DBConfig{
+			CompressFile: i%2 == 0,
+			DBRecords: testutil.DBRecords{
+				Start:      i * 10,
+				NumRecords: 10,
+			},
 		}
 	}
 
-	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName, userID), testDBs, true, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName, userID), testDBs, nil)
 
 	// check index set twice; first run to have new files to download, second run to test with no changes in storage.
 	for i := 0; i < 2; i++ {
@@ -86,16 +89,19 @@ func TestIndexSet_doConcurrentDownload(t *testing.T) {
 	for _, tc := range []int{0, 10, maxDownloadConcurrency, maxDownloadConcurrency * 2} {
 		t.Run(fmt.Sprintf("%d dbs", tc), func(t *testing.T) {
 			userID := fmt.Sprint(tc)
-			testDBs := map[string]testutil.DBRecords{}
+			testDBs := map[string]testutil.DBConfig{}
 
 			for i := 0; i < tc; i++ {
-				testDBs[fmt.Sprint(i)] = testutil.DBRecords{
-					Start:      i * 10,
-					NumRecords: 10,
+				testDBs[fmt.Sprint(i)] = testutil.DBConfig{
+					CompressFile: i%2 == 0,
+					DBRecords: testutil.DBRecords{
+						Start:      i * 10,
+						NumRecords: 10,
+					},
 				}
 			}
 
-			testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName, userID), testDBs, true, nil)
+			testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName, userID), testDBs, nil)
 
 			indexSet, stopFunc := buildTestIndexSet(t, userID, tempDir)
 			defer func() {

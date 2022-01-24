@@ -73,26 +73,34 @@ func TestLoadTable(t *testing.T) {
 
 	// setup some dbs with default bucket and per tenant bucket for a table at a path.
 	tablePath := filepath.Join(indexPath, "test-table")
-	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBRecords{
+	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBConfig{
 		"db1": {
-			Start:      0,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
-	}, false, nil)
-	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBRecords{
+	}, nil)
+	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBConfig{
 		"db3": {
-			Start:      20,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      20,
+				NumRecords: 10,
+			},
 		},
 		"db4": {
-			Start:      30,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      30,
+				NumRecords: 10,
+			},
 		},
-	}, false, []byte(userID))
+	}, []byte(userID))
 
 	// change a boltdb file to text file which would fail to open.
 	invalidFilePath := filepath.Join(tablePath, "invalid")
@@ -360,20 +368,26 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 	}()
 
 	// setup some dbs with a snapshot file.
-	tablePath := testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "test-table"), map[string]testutil.DBRecords{
+	tablePath := testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "test-table"), map[string]testutil.DBConfig{
 		"db1": {
-			Start:      0,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		"db1" + tempFileSuffix: { // a snapshot file which should be ignored.
-			Start:      0,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
-	}, false, nil)
+	}, nil)
 
 	// create a boltdb file without bucket which should get removed
 	db, err := local.OpenBoltdbFile(filepath.Join(tablePath, "no-bucket"))
@@ -424,16 +438,18 @@ func TestTable_ImmutableUploads(t *testing.T) {
 		time.Now().Truncate(ShardDBsByDuration).Unix(), // active shard, should not upload
 	}
 
-	dbs := map[string]testutil.DBRecords{}
+	dbs := map[string]testutil.DBConfig{}
 	for _, dbName := range dbNames {
-		dbs[fmt.Sprint(dbName)] = testutil.DBRecords{
-			NumRecords: 10,
+		dbs[fmt.Sprint(dbName)] = testutil.DBConfig{
+			DBRecords: testutil.DBRecords{
+				NumRecords: 10,
+			},
 		}
 	}
 
 	// setup some dbs for a table at a path.
 	tableName := "test-table"
-	tablePath := testutil.SetupDBsAtPath(t, filepath.Join(indexPath, tableName), dbs, false, nil)
+	tablePath := testutil.SetupDBsAtPath(t, filepath.Join(indexPath, tableName), dbs, nil)
 
 	table, err := LoadTable(tablePath, "test", storageClient, boltDBIndexClient, false, newMetrics(nil))
 	require.NoError(t, err)
@@ -507,26 +523,33 @@ func TestTable_MultiQueries(t *testing.T) {
 
 	// setup some dbs with default bucket and per tenant bucket for a table at a path.
 	tablePath := filepath.Join(indexPath, "test-table")
-	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBRecords{
+	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBConfig{
 		"db1": {
-			Start:      0,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
-	}, false, nil)
-	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBRecords{
+	}, nil)
+	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBConfig{
 		"db3": {
-			Start:      20,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      20,
+				NumRecords: 10,
+			},
 		},
 		"db4": {
-			Start:      30,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      30,
+				NumRecords: 10,
+			},
 		},
-	}, false, []byte(user1))
+	}, []byte(user1))
 
 	// try loading the table.
 	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient, false, newMetrics(nil))
