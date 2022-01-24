@@ -41,6 +41,8 @@ import (
 	"github.com/grafana/loki/pkg/tenant"
 )
 
+const day = 24 * time.Hour
+
 var (
 	// PassthroughMiddleware is a noop middleware
 	PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
