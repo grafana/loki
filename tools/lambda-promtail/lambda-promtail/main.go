@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
 
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
@@ -54,20 +56,45 @@ func init() {
 	fmt.Println("keep stream: ", keepStream)
 }
 
+func checkEventType(ev map[string]interface{}) (interface{}, error) {
+	var s3Event events.S3Event
+	var cwEvent events.CloudwatchLogsEvent
+
+	types := [...]interface{}{&s3Event, &cwEvent}
+
+	j, _ := json.Marshal(ev)
+	reader := strings.NewReader(string(j))
+	d := json.NewDecoder(reader)
+	d.DisallowUnknownFields()
+
+	for _, t := range types {
+		err := d.Decode(t)
+
+		if err == nil {
+			return t, err
+		}
+
+		reader.Seek(0, 0)
+	}
+
+	return nil, fmt.Errorf("unknown event type!")
+}
+
 func handler(ctx context.Context, ev map[string]interface{}) error {
-	s3event, err := convertToS3Event(ev)
-	if err == nil {
-		return processS3Event(ctx, s3event)
+	event, err := checkEventType(ev)
+	if err != nil {
+		fmt.Println("invalid event: %s", ev)
+		return err
 	}
 
-	cwevent, err := convertToCWEvent(ev)
-	if err == nil {
-		return processCWEvent(ctx, cwevent)
+	switch event.(type) {
+	case *events.S3Event:
+		return processS3Event(ctx, event.(*events.S3Event))
+	case *events.CloudwatchLogsEvent:
+		return processCWEvent(ctx, event.(*events.CloudwatchLogsEvent))
 	}
 
-	fmt.Println("invalid event: %s", ev)
-
-	return nil
+	return err
 }
 
 func main() {

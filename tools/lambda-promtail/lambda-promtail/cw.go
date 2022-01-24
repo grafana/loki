@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -12,20 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-func convertToCWEvent(ev map[string]interface{}) (events.CloudwatchLogsEvent, error) {
-	var cw events.CloudwatchLogsEvent
-
-	j, _ := json.Marshal(ev)
-
-	d := json.NewDecoder(strings.NewReader(string(j)))
-	d.DisallowUnknownFields()
-
-	err := d.Decode(&cw)
-
-	return cw, err
-}
-
-func parseCWEvent(ctx context.Context, b *batch, ev events.CloudwatchLogsEvent) error {
+func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent) error {
 	data, err := ev.AWSLogs.Parse()
 	if err != nil {
 		fmt.Println("error parsing log event: ", err)
@@ -52,7 +37,7 @@ func parseCWEvent(ctx context.Context, b *batch, ev events.CloudwatchLogsEvent) 
 	return nil
 }
 
-func processCWEvent(ctx context.Context, ev events.CloudwatchLogsEvent) error {
+func processCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent) error {
 	batch := newBatch()
 
 	err := parseCWEvent(ctx, batch, ev)
