@@ -328,8 +328,21 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 	}
 
 	lokiReq := r.(*LokiRequest)
+
+	// step align start and end time of the query. Start time is rounded down and end time is rounded up.
+	stepNs := r.GetStep() * 1e6
+	startNs := lokiReq.StartTs.UnixNano()
+	start := time.Unix(0, startNs-startNs%stepNs)
+
+	endNs := lokiReq.EndTs.UnixNano()
+	if mod := endNs % stepNs; mod != 0 {
+		endNs += stepNs - mod
+	}
+	end := time.Unix(0, endNs)
+
+	lokiReq = lokiReq.WithStartEnd(util.TimeToMillis(start), util.TimeToMillis(end)).(*LokiRequest)
+
 	// step is >= configured split interval, let us just split the query interval by step
-	// Note: start and end time of the metric queries with step >= split interval will not be step aligned.
 	if lokiReq.Step >= interval.Milliseconds() {
 		forInterval(time.Duration(lokiReq.Step*1e6), lokiReq.StartTs, lokiReq.EndTs, false, func(start, end time.Time) {
 			reqs = append(reqs, &LokiRequest{
@@ -345,19 +358,6 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 
 		return reqs, nil
 	}
-
-	// step align start and end time of the query. Start time is rounded down and end time is rounded up.
-	stepNs := r.GetStep() * 1e6
-	startNs := lokiReq.StartTs.UnixNano()
-	start := time.Unix(0, startNs-startNs%stepNs)
-
-	endNs := lokiReq.EndTs.UnixNano()
-	if mod := endNs % stepNs; mod != 0 {
-		endNs += stepNs - mod
-	}
-	end := time.Unix(0, endNs)
-
-	lokiReq = lokiReq.WithStartEnd(util.TimeToMillis(start), util.TimeToMillis(end)).(*LokiRequest)
 
 	for start := lokiReq.StartTs; start.Before(lokiReq.EndTs); start = nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * time.Millisecond) {
 		end := nextIntervalBoundary(start, r.GetStep(), interval)

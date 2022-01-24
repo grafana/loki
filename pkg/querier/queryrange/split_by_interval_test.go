@@ -479,7 +479,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				},
 				&LokiRequest{
 					StartTs: time.Unix(24*3600, 0),
-					EndTs:   time.Unix(25*3600, 0),
+					EndTs:   time.Unix(30*3600, 0),
 					Step:    6 * 3600 * seconds,
 					Query:   `rate({app="foo"}[1m])`,
 				},
@@ -488,7 +488,7 @@ func Test_splitMetricQuery(t *testing.T) {
 		},
 		{
 			input: &LokiRequest{
-				StartTs: time.Unix(0, 0),
+				StartTs: time.Unix(1*3600, 0),
 				EndTs:   time.Unix(3*3600, 0),
 				Step:    6 * 3600 * seconds,
 				Query:   `rate({app="foo"}[1m])`,
@@ -496,7 +496,7 @@ func Test_splitMetricQuery(t *testing.T) {
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
-					EndTs:   time.Unix(3*3600, 0),
+					EndTs:   time.Unix(6*3600, 0),
 					Step:    6 * 3600 * seconds,
 					Query:   `rate({app="foo"}[1m])`,
 				},
