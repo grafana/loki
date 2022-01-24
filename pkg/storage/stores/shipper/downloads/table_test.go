@@ -255,16 +255,19 @@ func TestTable_DropUnusedIndex(t *testing.T) {
 func TestTable_EnsureQueryReadiness(t *testing.T) {
 	tempDir := t.TempDir()
 
-	dbsToSetup := map[string]testutil.DBRecords{
+	dbsToSetup := map[string]testutil.DBConfig{
 		"db1": {
-			Start:      0,
-			NumRecords: 10,
+			CompressFile: true,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 	}
 
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
-	testutil.SetupDBsAtPath(t, tablePathInStorage, dbsToSetup, true, nil)
+	testutil.SetupDBsAtPath(t, tablePathInStorage, dbsToSetup, nil)
 
 	table, _, stopFunc := buildTestTable(t, tempDir)
 	defer func() {
@@ -281,7 +284,7 @@ func TestTable_EnsureQueryReadiness(t *testing.T) {
 	ensureIndexSetExistsInTable(t, table, "")
 	require.InDelta(t, time.Now().Unix(), table.indexSets[""].(*indexSet).lastUsedAt.Unix(), 5)
 
-	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), dbsToSetup, true, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), dbsToSetup, nil)
 
 	// Running EnsureQueryReadiness should initialize newly setup index for userID.
 	// Running it multiple times should behave similarly.
@@ -306,19 +309,23 @@ func TestTable_Sync(t *testing.T) {
 	noUpdatesDB := "no-updates"
 	newDB := "new"
 
-	testDBs := map[string]testutil.DBRecords{
+	testDBs := map[string]testutil.DBConfig{
 		deleteDB: {
-			Start:      0,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		noUpdatesDB: {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
 	}
 
 	// setup the table in storage with some records
-	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName), testDBs, false, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName), testDBs, nil)
 
 	// create table instance
 	table, boltdbClient, stopFunc := buildTestTable(t, tempDir)
@@ -367,46 +374,67 @@ func TestTable_QueryResponse(t *testing.T) {
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 
-	commonDBs := map[string]testutil.DBRecords{
+	commonDBs := map[string]testutil.DBConfig{
 		"db1": {
-			Start:      0,
-			NumRecords: 10,
+			CompressFile: true,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		"duplicate_db1": {
-			Start:      0,
-			NumRecords: 10,
+			CompressFile: true,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
 		"partially_duplicate_db2": {
-			Start:      10,
-			NumRecords: 5,
+			CompressFile: true,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 5,
+			},
 		},
 		"db3": {
-			Start:      20,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      20,
+				NumRecords: 10,
+			},
 		},
 	}
 
-	userDBs := map[string]testutil.DBRecords{
+	userDBs := map[string]testutil.DBConfig{
 		"overlaps_with_common_dbs": {
-			Start:      10,
-			NumRecords: 30,
+			CompressFile: true,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 30,
+			},
 		},
 		"same_db_again": {
-			Start:      10,
-			NumRecords: 20,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 20,
+			},
 		},
 		"additional_records": {
-			Start:      30,
-			NumRecords: 10,
+			CompressFile: true,
+			DBRecords: testutil.DBRecords{
+				Start:      30,
+				NumRecords: 10,
+			},
 		},
 	}
 
-	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, true, nil)
-	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, true, nil)
+	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, nil)
 
 	table, _, stopFunc := buildTestTable(t, tempDir)
 	defer func() {
@@ -439,22 +467,26 @@ func TestLoadTable(t *testing.T) {
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 
-	commonDBs := make(map[string]testutil.DBRecords)
-	userDBs := make(map[string]testutil.DBRecords)
+	commonDBs := make(map[string]testutil.DBConfig)
+	userDBs := make(map[string]testutil.DBConfig)
 	for i := 0; i < 10; i++ {
-		commonDBs[fmt.Sprint(i)] = testutil.DBRecords{
-			Start:      i,
-			NumRecords: 1,
+		commonDBs[fmt.Sprint(i)] = testutil.DBConfig{
+			DBRecords: testutil.DBRecords{
+				Start:      i,
+				NumRecords: 1,
+			},
 		}
-		userDBs[fmt.Sprint(i+10)] = testutil.DBRecords{
-			Start:      i + 10,
-			NumRecords: 1,
+		userDBs[fmt.Sprint(i+10)] = testutil.DBConfig{
+			DBRecords: testutil.DBRecords{
+				Start:      i + 10,
+				NumRecords: 1,
+			},
 		}
 	}
 
 	// setup the table in storage with some records
-	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, false, nil)
-	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, false, nil)
+	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, nil)
 
 	boltDBIndexClient, storageClient := buildTestClients(t, tempDir)
 	tablePathInCache := filepath.Join(tempDir, cacheDirName, tableName)
@@ -481,21 +513,25 @@ func TestLoadTable(t *testing.T) {
 	require.Error(t, err)
 
 	// add some more files to the storage.
-	commonDBs = make(map[string]testutil.DBRecords)
-	userDBs = make(map[string]testutil.DBRecords)
+	commonDBs = make(map[string]testutil.DBConfig)
+	userDBs = make(map[string]testutil.DBConfig)
 	for i := 20; i < 30; i++ {
-		commonDBs[fmt.Sprint(i)] = testutil.DBRecords{
-			Start:      i,
-			NumRecords: 1,
+		commonDBs[fmt.Sprint(i)] = testutil.DBConfig{
+			DBRecords: testutil.DBRecords{
+				Start:      i,
+				NumRecords: 1,
+			},
 		}
-		userDBs[fmt.Sprint(i+10)] = testutil.DBRecords{
-			Start:      i + 10,
-			NumRecords: 1,
+		userDBs[fmt.Sprint(i+10)] = testutil.DBConfig{
+			DBRecords: testutil.DBRecords{
+				Start:      i + 10,
+				NumRecords: 1,
+			},
 		}
 	}
 
-	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, false, nil)
-	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, false, nil)
+	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, nil)
 
 	// try loading the table, it should skip loading corrupt file and reload it from storage.
 	table, err = LoadTable(tableName, tablePathInCache, storageClient, boltDBIndexClient, newMetrics(nil))

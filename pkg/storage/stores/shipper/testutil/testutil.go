@@ -140,11 +140,16 @@ func readDB(t *testing.T, db *bbolt.DB) map[string]map[string]string {
 	return dbRecords
 }
 
+type DBConfig struct {
+	CompressFile bool
+	DBRecords
+}
+
 type DBRecords struct {
 	Start, NumRecords int
 }
 
-func SetupDBsAtPath(t *testing.T, path string, dbs map[string]DBRecords, compressRandomFiles bool, bucketName []byte) string {
+func SetupDBsAtPath(t *testing.T, path string, dbs map[string]DBConfig, bucketName []byte) string {
 	t.Helper()
 	boltIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: path})
 	require.NoError(t, err)
@@ -153,13 +158,11 @@ func SetupDBsAtPath(t *testing.T, path string, dbs map[string]DBRecords, compres
 
 	require.NoError(t, chunk_util.EnsureDirectory(path))
 
-	var i int
-	for name, dbRecords := range dbs {
-		AddRecordsToDB(t, filepath.Join(path, name), boltIndexClient, dbRecords.Start, dbRecords.NumRecords, bucketName)
-		if compressRandomFiles && i%2 == 0 {
+	for name, dbConfig := range dbs {
+		AddRecordsToDB(t, filepath.Join(path, name), boltIndexClient, dbConfig.Start, dbConfig.NumRecords, bucketName)
+		if dbConfig.CompressFile {
 			compressFile(t, filepath.Join(path, name))
 		}
-		i++
 	}
 
 	return path
@@ -227,31 +230,39 @@ func (c PerUserDBsConfig) String() string {
 func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBsConfig PerUserDBsConfig) {
 	numRecordsPerDB := 100
 
-	commonDBsWithDefaultBucket := map[string]DBRecords{}
-	commonDBsWithPerUserBucket := map[string]map[string]DBRecords{}
-	perUserDBs := map[string]map[string]DBRecords{}
+	commonDBsWithDefaultBucket := map[string]DBConfig{}
+	commonDBsWithPerUserBucket := map[string]map[string]DBConfig{}
+	perUserDBs := map[string]map[string]DBConfig{}
 
 	for i := 0; i < commonDBsConfig.NumUnCompactedDBs; i++ {
-		commonDBsWithDefaultBucket[fmt.Sprint(i)] = DBRecords{
-			Start:      commonDBsConfig.DBRecordsStart + i*numRecordsPerDB,
-			NumRecords: numRecordsPerDB,
+		commonDBsWithDefaultBucket[fmt.Sprint(i)] = DBConfig{
+			CompressFile: i%2 == 0,
+			DBRecords: DBRecords{
+				Start:      commonDBsConfig.DBRecordsStart + i*numRecordsPerDB,
+				NumRecords: numRecordsPerDB,
+			},
 		}
 	}
 
 	for i := 0; i < commonDBsConfig.NumCompactedDBs; i++ {
-		commonDBsWithDefaultBucket[fmt.Sprintf("compactor-%d", i)] = DBRecords{
-			Start:      commonDBsConfig.DBRecordsStart + i*numRecordsPerDB,
-			NumRecords: ((i + 1) * numRecordsPerDB) * 2,
+		commonDBsWithDefaultBucket[fmt.Sprintf("compactor-%d", i)] = DBConfig{
+			CompressFile: i%2 == 0,
+			DBRecords: DBRecords{
+				Start:      commonDBsConfig.DBRecordsStart + i*numRecordsPerDB,
+				NumRecords: ((i + 1) * numRecordsPerDB) * 2,
+			},
 		}
 	}
 
 	for i := 0; i < perUserDBsConfig.NumUnCompactedDBs; i++ {
 		dbName := fmt.Sprintf("per-user-bucket-db-%d", i)
-		commonDBsWithPerUserBucket[dbName] = map[string]DBRecords{}
+		commonDBsWithPerUserBucket[dbName] = map[string]DBConfig{}
 		for j := 0; j < perUserDBsConfig.NumUsers; j++ {
-			commonDBsWithPerUserBucket[dbName][BuildUserID(j)] = DBRecords{
-				Start:      perUserDBsConfig.DBRecordsStart + i*numRecordsPerDB,
-				NumRecords: numRecordsPerDB,
+			commonDBsWithPerUserBucket[dbName][BuildUserID(j)] = DBConfig{
+				DBRecords: DBRecords{
+					Start:      perUserDBsConfig.DBRecordsStart + i*numRecordsPerDB,
+					NumRecords: numRecordsPerDB,
+				},
 			}
 		}
 	}
@@ -260,27 +271,30 @@ func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBs
 		for j := 0; j < perUserDBsConfig.NumUsers; j++ {
 			userID := BuildUserID(j)
 			if i == 0 {
-				perUserDBs[userID] = map[string]DBRecords{}
+				perUserDBs[userID] = map[string]DBConfig{}
 			}
-			perUserDBs[userID][fmt.Sprintf("compactor-%d", i)] = DBRecords{
-				Start:      perUserDBsConfig.DBRecordsStart + i*numRecordsPerDB,
-				NumRecords: (i + 1) * numRecordsPerDB,
+			perUserDBs[userID][fmt.Sprintf("compactor-%d", i)] = DBConfig{
+				CompressFile: i%2 == 0,
+				DBRecords: DBRecords{
+					Start:      perUserDBsConfig.DBRecordsStart + i*numRecordsPerDB,
+					NumRecords: (i + 1) * numRecordsPerDB,
+				},
 			}
 		}
 	}
 
-	SetupDBsAtPath(t, path, commonDBsWithDefaultBucket, true, local.IndexBucketName)
+	SetupDBsAtPath(t, path, commonDBsWithDefaultBucket, local.IndexBucketName)
 
 	for dbName, userRecords := range commonDBsWithPerUserBucket {
-		for userID, dbRecords := range userRecords {
-			SetupDBsAtPath(t, path, map[string]DBRecords{
-				dbName: dbRecords,
-			}, false, []byte(userID))
+		for userID, dbConfig := range userRecords {
+			SetupDBsAtPath(t, path, map[string]DBConfig{
+				dbName: dbConfig,
+			}, []byte(userID))
 		}
 	}
 
 	for userID, dbRecords := range perUserDBs {
-		SetupDBsAtPath(t, filepath.Join(path, userID), dbRecords, true, local.IndexBucketName)
+		SetupDBsAtPath(t, filepath.Join(path, userID), dbRecords, local.IndexBucketName)
 	}
 }
 
