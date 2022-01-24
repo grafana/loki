@@ -3,7 +3,6 @@ package util
 import (
 	"context"
 	"sync"
-	"unsafe"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
@@ -84,7 +83,7 @@ func (i *IndexDeduper) isSeen(hashValue string, rangeValue []byte) bool {
 	i.mtx.RLock()
 
 	// index entries are never modified during query processing so it should be safe to reference a byte slice as a string.
-	rangeValueStr := yoloString(rangeValue)
+	rangeValueStr := GetUnsafeString(rangeValue)
 
 	if _, ok := i.seenRangeValues[hashValue][rangeValueStr]; ok {
 		i.mtx.RUnlock()
@@ -143,8 +142,4 @@ func (f *filteringBatchIter) Next() bool {
 	}
 
 	return false
-}
-
-func yoloString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
 }

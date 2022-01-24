@@ -15,13 +15,11 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var (
-	bucketName  = []byte("index")
-	chunkBucket = []byte("chunks")
-)
+var chunkBucket = []byte("chunks")
 
 const (
 	logMetricName = "logs"
@@ -87,7 +85,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 
 	var empty, modified bool
 	err = db.Update(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket(bucketName)
+		bucket := tx.Bucket(local.IndexBucketName)
 		if bucket == nil {
 			return nil
 		}
