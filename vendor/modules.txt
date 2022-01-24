@@ -184,9 +184,6 @@ github.com/aws/aws-sdk-go/service/sts/stsiface
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
-# github.com/blang/semver/v4 v4.0.0
-## explicit; go 1.14
-github.com/blang/semver/v4
 # github.com/bmatcuk/doublestar v1.2.2
 ## explicit; go 1.12
 github.com/bmatcuk/doublestar
@@ -259,7 +256,6 @@ github.com/cortexproject/cortex/pkg/chunk/encoding
 github.com/cortexproject/cortex/pkg/chunk/gcp
 github.com/cortexproject/cortex/pkg/chunk/objectclient
 github.com/cortexproject/cortex/pkg/chunk/openstack
-github.com/cortexproject/cortex/pkg/chunk/purger
 github.com/cortexproject/cortex/pkg/chunk/testutils
 github.com/cortexproject/cortex/pkg/chunk/util
 github.com/cortexproject/cortex/pkg/configs/client
@@ -276,7 +272,6 @@ github.com/cortexproject/cortex/pkg/storage/bucket/gcs
 github.com/cortexproject/cortex/pkg/storage/bucket/http
 github.com/cortexproject/cortex/pkg/storage/bucket/s3
 github.com/cortexproject/cortex/pkg/storage/bucket/swift
-github.com/cortexproject/cortex/pkg/storage/tsdb
 github.com/cortexproject/cortex/pkg/tenant
 github.com/cortexproject/cortex/pkg/util
 github.com/cortexproject/cortex/pkg/util/extract
@@ -530,7 +525,6 @@ github.com/gogo/googleapis/google/rpc
 ## explicit; go 1.15
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/io
-github.com/gogo/protobuf/jsonpb
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/protoc-gen-gogo/descriptor
 github.com/gogo/protobuf/sortkeys
@@ -544,7 +538,6 @@ github.com/golang-jwt/jwt/v4
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 ## explicit
 github.com/golang/groupcache/lru
-github.com/golang/groupcache/singleflight
 # github.com/golang/protobuf v1.5.2
 ## explicit; go 1.9
 github.com/golang/protobuf/jsonpb
@@ -1061,44 +1054,23 @@ github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
 # github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19.1-0.20211126105533-c5505f5eaa7d
 ## explicit; go 1.15
-github.com/thanos-io/thanos/pkg/block
-github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata
-github.com/thanos-io/thanos/pkg/cache
-github.com/thanos-io/thanos/pkg/cacheutil
-github.com/thanos-io/thanos/pkg/compact/downsample
-github.com/thanos-io/thanos/pkg/component
-github.com/thanos-io/thanos/pkg/discovery/cache
 github.com/thanos-io/thanos/pkg/discovery/dns
 github.com/thanos-io/thanos/pkg/discovery/dns/godns
 github.com/thanos-io/thanos/pkg/discovery/dns/miekgdns
-github.com/thanos-io/thanos/pkg/discovery/memcache
 github.com/thanos-io/thanos/pkg/errutil
-github.com/thanos-io/thanos/pkg/exemplars/exemplarspb
 github.com/thanos-io/thanos/pkg/extprom
-github.com/thanos-io/thanos/pkg/extprom/http
-github.com/thanos-io/thanos/pkg/gate
-github.com/thanos-io/thanos/pkg/httpconfig
-github.com/thanos-io/thanos/pkg/metadata/metadatapb
-github.com/thanos-io/thanos/pkg/model
 github.com/thanos-io/thanos/pkg/objstore
 github.com/thanos-io/thanos/pkg/objstore/azure
 github.com/thanos-io/thanos/pkg/objstore/filesystem
 github.com/thanos-io/thanos/pkg/objstore/gcs
 github.com/thanos-io/thanos/pkg/objstore/s3
 github.com/thanos-io/thanos/pkg/objstore/swift
-github.com/thanos-io/thanos/pkg/pool
-github.com/thanos-io/thanos/pkg/promclient
-github.com/thanos-io/thanos/pkg/rules/rulespb
 github.com/thanos-io/thanos/pkg/runutil
-github.com/thanos-io/thanos/pkg/store
-github.com/thanos-io/thanos/pkg/store/cache
-github.com/thanos-io/thanos/pkg/store/hintspb
 github.com/thanos-io/thanos/pkg/store/labelpb
 github.com/thanos-io/thanos/pkg/store/storepb
 github.com/thanos-io/thanos/pkg/store/storepb/prompb
 github.com/thanos-io/thanos/pkg/strutil
-github.com/thanos-io/thanos/pkg/targets/targetspb
 github.com/thanos-io/thanos/pkg/testutil
 github.com/thanos-io/thanos/pkg/tracing
 # github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
