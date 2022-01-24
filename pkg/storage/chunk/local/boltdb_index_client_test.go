@@ -24,7 +24,7 @@ func setupDB(t *testing.T, boltdbIndexClient *BoltIndexClient, dbname string) {
 	require.NoError(t, err)
 
 	err = db.Update(func(tx *bbolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(defaultBucketName)
+		b, err := tx.CreateBucketIfNotExists(IndexBucketName)
 		if err != nil {
 			return err
 		}
@@ -63,7 +63,7 @@ func TestBoltDBReload(t *testing.T) {
 
 	valueFromDb := []byte{}
 	_ = droppedDb.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket(defaultBucketName)
+		b := tx.Bucket(IndexBucketName)
 		valueFromDb = b.Get(testKey)
 		return nil
 	})
@@ -207,7 +207,7 @@ func TestBoltDB_Writes(t *testing.T) {
 		{
 			name:        "deletes without initial writes",
 			testDeletes: []string{"1", "2"},
-			err:         fmt.Errorf("bucket %s not found in table 3", defaultBucketName),
+			err:         fmt.Errorf("bucket %s not found in table 3", IndexBucketName),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

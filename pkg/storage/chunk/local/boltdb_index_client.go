@@ -21,8 +21,9 @@ import (
 )
 
 var (
-	defaultBucketName   = []byte("index")
-	ErrUnexistentBoltDB = errors.New("boltdb file does not exist")
+	IndexBucketName         = []byte("index")
+	ErrUnexistentBoltDB     = errors.New("boltdb file does not exist")
+	ErrEmptyIndexBucketName = errors.New("empty index bucket name")
 )
 
 const (
@@ -170,11 +171,11 @@ func (b *BoltIndexClient) GetDB(name string, operation int) (*bbolt.DB, error) {
 	return db, nil
 }
 
-func (b *BoltIndexClient) WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes TableWrites) error {
+func (b *BoltIndexClient) WriteToDB(_ context.Context, db *bbolt.DB, bucketName []byte, writes TableWrites) error {
 	return db.Update(func(tx *bbolt.Tx) error {
 		var b *bbolt.Bucket
 		if len(bucketName) == 0 {
-			bucketName = defaultBucketName
+			return ErrEmptyIndexBucketName
 		}
 
 		// a bucket should already exist for deletes, for other writes we create one otherwise.
@@ -214,7 +215,7 @@ func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch
 			return err
 		}
 
-		err = b.WriteToDB(ctx, db, nil, writes)
+		err = b.WriteToDB(ctx, db, IndexBucketName, writes)
 		if err != nil {
 			return err
 		}
@@ -237,12 +238,16 @@ func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, cal
 		return err
 	}
 
-	return b.QueryDB(ctx, db, query, callback)
+	return b.QueryDB(ctx, db, IndexBucketName, query, callback)
 }
 
-func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query chunk.IndexQuery,
+	callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	return db.View(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket(defaultBucketName)
+		if len(bucketName) == 0 {
+			return ErrEmptyIndexBucketName
+		}
+		bucket := tx.Bucket(bucketName)
 		if bucket == nil {
 			return nil
 		}
