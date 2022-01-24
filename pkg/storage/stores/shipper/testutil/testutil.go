@@ -20,8 +20,6 @@ import (
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
-var defaultBucketName = []byte("index")
-
 func AddRecordsToDB(t *testing.T, path string, dbClient *local.BoltIndexClient, start, numRecords int, bucketName []byte) {
 	t.Helper()
 	db, err := local.OpenBoltdbFile(path)
@@ -31,7 +29,7 @@ func AddRecordsToDB(t *testing.T, path string, dbClient *local.BoltIndexClient, 
 	AddRecordsToBatch(batch, "test", start, numRecords)
 
 	if len(bucketName) == 0 {
-		bucketName = defaultBucketName
+		bucketName = local.IndexBucketName
 	}
 
 	require.NoError(t, dbClient.WriteToDB(context.Background(), db, bucketName, batch.(*local.BoltWriteBatch).Writes["test"]))
@@ -271,7 +269,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBs
 		}
 	}
 
-	SetupDBsAtPath(t, path, commonDBsWithDefaultBucket, true, defaultBucketName)
+	SetupDBsAtPath(t, path, commonDBsWithDefaultBucket, true, local.IndexBucketName)
 
 	for dbName, userRecords := range commonDBsWithPerUserBucket {
 		for userID, dbRecords := range userRecords {
@@ -282,7 +280,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBs
 	}
 
 	for userID, dbRecords := range perUserDBs {
-		SetupDBsAtPath(t, filepath.Join(path, userID), dbRecords, true, defaultBucketName)
+		SetupDBsAtPath(t, filepath.Join(path, userID), dbRecords, true, local.IndexBucketName)
 	}
 }
 

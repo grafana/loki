@@ -36,8 +36,6 @@ const (
 	snapshotFileSuffix = ".snapshot"
 )
 
-var defaultBucketName = []byte("index")
-
 type BoltDBIndexClient interface {
 	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
@@ -199,13 +197,13 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 		return err
 	}
 
-	userIDBytes := shipper_util.YoloBuf(userID)
+	userIDBytes := shipper_util.GetUnsafeBytes(userID)
 
 	for _, db := range lt.dbSnapshots {
 		err := db.boltdb.View(func(tx *bbolt.Tx) error {
 			bucket := tx.Bucket(userIDBytes)
 			if bucket == nil {
-				bucket = tx.Bucket(defaultBucketName)
+				bucket = tx.Bucket(local.IndexBucketName)
 				if bucket == nil {
 					return nil
 				}
@@ -259,7 +257,7 @@ func (lt *Table) Write(ctx context.Context, writes local.TableWrites) error {
 // db files are named after the time shard i.e epoch of the truncated time.
 // If a db file does not exist for a shard it gets created.
 func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrites) error {
-	writeToBucket := defaultBucketName
+	writeToBucket := local.IndexBucketName
 	if lt.makePerTenantBuckets {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {

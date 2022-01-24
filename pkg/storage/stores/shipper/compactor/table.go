@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
@@ -37,8 +38,6 @@ const (
 	dropFreePagesTxMaxSize       = 100 * 1024 * 1024 // 100MB
 	recreatedCompactedDBSuffix   = ".r.gz"
 )
-
-var bucketName = []byte("index")
 
 type indexEntry struct {
 	k, v []byte
@@ -293,18 +292,18 @@ func (t *table) compactFiles(files []storage.IndexFile) error {
 }
 
 // writeBatch writes a batch to compactedDB
-func (t *table) writeBatch(userID string, batch []indexEntry) error {
-	if userID == string(bucketName) {
+func (t *table) writeBatch(bucketName string, batch []indexEntry) error {
+	if bucketName == shipper_util.GetUnsafeString(local.IndexBucketName) {
 		return t.writeCommonIndex(batch)
 	}
-	return t.writeUserIndex(userID, batch)
+	return t.writeUserIndex(bucketName, batch)
 }
 
 // writeCommonIndex writes a batch to compactedDB
 func (t *table) writeCommonIndex(batch []indexEntry) error {
 	t.uploadCompactedDB = true
 	return t.compactedDB.Batch(func(tx *bbolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(bucketName)
+		b, err := tx.CreateBucketIfNotExists(local.IndexBucketName)
 		if err != nil {
 			return err
 		}

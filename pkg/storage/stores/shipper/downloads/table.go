@@ -29,8 +29,6 @@ const (
 	maxDownloadConcurrency = 50
 )
 
-var defaultBucketName = []byte("index")
-
 type BoltDBIndexClient interface {
 	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 }

@@ -249,6 +249,10 @@ func LoggerWithFilename(logger log.Logger, filename string) log.Logger {
 	return log.With(logger, "file-name", filename)
 }
 
-func YoloBuf(s string) []byte {
+func GetUnsafeBytes(s string) []byte {
 	return *((*[]byte)(unsafe.Pointer(&s)))
+}
+
+func GetUnsafeString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }

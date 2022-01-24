@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -183,7 +184,7 @@ func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery,
 		return err
 	}
 
-	userIDBytes := shipper_util.YoloBuf(userID)
+	userIDBytes := shipper_util.GetUnsafeBytes(userID)
 
 	err = t.dbsMtx.rLock(ctx)
 	if err != nil {
@@ -204,7 +205,7 @@ func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery,
 		err := db.View(func(tx *bbolt.Tx) error {
 			bucket := tx.Bucket(userIDBytes)
 			if bucket == nil {
-				bucket = tx.Bucket(defaultBucketName)
+				bucket = tx.Bucket(local.IndexBucketName)
 				if bucket == nil {
 					return nil
 				}

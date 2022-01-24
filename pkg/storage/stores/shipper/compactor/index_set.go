@@ -13,6 +13,7 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
@@ -218,7 +219,7 @@ func (is *indexSet) writeBatch(_ string, batch []indexEntry) error {
 	is.uploadCompactedDB = true
 	is.removeSourceObjects = true
 	return is.compactedDB.Batch(func(tx *bbolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(bucketName)
+		b, err := tx.CreateBucketIfNotExists(local.IndexBucketName)
 		if err != nil {
 			return err
 		}

@@ -178,7 +178,7 @@ func TestTable_Write(t *testing.T) {
 
 					// test that the table has current + previous records
 					testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, table, 0, (i+1)*10)
-					bucketToQuery := defaultBucketName
+					bucketToQuery := local.IndexBucketName
 					if withPerTenantBucket {
 						bucketToQuery = []byte(userID)
 					}
