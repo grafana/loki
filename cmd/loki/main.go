@@ -8,17 +8,17 @@ import (
 	"runtime"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
 
 	"github.com/grafana/loki/pkg/loki"
-	logutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util"
 	_ "github.com/grafana/loki/pkg/util/build"
 	"github.com/grafana/loki/pkg/util/cfg"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func main() {
@@ -43,7 +43,7 @@ func main() {
 		level.Error(util_log.Logger).Log("msg", "invalid log level")
 		os.Exit(1)
 	}
-	util_log.InitLogger(&config.Server)
+	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer)
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
@@ -54,14 +54,14 @@ func main() {
 	}
 
 	if config.PrintConfig {
-		err := logutil.PrintConfig(os.Stderr, &config)
+		err := util.PrintConfig(os.Stderr, &config)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
 		}
 	}
 
 	if config.LogConfig {
-		err := logutil.LogConfig(&config)
+		err := util.LogConfig(&config)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to log config object", "err", err.Error())
 		}
@@ -96,7 +96,7 @@ func main() {
 
 	// Start Loki
 	t, err := loki.New(config.Config)
-	util_log.CheckFatal("initialising loki", err)
+	util_log.CheckFatal("initialising loki", err, util_log.Logger)
 
 	if config.ListTargets {
 		t.ListTargets()
@@ -106,5 +106,5 @@ func main() {
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
 
 	err = t.Run(loki.RunOpts{})
-	util_log.CheckFatal("running loki", err)
+	util_log.CheckFatal("running loki", err, util_log.Logger)
 }

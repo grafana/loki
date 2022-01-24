@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -12,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/tenant"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )

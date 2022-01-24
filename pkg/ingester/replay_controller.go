@@ -3,10 +3,11 @@ package ingester
 import (
 	"sync"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
 	"go.uber.org/atomic"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type replayFlusher struct {
@@ -23,13 +24,12 @@ func (f *replayFlusher) Flush() {
 	instances := f.i.getInstances()
 
 	for _, instance := range instances {
-		instance.streamsMtx.Lock()
 
-		for _, stream := range instance.streams {
-			f.i.removeFlushedChunks(instance, stream, false)
-		}
+		_ = instance.streams.ForEach(func(s *stream) (bool, error) {
+			f.i.removeFlushedChunks(instance, s, false)
+			return true, nil
+		})
 
-		instance.streamsMtx.Unlock()
 	}
 
 }

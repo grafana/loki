@@ -18,7 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -32,6 +31,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )

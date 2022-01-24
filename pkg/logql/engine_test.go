@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -62,7 +63,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits)
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
 				start:     test.ts,
@@ -827,7 +828,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits)
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
 				start:     test.ts,
@@ -2026,7 +2027,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits)
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
@@ -2061,7 +2062,7 @@ func (statsQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (it
 }
 
 func TestEngine_Stats(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits)
+	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
 
 	queueTime := 2 * time.Nanosecond
 	q := eng.Query(LiteralParams{
@@ -2137,7 +2138,7 @@ func TestStepEvaluator_Error(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			tc := tc
-			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits)
+			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
 			q := eng.Query(LiteralParams{
 				qs:    tc.qs,
 				start: time.Unix(0, 0),
@@ -2151,7 +2152,7 @@ func TestStepEvaluator_Error(t *testing.T) {
 }
 
 func TestEngine_MaxSeries(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{maxSeries: 1})
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{maxSeries: 1}, log.NewNopLogger())
 
 	for _, test := range []struct {
 		qs             string
@@ -2205,7 +2206,7 @@ var result promql_parser.Value
 
 func benchmarkRangeQuery(testsize int64, b *testing.B) {
 	b.ReportAllocs()
-	eng := NewEngine(EngineOpts{}, getLocalQuerier(testsize), NoLimits)
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(testsize), NoLimits, log.NewNopLogger())
 	start := time.Unix(0, 0)
 	end := time.Unix(testsize, 0)
 	b.ResetTimer()

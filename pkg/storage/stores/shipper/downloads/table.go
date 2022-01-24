@@ -9,18 +9,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
