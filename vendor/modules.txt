@@ -432,6 +432,8 @@ github.com/envoyproxy/go-control-plane/envoy/type/v3
 # github.com/envoyproxy/protoc-gen-validate v0.6.2
 ## explicit; go 1.12
 github.com/envoyproxy/protoc-gen-validate/validate
+# github.com/evanphx/json-patch v4.12.0+incompatible
+## explicit
 # github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 ## explicit
 github.com/facette/natsort
@@ -465,7 +467,7 @@ github.com/go-kit/log/level
 # github.com/go-logfmt/logfmt v0.5.1
 ## explicit; go 1.17
 github.com/go-logfmt/logfmt
-# github.com/go-logr/logr v1.2.0
+# github.com/go-logr/logr v1.2.2
 ## explicit; go 1.16
 github.com/go-logr/logr
 # github.com/go-openapi/analysis v0.20.0
@@ -579,7 +581,7 @@ github.com/google/gofuzz
 # github.com/google/pprof v0.0.0-20211214055906-6f57359322fd
 ## explicit; go 1.14
 github.com/google/pprof/profile
-# github.com/google/uuid v1.2.0
+# github.com/google/uuid v1.3.0
 ## explicit
 github.com/google/uuid
 # github.com/googleapis/gax-go/v2 v2.1.1
@@ -587,10 +589,11 @@ github.com/google/uuid
 github.com/googleapis/gax-go/v2
 github.com/googleapis/gax-go/v2/apierror
 github.com/googleapis/gax-go/v2/apierror/internal/proto
-# github.com/googleapis/gnostic v0.4.1
+# github.com/googleapis/gnostic v0.5.5
 ## explicit; go 1.12
 github.com/googleapis/gnostic/compiler
 github.com/googleapis/gnostic/extensions
+github.com/googleapis/gnostic/jsonschema
 github.com/googleapis/gnostic/openapiv2
 # github.com/gophercloud/gophercloud v0.24.0
 ## explicit; go 1.14
@@ -879,6 +882,10 @@ github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
 ## explicit
 github.com/oklog/ulid
+# github.com/onsi/ginkgo v1.16.5
+## explicit; go 1.16
+# github.com/onsi/gomega v1.17.0
+## explicit; go 1.16
 # github.com/opencontainers/go-digest v1.0.0
 ## explicit; go 1.13
 github.com/opencontainers/go-digest
@@ -1303,8 +1310,8 @@ golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
 golang.org/x/sys/windows/svc/eventlog
-# golang.org/x/term v0.0.0-20210220032956-6a3ed077a48d
-## explicit; go 1.11
+# golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b
+## explicit; go 1.17
 golang.org/x/term
 # golang.org/x/text v0.3.7
 ## explicit; go 1.17
@@ -1549,7 +1556,7 @@ gopkg.in/yaml.v3
 # inet.af/netaddr v0.0.0-20210707202901-70468d781e6c
 ## explicit; go 1.12
 inet.af/netaddr
-# k8s.io/api v0.22.4 => k8s.io/api v0.21.0
+# k8s.io/api v0.23.1 => k8s.io/api v0.21.0
 ## explicit; go 1.16
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1beta1
@@ -1594,7 +1601,7 @@ k8s.io/api/scheduling/v1beta1
 k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
-# k8s.io/apimachinery v0.22.4 => k8s.io/apimachinery v0.21.0
+# k8s.io/apimachinery v0.23.1 => k8s.io/apimachinery v0.21.0
 ## explicit; go 1.16
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
@@ -1755,7 +1762,9 @@ k8s.io/klog
 # k8s.io/klog/v2 v2.40.1
 ## explicit; go 1.13
 k8s.io/klog/v2
-# k8s.io/utils v0.0.0-20201110183641-67b214c5f920
+# k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
+## explicit; go 1.16
+# k8s.io/utils v0.0.0-20211208161948-7d6a63dca704
 ## explicit; go 1.12
 k8s.io/utils/buffer
 k8s.io/utils/integer
@@ -1764,13 +1773,13 @@ k8s.io/utils/trace
 ## explicit; go 1.12
 rsc.io/binaryregexp
 rsc.io/binaryregexp/syntax
-# sigs.k8s.io/structured-merge-diff/v4 v4.1.0
+# sigs.k8s.io/structured-merge-diff/v4 v4.2.0
 ## explicit; go 1.13
 sigs.k8s.io/structured-merge-diff/v4/fieldpath
 sigs.k8s.io/structured-merge-diff/v4/schema
 sigs.k8s.io/structured-merge-diff/v4/typed
 sigs.k8s.io/structured-merge-diff/v4/value
-# sigs.k8s.io/yaml v1.2.0
+# sigs.k8s.io/yaml v1.3.0
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 # github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
