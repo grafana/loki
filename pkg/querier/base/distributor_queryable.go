@@ -7,7 +7,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
@@ -16,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/grafana/loki/pkg/prom1/storage/metric"
 	"github.com/grafana/loki/pkg/querier/series"
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util/chunkcompat"
