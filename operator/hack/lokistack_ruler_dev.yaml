@@ -9,3 +9,7 @@ spec:
     secret:
       name: test
   storageClassName: standard
+  template:
+    ruler:
+      replicas: 1
+      prometheusEndpoint: "https://prometheus-push-end-point"

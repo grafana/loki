@@ -251,7 +251,7 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 				Replicas: 2,
 			},
 			IndexGateway: &lokiv1beta1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 0,
 			},
 		},
 	},

@@ -79,7 +79,7 @@ func ConfigOptions(opt Options) config.Options {
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
 		Prometheus: config.Prometheus{
-			Endpoint: "", // TODO: update the endpoint
+			Endpoint: opt.Stack.Template.Ruler.PrometheusEndpoint,
 		},
 	}
 }

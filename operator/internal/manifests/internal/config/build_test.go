@@ -29,7 +29,7 @@ ruler:
   remote_write:
     enabled: true
     client:
-      url: 
+      url: https://prometheus-push-end-point
 compactor:
   compaction_interval: 2h
   shared_store: s3
@@ -231,7 +231,7 @@ overrides:
 			IngesterMemoryRequest: 5000,
 		},
 		Prometheus: Prometheus{
-			Endpoint: "", //  TODO: update the endpoint
+			Endpoint: "https://prometheus-push-end-point",
 		},
 	}
 
@@ -263,7 +263,7 @@ ruler:
   remote_write:
     enabled: true
     client:
-      url: 
+      url: https://prometheus-push-end-point
 compactor:
   compaction_interval: 2h
   shared_store: s3
@@ -482,7 +482,7 @@ overrides:
 			IngesterMemoryRequest: 5000,
 		},
 		Prometheus: Prometheus{
-			Endpoint: "", //  TODO: update the endpoint
+			Endpoint: "https://prometheus-push-end-point",
 		},
 	}
 
@@ -547,7 +547,7 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			IngesterMemoryRequest: 5000,
 		},
 		Prometheus: Prometheus{
-			Endpoint: "", //  TODO: update the endpoint
+			Endpoint: "https://prometheus-push-end-point",
 		},
 	}
 	cfg, rCfg, err := Build(opts)
