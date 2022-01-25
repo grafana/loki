@@ -7,7 +7,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	cutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -123,7 +122,7 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 	fp := i.getHashForLabels(ls)
 
 	s, loaded, _ := i.streams.LoadOrStoreNewByFP(fp, func() (*stream, error) {
-		sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(ls), fp)
+		sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
 		return newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics), nil
 	})
 	if !loaded {
@@ -218,7 +217,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	}
 	fp := i.getHashForLabels(labels)
 
-	sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(labels), fp)
+	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).

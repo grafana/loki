@@ -1,7 +1,6 @@
 package queryrangebase
 
 import (
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -9,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/series"
 )
 
@@ -23,10 +23,10 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 	case promql.Scalar:
 		return []SampleStream{
 			{
-				Samples: []cortexpb.Sample{
+				Samples: []logproto.Sample{
 					{
-						Value:       v.V,
-						TimestampMs: v.T,
+						Value:     v.V,
+						Timestamp: v.T,
 					},
 				},
 			},
@@ -57,22 +57,22 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 	return nil, errors.Errorf("Unexpected value type: [%s]", res.Value.Type())
 }
 
-func mapLabels(ls labels.Labels) []cortexpb.LabelAdapter {
-	result := make([]cortexpb.LabelAdapter, 0, len(ls))
+func mapLabels(ls labels.Labels) []logproto.LabelAdapter {
+	result := make([]logproto.LabelAdapter, 0, len(ls))
 	for _, l := range ls {
-		result = append(result, cortexpb.LabelAdapter(l))
+		result = append(result, logproto.LabelAdapter(l))
 	}
 
 	return result
 }
 
-func mapPoints(pts ...promql.Point) []cortexpb.Sample {
-	result := make([]cortexpb.Sample, 0, len(pts))
+func mapPoints(pts ...promql.Point) []logproto.Sample {
+	result := make([]logproto.Sample, 0, len(pts))
 
 	for _, pt := range pts {
-		result = append(result, cortexpb.Sample{
-			Value:       pt.V,
-			TimestampMs: pt.T,
+		result = append(result, logproto.Sample{
+			Value:     pt.V,
+			Timestamp: pt.T,
 		})
 	}
 
@@ -110,7 +110,7 @@ func NewSeriesSet(results []SampleStream) storage.SeriesSet {
 		samples := make([]model.SamplePair, 0, len(stream.Samples))
 		for _, sample := range stream.Samples {
 			samples = append(samples, model.SamplePair{
-				Timestamp: model.Time(sample.TimestampMs),
+				Timestamp: model.Time(sample.Timestamp),
 				Value:     model.SampleValue(sample.Value),
 			})
 		}

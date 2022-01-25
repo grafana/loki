@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
@@ -268,8 +267,8 @@ func Test_InstantSharding(t *testing.T) {
 				ResultType: loghttp.ResultTypeVector,
 				Result: []queryrangebase.SampleStream{
 					{
-						Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-						Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+						Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+						Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
 					},
 				},
 			},
@@ -287,16 +286,16 @@ func Test_InstantSharding(t *testing.T) {
 		ResultType: loghttp.ResultTypeVector,
 		Result: []queryrangebase.SampleStream{
 			{
-				Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-				Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+				Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+				Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
 			},
 			{
-				Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-				Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+				Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+				Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
 			},
 			{
-				Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-				Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+				Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+				Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
 			},
 		},
 	}, response.(*LokiPromResponse).Response.Data)

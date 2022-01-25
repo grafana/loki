@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"gopkg.in/yaml.v3"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb" //lint:ignore faillint allowed to import other protobuf
+	"github.com/grafana/loki/pkg/logproto" //lint:ignore faillint allowed to import other protobuf
 )
 
 // ToProto transforms a formatted prometheus rulegroup to a rule group protobuf
@@ -31,8 +31,8 @@ func formattedRuleToProto(rls []rulefmt.RuleNode) []*RuleDesc {
 			Record:      rls[i].Record.Value,
 			Alert:       rls[i].Alert.Value,
 			For:         time.Duration(rls[i].For),
-			Labels:      cortexpb.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Labels)),
-			Annotations: cortexpb.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Annotations)),
+			Labels:      logproto.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Labels)),
+			Annotations: logproto.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Annotations)),
 		}
 	}
 
@@ -53,8 +53,8 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 
 		newRule := rulefmt.RuleNode{
 			Expr:        exprNode,
-			Labels:      cortexpb.FromLabelAdaptersToLabels(rl.Labels).Map(),
-			Annotations: cortexpb.FromLabelAdaptersToLabels(rl.Annotations).Map(),
+			Labels:      logproto.FromLabelAdaptersToLabels(rl.Labels).Map(),
+			Annotations: logproto.FromLabelAdaptersToLabels(rl.Annotations).Map(),
 			For:         model.Duration(rl.GetFor()),
 		}
 
