@@ -435,15 +435,18 @@ func TestTable_CompactionFailure(t *testing.T) {
 	numDBs := 10
 	numRecordsPerDB := 100
 
-	dbsToSetup := make(map[string]testutil.DBRecords)
+	dbsToSetup := make(map[string]testutil.DBConfig)
 	for i := 0; i < numDBs; i++ {
-		dbsToSetup[fmt.Sprint(i)] = testutil.DBRecords{
-			Start:      i * numRecordsPerDB,
-			NumRecords: (i + 1) * numRecordsPerDB,
+		dbsToSetup[fmt.Sprint(i)] = testutil.DBConfig{
+			CompressFile: i%2 == 0,
+			DBRecords: testutil.DBRecords{
+				Start:      i * numRecordsPerDB,
+				NumRecords: (i + 1) * numRecordsPerDB,
+			},
 		}
 	}
 
-	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName), dbsToSetup, true, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName), dbsToSetup, nil)
 
 	// put a non-boltdb file in the table which should cause the compaction to fail in the middle because it would fail to open that file with boltdb client.
 	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, "fail.txt"), []byte("fail the compaction"), 0666))

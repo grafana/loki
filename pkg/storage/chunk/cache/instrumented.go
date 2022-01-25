@@ -4,6 +4,7 @@ import (
 	"context"
 
 	ot "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -73,7 +74,12 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 	return instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys", len(keys)))
-		return i.Cache.Store(ctx, keys, bufs)
+		storeErr := i.Cache.Store(ctx, keys, bufs)
+		if storeErr != nil {
+			ext.Error.Set(sp, true)
+			sp.LogFields(otlog.String("event", "error"), otlog.String("message", storeErr.Error()))
+		}
+		return storeErr
 	})
 }
 
@@ -90,6 +96,10 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
 		found, bufs, missing, fetchErr = i.Cache.Fetch(ctx, keys)
+		if fetchErr != nil {
+			ext.Error.Set(sp, true)
+			sp.LogFields(otlog.String("event", "error"), otlog.String("message", fetchErr.Error()))
+		}
 		sp.LogFields(otlog.Int("keys found", len(found)), otlog.Int("keys missing", len(keys)-len(found)))
 		return fetchErr
 	})

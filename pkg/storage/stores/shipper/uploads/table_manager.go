@@ -22,10 +22,11 @@ import (
 )
 
 type Config struct {
-	Uploader       string
-	IndexDir       string
-	UploadInterval time.Duration
-	DBRetainPeriod time.Duration
+	Uploader             string
+	IndexDir             string
+	UploadInterval       time.Duration
+	DBRetainPeriod       time.Duration
+	MakePerTenantBuckets bool
 }
 
 type TableManager struct {
@@ -148,7 +149,8 @@ func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
 		table, ok = tm.tables[tableName]
 		if !ok {
 			var err error
-			table, err = NewTable(filepath.Join(tm.cfg.IndexDir, tableName), tm.cfg.Uploader, tm.storageClient, tm.boltIndexClient)
+			table, err = NewTable(filepath.Join(tm.cfg.IndexDir, tableName), tm.cfg.Uploader, tm.storageClient,
+				tm.boltIndexClient, tm.cfg.MakePerTenantBuckets)
 			if err != nil {
 				return nil, err
 			}
@@ -235,7 +237,8 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 		}
 
 		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading table %s", fileInfo.Name()))
-		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()), tm.cfg.Uploader, tm.storageClient, tm.boltIndexClient, tm.metrics)
+		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()), tm.cfg.Uploader, tm.storageClient,
+			tm.boltIndexClient, tm.cfg.MakePerTenantBuckets, tm.metrics)
 		if err != nil {
 			return nil, err
 		}

@@ -338,7 +338,7 @@ The `frontend` block configures the Loki query-frontend.
 # Maximum number of outstanding requests per tenant per frontend; requests
 # beyond this error with HTTP 429.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
-[max_outstanding_per_tenant: <int> | default = 100]
+[max_outstanding_per_tenant: <int> | default = 2048]
 
 # In the event a tenant is repeatedly sending queries that lead the querier to crash
 # or be killed due to an out-of-memory error, the crashed querier will be disconnected

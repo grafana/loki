@@ -21,7 +21,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 
 	"go.uber.org/atomic"
@@ -138,7 +137,7 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 		querierTestConfig.Cfg.ActiveQueryTrackerDir = ""
 
 		overrides, _ := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
-		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, purger.NewTombstonesLoader(nil, nil), reg, logger)
+		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, reg, logger)
 		return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 			return q.Querier(ctx, mint, maxt)
 		}

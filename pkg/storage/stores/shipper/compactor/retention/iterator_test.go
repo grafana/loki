@@ -12,6 +12,7 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 )
 
@@ -35,7 +36,7 @@ func Test_ChunkIterator(t *testing.T) {
 			require.Len(t, tables, 1)
 			var actual []ChunkEntry
 			err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				it, err := newChunkIndexIterator(tx.Bucket(bucketName), tt.config)
+				it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), tt.config)
 				require.NoError(t, err)
 				for it.Next() {
 					require.NoError(t, it.Err())
@@ -56,7 +57,7 @@ func Test_ChunkIterator(t *testing.T) {
 			// second pass we delete c2
 			actual = actual[:0]
 			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				it, err := newChunkIndexIterator(tx.Bucket(bucketName), tt.config)
+				it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), tt.config)
 				require.NoError(t, err)
 				for it.Next() {
 					actual = append(actual, it.Entry())
@@ -93,7 +94,7 @@ func Test_SeriesCleaner(t *testing.T) {
 			require.Len(t, tables, 1)
 			// remove c1, c2 chunk
 			err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				it, err := newChunkIndexIterator(tx.Bucket(bucketName), tt.config)
+				it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), tt.config)
 				require.NoError(t, err)
 				for it.Next() {
 					require.NoError(t, it.Err())
@@ -106,7 +107,7 @@ func Test_SeriesCleaner(t *testing.T) {
 			require.NoError(t, err)
 
 			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				cleaner := newSeriesCleaner(tx.Bucket(bucketName), tt.config, tables[0].name)
+				cleaner := newSeriesCleaner(tx.Bucket(local.IndexBucketName), tt.config, tables[0].name)
 				if err := cleaner.Cleanup(entryFromChunk(testSchema, c2).UserID, c2.Metric); err != nil {
 					return err
 				}
@@ -117,7 +118,7 @@ func Test_SeriesCleaner(t *testing.T) {
 			require.NoError(t, err)
 
 			err = tables[0].DB.View(func(tx *bbolt.Tx) error {
-				return tx.Bucket(bucketName).ForEach(func(k, _ []byte) error {
+				return tx.Bucket(local.IndexBucketName).ForEach(func(k, _ []byte) error {
 					c1SeriesID := entryFromChunk(testSchema, c1).SeriesID
 					c2SeriesID := entryFromChunk(testSchema, c2).SeriesID
 					series, ok, err := parseLabelIndexSeriesID(decodeKey(k))
@@ -176,7 +177,7 @@ func Benchmark_ChunkIterator(b *testing.B) {
 
 	var total int64
 	_ = store.indexTables()[0].Update(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket(bucketName)
+		bucket := tx.Bucket(local.IndexBucketName)
 		for n := 0; n < b.N; n++ {
 			it, err := newChunkIndexIterator(bucket, allSchemas[0].config)
 			require.NoError(b, err)

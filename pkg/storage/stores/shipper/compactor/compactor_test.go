@@ -48,50 +48,66 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	tablesPath := filepath.Join(tempDir, "index")
 	tablesCopyPath := filepath.Join(tempDir, "index-copy")
 
-	tables := map[string]map[string]testutil.DBRecords{
+	tables := map[string]map[string]testutil.DBConfig{
 		"table1": {
 			"db1": {
-				Start:      0,
-				NumRecords: 10,
+				DBRecords: testutil.DBRecords{
+					Start:      0,
+					NumRecords: 10,
+				},
 			},
 			"db2": {
-				Start:      10,
-				NumRecords: 10,
+				DBRecords: testutil.DBRecords{
+					Start:      10,
+					NumRecords: 10,
+				},
 			},
 			"db3": {
-				Start:      20,
-				NumRecords: 10,
+				DBRecords: testutil.DBRecords{
+					Start:      20,
+					NumRecords: 10,
+				},
 			},
 			"db4": {
-				Start:      30,
-				NumRecords: 10,
+				DBRecords: testutil.DBRecords{
+					Start:      30,
+					NumRecords: 10,
+				},
 			},
 		},
 		"table2": {
 			"db1": {
-				Start:      40,
-				NumRecords: 10,
+				DBRecords: testutil.DBRecords{
+					Start:      40,
+					NumRecords: 10,
+				},
 			},
 			"db2": {
-				Start:      50,
-				NumRecords: 10,
+				DBRecords: testutil.DBRecords{
+					Start:      50,
+					NumRecords: 10,
+				},
 			},
 			"db3": {
-				Start:      60,
-				NumRecords: 10,
+				DBRecords: testutil.DBRecords{
+					Start:      60,
+					NumRecords: 10,
+				},
 			},
 			"db4": {
-				Start:      70,
-				NumRecords: 10,
+				DBRecords: testutil.DBRecords{
+					Start:      70,
+					NumRecords: 10,
+				},
 			},
 		},
 	}
 
 	for name, dbs := range tables {
-		testutil.SetupDBsAtPath(t, filepath.Join(tablesPath, name), dbs, false, nil)
+		testutil.SetupDBsAtPath(t, filepath.Join(tablesPath, name), dbs, nil)
 
 		// setup exact same copy of dbs for comparison.
-		testutil.SetupDBsAtPath(t, filepath.Join(tablesCopyPath, name), dbs, false, nil)
+		testutil.SetupDBsAtPath(t, filepath.Join(tablesCopyPath, name), dbs, nil)
 	}
 
 	cm := storage.NewClientMetrics()
