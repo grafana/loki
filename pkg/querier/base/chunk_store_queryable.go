@@ -3,12 +3,12 @@ package base
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/querier/chunkstore"
 	seriesset "github.com/grafana/loki/pkg/querier/series"
 	"github.com/grafana/loki/pkg/storage/chunk"

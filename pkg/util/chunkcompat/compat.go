@@ -3,12 +3,12 @@ package chunkcompat
 import (
 	"bytes"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
@@ -35,8 +35,8 @@ func SeriesChunksToMatrix(from, through model.Time, serieses []client.TimeSeries
 
 	result := model.Matrix{}
 	for _, series := range serieses {
-		metric := cortexpb.FromLabelAdaptersToMetric(series.Labels)
-		chunks, err := FromChunks("", cortexpb.FromLabelAdaptersToLabels(series.Labels), series.Chunks)
+		metric := logproto.FromLabelAdaptersToMetric(series.Labels)
+		chunks, err := FromChunks("", logproto.FromLabelAdaptersToLabels(series.Labels), series.Chunks)
 		if err != nil {
 			return nil, err
 		}

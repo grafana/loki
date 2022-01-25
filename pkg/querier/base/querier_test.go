@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
@@ -28,6 +26,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/prom1/storage/metric"
 	"github.com/grafana/loki/pkg/querier/batch"
 	"github.com/grafana/loki/pkg/querier/iterators"
@@ -715,7 +715,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *Moc
 	require.NoError(t, err)
 
 	tsc := client.TimeSeriesChunk{
-		Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "foo"}},
+		Labels: []logproto.LabelAdapter{{Name: model.MetricNameLabel, Value: "foo"}},
 		Chunks: chunks,
 	}
 	matrix, err := chunk.ChunksToMatrix(context.Background(), cs.chunks, 0, through)
