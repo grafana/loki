@@ -377,3 +377,7 @@ func Test_evaluateAtModifier(t *testing.T) {
 		})
 	}
 }
+
+func toMs(t time.Duration) int64 {
+	return int64(t / time.Millisecond)
+}

@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
 	"github.com/grafana/dskit/flagext"
@@ -16,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
@@ -58,12 +58,12 @@ var (
 			ResultType: model.ValMatrix.String(),
 			Result: []SampleStream{
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []logproto.LabelAdapter{
 						{Name: "foo", Value: "bar"},
 					},
-					Samples: []cortexpb.Sample{
-						{Value: 137, TimestampMs: 1536673680000},
-						{Value: 137, TimestampMs: 1536673780000},
+					Samples: []logproto.Sample{
+						{Value: 137, Timestamp: 1536673680000},
+						{Value: 137, Timestamp: 1536673780000},
 					},
 				},
 			},
@@ -72,11 +72,11 @@ var (
 )
 
 func mkAPIResponse(start, end, step int64) *PrometheusResponse {
-	var samples []cortexpb.Sample
+	var samples []logproto.Sample
 	for i := start; i <= end; i += step {
-		samples = append(samples, cortexpb.Sample{
-			TimestampMs: i,
-			Value:       float64(i),
+		samples = append(samples, logproto.Sample{
+			Timestamp: i,
+			Value:     float64(i),
 		})
 	}
 
@@ -86,7 +86,7 @@ func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 			ResultType: matrix,
 			Result: []SampleStream{
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []logproto.LabelAdapter{
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: samples,
@@ -1022,10 +1022,6 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 			require.Equal(t, tc.expectedCall, calls)
 		})
 	}
-}
-
-func toMs(t time.Duration) int64 {
-	return int64(t / time.Millisecond)
 }
 
 type mockCacheGenNumberLoader struct {

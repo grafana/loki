@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
@@ -18,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
@@ -122,34 +122,34 @@ func sampleMatrixResponse() *PrometheusResponse {
 			ResultType: string(parser.ValueTypeMatrix),
 			Result: []SampleStream{
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []logproto.LabelAdapter{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []cortexpb.Sample{
+					Samples: []logproto.Sample{
 						{
-							TimestampMs: 5,
-							Value:       1,
+							Timestamp: 5,
+							Value:     1,
 						},
 						{
-							TimestampMs: 10,
-							Value:       2,
+							Timestamp: 10,
+							Value:     2,
 						},
 					},
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []logproto.LabelAdapter{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []cortexpb.Sample{
+					Samples: []logproto.Sample{
 						{
-							TimestampMs: 5,
-							Value:       8,
+							Timestamp: 5,
+							Value:     8,
 						},
 						{
-							TimestampMs: 10,
-							Value:       9,
+							Timestamp: 10,
+							Value:     9,
 						},
 					},
 				},

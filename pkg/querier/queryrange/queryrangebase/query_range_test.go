@@ -8,12 +8,13 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestRequest(t *testing.T) {
@@ -185,10 +186,10 @@ func TestMergeAPIResponses(t *testing.T) {
 						ResultType: matrix,
 						Result: []SampleStream{
 							{
-								Labels: []cortexpb.LabelAdapter{},
-								Samples: []cortexpb.Sample{
-									{Value: 0, TimestampMs: 0},
-									{Value: 1, TimestampMs: 1},
+								Labels: []logproto.LabelAdapter{},
+								Samples: []logproto.Sample{
+									{Value: 0, Timestamp: 0},
+									{Value: 1, Timestamp: 1},
 								},
 							},
 						},
@@ -199,10 +200,10 @@ func TestMergeAPIResponses(t *testing.T) {
 						ResultType: matrix,
 						Result: []SampleStream{
 							{
-								Labels: []cortexpb.LabelAdapter{},
-								Samples: []cortexpb.Sample{
-									{Value: 2, TimestampMs: 2},
-									{Value: 3, TimestampMs: 3},
+								Labels: []logproto.LabelAdapter{},
+								Samples: []logproto.Sample{
+									{Value: 2, Timestamp: 2},
+									{Value: 3, Timestamp: 3},
 								},
 							},
 						},
@@ -215,12 +216,12 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
-							Labels: []cortexpb.LabelAdapter{},
-							Samples: []cortexpb.Sample{
-								{Value: 0, TimestampMs: 0},
-								{Value: 1, TimestampMs: 1},
-								{Value: 2, TimestampMs: 2},
-								{Value: 3, TimestampMs: 3},
+							Labels: []logproto.LabelAdapter{},
+							Samples: []logproto.Sample{
+								{Value: 0, Timestamp: 0},
+								{Value: 1, Timestamp: 1},
+								{Value: 2, Timestamp: 2},
+								{Value: 3, Timestamp: 3},
 							},
 						},
 					},
@@ -240,12 +241,12 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
-							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
-							Samples: []cortexpb.Sample{
-								{Value: 0, TimestampMs: 0},
-								{Value: 1, TimestampMs: 1000},
-								{Value: 2, TimestampMs: 2000},
-								{Value: 3, TimestampMs: 3000},
+							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []logproto.Sample{
+								{Value: 0, Timestamp: 0},
+								{Value: 1, Timestamp: 1000},
+								{Value: 2, Timestamp: 2000},
+								{Value: 3, Timestamp: 3000},
 							},
 						},
 					},
@@ -265,11 +266,11 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
-							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
-							Samples: []cortexpb.Sample{
-								{Value: 1, TimestampMs: 1000},
-								{Value: 2, TimestampMs: 2000},
-								{Value: 3, TimestampMs: 3000},
+							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []logproto.Sample{
+								{Value: 1, Timestamp: 1000},
+								{Value: 2, Timestamp: 2000},
+								{Value: 3, Timestamp: 3000},
 							},
 						},
 					},
@@ -288,13 +289,13 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
-							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
-							Samples: []cortexpb.Sample{
-								{Value: 1, TimestampMs: 1000},
-								{Value: 2, TimestampMs: 2000},
-								{Value: 3, TimestampMs: 3000},
-								{Value: 4, TimestampMs: 4000},
-								{Value: 5, TimestampMs: 5000},
+							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []logproto.Sample{
+								{Value: 1, Timestamp: 1000},
+								{Value: 2, Timestamp: 2000},
+								{Value: 3, Timestamp: 3000},
+								{Value: 4, Timestamp: 4000},
+								{Value: 5, Timestamp: 5000},
 							},
 						},
 					},
@@ -313,12 +314,12 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
-							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
-							Samples: []cortexpb.Sample{
-								{Value: 2, TimestampMs: 2000},
-								{Value: 3, TimestampMs: 3000},
-								{Value: 4, TimestampMs: 4000},
-								{Value: 5, TimestampMs: 5000},
+							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []logproto.Sample{
+								{Value: 2, Timestamp: 2000},
+								{Value: 3, Timestamp: 3000},
+								{Value: 4, Timestamp: 4000},
+								{Value: 5, Timestamp: 5000},
 							},
 						},
 					},
