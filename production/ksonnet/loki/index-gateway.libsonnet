@@ -57,9 +57,7 @@
     $.config_hash_mixin +
     k.util.configVolumeMount('loki', '/etc/loki/config') +
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
-    statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001) +  // 10001 is the group ID assigned to Loki in the Dockerfile
-    statefulSet.mixin.spec.strategy.rollingUpdate.withMaxSurge(0) +
-    statefulSet.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1)
+    statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001)  // 10001 is the group ID assigned to Loki in the Dockerfile
   else {},
 
   index_gateway_service: if $._config.use_index_gateway then
