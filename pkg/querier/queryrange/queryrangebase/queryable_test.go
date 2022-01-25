@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 )
 
@@ -91,11 +91,11 @@ func TestSelect(t *testing.T) {
 						ResultType: string(parser.ValueTypeVector),
 						Result: []SampleStream{
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []logproto.LabelAdapter{
 									{Name: "a", Value: "a1"},
 									{Name: "b", Value: "b1"},
 								},
-								Samples: []cortexpb.Sample{
+								Samples: []logproto.Sample{
 									{
 										Value:       1,
 										TimestampMs: 1,
@@ -107,11 +107,11 @@ func TestSelect(t *testing.T) {
 								},
 							},
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []logproto.LabelAdapter{
 									{Name: "a", Value: "a1"},
 									{Name: "b", Value: "b1"},
 								},
-								Samples: []cortexpb.Sample{
+								Samples: []logproto.Sample{
 									{
 										Value:       8,
 										TimestampMs: 1,
@@ -141,11 +141,11 @@ func TestSelect(t *testing.T) {
 					t,
 					NewSeriesSet([]SampleStream{
 						{
-							Labels: []cortexpb.LabelAdapter{
+							Labels: []logproto.LabelAdapter{
 								{Name: "a", Value: "a1"},
 								{Name: "b", Value: "b1"},
 							},
-							Samples: []cortexpb.Sample{
+							Samples: []logproto.Sample{
 								{
 									Value:       1,
 									TimestampMs: 1,
@@ -157,11 +157,11 @@ func TestSelect(t *testing.T) {
 							},
 						},
 						{
-							Labels: []cortexpb.LabelAdapter{
+							Labels: []logproto.LabelAdapter{
 								{Name: "a", Value: "a1"},
 								{Name: "b", Value: "b1"},
 							},
-							Samples: []cortexpb.Sample{
+							Samples: []logproto.Sample{
 								{
 									Value:       8,
 									TimestampMs: 1,
@@ -219,10 +219,10 @@ func TestSelectConcurrent(t *testing.T) {
 					ResultType: string(parser.ValueTypeVector),
 					Result: []SampleStream{
 						{
-							Labels: []cortexpb.LabelAdapter{
+							Labels: []logproto.LabelAdapter{
 								{Name: "a", Value: "1"},
 							},
-							Samples: []cortexpb.Sample{
+							Samples: []logproto.Sample{
 								{
 									Value:       1,
 									TimestampMs: 1,
