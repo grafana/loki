@@ -29,7 +29,7 @@ const (
 )
 
 var (
-	ErrMaxQueryParalellism = fmt.Errorf("proto: max query parallelism")
+	ErrMaxQueryParalellism = fmt.Errorf("querying is disabled, please contact your Loki operator")
 )
 
 // Limits extends the cortex limits interface with support for per tenant splitby parameters
