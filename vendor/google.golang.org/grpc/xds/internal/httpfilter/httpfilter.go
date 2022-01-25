@@ -50,6 +50,9 @@ type Filter interface {
 	// not accept a custom type.  The resulting FilterConfig will later be
 	// passed to Build.
 	ParseFilterConfigOverride(proto.Message) (FilterConfig, error)
+	// IsTerminal returns whether this Filter is terminal or not (i.e. it must
+	// be last filter in the filter chain).
+	IsTerminal() bool
 }
 
 // ClientInterceptorBuilder constructs a Client Interceptor.  If this type is
@@ -89,6 +92,11 @@ func Register(b Filter) {
 	for _, u := range b.TypeURLs() {
 		m[u] = b
 	}
+}
+
+// UnregisterForTesting unregisters the HTTP Filter for testing purposes.
+func UnregisterForTesting(typeURL string) {
+	delete(m, typeURL)
 }
 
 // Get returns the HTTPFilter registered with typeURL.

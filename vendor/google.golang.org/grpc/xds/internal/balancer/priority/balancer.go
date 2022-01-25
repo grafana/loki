@@ -201,6 +201,10 @@ func (b *priorityBalancer) Close() {
 	b.stopPriorityInitTimer()
 }
 
+func (b *priorityBalancer) ExitIdle() {
+	b.bg.ExitIdle()
+}
+
 // stopPriorityInitTimer stops the priorityInitTimer if it's not nil, and set it
 // to nil.
 //

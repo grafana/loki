@@ -99,24 +99,22 @@ func (v2c *client) SendLoadStatsRequest(s grpc.ClientStream, loads []*load.Data)
 		return fmt.Errorf("lrs: Attempt to send request on unsupported stream type: %T", s)
 	}
 
-	var clusterStats []*v2endpointpb.ClusterStats
+	clusterStats := make([]*v2endpointpb.ClusterStats, 0, len(loads))
 	for _, sd := range loads {
-		var (
-			droppedReqs   []*v2endpointpb.ClusterStats_DroppedRequests
-			localityStats []*v2endpointpb.UpstreamLocalityStats
-		)
+		droppedReqs := make([]*v2endpointpb.ClusterStats_DroppedRequests, 0, len(sd.Drops))
 		for category, count := range sd.Drops {
 			droppedReqs = append(droppedReqs, &v2endpointpb.ClusterStats_DroppedRequests{
 				Category:     category,
 				DroppedCount: count,
 			})
 		}
+		localityStats := make([]*v2endpointpb.UpstreamLocalityStats, 0, len(sd.LocalityStats))
 		for l, localityData := range sd.LocalityStats {
 			lid, err := internal.LocalityIDFromString(l)
 			if err != nil {
 				return err
 			}
-			var loadMetricStats []*v2endpointpb.EndpointLoadMetricStats
+			loadMetricStats := make([]*v2endpointpb.EndpointLoadMetricStats, 0, len(localityData.LoadStats))
 			for name, loadData := range localityData.LoadStats {
 				loadMetricStats = append(loadMetricStats, &v2endpointpb.EndpointLoadMetricStats{
 					MetricName:                    name,

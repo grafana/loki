@@ -200,7 +200,9 @@ func (wbsa *Aggregator) BuildAndUpdate() {
 func (wbsa *Aggregator) build() balancer.State {
 	wbsa.logger.Infof("Child pickers with config: %+v", wbsa.idToPickerState)
 	m := wbsa.idToPickerState
-	var readyN, connectingN int
+	// TODO: use balancer.ConnectivityStateEvaluator to calculate the aggregated
+	// state.
+	var readyN, connectingN, idleN int
 	readyPickerWithWeights := make([]weightedPickerState, 0, len(m))
 	for _, ps := range m {
 		switch ps.stateToAggregate {
@@ -209,6 +211,8 @@ func (wbsa *Aggregator) build() balancer.State {
 			readyPickerWithWeights = append(readyPickerWithWeights, *ps)
 		case connectivity.Connecting:
 			connectingN++
+		case connectivity.Idle:
+			idleN++
 		}
 	}
 	var aggregatedState connectivity.State
@@ -217,6 +221,8 @@ func (wbsa *Aggregator) build() balancer.State {
 		aggregatedState = connectivity.Ready
 	case connectingN > 0:
 		aggregatedState = connectivity.Connecting
+	case idleN > 0:
+		aggregatedState = connectivity.Idle
 	default:
 		aggregatedState = connectivity.TransientFailure
 	}

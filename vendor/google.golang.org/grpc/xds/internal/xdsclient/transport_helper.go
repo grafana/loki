@@ -342,11 +342,12 @@ func (t *TransportHelper) recv(stream grpc.ClientStream) bool {
 	}
 }
 
-func mapToSlice(m map[string]bool) (ret []string) {
+func mapToSlice(m map[string]bool) []string {
+	ret := make([]string, 0, len(m))
 	for i := range m {
 		ret = append(ret, i)
 	}
-	return
+	return ret
 }
 
 type watchAction struct {

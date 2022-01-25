@@ -104,6 +104,22 @@ func (sbc *subBalancerWrapper) startBalancer() {
 	}
 }
 
+func (sbc *subBalancerWrapper) exitIdle() {
+	b := sbc.balancer
+	if b == nil {
+		return
+	}
+	if ei, ok := b.(balancer.ExitIdler); ok {
+		ei.ExitIdle()
+		return
+	}
+	for sc, b := range sbc.group.scToSubBalancer {
+		if b == sbc {
+			sc.Connect()
+		}
+	}
+}
+
 func (sbc *subBalancerWrapper) updateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
 	b := sbc.balancer
 	if b == nil {
@@ -489,6 +505,17 @@ func (bg *BalancerGroup) Close() {
 		for _, config := range bg.idToBalancerConfig {
 			config.stopBalancer()
 		}
+	}
+	bg.outgoingMu.Unlock()
+}
+
+// ExitIdle should be invoked when the parent LB policy's ExitIdle is invoked.
+// It will trigger this on all sub-balancers, or reconnect their subconns if
+// not supported.
+func (bg *BalancerGroup) ExitIdle() {
+	bg.outgoingMu.Lock()
+	for _, config := range bg.idToBalancerConfig {
+		config.exitIdle()
 	}
 	bg.outgoingMu.Unlock()
 }

@@ -48,7 +48,7 @@ import (
 const (
 	c2pScheme = "google-c2p"
 
-	tdURL          = "directpath-trafficdirector.googleapis.com"
+	tdURL          = "directpath-pa.googleapis.com"
 	httpReqTimeout = 10 * time.Second
 	zoneURL        = "http://metadata.google.internal/computeMetadata/v1/instance/zone"
 	ipv6URL        = "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ipv6s"

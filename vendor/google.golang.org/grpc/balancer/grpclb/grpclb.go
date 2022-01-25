@@ -488,3 +488,5 @@ func (lb *lbBalancer) Close() {
 	}
 	lb.cc.close()
 }
+
+func (lb *lbBalancer) ExitIdle() {}

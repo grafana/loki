@@ -136,6 +136,10 @@ func (b *bal) Close() {
 	b.logger.Infof("Shutdown")
 }
 
+func (b *bal) ExitIdle() {
+	b.bg.ExitIdle()
+}
+
 const prefix = "[xds-cluster-manager-lb %p] "
 
 var logger = grpclog.Component("xds")

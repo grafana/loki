@@ -164,7 +164,7 @@ func nodeProtoToV3(n proto.Message) *v3corepb.Node {
 
 func (s *ClientStatusDiscoveryServer) buildLDSPerXDSConfig() *v3statuspb.PerXdsConfig {
 	version, dump := s.xdsClient.DumpLDS()
-	var resources []*v3adminpb.ListenersConfigDump_DynamicListener
+	resources := make([]*v3adminpb.ListenersConfigDump_DynamicListener, 0, len(dump))
 	for name, d := range dump {
 		configDump := &v3adminpb.ListenersConfigDump_DynamicListener{
 			Name:         name,
@@ -198,7 +198,7 @@ func (s *ClientStatusDiscoveryServer) buildLDSPerXDSConfig() *v3statuspb.PerXdsC
 
 func (s *ClientStatusDiscoveryServer) buildRDSPerXDSConfig() *v3statuspb.PerXdsConfig {
 	_, dump := s.xdsClient.DumpRDS()
-	var resources []*v3adminpb.RoutesConfigDump_DynamicRouteConfig
+	resources := make([]*v3adminpb.RoutesConfigDump_DynamicRouteConfig, 0, len(dump))
 	for _, d := range dump {
 		configDump := &v3adminpb.RoutesConfigDump_DynamicRouteConfig{
 			VersionInfo:  d.MD.Version,
@@ -228,7 +228,7 @@ func (s *ClientStatusDiscoveryServer) buildRDSPerXDSConfig() *v3statuspb.PerXdsC
 
 func (s *ClientStatusDiscoveryServer) buildCDSPerXDSConfig() *v3statuspb.PerXdsConfig {
 	version, dump := s.xdsClient.DumpCDS()
-	var resources []*v3adminpb.ClustersConfigDump_DynamicCluster
+	resources := make([]*v3adminpb.ClustersConfigDump_DynamicCluster, 0, len(dump))
 	for _, d := range dump {
 		configDump := &v3adminpb.ClustersConfigDump_DynamicCluster{
 			VersionInfo:  d.MD.Version,
@@ -259,7 +259,7 @@ func (s *ClientStatusDiscoveryServer) buildCDSPerXDSConfig() *v3statuspb.PerXdsC
 
 func (s *ClientStatusDiscoveryServer) buildEDSPerXDSConfig() *v3statuspb.PerXdsConfig {
 	_, dump := s.xdsClient.DumpEDS()
-	var resources []*v3adminpb.EndpointsConfigDump_DynamicEndpointConfig
+	resources := make([]*v3adminpb.EndpointsConfigDump_DynamicEndpointConfig, 0, len(dump))
 	for _, d := range dump {
 		configDump := &v3adminpb.EndpointsConfigDump_DynamicEndpointConfig{
 			VersionInfo:  d.MD.Version,

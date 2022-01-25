@@ -58,6 +58,15 @@ type connWrapper struct {
 	// completing the HTTP2 handshake.
 	deadlineMu sync.Mutex
 	deadline   time.Time
+
+	// The virtual hosts with matchable routes and instantiated HTTP Filters per
+	// route.
+	virtualHosts []xdsclient.VirtualHostWithInterceptors
+}
+
+// VirtualHosts returns the virtual hosts to be used for server side routing.
+func (c *connWrapper) VirtualHosts() []xdsclient.VirtualHostWithInterceptors {
+	return c.virtualHosts
 }
 
 // SetDeadline makes a copy of the passed in deadline and forwards the call to
@@ -124,6 +133,7 @@ func (c *connWrapper) XDSHandshakeInfo() (*xdsinternal.HandshakeInfo, error) {
 	return xdsHI, nil
 }
 
+// Close closes the providers and the underlying connection.
 func (c *connWrapper) Close() error {
 	if c.identityProvider != nil {
 		c.identityProvider.Close()

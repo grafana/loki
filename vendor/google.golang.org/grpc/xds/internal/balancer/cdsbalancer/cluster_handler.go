@@ -32,6 +32,14 @@ var errNotReceivedUpdate = errors.New("tried to construct a cluster update on a 
 type clusterHandlerUpdate struct {
 	// securityCfg is the Security Config from the top (root) cluster.
 	securityCfg *xdsclient.SecurityConfig
+	// lbPolicy is the lb policy from the top (root) cluster.
+	//
+	// Currently, we only support roundrobin or ringhash, and since roundrobin
+	// does need configs, this is only set to the ringhash config, if the policy
+	// is ringhash. In the future, if we support more policies, we can make this
+	// an interface, and set it to config of the other policies.
+	lbPolicy *xdsclient.ClusterLBPolicyRingHash
+
 	// updates is a list of ClusterUpdates from all the leaf clusters.
 	updates []xdsclient.ClusterUpdate
 	err     error
@@ -101,6 +109,7 @@ func (ch *clusterHandler) constructClusterUpdate() {
 	}
 	ch.updateChannel <- clusterHandlerUpdate{
 		securityCfg: ch.root.clusterUpdate.SecurityCfg,
+		lbPolicy:    ch.root.clusterUpdate.LBPolicy,
 		updates:     clusterUpdate,
 	}
 }

@@ -1,8 +1,6 @@
-// +build go1.13
-
 /*
  *
- * Copyright 2019 gRPC authors.
+ * Copyright 2021 gRPC authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,16 +16,19 @@
  *
  */
 
-package dns
+package ringhash
 
-import "net"
+import (
+	"fmt"
 
-func init() {
-	filterError = func(err error) error {
-		if dnsErr, ok := err.(*net.DNSError); ok && dnsErr.IsNotFound {
-			// The name does not exist; not an error.
-			return nil
-		}
-		return err
-	}
+	"google.golang.org/grpc/grpclog"
+	internalgrpclog "google.golang.org/grpc/internal/grpclog"
+)
+
+const prefix = "[ring-hash-lb %p] "
+
+var logger = grpclog.Component("xds")
+
+func prefixLogger(p *ringhashBalancer) *internalgrpclog.PrefixLogger {
+	return internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf(prefix, p))
 }

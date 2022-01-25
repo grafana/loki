@@ -39,6 +39,7 @@ import (
 	v3typepb "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/internal/xds/matcher"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -57,8 +58,8 @@ const transportSocketName = "envoy.transport_sockets.tls"
 // UnmarshalListener processes resources received in an LDS response, validates
 // them, and transforms them into a native struct which contains only fields we
 // are interested in.
-func UnmarshalListener(version string, resources []*anypb.Any, logger *grpclog.PrefixLogger) (map[string]ListenerUpdate, UpdateMetadata, error) {
-	update := make(map[string]ListenerUpdate)
+func UnmarshalListener(version string, resources []*anypb.Any, logger *grpclog.PrefixLogger) (map[string]ListenerUpdateErrTuple, UpdateMetadata, error) {
+	update := make(map[string]ListenerUpdateErrTuple)
 	md, err := processAllResources(version, resources, logger, update)
 	return update, md, err
 }
@@ -244,6 +245,20 @@ func processHTTPFilters(filters []*v3httppb.HttpFilter, server bool) ([]HTTPFilt
 		// Save name/config
 		ret = append(ret, HTTPFilter{Name: name, Filter: httpFilter, Config: config})
 	}
+	// "Validation will fail if a terminal filter is not the last filter in the
+	// chain or if a non-terminal filter is the last filter in the chain." - A39
+	if len(ret) == 0 {
+		return nil, fmt.Errorf("http filters list is empty")
+	}
+	var i int
+	for ; i < len(ret)-1; i++ {
+		if ret[i].Filter.IsTerminal() {
+			return nil, fmt.Errorf("http filter %q is a terminal filter but it is not last in the filter chain", ret[i].Name)
+		}
+	}
+	if !ret[i].Filter.IsTerminal() {
+		return nil, fmt.Errorf("http filter %q is not a terminal filter", ret[len(ret)-1].Name)
+	}
 	return ret, nil
 }
 
@@ -277,71 +292,12 @@ func processServerSideListener(lis *v3listenerpb.Listener) (*ListenerUpdate, err
 	return lu, nil
 }
 
-func processNetworkFilters(filters []*v3listenerpb.Filter) ([]HTTPFilter, error) {
-	seenNames := make(map[string]bool, len(filters))
-	seenHCM := false
-	var httpFilters []HTTPFilter
-	for _, filter := range filters {
-		name := filter.GetName()
-		if name == "" {
-			return nil, fmt.Errorf("network filters {%+v} is missing name field in filter: {%+v}", filters, filter)
-		}
-		if seenNames[name] {
-			return nil, fmt.Errorf("network filters {%+v} has duplicate filter name %q", filters, name)
-		}
-		seenNames[name] = true
-
-		// Network filters have a oneof field named `config_type` where we
-		// only support `TypedConfig` variant.
-		switch typ := filter.GetConfigType().(type) {
-		case *v3listenerpb.Filter_TypedConfig:
-			// The typed_config field has an `anypb.Any` proto which could
-			// directly contain the serialized bytes of the actual filter
-			// configuration, or it could be encoded as a `TypedStruct`.
-			// TODO: Add support for `TypedStruct`.
-			tc := filter.GetTypedConfig()
-
-			// The only network filter that we currently support is the v3
-			// HttpConnectionManager. So, we can directly check the type_url
-			// and unmarshal the config.
-			// TODO: Implement a registry of supported network filters (like
-			// we have for HTTP filters), when we have to support network
-			// filters other than HttpConnectionManager.
-			if tc.GetTypeUrl() != version.V3HTTPConnManagerURL {
-				return nil, fmt.Errorf("network filters {%+v} has unsupported network filter %q in filter {%+v}", filters, tc.GetTypeUrl(), filter)
-			}
-			hcm := &v3httppb.HttpConnectionManager{}
-			if err := ptypes.UnmarshalAny(tc, hcm); err != nil {
-				return nil, fmt.Errorf("network filters {%+v} failed unmarshaling of network filter {%+v}: %v", filters, filter, err)
-			}
-			// "Any filters after HttpConnectionManager should be ignored during
-			// connection processing but still be considered for validity.
-			// HTTPConnectionManager must have valid http_filters." - A36
-			filters, err := processHTTPFilters(hcm.GetHttpFilters(), true)
-			if err != nil {
-				return nil, fmt.Errorf("network filters {%+v} had invalid server side HTTP Filters {%+v}", filters, hcm.GetHttpFilters())
-			}
-			if !seenHCM {
-				// TODO: Implement terminal filter logic, as per A36.
-				httpFilters = filters
-				seenHCM = true
-			}
-		default:
-			return nil, fmt.Errorf("network filters {%+v} has unsupported config_type %T in filter %s", filters, typ, filter.GetName())
-		}
-	}
-	if !seenHCM {
-		return nil, fmt.Errorf("network filters {%+v} missing HttpConnectionManager filter", filters)
-	}
-	return httpFilters, nil
-}
-
 // UnmarshalRouteConfig processes resources received in an RDS response,
 // validates them, and transforms them into a native struct which contains only
 // fields we are interested in. The provided hostname determines the route
 // configuration resources of interest.
-func UnmarshalRouteConfig(version string, resources []*anypb.Any, logger *grpclog.PrefixLogger) (map[string]RouteConfigUpdate, UpdateMetadata, error) {
-	update := make(map[string]RouteConfigUpdate)
+func UnmarshalRouteConfig(version string, resources []*anypb.Any, logger *grpclog.PrefixLogger) (map[string]RouteConfigUpdateErrTuple, UpdateMetadata, error) {
+	update := make(map[string]RouteConfigUpdateErrTuple)
 	md, err := processAllResources(version, resources, logger, update)
 	return update, md, err
 }
@@ -374,7 +330,7 @@ func unmarshalRouteConfigResource(r *anypb.Any, logger *grpclog.PrefixLogger) (s
 // VirtualHost whose domain field matches the server name from the URI passed
 // to the gRPC channel, and it contains a clusterName or a weighted cluster.
 //
-// The RouteConfiguration includes a list of VirtualHosts, which may have zero
+// The RouteConfiguration includes a list of virtualHosts, which may have zero
 // or more elements. We are interested in the element whose domains field
 // matches the server name specified in the "xds:" URI. The only field in the
 // VirtualHost proto that the we are interested in is the list of routes. We
@@ -383,15 +339,20 @@ func unmarshalRouteConfigResource(r *anypb.Any, logger *grpclog.PrefixLogger) (s
 // message, the cluster field will contain the clusterName or weighted clusters
 // we are looking for.
 func generateRDSUpdateFromRouteConfiguration(rc *v3routepb.RouteConfiguration, logger *grpclog.PrefixLogger, v2 bool) (RouteConfigUpdate, error) {
-	var vhs []*VirtualHost
+	vhs := make([]*VirtualHost, 0, len(rc.GetVirtualHosts()))
 	for _, vh := range rc.GetVirtualHosts() {
 		routes, err := routesProtoToSlice(vh.Routes, logger, v2)
 		if err != nil {
 			return RouteConfigUpdate{}, fmt.Errorf("received route is invalid: %v", err)
 		}
+		rc, err := generateRetryConfig(vh.GetRetryPolicy())
+		if err != nil {
+			return RouteConfigUpdate{}, fmt.Errorf("received route is invalid: %v", err)
+		}
 		vhOut := &VirtualHost{
-			Domains: vh.GetDomains(),
-			Routes:  routes,
+			Domains:     vh.GetDomains(),
+			Routes:      routes,
+			RetryConfig: rc,
 		}
 		if !v2 {
 			cfgs, err := processHTTPFilterOverrides(vh.GetTypedPerFilterConfig())
@@ -405,9 +366,62 @@ func generateRDSUpdateFromRouteConfiguration(rc *v3routepb.RouteConfiguration, l
 	return RouteConfigUpdate{VirtualHosts: vhs}, nil
 }
 
+func generateRetryConfig(rp *v3routepb.RetryPolicy) (*RetryConfig, error) {
+	if !env.RetrySupport || rp == nil {
+		return nil, nil
+	}
+
+	cfg := &RetryConfig{RetryOn: make(map[codes.Code]bool)}
+	for _, s := range strings.Split(rp.GetRetryOn(), ",") {
+		switch strings.TrimSpace(strings.ToLower(s)) {
+		case "cancelled":
+			cfg.RetryOn[codes.Canceled] = true
+		case "deadline-exceeded":
+			cfg.RetryOn[codes.DeadlineExceeded] = true
+		case "internal":
+			cfg.RetryOn[codes.Internal] = true
+		case "resource-exhausted":
+			cfg.RetryOn[codes.ResourceExhausted] = true
+		case "unavailable":
+			cfg.RetryOn[codes.Unavailable] = true
+		}
+	}
+
+	if rp.NumRetries == nil {
+		cfg.NumRetries = 1
+	} else {
+		cfg.NumRetries = rp.GetNumRetries().Value
+		if cfg.NumRetries < 1 {
+			return nil, fmt.Errorf("retry_policy.num_retries = %v; must be >= 1", cfg.NumRetries)
+		}
+	}
+
+	backoff := rp.GetRetryBackOff()
+	if backoff == nil {
+		cfg.RetryBackoff.BaseInterval = 25 * time.Millisecond
+	} else {
+		cfg.RetryBackoff.BaseInterval = backoff.GetBaseInterval().AsDuration()
+		if cfg.RetryBackoff.BaseInterval <= 0 {
+			return nil, fmt.Errorf("retry_policy.base_interval = %v; must be > 0", cfg.RetryBackoff.BaseInterval)
+		}
+	}
+	if max := backoff.GetMaxInterval(); max == nil {
+		cfg.RetryBackoff.MaxInterval = 10 * cfg.RetryBackoff.BaseInterval
+	} else {
+		cfg.RetryBackoff.MaxInterval = max.AsDuration()
+		if cfg.RetryBackoff.MaxInterval <= 0 {
+			return nil, fmt.Errorf("retry_policy.max_interval = %v; must be > 0", cfg.RetryBackoff.MaxInterval)
+		}
+	}
+
+	if len(cfg.RetryOn) == 0 {
+		return &RetryConfig{}, nil
+	}
+	return cfg, nil
+}
+
 func routesProtoToSlice(routes []*v3routepb.Route, logger *grpclog.PrefixLogger, v2 bool) ([]*Route, error) {
 	var routesRet []*Route
-
 	for _, r := range routes {
 		match := r.GetMatch()
 		if match == nil {
@@ -491,65 +505,82 @@ func routesProtoToSlice(routes []*v3routepb.Route, logger *grpclog.PrefixLogger,
 			route.Fraction = &n
 		}
 
-		route.WeightedClusters = make(map[string]WeightedCluster)
-		action := r.GetRoute()
+		switch r.GetAction().(type) {
+		case *v3routepb.Route_Route:
+			route.WeightedClusters = make(map[string]WeightedCluster)
+			action := r.GetRoute()
 
-		// Hash Policies are only applicable for a Ring Hash LB.
-		if env.RingHashSupport {
-			hp, err := hashPoliciesProtoToSlice(action.HashPolicy, logger)
-			if err != nil {
-				return nil, err
-			}
-			route.HashPolicies = hp
-		}
-
-		switch a := action.GetClusterSpecifier().(type) {
-		case *v3routepb.RouteAction_Cluster:
-			route.WeightedClusters[a.Cluster] = WeightedCluster{Weight: 1}
-		case *v3routepb.RouteAction_WeightedClusters:
-			wcs := a.WeightedClusters
-			var totalWeight uint32
-			for _, c := range wcs.Clusters {
-				w := c.GetWeight().GetValue()
-				if w == 0 {
-					continue
+			// Hash Policies are only applicable for a Ring Hash LB.
+			if env.RingHashSupport {
+				hp, err := hashPoliciesProtoToSlice(action.HashPolicy, logger)
+				if err != nil {
+					return nil, err
 				}
-				wc := WeightedCluster{Weight: w}
-				if !v2 {
-					cfgs, err := processHTTPFilterOverrides(c.GetTypedPerFilterConfig())
-					if err != nil {
-						return nil, fmt.Errorf("route %+v, action %+v: %v", r, a, err)
+				route.HashPolicies = hp
+			}
+
+			switch a := action.GetClusterSpecifier().(type) {
+			case *v3routepb.RouteAction_Cluster:
+				route.WeightedClusters[a.Cluster] = WeightedCluster{Weight: 1}
+			case *v3routepb.RouteAction_WeightedClusters:
+				wcs := a.WeightedClusters
+				var totalWeight uint32
+				for _, c := range wcs.Clusters {
+					w := c.GetWeight().GetValue()
+					if w == 0 {
+						continue
 					}
-					wc.HTTPFilterConfigOverride = cfgs
+					wc := WeightedCluster{Weight: w}
+					if !v2 {
+						cfgs, err := processHTTPFilterOverrides(c.GetTypedPerFilterConfig())
+						if err != nil {
+							return nil, fmt.Errorf("route %+v, action %+v: %v", r, a, err)
+						}
+						wc.HTTPFilterConfigOverride = cfgs
+					}
+					route.WeightedClusters[c.GetName()] = wc
+					totalWeight += w
 				}
-				route.WeightedClusters[c.GetName()] = wc
-				totalWeight += w
+				// envoy xds doc
+				// default TotalWeight https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto.html#envoy-v3-api-field-config-route-v3-weightedcluster-total-weight
+				wantTotalWeight := uint32(100)
+				if tw := wcs.GetTotalWeight(); tw != nil {
+					wantTotalWeight = tw.GetValue()
+				}
+				if totalWeight != wantTotalWeight {
+					return nil, fmt.Errorf("route %+v, action %+v, weights of clusters do not add up to total total weight, got: %v, expected total weight from response: %v", r, a, totalWeight, wantTotalWeight)
+				}
+				if totalWeight == 0 {
+					return nil, fmt.Errorf("route %+v, action %+v, has no valid cluster in WeightedCluster action", r, a)
+				}
+			case *v3routepb.RouteAction_ClusterHeader:
+				continue
 			}
-			// envoy xds doc
-			// default TotalWeight https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto.html#envoy-v3-api-field-config-route-v3-weightedcluster-total-weight
-			wantTotalWeight := uint32(100)
-			if tw := wcs.GetTotalWeight(); tw != nil {
-				wantTotalWeight = tw.GetValue()
-			}
-			if totalWeight != wantTotalWeight {
-				return nil, fmt.Errorf("route %+v, action %+v, weights of clusters do not add up to total total weight, got: %v, expected total weight from response: %v", r, a, totalWeight, wantTotalWeight)
-			}
-			if totalWeight == 0 {
-				return nil, fmt.Errorf("route %+v, action %+v, has no valid cluster in WeightedCluster action", r, a)
-			}
-		case *v3routepb.RouteAction_ClusterHeader:
-			continue
-		}
 
-		msd := action.GetMaxStreamDuration()
-		// Prefer grpc_timeout_header_max, if set.
-		dur := msd.GetGrpcTimeoutHeaderMax()
-		if dur == nil {
-			dur = msd.GetMaxStreamDuration()
-		}
-		if dur != nil {
-			d := dur.AsDuration()
-			route.MaxStreamDuration = &d
+			msd := action.GetMaxStreamDuration()
+			// Prefer grpc_timeout_header_max, if set.
+			dur := msd.GetGrpcTimeoutHeaderMax()
+			if dur == nil {
+				dur = msd.GetMaxStreamDuration()
+			}
+			if dur != nil {
+				d := dur.AsDuration()
+				route.MaxStreamDuration = &d
+			}
+
+			var err error
+			route.RetryConfig, err = generateRetryConfig(action.GetRetryPolicy())
+			if err != nil {
+				return nil, fmt.Errorf("route %+v, action %+v: %v", r, action, err)
+			}
+
+			route.RouteAction = RouteActionRoute
+
+		case *v3routepb.Route_NonForwardingAction:
+			// Expected to be used on server side.
+			route.RouteAction = RouteActionNonForwardingAction
+		default:
+			route.RouteAction = RouteActionUnsupported
 		}
 
 		if !v2 {
@@ -600,8 +631,8 @@ func hashPoliciesProtoToSlice(policies []*v3routepb.RouteAction_HashPolicy, logg
 // UnmarshalCluster processes resources received in an CDS response, validates
 // them, and transforms them into a native struct which contains only fields we
 // are interested in.
-func UnmarshalCluster(version string, resources []*anypb.Any, logger *grpclog.PrefixLogger) (map[string]ClusterUpdate, UpdateMetadata, error) {
-	update := make(map[string]ClusterUpdate)
+func UnmarshalCluster(version string, resources []*anypb.Any, logger *grpclog.PrefixLogger) (map[string]ClusterUpdateErrTuple, UpdateMetadata, error) {
+	update := make(map[string]ClusterUpdateErrTuple)
 	md, err := processAllResources(version, resources, logger, update)
 	return update, md, err
 }
@@ -625,8 +656,45 @@ func unmarshalClusterResource(r *anypb.Any, logger *grpclog.PrefixLogger) (strin
 	return cluster.GetName(), cu, nil
 }
 
+const (
+	defaultRingHashMinSize = 1024
+	defaultRingHashMaxSize = 8 * 1024 * 1024 // 8M
+	ringHashSizeUpperBound = 8 * 1024 * 1024 // 8M
+)
+
 func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (ClusterUpdate, error) {
-	if cluster.GetLbPolicy() != v3clusterpb.Cluster_ROUND_ROBIN {
+	var lbPolicy *ClusterLBPolicyRingHash
+	switch cluster.GetLbPolicy() {
+	case v3clusterpb.Cluster_ROUND_ROBIN:
+		lbPolicy = nil // The default is round_robin, and there's no config to set.
+	case v3clusterpb.Cluster_RING_HASH:
+		if !env.RingHashSupport {
+			return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
+		}
+		rhc := cluster.GetRingHashLbConfig()
+		if rhc.GetHashFunction() != v3clusterpb.Cluster_RingHashLbConfig_XX_HASH {
+			return ClusterUpdate{}, fmt.Errorf("unsupported ring_hash hash function %v in response: %+v", rhc.GetHashFunction(), cluster)
+		}
+		// Minimum defaults to 1024 entries, and limited to 8M entries Maximum
+		// defaults to 8M entries, and limited to 8M entries
+		var minSize, maxSize uint64 = defaultRingHashMinSize, defaultRingHashMaxSize
+		if min := rhc.GetMinimumRingSize(); min != nil {
+			if min.GetValue() > ringHashSizeUpperBound {
+				return ClusterUpdate{}, fmt.Errorf("unexpected ring_hash mininum ring size %v in response: %+v", min.GetValue(), cluster)
+			}
+			minSize = min.GetValue()
+		}
+		if max := rhc.GetMaximumRingSize(); max != nil {
+			if max.GetValue() > ringHashSizeUpperBound {
+				return ClusterUpdate{}, fmt.Errorf("unexpected ring_hash maxinum ring size %v in response: %+v", max.GetValue(), cluster)
+			}
+			maxSize = max.GetValue()
+		}
+		if minSize > maxSize {
+			return ClusterUpdate{}, fmt.Errorf("ring_hash config min size %v is greater than max %v", minSize, maxSize)
+		}
+		lbPolicy = &ClusterLBPolicyRingHash{MinimumRingSize: minSize, MaximumRingSize: maxSize}
+	default:
 		return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
 	}
 
@@ -645,6 +713,7 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 		EnableLRS:   cluster.GetLrsServer().GetSelf() != nil,
 		SecurityCfg: sc,
 		MaxRequests: circuitBreakersFromCluster(cluster),
+		LBPolicy:    lbPolicy,
 	}
 
 	// Validate and set cluster type from the response.
@@ -725,6 +794,9 @@ func dnsHostNameFromCluster(cluster *v3clusterpb.Cluster) (string, error) {
 // securityConfigFromCluster extracts the relevant security configuration from
 // the received Cluster resource.
 func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, error) {
+	if tsm := cluster.GetTransportSocketMatches(); len(tsm) != 0 {
+		return nil, fmt.Errorf("unsupport transport_socket_matches field is non-empty: %+v", tsm)
+	}
 	// The Cluster resource contains a `transport_socket` field, which contains
 	// a oneof `typed_config` field of type `protobuf.Any`. The any proto
 	// contains a marshaled representation of an `UpstreamTlsContext` message.
@@ -743,22 +815,55 @@ func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, e
 	if err := proto.Unmarshal(any.GetValue(), upstreamCtx); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal UpstreamTlsContext in CDS response: %v", err)
 	}
+	// The following fields from `UpstreamTlsContext` are ignored:
+	// - sni
+	// - allow_renegotiation
+	// - max_session_keys
 	if upstreamCtx.GetCommonTlsContext() == nil {
 		return nil, errors.New("UpstreamTlsContext in CDS response does not contain a CommonTlsContext")
 	}
 
-	sc, err := securityConfigFromCommonTLSContext(upstreamCtx.GetCommonTlsContext())
-	if err != nil {
-		return nil, err
+	return securityConfigFromCommonTLSContext(upstreamCtx.GetCommonTlsContext(), false)
+}
+
+// common is expected to be not nil.
+// The `alpn_protocols` field is ignored.
+func securityConfigFromCommonTLSContext(common *v3tlspb.CommonTlsContext, server bool) (*SecurityConfig, error) {
+	if common.GetTlsParams() != nil {
+		return nil, fmt.Errorf("unsupported tls_params field in CommonTlsContext message: %+v", common)
 	}
-	if sc.RootInstanceName == "" {
-		return nil, errors.New("security configuration on the client-side does not contain root certificate provider instance name")
+	if common.GetCustomHandshaker() != nil {
+		return nil, fmt.Errorf("unsupported custom_handshaker field in CommonTlsContext message: %+v", common)
+	}
+
+	// For now, if we can't get a valid security config from the new fields, we
+	// fallback to the old deprecated fields.
+	// TODO: Drop support for deprecated fields. NACK if err != nil here.
+	sc, _ := securityConfigFromCommonTLSContextUsingNewFields(common, server)
+	if sc == nil || sc.Equal(&SecurityConfig{}) {
+		var err error
+		sc, err = securityConfigFromCommonTLSContextWithDeprecatedFields(common, server)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if sc != nil {
+		// sc == nil is a valid case where the control plane has not sent us any
+		// security configuration. xDS creds will use fallback creds.
+		if server {
+			if sc.IdentityInstanceName == "" {
+				return nil, errors.New("security configuration on the server-side does not contain identity certificate provider instance name")
+			}
+		} else {
+			if sc.RootInstanceName == "" {
+				return nil, errors.New("security configuration on the client-side does not contain root certificate provider instance name")
+			}
+		}
 	}
 	return sc, nil
 }
 
-// common is expected to be not nil.
-func securityConfigFromCommonTLSContext(common *v3tlspb.CommonTlsContext) (*SecurityConfig, error) {
+func securityConfigFromCommonTLSContextWithDeprecatedFields(common *v3tlspb.CommonTlsContext, server bool) (*SecurityConfig, error) {
 	// The `CommonTlsContext` contains a
 	// `tls_certificate_certificate_provider_instance` field of type
 	// `CertificateProviderInstance`, which contains the provider instance name
@@ -791,6 +896,9 @@ func securityConfigFromCommonTLSContext(common *v3tlspb.CommonTlsContext) (*Secu
 				matchers = append(matchers, matcher)
 			}
 		}
+		if server && len(matchers) != 0 {
+			return nil, fmt.Errorf("match_subject_alt_names field in validation context is not supported on the server: %v", common)
+		}
 		sc.SubjectAltNameMatchers = matchers
 		if pi := combined.GetValidationContextCertificateProviderInstance(); pi != nil {
 			sc.RootInstanceName = pi.GetInstanceName()
@@ -805,6 +913,110 @@ func securityConfigFromCommonTLSContext(common *v3tlspb.CommonTlsContext) (*Secu
 	default:
 		return nil, fmt.Errorf("validation context contains unexpected type: %T", t)
 	}
+	return sc, nil
+}
+
+// gRFC A29 https://github.com/grpc/proposal/blob/master/A29-xds-tls-security.md
+// specifies the new way to fetch security configuration and says the following:
+//
+// Although there are various ways to obtain certificates as per this proto
+// (which are supported by Envoy), gRPC supports only one of them and that is
+// the `CertificateProviderPluginInstance` proto.
+//
+// This helper function attempts to fetch security configuration from the
+// `CertificateProviderPluginInstance` message, given a CommonTlsContext.
+func securityConfigFromCommonTLSContextUsingNewFields(common *v3tlspb.CommonTlsContext, server bool) (*SecurityConfig, error) {
+	// The `tls_certificate_provider_instance` field of type
+	// `CertificateProviderPluginInstance` is used to fetch the identity
+	// certificate provider.
+	sc := &SecurityConfig{}
+	identity := common.GetTlsCertificateProviderInstance()
+	if identity == nil && len(common.GetTlsCertificates()) != 0 {
+		return nil, fmt.Errorf("expected field tls_certificate_provider_instance is not set, while unsupported field tls_certificates is set in CommonTlsContext message: %+v", common)
+	}
+	if identity == nil && common.GetTlsCertificateSdsSecretConfigs() != nil {
+		return nil, fmt.Errorf("expected field tls_certificate_provider_instance is not set, while unsupported field tls_certificate_sds_secret_configs is set in CommonTlsContext message: %+v", common)
+	}
+	sc.IdentityInstanceName = identity.GetInstanceName()
+	sc.IdentityCertName = identity.GetCertificateName()
+
+	// The `CommonTlsContext` contains a oneof field `validation_context_type`,
+	// which contains the `CertificateValidationContext` message in one of the
+	// following ways:
+	//  - `validation_context` field
+	//    - this is directly of type `CertificateValidationContext`
+	//  - `combined_validation_context` field
+	//    - this is of type `CombinedCertificateValidationContext` and contains
+	//      a `default validation context` field of type
+	//      `CertificateValidationContext`
+	//
+	// The `CertificateValidationContext` message has the following fields that
+	// we are interested in:
+	//  - `ca_certificate_provider_instance`
+	//    - this is of type `CertificateProviderPluginInstance`
+	//  - `match_subject_alt_names`
+	//    - this is a list of string matchers
+	//
+	// The `CertificateProviderPluginInstance` message contains two fields
+	//  - instance_name
+	//    - this is the certificate provider instance name to be looked up in
+	//      the bootstrap configuration
+	//  - certificate_name
+	//    -  this is an opaque name passed to the certificate provider
+	var validationCtx *v3tlspb.CertificateValidationContext
+	switch typ := common.GetValidationContextType().(type) {
+	case *v3tlspb.CommonTlsContext_ValidationContext:
+		validationCtx = common.GetValidationContext()
+	case *v3tlspb.CommonTlsContext_CombinedValidationContext:
+		validationCtx = common.GetCombinedValidationContext().GetDefaultValidationContext()
+	case nil:
+		// It is valid for the validation context to be nil on the server side.
+		return sc, nil
+	default:
+		return nil, fmt.Errorf("validation context contains unexpected type: %T", typ)
+	}
+	// If we get here, it means that the `CertificateValidationContext` message
+	// was found through one of the supported ways. It is an error if the
+	// validation context is specified, but it does not contain the
+	// ca_certificate_provider_instance field which contains information about
+	// the certificate provider to be used for the root certificates.
+	if validationCtx.GetCaCertificateProviderInstance() == nil {
+		return nil, fmt.Errorf("expected field ca_certificate_provider_instance is missing in CommonTlsContext message: %+v", common)
+	}
+	// The following fields are ignored:
+	// - trusted_ca
+	// - watched_directory
+	// - allow_expired_certificate
+	// - trust_chain_verification
+	switch {
+	case len(validationCtx.GetVerifyCertificateSpki()) != 0:
+		return nil, fmt.Errorf("unsupported verify_certificate_spki field in CommonTlsContext message: %+v", common)
+	case len(validationCtx.GetVerifyCertificateHash()) != 0:
+		return nil, fmt.Errorf("unsupported verify_certificate_hash field in CommonTlsContext message: %+v", common)
+	case validationCtx.GetRequireSignedCertificateTimestamp().GetValue():
+		return nil, fmt.Errorf("unsupported require_sugned_ceritificate_timestamp field in CommonTlsContext message: %+v", common)
+	case validationCtx.GetCrl() != nil:
+		return nil, fmt.Errorf("unsupported crl field in CommonTlsContext message: %+v", common)
+	case validationCtx.GetCustomValidatorConfig() != nil:
+		return nil, fmt.Errorf("unsupported custom_validator_config field in CommonTlsContext message: %+v", common)
+	}
+
+	if rootProvider := validationCtx.GetCaCertificateProviderInstance(); rootProvider != nil {
+		sc.RootInstanceName = rootProvider.GetInstanceName()
+		sc.RootCertName = rootProvider.GetCertificateName()
+	}
+	var matchers []matcher.StringMatcher
+	for _, m := range validationCtx.GetMatchSubjectAltNames() {
+		matcher, err := matcher.StringMatcherFromProto(m)
+		if err != nil {
+			return nil, err
+		}
+		matchers = append(matchers, matcher)
+	}
+	if server && len(matchers) != 0 {
+		return nil, fmt.Errorf("match_subject_alt_names field in validation context is not supported on the server: %v", common)
+	}
+	sc.SubjectAltNameMatchers = matchers
 	return sc, nil
 }
 
@@ -829,8 +1041,8 @@ func circuitBreakersFromCluster(cluster *v3clusterpb.Cluster) *uint32 {
 // UnmarshalEndpoints processes resources received in an EDS response,
 // validates them, and transforms them into a native struct which contains only
 // fields we are interested in.
-func UnmarshalEndpoints(version string, resources []*anypb.Any, logger *grpclog.PrefixLogger) (map[string]EndpointsUpdate, UpdateMetadata, error) {
-	update := make(map[string]EndpointsUpdate)
+func UnmarshalEndpoints(version string, resources []*anypb.Any, logger *grpclog.PrefixLogger) (map[string]EndpointsUpdateErrTuple, UpdateMetadata, error) {
+	update := make(map[string]EndpointsUpdateErrTuple)
 	md, err := processAllResources(version, resources, logger, update)
 	return update, md, err
 }
@@ -924,8 +1136,44 @@ func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment) (EndpointsUpdate, 
 	return ret, nil
 }
 
+// ListenerUpdateErrTuple is a tuple with the update and error. It contains the
+// results from unmarshal functions. It's used to pass unmarshal results of
+// multiple resources together, e.g. in maps like `map[string]{Update,error}`.
+type ListenerUpdateErrTuple struct {
+	Update ListenerUpdate
+	Err    error
+}
+
+// RouteConfigUpdateErrTuple is a tuple with the update and error. It contains
+// the results from unmarshal functions. It's used to pass unmarshal results of
+// multiple resources together, e.g. in maps like `map[string]{Update,error}`.
+type RouteConfigUpdateErrTuple struct {
+	Update RouteConfigUpdate
+	Err    error
+}
+
+// ClusterUpdateErrTuple is a tuple with the update and error. It contains the
+// results from unmarshal functions. It's used to pass unmarshal results of
+// multiple resources together, e.g. in maps like `map[string]{Update,error}`.
+type ClusterUpdateErrTuple struct {
+	Update ClusterUpdate
+	Err    error
+}
+
+// EndpointsUpdateErrTuple is a tuple with the update and error. It contains the
+// results from unmarshal functions. It's used to pass unmarshal results of
+// multiple resources together, e.g. in maps like `map[string]{Update,error}`.
+type EndpointsUpdateErrTuple struct {
+	Update EndpointsUpdate
+	Err    error
+}
+
 // processAllResources unmarshals and validates the resources, populates the
 // provided ret (a map), and returns metadata and error.
+//
+// After this function, the ret map will be populated with both valid and
+// invalid updates. Invalid resources will have an entry with the key as the
+// resource name, value as an empty update.
 //
 // The type of the resource is determined by the type of ret. E.g.
 // map[string]ListenerUpdate means this is for LDS.
@@ -940,10 +1188,10 @@ func processAllResources(version string, resources []*anypb.Any, logger *grpclog
 
 	for _, r := range resources {
 		switch ret2 := ret.(type) {
-		case map[string]ListenerUpdate:
+		case map[string]ListenerUpdateErrTuple:
 			name, update, err := unmarshalListenerResource(r, logger)
 			if err == nil {
-				ret2[name] = update
+				ret2[name] = ListenerUpdateErrTuple{Update: update}
 				continue
 			}
 			if name == "" {
@@ -953,11 +1201,11 @@ func processAllResources(version string, resources []*anypb.Any, logger *grpclog
 			perResourceErrors[name] = err
 			// Add place holder in the map so we know this resource name was in
 			// the response.
-			ret2[name] = ListenerUpdate{}
-		case map[string]RouteConfigUpdate:
+			ret2[name] = ListenerUpdateErrTuple{Err: err}
+		case map[string]RouteConfigUpdateErrTuple:
 			name, update, err := unmarshalRouteConfigResource(r, logger)
 			if err == nil {
-				ret2[name] = update
+				ret2[name] = RouteConfigUpdateErrTuple{Update: update}
 				continue
 			}
 			if name == "" {
@@ -967,11 +1215,11 @@ func processAllResources(version string, resources []*anypb.Any, logger *grpclog
 			perResourceErrors[name] = err
 			// Add place holder in the map so we know this resource name was in
 			// the response.
-			ret2[name] = RouteConfigUpdate{}
-		case map[string]ClusterUpdate:
+			ret2[name] = RouteConfigUpdateErrTuple{Err: err}
+		case map[string]ClusterUpdateErrTuple:
 			name, update, err := unmarshalClusterResource(r, logger)
 			if err == nil {
-				ret2[name] = update
+				ret2[name] = ClusterUpdateErrTuple{Update: update}
 				continue
 			}
 			if name == "" {
@@ -981,11 +1229,11 @@ func processAllResources(version string, resources []*anypb.Any, logger *grpclog
 			perResourceErrors[name] = err
 			// Add place holder in the map so we know this resource name was in
 			// the response.
-			ret2[name] = ClusterUpdate{}
-		case map[string]EndpointsUpdate:
+			ret2[name] = ClusterUpdateErrTuple{Err: err}
+		case map[string]EndpointsUpdateErrTuple:
 			name, update, err := unmarshalEndpointsResource(r, logger)
 			if err == nil {
-				ret2[name] = update
+				ret2[name] = EndpointsUpdateErrTuple{Update: update}
 				continue
 			}
 			if name == "" {
@@ -995,7 +1243,7 @@ func processAllResources(version string, resources []*anypb.Any, logger *grpclog
 			perResourceErrors[name] = err
 			// Add place holder in the map so we know this resource name was in
 			// the response.
-			ret2[name] = EndpointsUpdate{}
+			ret2[name] = EndpointsUpdateErrTuple{Err: err}
 		}
 	}
 

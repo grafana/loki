@@ -172,3 +172,7 @@ func (b *weightedTargetBalancer) Close() {
 	b.stateAggregator.Stop()
 	b.bg.Close()
 }
+
+func (b *weightedTargetBalancer) ExitIdle() {
+	b.bg.ExitIdle()
+}

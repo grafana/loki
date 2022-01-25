@@ -225,14 +225,17 @@ func (b *priorityBalancer) handleChildStateUpdate(childName string, s balancer.S
 	child.state = s
 
 	switch s.ConnectivityState {
-	case connectivity.Ready:
+	case connectivity.Ready, connectivity.Idle:
+		// Note that idle is also handled as if it's Ready. It will close the
+		// lower priorities (which will be kept in a cache, not deleted), and
+		// new picks will use the Idle picker.
 		b.handlePriorityWithNewStateReady(child, priority)
 	case connectivity.TransientFailure:
 		b.handlePriorityWithNewStateTransientFailure(child, priority)
 	case connectivity.Connecting:
 		b.handlePriorityWithNewStateConnecting(child, priority, oldState)
 	default:
-		// New state is Idle, should never happen. Don't forward.
+		// New state is Shutdown, should never happen. Don't forward.
 	}
 }
 

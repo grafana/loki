@@ -16,7 +16,6 @@
  *
  */
 
-// Package ringhash contains the functionality to support Ring Hash in grpc.
 package ringhash
 
 import "context"

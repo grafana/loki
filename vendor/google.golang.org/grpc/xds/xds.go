@@ -25,11 +25,6 @@
 //
 // See https://github.com/grpc/grpc-go/tree/master/examples/features/xds for
 // example.
-//
-// Experimental
-//
-// Notice: All APIs in this package are experimental and may be removed in a
-// later release.
 package xds
 
 import (
@@ -87,6 +82,11 @@ func init() {
 //
 // This function should ONLY be used for testing and may not work with some
 // other features, including the CSDS service.
+//
+// Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a
+// later release.
 func NewXDSResolverWithConfigForTesting(bootstrapConfig []byte) (resolver.Builder, error) {
 	return xdsresolver.NewBuilder(bootstrapConfig)
 }

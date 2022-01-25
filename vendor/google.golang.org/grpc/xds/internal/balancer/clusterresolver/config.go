@@ -21,9 +21,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 
+	"google.golang.org/grpc/balancer/roundrobin"
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/serviceconfig"
+	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 )
 
 // DiscoveryMechanismType is the type of discovery mechanism.
@@ -150,29 +153,33 @@ type LBConfig struct {
 	// concatenated together in successive priorities.
 	DiscoveryMechanisms []DiscoveryMechanism `json:"discoveryMechanisms,omitempty"`
 
-	// LocalityPickingPolicy is policy for locality picking.
+	// XDSLBPolicy specifies the policy for locality picking and endpoint picking.
 	//
-	// This policy's config is expected to be in the format used by the
-	// weighted_target policy.  Note that the config should include an empty
-	// value for the "targets" field; that empty value will be replaced by one
-	// that is dynamically generated based on the EDS data. Optional; defaults
-	// to "weighted_target".
-	LocalityPickingPolicy *internalserviceconfig.BalancerConfig `json:"localityPickingPolicy,omitempty"`
-
-	// EndpointPickingPolicy is policy for endpoint picking.
+	// Note that it's not normal balancing policy, and it can only be either
+	// ROUND_ROBIN or RING_HASH.
 	//
-	// This will be configured as the policy for each child in the
-	// locality-policy's config. Optional; defaults to "round_robin".
-	EndpointPickingPolicy *internalserviceconfig.BalancerConfig `json:"endpointPickingPolicy,omitempty"`
-
-	// TODO: read and warn if endpoint is not roundrobin or locality is not
-	// weightedtarget.
+	// For ROUND_ROBIN, the policy name will be "ROUND_ROBIN", and the config
+	// will be empty. This sets the locality-picking policy to weighted_target
+	// and the endpoint-picking policy to round_robin.
+	//
+	// For RING_HASH, the policy name will be "RING_HASH", and the config will
+	// be lb config for the ring_hash_experimental LB Policy. ring_hash policy
+	// is responsible for both locality picking and endpoint picking.
+	XDSLBPolicy *internalserviceconfig.BalancerConfig `json:"xdsLbPolicy,omitempty"`
 }
+
+const (
+	rrName = roundrobin.Name
+	rhName = ringhash.Name
+)
 
 func parseConfig(c json.RawMessage) (*LBConfig, error) {
 	var cfg LBConfig
 	if err := json.Unmarshal(c, &cfg); err != nil {
 		return nil, err
+	}
+	if lbp := cfg.XDSLBPolicy; lbp != nil && !strings.EqualFold(lbp.Name, rrName) && !strings.EqualFold(lbp.Name, rhName) {
+		return nil, fmt.Errorf("unsupported child policy with name %q, not one of {%q,%q}", lbp.Name, rrName, rhName)
 	}
 	return &cfg, nil
 }

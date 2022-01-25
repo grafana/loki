@@ -115,6 +115,8 @@ type scUpdate struct {
 	state   balancer.SubConnState
 }
 
+type exitIdle struct{}
+
 // clusterResolverBalancer manages xdsClient and the actual EDS balancer implementation that
 // does load balancing.
 //
@@ -209,7 +211,7 @@ func (b *clusterResolverBalancer) updateChildConfig() error {
 		b.child = newChildBalancer(b.priorityBuilder, b.cc, b.bOpts)
 	}
 
-	childCfgBytes, addrs, err := buildPriorityConfigJSON(b.priorities, b.config.EndpointPickingPolicy)
+	childCfgBytes, addrs, err := buildPriorityConfigJSON(b.priorities, b.config.XDSLBPolicy)
 	if err != nil {
 		return fmt.Errorf("failed to build priority balancer config: %v", err)
 	}
@@ -279,6 +281,18 @@ func (b *clusterResolverBalancer) run() {
 					break
 				}
 				b.child.UpdateSubConnState(update.subConn, update.state)
+			case exitIdle:
+				if b.child == nil {
+					b.logger.Errorf("xds: received ExitIdle with no child balancer")
+					break
+				}
+				// This implementation assumes the child balancer supports
+				// ExitIdle (but still checks for the interface's existence to
+				// avoid a panic if not).  If the child does not, no subconns
+				// will be connected.
+				if ei, ok := b.child.(balancer.ExitIdler); ok {
+					ei.ExitIdle()
+				}
 			}
 		case u := <-b.resourceWatcher.updateChannel:
 			b.handleWatchUpdate(u)
@@ -346,6 +360,10 @@ func (b *clusterResolverBalancer) UpdateSubConnState(sc balancer.SubConn, state 
 func (b *clusterResolverBalancer) Close() {
 	b.closed.Fire()
 	<-b.done.Done()
+}
+
+func (b *clusterResolverBalancer) ExitIdle() {
+	b.updateCh.Put(exitIdle{})
 }
 
 // ccWrapper overrides ResolveNow(), so that re-resolution from the child
