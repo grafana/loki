@@ -44,7 +44,6 @@ var (
 // Config for query_range middleware chain.
 type Config struct {
   //Deprecated
-	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`
 	AlignQueriesWithStep   bool          `yaml:"align_queries_with_step"`
 	ResultsCacheConfig     `yaml:"results_cache"`
 	CacheResults           bool `yaml:"cache_results"`
@@ -57,8 +56,6 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
-  //Deprecated
-	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 30*time.Minute, "Deprecated. Use split_queries_by_interval in limits config")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", true, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")

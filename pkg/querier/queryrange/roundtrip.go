@@ -56,9 +56,7 @@ func NewTripperware(
 ) (queryrangebase.Tripperware, Stopper, error) {
 	// Ensure that QuerySplitDuration uses configuration defaults.
 	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
-  //TODO(tjw): SplitQueriesByInterval has been deprecated in favor of the limits config
-  //remove this once deprecation has been out for a whole version
-	limits = WithDefaultLimits(limits, cfg.SplitQueriesByInterval)
+	limits = WithDefaultLimits(limits)
 
 	instrumentMetrics := queryrangebase.NewInstrumentMiddlewareMetrics(registerer)
 	retryMetrics := queryrangebase.NewRetryMiddlewareMetrics(registerer)

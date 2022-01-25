@@ -58,17 +58,10 @@ func (l limits) QuerySplitDuration(user string) time.Duration {
 }
 
 // WithDefaults will construct a Limits with a default value for QuerySplitDuration when no overrides are present.
-func WithDefaultLimits(l Limits, splitBy time.Duration) Limits {
+func WithDefaultLimits(l Limits) Limits {
 	res := limits{
 		Limits:    l,
 		overrides: true,
-	}
-
-	//TODO(tjw): SplitQueriesByInterval has been deprecated
-	//and should be provided by the limits config now.
-	//Remove this after deprecation has been out for one version.
-	if splitBy != 0 {
-		res.splitDuration = splitBy
 	}
 
 	return res

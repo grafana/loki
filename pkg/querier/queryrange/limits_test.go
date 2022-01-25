@@ -24,13 +24,14 @@ import (
 
 func TestLimits(t *testing.T) {
 	l := fakeLimits{
-		splits: map[string]time.Duration{"a": time.Minute},
+		querySplitDuration: time.Hour,
+		splits:             map[string]time.Duration{"a": time.Minute},
 	}
 
 	require.Equal(t, l.QuerySplitDuration("a"), time.Minute)
-	require.Equal(t, l.QuerySplitDuration("b"), time.Duration(0))
+	require.Equal(t, l.QuerySplitDuration("b"), time.Hour)
 
-	wrapped := WithDefaultLimits(l, time.Hour)
+	wrapped := WithDefaultLimits(l)
 	require.Equal(t, wrapped.QuerySplitDuration("a"), time.Minute)
 	require.Equal(t, wrapped.QuerySplitDuration("b"), time.Hour)
 

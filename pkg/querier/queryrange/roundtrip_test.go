@@ -566,7 +566,13 @@ func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
 	if f.splits == nil {
 		return f.querySplitDuration
 	}
-	return f.splits[key]
+
+  dur := f.splits[key]
+  if dur == 0 {
+    return f.querySplitDuration
+  }
+
+  return dur
 }
 
 func (f fakeLimits) MaxQueryLength(string) time.Duration {
