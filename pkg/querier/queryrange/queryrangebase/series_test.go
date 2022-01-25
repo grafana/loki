@@ -50,9 +50,9 @@ func Test_ResponseToSamples(t *testing.T) {
 		},
 	}
 
-	strea, err := ResponseToSamples(input)
+	stream, err := ResponseToSamples(input)
 	require.Nil(t, err)
-	set := NewSeriesSet(strea)
+	set := NewSeriesSet(stream)
 
 	setCt := 0
 
