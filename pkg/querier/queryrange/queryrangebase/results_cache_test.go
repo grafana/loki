@@ -62,8 +62,8 @@ var (
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: []logproto.Sample{
-						{Value: 137, TimestampMs: 1536673680000},
-						{Value: 137, TimestampMs: 1536673780000},
+						{Value: 137, Timestamp: 1536673680000},
+						{Value: 137, Timestamp: 1536673780000},
 					},
 				},
 			},
@@ -75,8 +75,8 @@ func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 	var samples []logproto.Sample
 	for i := start; i <= end; i += step {
 		samples = append(samples, logproto.Sample{
-			TimestampMs: i,
-			Value:       float64(i),
+			Timestamp: i,
+			Value:     float64(i),
 		})
 	}
 
@@ -942,13 +942,13 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 		want     string
 	}{
 		{"0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
-		{"<30m", &PrometheusRequest{Start: toMs(10 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
-		{"30m", &PrometheusRequest{Start: toMs(30 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:1"},
-		{"91m", &PrometheusRequest{Start: toMs(91 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:3"},
+		{"<30m", &PrometheusRequest{Start: to(10 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
+		{"30m", &PrometheusRequest{Start: to(30 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:1"},
+		{"91m", &PrometheusRequest{Start: to(91 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:3"},
 		{"0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
-		{"<1d", &PrometheusRequest{Start: toMs(22 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
-		{"4d", &PrometheusRequest{Start: toMs(4 * 24 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:4"},
-		{"3d5h", &PrometheusRequest{Start: toMs(77 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:3"},
+		{"<1d", &PrometheusRequest{Start: to(22 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
+		{"4d", &PrometheusRequest{Start: to(4 * 24 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:4"},
+		{"3d5h", &PrometheusRequest{Start: to(77 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:3"},
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
@@ -1024,7 +1024,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 	}
 }
 
-func toMs(t time.Duration) int64 {
+func to(t time.Duration) int64 {
 	return int64(t / time.Millisecond)
 }
 

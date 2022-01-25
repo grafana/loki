@@ -33,11 +33,11 @@ func TestRequest(t *testing.T) {
 		},
 		{
 			url:         "api/v1/query_range?start=foo",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"start\"; cannot parse \"foo\" to a valid timestamp"),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"start\"; cannot parse \"foo\" to a valid Timestamp"),
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=bar",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"end\"; cannot parse \"bar\" to a valid timestamp"),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"end\"; cannot parse \"bar\" to a valid Timestamp"),
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=0",
@@ -188,8 +188,8 @@ func TestMergeAPIResponses(t *testing.T) {
 							{
 								Labels: []logproto.LabelAdapter{},
 								Samples: []logproto.Sample{
-									{Value: 0, TimestampMs: 0},
-									{Value: 1, TimestampMs: 1},
+									{Value: 0, Timestamp: 0},
+									{Value: 1, Timestamp: 1},
 								},
 							},
 						},
@@ -202,8 +202,8 @@ func TestMergeAPIResponses(t *testing.T) {
 							{
 								Labels: []logproto.LabelAdapter{},
 								Samples: []logproto.Sample{
-									{Value: 2, TimestampMs: 2},
-									{Value: 3, TimestampMs: 3},
+									{Value: 2, Timestamp: 2},
+									{Value: 3, Timestamp: 3},
 								},
 							},
 						},
@@ -218,10 +218,10 @@ func TestMergeAPIResponses(t *testing.T) {
 						{
 							Labels: []logproto.LabelAdapter{},
 							Samples: []logproto.Sample{
-								{Value: 0, TimestampMs: 0},
-								{Value: 1, TimestampMs: 1},
-								{Value: 2, TimestampMs: 2},
-								{Value: 3, TimestampMs: 3},
+								{Value: 0, Timestamp: 0},
+								{Value: 1, Timestamp: 1},
+								{Value: 2, Timestamp: 2},
+								{Value: 3, Timestamp: 3},
 							},
 						},
 					},
@@ -243,10 +243,10 @@ func TestMergeAPIResponses(t *testing.T) {
 						{
 							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 							Samples: []logproto.Sample{
-								{Value: 0, TimestampMs: 0},
-								{Value: 1, TimestampMs: 1000},
-								{Value: 2, TimestampMs: 2000},
-								{Value: 3, TimestampMs: 3000},
+								{Value: 0, Timestamp: 0},
+								{Value: 1, Timestamp: 1000},
+								{Value: 2, Timestamp: 2000},
+								{Value: 3, Timestamp: 3000},
 							},
 						},
 					},
@@ -268,9 +268,9 @@ func TestMergeAPIResponses(t *testing.T) {
 						{
 							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 							Samples: []logproto.Sample{
-								{Value: 1, TimestampMs: 1000},
-								{Value: 2, TimestampMs: 2000},
-								{Value: 3, TimestampMs: 3000},
+								{Value: 1, Timestamp: 1000},
+								{Value: 2, Timestamp: 2000},
+								{Value: 3, Timestamp: 3000},
 							},
 						},
 					},
@@ -291,11 +291,11 @@ func TestMergeAPIResponses(t *testing.T) {
 						{
 							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 							Samples: []logproto.Sample{
-								{Value: 1, TimestampMs: 1000},
-								{Value: 2, TimestampMs: 2000},
-								{Value: 3, TimestampMs: 3000},
-								{Value: 4, TimestampMs: 4000},
-								{Value: 5, TimestampMs: 5000},
+								{Value: 1, Timestamp: 1000},
+								{Value: 2, Timestamp: 2000},
+								{Value: 3, Timestamp: 3000},
+								{Value: 4, Timestamp: 4000},
+								{Value: 5, Timestamp: 5000},
 							},
 						},
 					},
@@ -316,10 +316,10 @@ func TestMergeAPIResponses(t *testing.T) {
 						{
 							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 							Samples: []logproto.Sample{
-								{Value: 2, TimestampMs: 2000},
-								{Value: 3, TimestampMs: 3000},
-								{Value: 4, TimestampMs: 4000},
-								{Value: 5, TimestampMs: 5000},
+								{Value: 2, Timestamp: 2000},
+								{Value: 3, Timestamp: 3000},
+								{Value: 4, Timestamp: 4000},
+								{Value: 5, Timestamp: 5000},
 							},
 						},
 					},
