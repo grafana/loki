@@ -8,8 +8,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func BenchmarkPrometheusCodec_DecodeResponse(b *testing.B) {
@@ -59,16 +60,16 @@ func mockPrometheusResponse(numSeries, numSamplesPerSeries int) *PrometheusRespo
 	stream := make([]SampleStream, numSeries)
 	for s := 0; s < numSeries; s++ {
 		// Generate random samples.
-		samples := make([]cortexpb.Sample, numSamplesPerSeries)
+		samples := make([]logproto.Sample, numSamplesPerSeries)
 		for i := 0; i < numSamplesPerSeries; i++ {
-			samples[i] = cortexpb.Sample{
+			samples[i] = logproto.Sample{
 				Value:       rand.Float64(),
 				TimestampMs: int64(i),
 			}
 		}
 
 		// Generate random labels.
-		lbls := make([]cortexpb.LabelAdapter, 10)
+		lbls := make([]logproto.LabelAdapter, 10)
 		for i := range lbls {
 			lbls[i].Name = "a_medium_size_label_name"
 			lbls[i].Value = "a_medium_size_label_value_that_is_used_to_benchmark_marshalling"
