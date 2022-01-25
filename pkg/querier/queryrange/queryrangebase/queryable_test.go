@@ -97,12 +97,12 @@ func TestSelect(t *testing.T) {
 								},
 								Samples: []logproto.Sample{
 									{
-										Value:       1,
-										TimestampMs: 1,
+										Value:     1,
+										Timestamp: 1,
 									},
 									{
-										Value:       2,
-										TimestampMs: 2,
+										Value:     2,
+										Timestamp: 2,
 									},
 								},
 							},
@@ -113,12 +113,12 @@ func TestSelect(t *testing.T) {
 								},
 								Samples: []logproto.Sample{
 									{
-										Value:       8,
-										TimestampMs: 1,
+										Value:     8,
+										Timestamp: 1,
 									},
 									{
-										Value:       9,
-										TimestampMs: 2,
+										Value:     9,
+										Timestamp: 2,
 									},
 								},
 							},
@@ -147,12 +147,12 @@ func TestSelect(t *testing.T) {
 							},
 							Samples: []logproto.Sample{
 								{
-									Value:       1,
-									TimestampMs: 1,
+									Value:     1,
+									Timestamp: 1,
 								},
 								{
-									Value:       2,
-									TimestampMs: 2,
+									Value:     2,
+									Timestamp: 2,
 								},
 							},
 						},
@@ -163,12 +163,12 @@ func TestSelect(t *testing.T) {
 							},
 							Samples: []logproto.Sample{
 								{
-									Value:       8,
-									TimestampMs: 1,
+									Value:     8,
+									Timestamp: 1,
 								},
 								{
-									Value:       9,
-									TimestampMs: 2,
+									Value:     9,
+									Timestamp: 2,
 								},
 							},
 						},
@@ -224,8 +224,8 @@ func TestSelectConcurrent(t *testing.T) {
 							},
 							Samples: []logproto.Sample{
 								{
-									Value:       1,
-									TimestampMs: 1,
+									Value:     1,
+									Timestamp: 1,
 								},
 							},
 						},

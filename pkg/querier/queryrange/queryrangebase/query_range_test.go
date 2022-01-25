@@ -33,11 +33,11 @@ func TestRequest(t *testing.T) {
 		},
 		{
 			url:         "api/v1/query_range?start=foo",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"start\"; cannot parse \"foo\" to a valid Timestamp"),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"start\"; cannot parse \"foo\" to a valid timestamp"),
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=bar",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"end\"; cannot parse \"bar\" to a valid Timestamp"),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"end\"; cannot parse \"bar\" to a valid timestamp"),
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=0",
