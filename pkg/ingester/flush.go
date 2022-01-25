@@ -250,15 +250,13 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *sync.RWMutex) {
 	var stream *stream
 	var ok bool
-	instance.streams.WithRLock(func() {
-		if stream, ok = instance.streams.LoadByFP(fp); ok {
-			stream.chunkMtx.Lock()
-		}
-	})
+	stream, ok = instance.streams.LoadByFP(fp)
 
 	if !ok {
 		return nil, nil, nil
 	}
+
+	stream.chunkMtx.Lock()
 	defer stream.chunkMtx.Unlock()
 
 	var result []*chunkDesc
