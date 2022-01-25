@@ -36,26 +36,6 @@ const (
 	azureUSGovernment = "AzureUSGovernment"
 )
 
-var requestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "loki",
-	Name:      "azure_blob_request_duration_seconds",
-	Help:      "Time spent doing azure blob requests.",
-	// Latency seems to range from a few ms to a few secs and is
-	// important.  So use 6 buckets from 5ms to 5s.
-	Buckets: prometheus.ExponentialBuckets(0.005, 4, 6),
-}, []string{"operation", "status_code"}))
-
-var egressBytesTotal = prometheus.NewCounter(prometheus.CounterOpts{
-	Namespace: "loki",
-	Name:      "azure_blob_egress_bytes_total",
-	Help:      "Total bytes downloaded from Azure Blob Storage.",
-})
-
-func init() {
-	requestDuration.Register()
-	prometheus.MustRegister(egressBytesTotal)
-}
-
 var (
 	supportedEnvironments = []string{azureGlobal, azureChinaCloud, azureGermanCloud, azureUSGovernment}
 	noClientKey           = azblob.ClientProvidedKeyOptions{}
@@ -154,11 +134,47 @@ func (c *BlobStorageConfig) ToCortexAzureConfig() cortex_azure.BlobStorageConfig
 	}
 }
 
+type BlobStorageMetrics struct {
+	requestDuration  *prometheus.HistogramVec
+	egressBytesTotal prometheus.Counter
+}
+
+// NewBlobStorageMetrics creates the blob storage metrics struct and registers all of it's metrics.
+func NewBlobStorageMetrics() BlobStorageMetrics {
+	b := BlobStorageMetrics{
+		requestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Name:      "azure_blob_request_duration_seconds",
+			Help:      "Time spent doing azure blob requests.",
+			// Latency seems to range from a few ms to a few secs and is
+			// important. So use 6 buckets from 5ms to 5s.
+			Buckets: prometheus.ExponentialBuckets(0.005, 4, 6),
+		}, []string{"operation", "status_code"}),
+		egressBytesTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "azure_blob_egress_bytes_total",
+			Help:      "Total bytes downloaded from Azure Blob Storage.",
+		}),
+	}
+	prometheus.MustRegister(b.requestDuration)
+	prometheus.MustRegister(b.egressBytesTotal)
+	return b
+}
+
+// Unregister unregisters the blob storage metrics with the prometheus default registerer, useful for tests
+// where we frequently need to create multiple instances of the metrics struct, but not globally.
+func (bm *BlobStorageMetrics) Unregister() {
+	prometheus.Unregister(bm.requestDuration)
+	prometheus.Unregister(bm.egressBytesTotal)
+}
+
 // BlobStorage is used to interact with azure blob storage for setting or getting time series chunks.
 // Implements ObjectStorage
 type BlobStorage struct {
 	// blobService storage.Serv
 	cfg *BlobStorageConfig
+
+	metrics BlobStorageMetrics
 
 	containerURL azblob.ContainerURL
 
@@ -167,10 +183,11 @@ type BlobStorage struct {
 }
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
-func NewBlobStorage(cfg *BlobStorageConfig, hedgingCfg hedging.Config) (*BlobStorage, error) {
+func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingCfg hedging.Config) (*BlobStorage, error) {
 	log.WarnExperimentalUse("Azure Blob Storage", log.Logger)
 	blobStorage := &BlobStorage{
-		cfg: cfg,
+		cfg:     cfg,
+		metrics: metrics,
 	}
 	pipeline, err := blobStorage.newPipeline(hedgingCfg, false)
 	if err != nil {
@@ -204,13 +221,12 @@ func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 		size int64
 		rc   io.ReadCloser
 	)
-	err := instrument.CollectedRequest(ctx, "azure.GetObject", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "azure.GetObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		rc, size, err = b.getObject(ctx, objectKey)
 		return err
 	})
-	// Assume even failed requests egress bytes count towards rate limits and count them here.
-	egressBytesTotal.Add(float64(size))
+	b.metrics.egressBytesTotal.Add(float64(size))
 	if err != nil {
 		// cancel the context if there is an error.
 		cancel()
@@ -236,7 +252,7 @@ func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.Re
 }
 
 func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	return instrument.CollectedRequest(ctx, "azure.PutObject", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "azure.PutObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		blockBlobURL, err := b.getBlobURL(objectKey, false)
 		if err != nil {
 			return err
@@ -380,7 +396,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]chu
 			return nil, nil, ctx.Err()
 		}
 
-		err := instrument.CollectedRequest(ctx, "azure.List", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		err := instrument.CollectedRequest(ctx, "azure.List", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 			listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, delimiter, azblob.ListBlobsSegmentOptions{Prefix: prefix})
 			if err != nil {
 				return err
@@ -413,7 +429,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]chu
 }
 
 func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
-	return instrument.CollectedRequest(ctx, "azure.DeleteObject", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "azure.DeleteObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		blockBlobURL, err := b.getBlobURL(blobID, false)
 		if err != nil {
 			return err

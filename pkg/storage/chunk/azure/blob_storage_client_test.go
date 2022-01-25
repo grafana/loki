@@ -21,6 +21,7 @@ func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func Test_Hedging(t *testing.T) {
+	metrics := NewBlobStorageMetrics()
 	for _, tc := range []struct {
 		name          string
 		expectedCalls int32
@@ -75,11 +76,12 @@ func Test_Hedging(t *testing.T) {
 				ContainerName: "foo",
 				Environment:   azureGlobal,
 				MaxRetries:    1,
-			}, hedging.Config{
-				At:           tc.hedgeAt,
-				UpTo:         tc.upTo,
-				MaxPerSecond: 1000,
-			})
+			}, metrics,
+				hedging.Config{
+					At:           tc.hedgeAt,
+					UpTo:         tc.upTo,
+					MaxPerSecond: 1000,
+				})
 			require.NoError(t, err)
 			tc.do(c)
 			require.Equal(t, tc.expectedCalls, count.Load())

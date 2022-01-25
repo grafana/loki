@@ -18,7 +18,7 @@ import (
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
-func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
+func setupTestCompactor(t *testing.T, tempDir string, clientMetrics storage.ClientMetrics) *Compactor {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.WorkingDirectory = filepath.Join(tempDir, workingDirName)
@@ -31,7 +31,7 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 
 	require.NoError(t, cfg.Validate())
 
-	c, err := NewCompactor(cfg, storage.Config{FSConfig: local.FSConfig{Directory: tempDir}}, loki_storage.SchemaConfig{}, nil, nil)
+	c, err := NewCompactor(cfg, storage.Config{FSConfig: local.FSConfig{Directory: tempDir}}, loki_storage.SchemaConfig{}, nil, clientMetrics, nil)
 	require.NoError(t, err)
 
 	return c
@@ -110,7 +110,9 @@ func TestCompactor_RunCompaction(t *testing.T) {
 		testutil.SetupDBsAtPath(t, filepath.Join(tablesCopyPath, name), dbs, nil)
 	}
 
-	compactor := setupTestCompactor(t, tempDir)
+	cm := storage.NewClientMetrics()
+	defer cm.Unregister()
+	compactor := setupTestCompactor(t, tempDir, cm)
 	err = compactor.RunCompaction(context.Background(), true)
 	require.NoError(t, err)
 

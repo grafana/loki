@@ -39,7 +39,8 @@ var (
 	start      = model.Time(1523750400000)
 	m          runtime.MemStats
 	ctx        = user.InjectOrgID(context.Background(), "fake")
-	chunkStore = getLocalStore()
+	cm         = storage.NewClientMetrics()
+	chunkStore = getLocalStore(cm)
 )
 
 // go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
@@ -181,7 +182,7 @@ func printHeap(b *testing.B, show bool) {
 	}
 }
 
-func getLocalStore() Store {
+func getLocalStore(cm storage.ClientMetrics) Store {
 	limits, err := validation.NewOverrides(validation.Limits{
 		MaxQueryLength: model.Duration(6000 * time.Hour),
 	}, nil)
@@ -217,7 +218,7 @@ func getLocalStore() Store {
 	chunkStore, err := storage.NewStore(
 		storeConfig.Config,
 		chunk.StoreConfig{},
-		schemaConfig.SchemaConfig, limits, nil, nil, util_log.Logger)
+		schemaConfig.SchemaConfig, limits, cm, nil, nil, util_log.Logger)
 	if err != nil {
 		panic(err)
 	}
@@ -842,13 +843,14 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		},
 	}
 
-	RegisterCustomIndexClients(&config, nil)
+	RegisterCustomIndexClients(&config, cm, nil)
 
 	chunkStore, err := storage.NewStore(
 		config.Config,
 		chunk.StoreConfig{},
 		schemaConfig.SchemaConfig,
 		limits,
+		cm,
 		nil,
 		nil,
 		util_log.Logger,
@@ -895,6 +897,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		chunk.StoreConfig{},
 		schemaConfig.SchemaConfig,
 		limits,
+		cm,
 		nil,
 		nil,
 		util_log.Logger,

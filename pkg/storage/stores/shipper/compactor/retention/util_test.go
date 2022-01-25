@@ -117,6 +117,7 @@ type testStore struct {
 	schemaCfg          storage.SchemaConfig
 	t                  testing.TB
 	limits             chunk_storage.StoreLimits
+	clientMetrics      chunk_storage.ClientMetrics
 }
 
 // testObjectClient is a testing object client
@@ -125,12 +126,12 @@ type testObjectClient struct {
 	path string
 }
 
-func newTestObjectClient(path string) chunk.ObjectClient {
+func newTestObjectClient(path string, clientMetrics chunk_storage.ClientMetrics) chunk.ObjectClient {
 	c, err := chunk_storage.NewObjectClient("filesystem", chunk_storage.Config{
 		FSConfig: local.FSConfig{
 			Directory: path,
 		},
-	})
+	}, clientMetrics)
 	if err != nil {
 		panic(err)
 	}
@@ -187,6 +188,7 @@ func (t *testStore) open() {
 		chunk.StoreConfig{},
 		schemaCfg.SchemaConfig,
 		t.limits,
+		t.clientMetrics,
 		nil,
 		nil,
 		util_log.Logger,
@@ -198,7 +200,7 @@ func (t *testStore) open() {
 	t.Store = store
 }
 
-func newTestStore(t testing.TB) *testStore {
+func newTestStore(t testing.TB, clientMetrics chunk_storage.ClientMetrics) *testStore {
 	t.Helper()
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
@@ -245,6 +247,7 @@ func newTestStore(t testing.TB) *testStore {
 		chunk.StoreConfig{},
 		schemaCfg.SchemaConfig,
 		limits,
+		clientMetrics,
 		nil,
 		nil,
 		util_log.Logger,
@@ -254,14 +257,15 @@ func newTestStore(t testing.TB) *testStore {
 	store, err := storage.NewStore(config, schemaCfg, chunkStore, nil)
 	require.NoError(t, err)
 	return &testStore{
-		indexDir:     indexDir,
-		chunkDir:     chunkDir,
-		t:            t,
-		Store:        store,
-		schemaCfg:    schemaCfg,
-		objectClient: newTestObjectClient(workdir),
-		cfg:          config,
-		limits:       limits,
+		indexDir:      indexDir,
+		chunkDir:      chunkDir,
+		t:             t,
+		Store:         store,
+		schemaCfg:     schemaCfg,
+		objectClient:  newTestObjectClient(workdir, clientMetrics),
+		cfg:           config,
+		limits:        limits,
+		clientMetrics: clientMetrics,
 	}
 }
 
