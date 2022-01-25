@@ -2,6 +2,7 @@ package userconfig
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -99,6 +100,7 @@ func TestParseLegacyAlerts(t *testing.T) {
 	for i, tc := range []struct {
 		cfg      RulesConfig
 		expected map[string][]rules.Rule
+		wantErr  error
 	}{
 		{
 			cfg: RulesConfig{
@@ -118,6 +120,7 @@ func TestParseLegacyAlerts(t *testing.T) {
 			expected: map[string][]rules.Rule{
 				"legacy.rules": {rule},
 			},
+			wantErr: fmt.Errorf("version 0 isn't supported"),
 		},
 		{
 			cfg: RulesConfig{
@@ -140,12 +143,17 @@ groups:
 			expected: map[string][]rules.Rule{
 				"example;alerts.yaml": {rule},
 			},
+			wantErr: nil,
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			rules, err := tc.cfg.Parse()
-			require.NoError(t, err)
-			require.Equal(t, tc.expected, rules)
+			if tc.wantErr != nil {
+				require.EqualError(t, err, tc.wantErr.Error())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expected, rules)
+			}
 		})
 	}
 }
@@ -189,6 +197,7 @@ func TestParseFormatted(t *testing.T) {
 	for i, tc := range []struct {
 		cfg      RulesConfig
 		expected map[string]rulefmt.RuleGroups
+		wantErr  error
 	}{
 		{
 			cfg: RulesConfig{
@@ -207,6 +216,7 @@ func TestParseFormatted(t *testing.T) {
 					},
 				},
 			},
+			wantErr: fmt.Errorf("version 0 isn't supported"),
 		},
 		{
 			cfg: RulesConfig{
@@ -225,12 +235,17 @@ func TestParseFormatted(t *testing.T) {
 					},
 				},
 			},
+			wantErr: nil,
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			rules, err := tc.cfg.ParseFormatted()
-			require.NoError(t, err)
-			require.Equal(t, tc.expected, rules)
+			if tc.wantErr != nil {
+				require.EqualError(t, err, tc.wantErr.Error())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expected, rules)
+			}
 		})
 	}
 }
