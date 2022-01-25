@@ -109,7 +109,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
-	c.registerQueryRangeFlagsWithChangedDefaultValues(f)
+	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
@@ -131,28 +131,6 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 			_ = f.Value.Set("10s")
 
 		case "server.grpc.keepalive.ping-without-stream-allowed":
-			_ = f.Value.Set("true")
-		}
-
-		fs.Var(f.Value, f.Name, f.Usage)
-	})
-}
-
-func (c *Config) registerQueryRangeFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
-	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
-	// NB: We can remove this after removing Loki's dependency on Cortex and bringing in the queryrange.Config.
-	// That will let us change the defaults there rather than include wrapper functions like this one.
-	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
-	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
-	c.QueryRange.RegisterFlags(throwaway)
-
-	throwaway.VisitAll(func(f *flag.Flag) {
-		// Ignore errors when setting new values. We have a test to verify that it works.
-		switch f.Name {
-		case "querier.split-queries-by-interval":
-			_ = f.Value.Set("30m")
-
-		case "querier.parallelise-shardable-queries":
 			_ = f.Value.Set("true")
 		}
 
