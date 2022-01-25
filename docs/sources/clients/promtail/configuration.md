@@ -358,6 +358,11 @@ consul_sd_configs:
 # running on the same host as Promtail.
 consulagent_sd_configs:
   [ - <consulagent_sd_config> ... ]
+
+# Describes how to use the Docker daemon API to discover containers running on
+# the same host as Promtail.
+docker_sd_configs:
+  [ - <docker_sd_config> ... ]
 ```
 
 ### pipeline_stages
@@ -1621,6 +1626,116 @@ way to filter services or nodes for a service based on arbitrary labels. For
 users with thousands of services it can be more efficient to use the Consul API
 directly which has basic support for filtering nodes (currently by node
 metadata and a single tag).
+
+### docker_sd_config
+
+Docker service discovery allows retrieving targets from a Docker daemon.
+It will only watch containers of the Docker daemon referenced with the host parameter. Docker
+service discovery should run on each node in a distributed setup. The containers must run with
+either the [json-file](https://docs.docker.com/config/containers/logging/json-file/)
+or [journald](https://docs.docker.com/config/containers/logging/journald/) logging driver.
+
+Please note that the discovery will not pick up finished containers. That means
+Promtail will not scrape the remaining logs from finished containers after a restart.
+
+The configuration is inherited from [Prometheus' Docker service discovery](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#docker_sd_config).
+
+```yaml
+# Address of the Docker daemon.  Use unix:///var/run/docker.sock for a local setup.
+host: <string>
+
+# Optional proxy URL.
+[ proxy_url: <string> ]
+
+# TLS configuration.
+tls_config:
+  [ <tls_config> ]
+
+# The port to scrape metrics from, when `role` is nodes, and for discovered
+# tasks and services that don't have published ports.
+[ port: <int> | default = 80 ]
+
+# The host to use if the container is in host networking mode.
+[ host_networking_host: <string> | default = "localhost" ]
+
+# Optional filters to limit the discovery process to a subset of available
+# resources.
+# The available filters are listed in the Docker documentation:
+# Containers: https://docs.docker.com/engine/api/v1.41/#operation/ContainerList
+[ filters:
+  [ - name: <string>
+      values: <string>, [...] ]
+]
+
+# The time after which the containers are refreshed.
+[ refresh_interval: <duration> | default = 60s ]
+
+# Authentication information used by Promtail to authenticate itself to the
+# Docker daemon.
+# Note that `basic_auth` and `authorization` options are mutually exclusive.
+# `password` and `password_file` are mutually exclusive.
+
+# Optional HTTP basic authentication information.
+basic_auth:
+  [ username: <string> ]
+  [ password: <secret> ]
+  [ password_file: <string> ]
+
+# Optional `Authorization` header configuration.
+authorization:
+  # Sets the authentication type.
+  [ type: <string> | default: Bearer ]
+  # Sets the credentials. It is mutually exclusive with
+  # `credentials_file`.
+  [ credentials: <secret> ]
+  # Sets the credentials to the credentials read from the configured file.
+  # It is mutually exclusive with `credentials`.
+  [ credentials_file: <filename> ]
+
+# Optional OAuth 2.0 configuration.
+# Cannot be used at the same time as basic_auth or authorization.
+oauth2:
+  [ <oauth2> ]
+
+# Configure whether HTTP requests follow HTTP 3xx redirects.
+[ follow_redirects: <bool> | default = true ]
+```
+
+Available meta labels:
+
+  * `__meta_docker_container_id`: the ID of the container
+  * `__meta_docker_container_name`: the name of the container
+  * `__meta_docker_container_network_mode`: the network mode of the container
+  * `__meta_docker_container_label_<labelname>`: each label of the container
+  * `__meta_docker_container_log_stream`: the log stream type `stdout` or `stderr`
+  * `__meta_docker_network_id`: the ID of the network
+  * `__meta_docker_network_name`: the name of the network
+  * `__meta_docker_network_ingress`: whether the network is ingress
+  * `__meta_docker_network_internal`: whether the network is internal
+  * `__meta_docker_network_label_<labelname>`: each label of the network
+  * `__meta_docker_network_scope`: the scope of the network
+  * `__meta_docker_network_ip`: the IP of the container in this network
+  * `__meta_docker_port_private`: the port on the container
+  * `__meta_docker_port_public`: the external port if a port-mapping exists
+  * `__meta_docker_port_public_ip`: the public IP if a port-mapping exists
+
+These labels can be used during relabeling. For instance, the following configuration scrapes the container named `flog` and removes the leading slash (`/`) from the container name.
+
+```yaml
+scrape_configs:
+  - job_name: flog_scrape 
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: name
+            values: [flog] 
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+```
+
 
 ## target_config
 
