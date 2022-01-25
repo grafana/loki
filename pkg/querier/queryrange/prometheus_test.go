@@ -5,10 +5,10 @@ import (
 	"io"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
@@ -72,21 +72,21 @@ func Test_encodePromResponse(t *testing.T) {
 						ResultType: loghttp.ResultTypeMatrix,
 						Result: []queryrangebase.SampleStream{
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "bar"},
 								},
-								Samples: []cortexpb.Sample{
-									{Value: 1, TimestampMs: 1000},
-									{Value: 1, TimestampMs: 2000},
+								Samples: []logproto.Sample{
+									{Value: 1, Timestamp: 1000},
+									{Value: 1, Timestamp: 2000},
 								},
 							},
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "buzz"},
 								},
-								Samples: []cortexpb.Sample{
-									{Value: 4, TimestampMs: 1000},
-									{Value: 5, TimestampMs: 2000},
+								Samples: []logproto.Sample{
+									{Value: 4, Timestamp: 1000},
+									{Value: 5, Timestamp: 2000},
 								},
 							},
 						},
@@ -120,19 +120,19 @@ func Test_encodePromResponse(t *testing.T) {
 						ResultType: loghttp.ResultTypeVector,
 						Result: []queryrangebase.SampleStream{
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "bar"},
 								},
-								Samples: []cortexpb.Sample{
-									{Value: 1, TimestampMs: 1000},
+								Samples: []logproto.Sample{
+									{Value: 1, Timestamp: 1000},
 								},
 							},
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "buzz"},
 								},
-								Samples: []cortexpb.Sample{
-									{Value: 4, TimestampMs: 1000},
+								Samples: []logproto.Sample{
+									{Value: 4, Timestamp: 1000},
 								},
 							},
 						},
