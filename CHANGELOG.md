@@ -42,6 +42,7 @@
 * [4857](https://github.com/grafana/loki/pull/4857) **jordanrushing**: New schema v12 changes chunk key structure
 * [5077](https://github.com/grafana/loki/pull/5077) **trevorwhitney**: Change some default values for better out-of-the-box performance
 * [5204](https://github.com/grafana/loki/pull/5204) **trevorwhitney**: Default `max_outstanding_per_tenant` to `2048`
+* [5233](https://github.com/grafana/loki/pull/5233) **trevorwhitney**: Move querier.split-queries-by-interval into limits config
 
 # 2.4.1 (2021/11/07)
 
