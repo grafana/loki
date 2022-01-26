@@ -18,6 +18,7 @@ package queryrangebase
 import (
 	"context"
 	"flag"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -73,12 +74,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", false, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
 
-	// TODO(ssncferreira): delete when querier.split-queries-by-interval is fully deprecated.
-	dur, err := time.ParseDuration("30m")
-	if err != nil {
-		dur = 0
-	}
-	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", dur, "Deprecated: Split queries by an interval and execute in parallel, 0 disables it. Use -limit.split-queries-by-interval instead.")
+	flagext.DeprecatedFlag(f, "querier.split-queries-by-interval", "Deprecated: Split queries by an interval and execute in parallel, 0 disables it. Use -limit.split-queries-by-interval instead.", util_log.Logger)
 
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
