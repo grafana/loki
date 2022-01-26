@@ -67,9 +67,10 @@ func WithDefaultLimits(l Limits, conf queryrangebase.Config) Limits {
 	}
 
 	// TODO(ssncferreira): Remove once cortex' split_queries_by_interval is fully deprecated in the next major release
+	// lint:ignore faillint
 	if conf.SplitQueriesByInterval != 0 {
 		level.Warn(util_log.Logger).Log("deprecated", "yaml flag 'query_range.split_queries_by_interval' is deprecated, use yaml flag 'limits_config.split_queries_by_interval' or CLI flag -querier.split-queries-by-interval instead.",
-			"default split_queries_by_interval", l.QuerySplitDurationDefault())
+			"split_queries_by_interval", l.QuerySplitDurationDefault())
 	}
 
 	// Set as the default split by interval value
