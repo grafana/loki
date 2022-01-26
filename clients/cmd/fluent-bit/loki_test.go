@@ -125,6 +125,7 @@ func Test_createLine(t *testing.T) {
 		{"kv empty", map[string]interface{}{}, kvPairFormat, ``, false},
 		{"bad format", nil, format(3), "", true},
 		{"nested json", map[string]interface{}{"log": `{"level":"error"}`}, jsonFormat, `{"log":{"level":"error"}}`, false},
+		{"nested json", map[string]interface{}{"log": `["level","error"]`}, jsonFormat, `{"log":["level","error"]}`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

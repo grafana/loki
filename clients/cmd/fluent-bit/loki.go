@@ -225,7 +225,7 @@ func (l *loki) createLine(records map[string]interface{}, f format) (string, err
 	switch f {
 	case jsonFormat:
 		for k, v := range records {
-			if s, ok := v.(string); ok && strings.Contains(s, "{") {
+			if s, ok := v.(string); ok && (strings.Contains(s, "{") || strings.Contains(s, "[")) {
 				var data interface{}
 				err := json.Unmarshal([]byte(s), &data)
 				if err != nil {
