@@ -86,6 +86,11 @@ resource "aws_lambda_function" "lambda_promtail" {
       KEEP_STREAM   = var.keep_stream
     }
   }
+
+  depends_on = [
+    aws_iam_role_policy.logs,
+    aws_iam_role_policy_attachment.lambda_vpc_execution,
+  ]
 }
 
 resource "aws_lambda_function_event_invoke_config" "lambda_promtail_invoke_config" {
