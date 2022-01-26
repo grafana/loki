@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/tenant"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -59,10 +60,16 @@ func (l limits) QuerySplitDuration(user string) time.Duration {
 }
 
 // WithDefaults will construct a Limits with a default value for QuerySplitDuration when no overrides are present.
-func WithDefaultLimits(l Limits) Limits {
+func WithDefaultLimits(l Limits, conf queryrangebase.Config) Limits {
 	res := limits{
 		Limits:    l,
 		overrides: true,
+	}
+
+	// TODO(ssncferreira): Remove once cortex' split_queries_by_interval is fully deprecated in the next major release
+	if conf.SplitQueriesByInterval != 0 {
+		level.Warn(util_log.Logger).Log("deprecated", "yaml flag 'query_range.split_queries_by_interval' is deprecated, use yaml flag 'limits_config.split_queries_by_interval' or CLI flag -querier.split-queries-by-interval instead.",
+			"default split_queries_by_interval", l.QuerySplitDurationDefault())
 	}
 
 	// Set as the default split by interval value

@@ -24,15 +24,15 @@ import (
 
 func TestLimits(t *testing.T) {
 	l := fakeLimits{
-		splitDefault: 30 * time.Second,
-		splits:       map[string]time.Duration{"a": time.Minute},
+		querySplitDuration: 30 * time.Second,
+		splits:             map[string]time.Duration{"a": time.Minute},
 	}
 
 	require.Equal(t, 30*time.Second, l.QuerySplitDurationDefault())
 	require.Equal(t, time.Minute, l.QuerySplitDuration("a"))
 	require.Equal(t, 30*time.Second, l.QuerySplitDuration("b"))
 
-	wrapped := WithDefaultLimits(l)
+	wrapped := WithDefaultLimits(l, queryrangebase.Config{})
 
 	require.Equal(t, 30*time.Second, wrapped.QuerySplitDurationDefault())
 	require.Equal(t, time.Minute, wrapped.QuerySplitDuration("a"))
@@ -55,7 +55,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg := testConfig
 	cfg.CacheResults = false
 	// split in 7 with 2 in // max.
-	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, fakeLimits{maxSeries: 1, maxQueryParallelism: 2, splitDefault: time.Hour}, chunk.SchemaConfig{}, nil)
+	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, fakeLimits{maxSeries: 1, maxQueryParallelism: 2, querySplitDuration: time.Hour}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}

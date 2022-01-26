@@ -108,7 +108,7 @@ var (
 
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, splitDefault: 4 * time.Hour}, chunk.SchemaConfig{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, querySplitDuration: 4 * time.Hour}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -401,7 +401,7 @@ func TestUnhandledPath(t *testing.T) {
 }
 
 func TestRegexpParamsSupport(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1, splitDefault: 4 * time.Hour}, chunk.SchemaConfig{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1, querySplitDuration: 4 * time.Hour}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -551,23 +551,24 @@ type fakeLimits struct {
 	maxQueryLookback        time.Duration
 	maxEntriesLimitPerQuery int
 	maxSeries               int
-	splitDefault            time.Duration
 	splits                  map[string]time.Duration
 	minShardingLookback     time.Duration
+	querySplitDuration      time.Duration
 }
 
 func (f fakeLimits) QuerySplitDurationDefault() time.Duration {
-	return f.splitDefault
+	return f.querySplitDuration
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
 	if f.splits == nil {
-		return f.splitDefault
+		return f.querySplitDuration
 	}
-	if val, ok := f.splits[key]; ok {
-		return val
+	dur := f.splits[key]
+	if dur == 0 {
+		return f.querySplitDuration
 	}
-	return f.splitDefault
+	return dur
 }
 
 func (f fakeLimits) MaxQueryLength(string) time.Duration {
