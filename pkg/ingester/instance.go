@@ -37,11 +37,6 @@ const (
 	queryBatchSampleSize = 512
 )
 
-// Errors returned on Query.
-var (
-	ErrStreamMissing = errors.New("Stream missing")
-)
-
 var (
 	memoryStreams = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "loki",
@@ -571,7 +566,9 @@ outer:
 	for _, streamID := range ids {
 		stream, ok := i.streams.LoadByFP(streamID)
 		if !ok {
-			return ErrStreamMissing
+			// If a stream is missing here, it has already been flushed
+			// and is supposed to be picked up from storage by querier
+			continue
 		}
 		for _, filter := range filters {
 			if !filter.Matches(stream.labels.Get(filter.Name)) {
