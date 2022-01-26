@@ -66,7 +66,16 @@ type cacheKeyLimits struct {
 // a nonzero split interval when caching is enabled
 func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrangebase.Request) string {
 	split := l.QuerySplitDuration(userID)
-	currentInterval := r.GetStart() / int64(split/time.Millisecond)
+
+	// Ensure that we don't divide by zero when calculating the interval.
+	// Since we encode the original split in the key,
+	// we won't accidentally conflate two keys with different derived splits.
+	var splitInterval int64 = 1
+	if x := int64(split / time.Millisecond); x > splitInterval {
+		splitInterval = x
+	}
+
+	currentInterval := r.GetStart() / splitInterval
 	// include both the currentInterval and the split duration in key to ensure
 	// a cache key can't be reused when an interval changes
 	return fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval, split)
