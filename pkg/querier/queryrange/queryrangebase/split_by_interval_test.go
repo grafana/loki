@@ -378,6 +378,17 @@ func Test_evaluateAtModifier(t *testing.T) {
 	}
 }
 
+type singleHostRoundTripper struct {
+	host string
+	next http.RoundTripper
+}
+
+func (s singleHostRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	r.URL.Scheme = "http"
+	r.URL.Host = s.host
+	return s.next.RoundTrip(r)
+}
+
 func toMs(t time.Duration) int64 {
 	return int64(t / time.Millisecond)
 }

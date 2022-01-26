@@ -37,8 +37,6 @@ var (
 	PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
 		return next
 	})
-
-	errInvalidMinShardingLookback = errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
 )
 
 // Config for query_range middleware chain.
