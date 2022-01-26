@@ -40,7 +40,9 @@ resource "aws_iam_role_policy" "logs" {
           "s3:GetObject",
         ],
         "Effect" : "Allow",
-        "Resource" : "arn:aws:s3:::*/*",
+        "Resource" : [
+          for bucket in toset(var.bucket_names) : "arn:aws:s3:::${bucket}/*"
+        ]
       }
     ]
   })
