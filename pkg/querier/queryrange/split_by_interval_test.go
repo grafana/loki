@@ -581,7 +581,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 		}, nil
 	})
 
-	l := WithDefaultLimits(fakeLimits{maxQueryParallelism: 1}, queryrangebase.Config{SplitQueriesByInterval: time.Hour})
+	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
 	split := SplitByIntervalMiddleware(
 		l,
 		LokiCodec,
@@ -749,7 +749,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 		}, nil
 	})
 
-	l := WithDefaultLimits(fakeLimits{maxQueryParallelism: 1}, queryrangebase.Config{SplitQueriesByInterval: time.Hour})
+	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
 	split := SplitByIntervalMiddleware(
 		l,
 		LokiCodec,
@@ -830,7 +830,7 @@ func Test_ExitEarly(t *testing.T) {
 		}, nil
 	})
 
-	l := WithDefaultLimits(fakeLimits{maxQueryParallelism: 1}, queryrangebase.Config{SplitQueriesByInterval: time.Hour})
+	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
 	split := SplitByIntervalMiddleware(
 		l,
 		LokiCodec,
@@ -907,9 +907,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 		}, nil
 	})
 
-	l := WithDefaultLimits(fakeLimits{
-		maxQueryParallelism: n,
-	}, queryrangebase.Config{SplitQueriesByInterval: time.Hour})
+	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: n}, time.Hour)
 	split := SplitByIntervalMiddleware(
 		l,
 		LokiCodec,

@@ -43,32 +43,10 @@ type Limits interface {
 type limits struct {
 	Limits
 	splitDuration time.Duration
-	overrides     bool
 }
 
 func (l limits) QuerySplitDuration(user string) time.Duration {
-	if !l.overrides {
-		return l.splitDuration
-	}
-	dur := l.Limits.QuerySplitDuration(user)
-	if dur == 0 {
-		return l.splitDuration
-	}
-	return dur
-}
-
-// WithDefaults will construct a Limits with a default value for QuerySplitDuration when no overrides are present.
-func WithDefaultLimits(l Limits, conf queryrangebase.Config) Limits {
-	res := limits{
-		Limits:    l,
-		overrides: true,
-	}
-
-	if conf.SplitQueriesByInterval != 0 {
-		res.splitDuration = conf.SplitQueriesByInterval
-	}
-
-	return res
+	return l.splitDuration
 }
 
 // WithSplitByLimits will construct a Limits with a static split by duration.
