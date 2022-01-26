@@ -14,7 +14,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	cortex_openstack "github.com/cortexproject/cortex/pkg/chunk/openstack"
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -53,12 +52,6 @@ func (cfg *SwiftConfig) Validate() error {
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *SwiftConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
-}
-
-func (cfg *SwiftConfig) ToCortexSwiftConfig() cortex_openstack.SwiftConfig {
-	return cortex_openstack.SwiftConfig{
-		Config: cfg.Config,
-	}
 }
 
 // NewSwiftObjectClient makes a new chunk.Client that writes chunks to OpenStack Swift.
