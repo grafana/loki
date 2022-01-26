@@ -116,15 +116,18 @@ func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runt
 func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *logproto.Chunk) error {
 	fp := i.getHashForLabels(ls)
 
-	s, loaded, _ := i.streams.LoadOrStoreNewByFP(fp, func() (*stream, error) {
-		sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
-		return newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics), nil
-	})
-	if !loaded {
-		i.streamsCreatedTotal.Inc()
-		memoryStreams.WithLabelValues(i.instanceID).Inc()
-		i.addTailersToNewStream(s)
-	}
+	s, _, _ := i.streams.LoadOrStoreNewByFP(fp,
+		func() (*stream, error) {
+			s := i.createStreamByFP(ls, fp)
+			s.chunkMtx.Lock()
+			return s, nil
+		},
+		func(s *stream) error {
+			s.chunkMtx.Lock()
+			return nil
+		},
+	)
+	defer s.chunkMtx.Unlock()
 
 	err := s.consumeChunk(ctx, chunk)
 	if err == nil {
@@ -140,16 +143,32 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	defer recordPool.PutRecord(record)
 
 	var appendErr error
-	for _, s := range req.Streams {
+	for _, reqStream := range req.Streams {
 
-		err := i.executeWithGetOrCreateStream(s, record, func(stream *stream) error {
-			_, err := stream.Push(ctx, s.Entries, record, 0, false)
-			return err
-		})
+		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
+			func() (*stream, error) {
+				s, err := i.createStream(reqStream, record)
+				// Lock before adding to maps
+				if err == nil {
+					s.chunkMtx.Lock()
+				}
+				return s, err
+			},
+			func(s *stream) error {
+				s.chunkMtx.Lock()
+				return nil
+			},
+		)
 		if err != nil {
 			appendErr = err
 			continue
 		}
+
+		_, err = s.Push(ctx, reqStream.Entries, record, 0, false)
+		if err != nil {
+			appendErr = err
+		}
+		s.chunkMtx.Unlock()
 	}
 
 	if !record.IsEmpty() {
@@ -241,60 +260,26 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	return s, nil
 }
 
+func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
+	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
+
+	i.streamsCreatedTotal.Inc()
+	memoryStreams.WithLabelValues(i.instanceID).Inc()
+	i.addTailersToNewStream(s)
+
+	return s
+}
+
 // getOrCreateStream returns the stream or creates it.
+// It's safe to use this function if returned stream is not consistency sensitive to streamsMap(e.g. ingesterRecoverer),
+// otherwise use streamsMap.LoadOrStoreNew with locking stream's chunkMtx inside.
 func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
 	s, _, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
 		return i.createStream(pushReqStream, record)
-	})
+	}, nil)
 
 	return s, err
-}
-
-// executeWithGetOrCreateStream executes fn after find or create stream, with chunkMtx locked.
-// Use this to keep Load and Delete consistency for streams while executing fn.
-// If fn doesn't care about stream deletion from streams, use getOrCreateStream directly(e.g. ingesterRecoverer).
-func (i *instance) executeWithGetOrCreateStream(pushReqStream logproto.Stream, record *WALRecord, fn func(*stream) error) error {
-	var s *stream
-	prev, loaded, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
-		prev, err := i.createStream(pushReqStream, record)
-		if err != nil {
-			return nil, err
-		}
-		// Lock before adding to maps
-		prev.chunkMtx.Lock()
-		return prev, nil
-	})
-	if err != nil {
-		return err
-	}
-	if !loaded {
-		defer prev.chunkMtx.Unlock()
-		s = prev
-	} else {
-		prev.chunkMtx.Lock()
-		defer prev.chunkMtx.Unlock()
-		// Double check with prev locked
-		s, loaded, err = i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
-			s, err := i.createStream(pushReqStream, record)
-			if err != nil {
-				return nil, err
-			}
-			s.chunkMtx.Lock()
-			return s, nil
-		})
-		if err != nil {
-			return err
-		}
-		if prev != s {
-			if loaded {
-				// s is not created in this push request, lock it
-				s.chunkMtx.Lock()
-			}
-			defer s.chunkMtx.Unlock()
-		}
-	}
-
-	return fn(s)
 }
 
 // removeStream removes a stream from the instance.
