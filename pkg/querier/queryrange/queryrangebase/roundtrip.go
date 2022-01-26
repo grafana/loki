@@ -78,6 +78,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate validates the config.
 func (cfg *Config) Validate() error {
+	if cfg.SplitQueriesByInterval != 0 {
+		return errors.New("The yaml flag `split_queries_by_interval` must now be set in the `limits_config` section instead of the `query_range` config section.")
+	}
 	if cfg.CacheResults {
 		if err := cfg.ResultsCacheConfig.Validate(); err != nil {
 			return errors.Wrap(err, "invalid ResultsCache config")
