@@ -11,5 +11,5 @@ spec:
   storageClassName: standard
   template:
     ruler:
-      replicas: 1
+      replicas: 2
       prometheusEndpoint: "https://prometheus-push-end-point"

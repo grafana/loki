@@ -22,22 +22,22 @@ const (
 
 // BuildRuler returns a list of k8s objects for Loki Ruler
 func BuildRuler(opts Options) ([]client.Object, error) {
-	deployment := NewRulerDeployment(opts)
+	statefulSet := NewRulerStatefulSet(opts)
 	if opts.Flags.EnableTLSServiceMonitorConfig {
-		if err := configureRulerServiceMonitorPKI(deployment, opts.Name); err != nil {
+		if err := configureRulerServiceMonitorPKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
 	}
 
 	return []client.Object{
-		deployment,
+		statefulSet,
 		NewRulerGRPCService(opts),
 		NewRulerHTTPService(opts),
 	}, nil
 }
 
-// NewRulerDeployment creates a deployment object for a ruler
-func NewRulerDeployment(opts Options) *appsv1.Deployment {
+// NewRulerStatefulSet creates a statefulSet object for a ruler
+func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -145,7 +145,7 @@ func NewRulerDeployment(opts Options) *appsv1.Deployment {
 	l := ComponentLabels(LabelRulerComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1)
 
-	return &appsv1.Deployment{
+	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Deployment",
 			APIVersion: appsv1.SchemeGroupVersion.String(),
@@ -154,7 +154,7 @@ func NewRulerDeployment(opts Options) *appsv1.Deployment {
 			Name:   RulerName(opts.Name),
 			Labels: l,
 		},
-		Spec: appsv1.DeploymentSpec{
+		Spec: appsv1.StatefulSetSpec{
 			Replicas: pointer.Int32Ptr(opts.Stack.Template.Ruler.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
@@ -167,8 +167,8 @@ func NewRulerDeployment(opts Options) *appsv1.Deployment {
 				},
 				Spec: podSpec,
 			},
-			Strategy: appsv1.DeploymentStrategy{
-				Type: appsv1.RollingUpdateDeploymentStrategyType,
+			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
+				Type: appsv1.RollingUpdateStatefulSetStrategyType,
 			},
 		},
 	}
@@ -228,7 +228,7 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureRulerServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
+func configureRulerServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameRulerHTTP(stackName)
-	return configureServiceMonitorPKI(&deployment.Spec.Template.Spec, serviceName)
+	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
 }

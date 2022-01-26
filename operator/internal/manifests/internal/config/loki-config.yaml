@@ -5,8 +5,7 @@ chunk_store_config:
     enable_fifocache: true
     fifocache:
       max_size_bytes: 500MB
-${{ if .Prometues.Endpoint ne "" }}:
-ruler:
+{{ if ne .Prometheus.Endpoint "" }}ruler:
   storage:
     type: local
     local:
@@ -18,8 +17,7 @@ ruler:
   remote_write:
     enabled: true
     client:
-      url: {{ .Prometheus.Endpoint }}
-${{ end }}
+      url: {{ .Prometheus.Endpoint }} {{ end }}
 compactor:
   compaction_interval: 2h
   shared_store: s3

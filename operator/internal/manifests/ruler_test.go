@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewRulerDeployment_SelectorMatchesLabels(t *testing.T) {
-	ss := manifests.NewRulerDeployment(manifests.Options{
+	ss := manifests.NewRulerStatefulSet(manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1beta1.LokiStackSpec{
@@ -30,7 +30,7 @@ func TestNewRulerDeployment_SelectorMatchesLabels(t *testing.T) {
 }
 
 func TestNewRulerDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
-	ss := manifests.NewRulerDeployment(manifests.Options{
+	ss := manifests.NewRulerStatefulSet(manifests.Options{
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",

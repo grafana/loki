@@ -130,7 +130,7 @@ func QueryFrontendName(stackName string) string {
 
 // RulerName is the name of the query-frontend deployment
 func RulerName(stackName string) string {
-	return fmt.Sprintf("ruler-%s", stackName)
+	return fmt.Sprintf("loki-ruler-%s", stackName)
 }
 
 // IndexGatewayName is the name of the index-gateway statefulset
