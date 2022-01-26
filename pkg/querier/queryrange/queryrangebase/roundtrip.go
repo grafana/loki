@@ -18,7 +18,6 @@ package queryrangebase
 import (
 	"context"
 	"flag"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -40,6 +39,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/tenant"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const day = 24 * time.Hour
@@ -73,7 +73,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", false, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
-
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "querier.split-queries-by-interval", "Deprecated: Split queries by an interval and execute in parallel, 0 disables it. Use -limit.split-queries-by-interval instead.", util_log.Logger)
 
 	cfg.ResultsCacheConfig.RegisterFlags(f)
