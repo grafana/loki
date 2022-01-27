@@ -27,6 +27,9 @@ const (
 	separator     = "\000"
 )
 
+var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
+	"see if there is a bug causing us to drop whole index table")
+
 type TableMarker interface {
 	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.
 	MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error)
@@ -134,11 +137,13 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 	empty := true
 	modified := false
 	now := model.Now()
+	chunksFound := false
 
 	for chunkIt.Next() {
 		if chunkIt.Err() != nil {
 			return false, false, chunkIt.Err()
 		}
+		chunksFound = true
 		c := chunkIt.Entry()
 		seriesMap.Add(c.SeriesID, c.UserID, c.Labels)
 
@@ -189,6 +194,9 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 
 		empty = false
 		seriesMap.MarkSeriesNotDeleted(c.SeriesID, c.UserID)
+	}
+	if !chunksFound {
+		return false, false, errNoChunksFound
 	}
 	if empty {
 		return true, true, nil
