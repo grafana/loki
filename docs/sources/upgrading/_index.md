@@ -33,6 +33,38 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### Dropped support for old Prometheus rules configuration format
+
+Alerting rules previously could be specified in two formats: 1.x format (legacy one, named `v0` internally) and 2.x.
+We decided to drop support for format `1.x` as it is fairly old and keeping support for it required a lot of code.
+
+In case you're still using the legacy format, take a look at
+[Alerting Rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) for instructions
+on how to write alerting rules in the new format.
+
+For reference, the newer format follows a structure similar to the one below:
+```yaml
+ groups:
+ - name: example
+   rules:
+   - alert: HighErrorRate
+     expr: job:request_latency_seconds:mean5m{job="myjob"} > 0.5
+     for: 10m
+     labels:
+       severity: page
+     annotations:
+       summary: High request latency
+```
+
+Meanwhile, the legacy format is a string in the following format:
+```
+ ALERT <alert name>
+   IF <expression>
+   [ FOR <duration> ]
+   [ LABELS <label set> ]
+   [ ANNOTATIONS <label set> ]
+```
+
 #### Error responses from API
 
 The body of HTTP error responses from API endpoints changed from plain text to

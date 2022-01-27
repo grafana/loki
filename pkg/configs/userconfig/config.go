@@ -7,15 +7,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"gopkg.in/yaml.v3"
 
-	legacy_promql "github.com/cortexproject/cortex/pkg/configs/legacy_promql"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // An ID is the ID of a single users's Cortex configuration. When a
@@ -235,7 +233,7 @@ func (c RulesConfig) Equal(o RulesConfig) bool {
 func (c RulesConfig) Parse() (map[string][]rules.Rule, error) {
 	switch c.FormatVersion {
 	case RuleFormatV1:
-		return c.parseV1()
+		return nil, fmt.Errorf("version %v isn't supported", c.FormatVersion)
 	case RuleFormatV2:
 		return c.parseV2()
 	default:
@@ -248,7 +246,7 @@ func (c RulesConfig) Parse() (map[string][]rules.Rule, error) {
 func (c RulesConfig) ParseFormatted() (map[string]rulefmt.RuleGroups, error) {
 	switch c.FormatVersion {
 	case RuleFormatV1:
-		return c.parseV1Formatted()
+		return nil, fmt.Errorf("version %v isn't supported", c.FormatVersion)
 	case RuleFormatV2:
 		return c.parseV2Formatted()
 	default:
@@ -270,63 +268,6 @@ func (c RulesConfig) parseV2Formatted() (map[string]rulefmt.RuleGroups, error) {
 
 	}
 	return ruleMap, nil
-}
-
-// parseV1 parses and validates the content of the rule files in a RulesConfig
-// according to the Prometheus 1.x rule format.
-func (c RulesConfig) parseV1Formatted() (map[string]rulefmt.RuleGroups, error) {
-	result := map[string]rulefmt.RuleGroups{}
-	for fn, content := range c.Files {
-		stmts, err := legacy_promql.ParseStmts(content)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
-		}
-
-		ra := []rulefmt.RuleNode{}
-		for _, stmt := range stmts {
-			var rule rulefmt.RuleNode
-			switch r := stmt.(type) {
-			case *legacy_promql.AlertStmt:
-				_, err := parser.ParseExpr(r.Expr.String())
-				if err != nil {
-					return nil, err
-				}
-
-				rule = rulefmt.RuleNode{
-					Alert:       yaml.Node{Value: r.Name},
-					Expr:        yaml.Node{Value: r.Expr.String()},
-					For:         model.Duration(r.Duration),
-					Labels:      r.Labels.Map(),
-					Annotations: r.Annotations.Map(),
-				}
-
-			case *legacy_promql.RecordStmt:
-				_, err := parser.ParseExpr(r.Expr.String())
-				if err != nil {
-					return nil, err
-				}
-
-				rule = rulefmt.RuleNode{
-					Record: yaml.Node{Value: r.Name},
-					Expr:   yaml.Node{Value: r.Expr.String()},
-					Labels: r.Labels.Map(),
-				}
-
-			default:
-				return nil, fmt.Errorf("ruler.GetRules: unknown statement type")
-			}
-			ra = append(ra, rule)
-		}
-		result[fn] = rulefmt.RuleGroups{
-			Groups: []rulefmt.RuleGroup{
-				{
-					Name:  "rg:" + fn,
-					Rules: ra,
-				},
-			},
-		}
-	}
-	return result, nil
 }
 
 // parseV2 parses and validates the content of the rule files in a RulesConfig
@@ -386,63 +327,6 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 	}
 
 	return groups, nil
-}
-
-// parseV1 parses and validates the content of the rule files in a RulesConfig
-// according to the Prometheus 1.x rule format.
-//
-// The same comment about rule groups as on ParseV2() applies here.
-func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
-	result := map[string][]rules.Rule{}
-	for fn, content := range c.Files {
-		stmts, err := legacy_promql.ParseStmts(content)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
-		}
-		ra := []rules.Rule{}
-		for _, stmt := range stmts {
-			var rule rules.Rule
-
-			switch r := stmt.(type) {
-			case *legacy_promql.AlertStmt:
-				// legacy_promql.ParseStmts has parsed the whole rule for us.
-				// Ideally we'd just use r.Expr and pass that to rules.NewAlertingRule,
-				// but it is of the type legacy_proql.Expr and not promql.Expr.
-				// So we convert it back to a string, and then parse it again with the
-				// upstream parser to get it into the right type.
-				expr, err := parser.ParseExpr(r.Expr.String())
-				if err != nil {
-					return nil, err
-				}
-
-				rule = rules.NewAlertingRule(
-					r.Name,
-					expr,
-					r.Duration,
-					r.Labels,
-					r.Annotations,
-					nil,
-					"",
-					true,
-					log.With(util_log.Logger, "alert", r.Name),
-				)
-
-			case *legacy_promql.RecordStmt:
-				expr, err := parser.ParseExpr(r.Expr.String())
-				if err != nil {
-					return nil, err
-				}
-
-				rule = rules.NewRecordingRule(r.Name, expr, r.Labels)
-
-			default:
-				return nil, fmt.Errorf("ruler.GetRules: unknown statement type")
-			}
-			ra = append(ra, rule)
-		}
-		result[fn] = ra
-	}
-	return result, nil
 }
 
 // VersionedRulesConfig is a RulesConfig together with a version.
