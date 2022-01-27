@@ -182,11 +182,16 @@ func (t *FileTarget) run() {
 }
 
 func (t *FileTarget) sync() error {
-
-	// Gets current list of files to tail.
-	matches, err := doublestar.Glob(t.path)
-	if err != nil {
-		return errors.Wrap(err, "filetarget.sync.filepath.Glob")
+	var matches []string
+	if fi, err := os.Stat(t.path); err == nil && !fi.IsDir() {
+		// if the path points to a file that exists, then it we can skip the Glob search
+		matches = []string{t.path}
+	} else {
+		// Gets current list of files to tail.
+		matches, err = doublestar.Glob(t.path)
+		if err != nil {
+			return errors.Wrap(err, "filetarget.sync.filepath.Glob")
+		}
 	}
 
 	if len(matches) == 0 {
