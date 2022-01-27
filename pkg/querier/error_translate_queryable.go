@@ -3,7 +3,7 @@ package querier
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/gogo/status"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"

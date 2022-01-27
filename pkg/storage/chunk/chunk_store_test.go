@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"

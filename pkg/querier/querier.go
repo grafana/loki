@@ -10,7 +10,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
+	cortex_validation "github.com/grafana/loki/pkg/util/validation"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 

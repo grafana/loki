@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/tenant"
