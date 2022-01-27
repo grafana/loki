@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/grafana/dskit/flagext"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore/s3"
 
-	bucket_http "github.com/cortexproject/cortex/pkg/storage/bucket/http"
-	"github.com/cortexproject/cortex/pkg/util"
+	bucket_http "github.com/grafana/loki/pkg/storage/bucket/http"
 )
 
 const (
