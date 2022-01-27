@@ -13,9 +13,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
