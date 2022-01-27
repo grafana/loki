@@ -3,8 +3,6 @@ package base
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"strconv"
 	"sync"
 	"testing"
@@ -168,12 +166,7 @@ func TestQuerier(t *testing.T) {
 }
 
 func mockTSDB(t *testing.T, mint model.Time, samples int, step, chunkOffset time.Duration, samplesPerChunk int) storage.Queryable {
-	dir, err := ioutil.TempDir("", "tsdb")
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
+	dir := t.TempDir()
 
 	opts := tsdb.DefaultHeadOptions()
 	opts.ChunkDirRoot = dir
@@ -257,9 +250,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 		},
 	}
 
-	dir, err := ioutil.TempDir("", t.Name())
-	assert.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
 
 	engine := promql.NewEngine(promql.EngineOpts{
@@ -728,9 +719,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *Moc
 }
 
 func testRangeQuery(t testing.TB, queryable storage.Queryable, end model.Time, q query) *promql.Result {
-	dir, err := ioutil.TempDir("", "test_query")
-	assert.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
 
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
@@ -875,9 +864,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 		},
 	}
 
-	dir, err := ioutil.TempDir("", t.Name())
-	assert.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
 
 	engine := promql.NewEngine(promql.EngineOpts{

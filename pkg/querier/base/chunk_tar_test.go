@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"context"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"strconv"
@@ -15,7 +14,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -52,9 +50,7 @@ func getTarDataFromEnv(t testing.TB) (query string, from, through time.Time, ste
 }
 
 func runRangeQuery(t testing.TB, query string, from, through time.Time, step time.Duration, store chunkstore.ChunkStore) {
-	dir, err := ioutil.TempDir("", t.Name())
-	assert.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	queryTracker := promql.NewActiveQueryTracker(dir, 1, log.NewNopLogger())
 
 	if len(query) == 0 || store == nil {

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -60,12 +59,12 @@ import (
 	"github.com/grafana/loki/pkg/tenant"
 )
 
-func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) (Config, func()) {
+func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) Config {
 	t.Helper()
 
 	// Create a new temporary directory for the rules, so that
 	// each test will run in isolation.
-	rulesDir, _ := ioutil.TempDir("/tmp", "ruler-tests")
+	rulesDir := t.TempDir()
 
 	codec := ring.GetCodec()
 	consul, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
@@ -82,12 +81,7 @@ func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) (Config, func()
 	cfg.Ring.InstanceID = "localhost"
 	cfg.EnableQueryStats = false
 
-	// Create a cleanup function that will be called at the end of the test
-	cleanup := func() {
-		defer os.RemoveAll(rulesDir)
-	}
-
-	return cfg, cleanup
+	return cfg
 }
 
 type ruleLimits struct {
@@ -148,12 +142,8 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 	}
 }
 
-func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer, func()) {
-	dir, err := ioutil.TempDir("", filepath.Base(t.Name()))
-	assert.NoError(t, err)
-	cleanup := func() {
-		os.RemoveAll(dir)
-	}
+func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
+	dir := t.TempDir()
 
 	tracker := promql.NewActiveQueryTracker(dir, 20, log.NewNopLogger())
 
@@ -173,15 +163,15 @@ func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Eng
 	reg := prometheus.NewRegistry()
 	queryable := testQueryableFunc(querierTestConfig, reg, l)
 
-	return engine, queryable, pusher, l, ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg, cleanup
+	return engine, queryable, pusher, l, ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg
 }
 
-func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
-	engine, queryable, pusher, logger, overrides, reg, cleanup := testSetup(t, nil)
+func newManager(t *testing.T, cfg Config) *DefaultMultiTenantManager {
+	engine, queryable, pusher, logger, overrides, reg := testSetup(t, nil)
 	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger)
 	require.NoError(t, err)
 
-	return manager, cleanup
+	return manager
 }
 
 type mockRulerClientsPool struct {
@@ -222,8 +212,8 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 	}
 }
 
-func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, clientMetrics chunk_storage.ClientMetrics, rulerAddrMap map[string]*Ruler) (*Ruler, func()) {
-	engine, queryable, pusher, logger, overrides, reg, cleanup := testSetup(t, querierTestConfig)
+func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, clientMetrics chunk_storage.ClientMetrics, rulerAddrMap map[string]*Ruler) *Ruler {
+	engine, queryable, pusher, logger, overrides, reg := testSetup(t, querierTestConfig)
 	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
@@ -241,19 +231,19 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.Tes
 		newMockClientsPool(rulerConfig, logger, reg, rulerAddrMap),
 	)
 	require.NoError(t, err)
-	return ruler, cleanup
+	return ruler
 }
 
-func newTestRuler(t *testing.T, rulerConfig Config) (*Ruler, func()) {
+func newTestRuler(t *testing.T, rulerConfig Config) *Ruler {
 	m := chunk_storage.NewClientMetrics()
 	defer m.Unregister()
-	ruler, cleanup := buildRuler(t, rulerConfig, nil, m, nil)
+	ruler := buildRuler(t, rulerConfig, nil, m, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
 
 	// Ensure all rules are loaded before usage
 	ruler.syncRules(context.Background(), rulerSyncReasonInitial)
 
-	return ruler, cleanup
+	return ruler
 }
 
 var _ MultiTenantManager = &DefaultMultiTenantManager{}
@@ -272,14 +262,12 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	defer ts.Close()
 
 	// We create an empty rule store so that the ruler will not load any rule from it.
-	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(nil))
-	defer cleanup()
+	cfg := defaultRulerConfig(t, newMockRuleStore(nil))
 
 	cfg.AlertmanagerURL = ts.URL
 	cfg.AlertmanagerDiscovery = false
 
-	manager, rcleanup := newManager(t, cfg)
-	defer rcleanup()
+	manager := newManager(t, cfg)
 	defer manager.Stop()
 
 	n, err := manager.getOrCreateNotifier("1")
@@ -304,11 +292,9 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 }
 
 func TestRuler_Rules(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
-	defer cleanup()
+	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
 
-	r, rcleanup := newTestRuler(t, cfg)
-	defer rcleanup()
+	r := newTestRuler(t, cfg)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	// test user1
@@ -405,8 +391,7 @@ func TestGetRules(t *testing.T) {
 			rulerAddrMap := map[string]*Ruler{}
 
 			createRuler := func(id string) *Ruler {
-				cfg, cleanUp := defaultRulerConfig(t, newMockRuleStore(allRulesByUser))
-				t.Cleanup(cleanUp)
+				cfg := defaultRulerConfig(t, newMockRuleStore(allRulesByUser))
 
 				cfg.ShardingStrategy = tc.shardingStrategy
 				cfg.EnableSharding = tc.sharding
@@ -420,9 +405,8 @@ func TestGetRules(t *testing.T) {
 				}
 				m := chunk_storage.NewClientMetrics()
 				defer m.Unregister()
-				r, cleanUp := buildRuler(t, cfg, nil, m, rulerAddrMap)
+				r := buildRuler(t, cfg, nil, m, rulerAddrMap)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
-				t.Cleanup(cleanUp)
 				rulerAddrMap[id] = r
 				if r.ring != nil {
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
@@ -925,9 +909,8 @@ func TestSharding(t *testing.T) {
 
 				m := chunk_storage.NewClientMetrics()
 				defer m.Unregister()
-				r, cleanup := buildRuler(t, cfg, nil, m, nil)
+				r := buildRuler(t, cfg, nil, m, nil)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
-				t.Cleanup(cleanup)
 
 				if forceRing != nil {
 					r.ring = forceRing
@@ -1122,11 +1105,9 @@ type ruleGroupKey struct {
 }
 
 func TestRuler_ListAllRules(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
-	defer cleanup()
+	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
 
-	r, rcleanup := newTestRuler(t, cfg)
-	defer rcleanup()
+	r := newTestRuler(t, cfg)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	router := mux.NewRouter()
@@ -1249,9 +1230,8 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	}
 
 	// NEXT, set up ruler config with outage tolerance = 1hr
-	rulerCfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	rulerCfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	rulerCfg.OutageTolerance, _ = time.ParseDuration("1h")
-	defer cleanup()
 
 	// NEXT, set up mock distributor containing sample,
 	// metric: ALERTS_FOR_STATE{alertname="UP_ALERT"}, ts: time.now()-15m, value: time.now()-25m
@@ -1285,9 +1265,8 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	m := chunk_storage.NewClientMetrics()
 	defer m.Unregister()
 	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
-	r, rcleanup := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, m, nil)
+	r := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, m, nil)
 	r.syncRules(context.Background(), rulerSyncReasonInitial)
-	defer rcleanup()
 
 	// assert initial state of rule group
 	ruleGroup := r.manager.GetRules("user1")[0]
