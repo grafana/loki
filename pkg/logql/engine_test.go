@@ -2551,6 +2551,8 @@ func (errorIterator) Error() error { return ErrMock }
 
 func (errorIterator) Labels() string { return "" }
 
+func (errorIterator) LabelsHash() uint64 { return 0 }
+
 func (errorIterator) Entry() logproto.Entry { return logproto.Entry{} }
 
 func (errorIterator) Sample() logproto.Sample { return logproto.Sample{} }

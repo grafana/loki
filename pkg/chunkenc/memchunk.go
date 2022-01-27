@@ -816,7 +816,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 
 		var it iter.EntryIterator
 		if ordered {
-			it = iter.NewNonOverlappingIterator(blockItrs, "")
+			it = iter.NewNonOverlappingIterator(blockItrs)
 		} else {
 			it = iter.NewHeapIterator(ctx, blockItrs, direction)
 		}
@@ -849,7 +849,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	}
 
 	if ordered {
-		return iter.NewNonOverlappingIterator(blockItrs, ""), nil
+		return iter.NewNonOverlappingIterator(blockItrs), nil
 	}
 	return iter.NewHeapIterator(ctx, blockItrs, direction), nil
 }
@@ -884,7 +884,7 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 
 	var it iter.SampleIterator
 	if ordered {
-		it = iter.NewNonOverlappingSampleIterator(its, "")
+		it = iter.NewNonOverlappingSampleIterator(its)
 	} else {
 		it = iter.NewHeapSampleIterator(ctx, its)
 	}

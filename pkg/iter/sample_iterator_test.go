@@ -177,7 +177,7 @@ func TestNewNonOverlappingSampleIterator(t *testing.T) {
 			Labels:  varSeries.Labels,
 			Samples: []logproto.Sample{sample(4), sample(5)},
 		}),
-	}, varSeries.Labels, 0)
+	})
 
 	for i := 1; i < 6; i++ {
 		require.True(t, it.Next(), i)
@@ -218,7 +218,7 @@ func (i *CloseTestingSmplIterator) Close() error {
 
 func TestNonOverlappingSampleClose(t *testing.T) {
 	a, b := &CloseTestingSmplIterator{}, &CloseTestingSmplIterator{}
-	itr := NewNonOverlappingSampleIterator([]SampleIterator{a, b}, "", 0)
+	itr := NewNonOverlappingSampleIterator([]SampleIterator{a, b})
 
 	// Ensure both itr.cur and itr.iterators are non nil
 	itr.Next()

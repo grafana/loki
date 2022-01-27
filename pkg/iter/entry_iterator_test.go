@@ -624,7 +624,7 @@ func (i *CloseTestingIterator) Close() error {
 
 func TestNonOverlappingClose(t *testing.T) {
 	a, b := &CloseTestingIterator{}, &CloseTestingIterator{}
-	itr := NewNonOverlappingIterator([]EntryIterator{a, b}, "", 0)
+	itr := NewNonOverlappingIterator([]EntryIterator{a, b})
 
 	// Ensure both itr.cur and itr.iterators are non nil
 	itr.Next()

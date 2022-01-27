@@ -449,19 +449,15 @@ func (i *seriesIterator) Close() error {
 }
 
 type nonOverlappingSampleIterator struct {
-	labels     string
-	labelsHash uint64
-	i          int
-	iterators  []SampleIterator
-	curr       SampleIterator
+	i         int
+	iterators []SampleIterator
+	curr      SampleIterator
 }
 
 // NewNonOverlappingSampleIterator gives a chained iterator over a list of iterators.
-func NewNonOverlappingSampleIterator(iterators []SampleIterator, labels string, labelsHash uint64) SampleIterator {
+func NewNonOverlappingSampleIterator(iterators []SampleIterator) SampleIterator {
 	return &nonOverlappingSampleIterator{
-		labels:     labels,
-		labelsHash: labelsHash,
-		iterators:  iterators,
+		iterators: iterators,
 	}
 }
 
@@ -488,25 +484,24 @@ func (i *nonOverlappingSampleIterator) Sample() logproto.Sample {
 }
 
 func (i *nonOverlappingSampleIterator) Labels() string {
-	if i.labels != "" {
-		return i.labels
+	if i.curr == nil {
+		return ""
 	}
-
 	return i.curr.Labels()
 }
 
 func (i *nonOverlappingSampleIterator) LabelsHash() uint64 {
-	if i.labels != "" {
-		return i.labelsHash
+	if i.curr == nil {
+		return 0
 	}
 	return i.curr.LabelsHash()
 }
 
 func (i *nonOverlappingSampleIterator) Error() error {
-	if i.curr != nil {
-		return i.curr.Error()
+	if i.curr == nil {
+		return nil
 	}
-	return nil
+	return i.curr.Error()
 }
 
 func (i *nonOverlappingSampleIterator) Close() error {

@@ -386,18 +386,14 @@ func (i *queryClientIterator) Close() error {
 }
 
 type nonOverlappingIterator struct {
-	labels     string
-	labelsHash uint64
-	iterators  []EntryIterator
-	curr       EntryIterator
+	iterators []EntryIterator
+	curr      EntryIterator
 }
 
 // NewNonOverlappingIterator gives a chained iterator over a list of iterators.
-func NewNonOverlappingIterator(iterators []EntryIterator, labels string, labelsHash uint64) EntryIterator {
+func NewNonOverlappingIterator(iterators []EntryIterator) EntryIterator {
 	return &nonOverlappingIterator{
-		labels:     labels,
-		labelsHash: labelsHash,
-		iterators:  iterators,
+		iterators: iterators,
 	}
 }
 
@@ -423,25 +419,24 @@ func (i *nonOverlappingIterator) Entry() logproto.Entry {
 }
 
 func (i *nonOverlappingIterator) Labels() string {
-	if i.labels != "" {
-		return i.labels
+	if i.curr == nil {
+		return ""
 	}
-
 	return i.curr.Labels()
 }
 
 func (i *nonOverlappingIterator) LabelsHash() uint64 {
-	if i.labelsHash != 0 {
-		return i.labelsHash
+	if i.curr == nil {
+		return 0
 	}
 	return i.curr.LabelsHash()
 }
 
 func (i *nonOverlappingIterator) Error() error {
-	if i.curr != nil {
-		return i.curr.Error()
+	if i.curr == nil {
+		return nil
 	}
-	return nil
+	return i.curr.Error()
 }
 
 func (i *nonOverlappingIterator) Close() error {
