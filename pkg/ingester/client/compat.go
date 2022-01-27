@@ -6,8 +6,10 @@ import (
 )
 
 const (
+	// offset64 is an offset require for the FNV (Fowler-Noll-Vo) hash function.
 	offset64 = 14695981039346656037
-	prime64  = 1099511628211
+	// prime64 is a 64bit prime used by the FNV hash function.
+	prime64 = 1099511628211
 )
 
 // hashNew initializes a new fnv64a hash value.
