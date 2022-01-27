@@ -88,11 +88,7 @@ func (cfg *Config) Validate() error {
 		return errUnsupportedSignatureVersion
 	}
 
-	if err := cfg.SSE.Validate(); err != nil {
-		return err
-	}
-
-	return nil
+	return cfg.SSE.Validate()
 }
 
 // SSEConfig configures S3 server side encryption
