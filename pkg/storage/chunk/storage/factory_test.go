@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -78,10 +77,7 @@ func TestCustomIndexClient(t *testing.T) {
 	cfg := Config{}
 	schemaCfg := chunk.SchemaConfig{}
 
-	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	if err != nil {
-		return
-	}
+	dirname := t.TempDir()
 	cfg.BoltDBConfig.Directory = dirname
 
 	for _, tc := range []struct {

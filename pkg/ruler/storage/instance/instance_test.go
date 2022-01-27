@@ -6,7 +6,6 @@ package instance
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -165,9 +164,7 @@ func TestRemoteWriteMetricInterceptor_AllValues(t *testing.T) {
 // instance of the WAL storage and testing that samples get written to it.
 // This test touches most of Instance and is enough for a basic integration test.
 func TestInstance(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	mockStorage := mockWalStorage{
 		series:    make(map[storage.SeriesRef]int),

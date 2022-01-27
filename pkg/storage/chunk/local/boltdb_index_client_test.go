@@ -3,7 +3,6 @@ package local
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,10 +34,7 @@ func setupDB(t *testing.T, boltdbIndexClient *BoltIndexClient, dbname string) {
 }
 
 func TestBoltDBReload(t *testing.T) {
-	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	require.NoError(t, err)
-
-	defer require.NoError(t, os.RemoveAll(dirname))
+	dirname := t.TempDir()
 
 	boltdbIndexClient, err := NewBoltDBIndexClient(BoltDBConfig{
 		Directory: dirname,
@@ -78,10 +74,7 @@ func TestBoltDBReload(t *testing.T) {
 }
 
 func TestBoltDB_GetDB(t *testing.T) {
-	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	require.NoError(t, err)
-
-	defer require.NoError(t, os.RemoveAll(dirname))
+	dirname := t.TempDir()
 
 	boltdbIndexClient, err := NewBoltDBIndexClient(BoltDBConfig{
 		Directory: dirname,
@@ -121,8 +114,7 @@ func TestBoltDB_GetDB(t *testing.T) {
 
 func Test_CreateTable_BoltdbRW(t *testing.T) {
 	tableName := "test"
-	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	require.NoError(t, err)
+	dirname := t.TempDir()
 
 	indexClient, err := NewBoltDBIndexClient(BoltDBConfig{
 		Directory: dirname,
@@ -171,12 +163,7 @@ func Test_CreateTable_BoltdbRW(t *testing.T) {
 }
 
 func TestBoltDB_Writes(t *testing.T) {
-	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(dirname))
-	}()
+	dirname := t.TempDir()
 
 	for i, tc := range []struct {
 		name              string

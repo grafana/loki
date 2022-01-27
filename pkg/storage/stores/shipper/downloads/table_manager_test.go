@@ -3,9 +3,7 @@ package downloads
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -37,12 +35,7 @@ func buildTestTableManager(t *testing.T, path string) (*TableManager, stopFunc) 
 }
 
 func TestTableManager_QueryPages(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-manager-query-pages")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 
@@ -68,12 +61,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 }
 
 func TestTableManager_cleanupCache(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-manager-cleanup-cache")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	tableManager, stopFunc := buildTestTableManager(t, tempDir)
 	defer stopFunc()
@@ -83,7 +71,7 @@ func TestTableManager_cleanupCache(t *testing.T) {
 	nonExpiredTableName := "non-expired-table"
 
 	// query for above 2 tables which should set them up in table manager
-	err = tableManager.QueryPages(user.InjectOrgID(context.Background(), "fake"), []chunk.IndexQuery{
+	err := tableManager.QueryPages(user.InjectOrgID(context.Background(), "fake"), []chunk.IndexQuery{
 		{TableName: expiredTableName},
 		{TableName: nonExpiredTableName},
 	}, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
@@ -134,12 +122,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			tempDir, err := ioutil.TempDir("", "table-manager-ensure-query-readiness")
-			require.NoError(t, err)
-
-			defer func() {
-				require.NoError(t, os.RemoveAll(tempDir))
-			}()
+			tempDir := t.TempDir()
 
 			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 

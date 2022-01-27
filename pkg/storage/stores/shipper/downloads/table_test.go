@@ -457,12 +457,7 @@ func TestTable_QueryResponse(t *testing.T) {
 }
 
 func TestLoadTable(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "load-table")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 	tablePathInStorage := filepath.Join(objectStoragePath, tableName)

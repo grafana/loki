@@ -2,7 +2,6 @@ package deletion
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,11 +17,7 @@ import (
 
 func TestDeleteRequestsTable(t *testing.T) {
 	// build test table
-	tempDir, err := ioutil.TempDir("", "test-delete-requests-table")
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	workingDir := filepath.Join(tempDir, "working-dir")
 	objectStorePath := filepath.Join(tempDir, "object-store")
@@ -82,14 +77,8 @@ func TestDeleteRequestsTable(t *testing.T) {
 }
 
 func checkRecordsInStorage(t *testing.T, storageFilePath string, start, numRecords int) {
-	tempDir, err := ioutil.TempDir("", "compare-delete-requests-db")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 	tempFilePath := filepath.Join(tempDir, DeleteRequestsTableName)
-	require.NoError(t, err)
 	testutil.DecompressFile(t, storageFilePath, tempFilePath)
 
 	tempDB, err := util.SafeOpenBoltdbFile(tempFilePath)
