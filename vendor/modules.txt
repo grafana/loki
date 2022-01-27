@@ -251,13 +251,6 @@ github.com/coreos/pkg/capnslog
 github.com/cortexproject/cortex/pkg/cortexpb
 github.com/cortexproject/cortex/pkg/ingester/client
 github.com/cortexproject/cortex/pkg/prom1/storage/metric
-github.com/cortexproject/cortex/pkg/storage/bucket
-github.com/cortexproject/cortex/pkg/storage/bucket/azure
-github.com/cortexproject/cortex/pkg/storage/bucket/filesystem
-github.com/cortexproject/cortex/pkg/storage/bucket/gcs
-github.com/cortexproject/cortex/pkg/storage/bucket/http
-github.com/cortexproject/cortex/pkg/storage/bucket/s3
-github.com/cortexproject/cortex/pkg/storage/bucket/swift
 github.com/cortexproject/cortex/pkg/tenant
 github.com/cortexproject/cortex/pkg/util
 github.com/cortexproject/cortex/pkg/util/log

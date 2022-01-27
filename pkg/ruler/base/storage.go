@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,6 +16,8 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore/configdb"
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
+	"github.com/grafana/loki/pkg/storage/bucket"
+	"github.com/grafana/loki/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
@@ -36,7 +37,7 @@ type RuleStoreConfig struct {
 	Azure azure.BlobStorageConfig `yaml:"azure"`
 	GCS   gcp.GCSConfig           `yaml:"gcs"`
 	S3    aws.S3Config            `yaml:"s3"`
-	Swift openstack.SwiftConfig   `yaml:"swift"`
+	Swift swift.Config            `yaml:"swift"`
 	Local local.Config            `yaml:"local"`
 
 	mock rulestore.RuleStore `yaml:"-"`

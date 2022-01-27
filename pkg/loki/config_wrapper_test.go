@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/loki/common"
+	"github.com/grafana/loki/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
@@ -196,7 +196,7 @@ memberlist:
 		//    azure: azure.BlobStorageConfig
 		//    gcs: gcp.GCSConfig
 		//    s3: aws.S3Config
-		//    swift: openstack.SwiftConfig
+		//    swift: swift.Config
 		//    filesystem: Filesystem
 
 		t.Run("does not automatically configure cloud object storage", func(t *testing.T) {
@@ -401,8 +401,8 @@ memberlist:
 			assert.Equal(t, "swift", config.Ruler.StoreConfig.Type)
 
 			for _, actual := range []swift.Config{
-				config.Ruler.StoreConfig.Swift.Config,
-				config.StorageConfig.Swift.Config,
+				config.Ruler.StoreConfig.Swift,
+				config.StorageConfig.Swift,
 			} {
 				assert.Equal(t, 3, actual.AuthVersion)
 				assert.Equal(t, "http://example.com", actual.AuthURL)

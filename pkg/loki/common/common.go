@@ -5,11 +5,11 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/loki/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
-	"github.com/grafana/loki/pkg/storage/chunk/openstack"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -53,7 +53,7 @@ type Storage struct {
 	S3       aws.S3Config            `yaml:"s3"`
 	GCS      gcp.GCSConfig           `yaml:"gcs"`
 	Azure    azure.BlobStorageConfig `yaml:"azure"`
-	Swift    openstack.SwiftConfig   `yaml:"swift"`
+	Swift    swift.Config            `yaml:"swift"`
 	FSConfig FilesystemConfig        `yaml:"filesystem"`
 	Hedging  hedging.Config          `yaml:"hedging"`
 }

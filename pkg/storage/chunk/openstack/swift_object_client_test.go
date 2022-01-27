@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
 
@@ -89,15 +89,13 @@ func Test_Hedging(t *testing.T) {
 				}, nil
 			})
 
-			c, err := NewSwiftObjectClient(SwiftConfig{
-				Config: swift.Config{
-					MaxRetries:     1,
-					ContainerName:  "foo",
-					AuthVersion:    1,
-					Password:       "passwd",
-					ConnectTimeout: 10 * time.Second,
-					RequestTimeout: 10 * time.Second,
-				},
+			c, err := NewSwiftObjectClient(swift.Config{
+				MaxRetries:     1,
+				ContainerName:  "foo",
+				AuthVersion:    1,
+				Password:       "passwd",
+				ConnectTimeout: 10 * time.Second,
+				RequestTimeout: 10 * time.Second,
 			}, hedging.Config{
 				At:           tc.hedgeAt,
 				UpTo:         tc.upTo,

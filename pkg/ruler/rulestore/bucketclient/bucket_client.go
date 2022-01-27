@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
+	"github.com/grafana/loki/pkg/storage/bucket"
 )
 
 const (

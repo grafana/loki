@@ -22,7 +22,6 @@ import (
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
-	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/minio/minio-go/v7/pkg/signer"
@@ -31,6 +30,7 @@ import (
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 
+	cortex_s3 "github.com/grafana/loki/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/util"
