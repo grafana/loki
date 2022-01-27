@@ -200,6 +200,9 @@ func (c *Config) Validate() error {
 			)
 		}
 	}
+	if err := c.QueryRange.Validate(); err != nil {
+		return errors.Wrap(err, "invalid query_range config")
+	}
 	return nil
 }
 
