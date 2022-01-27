@@ -7,7 +7,7 @@ import (
 	"sync"
 	"syscall"
 
-	cutil "github.com/cortexproject/cortex/pkg/util"
+	cutil "github.com/grafana/loki/pkg/util"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"

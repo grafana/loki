@@ -4,15 +4,15 @@ import (
 	"flag"
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/ring"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	v1 "github.com/grafana/loki/pkg/lokifrontend/frontend/v1"
 	v2 "github.com/grafana/loki/pkg/lokifrontend/frontend/v2"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // This struct combines several configuration options together to preserve backwards compatibility.

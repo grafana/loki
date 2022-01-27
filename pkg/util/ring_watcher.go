@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
@@ -19,13 +18,13 @@ const (
 type ringWatcher struct {
 	log           log.Logger
 	ring          ring.ReadRing
-	notifications util.DNSNotifications
+	notifications DNSNotifications
 	lookupPeriod  time.Duration
 	addresses     []string
 }
 
 // NewRingWatcher creates a new Ring watcher and returns a service that is wrapping it.
-func NewRingWatcher(log log.Logger, ring ring.ReadRing, lookupPeriod time.Duration, notifications util.DNSNotifications) (services.Service, error) {
+func NewRingWatcher(log log.Logger, ring ring.ReadRing, lookupPeriod time.Duration, notifications DNSNotifications) (services.Service, error) {
 	w := &ringWatcher{
 		log:           log,
 		ring:          ring,
