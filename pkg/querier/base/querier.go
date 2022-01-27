@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/grafana/loki/pkg/util/limiter"
 	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
