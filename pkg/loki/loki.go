@@ -109,6 +109,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
+	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
