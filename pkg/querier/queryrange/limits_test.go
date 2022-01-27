@@ -266,3 +266,20 @@ func Test_MaxQueryLookBack(t *testing.T) {
 	_, err = tpw(rt).RoundTrip(req)
 	require.NoError(t, err)
 }
+
+func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
+	l := cacheKeyLimits{WithSplitByLimits(nil, 0)}
+	start := time.Now()
+	r := &LokiRequest{
+		Query:   "qry",
+		StartTs: start,
+		Step:    int64(time.Minute / time.Millisecond),
+	}
+
+	require.Equal(
+		t,
+		fmt.Sprintf("foo:qry:%d:0:0", r.GetStep()),
+		l.GenerateCacheKey("foo", r),
+	)
+
+}
