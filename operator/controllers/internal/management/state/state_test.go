@@ -5,10 +5,11 @@ import (
 	"testing"
 
 	"github.com/ViaQ/logerr/kverrors"
+	"github.com/stretchr/testify/require"
+
 	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 	"github.com/grafana/loki-operator/controllers/internal/management/state"
 	"github.com/grafana/loki-operator/internal/external/k8s/k8sfakes"
-	"github.com/stretchr/testify/require"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/grpcclient"
@@ -17,6 +16,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/util"
 
 	lokiutil "github.com/grafana/loki/pkg/util"
 )

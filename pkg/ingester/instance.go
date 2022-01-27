@@ -7,7 +7,6 @@ import (
 	"sync"
 	"syscall"
 
-	cutil "github.com/grafana/loki/pkg/util"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,6 +17,8 @@ import (
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
+
+	cutil "github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"

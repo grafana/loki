@@ -3,9 +3,10 @@ package manifests
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
+
+	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 )
 
 func TestTolerationsAreSetForEachComponent(t *testing.T) {

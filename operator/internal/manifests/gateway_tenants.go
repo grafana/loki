@@ -2,11 +2,12 @@ package manifests
 
 import (
 	"github.com/ViaQ/logerr/kverrors"
+	"github.com/imdario/mergo"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+
 	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 	"github.com/grafana/loki-operator/internal/manifests/internal/gateway"
 	"github.com/grafana/loki-operator/internal/manifests/openshift"
-	"github.com/imdario/mergo"
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"

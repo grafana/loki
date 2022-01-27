@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"

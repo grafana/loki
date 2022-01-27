@@ -5,11 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/loki/pkg/tenant"
 

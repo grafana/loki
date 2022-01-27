@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/util"
 )
 
 func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {

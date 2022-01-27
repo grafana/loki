@@ -4,8 +4,9 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/clients/pkg/logentry/stages"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/config"

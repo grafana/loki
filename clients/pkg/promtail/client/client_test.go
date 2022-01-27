@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -20,6 +19,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 

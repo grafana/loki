@@ -6,10 +6,11 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 )
 
 // Test that all serviceMonitor match the labels of their services so that we know all serviceMonitor

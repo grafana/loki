@@ -9,9 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/limiter"
-	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -22,6 +19,10 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/limiter"
+	"github.com/grafana/loki/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/querier/batch"
 	"github.com/grafana/loki/pkg/querier/chunkstore"

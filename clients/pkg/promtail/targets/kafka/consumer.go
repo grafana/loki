@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 

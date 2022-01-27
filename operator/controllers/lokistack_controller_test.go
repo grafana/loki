@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	"github.com/ViaQ/logerr/log"
+	routev1 "github.com/openshift/api/route/v1"
+	"github.com/stretchr/testify/require"
+
 	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 	"github.com/grafana/loki-operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki-operator/internal/manifests"
-	routev1 "github.com/openshift/api/route/v1"
-	"github.com/stretchr/testify/require"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"

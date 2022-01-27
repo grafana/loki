@@ -5,11 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util/spanlogger"

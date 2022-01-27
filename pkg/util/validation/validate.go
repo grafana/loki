@@ -13,6 +13,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+
 	"github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/loki/pkg/util/extract"

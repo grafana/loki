@@ -2,13 +2,13 @@
 
 package logql
 
-import __yyfmt__ "fmt"
-
-
 import (
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/prometheus/prometheus/model/labels"
+	__yyfmt__ "fmt"
 	"time"
+
+	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 type exprSymType struct {
@@ -234,7 +234,6 @@ var exprStatenames = [...]string{}
 const exprEofCode = 1
 const exprErrCode = 2
 const exprInitialStackSize = 16
-
 
 var exprExca = [...]int{
 	-1, 1,
@@ -496,7 +495,6 @@ var exprErrorMessages = [...]struct {
 	token int
 	msg   string
 }{}
-
 
 /*	parser for yacc output	*/
 

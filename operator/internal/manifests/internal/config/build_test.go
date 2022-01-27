@@ -3,8 +3,9 @@ package config
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 	"github.com/stretchr/testify/require"
+
+	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 )
 
 func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {

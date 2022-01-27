@@ -6,10 +6,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/storage/chunk"

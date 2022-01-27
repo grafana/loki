@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/dskit/ring"
+
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	v1 "github.com/grafana/loki/pkg/lokifrontend/frontend/v1"
 	v2 "github.com/grafana/loki/pkg/lokifrontend/frontend/v2"

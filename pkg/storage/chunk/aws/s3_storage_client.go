@@ -29,9 +29,10 @@ import (
 	"github.com/weaveworks/common/instrument"
 
 	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"

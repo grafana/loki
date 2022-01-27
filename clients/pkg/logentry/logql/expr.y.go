@@ -2,9 +2,9 @@
 
 package logql
 
-import __yyfmt__ "fmt"
-
 import (
+	__yyfmt__ "fmt"
+
 	"github.com/prometheus/prometheus/model/labels"
 )
 
