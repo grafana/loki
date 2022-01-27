@@ -184,6 +184,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.PerTenantOverridePeriod.Set("10s")
 	f.Var(&l.PerTenantOverridePeriod, "limits.per-user-override-period", "Period with this to reload the overrides.")
+
+	_ = l.QuerySplitDuration.Set("30m")
+	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by an interval and execute in parallel, 0 disables it. This also determines how cache keys are chosen when result caching is enabled")
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -208,6 +211,7 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Validate validates that this limits config is valid.
 func (l *Limits) Validate() error {
+
 	if l.StreamRetention != nil {
 		for i, rule := range l.StreamRetention {
 			matchers, err := logql.ParseMatchers(rule.Selector)

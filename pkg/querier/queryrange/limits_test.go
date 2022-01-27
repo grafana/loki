@@ -27,15 +27,12 @@ func TestLimits(t *testing.T) {
 		splits: map[string]time.Duration{"a": time.Minute},
 	}
 
-	require.Equal(t, l.QuerySplitDuration("a"), time.Minute)
-	require.Equal(t, l.QuerySplitDuration("b"), time.Duration(0))
+	wrapped := WithSplitByLimits(l, time.Hour)
 
-	wrapped := WithDefaultLimits(l, queryrangebase.Config{
-		SplitQueriesByInterval: time.Hour,
-	})
-
-	require.Equal(t, wrapped.QuerySplitDuration("a"), time.Minute)
+	// Test default
 	require.Equal(t, wrapped.QuerySplitDuration("b"), time.Hour)
+	// Ensure we override the underlying implementation
+	require.Equal(t, wrapped.QuerySplitDuration("a"), time.Hour)
 
 	r := &LokiRequest{
 		Query:   "qry",
@@ -45,17 +42,17 @@ func TestLimits(t *testing.T) {
 
 	require.Equal(
 		t,
-		fmt.Sprintf("%s:%s:%d:%d:%d", "a", r.GetQuery(), r.GetStep(), r.GetStart()/int64(time.Minute/time.Millisecond), int64(time.Minute)),
+		fmt.Sprintf("%s:%s:%d:%d:%d", "a", r.GetQuery(), r.GetStep(), r.GetStart()/int64(time.Hour/time.Millisecond), int64(time.Hour)),
 		cacheKeyLimits{wrapped}.GenerateCacheKey("a", r),
 	)
 }
 
 func Test_seriesLimiter(t *testing.T) {
 	cfg := testConfig
-	cfg.SplitQueriesByInterval = time.Hour
 	cfg.CacheResults = false
 	// split in 7 with 2 in // max.
-	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, chunk.SchemaConfig{}, nil)
+	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
+	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, l, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -268,4 +265,21 @@ func Test_MaxQueryLookBack(t *testing.T) {
 
 	_, err = tpw(rt).RoundTrip(req)
 	require.NoError(t, err)
+}
+
+func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
+	l := cacheKeyLimits{WithSplitByLimits(nil, 0)}
+	start := time.Now()
+	r := &LokiRequest{
+		Query:   "qry",
+		StartTs: start,
+		Step:    int64(time.Minute / time.Millisecond),
+	}
+
+	require.Equal(
+		t,
+		fmt.Sprintf("foo:qry:%d:0:0", r.GetStep()),
+		l.GenerateCacheKey("foo", r),
+	)
+
 }

@@ -43,32 +43,10 @@ type Limits interface {
 type limits struct {
 	Limits
 	splitDuration time.Duration
-	overrides     bool
 }
 
 func (l limits) QuerySplitDuration(user string) time.Duration {
-	if !l.overrides {
-		return l.splitDuration
-	}
-	dur := l.Limits.QuerySplitDuration(user)
-	if dur == 0 {
-		return l.splitDuration
-	}
-	return dur
-}
-
-// WithDefaults will construct a Limits with a default value for QuerySplitDuration when no overrides are present.
-func WithDefaultLimits(l Limits, conf queryrangebase.Config) Limits {
-	res := limits{
-		Limits:    l,
-		overrides: true,
-	}
-
-	if conf.SplitQueriesByInterval != 0 {
-		res.splitDuration = conf.SplitQueriesByInterval
-	}
-
-	return res
+	return l.splitDuration
 }
 
 // WithSplitByLimits will construct a Limits with a static split by duration.
@@ -84,11 +62,14 @@ type cacheKeyLimits struct {
 	Limits
 }
 
-// GenerateCacheKey will panic if it encounters a 0 split duration. We ensure against this by requiring
-// a nonzero split interval when caching is enabled
 func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrangebase.Request) string {
 	split := l.QuerySplitDuration(userID)
-	currentInterval := r.GetStart() / int64(split/time.Millisecond)
+
+	var currentInterval int64
+	if denominator := int64(split / time.Millisecond); denominator > 0 {
+		currentInterval = r.GetStart() / denominator
+	}
+
 	// include both the currentInterval and the split duration in key to ensure
 	// a cache key can't be reused when an interval changes
 	return fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval, split)

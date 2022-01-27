@@ -33,10 +33,9 @@ import (
 var (
 	testTime   = time.Date(2019, 12, 02, 11, 10, 10, 10, time.UTC)
 	testConfig = Config{queryrangebase.Config{
-		SplitQueriesByInterval: 4 * time.Hour,
-		AlignQueriesWithStep:   true,
-		MaxRetries:             3,
-		CacheResults:           true,
+		AlignQueriesWithStep: true,
+		MaxRetries:           3,
+		CacheResults:         true,
 		ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 			CacheConfig: cache.Config{
 				EnableFifoCache: true,
@@ -109,7 +108,8 @@ var (
 
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1}, chunk.SchemaConfig{}, nil)
+	l := WithSplitByLimits(fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1}, 4*time.Hour)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, l, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -402,7 +402,8 @@ func TestUnhandledPath(t *testing.T) {
 }
 
 func TestRegexpParamsSupport(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, chunk.SchemaConfig{}, nil)
+	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, 4*time.Hour)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, l, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
