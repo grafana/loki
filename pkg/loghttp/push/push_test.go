@@ -2,6 +2,7 @@ package push
 
 import (
 	"bytes"
+	"compress/flate"
 	"compress/gzip"
 	"log"
 	"net/http/httptest"
@@ -17,6 +18,19 @@ import (
 func gzipString(source string) string {
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write([]byte(source)); err != nil {
+		log.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		log.Fatal(err)
+	}
+	return buf.String()
+}
+
+// Deflate source string and return compressed string
+func deflateString(source string) string {
+	var buf bytes.Buffer
+	zw, _ := flate.NewWriter(&buf, 6)
 	if _, err := zw.Write([]byte(source)); err != nil {
 		log.Fatal(err)
 	}
@@ -68,6 +82,13 @@ func TestParseRequest(t *testing.T) {
 		},
 		{
 			path:            `/loki/api/v1/push`,
+			body:            deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
+			contentType:     `application/json`,
+			contentEncoding: `deflate`,
+			valid:           true,
+		},
+		{
+			path:            `/loki/api/v1/push`,
 			body:            gzipString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
 			contentType:     `application/json`,
 			contentEncoding: `snappy`,
@@ -82,6 +103,13 @@ func TestParseRequest(t *testing.T) {
 		},
 		{
 			path:            `/loki/api/v1/push`,
+			body:            deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
+			contentType:     `application/json; charset=utf-8`,
+			contentEncoding: `deflate`,
+			valid:           true,
+		},
+		{
+			path:            `/loki/api/v1/push`,
 			body:            gzipString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
 			contentType:     `application/jsonn; charset=utf-8`,
 			contentEncoding: `gzip`,
@@ -89,9 +117,37 @@ func TestParseRequest(t *testing.T) {
 		},
 		{
 			path:            `/loki/api/v1/push`,
+			body:            deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
+			contentType:     `application/jsonn; charset=utf-8`,
+			contentEncoding: `deflate`,
+			valid:           false,
+		},
+		{
+			path:            `/loki/api/v1/push`,
 			body:            gzipString(`{"streams": [{ "stream": { "foo4": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
 			contentType:     `application/json; charsetutf-8`,
 			contentEncoding: `gzip`,
+			valid:           false,
+		},
+		{
+			path:            `/loki/api/v1/push`,
+			body:            deflateString(`{"streams": [{ "stream": { "foo4": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
+			contentType:     `application/json; charsetutf-8`,
+			contentEncoding: `deflate`,
+			valid:           false,
+		},
+		{
+			path:            `/loki/api/v1/push`,
+			body:            deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
+			contentType:     `application/jsonn; charset=utf-8`,
+			contentEncoding: `deflate`,
+			valid:           false,
+		},
+		{
+			path:            `/loki/api/v1/push`,
+			body:            deflateString(`{"streams": [{ "stream": { "foo4": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
+			contentType:     `application/json; charsetutf-8`,
+			contentEncoding: `deflate`,
 			valid:           false,
 		},
 	}
