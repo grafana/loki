@@ -8,7 +8,7 @@ ENV GEM_HOME /usr/share/logstash/vendor/bundle/jruby/2.5.0
 
 RUN gem install bundler:2.1.4
 
-COPY --chown=logstash:logstash ./ /home/logstash/
+COPY --chown=logstash:logstash ./clients/cmd/logstash/ /home/logstash/
 WORKDIR /home/logstash/
 
 RUN bundle config set --local path /usr/share/logstash/vendor/bundle && \
