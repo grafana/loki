@@ -2,7 +2,6 @@ package uploads
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -38,12 +37,7 @@ func buildTestTableManager(t *testing.T, testDir string) (*TableManager, *local.
 }
 
 func TestLoadTables(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "load-tables")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(testDir))
-	}()
+	testDir := t.TempDir()
 
 	boltDBIndexClient, storageClient := buildTestClients(t, testDir)
 	indexPath := filepath.Join(testDir, indexDirName)
@@ -117,12 +111,7 @@ func TestLoadTables(t *testing.T) {
 }
 
 func TestTableManager_BatchWrite(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "batch-write")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(testDir))
-	}()
+	testDir := t.TempDir()
 
 	tm, boltIndexClient, stopFunc := buildTestTableManager(t, testDir)
 	defer func() {
@@ -144,7 +133,6 @@ func TestTableManager_BatchWrite(t *testing.T) {
 
 	require.NoError(t, tm.BatchWrite(context.Background(), writeBatch))
 
-	require.NoError(t, err)
 	require.Len(t, tm.tables, len(tc))
 
 	for tableName, expectedIndex := range tc {
@@ -154,12 +142,7 @@ func TestTableManager_BatchWrite(t *testing.T) {
 }
 
 func TestTableManager_QueryPages(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "query-pages")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(testDir))
-	}()
+	testDir := t.TempDir()
 
 	tm, boltIndexClient, stopFunc := buildTestTableManager(t, testDir)
 	defer func() {

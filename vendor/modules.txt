@@ -248,23 +248,9 @@ github.com/coreos/go-systemd/v22/journal
 github.com/coreos/pkg/capnslog
 # github.com/cortexproject/cortex v1.10.1-0.20220110092510-e0807c4eb487
 ## explicit; go 1.16
-github.com/cortexproject/cortex/pkg/chunk
-github.com/cortexproject/cortex/pkg/chunk/aws
-github.com/cortexproject/cortex/pkg/chunk/azure
-github.com/cortexproject/cortex/pkg/chunk/cache
-github.com/cortexproject/cortex/pkg/chunk/encoding
-github.com/cortexproject/cortex/pkg/chunk/gcp
-github.com/cortexproject/cortex/pkg/chunk/objectclient
-github.com/cortexproject/cortex/pkg/chunk/openstack
-github.com/cortexproject/cortex/pkg/chunk/testutils
-github.com/cortexproject/cortex/pkg/chunk/util
-github.com/cortexproject/cortex/pkg/configs/client
-github.com/cortexproject/cortex/pkg/configs/legacy_promql
-github.com/cortexproject/cortex/pkg/configs/userconfig
 github.com/cortexproject/cortex/pkg/cortexpb
 github.com/cortexproject/cortex/pkg/ingester/client
 github.com/cortexproject/cortex/pkg/prom1/storage/metric
-github.com/cortexproject/cortex/pkg/querier/astmapper
 github.com/cortexproject/cortex/pkg/storage/bucket
 github.com/cortexproject/cortex/pkg/storage/bucket/azure
 github.com/cortexproject/cortex/pkg/storage/bucket/filesystem
@@ -277,7 +263,6 @@ github.com/cortexproject/cortex/pkg/util
 github.com/cortexproject/cortex/pkg/util/extract
 github.com/cortexproject/cortex/pkg/util/limiter
 github.com/cortexproject/cortex/pkg/util/log
-github.com/cortexproject/cortex/pkg/util/math
 github.com/cortexproject/cortex/pkg/util/spanlogger
 github.com/cortexproject/cortex/pkg/util/validation
 # github.com/cristalhq/hedgedhttp v0.7.0

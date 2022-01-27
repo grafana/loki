@@ -3,7 +3,6 @@ package ruler
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"strings"
@@ -132,15 +131,9 @@ func setupRegistry(t *testing.T, dir string) *walRegistry {
 	return reg.(*walRegistry)
 }
 
-func createTempWALDir() (string, error) {
-	return ioutil.TempDir(os.TempDir(), "wal")
-}
-
 func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
 	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
@@ -152,10 +145,8 @@ func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
 }
 
 func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
 	// this tenant has no overrides, so will get defaults
 	tenantCfg, err := reg.getTenantConfig("unknown")
@@ -168,10 +159,8 @@ func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
 }
 
 func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
 	tenantCfg, err := reg.getTenantConfig(disabledRWTenant)
 	require.NoError(t, err)
@@ -181,8 +170,7 @@ func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
 	defer os.RemoveAll(walDir)
 
@@ -195,10 +183,8 @@ func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
 	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
 	require.NoError(t, err)
@@ -219,10 +205,8 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHeadersReset(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
 	tenantCfg, err := reg.getTenantConfig(noHeadersRWTenant)
 	require.NoError(t, err)
@@ -235,10 +219,8 @@ func TestTenantRemoteWriteHeadersReset(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
 	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
@@ -251,10 +233,8 @@ func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
 }
 
 func TestRelabelConfigOverrides(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
 	tenantCfg, err := reg.getTenantConfig(customRelabelsTenant)
 	require.NoError(t, err)
@@ -264,10 +244,8 @@ func TestRelabelConfigOverrides(t *testing.T) {
 }
 
 func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
 	tenantCfg, err := reg.getTenantConfig(nilRelabelsTenant)
 	require.NoError(t, err)
@@ -277,10 +255,8 @@ func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
 }
 
 func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
 	tenantCfg, err := reg.getTenantConfig(emptySliceRelabelsTenant)
 	require.NoError(t, err)
@@ -290,12 +266,10 @@ func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
 }
 
 func TestRelabelConfigOverridesWithErrors(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
-	_, err = reg.getTenantConfig(badRelabelsTenant)
+	_, err := reg.getTenantConfig(badRelabelsTenant)
 
 	// ensure that relabel validation is being applied
 	require.EqualError(t, err, "failed to parse relabel configs: labeldrop action requires only 'regex', and no other fields")
@@ -326,10 +300,8 @@ func TestWALRegistryCreation(t *testing.T) {
 }
 
 func TestStorageSetup(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
 	// once the registry is setup and we configure the tenant storage, we should be able
 	// to acquire an appender for the WAL storage
@@ -344,10 +316,8 @@ func TestStorageSetup(t *testing.T) {
 }
 
 func TestStorageSetupWithRemoteWriteDisabled(t *testing.T) {
-	walDir, err := createTempWALDir()
-	require.NoError(t, err)
+	walDir := t.TempDir()
 	reg := setupRegistry(t, walDir)
-	defer os.RemoveAll(walDir)
 
 	// once the registry is setup and we configure the tenant storage, we should be able
 	// to acquire an appender for the WAL storage

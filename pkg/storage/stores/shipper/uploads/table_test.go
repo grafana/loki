@@ -57,12 +57,7 @@ func buildTestTable(t *testing.T, path string, makePerTenantBuckets bool) (*Tabl
 }
 
 func TestLoadTable(t *testing.T) {
-	indexPath, err := ioutil.TempDir("", "table-load")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(indexPath))
-	}()
+	indexPath := t.TempDir()
 
 	boltDBIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: indexPath})
 	require.NoError(t, err)
@@ -237,12 +232,7 @@ func TestTable_Upload(t *testing.T) {
 
 func compareTableWithStorage(t *testing.T, table *Table, storageDir string) {
 	// use a temp dir for decompressing the files before comparison.
-	tempDir, err := ioutil.TempDir("", "compare-table")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	for name, db := range table.dbs {
 		fileName := table.buildFileName(name)
@@ -278,12 +268,7 @@ func compareTableWithStorage(t *testing.T, table *Table, storageDir string) {
 }
 
 func TestTable_Cleanup(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "cleanup")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(testDir))
-	}()
+	testDir := t.TempDir()
 
 	boltDBIndexClient, storageClient := buildTestClients(t, testDir)
 	indexPath := filepath.Join(testDir, indexDirName)
@@ -360,12 +345,7 @@ func TestTable_Cleanup(t *testing.T) {
 }
 
 func Test_LoadBoltDBsFromDir(t *testing.T) {
-	indexPath, err := ioutil.TempDir("", "load-dbs-from-dir")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(indexPath))
-	}()
+	indexPath := t.TempDir()
 
 	// setup some dbs with a snapshot file.
 	tablePath := testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "test-table"), map[string]testutil.DBConfig{
@@ -414,12 +394,7 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 }
 
 func TestTable_ImmutableUploads(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "immutable-uploads")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	boltDBIndexClient, storageClient := buildTestClients(t, tempDir)
 	indexPath := filepath.Join(tempDir, indexDirName)
@@ -505,12 +480,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 }
 
 func TestTable_MultiQueries(t *testing.T) {
-	indexPath, err := ioutil.TempDir("", "table-multi-queries")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(indexPath))
-	}()
+	indexPath := t.TempDir()
 
 	boltDBIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: indexPath})
 	require.NoError(t, err)

@@ -6,44 +6,45 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestDuplicatesSamples(t *testing.T) {
-	ts := cortexpb.TimeSeries{
-		Labels: []cortexpb.LabelAdapter{
+	ts := logproto.TimeSeries{
+		Labels: []logproto.LabelAdapter{
 			{
 				Name:  "lbl",
 				Value: "val",
 			},
 		},
-		Samples: []cortexpb.Sample{
-			{Value: 0.948569891, TimestampMs: 1583946731937},
-			{Value: 0.948569891, TimestampMs: 1583946731937},
-			{Value: 0.949927461, TimestampMs: 1583946751878},
-			{Value: 0.949927461, TimestampMs: 1583946751878},
-			{Value: 0.951334505, TimestampMs: 1583946769353},
-			{Value: 0.951334505, TimestampMs: 1583946769353},
-			{Value: 0.951334505, TimestampMs: 1583946779855},
-			{Value: 0.951334505, TimestampMs: 1583946779855},
-			{Value: 0.952676231, TimestampMs: 1583946820080},
-			{Value: 0.952676231, TimestampMs: 1583946820080},
-			{Value: 0.954158847, TimestampMs: 1583946844857},
-			{Value: 0.954158847, TimestampMs: 1583946844857},
-			{Value: 0.955572384, TimestampMs: 1583946858609},
-			{Value: 0.955572384, TimestampMs: 1583946858609},
-			{Value: 0.955572384, TimestampMs: 1583946869878},
-			{Value: 0.955572384, TimestampMs: 1583946869878},
-			{Value: 0.955572384, TimestampMs: 1583946885903},
-			{Value: 0.955572384, TimestampMs: 1583946885903},
-			{Value: 0.956823037, TimestampMs: 1583946899767},
-			{Value: 0.956823037, TimestampMs: 1583946899767},
+		Samples: []logproto.Sample{
+			{Value: 0.948569891, Timestamp: 1583946731937},
+			{Value: 0.948569891, Timestamp: 1583946731937},
+			{Value: 0.949927461, Timestamp: 1583946751878},
+			{Value: 0.949927461, Timestamp: 1583946751878},
+			{Value: 0.951334505, Timestamp: 1583946769353},
+			{Value: 0.951334505, Timestamp: 1583946769353},
+			{Value: 0.951334505, Timestamp: 1583946779855},
+			{Value: 0.951334505, Timestamp: 1583946779855},
+			{Value: 0.952676231, Timestamp: 1583946820080},
+			{Value: 0.952676231, Timestamp: 1583946820080},
+			{Value: 0.954158847, Timestamp: 1583946844857},
+			{Value: 0.954158847, Timestamp: 1583946844857},
+			{Value: 0.955572384, Timestamp: 1583946858609},
+			{Value: 0.955572384, Timestamp: 1583946858609},
+			{Value: 0.955572384, Timestamp: 1583946869878},
+			{Value: 0.955572384, Timestamp: 1583946869878},
+			{Value: 0.955572384, Timestamp: 1583946885903},
+			{Value: 0.955572384, Timestamp: 1583946885903},
+			{Value: 0.956823037, Timestamp: 1583946899767},
+			{Value: 0.956823037, Timestamp: 1583946899767},
 		},
 	}
 
@@ -53,8 +54,8 @@ func TestDuplicatesSamples(t *testing.T) {
 	}
 
 	// run same query, but with deduplicated samples
-	deduped := cortexpb.TimeSeries{
-		Labels: []cortexpb.LabelAdapter{
+	deduped := logproto.TimeSeries{
+		Labels: []logproto.LabelAdapter{
 			{
 				Name:  "lbl",
 				Value: "val",
@@ -69,22 +70,22 @@ func TestDuplicatesSamples(t *testing.T) {
 	}
 }
 
-func dedupeSorted(samples []cortexpb.Sample) []cortexpb.Sample {
-	out := []cortexpb.Sample(nil)
+func dedupeSorted(samples []logproto.Sample) []logproto.Sample {
+	out := []logproto.Sample(nil)
 	lastTs := int64(0)
 	for _, s := range samples {
-		if s.TimestampMs == lastTs {
+		if s.Timestamp == lastTs {
 			continue
 		}
 
 		out = append(out, s)
-		lastTs = s.TimestampMs
+		lastTs = s.Timestamp
 	}
 	return out
 }
 
-func runPromQLAndGetJSONResult(t *testing.T, query string, ts cortexpb.TimeSeries, step time.Duration) string {
-	tq := &testQueryable{ts: newTimeSeriesSeriesSet([]cortexpb.TimeSeries{ts})}
+func runPromQLAndGetJSONResult(t *testing.T, query string, ts logproto.TimeSeries, step time.Duration) string {
+	tq := &testQueryable{ts: newTimeSeriesSeriesSet([]logproto.TimeSeries{ts})}
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:     log.NewNopLogger(),
@@ -92,8 +93,8 @@ func runPromQLAndGetJSONResult(t *testing.T, query string, ts cortexpb.TimeSerie
 		MaxSamples: 1e6,
 	})
 
-	start := model.Time(ts.Samples[0].TimestampMs).Time()
-	end := model.Time(ts.Samples[len(ts.Samples)-1].TimestampMs).Time()
+	start := model.Time(ts.Samples[0].Timestamp).Time()
+	end := model.Time(ts.Samples[len(ts.Samples)-1].Timestamp).Time()
 
 	q, err := engine.NewRangeQuery(tq, query, start, end, step)
 	require.NoError(t, err)

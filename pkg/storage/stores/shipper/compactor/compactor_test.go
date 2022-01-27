@@ -3,7 +3,6 @@ package compactor
 import (
 	"context"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,12 +37,7 @@ func setupTestCompactor(t *testing.T, tempDir string, clientMetrics storage.Clie
 }
 
 func TestCompactor_RunCompaction(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "compactor-run-compaction")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	tablesPath := filepath.Join(tempDir, "index")
 	tablesCopyPath := filepath.Join(tempDir, "index-copy")
@@ -113,7 +107,7 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	cm := storage.NewClientMetrics()
 	defer cm.Unregister()
 	compactor := setupTestCompactor(t, tempDir, cm)
-	err = compactor.RunCompaction(context.Background(), true)
+	err := compactor.RunCompaction(context.Background(), true)
 	require.NoError(t, err)
 
 	for name := range tables {

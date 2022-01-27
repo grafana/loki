@@ -42,7 +42,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.18.0
+BUILD_IMAGE_VERSION := 0.19.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -380,14 +380,25 @@ LOKI_DOCKER_DRIVER ?= "grafana/loki-docker-driver"
 PLUGIN_TAG ?= $(IMAGE_TAG)
 PLUGIN_ARCH ?=
 
-docker-driver: docker-driver-clean
+# build-rootfs
+# builds the plugin rootfs
+define build-rootfs
+	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
 	docker build -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
 	docker rm -vf $$ID
+
 	docker rmi rootfsimage -f
+endef
+
+docker-driver: docker-driver-clean
+	$(build-rootfs)
 	docker plugin create $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH) clients/cmd/docker-driver
+
+	$(build-rootfs)
 	docker plugin create $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH) clients/cmd/docker-driver
 
 clients/cmd/docker-driver/docker-driver: $(APP_GO_FILES)

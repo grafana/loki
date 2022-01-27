@@ -1,6 +1,7 @@
 package push
 
 import (
+	"compress/flate"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -67,6 +68,10 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		}
 		defer gzipReader.Close()
 		body = gzipReader
+	case "deflate":
+		flateReader := flate.NewReader(bodySize)
+		defer flateReader.Close()
+		body = flateReader
 	default:
 		return nil, fmt.Errorf("Content-Encoding %q not supported", contentEncoding)
 	}
