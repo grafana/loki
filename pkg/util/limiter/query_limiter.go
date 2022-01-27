@@ -80,13 +80,6 @@ func (ql *QueryLimiter) AddSeries(seriesLabels []cortexpb.LabelAdapter) error {
 	return nil
 }
 
-// uniqueSeriesCount returns the count of unique series seen by this query limiter.
-func (ql *QueryLimiter) uniqueSeriesCount() int {
-	ql.uniqueSeriesMx.Lock()
-	defer ql.uniqueSeriesMx.Unlock()
-	return len(ql.uniqueSeries)
-}
-
 // AddChunkBytes adds the input chunk size in bytes and returns an error if the limit is reached.
 func (ql *QueryLimiter) AddChunkBytes(chunkSizeInBytes int) error {
 	if ql.maxChunkBytesPerQuery == 0 {
