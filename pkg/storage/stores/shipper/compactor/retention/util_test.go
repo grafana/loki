@@ -77,6 +77,17 @@ var (
 					},
 					RowShards: 16,
 				},
+				{
+					From:       dayFromTime(start.Add(100 * time.Hour)),
+					IndexType:  "boltdb",
+					ObjectType: "filesystem",
+					Schema:     "v12",
+					IndexTables: chunk.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					},
+					RowShards: 16,
+				},
 			},
 		},
 	}
@@ -88,6 +99,7 @@ var (
 		{"v9", schemaCfg.Configs[0].From.Time, schemaCfg.Configs[0]},
 		{"v10", schemaCfg.Configs[1].From.Time, schemaCfg.Configs[1]},
 		{"v11", schemaCfg.Configs[2].From.Time, schemaCfg.Configs[2]},
+		{"v12", schemaCfg.Configs[3].From.Time, schemaCfg.Configs[3]},
 	}
 
 	sweepMetrics = newSweeperMetrics(prometheus.DefaultRegisterer)
