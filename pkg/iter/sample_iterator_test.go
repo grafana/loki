@@ -170,13 +170,14 @@ func TestNewSampleQueryClientIterator(t *testing.T) {
 }
 
 func TestNewNonOverlappingSampleIterator(t *testing.T) {
+	// todo fix this test
 	it := NewNonOverlappingSampleIterator([]SampleIterator{
 		NewSeriesIterator(varSeries),
 		NewSeriesIterator(logproto.Series{
 			Labels:  varSeries.Labels,
 			Samples: []logproto.Sample{sample(4), sample(5)},
 		}),
-	}, varSeries.Labels)
+	}, varSeries.Labels, 0)
 
 	for i := 1; i < 6; i++ {
 		require.True(t, it.Next(), i)
@@ -207,6 +208,7 @@ type CloseTestingSmplIterator struct {
 
 func (i *CloseTestingSmplIterator) Next() bool              { return true }
 func (i *CloseTestingSmplIterator) Sample() logproto.Sample { return i.s }
+func (i *CloseTestingSmplIterator) LabelsHash() uint64      { return 0 }
 func (i *CloseTestingSmplIterator) Labels() string          { return "" }
 func (i *CloseTestingSmplIterator) Error() error            { return nil }
 func (i *CloseTestingSmplIterator) Close() error {
@@ -216,7 +218,7 @@ func (i *CloseTestingSmplIterator) Close() error {
 
 func TestNonOverlappingSampleClose(t *testing.T) {
 	a, b := &CloseTestingSmplIterator{}, &CloseTestingSmplIterator{}
-	itr := NewNonOverlappingSampleIterator([]SampleIterator{a, b}, "")
+	itr := NewNonOverlappingSampleIterator([]SampleIterator{a, b}, "", 0)
 
 	// Ensure both itr.cur and itr.iterators are non nil
 	itr.Next()

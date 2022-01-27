@@ -14,23 +14,9 @@ import (
 
 // EntryIterator iterates over entries in time-order.
 type EntryIterator interface {
-	Next() bool
+	Iterator
 	Entry() logproto.Entry
-	Labels() string
-	Error() error
-	Close() error
 }
-
-type noOpIterator struct{}
-
-var NoopIterator = noOpIterator{}
-
-func (noOpIterator) Next() bool              { return false }
-func (noOpIterator) Error() error            { return nil }
-func (noOpIterator) Labels() string          { return "" }
-func (noOpIterator) Entry() logproto.Entry   { return logproto.Entry{} }
-func (noOpIterator) Sample() logproto.Sample { return logproto.Sample{} }
-func (noOpIterator) Close() error            { return nil }
 
 // streamIterator iterates over entries in a stream.
 type streamIterator struct {
@@ -56,6 +42,9 @@ func (i *streamIterator) Next() bool {
 func (i *streamIterator) Error() error {
 	return nil
 }
+
+// todo
+func (i *streamIterator) LabelsHash() uint64 { return 0 }
 
 func (i *streamIterator) Labels() string {
 	return i.labels
@@ -102,7 +91,7 @@ func (h iteratorMinHeap) Less(i, j int) bool {
 	case un1 > un2:
 		return false
 	default: // un1 == un2:
-		return h.iteratorHeap[i].Labels() < h.iteratorHeap[j].Labels()
+		return h.iteratorHeap[i].LabelsHash() < h.iteratorHeap[j].LabelsHash()
 	}
 }
 
@@ -122,7 +111,7 @@ func (h iteratorMaxHeap) Less(i, j int) bool {
 	case un1 > un2:
 		return true
 	default: // un1 == un2
-		return h.iteratorHeap[i].Labels() < h.iteratorHeap[j].Labels()
+		return h.iteratorHeap[i].LabelsHash() < h.iteratorHeap[j].LabelsHash()
 	}
 }
 
@@ -145,10 +134,11 @@ type heapIterator struct {
 	prefetched bool
 	stats      *stats.Context
 
-	tuples     []tuple
-	currEntry  logproto.Entry
-	currLabels string
-	errs       []error
+	tuples         []tuple
+	currEntry      logproto.Entry
+	currLabels     string
+	currLabelsHash uint64
+	errs           []error
 }
 
 // NewHeapIterator returns a new iterator which uses a heap to merge together
@@ -224,6 +214,7 @@ func (i *heapIterator) Next() bool {
 	if i.heap.Len() == 1 {
 		i.currEntry = i.heap.Peek().Entry()
 		i.currLabels = i.heap.Peek().Labels()
+		i.currLabelsHash = i.heap.Peek().LabelsHash()
 		if !i.heap.Peek().Next() {
 			i.heap.Pop()
 		}
@@ -237,7 +228,7 @@ func (i *heapIterator) Next() bool {
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
 		entry := next.Entry()
-		if len(i.tuples) > 0 && (i.tuples[0].Labels() != next.Labels() || !i.tuples[0].Timestamp.Equal(entry.Timestamp)) {
+		if len(i.tuples) > 0 && (i.tuples[0].LabelsHash() != next.LabelsHash() || !i.tuples[0].Timestamp.Equal(entry.Timestamp)) {
 			break
 		}
 
@@ -252,6 +243,7 @@ func (i *heapIterator) Next() bool {
 	if len(i.tuples) == 1 {
 		i.currEntry = i.tuples[0].Entry
 		i.currLabels = i.tuples[0].Labels()
+		i.currLabelsHash = i.tuples[0].LabelsHash()
 		i.requeue(i.tuples[0].EntryIterator, false)
 		i.tuples = i.tuples[:0]
 		return true
@@ -262,6 +254,7 @@ func (i *heapIterator) Next() bool {
 	t := i.tuples[0]
 	i.currEntry = t.Entry
 	i.currLabels = t.Labels()
+	i.currLabelsHash = t.LabelsHash()
 
 	// Requeue the iterators, advancing them if they were consumed.
 	for j := range i.tuples {
@@ -286,6 +279,8 @@ func (i *heapIterator) Entry() logproto.Entry {
 func (i *heapIterator) Labels() string {
 	return i.currLabels
 }
+
+func (i *heapIterator) LabelsHash() uint64 { return i.currLabelsHash }
 
 func (i *heapIterator) Error() error {
 	switch len(i.errs) {
@@ -379,6 +374,9 @@ func (i *queryClientIterator) Labels() string {
 	return i.curr.Labels()
 }
 
+// todo
+func (i *queryClientIterator) LabelsHash() uint64 { return 0 }
+
 func (i *queryClientIterator) Error() error {
 	return i.err
 }
@@ -388,16 +386,18 @@ func (i *queryClientIterator) Close() error {
 }
 
 type nonOverlappingIterator struct {
-	labels    string
-	iterators []EntryIterator
-	curr      EntryIterator
+	labels     string
+	labelsHash uint64
+	iterators  []EntryIterator
+	curr       EntryIterator
 }
 
 // NewNonOverlappingIterator gives a chained iterator over a list of iterators.
-func NewNonOverlappingIterator(iterators []EntryIterator, labels string) EntryIterator {
+func NewNonOverlappingIterator(iterators []EntryIterator, labels string, labelsHash uint64) EntryIterator {
 	return &nonOverlappingIterator{
-		labels:    labels,
-		iterators: iterators,
+		labels:     labels,
+		labelsHash: labelsHash,
+		iterators:  iterators,
 	}
 }
 
@@ -428,6 +428,13 @@ func (i *nonOverlappingIterator) Labels() string {
 	}
 
 	return i.curr.Labels()
+}
+
+func (i *nonOverlappingIterator) LabelsHash() uint64 {
+	if i.labelsHash != 0 {
+		return i.labelsHash
+	}
+	return i.curr.LabelsHash()
 }
 
 func (i *nonOverlappingIterator) Error() error {
@@ -492,8 +499,9 @@ func (i *timeRangedIterator) Next() bool {
 }
 
 type entryWithLabels struct {
-	entry  logproto.Entry
-	labels string
+	entry      logproto.Entry
+	labels     string
+	labelsHash uint64
 }
 
 type reverseIterator struct {
@@ -529,7 +537,7 @@ func (i *reverseIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for count := uint32(0); (i.limit == 0 || count < i.limit) && i.iter.Next(); count++ {
-			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.iter.Entry(), i.iter.Labels()})
+			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.LabelsHash()})
 		}
 		i.iter.Close()
 	}
@@ -551,6 +559,10 @@ func (i *reverseIterator) Entry() logproto.Entry {
 
 func (i *reverseIterator) Labels() string {
 	return i.cur.labels
+}
+
+func (i *reverseIterator) LabelsHash() uint64 {
+	return i.cur.labelsHash
 }
 
 func (i *reverseIterator) Error() error { return nil }
@@ -600,7 +612,7 @@ func (i *reverseEntryIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for i.iter.Next() {
-			i.buf.entries = append(i.buf.entries, entryWithLabels{i.iter.Entry(), i.iter.Labels()})
+			i.buf.entries = append(i.buf.entries, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.LabelsHash()})
 		}
 		i.iter.Close()
 	}
@@ -623,6 +635,10 @@ func (i *reverseEntryIterator) Entry() logproto.Entry {
 
 func (i *reverseEntryIterator) Labels() string {
 	return i.cur.labels
+}
+
+func (i *reverseEntryIterator) LabelsHash() uint64 {
+	return i.cur.labelsHash
 }
 
 func (i *reverseEntryIterator) Error() error { return nil }
@@ -685,8 +701,9 @@ func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
 	next := &entryWithLabels{}
 	if iter.Next() {
 		cache = &entryWithLabels{
-			entry:  iter.Entry(),
-			labels: iter.Labels(),
+			entry:      iter.Entry(),
+			labels:     iter.Labels(),
+			labelsHash: iter.LabelsHash(),
 		}
 		next.entry = cache.entry
 		next.labels = cache.labels
@@ -703,6 +720,7 @@ func (it *peekingEntryIterator) Next() bool {
 	if it.cache != nil {
 		it.next.entry = it.cache.entry
 		it.next.labels = it.cache.labels
+		it.next.labelsHash = it.cache.labelsHash
 		it.cacheNext()
 		return true
 	}
@@ -714,6 +732,7 @@ func (it *peekingEntryIterator) cacheNext() {
 	if it.iter.Next() {
 		it.cache.entry = it.iter.Entry()
 		it.cache.labels = it.iter.Labels()
+		it.cache.labelsHash = it.iter.LabelsHash()
 		return
 	}
 	// nothing left removes the cached entry
@@ -734,6 +753,13 @@ func (it *peekingEntryIterator) Labels() string {
 		return it.next.labels
 	}
 	return ""
+}
+
+func (it *peekingEntryIterator) LabelsHash() uint64 {
+	if it.next != nil {
+		return it.next.labelsHash
+	}
+	return 0
 }
 
 // Entry implements `EntryIterator`

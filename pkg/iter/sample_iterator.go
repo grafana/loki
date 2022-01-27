@@ -13,13 +13,10 @@ import (
 
 // SampleIterator iterates over samples in time-order.
 type SampleIterator interface {
-	Next() bool
+	Iterator
 	// todo(ctovena) we should add `Seek(t int64) bool`
 	// This way we can skip when ranging over samples.
 	Sample() logproto.Sample
-	Labels() string
-	Error() error
-	Close() error
 }
 
 // PeekingSampleIterator is a sample iterator that can peek sample without moving the current sample.
@@ -37,7 +34,8 @@ type peekingSampleIterator struct {
 
 type sampleWithLabels struct {
 	logproto.Sample
-	labels string
+	labels     string
+	labelsHash uint64
 }
 
 func NewPeekingSampleIterator(iter SampleIterator) PeekingSampleIterator {
@@ -46,8 +44,9 @@ func NewPeekingSampleIterator(iter SampleIterator) PeekingSampleIterator {
 	next := &sampleWithLabels{}
 	if iter.Next() {
 		cache = &sampleWithLabels{
-			Sample: iter.Sample(),
-			labels: iter.Labels(),
+			Sample:     iter.Sample(),
+			labels:     iter.Labels(),
+			labelsHash: iter.LabelsHash(),
 		}
 		next.Sample = cache.Sample
 		next.labels = cache.labels
@@ -70,10 +69,18 @@ func (it *peekingSampleIterator) Labels() string {
 	return ""
 }
 
+func (it *peekingSampleIterator) LabelsHash() uint64 {
+	if it.next != nil {
+		return it.next.labelsHash
+	}
+	return 0
+}
+
 func (it *peekingSampleIterator) Next() bool {
 	if it.cache != nil {
 		it.next.Sample = it.cache.Sample
 		it.next.labels = it.cache.labels
+		it.next.labelsHash = it.cache.labelsHash
 		it.cacheNext()
 		return true
 	}
@@ -85,6 +92,7 @@ func (it *peekingSampleIterator) cacheNext() {
 	if it.iter.Next() {
 		it.cache.Sample = it.iter.Sample()
 		it.cache.labels = it.iter.Labels()
+		it.cache.labelsHash = it.iter.LabelsHash()
 		return
 	}
 	// nothing left removes the cached entry
@@ -134,7 +142,7 @@ func (h sampleIteratorHeap) Less(i, j int) bool {
 	case s1.Timestamp > s2.Timestamp:
 		return false
 	default:
-		return h[i].Labels() < h[j].Labels()
+		return h[i].LabelsHash() < h[j].LabelsHash()
 	}
 }
 
@@ -145,10 +153,11 @@ type heapSampleIterator struct {
 	prefetched bool
 	stats      *stats.Context
 
-	tuples     []sampletuple
-	curr       logproto.Sample
-	currLabels string
-	errs       []error
+	tuples         []sampletuple
+	curr           logproto.Sample
+	currLabels     string
+	currLabelsHash uint64
+	errs           []error
 }
 
 // NewHeapSampleIterator returns a new iterator which uses a heap to merge together
@@ -215,6 +224,7 @@ func (i *heapSampleIterator) Next() bool {
 	if i.heap.Len() == 1 {
 		i.curr = i.heap.Peek().Sample()
 		i.currLabels = i.heap.Peek().Labels()
+		i.currLabelsHash = i.heap.Peek().LabelsHash()
 		if !i.heap.Peek().Next() {
 			i.heap.Pop()
 		}
@@ -228,7 +238,7 @@ func (i *heapSampleIterator) Next() bool {
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
 		sample := next.Sample()
-		if len(i.tuples) > 0 && (i.tuples[0].Labels() != next.Labels() || i.tuples[0].Timestamp != sample.Timestamp) {
+		if len(i.tuples) > 0 && (i.tuples[0].LabelsHash() != next.LabelsHash() || i.tuples[0].Timestamp != sample.Timestamp) {
 			break
 		}
 
@@ -241,6 +251,7 @@ func (i *heapSampleIterator) Next() bool {
 
 	i.curr = i.tuples[0].Sample
 	i.currLabels = i.tuples[0].Labels()
+	i.currLabelsHash = i.tuples[0].LabelsHash()
 	t := i.tuples[0]
 	if len(i.tuples) == 1 {
 		i.requeue(i.tuples[0].SampleIterator, false)
@@ -269,6 +280,10 @@ func (i *heapSampleIterator) Sample() logproto.Sample {
 
 func (i *heapSampleIterator) Labels() string {
 	return i.currLabels
+}
+
+func (i *heapSampleIterator) LabelsHash() uint64 {
+	return i.currLabelsHash
 }
 
 func (i *heapSampleIterator) Error() error {
@@ -334,6 +349,10 @@ func (i *sampleQueryClientIterator) Sample() logproto.Sample {
 
 func (i *sampleQueryClientIterator) Labels() string {
 	return i.curr.Labels()
+}
+
+func (i *sampleQueryClientIterator) LabelsHash() uint64 {
+	return i.curr.LabelsHash()
 }
 
 func (i *sampleQueryClientIterator) Error() error {
@@ -416,6 +435,11 @@ func (i *seriesIterator) Labels() string {
 	return i.labels
 }
 
+// todo
+func (i *seriesIterator) LabelsHash() uint64 {
+	return 0
+}
+
 func (i *seriesIterator) Sample() logproto.Sample {
 	return i.samples[i.i]
 }
@@ -425,17 +449,19 @@ func (i *seriesIterator) Close() error {
 }
 
 type nonOverlappingSampleIterator struct {
-	labels    string
-	i         int
-	iterators []SampleIterator
-	curr      SampleIterator
+	labels     string
+	labelsHash uint64
+	i          int
+	iterators  []SampleIterator
+	curr       SampleIterator
 }
 
 // NewNonOverlappingSampleIterator gives a chained iterator over a list of iterators.
-func NewNonOverlappingSampleIterator(iterators []SampleIterator, labels string) SampleIterator {
+func NewNonOverlappingSampleIterator(iterators []SampleIterator, labels string, labelsHash uint64) SampleIterator {
 	return &nonOverlappingSampleIterator{
-		labels:    labels,
-		iterators: iterators,
+		labels:     labels,
+		labelsHash: labelsHash,
+		iterators:  iterators,
 	}
 }
 
@@ -467,6 +493,13 @@ func (i *nonOverlappingSampleIterator) Labels() string {
 	}
 
 	return i.curr.Labels()
+}
+
+func (i *nonOverlappingSampleIterator) LabelsHash() uint64 {
+	if i.labels != "" {
+		return i.labelsHash
+	}
+	return i.curr.LabelsHash()
 }
 
 func (i *nonOverlappingSampleIterator) Error() error {
