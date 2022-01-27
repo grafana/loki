@@ -33,6 +33,26 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### `querier.split-queries-by-interval` flag migrated yaml path and default value.
+
+The CLI flag `querier.split-queries-by-interval` has changed it's corresponding yaml equivalent from
+```yaml
+query_range:
+  split_queries_by_interval: 10m
+```
+->
+```
+limits_config:
+  split_queries_by_interval: 10m
+
+```
+
+Additionally, it has a new default value of `30m` rather than `0`.
+
+This is part of it's migration path from a global configuration to a per-tenant one (still subject to default tenant limits in the `limits_config`).
+It keeps it's CLI flag as `querier.split-queries-by-interval`.
+
+
 #### Error responses from API
 
 The body of HTTP error responses from API endpoints changed from plain text to
