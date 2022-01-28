@@ -651,11 +651,12 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, e
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	for ; respSize < size && i.Next(); respSize++ {
-		labels, entry := i.Labels(), i.Entry()
+		labels, hash, entry := i.Labels(), i.LabelsHash(), i.Entry()
 		stream, ok := streams[labels]
 		if !ok {
 			stream = &logproto.Stream{
-				Labels: labels,
+				Labels:     labels,
+				LabelsHash: hash,
 			}
 			streams[labels] = stream
 		}

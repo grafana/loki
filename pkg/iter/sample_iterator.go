@@ -559,11 +559,12 @@ func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryRespon
 	series := map[string]*logproto.Series{}
 	respSize := uint32(0)
 	for ; respSize < size && i.Next(); respSize++ {
-		labels, sample := i.Labels(), i.Sample()
+		labels, hash, sample := i.Labels(), i.LabelsHash(), i.Sample()
 		s, ok := series[labels]
 		if !ok {
 			s = &logproto.Series{
-				Labels: labels,
+				Labels:     labels,
+				LabelsHash: hash,
 			}
 			series[labels] = s
 		}
