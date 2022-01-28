@@ -6,16 +6,14 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-
 	"github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/loki/pkg/util/extract"
 )
 

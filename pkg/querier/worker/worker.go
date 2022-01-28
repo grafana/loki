@@ -18,7 +18,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/util"
-
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
 

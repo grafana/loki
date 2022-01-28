@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -18,12 +19,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
 
-	"github.com/grafana/dskit/flagext"
-
-	"github.com/grafana/loki/pkg/util/validation"
-
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type configFactory func() StoreConfig

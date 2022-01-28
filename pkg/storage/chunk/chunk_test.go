@@ -13,10 +13,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const userID = "userID"

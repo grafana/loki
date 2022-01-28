@@ -20,17 +20,16 @@ import (
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/limiter"
-	"github.com/grafana/loki/pkg/util/validation"
-
 	"github.com/grafana/loki/pkg/querier/batch"
 	"github.com/grafana/loki/pkg/querier/chunkstore"
 	"github.com/grafana/loki/pkg/querier/iterators"
 	"github.com/grafana/loki/pkg/querier/lazyquery"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/limiter"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // Config contains the configuration require to create a querier

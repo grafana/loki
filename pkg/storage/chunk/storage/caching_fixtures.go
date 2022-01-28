@@ -5,16 +5,14 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/grafana/dskit/flagext"
-
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/testutils"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type fixture struct {

@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/prometheus/common/model"
-	"go.uber.org/atomic"
-
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
 )
 
 type queryLimiterCtxKey struct{}

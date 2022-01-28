@@ -26,8 +26,6 @@ import (
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -47,6 +45,7 @@ import (
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"

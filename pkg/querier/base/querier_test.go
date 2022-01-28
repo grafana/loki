@@ -22,9 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
-
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/prom1/storage/metric"
@@ -32,7 +29,9 @@ import (
 	"github.com/grafana/loki/pkg/querier/iterators"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/chunkcompat"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const (

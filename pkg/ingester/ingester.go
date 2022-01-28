@@ -20,8 +20,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/index"
@@ -34,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util"
 	errUtil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"

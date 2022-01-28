@@ -13,11 +13,10 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/querier/lazyquery"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var (

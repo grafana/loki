@@ -5,9 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/common/model"
-
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/prometheus/common/model"
 )
 
 // ValidationError is an error returned by series validation.

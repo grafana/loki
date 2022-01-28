@@ -18,8 +18,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
-	cutil "github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -28,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
+	cutil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"

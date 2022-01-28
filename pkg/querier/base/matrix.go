@@ -4,10 +4,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/loki/pkg/querier/series"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util"
 )
 
 func mergeChunks(chunks []chunk.Chunk, from, through model.Time) chunkenc.Iterator {

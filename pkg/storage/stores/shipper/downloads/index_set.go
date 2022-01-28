@@ -10,12 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"go.etcd.io/bbolt"
-
-	"github.com/cortexproject/cortex/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"

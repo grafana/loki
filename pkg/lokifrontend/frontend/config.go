@@ -5,10 +5,9 @@ import (
 	"net/http"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/ring"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/grafana/dskit/ring"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	v1 "github.com/grafana/loki/pkg/lokifrontend/frontend/v1"

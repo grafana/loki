@@ -12,13 +12,12 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/prom1/storage/metric"
 	"github.com/grafana/loki/pkg/querier/series"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/chunkcompat"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/spanlogger"
