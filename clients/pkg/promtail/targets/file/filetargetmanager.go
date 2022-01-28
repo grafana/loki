@@ -40,6 +40,7 @@ const (
 type FileTargetManager struct {
 	log     log.Logger
 	quit    context.CancelFunc
+	done    chan struct{}
 	syncers map[string]*targetSyncer
 	manager *discovery.Manager
 
@@ -69,6 +70,7 @@ func NewFileTargetManager(
 	tm := &FileTargetManager{
 		log:                logger,
 		quit:               quit,
+		done:               make(chan struct{}),
 		watcher:            watcher,
 		targetEventHandler: make(chan fileTargetEvent),
 		syncers:            map[string]*targetSyncer{},
@@ -132,7 +134,7 @@ func NewFileTargetManager(
 		configs[cfg.JobName] = cfg.ServiceDiscoveryConfig.Configs()
 	}
 
-	go tm.run()
+	go tm.run(ctx)
 	go tm.watch(ctx)
 	go util.LogError("running target manager", tm.manager.Run)
 
@@ -168,10 +170,16 @@ func (tm *FileTargetManager) watch(ctx context.Context) {
 	}
 }
 
-func (tm *FileTargetManager) run() {
-	for targetGroups := range tm.manager.SyncCh() {
-		for jobName, groups := range targetGroups {
-			tm.syncers[jobName].sync(groups, tm.targetEventHandler)
+func (tm *FileTargetManager) run(ctx context.Context) {
+	defer close(tm.done)
+	for {
+		select {
+		case targetGroups := <-tm.manager.SyncCh():
+			for jobName, groups := range targetGroups {
+				tm.syncers[jobName].sync(groups, tm.targetEventHandler)
+			}
+		case <-ctx.Done():
+			return
 		}
 	}
 }
@@ -189,6 +197,7 @@ func (tm *FileTargetManager) Ready() bool {
 // Stop the TargetManager.
 func (tm *FileTargetManager) Stop() {
 	tm.quit()
+	<-tm.done
 	for _, s := range tm.syncers {
 		s.stop()
 	}
