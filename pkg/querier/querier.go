@@ -6,13 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -23,6 +21,7 @@ import (
 	listutil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	cortex_validation "github.com/grafana/loki/pkg/util/validation"
 	"github.com/grafana/loki/pkg/validation"
 )
 

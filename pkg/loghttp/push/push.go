@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -21,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/util"
 	loki_util "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/unmarshal"
 	unmarshal2 "github.com/grafana/loki/pkg/util/unmarshal/legacy"

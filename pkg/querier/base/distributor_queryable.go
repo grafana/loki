@@ -5,7 +5,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -18,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/prom1/storage/metric"
 	"github.com/grafana/loki/pkg/querier/series"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/chunkcompat"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/spanlogger"

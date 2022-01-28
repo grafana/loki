@@ -3,7 +3,6 @@ package base
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/prom1/storage/metric"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type MockDistributor struct {

@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/prometheus/common/model"
-	"go.uber.org/atomic"
-
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
 )
 
 type queryLimiterCtxKey struct{}
@@ -78,13 +77,6 @@ func (ql *QueryLimiter) AddSeries(seriesLabels []cortexpb.LabelAdapter) error {
 		return fmt.Errorf(ErrMaxSeriesHit, ql.maxSeriesPerQuery)
 	}
 	return nil
-}
-
-// uniqueSeriesCount returns the count of unique series seen by this query limiter.
-func (ql *QueryLimiter) uniqueSeriesCount() int {
-	ql.uniqueSeriesMx.Lock()
-	defer ql.uniqueSeriesMx.Unlock()
-	return len(ql.uniqueSeries)
 }
 
 // AddChunkBytes adds the input chunk size in bytes and returns an error if the limit is reached.

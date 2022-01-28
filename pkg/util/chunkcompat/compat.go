@@ -3,7 +3,6 @@ package chunkcompat
 import (
 	"bytes"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // StreamsToMatrix converts a slice of QueryStreamResponse to a model.Matrix.

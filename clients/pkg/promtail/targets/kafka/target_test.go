@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 )
 
 // Consumergroup handler

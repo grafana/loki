@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
@@ -31,7 +29,9 @@ import (
 	"github.com/grafana/loki/pkg/querier/iterators"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/chunkcompat"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const (

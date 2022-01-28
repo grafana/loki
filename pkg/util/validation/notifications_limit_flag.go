@@ -6,7 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var allowedIntegrationNames = []string{

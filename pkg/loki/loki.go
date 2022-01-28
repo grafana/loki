@@ -9,7 +9,6 @@ import (
 	"os"
 	rt "runtime"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -46,6 +45,7 @@ import (
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"

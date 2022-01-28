@@ -16,16 +16,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/mock"
-	"gopkg.in/yaml.v2"
-
-	"github.com/cortexproject/cortex/pkg/util/validation"
-
-	"go.uber.org/atomic"
-
-	"google.golang.org/grpc"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
@@ -36,6 +26,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
@@ -43,10 +34,12 @@ import (
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/util"
+	"go.uber.org/atomic"
+	"google.golang.org/grpc"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logproto"
 	querier "github.com/grafana/loki/pkg/querier/base"
@@ -57,6 +50,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) Config {

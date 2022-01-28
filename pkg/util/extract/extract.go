@@ -1,8 +1,15 @@
 package extract
 
 import (
+	"fmt"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+)
+
+var (
+	errNoMetricNameLabel = fmt.Errorf("No metric name label")
 )
 
 // MetricNameMatcherFromMatchers extracts the metric name from a set of matchers
@@ -26,4 +33,15 @@ func MetricNameMatcherFromMatchers(matchers []*labels.Matcher) (*labels.Matcher,
 	}
 	// Return all matchers if none are metric name matchers
 	return nil, matchers, false
+}
+
+// UnsafeMetricNameFromLabelAdapters extracts the metric name from a list of LabelPairs.
+// The returned metric name string is a reference to the label value (no copy).
+func UnsafeMetricNameFromLabelAdapters(labels []cortexpb.LabelAdapter) (string, error) {
+	for _, label := range labels {
+		if label.Name == model.MetricNameLabel {
+			return label.Value, nil
+		}
+	}
+	return "", errNoMetricNameLabel
 }
