@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/google/renameio"
+	renameio "github.com/google/renameio/v2"
 	yaml "gopkg.in/yaml.v2"
 )
 

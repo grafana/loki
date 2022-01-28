@@ -553,9 +553,9 @@ github.com/google/gofuzz
 github.com/google/pprof/profile
 # github.com/google/renameio v0.1.0
 ## explicit
-github.com/google/renameio
 # github.com/google/renameio/v2 v2.0.0
 ## explicit; go 1.13
+github.com/google/renameio/v2
 # github.com/google/uuid v1.2.0
 ## explicit
 github.com/google/uuid

@@ -12,23 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package renameio
 
 import "os"
 
 // WriteFile mirrors ioutil.WriteFile, replacing an existing file with the same
 // name atomically.
-func WriteFile(filename string, data []byte, perm os.FileMode) error {
-	t, err := TempFile("", filename)
+func WriteFile(filename string, data []byte, perm os.FileMode, opts ...Option) error {
+	opts = append([]Option{
+		WithPermissions(perm),
+		WithExistingPermissions(),
+	}, opts...)
+
+	t, err := NewPendingFile(filename, opts...)
 	if err != nil {
 		return err
 	}
 	defer t.Cleanup()
-
-	// Set permissions before writing data, in case the data is sensitive.
-	if err := t.Chmod(perm); err != nil {
-		return err
-	}
 
 	if _, err := t.Write(data); err != nil {
 		return err
