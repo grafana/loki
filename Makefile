@@ -269,10 +269,6 @@ lint:
 	GO111MODULE=on GOGC=10 golangci-lint run -v $(GOLANGCI_ARG)
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
-	# Ensure packages imported by downstream projects (eg. GEM) don't depend on other packages
-	# vendoring Cortex's cortexpb (to avoid conflicting imports in downstream projects).
-	faillint -paths "github.com/grafana/loki/pkg/util/server/...,github.com/grafana/loki/pkg/storage/...,github.com/cortexproject/cortex/pkg/cortexpb" ./pkg/logql/...
-
 ########
 # Test #
 ########

@@ -246,8 +246,6 @@ github.com/coreos/go-systemd/v22/journal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 ## explicit
 github.com/coreos/pkg/capnslog
-# github.com/cortexproject/cortex v1.10.1-0.20220110092510-e0807c4eb487
-## explicit; go 1.16
 # github.com/cristalhq/hedgedhttp v0.7.0
 ## explicit; go 1.16
 github.com/cristalhq/hedgedhttp
