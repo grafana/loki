@@ -369,9 +369,8 @@ func NewSampleQueryResponseIterator(ctx context.Context, resp *logproto.SampleQu
 }
 
 type seriesIterator struct {
-	i       int
-	samples []logproto.Sample
-	labels  string
+	i      int
+	series logproto.Series
 }
 
 type withCloseSampleIterator struct {
@@ -416,15 +415,14 @@ func NewMultiSeriesIterator(ctx context.Context, series []logproto.Series) Sampl
 // NewSeriesIterator iterates over sample in a series.
 func NewSeriesIterator(series logproto.Series) SampleIterator {
 	return &seriesIterator{
-		i:       -1,
-		samples: series.Samples,
-		labels:  series.Labels,
+		i:      -1,
+		series: series,
 	}
 }
 
 func (i *seriesIterator) Next() bool {
 	i.i++
-	return i.i < len(i.samples)
+	return i.i < len(i.series.Samples)
 }
 
 func (i *seriesIterator) Error() error {
@@ -432,16 +430,15 @@ func (i *seriesIterator) Error() error {
 }
 
 func (i *seriesIterator) Labels() string {
-	return i.labels
+	return i.series.Labels
 }
 
-// todo
 func (i *seriesIterator) LabelsHash() uint64 {
-	return 0
+	return i.series.LabelsHash
 }
 
 func (i *seriesIterator) Sample() logproto.Sample {
-	return i.samples[i.i]
+	return i.series.Samples[i.i]
 }
 
 func (i *seriesIterator) Close() error {

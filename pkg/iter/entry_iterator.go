@@ -20,38 +20,35 @@ type EntryIterator interface {
 
 // streamIterator iterates over entries in a stream.
 type streamIterator struct {
-	i       int
-	entries []logproto.Entry
-	labels  string
+	i      int
+	stream logproto.Stream
 }
 
 // NewStreamIterator iterates over entries in a stream.
 func NewStreamIterator(stream logproto.Stream) EntryIterator {
 	return &streamIterator{
-		i:       -1,
-		entries: stream.Entries,
-		labels:  stream.Labels,
+		i:      -1,
+		stream: stream,
 	}
 }
 
 func (i *streamIterator) Next() bool {
 	i.i++
-	return i.i < len(i.entries)
+	return i.i < len(i.stream.Entries)
 }
 
 func (i *streamIterator) Error() error {
 	return nil
 }
 
-// todo
-func (i *streamIterator) LabelsHash() uint64 { return 0 }
-
 func (i *streamIterator) Labels() string {
-	return i.labels
+	return i.stream.Labels
 }
 
+func (i *streamIterator) LabelsHash() uint64 { return i.stream.LabelsHash }
+
 func (i *streamIterator) Entry() logproto.Entry {
-	return i.entries[i.i]
+	return i.stream.Entries[i.i]
 }
 
 func (i *streamIterator) Close() error {
@@ -374,8 +371,7 @@ func (i *queryClientIterator) Labels() string {
 	return i.curr.Labels()
 }
 
-// todo
-func (i *queryClientIterator) LabelsHash() uint64 { return 0 }
+func (i *queryClientIterator) LabelsHash() uint64 { return i.curr.LabelsHash() }
 
 func (i *queryClientIterator) Error() error {
 	return i.err
