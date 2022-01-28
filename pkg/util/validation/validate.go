@@ -44,11 +44,6 @@ const (
 	labelsNotSorted         = "labels_not_sorted"
 	labelValueTooLong       = "label_value_too_long"
 
-	// Exemplar-specific validation reasons
-	exemplarLabelsMissing    = "exemplar_labels_missing"
-	exemplarLabelsTooLong    = "exemplar_labels_too_long"
-	exemplarTimestampInvalid = "exemplar_timestamp_invalid"
-
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
 	RateLimited = "rate_limited"

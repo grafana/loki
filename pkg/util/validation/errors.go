@@ -2,11 +2,11 @@ package validation
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // ValidationError is an error returned by series validation.
@@ -142,47 +142,6 @@ func newSampleTimestampTooNewError(metricName string, timestamp int64) Validatio
 		message:    "timestamp too new: %d metric: %.200q",
 		metricName: metricName,
 		timestamp:  timestamp,
-	}
-}
-
-// exemplarValidationError is a ValidationError implementation suitable for exemplar validation errors.
-type exemplarValidationError struct {
-	message        string
-	seriesLabels   []logproto.LabelAdapter
-	exemplarLabels []logproto.LabelAdapter
-	timestamp      int64
-}
-
-func (e *exemplarValidationError) Error() string {
-	return fmt.Sprintf(e.message, e.timestamp, logproto.FromLabelAdaptersToLabels(e.seriesLabels).String(), logproto.FromLabelAdaptersToLabels(e.exemplarLabels).String())
-}
-
-func newExemplarEmtpyLabelsError(seriesLabels []logproto.LabelAdapter, exemplarLabels []logproto.LabelAdapter, timestamp int64) ValidationError {
-	return &exemplarValidationError{
-		message:        "exemplar missing labels, timestamp: %d series: %s labels: %s",
-		seriesLabels:   seriesLabels,
-		exemplarLabels: exemplarLabels,
-		timestamp:      timestamp,
-	}
-}
-
-func newExemplarMissingTimestampError(seriesLabels []logproto.LabelAdapter, exemplarLabels []logproto.LabelAdapter, timestamp int64) ValidationError {
-	return &exemplarValidationError{
-		message:        "exemplar missing timestamp, timestamp: %d series: %s labels: %s",
-		seriesLabels:   seriesLabels,
-		exemplarLabels: exemplarLabels,
-		timestamp:      timestamp,
-	}
-}
-
-var labelLenMsg = "exemplar combined labelset exceeds " + strconv.Itoa(ExemplarMaxLabelSetLength) + " characters, timestamp: %d series: %s labels: %s"
-
-func newExemplarLabelLengthError(seriesLabels []logproto.LabelAdapter, exemplarLabels []logproto.LabelAdapter, timestamp int64) ValidationError {
-	return &exemplarValidationError{
-		message:        labelLenMsg,
-		seriesLabels:   seriesLabels,
-		exemplarLabels: exemplarLabels,
-		timestamp:      timestamp,
 	}
 }
 
