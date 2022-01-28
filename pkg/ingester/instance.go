@@ -26,7 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
-	cutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"
@@ -538,7 +538,7 @@ func (i *instance) forMatchingStreams(
 	shards *astmapper.ShardAnnotation,
 	fn func(*stream) error,
 ) error {
-	filters, matchers := cutil.SplitFiltersAndMatchers(matchers)
+	filters, matchers := util.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(matchers, shards)
 	if err != nil {
 		return err

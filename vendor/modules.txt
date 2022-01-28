@@ -248,7 +248,6 @@ github.com/coreos/go-systemd/v22/journal
 github.com/coreos/pkg/capnslog
 # github.com/cortexproject/cortex v1.10.1-0.20220110092510-e0807c4eb487
 ## explicit; go 1.16
-github.com/cortexproject/cortex/pkg/cortexpb
 github.com/cortexproject/cortex/pkg/prom1/storage/metric
 github.com/cortexproject/cortex/pkg/tenant
 github.com/cortexproject/cortex/pkg/util

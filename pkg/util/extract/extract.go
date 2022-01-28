@@ -3,9 +3,10 @@ package extract
 import (
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 var (
@@ -37,7 +38,7 @@ func MetricNameMatcherFromMatchers(matchers []*labels.Matcher) (*labels.Matcher,
 
 // UnsafeMetricNameFromLabelAdapters extracts the metric name from a list of LabelPairs.
 // The returned metric name string is a reference to the label value (no copy).
-func UnsafeMetricNameFromLabelAdapters(labels []cortexpb.LabelAdapter) (string, error) {
+func UnsafeMetricNameFromLabelAdapters(labels []logproto.LabelAdapter) (string, error) {
 	for _, label := range labels {
 		if label.Name == model.MetricNameLabel {
 			return label.Value, nil

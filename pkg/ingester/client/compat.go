@@ -3,6 +3,8 @@ package client
 import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
@@ -25,6 +27,23 @@ func LabelsToKeyString(l labels.Labels) string {
 	// and buffer allocated is a static buffer and not a dynamic buffer on the heap.
 	b := make([]byte, 0, 1024)
 	return string(l.Bytes(b))
+}
+
+// FastFingerprint runs the same algorithm as Prometheus labelSetToFastFingerprint()
+func FastFingerprint(ls []logproto.LabelAdapter) model.Fingerprint {
+	if len(ls) == 0 {
+		return model.Metric(nil).FastFingerprint()
+	}
+
+	var result uint64
+	for _, l := range ls {
+		sum := hashNew()
+		sum = hashAdd(sum, l.Name)
+		sum = hashAddByte(sum, model.SeparatorByte)
+		sum = hashAdd(sum, l.Value)
+		result ^= sum
+	}
+	return model.Fingerprint(result)
 }
 
 // Fingerprint runs the same algorithm as Prometheus labelSetToFingerprint()
