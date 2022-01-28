@@ -1,4 +1,4 @@
-FROM golang:1-alpine3.12 AS build-image
+FROM golang:1-alpine3.13 AS build-image
 
 COPY tools/lambda-promtail /src/lambda-promtail
 WORKDIR /src/lambda-promtail
@@ -12,7 +12,7 @@ RUN go mod download
 RUN go build -tags lambda.norpc -ldflags="-s -w" lambda-promtail/main.go
 
 
-FROM alpine:3.12
+FROM alpine:3.13
 
 WORKDIR /app
 
