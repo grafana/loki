@@ -2551,7 +2551,7 @@ func (errorIterator) Error() error { return ErrMock }
 
 func (errorIterator) Labels() string { return "" }
 
-func (errorIterator) LabelsHash() uint64 { return 0 }
+func (errorIterator) StreamHash() uint64 { return 0 }
 
 func (errorIterator) Entry() logproto.Entry { return logproto.Entry{} }
 

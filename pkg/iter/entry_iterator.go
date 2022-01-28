@@ -45,7 +45,7 @@ func (i *streamIterator) Labels() string {
 	return i.stream.Labels
 }
 
-func (i *streamIterator) LabelsHash() uint64 { return i.stream.LabelsHash }
+func (i *streamIterator) StreamHash() uint64 { return i.stream.Hash }
 
 func (i *streamIterator) Entry() logproto.Entry {
 	return i.stream.Entries[i.i]
@@ -88,7 +88,7 @@ func (h iteratorMinHeap) Less(i, j int) bool {
 	case un1 > un2:
 		return false
 	default: // un1 == un2:
-		return h.iteratorHeap[i].LabelsHash() < h.iteratorHeap[j].LabelsHash()
+		return h.iteratorHeap[i].StreamHash() < h.iteratorHeap[j].StreamHash()
 	}
 }
 
@@ -108,7 +108,7 @@ func (h iteratorMaxHeap) Less(i, j int) bool {
 	case un1 > un2:
 		return true
 	default: // un1 == un2
-		return h.iteratorHeap[i].LabelsHash() < h.iteratorHeap[j].LabelsHash()
+		return h.iteratorHeap[i].StreamHash() < h.iteratorHeap[j].StreamHash()
 	}
 }
 
@@ -134,7 +134,7 @@ type heapIterator struct {
 	tuples         []tuple
 	currEntry      logproto.Entry
 	currLabels     string
-	currLabelsHash uint64
+	currStreamHash uint64
 	errs           []error
 }
 
@@ -211,7 +211,7 @@ func (i *heapIterator) Next() bool {
 	if i.heap.Len() == 1 {
 		i.currEntry = i.heap.Peek().Entry()
 		i.currLabels = i.heap.Peek().Labels()
-		i.currLabelsHash = i.heap.Peek().LabelsHash()
+		i.currStreamHash = i.heap.Peek().StreamHash()
 		if !i.heap.Peek().Next() {
 			i.heap.Pop()
 		}
@@ -225,7 +225,7 @@ func (i *heapIterator) Next() bool {
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
 		entry := next.Entry()
-		if len(i.tuples) > 0 && (i.tuples[0].LabelsHash() != next.LabelsHash() || !i.tuples[0].Timestamp.Equal(entry.Timestamp)) {
+		if len(i.tuples) > 0 && (i.tuples[0].StreamHash() != next.StreamHash() || !i.tuples[0].Timestamp.Equal(entry.Timestamp)) {
 			break
 		}
 
@@ -240,7 +240,7 @@ func (i *heapIterator) Next() bool {
 	if len(i.tuples) == 1 {
 		i.currEntry = i.tuples[0].Entry
 		i.currLabels = i.tuples[0].Labels()
-		i.currLabelsHash = i.tuples[0].LabelsHash()
+		i.currStreamHash = i.tuples[0].StreamHash()
 		i.requeue(i.tuples[0].EntryIterator, false)
 		i.tuples = i.tuples[:0]
 		return true
@@ -251,7 +251,7 @@ func (i *heapIterator) Next() bool {
 	t := i.tuples[0]
 	i.currEntry = t.Entry
 	i.currLabels = t.Labels()
-	i.currLabelsHash = t.LabelsHash()
+	i.currStreamHash = t.StreamHash()
 
 	// Requeue the iterators, advancing them if they were consumed.
 	for j := range i.tuples {
@@ -277,7 +277,7 @@ func (i *heapIterator) Labels() string {
 	return i.currLabels
 }
 
-func (i *heapIterator) LabelsHash() uint64 { return i.currLabelsHash }
+func (i *heapIterator) StreamHash() uint64 { return i.currStreamHash }
 
 func (i *heapIterator) Error() error {
 	switch len(i.errs) {
@@ -371,7 +371,7 @@ func (i *queryClientIterator) Labels() string {
 	return i.curr.Labels()
 }
 
-func (i *queryClientIterator) LabelsHash() uint64 { return i.curr.LabelsHash() }
+func (i *queryClientIterator) StreamHash() uint64 { return i.curr.StreamHash() }
 
 func (i *queryClientIterator) Error() error {
 	return i.err
@@ -421,11 +421,11 @@ func (i *nonOverlappingIterator) Labels() string {
 	return i.curr.Labels()
 }
 
-func (i *nonOverlappingIterator) LabelsHash() uint64 {
+func (i *nonOverlappingIterator) StreamHash() uint64 {
 	if i.curr == nil {
 		return 0
 	}
-	return i.curr.LabelsHash()
+	return i.curr.StreamHash()
 }
 
 func (i *nonOverlappingIterator) Error() error {
@@ -492,7 +492,7 @@ func (i *timeRangedIterator) Next() bool {
 type entryWithLabels struct {
 	entry      logproto.Entry
 	labels     string
-	labelsHash uint64
+	streamHash uint64
 }
 
 type reverseIterator struct {
@@ -528,7 +528,7 @@ func (i *reverseIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for count := uint32(0); (i.limit == 0 || count < i.limit) && i.iter.Next(); count++ {
-			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.LabelsHash()})
+			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash()})
 		}
 		i.iter.Close()
 	}
@@ -552,8 +552,8 @@ func (i *reverseIterator) Labels() string {
 	return i.cur.labels
 }
 
-func (i *reverseIterator) LabelsHash() uint64 {
-	return i.cur.labelsHash
+func (i *reverseIterator) StreamHash() uint64 {
+	return i.cur.streamHash
 }
 
 func (i *reverseIterator) Error() error { return nil }
@@ -603,7 +603,7 @@ func (i *reverseEntryIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for i.iter.Next() {
-			i.buf.entries = append(i.buf.entries, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.LabelsHash()})
+			i.buf.entries = append(i.buf.entries, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash()})
 		}
 		i.iter.Close()
 	}
@@ -628,8 +628,8 @@ func (i *reverseEntryIterator) Labels() string {
 	return i.cur.labels
 }
 
-func (i *reverseEntryIterator) LabelsHash() uint64 {
-	return i.cur.labelsHash
+func (i *reverseEntryIterator) StreamHash() uint64 {
+	return i.cur.streamHash
 }
 
 func (i *reverseEntryIterator) Error() error { return nil }
@@ -651,12 +651,12 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, e
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	for ; respSize < size && i.Next(); respSize++ {
-		labels, hash, entry := i.Labels(), i.LabelsHash(), i.Entry()
+		labels, hash, entry := i.Labels(), i.StreamHash(), i.Entry()
 		stream, ok := streams[labels]
 		if !ok {
 			stream = &logproto.Stream{
-				Labels:     labels,
-				LabelsHash: hash,
+				Labels: labels,
+				Hash:   hash,
 			}
 			streams[labels] = stream
 		}
@@ -695,7 +695,7 @@ func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
 		cache = &entryWithLabels{
 			entry:      iter.Entry(),
 			labels:     iter.Labels(),
-			labelsHash: iter.LabelsHash(),
+			streamHash: iter.StreamHash(),
 		}
 		next.entry = cache.entry
 		next.labels = cache.labels
@@ -712,7 +712,7 @@ func (it *peekingEntryIterator) Next() bool {
 	if it.cache != nil {
 		it.next.entry = it.cache.entry
 		it.next.labels = it.cache.labels
-		it.next.labelsHash = it.cache.labelsHash
+		it.next.streamHash = it.cache.streamHash
 		it.cacheNext()
 		return true
 	}
@@ -724,7 +724,7 @@ func (it *peekingEntryIterator) cacheNext() {
 	if it.iter.Next() {
 		it.cache.entry = it.iter.Entry()
 		it.cache.labels = it.iter.Labels()
-		it.cache.labelsHash = it.iter.LabelsHash()
+		it.cache.streamHash = it.iter.StreamHash()
 		return
 	}
 	// nothing left removes the cached entry
@@ -747,9 +747,9 @@ func (it *peekingEntryIterator) Labels() string {
 	return ""
 }
 
-func (it *peekingEntryIterator) LabelsHash() uint64 {
+func (it *peekingEntryIterator) StreamHash() uint64 {
 	if it.next != nil {
-		return it.next.labelsHash
+		return it.next.streamHash
 	}
 	return 0
 }

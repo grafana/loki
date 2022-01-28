@@ -35,7 +35,7 @@ type peekingSampleIterator struct {
 type sampleWithLabels struct {
 	logproto.Sample
 	labels     string
-	labelsHash uint64
+	streamHash uint64
 }
 
 func NewPeekingSampleIterator(iter SampleIterator) PeekingSampleIterator {
@@ -46,7 +46,7 @@ func NewPeekingSampleIterator(iter SampleIterator) PeekingSampleIterator {
 		cache = &sampleWithLabels{
 			Sample:     iter.Sample(),
 			labels:     iter.Labels(),
-			labelsHash: iter.LabelsHash(),
+			streamHash: iter.StreamHash(),
 		}
 		next.Sample = cache.Sample
 		next.labels = cache.labels
@@ -69,9 +69,9 @@ func (it *peekingSampleIterator) Labels() string {
 	return ""
 }
 
-func (it *peekingSampleIterator) LabelsHash() uint64 {
+func (it *peekingSampleIterator) StreamHash() uint64 {
 	if it.next != nil {
-		return it.next.labelsHash
+		return it.next.streamHash
 	}
 	return 0
 }
@@ -80,7 +80,7 @@ func (it *peekingSampleIterator) Next() bool {
 	if it.cache != nil {
 		it.next.Sample = it.cache.Sample
 		it.next.labels = it.cache.labels
-		it.next.labelsHash = it.cache.labelsHash
+		it.next.streamHash = it.cache.streamHash
 		it.cacheNext()
 		return true
 	}
@@ -92,7 +92,7 @@ func (it *peekingSampleIterator) cacheNext() {
 	if it.iter.Next() {
 		it.cache.Sample = it.iter.Sample()
 		it.cache.labels = it.iter.Labels()
-		it.cache.labelsHash = it.iter.LabelsHash()
+		it.cache.streamHash = it.iter.StreamHash()
 		return
 	}
 	// nothing left removes the cached entry
@@ -142,7 +142,7 @@ func (h sampleIteratorHeap) Less(i, j int) bool {
 	case s1.Timestamp > s2.Timestamp:
 		return false
 	default:
-		return h[i].LabelsHash() < h[j].LabelsHash()
+		return h[i].StreamHash() < h[j].StreamHash()
 	}
 }
 
@@ -156,7 +156,7 @@ type heapSampleIterator struct {
 	tuples         []sampletuple
 	curr           logproto.Sample
 	currLabels     string
-	currLabelsHash uint64
+	currStreamHash uint64
 	errs           []error
 }
 
@@ -224,7 +224,7 @@ func (i *heapSampleIterator) Next() bool {
 	if i.heap.Len() == 1 {
 		i.curr = i.heap.Peek().Sample()
 		i.currLabels = i.heap.Peek().Labels()
-		i.currLabelsHash = i.heap.Peek().LabelsHash()
+		i.currStreamHash = i.heap.Peek().StreamHash()
 		if !i.heap.Peek().Next() {
 			i.heap.Pop()
 		}
@@ -238,7 +238,7 @@ func (i *heapSampleIterator) Next() bool {
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
 		sample := next.Sample()
-		if len(i.tuples) > 0 && (i.tuples[0].LabelsHash() != next.LabelsHash() || i.tuples[0].Timestamp != sample.Timestamp) {
+		if len(i.tuples) > 0 && (i.tuples[0].StreamHash() != next.StreamHash() || i.tuples[0].Timestamp != sample.Timestamp) {
 			break
 		}
 
@@ -251,7 +251,7 @@ func (i *heapSampleIterator) Next() bool {
 
 	i.curr = i.tuples[0].Sample
 	i.currLabels = i.tuples[0].Labels()
-	i.currLabelsHash = i.tuples[0].LabelsHash()
+	i.currStreamHash = i.tuples[0].StreamHash()
 	t := i.tuples[0]
 	if len(i.tuples) == 1 {
 		i.requeue(i.tuples[0].SampleIterator, false)
@@ -282,8 +282,8 @@ func (i *heapSampleIterator) Labels() string {
 	return i.currLabels
 }
 
-func (i *heapSampleIterator) LabelsHash() uint64 {
-	return i.currLabelsHash
+func (i *heapSampleIterator) StreamHash() uint64 {
+	return i.currStreamHash
 }
 
 func (i *heapSampleIterator) Error() error {
@@ -351,8 +351,8 @@ func (i *sampleQueryClientIterator) Labels() string {
 	return i.curr.Labels()
 }
 
-func (i *sampleQueryClientIterator) LabelsHash() uint64 {
-	return i.curr.LabelsHash()
+func (i *sampleQueryClientIterator) StreamHash() uint64 {
+	return i.curr.StreamHash()
 }
 
 func (i *sampleQueryClientIterator) Error() error {
@@ -433,8 +433,8 @@ func (i *seriesIterator) Labels() string {
 	return i.series.Labels
 }
 
-func (i *seriesIterator) LabelsHash() uint64 {
-	return i.series.LabelsHash
+func (i *seriesIterator) StreamHash() uint64 {
+	return i.series.StreamHash
 }
 
 func (i *seriesIterator) Sample() logproto.Sample {
@@ -487,11 +487,11 @@ func (i *nonOverlappingSampleIterator) Labels() string {
 	return i.curr.Labels()
 }
 
-func (i *nonOverlappingSampleIterator) LabelsHash() uint64 {
+func (i *nonOverlappingSampleIterator) StreamHash() uint64 {
 	if i.curr == nil {
 		return 0
 	}
-	return i.curr.LabelsHash()
+	return i.curr.StreamHash()
 }
 
 func (i *nonOverlappingSampleIterator) Error() error {
@@ -559,12 +559,12 @@ func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryRespon
 	series := map[string]*logproto.Series{}
 	respSize := uint32(0)
 	for ; respSize < size && i.Next(); respSize++ {
-		labels, hash, sample := i.Labels(), i.LabelsHash(), i.Sample()
+		labels, hash, sample := i.Labels(), i.StreamHash(), i.Sample()
 		s, ok := series[labels]
 		if !ok {
 			s = &logproto.Series{
 				Labels:     labels,
-				LabelsHash: hash,
+				StreamHash: hash,
 			}
 			series[labels] = s
 		}

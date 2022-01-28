@@ -10,9 +10,9 @@ import (
 // We are not using the proto generated version but this custom one so that we
 // can improve serialization see benchmark.
 type Stream struct {
-	Labels     string  `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
-	Entries    []Entry `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
-	LabelsHash uint64  `protobuf:"varint,3,opt,name=labelsHash,proto3" json:"labelsHash"`
+	Labels  string  `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
+	Entries []Entry `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
+	Hash    uint64  `protobuf:"varint,3,opt,name=hash,proto3" json:"hash"`
 }
 
 // Entry is a log entry with a timestamp.
@@ -41,8 +41,8 @@ func (m *Stream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.LabelsHash != 0 {
-		i = encodeVarintLogproto(dAtA, i, m.LabelsHash)
+	if m.Hash != 0 {
+		i = encodeVarintLogproto(dAtA, i, m.Hash)
 		i--
 		dAtA[i] = 0x18
 	}
@@ -205,9 +205,9 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LabelsHash", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Hash", wireType)
 			}
-			m.LabelsHash = 0
+			m.Hash = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowLogproto
@@ -217,7 +217,7 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.LabelsHash |= uint64(b&0x7F) << shift
+				m.Hash |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -382,8 +382,8 @@ func (m *Stream) Size() (n int) {
 			n += 1 + l + sovLogproto(uint64(l))
 		}
 	}
-	if m.LabelsHash != 0 {
-		n += 1 + sovLogproto(m.LabelsHash)
+	if m.Hash != 0 {
+		n += 1 + sovLogproto(m.Hash)
 	}
 	return n
 }
@@ -433,7 +433,7 @@ func (m *Stream) Equal(that interface{}) bool {
 			return false
 		}
 	}
-	return m.LabelsHash == that1.LabelsHash
+	return m.Hash == that1.Hash
 }
 
 func (m *Entry) Equal(that interface{}) bool {

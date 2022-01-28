@@ -53,7 +53,7 @@ func (it *cachedIterator) consumeWrapped() bool {
 		return false
 	}
 	// we're caching entries
-	it.cache = append(it.cache, entryWithLabels{entry: it.Wrapped().Entry(), labels: it.Wrapped().Labels(), labelsHash: it.Wrapped().LabelsHash()})
+	it.cache = append(it.cache, entryWithLabels{entry: it.Wrapped().Entry(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash()})
 	it.curr++
 	return true
 }
@@ -87,11 +87,11 @@ func (it *cachedIterator) Labels() string {
 	return it.cache[it.curr].labels
 }
 
-func (it *cachedIterator) LabelsHash() uint64 {
+func (it *cachedIterator) StreamHash() uint64 {
 	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
 		return 0
 	}
-	return it.cache[it.curr].labelsHash
+	return it.cache[it.curr].streamHash
 }
 
 func (it *cachedIterator) Error() error { return it.iterErr }
@@ -150,7 +150,7 @@ func (it *cachedSampleIterator) consumeWrapped() bool {
 		return false
 	}
 	// we're caching entries
-	it.cache = append(it.cache, sampleWithLabels{Sample: it.Wrapped().Sample(), labels: it.Wrapped().Labels(), labelsHash: it.Wrapped().LabelsHash()})
+	it.cache = append(it.cache, sampleWithLabels{Sample: it.Wrapped().Sample(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash()})
 	it.curr++
 	return true
 }
@@ -183,11 +183,11 @@ func (it *cachedSampleIterator) Labels() string {
 	return it.cache[it.curr].labels
 }
 
-func (it *cachedSampleIterator) LabelsHash() uint64 {
+func (it *cachedSampleIterator) StreamHash() uint64 {
 	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
 		return 0
 	}
-	return it.cache[it.curr].labelsHash
+	return it.cache[it.curr].streamHash
 }
 
 func (it *cachedSampleIterator) Error() error { return it.iterErr }

@@ -338,8 +338,8 @@ func (it *logBatchIterator) Labels() string {
 	return it.curr.Labels()
 }
 
-func (it *logBatchIterator) LabelsHash() uint64 {
-	return it.curr.LabelsHash()
+func (it *logBatchIterator) StreamHash() uint64 {
+	return it.curr.StreamHash()
 }
 
 func (it *logBatchIterator) Error() error {
@@ -481,8 +481,8 @@ func (it *sampleBatchIterator) Labels() string {
 	return it.curr.Labels()
 }
 
-func (it *sampleBatchIterator) LabelsHash() uint64 {
-	return it.curr.LabelsHash()
+func (it *sampleBatchIterator) StreamHash() uint64 {
+	return it.curr.StreamHash()
 }
 
 func (it *sampleBatchIterator) Error() error {

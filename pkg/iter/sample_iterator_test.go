@@ -208,7 +208,7 @@ type CloseTestingSmplIterator struct {
 
 func (i *CloseTestingSmplIterator) Next() bool              { return true }
 func (i *CloseTestingSmplIterator) Sample() logproto.Sample { return i.s }
-func (i *CloseTestingSmplIterator) LabelsHash() uint64      { return 0 }
+func (i *CloseTestingSmplIterator) StreamHash() uint64      { return 0 }
 func (i *CloseTestingSmplIterator) Labels() string          { return "" }
 func (i *CloseTestingSmplIterator) Error() error            { return nil }
 func (i *CloseTestingSmplIterator) Close() error {

@@ -153,7 +153,7 @@ func (i *dumbChunkIterator) Labels() string {
 	return ""
 }
 
-func (i *dumbChunkIterator) LabelsHash() uint64 {
+func (i *dumbChunkIterator) StreamHash() uint64 {
 	return 0
 }
 

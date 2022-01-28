@@ -9,8 +9,8 @@ type Iterator interface {
 	// Labels returns the labels for the current entry.
 	// The labels can be mutated by the query engine and not reflect the original stream.
 	Labels() string
-	// LabelsHash returns a hash of the original stream labels for the current entry.
-	LabelsHash() uint64
+	// StreamHash returns a hash of the original stream for the current entry.
+	StreamHash() uint64
 	Error() error
 	Close() error
 }
@@ -22,7 +22,7 @@ var NoopIterator = noOpIterator{}
 func (noOpIterator) Next() bool              { return false }
 func (noOpIterator) Error() error            { return nil }
 func (noOpIterator) Labels() string          { return "" }
-func (noOpIterator) LabelsHash() uint64      { return 0 }
+func (noOpIterator) StreamHash() uint64      { return 0 }
 func (noOpIterator) Entry() logproto.Entry   { return logproto.Entry{} }
 func (noOpIterator) Sample() logproto.Sample { return logproto.Sample{} }
 func (noOpIterator) Close() error            { return nil }
