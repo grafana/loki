@@ -3,6 +3,7 @@ package openstack
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,7 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	cortex_swift "github.com/grafana/loki/pkg/storage/bucket/swift"
+	bucket_swift "github.com/grafana/loki/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/util/log"
@@ -29,11 +30,31 @@ var defaultTransport http.RoundTripper = &http.Transport{
 type SwiftObjectClient struct {
 	conn        *swift.Connection
 	hedgingConn *swift.Connection
-	cfg         cortex_swift.Config
+	cfg         SwiftConfig
+}
+
+// SwiftConfig is config for the Swift Chunk Client.
+type SwiftConfig struct {
+	bucket_swift.Config `yaml:",inline"`
+}
+
+// RegisterFlags registers flags.
+func (cfg *SwiftConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("", f)
+}
+
+// Validate config and returns error on failure
+func (cfg *SwiftConfig) Validate() error {
+	return nil
+}
+
+// RegisterFlagsWithPrefix registers flags with prefix.
+func (cfg *SwiftConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // NewSwiftObjectClient makes a new chunk.Client that writes chunks to OpenStack Swift.
-func NewSwiftObjectClient(cfg cortex_swift.Config, hedgingCfg hedging.Config) (*SwiftObjectClient, error) {
+func NewSwiftObjectClient(cfg SwiftConfig, hedgingCfg hedging.Config) (*SwiftObjectClient, error) {
 	log.WarnExperimentalUse("OpenStack Swift Storage", log.Logger)
 
 	c, err := createConnection(cfg, hedgingCfg, false)
@@ -55,7 +76,7 @@ func NewSwiftObjectClient(cfg cortex_swift.Config, hedgingCfg hedging.Config) (*
 	}, nil
 }
 
-func createConnection(cfg cortex_swift.Config, hedgingCfg hedging.Config, hedging bool) (*swift.Connection, error) {
+func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) (*swift.Connection, error) {
 	// Create a connection
 	c := &swift.Connection{
 		AuthVersion:    cfg.AuthVersion,

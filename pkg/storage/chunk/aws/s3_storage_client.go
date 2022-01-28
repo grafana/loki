@@ -30,7 +30,7 @@ import (
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 
-	cortex_s3 "github.com/grafana/loki/pkg/storage/bucket/s3"
+	bucket_s3 "github.com/grafana/loki/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/util"
@@ -75,7 +75,7 @@ type S3Config struct {
 	SSEEncryption    bool                `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
 	SignatureVersion string              `yaml:"signature_version"`
-	SSEConfig        cortex_s3.SSEConfig `yaml:"sse"`
+	SSEConfig        bucket_s3.SSEConfig `yaml:"sse"`
 	BackoffConfig    backoff.Config      `yaml:"backoff_config"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
@@ -177,8 +177,8 @@ func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 
 	// deprecated, but if used it assumes SSE-S3 type
 	if cfg.SSEEncryption {
-		return NewSSEParsedConfig(cortex_s3.SSEConfig{
-			Type: cortex_s3.SSES3,
+		return NewSSEParsedConfig(bucket_s3.SSEConfig{
+			Type: bucket_s3.SSES3,
 		})
 	}
 

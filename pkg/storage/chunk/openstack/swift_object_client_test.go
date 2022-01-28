@@ -89,13 +89,15 @@ func Test_Hedging(t *testing.T) {
 				}, nil
 			})
 
-			c, err := NewSwiftObjectClient(swift.Config{
-				MaxRetries:     1,
-				ContainerName:  "foo",
-				AuthVersion:    1,
-				Password:       "passwd",
-				ConnectTimeout: 10 * time.Second,
-				RequestTimeout: 10 * time.Second,
+			c, err := NewSwiftObjectClient(SwiftConfig{
+				Config: swift.Config{
+					MaxRetries:     1,
+					ContainerName:  "foo",
+					AuthVersion:    1,
+					Password:       "passwd",
+					ConnectTimeout: 10 * time.Second,
+					RequestTimeout: 10 * time.Second,
+				},
 			}, hedging.Config{
 				At:           tc.hedgeAt,
 				UpTo:         tc.upTo,

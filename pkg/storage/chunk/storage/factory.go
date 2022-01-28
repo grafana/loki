@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
@@ -88,7 +87,7 @@ type Config struct {
 	CassandraStorageConfig cassandra.Config        `yaml:"cassandra"`
 	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
 	FSConfig               local.FSConfig          `yaml:"filesystem"`
-	Swift                  swift.Config            `yaml:"swift"`
+	Swift                  openstack.SwiftConfig   `yaml:"swift"`
 
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 

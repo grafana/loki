@@ -196,7 +196,7 @@ memberlist:
 		//    azure: azure.BlobStorageConfig
 		//    gcs: gcp.GCSConfig
 		//    s3: aws.S3Config
-		//    swift: swift.Config
+		//    swift: openstack.SwiftConfig
 		//    filesystem: Filesystem
 
 		t.Run("does not automatically configure cloud object storage", func(t *testing.T) {
@@ -401,8 +401,8 @@ memberlist:
 			assert.Equal(t, "swift", config.Ruler.StoreConfig.Type)
 
 			for _, actual := range []swift.Config{
-				config.Ruler.StoreConfig.Swift,
-				config.StorageConfig.Swift,
+				config.Ruler.StoreConfig.Swift.Config,
+				config.StorageConfig.Swift.Config,
 			} {
 				assert.Equal(t, 3, actual.AuthVersion)
 				assert.Equal(t, "http://example.com", actual.AuthURL)
