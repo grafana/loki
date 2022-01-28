@@ -323,7 +323,7 @@ func (ev *DownstreamEvaluator) Iterator(
 			}
 			xs = append(xs, iter)
 		}
-
+		// todo we can't use this anymore !
 		return iter.NewHeapIterator(ctx, xs, params.Direction()), nil
 
 	default:

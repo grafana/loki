@@ -9,7 +9,7 @@ type Iterator interface {
 	// Labels returns the labels for the current entry.
 	// The labels can be mutated by the query engine and not reflect the original stream.
 	Labels() string
-	// StreamHash returns a hash of the original stream for the current entry.
+	// StreamHash returns the hash of the original stream for the current entry.
 	StreamHash() uint64
 	Error() error
 	Close() error

@@ -91,14 +91,16 @@ func sample(i int) logproto.Sample {
 }
 
 var varSeries = logproto.Series{
-	Labels: `{foo="var"}`,
+	Labels:     `{foo="var"}`,
+	StreamHash: hashLabels(`{foo="var"}`),
 	Samples: []logproto.Sample{
 		sample(1), sample(2), sample(3),
 	},
 }
 
 var carSeries = logproto.Series{
-	Labels: `{foo="car"}`,
+	Labels:     `{foo="car"}`,
+	StreamHash: hashLabels(`{foo="car"}`),
 	Samples: []logproto.Sample{
 		sample(1), sample(2), sample(3),
 	},
@@ -191,7 +193,7 @@ func TestNewNonOverlappingSampleIterator(t *testing.T) {
 
 func TestReadSampleBatch(t *testing.T) {
 	res, size, err := ReadSampleBatch(NewSeriesIterator(carSeries), 1)
-	require.Equal(t, &logproto.SampleQueryResponse{Series: []logproto.Series{{Labels: carSeries.Labels, Samples: []logproto.Sample{sample(1)}}}}, res)
+	require.Equal(t, &logproto.SampleQueryResponse{Series: []logproto.Series{{Labels: carSeries.Labels, StreamHash: carSeries.StreamHash, Samples: []logproto.Sample{sample(1)}}}}, res)
 	require.Equal(t, uint32(1), size)
 	require.NoError(t, err)
 

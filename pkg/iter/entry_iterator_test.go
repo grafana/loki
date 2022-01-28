@@ -3,6 +3,7 @@ package iter
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"math/rand"
 	"testing"
 	"time"
@@ -120,9 +121,9 @@ func TestIteratorMultipleLabels(t *testing.T) {
 			length: testSize * 2,
 			labels: func(i int64) string {
 				if i%2 == 0 {
-					return "{foobar: \"baz1\"}"
+					return "{foobar: \"baz2\"}"
 				}
-				return "{foobar: \"baz2\"}"
+				return "{foobar: \"baz1\"}"
 			},
 		},
 
@@ -138,9 +139,9 @@ func TestIteratorMultipleLabels(t *testing.T) {
 			length: testSize * 2,
 			labels: func(i int64) string {
 				if i/testSize == 0 {
-					return "{foobar: \"baz1\"}"
+					return "{foobar: \"baz2\"}"
 				}
-				return "{foobar: \"baz2\"}"
+				return "{foobar: \"baz1\"}"
 			},
 		},
 	} {
@@ -202,7 +203,14 @@ func mkStreamIterator(f generator, labels string) EntryIterator {
 	return NewStreamIterator(logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
+		Hash:    hashLabels(labels),
 	})
+}
+
+func hashLabels(lbs string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(lbs))
+	return h.Sum64()
 }
 
 func identity(i int64) logproto.Entry {
@@ -237,6 +245,7 @@ func inverse(g generator) generator {
 func TestHeapIteratorDeduplication(t *testing.T) {
 	foo := logproto.Stream{
 		Labels: `{app="foo"}`,
+		Hash:   hashLabels(`{app="foo"}`),
 		Entries: []logproto.Entry{
 			{Timestamp: time.Unix(0, 1), Line: "1"},
 			{Timestamp: time.Unix(0, 2), Line: "2"},
@@ -245,6 +254,7 @@ func TestHeapIteratorDeduplication(t *testing.T) {
 	}
 	bar := logproto.Stream{
 		Labels: `{app="bar"}`,
+		Hash:   hashLabels(`{app="bar"}`),
 		Entries: []logproto.Entry{
 			{Timestamp: time.Unix(0, 1), Line: "1"},
 			{Timestamp: time.Unix(0, 2), Line: "2"},
