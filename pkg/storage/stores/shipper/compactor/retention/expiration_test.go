@@ -92,11 +92,9 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 	const dayDuration = 24 * time.Hour
 	now := model.Now()
 	for _, tc := range []struct {
-		name                                    string
-		limit                                   fakeLimits
-		expectedLatestRetentionStartTime        model.Time
-		expectedLatestDefaultRetentionStartTime model.Time
-		expectedLatestRetentionStartTimeByUser  map[string]model.Time
+		name                             string
+		limit                            fakeLimits
+		expectedLatestRetentionStartTime latestRetentionStartTime
 	}{
 		{
 			name: "only default retention set",
@@ -105,9 +103,11 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					retentionPeriod: 7 * dayDuration,
 				},
 			},
-			expectedLatestRetentionStartTime:        now.Add(-7 * dayDuration),
-			expectedLatestDefaultRetentionStartTime: now.Add(-7 * dayDuration),
-			expectedLatestRetentionStartTimeByUser:  map[string]model.Time{},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-7 * dayDuration),
+				defaults: now.Add(-7 * dayDuration),
+				byUser:   map[string]model.Time{},
+			},
 		},
 		{
 			name: "default retention period smallest",
@@ -125,11 +125,13 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					"1": {retentionPeriod: 15 * dayDuration},
 				},
 			},
-			expectedLatestRetentionStartTime:        now.Add(-7 * dayDuration),
-			expectedLatestDefaultRetentionStartTime: now.Add(-7 * dayDuration),
-			expectedLatestRetentionStartTimeByUser: map[string]model.Time{
-				"0": now.Add(-12 * dayDuration),
-				"1": now.Add(-15 * dayDuration),
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-7 * dayDuration),
+				defaults: now.Add(-7 * dayDuration),
+				byUser: map[string]model.Time{
+					"0": now.Add(-12 * dayDuration),
+					"1": now.Add(-15 * dayDuration),
+				},
 			},
 		},
 		{
@@ -148,11 +150,13 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					"1": {retentionPeriod: 5 * dayDuration},
 				},
 			},
-			expectedLatestRetentionStartTime:        now.Add(-3 * dayDuration),
-			expectedLatestDefaultRetentionStartTime: now.Add(-3 * dayDuration),
-			expectedLatestRetentionStartTimeByUser: map[string]model.Time{
-				"0": now.Add(-7 * dayDuration),
-				"1": now.Add(-5 * dayDuration),
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-3 * dayDuration),
+				defaults: now.Add(-3 * dayDuration),
+				byUser: map[string]model.Time{
+					"0": now.Add(-7 * dayDuration),
+					"1": now.Add(-5 * dayDuration),
+				},
 			},
 		},
 		{
@@ -185,11 +189,13 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					},
 				},
 			},
-			expectedLatestRetentionStartTime:        now.Add(-5 * dayDuration),
-			expectedLatestDefaultRetentionStartTime: now.Add(-7 * dayDuration),
-			expectedLatestRetentionStartTimeByUser: map[string]model.Time{
-				"0": now.Add(-10 * dayDuration),
-				"1": now.Add(-5 * dayDuration),
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-5 * dayDuration),
+				defaults: now.Add(-7 * dayDuration),
+				byUser: map[string]model.Time{
+					"0": now.Add(-10 * dayDuration),
+					"1": now.Add(-5 * dayDuration),
+				},
 			},
 		},
 		{
@@ -222,19 +228,19 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					},
 				},
 			},
-			expectedLatestRetentionStartTime:        now.Add(-2 * dayDuration),
-			expectedLatestDefaultRetentionStartTime: now.Add(-7 * dayDuration),
-			expectedLatestRetentionStartTimeByUser: map[string]model.Time{
-				"0": now.Add(-10 * dayDuration),
-				"1": now.Add(-2 * dayDuration),
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-2 * dayDuration),
+				defaults: now.Add(-7 * dayDuration),
+				byUser: map[string]model.Time{
+					"0": now.Add(-10 * dayDuration),
+					"1": now.Add(-2 * dayDuration),
+				},
 			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			latestRetentionStartTime, latestDefaultRetentionStartTime, latestRetentionStartTimeByUser := findLatestRetentionStartTime(now, tc.limit)
+			latestRetentionStartTime := findLatestRetentionStartTime(now, tc.limit)
 			require.Equal(t, tc.expectedLatestRetentionStartTime, latestRetentionStartTime)
-			require.Equal(t, tc.expectedLatestDefaultRetentionStartTime, latestDefaultRetentionStartTime)
-			require.Equal(t, tc.expectedLatestRetentionStartTimeByUser, latestRetentionStartTimeByUser)
 		})
 	}
 }
@@ -242,11 +248,13 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 func TestExpirationChecker_IntervalMayHaveExpiredChunks(t *testing.T) {
 	now := model.Now()
 	expirationChecker := expirationChecker{
-		overallLatestRetentionStartTime: now.Add(-24 * time.Hour),
-		defaultLatestRetentionStartTime: now.Add(-48 * time.Hour),
-		latestRetentionStartTimeByUser: map[string]model.Time{
-			"user0": now.Add(-72 * time.Hour),
-			"user1": now.Add(-24 * time.Hour),
+		latestRetentionStartTime: latestRetentionStartTime{
+			overall:  now.Add(-24 * time.Hour),
+			defaults: now.Add(-48 * time.Hour),
+			byUser: map[string]model.Time{
+				"user0": now.Add(-72 * time.Hour),
+				"user1": now.Add(-24 * time.Hour),
+			},
 		},
 	}
 

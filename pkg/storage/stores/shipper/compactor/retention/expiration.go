@@ -22,16 +22,8 @@ type ExpirationChecker interface {
 }
 
 type expirationChecker struct {
-	tenantsRetention *TenantsRetention
-	// overallLatestRetentionStartTime holds latest retention start time considering both default and per user retention config.
-	// It is used to determine if common index table may have any expired chunks.
-	overallLatestRetentionStartTime model.Time
-	// defaultLatestRetentionStartTime holds latest retention start time considering only default retention config.
-	// It is used to determine if user index table may have any expired chunks when the user does not have any custom retention config set.
-	defaultLatestRetentionStartTime model.Time
-	// userLatestRetentionStartTime holds latest retention start time considering only per user retention config.
-	// It is used to determine if user index table may have any expired chunks.
-	latestRetentionStartTimeByUser map[string]model.Time
+	tenantsRetention         *TenantsRetention
+	latestRetentionStartTime latestRetentionStartTime
 }
 
 type Limits interface {
@@ -64,8 +56,9 @@ func (e *expirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Tim
 }
 
 func (e *expirationChecker) MarkPhaseStarted() {
-	e.overallLatestRetentionStartTime, e.defaultLatestRetentionStartTime, e.latestRetentionStartTimeByUser = findLatestRetentionStartTime(model.Now(), e.tenantsRetention.limits)
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("overall smallest retention period %v, default smallest retention period %v", e.overallLatestRetentionStartTime, e.defaultLatestRetentionStartTime))
+	e.latestRetentionStartTime = findLatestRetentionStartTime(model.Now(), e.tenantsRetention.limits)
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("overall smallest retention period %v, default smallest retention period %v",
+		e.latestRetentionStartTime.overall, e.latestRetentionStartTime.defaults))
 }
 
 func (e *expirationChecker) MarkPhaseFailed()   {}
@@ -73,16 +66,16 @@ func (e *expirationChecker) MarkPhaseFinished() {}
 
 func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
 	// when userID is empty, it means we are checking for common index table. In this case we use e.overallLatestRetentionStartTime.
-	latestRetentionStartTime := e.overallLatestRetentionStartTime
+	latestRetentionStartTime := e.latestRetentionStartTime.overall
 	if userID != "" {
 		// when userID is not empty, it means we are checking for user index table.
-		latestRetentionStartTimeForUser, ok := e.latestRetentionStartTimeByUser[userID]
+		latestRetentionStartTimeForUser, ok := e.latestRetentionStartTime.byUser[userID]
 		if ok {
 			// user has custom retention config, let us use user specific latest retention start time.
 			latestRetentionStartTime = latestRetentionStartTimeForUser
 		} else {
 			// user does not have custom retention config, let us use default latest retention start time.
-			latestRetentionStartTime = e.defaultLatestRetentionStartTime
+			latestRetentionStartTime = e.latestRetentionStartTime.defaults
 		}
 	}
 	return interval.Start.Before(latestRetentionStartTime)
@@ -132,8 +125,20 @@ Outer:
 	return globalRetention
 }
 
+type latestRetentionStartTime struct {
+	// defaults holds latest retention start time considering only default retention config.
+	// It is used to determine if user index table may have any expired chunks when the user does not have any custom retention config set.
+	defaults model.Time
+	// overall holds latest retention start time for all users considering both default and per user retention config.
+	// It is used to determine if common index table may have any expired chunks.
+	overall model.Time
+	// byUser holds latest retention start time considering only per user retention config.
+	// It is used to determine if user index table may have any expired chunks.
+	byUser map[string]model.Time
+}
+
 // findLatestRetentionStartTime returns the latest retention start time overall, just default config and by each user.
-func findLatestRetentionStartTime(now model.Time, limits Limits) (model.Time, model.Time, map[string]model.Time) {
+func findLatestRetentionStartTime(now model.Time, limits Limits) latestRetentionStartTime {
 	// find the smallest retention period from default limits
 	defaultLimits := limits.DefaultLimits()
 	smallestDefaultRetentionPeriod := defaultLimits.RetentionPeriod
@@ -163,5 +168,9 @@ func findLatestRetentionStartTime(now model.Time, limits Limits) (model.Time, mo
 		}
 	}
 
-	return now.Add(time.Duration(-overallSmallestRetentionPeriod)), now.Add(time.Duration(-smallestDefaultRetentionPeriod)), smallestRetentionPeriodByUser
+	return latestRetentionStartTime{
+		defaults: now.Add(time.Duration(-smallestDefaultRetentionPeriod)),
+		overall:  now.Add(time.Duration(-overallSmallestRetentionPeriod)),
+		byUser:   smallestRetentionPeriodByUser,
+	}
 }
