@@ -12,8 +12,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore/s3"
 
-	bucket_http "github.com/cortexproject/cortex/pkg/storage/bucket/http"
-	"github.com/cortexproject/cortex/pkg/util"
+	bucket_http "github.com/grafana/loki/pkg/storage/bucket/http"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -88,11 +88,7 @@ func (cfg *Config) Validate() error {
 		return errUnsupportedSignatureVersion
 	}
 
-	if err := cfg.SSE.Validate(); err != nil {
-		return err
-	}
-
-	return nil
+	return cfg.SSE.Validate()
 }
 
 // SSEConfig configures S3 server side encryption
