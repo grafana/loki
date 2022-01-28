@@ -86,7 +86,6 @@ type Config struct {
 	WAL WALConfig `yaml:"wal,omitempty"`
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
-	LabelFilterer LabelValueFilterer           `yaml:"-"`
 	// Optional wrapper that can be used to modify the behaviour of the ingester
 	Wrapper Wrapper `yaml:"-"`
 
@@ -136,11 +135,6 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
-}
-
-// ChunkFilterer filters chunks based on the metric.
-type LabelValueFilterer interface {
-	Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error)
 }
 
 type Wrapper interface {
@@ -211,7 +205,6 @@ type Ingester struct {
 	wal WAL
 
 	chunkFilter storage.RequestChunkFilterer
-	labelFilter LabelValueFilterer
 }
 
 // New makes a new Ingester.
@@ -275,19 +268,11 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		i.SetChunkFilterer(i.cfg.ChunkFilterer)
 	}
 
-	if i.cfg.LabelFilterer != nil {
-		i.SetLabelFilterer(i.cfg.LabelFilterer)
-	}
-
 	return i, nil
 }
 
 func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
-}
-
-func (i *Ingester) SetLabelFilterer(labelFilter LabelValueFilterer) {
-	i.labelFilter = labelFilter
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
@@ -760,23 +745,8 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		}
 	}
 
-	allValues := errUtil.MergeStringLists(resp.Values, storeValues)
-
-	if req.Values && i.labelFilter != nil {
-		var filteredValues []string
-
-		filteredValues, err = i.labelFilter.Filter(ctx, req.Name, allValues)
-		if err != nil {
-			return nil, err
-		}
-
-		return &logproto.LabelResponse{
-			Values: filteredValues,
-		}, nil
-	}
-
 	return &logproto.LabelResponse{
-		Values: allValues,
+		Values: errUtil.MergeStringLists(resp.Values, storeValues),
 	}, nil
 }
 
