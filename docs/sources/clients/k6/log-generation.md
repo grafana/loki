@@ -36,10 +36,10 @@ export default () => {
 
 The first argument of the method is the desired amount of streams per batch.
 Instead of using a fixed amount of streams in each call, you can randomize the
-value to simulate a more realistic scenario. The amount of streams per batch
-should usually not be larger than 10.
+value to simulate a more realistic scenario.
 
 **Javascript example code fragment:**
+
 ```javascript
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1) + min);
@@ -119,7 +119,7 @@ the Loki instance.
 Loki accepts two kinds of push payload encodings: JSON and Protobuf.
 While JSON is easier for humans to read,
 Protobuf is optimized for performance
-and should almost always be used.
+and should be preferred when possible.
 
 To define the ratio of Protobuf to JSON requests, the client
 configuration accepts a values of 0.0 to 1.0.
