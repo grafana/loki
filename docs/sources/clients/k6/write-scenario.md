@@ -1,74 +1,86 @@
 ---
-title: Write scenario
+title: Write path testing
 weight: 20
 ---
-# Write scenario
+# Write path load testing
 
-When running a load test of the write path of a Loki cluster there are multiple
-things to consider.
+There are multiple considerations when
+load testing a Loki cluster's write path.
 
-First, and most important is setup of the target cluster. Does the cluster run
-as single-binary, simple scalable deployment, or in microservice architecture?
-How many instances of each component are deployed (horizontal scaling)? How
-many resources (CPU, memory, disk, network) do the individual components have
-(vertical scaling)?
+The most important consideration is the setup of the target cluster.
+Keep these items in mind when writing your load test.
 
-Depending on these parameters, you can write a load test scenario suitable for
-your cluster.
+- Deployment mode. The cluster might be deployed as
+a single-binary, as a simple scalable deployment, or as microservices
 
-The parameters that can be adjusted in the load testing scenario are the
-following:
+- Quantity of component instances. This aids in predicting the need
+to horizontally scale the quantity of component instances.
 
-* **The amount of different labels and their cardinality.**
+- Resource allocation such as CPU, memory, disk, and network.
+This aids in predicting the need to vertically scale the
+underlying hardware.
 
-  This will define how many active streams your load test will generate. It's
-  usually a good idea to start with only a few label values, as the amount of
-  active streams otherwise might explode and may cause overwhelming your
-  cluster.
+These parameters can be adjusted in the load test:
 
-* **The batch size the client is sending.**
+* The quantity of distinct labels and their cardinality
 
-  The batch size indirectly controls how many log lines per push request are
-  sent. The smaller the batch size and the more amount of active streams you
-  have, the longer it takes before chunks are flushed. Keeping lots of chunks
-  around in the ingester increased memory consumption.
+    This will define how many active streams your load test will generate.
+    Start with only a few label values,
+    to keep the quantity of streams small enough,
+    such that it does not overwhelm your cluster.
 
-* **The amount of VUs.**
+* The batch size the client sends
 
-  VUs can be used to control the amount of parallelism with which logs should
-  be pushed. Every VU runs it's own loop of iterations. This means that the
-  amount of VUs has most impact on the generated log throughput.
-  Since generating logs is very CPU intensive, you cannot increase the number
-  indefinitely to get a higher amount of log data. A rule of thumb is that the
-  most data can be generated when VUs are set 1-1.5 times the amount of CPU
-  cores available on the k6 worker machine. This means on a 8 core machine you
-  would set the value between 8 and 12.
+    The batch size indirectly controls how many log lines per push request are
+    sent. The smaller the batch size, and the larger the quantity
+    of active streams you have,
+    the longer it takes before chunks are flushed.
+    Keeping lots of chunks
+    in the ingester increases memory consumption.
 
-* **The way to run k6.**
+* The number of virtual users (VUs)
 
-  k6 can be run locally, self-managed in a distributed way or highly scalable
-  within the k6 cloud. Whereas running your k6 load test from a single (local
-  or remote) machine is easy to setup and fine for smaller Loki clusters, it
-  does not allow to load test large Loki installations, because it cannot
-  create the data to saturate the write path. Therefore it makes sense to run
-  the tests in the [k6 Cloud](https://k6.io/cloud/).
+    VUs can be used to control the amount of parallelism with which logs should
+    be pushed. Every VU runs it's own loop of iterations.
+    Therfore, the number of VUs has the most impact on
+    the generated log throughput.
+    Since generating logs is CPU-intensive, there is a threshold above which
+    increasing the number VUs does not result in a higher amount of log data.
+    A rule of thumb is that the
+    most data can be generated when the number of VUs are set to 1-1.5 times
+    the quantity of CPU cores available on the k6 worker machine.
+    For example,
+    set the value in the range of 8 to 12 for an 8-core machine.
+
+* The way to run k6
+
+    k6 can be run locally, self-managed in a distributed way,
+    or it can be run highly-scalable within the k6 cloud.
+    Whereas running your k6 load test from a single (local
+    or remote) machine is easy to set up and fine for smaller Loki clusters,
+    the single machine does not load test large Loki installations,
+    because it cannot create the data to saturate the write path.
+    Therefore, it makes sense to run
+    the tests in the [k6 Cloud](https://k6.io/cloud/).
 
 ## Metrics
 
-The extension collects two additional metrics that are also printed in the
-[end-of-test summary](https://k6.io/docs/results-visualization/end-of-test-summary/) alongside the built-in metrics.
+The extension collects two metrics that are printed in the
+[end-of-test summary](https://k6.io/docs/results-visualization/end-of-test-summary/) in addition to the built-in metrics.
 
 | name | description |
 | ---- | ----------- |
-| `loki_client_uncompressed_bytes` | the size of uncompressed log data pushed to Loki in bytes |
-| `loki_client_lines` | the amount of log lines pushed to Loki |
+| `loki_client_uncompressed_bytes` | the quantity of uncompressed log data pushed to Loki, in bytes |
+| `loki_client_lines` | the number of log lines pushed to Loki |
 
-## Checks
+## k6 value checks
 
-An HTTP request that pushes logs to Loki successfully responds with status `204 No Content`. The status code should be checked explicitly with a [check](https://k6.io/docs/javascript-api/k6/check-val-sets-tags/).
+An HTTP request that successfully pushes logs to Loki
+responds with status `204 No Content`.
+The status code should be checked explicitly with a [k6 check](https://k6.io/docs/javascript-api/k6/check-val-sets-tags/).
 
 
-## Example
+## Javascript example
 
 ```javascript
 import { check, fail } from 'k6';
@@ -83,7 +95,8 @@ const HOST = "localhost:3100";
 /**
  * Name of the Loki tenant
  * passed as X-Scope-OrgID header to requests.
- * If tenant is omitted, xk6-loki runs in multi-tenant mode and every VU will use its own ID.
+ * If tenant is omitted, xk6-loki runs in multi-tenant mode,
+ * and every VU will use its own ID.
  * @constant {string}
  */
 const TENANT_ID = "my_org_id"
@@ -149,7 +162,7 @@ const client = new loki.Client(conf);
  */
 export function write() {
   let streams = randomInt(4, 8);
-  let res = client.pushParametrized(streams, 800 * KB, 1 * MB);
+  let res = client.pushParameterized(streams, 800 * KB, 1 * MB);
   check(res,
     {
       'successful write': (res) => {

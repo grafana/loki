@@ -1,68 +1,70 @@
 ---
-title: Query scenario
+title: Query testing
 weight: 30
 ---
 
-# Running the queries using xk6-loki extension
+# Query testing
 
-## Test scenario
+## Javascript test example
 
-To run the test, it's necessary to create JavaScript scenario. We have already created
-an [example](https://github.com/grafana/xk6-loki/blob/21307675b3e2a3e0a2b907d2131c9e906a6f6d60/examples/read-scenario.js), so you can reuse and extend it.
+The [example](https://github.com/grafana/xk6-loki/blob/21307675b3e2a3e0a2b907d2131c9e906a6f6d60/examples/read-scenario.js) can be resused and extended.
 
-This scenario allows to configure the ratio of each type of query and ratio of time ranges.
+This environment allows the configuration of ratios for each type of query
+and the ratios of time ranges.
 
-## Ratio
+## Ratios
 
-According to your needs, you can configure ratio of each type of query, ration of time ranges, etc.
+Configure ratios for each type of query and the ratio of time ranges:
 
-To do this you need:
-
-1. to define ratio config. The config it's just an array of items with fields:
+- Define the ratio configuration.
+    It is an array of items with fields:
 
     - `ratio` - (number) `0 > ration < 1`
     - `item` - (any)
 
-   Example of ratio config of query types:
+    **Javascript example:**
 
-   ```javascript
-      const queryTypeRatioConfig = [
-        {
-          ratio: 0.1,
-          item: readLabels
-        },
-        {
-          ratio: 0.15,
-          item: readLabelValues
-        },
-        {
-          ratio: 0.05,
-          item: readSeries
-        },
-        {
-          ratio: 0.5,
-          item: readRange
-        },
-        {
-          ratio: 0.2,
-          item: readInstant
-        },
-      ];
-      ```
+    ```javascript
+    const queryTypeRatioConfig = [
+      {
+        ratio: 0.1,
+        item: readLabels
+      },
+      {
+        ratio: 0.15,
+        item: readLabelValues
+      },
+      {
+        ratio: 0.05,
+        item: readSeries
+      },
+      {
+        ratio: 0.5,
+        item: readRange
+      },
+      {
+        ratio: 0.2,
+        item: readInstant
+      },
+    ];
+    ```
 
-   _Note: `item` here is just a function that will be executed if it is
-   selected. [See.](https://github.com/grafana/xk6-loki/blob/21307675b3e2a3e0a2b907d2131c9e906a6f6d60/examples/read-scenario.js#L139)_
+    `item` is a function that will be executed,
+    as seen within the [Javascript code example](https://github.com/grafana/xk6-loki/blob/21307675b3e2a3e0a2b907d2131c9e906a6f6d60/examples/read-scenario.js#L139).
 
-   According to this config, the ratio of requests during test run will be following:
+    With these example configuration settings,
+    these are the ratios of requests during a test run:
 
-    * ~10% of labels requests
-    * ~15% of label values requests
-    * ~5% of requests for series
-    * ~50% of range queries
-    * ~20% of instant queries
+    - approximately 10% of labels requests
+    - approximately 15% of label values requests
+    - approximately 5% of requests for series
+    - approximately 50% of range queries
+    - approximately 20% of instant queries
     
-2. to pass the config to the function `createSelectorByRatio` that will create a function that will consume random number and will choose `item` according to
-   defined ratio.
+- This Javascript example code fragment passes configuration to
+the function `createSelectorByRatio`, which will create a function
+to consume a random number and will choose the `item` according to a
+defined ratio.
 
    ```javascript
    const createSelectorByRatio = (ratioConfig) => {
@@ -93,9 +95,11 @@ To do this you need:
 
 ## Supported query types
 
-### Instant queries [(docs)](https://github.com/grafana/xk6-loki#method-clientinstantqueryquery-limit)
+The [xk6-loki Javascript API](https://github.com/grafana/xk6-loki#javascript-api) supports these query types.
 
-Here is the function that will be run for instant query.
+### Instant queries
+
+This function will be run for an instant query.
 
 ```javascript
 /**
@@ -107,12 +111,13 @@ function readInstant() {
   const query = randomChoice(instantQuerySuppliers)()
   // Execute query.
   let res = client.instantQuery(query, limit);
-  // Assert the response from loki.
+  // Assert the response from Loki.
   checkResponse(res, "successful instant query");
 }
 ```
 
-The example scenario contains 8 instant queries that you can use, extend or replace.
+This Javascript example contains 8 instant queries that you can use,
+extend or replace:
 
 ```javascript
 const instantQuerySuppliers = [
@@ -127,14 +132,13 @@ const instantQuerySuppliers = [
 ];
 ```
 
-These queries will be randomly picked for each request. Each query will randomly select label value from labels pool to use it in the query.
+The queries will be randomly picked for each request. Each query will randomly select a label value from the labels pool to use in the query.
 
-Also, if you want to define ratio per query, it's possible to use the same approach that was used to define ration for each query type and create query ratio
-config.
+To define the ratio per query, use the same approach that was used to define ratios for each query type and create the query ratio configuration.
 
-### Range queries [(docs)](https://github.com/grafana/xk6-loki#method-clientrangequeryquery-duration-limit)
+### Range queries
 
-Here is the function that will be run for instant query.
+This function will be run for a range query.
 
 ```javascript
 /**
@@ -148,12 +152,13 @@ function readRange() {
   let range = selectRangeByRatio(Math.random());
   // Execute query.
   let res = client.rangeQuery(query, range, limit);
-  // Assert the response from loki.
+  // Assert the response from Loki.
   checkResponse(res, "successful range query", range);
 }
 ```
 
-The example scenario contains already defined queries for range query requests. It contains all `instantQuerySuppliers` + 4 additional queries.
+The example contains already-defined queries for range query requests.
+It contains all `instantQuerySuppliers`, plus four additional queries.
 
 ```javascript
 const rangeQuerySuppliers = [
@@ -165,11 +170,12 @@ const rangeQuerySuppliers = [
 ]
 ```
 
-In the same way as for instant queries, they will be randomly picked and each query will randomly select label value from labels pool.
+Like instant queries, they will be randomly picked,
+and each query will randomly select a label value from the labels pool.
 
-### Labels query [(docs)](https://github.com/grafana/xk6-loki#method-clientlabelsqueryduration)
+### Labels query
 
-Here is the function that will be run for labels query.
+This function will be run for a labels query.
 
 ```javascript
 /**
@@ -180,14 +186,14 @@ function readLabels() {
   const range = selectRangeByRatio(Math.random())
   // Execute query.
   let res = client.labelsQuery(range);
-  // Assert the response from loki.
+  // Assert the response from Loki.
   checkResponse(res, "successful labels query", range);
 }
 ```
 
-### Label values [(docs)](https://github.com/grafana/xk6-loki#method-clientlabelvaluesquerylabel-duration)
+### Label values
 
-Here is the function that will be run for label values query.
+This function will be run for a label values query.
 
 ```javascript
 /**
@@ -200,14 +206,14 @@ function readLabelValues() {
   const range = selectRangeByRatio(Math.random());
   // Execute query.
   let res = client.labelValuesQuery(label, range);
-  // Assert the response from loki.
+  // Assert the response from Loki.
   checkResponse(res, "successful label values query", range);
 }
 ```
 
-### Series query [(docs)](https://github.com/grafana/xk6-loki#method-clientseriesquerymatchers-duration)
+### Series query
 
-Here is the function that will be run for series query.
+This function will be run for a series query.
 
 ```javascript
 /**
@@ -220,16 +226,19 @@ function readSeries() {
   let selector = randomChoice(seriesSelectorSuppliers)();
   // Execute query.
   let res = client.seriesQuery(selector, range);
-  // Assert the response from loki.
+  // Assert the response from Loki.
   checkResponse(res, "successful series query", range);
 }
 ```
 
 ## Labels pool
 
-If you use xk6-loki extension to generate logs in Loki, you can use variable `conf.labels` that contains label names and values that are reproducible
-generated[(See)](https://github.com/grafana/xk6-loki#labels). Pay attention that you have to use the same labels cardinality config for `write` and `read`
-scenarios.
+With the xk6-loki extension,
+you can use variable `conf.labels`.
+It contains label names and values that are
+generated in a reproducible manner.
+Use the same labels cardinality configuration for both `write` and `read`
+testing.
 
-Also, you can define your own pool of label names and values and randomly select labels from this pool instead of generated pool. 
-
+You can define your own pool of label names and values,
+and then randomly select labels from your pool instead of a generated pool. 
