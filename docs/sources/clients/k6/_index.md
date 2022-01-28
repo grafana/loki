@@ -11,8 +11,8 @@ works locally or in the cloud.
 Its configuration makes it flexible.
 
 The [xk6-loki extension](https://github.com/grafana/xk6-loki) permits pushing logs to and querying logs from a Loki instance.
-It acts as a Loki client,
-simulating real-world load test scenarios on your Loki installation.
+It acts as a Loki client, simulating real-world load to test the scalability,
+reliability, and performance of your Loki installation.
 
 ## Before you begin
 
@@ -70,6 +70,11 @@ Classes of this module are:
 | `Config` | configuration for the `Client` class |
 | `Client` | client for writing and reading logs from Loki |
 
+`Config` and `Client` must be called on the k6 init context (see
+[Test life cycle](https://k6.io/docs/using-k6/test-life-cycle/)) outside of the
+default function so the client is only configured once and shared between all
+VU iterations.
+
 The `Client` class exposes the following instance methods:
 
 | method | description |
@@ -82,14 +87,18 @@ The `Client` class exposes the following instance methods:
 | `client.labelValuesQuery(label, duration)` | execute label values query  ([GET /loki/api/v1/label/\<name\>/values]({{< relref "../../api/_index.md#get-lokiapiv1labelnamevalues" >}})) |
 | `client.seriesQuery(matchers, duration)` | execute series query  ([GET /loki/api/v1/series]({{< relref "../../api/_index.md#series" >}})) |
 
-**Javascript load test code fragment:**
+**Javascript load test example:**
 
 ```js
 import loki from 'k6/x/loki';
-let timeout = 5000; // ms
-let conf = loki.Config("localhost:3100", timeout);
-let client = loki.Client(conf);
-client.push()
+
+const timeout = 5000; // ms
+const conf = loki.Config("http://localhost:3100", timeout);
+const client = loki.Client(conf);
+
+export default () => {
+   client.pushParameterized(2, 512*1024, 1024*1024);
+};
 ```
 
 Refer to
