@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/grafana/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -11,8 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
-
-	"github.com/grafana/loki-operator/internal/manifests/internal/config"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

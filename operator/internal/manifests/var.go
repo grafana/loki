@@ -3,11 +3,10 @@ package manifests
 import (
 	"fmt"
 
+	"github.com/grafana/loki-operator/internal/manifests/openshift"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
-
-	"github.com/grafana/loki-operator/internal/manifests/openshift"
 )
 
 const (

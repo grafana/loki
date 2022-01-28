@@ -5,13 +5,12 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	routev1 "github.com/openshift/api/route/v1"
-
 	"github.com/grafana/loki-operator/controllers/internal/management/state"
 	"github.com/grafana/loki-operator/internal/external/k8s"
 	"github.com/grafana/loki-operator/internal/handlers"
 	"github.com/grafana/loki-operator/internal/manifests"
 	"github.com/grafana/loki-operator/internal/status"
+	routev1 "github.com/openshift/api/route/v1"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"

@@ -8,16 +8,14 @@ import (
 	"github.com/ViaQ/logerr/log"
 
 	"github.com/ViaQ/logerr/kverrors"
+	"github.com/grafana/loki-operator/internal/manifests"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/json"
 	"sigs.k8s.io/yaml"
 
-	"github.com/grafana/loki-operator/internal/manifests"
-
+	"github.com/grafana/loki-operator/internal/external/k8s"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/grafana/loki-operator/internal/external/k8s"
 )
 
 const (

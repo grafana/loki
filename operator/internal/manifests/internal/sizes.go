@@ -1,10 +1,9 @@
 package internal
 
 import (
+	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-
-	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 )
 
 // ComponentResources is a map of component->requests/limits
