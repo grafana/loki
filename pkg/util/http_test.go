@@ -11,11 +11,11 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -140,20 +140,20 @@ func TestStreamWriteYAMLResponse(t *testing.T) {
 
 func TestParseProtoReader(t *testing.T) {
 	// 47 bytes compressed and 53 uncompressed
-	req := &cortexpb.PreallocWriteRequest{
-		WriteRequest: cortexpb.WriteRequest{
-			Timeseries: []cortexpb.PreallocTimeseries{
+	req := &logproto.PreallocWriteRequest{
+		WriteRequest: logproto.WriteRequest{
+			Timeseries: []logproto.PreallocTimeseries{
 				{
-					TimeSeries: &cortexpb.TimeSeries{
-						Labels: []cortexpb.LabelAdapter{
+					TimeSeries: &logproto.TimeSeries{
+						Labels: []logproto.LabelAdapter{
 							{Name: "foo", Value: "bar"},
 						},
-						Samples: []cortexpb.Sample{
+						Samples: []logproto.Sample{
 							{Value: 10, TimestampMs: 1},
 							{Value: 20, TimestampMs: 2},
 							{Value: 30, TimestampMs: 3},
 						},
-						Exemplars: []cortexpb.Exemplar{},
+						Exemplars: []logproto.Exemplar{},
 					},
 				},
 			},
@@ -182,7 +182,7 @@ func TestParseProtoReader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			assert.Nil(t, util.SerializeProtoResponse(w, req, tt.compression))
-			var fromWire cortexpb.PreallocWriteRequest
+			var fromWire logproto.PreallocWriteRequest
 
 			reader := w.Result().Body
 			if tt.useBytesBuffer {

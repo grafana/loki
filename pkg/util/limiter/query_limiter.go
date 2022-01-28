@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 type queryLimiterCtxKey struct{}
@@ -61,7 +62,7 @@ func QueryLimiterFromContextWithFallback(ctx context.Context) *QueryLimiter {
 }
 
 // AddSeries adds the input series and returns an error if the limit is reached.
-func (ql *QueryLimiter) AddSeries(seriesLabels []cortexpb.LabelAdapter) error {
+func (ql *QueryLimiter) AddSeries(seriesLabels []logproto.LabelAdapter) error {
 	// If the max series is unlimited just return without managing map
 	if ql.maxSeriesPerQuery == 0 {
 		return nil

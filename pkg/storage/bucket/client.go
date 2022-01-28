@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/bucket/gcs"
 	"github.com/grafana/loki/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (
