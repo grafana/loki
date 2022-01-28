@@ -1,0 +1,16 @@
+sudo: required 
+dist: trusty
+language: go
+go:
+  - "1.11"
+
+install:
+  - go get -t -v -d ./...
+
+script:
+  # Check whether files are syntactically correct.
+  - "gofmt -l $(find . -name '*.go' | tr '\\n' ' ') >/dev/null"
+  # Check whether files were not gofmt'ed.
+  - "gosrc=$(find . -name '*.go' | tr '\\n' ' '); [ $(gofmt -l $gosrc 2>&- | wc -l) -eq 0 ] || (echo 'gofmt was not run on these files:'; gofmt -l $gosrc 2>&-; false)"
+  - go tool vet .
+  - go test -c -race . && sudo ./renameio.test -test.v

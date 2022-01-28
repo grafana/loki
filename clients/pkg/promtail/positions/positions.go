@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/renameio"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -252,12 +253,11 @@ func writePositionFile(filename string, positions map[string]string) error {
 	}
 
 	target := filepath.Clean(filename)
-	temp := target + "-new"
 
-	err = ioutil.WriteFile(temp, buf, os.FileMode(positionFileMode))
+	err = renameio.WriteFile(target, buf, os.FileMode(positionFileMode))
 	if err != nil {
 		return err
 	}
 
-	return os.Rename(temp, target)
+	return nil
 }
