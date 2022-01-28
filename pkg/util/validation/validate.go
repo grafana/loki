@@ -4,15 +4,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"unicode/utf8"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/extract"
 )
@@ -44,11 +43,6 @@ const (
 	duplicateLabelNames     = "duplicate_label_names"
 	labelsNotSorted         = "labels_not_sorted"
 	labelValueTooLong       = "label_value_too_long"
-
-	// Exemplar-specific validation reasons
-	exemplarLabelsMissing    = "exemplar_labels_missing"
-	exemplarLabelsTooLong    = "exemplar_labels_too_long"
-	exemplarTimestampInvalid = "exemplar_timestamp_invalid"
 
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
@@ -109,54 +103,17 @@ type SampleValidationConfig interface {
 
 // ValidateSample returns an err if the sample is invalid.
 // The returned error may retain the provided series labels.
-func ValidateSample(cfg SampleValidationConfig, userID string, ls []cortexpb.LabelAdapter, s cortexpb.Sample) ValidationError {
+func ValidateSample(cfg SampleValidationConfig, userID string, ls []logproto.LabelAdapter, s logproto.Sample) ValidationError {
 	unsafeMetricName, _ := extract.UnsafeMetricNameFromLabelAdapters(ls)
 
-	if cfg.RejectOldSamples(userID) && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge(userID)) {
+	if cfg.RejectOldSamples(userID) && model.Time(s.Timestamp) < model.Now().Add(-cfg.RejectOldSamplesMaxAge(userID)) {
 		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
-		return newSampleTimestampTooOldError(unsafeMetricName, s.TimestampMs)
+		return newSampleTimestampTooOldError(unsafeMetricName, s.Timestamp)
 	}
 
-	if model.Time(s.TimestampMs) > model.Now().Add(cfg.CreationGracePeriod(userID)) {
+	if model.Time(s.Timestamp) > model.Now().Add(cfg.CreationGracePeriod(userID)) {
 		DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
-		return newSampleTimestampTooNewError(unsafeMetricName, s.TimestampMs)
-	}
-
-	return nil
-}
-
-// ValidateExemplar returns an error if the exemplar is invalid.
-// The returned error may retain the provided series labels.
-func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exemplar) ValidationError {
-	if len(e.Labels) <= 0 {
-		DiscardedExemplars.WithLabelValues(exemplarLabelsMissing, userID).Inc()
-		return newExemplarEmtpyLabelsError(ls, []cortexpb.LabelAdapter{}, e.TimestampMs)
-	}
-
-	if e.TimestampMs == 0 {
-		DiscardedExemplars.WithLabelValues(exemplarTimestampInvalid, userID).Inc()
-		return newExemplarMissingTimestampError(
-			ls,
-			e.Labels,
-			e.TimestampMs,
-		)
-	}
-
-	// Exemplar label length does not include chars involved in text
-	// rendering such as quotes, commas, etc.  See spec and const definition.
-	labelSetLen := 0
-	for _, l := range e.Labels {
-		labelSetLen += utf8.RuneCountInString(l.Name)
-		labelSetLen += utf8.RuneCountInString(l.Value)
-	}
-
-	if labelSetLen > ExemplarMaxLabelSetLength {
-		DiscardedExemplars.WithLabelValues(exemplarLabelsTooLong, userID).Inc()
-		return newExemplarLabelLengthError(
-			ls,
-			e.Labels,
-			e.TimestampMs,
-		)
+		return newSampleTimestampTooNewError(unsafeMetricName, s.Timestamp)
 	}
 
 	return nil
@@ -172,7 +129,7 @@ type LabelValidationConfig interface {
 
 // ValidateLabels returns an err if the labels are invalid.
 // The returned error may retain the provided series labels.
-func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool) ValidationError {
+func ValidateLabels(cfg LabelValidationConfig, userID string, ls []logproto.LabelAdapter, skipLabelNameValidation bool) ValidationError {
 	if cfg.EnforceMetricName(userID) {
 		unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(ls)
 		if err != nil {
@@ -227,7 +184,7 @@ type MetadataValidationConfig interface {
 }
 
 // ValidateMetadata returns an err if a metric metadata is invalid.
-func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *cortexpb.MetricMetadata) error {
+func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *logproto.MetricMetadata) error {
 	if cfg.EnforceMetadataMetricName(userID) && metadata.GetMetricFamilyName() == "" {
 		DiscardedMetadata.WithLabelValues(missingMetricName, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataMissingMetricName)
