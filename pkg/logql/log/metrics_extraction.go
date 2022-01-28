@@ -33,6 +33,7 @@ type SampleExtractor interface {
 // StreamSampleExtractor extracts sample for a log line.
 // A StreamSampleExtractor never mutate the received line.
 type StreamSampleExtractor interface {
+	BaseLabels() LabelsResult
 	Process(line []byte) (float64, LabelsResult, bool)
 	ProcessString(line string) (float64, LabelsResult, bool)
 }
@@ -96,6 +97,8 @@ func (l *streamLineSampleExtractor) ProcessString(line string) (float64, LabelsR
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
 	return l.Process(unsafeGetBytes(line))
 }
+
+func (l *streamLineSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
 
 type convertionFn func(value string) (float64, error)
 
@@ -195,6 +198,8 @@ func (l *streamLabelSampleExtractor) ProcessString(line string) (float64, Labels
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
 	return l.Process(unsafeGetBytes(line))
 }
+
+func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
 
 func convertFloat(v string) (float64, error) {
 	return strconv.ParseFloat(v, 64)

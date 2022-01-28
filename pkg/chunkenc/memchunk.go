@@ -1252,6 +1252,8 @@ func (e *entryBufferedIterator) Entry() logproto.Entry {
 
 func (e *entryBufferedIterator) Labels() string { return e.currLabels.String() }
 
+func (e *entryBufferedIterator) LabelsHash() uint64 { return e.pipeline.BaseLabels().Hash() }
+
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
 		newLine, lbs, ok := e.pipeline.Process(e.currLine)
@@ -1298,6 +1300,8 @@ func (e *sampleBufferedIterator) Next() bool {
 	return false
 }
 func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() }
+
+func (e *sampleBufferedIterator) LabelsHash() uint64 { return e.extractor.BaseLabels().Hash() }
 
 func (e *sampleBufferedIterator) Sample() logproto.Sample {
 	return e.cur
