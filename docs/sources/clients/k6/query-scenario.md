@@ -19,7 +19,7 @@ Configure ratios for each type of query and the ratio of time ranges:
 - Define the ratio configuration.
     It is an array of items with fields:
 
-    - `ratio` - (number) `0 > ration < 1`
+    - `ratio` - (number) `0 > ratio < 1`
     - `item` - (any)
 
     **Javascript example:**
