@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/config"
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	"github.com/grafana/loki/clients/pkg/promtail/targets"
+
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 

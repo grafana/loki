@@ -11,7 +11,7 @@ import (
 
 // ValidationError is an error returned by series validation.
 //
-// nolint:golint ignore stutter warning
+//nolint ignore shutter warning
 type ValidationError error
 
 // genericValidationError is a basic implementation of ValidationError which can be used when the
