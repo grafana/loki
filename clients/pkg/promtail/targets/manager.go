@@ -154,6 +154,7 @@ func NewTargetManagers(
 		case FileScrapeConfigs:
 			pos, err := getPositionFile()
 			if err != nil {
+				return nil, err
 			}
 			fileTargetManager, err := file.NewFileTargetManager(
 				fileMetrics,
