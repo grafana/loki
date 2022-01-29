@@ -215,5 +215,5 @@ func (s3Client *s3Client) acknowledgeMessage(message *sqs.Message) ackMessage {
 }
 
 func isTestMessage(testEvent s3TestEvent) bool {
-	return testEvent.Event == s3TestEventName {
+	return testEvent.Event == s3TestEventName
 }
