@@ -171,7 +171,7 @@ func (r *objectReader) markPositionAndSize() {
 }
 
 func (r *objectReader) GetObject() (*bufio.Reader, error) {
-	reader, err := r.objectClient.GetObject(context.Background(), r.object.Key)
+	reader, _, err := r.objectClient.GetObject(context.Background(), r.object.Key)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to fetch object")
 	}

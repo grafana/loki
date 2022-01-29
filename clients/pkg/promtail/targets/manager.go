@@ -125,7 +125,7 @@ func NewTargetManagers(
 		gcplogMetrics      *gcplog.Metrics
 		gelfMetrics        *gelf.Metrics
 		cloudflareMetrics  *cloudflare.Metrics
-		dockerMetrics     *docker.Metrics
+		dockerMetrics      *docker.Metrics
 		objectStoreMetrics *objectstore.Metrics
 	)
 	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
@@ -151,6 +151,7 @@ func NewTargetManagers(
 	}
 	for target, scrapeConfigs := range targetScrapeConfigs {
 		switch target {
+		case FileScrapeConfigs:
 			pos, err := getPositionFile()
 			if err != nil {
 			}
