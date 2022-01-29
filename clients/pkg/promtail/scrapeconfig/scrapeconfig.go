@@ -45,7 +45,7 @@ type Config struct {
 	KafkaConfig      *KafkaTargetConfig         `yaml:"kafka,omitempty"`
 	GelfConfig       *GelfTargetConfig          `yaml:"gelf,omitempty"`
 	CloudflareConfig *CloudflareConfig          `yaml:"cloudflare,omitempty"`
-	S3Config         *S3TargetConfig            `yaml:"aws,omitempty"`
+	S3Config         *S3TargetConfig            `yaml:"aws_s3,omitempty"`
 	RelabelConfigs   []*relabel.Config          `yaml:"relabel_configs,omitempty"`
 	// List of Docker service discovery configurations.
 	DockerSDConfigs        []*moby.DockerSDConfig `yaml:"docker_sd_configs,omitempty"`
@@ -394,10 +394,13 @@ type S3TargetConfig struct {
 	// Labels optionally holds labels to associate with each record read from S3 objects.
 	Labels model.LabelSet `yaml:"labels"`
 
+	// SQS queue name to receive s3 events from
 	SQSQueue string `yaml:"sqs_queue"`
 
+	// SQS queue wait timeout value
 	Timeout int64 `yaml:"sqs_queue_timeout"`
 
+	// Whether to read from beginning for already read file
 	ResetCursor bool `yaml:"reset_cursor"`
 }
 

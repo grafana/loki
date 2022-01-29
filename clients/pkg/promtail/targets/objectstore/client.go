@@ -6,7 +6,6 @@ import (
 
 type Client interface {
 	ReceiveMessage(timeout int64) ([]messageObject, error)
-	acknowledgeMessage(message interface{}) ackMessage
 }
 
 type ackMessage func() error

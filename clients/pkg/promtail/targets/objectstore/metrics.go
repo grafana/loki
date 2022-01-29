@@ -11,7 +11,7 @@ type Metrics struct {
 	objectEntries            prometheus.Counter
 	objectReadBytes          *prometheus.GaugeVec
 	objectReadLines          *prometheus.CounterVec
-	objectActive             prometheus.Gauge
+	objectActive             *prometheus.GaugeVec
 	objectLogLengthHistogram *prometheus.HistogramVec
 }
 
@@ -37,11 +37,11 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		Name:      "object_read_lines_total",
 		Help:      "Number of lines read.",
 	}, []string{"key", "store"})
-	m.objectActive = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.objectActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "promtail",
 		Name:      "object_files_active_total",
 		Help:      "Number of active files.",
-	})
+	}, []string{"store"})
 	m.objectLogLengthHistogram = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "promtail",
 		Name:      "object_log_entries_bytes",

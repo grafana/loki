@@ -244,9 +244,16 @@ func NewTargetManagers(
 			}
 			targetManagers = append(targetManagers, cfTargetManager)
 		case DockerConfigs:
+			pos, err := getPositionFile()
+			if err != nil {
+				return nil, err
+			}
 			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs)
+			if err != nil {
 				return nil, errors.Wrap(err, "failed to make Docker target manager")
+			}
 			targetManagers = append(targetManagers, cfTargetManager)
+		case DockerSDConfigs:
 			pos, err := getPositionFile()
 			if err != nil {
 				return nil, err
@@ -263,7 +270,7 @@ func NewTargetManagers(
 			}
 			objectStoreTargetManager, err := objectstore.NewTargetManager(objectStoreMetrics, logger, pos, client, scrapeConfigs)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to make cloudflare s3 object store manager")
+				return nil, errors.Wrap(err, "failed to make s3 object store manager")
 			}
 			targetManagers = append(targetManagers, objectStoreTargetManager)
 		default:

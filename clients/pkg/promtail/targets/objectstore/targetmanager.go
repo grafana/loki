@@ -28,26 +28,6 @@ func NewTargetManager(
 	pushClient api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 ) (*TargetManager, error) {
-	// tm := &TargetManager{
-	// 	logger:  logger,
-	// 	targets: make(map[string]*Target),
-	// }
-	// for _, cfg := range scrapeConfigs {
-	// 	if cfg.CloudflareConfig == nil {
-	// 		continue
-	// 	}
-	// 	pipeline, err := stages.NewPipeline(log.With(logger, "component", "cloudflare_pipeline"), cfg.PipelineStages, &cfg.JobName, metrics.reg)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	t, err := NewTarget(metrics, log.With(logger, "target", "cloudflare"), pipeline.Wrap(pushClient), positions, cfg.CloudflareConfig)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	tm.targets[cfg.JobName] = t
-	// }
-
-	// return tm, nil
 	tm := &TargetManager{
 		logger:  logger,
 		targets: make(map[string]*Target),
@@ -77,18 +57,15 @@ func NewTargetManager(
 				return nil, err
 			}
 
-			sqsClient := SQSConfig{
-				storageClient,
-				cfg.S3Config.SQSQueue,
-			}
-
-			s3Client, err := newS3Client(sqsClient)
+			s3Client, err := newS3Client(storageClient, &cfg.S3Config.SQSQueue)
 			if err != nil {
 				return nil, err
 			}
 
 			labels := cfg.S3Config.Labels.Merge(model.LabelSet{
-				model.LabelName("s3_bucket"): model.LabelValue(cfg.S3Config.BucketName),
+				model.LabelName("s3_bucket"):    model.LabelValue(cfg.S3Config.BucketName),
+				model.LabelName("s3_sqs_queue"): model.LabelValue(cfg.S3Config.SQSQueue),
+				model.LabelName("s3_region"):    model.LabelValue(cfg.S3Config.Region),
 			})
 
 			t, err := NewTarget(metrics, log.With(logger, "target", "objectstore"), pipeline.Wrap(pushClient), positions, objectClient, s3Client, labels, cfg.S3Config.Timeout, cfg.S3Config.ResetCursor, "s3")

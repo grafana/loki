@@ -366,23 +366,28 @@ Promtail supports scraping logs from Object store. Currently promtail supports s
 
 ### How scraping object store works with AWS S3?
 
-S3 should be integrated with SQS and Upload and Put events should be sent to SQS queue. Promtail polls SQS for the messages and on receiving the messages it parses the message to get the `objects` which were uploaded. 
-Then we pull each object, read the log lines and send the lines to Loki server. Messages will be deleted/acknowledged only after the object is completely being read.  
+S3 should be integrated with SQS. Object create events, mainly `Post`, `Put`, and `CompleteMultipartUpload` events should be sent to SQS queue. Promtail polls SQS for the messages, and upon receiving the messages, it parses the message for the `objects`. 
 
-Things to note on how objectstore treats objects in few scenarios
+Promtail pulls each object, reads the log lines, and sends the lines to the Loki server. Messages will be deleted/acknowledged only after the object is completely read. 
 
-1. It's possible that we will receive the same object again from the queue for which the reader is still active. In this case we check the modified date time of the object. If it's same as the last known time we skip creating one more reader for it. If the modified date time is changed, we stop the active reader and create new reader. Also, the line or position to start reading depends on `reset_cursor` configuration. If set to `true` objects will be read from begining otherwise it will be read from last saved cursor position. 
-2. If promtail is stopped or crashed, the objects which were not completely read will resume the reading from the last saved position of the cursor. Since, messages are deleted/acknowledged only after the the object is completely read, on restarting the promtail we receive the same messages again from the queue and we start the reading from the last saved position.
+#### Brief info on configuring S3 with SQS
 
+Make sure you have a queue created in SQS before configuring S3 with SQS. SQS queue should be created in the same region as S3. Also, make sure to add access policy to the queue to grant S3 permission to post messages to the queue. More information on configuring SQS can be found [here](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configuring.html)
 
-### Next steps
+1. In your bucket configuration go to `Event notifications` section.
+2. Click `Create event notification`. Fill in the required fields and in `Event Types` section select `Put`, 
+and `Post` options. If required for your use case also select `Multipart upload completed` option.
+3. In the `Destination` section select `SQS queue`. Select your queue from the dropdown and click `Save`.
 
-In the next versions of object scraping, we would like to support other Object storage providers like GCS, Swift etc...
+Of note on how the object store treats objects:
+
+- It is possible to re-receive the same object from the queue for which the reader is still active. Re-receipt is handled by checking the modified date time of the object. If the time is same as the last known time, Promtail skips creating another reader. If the modified date time is changed, Promtail stops the active reader and creates a new reader. The line or position at which to start reading depends on `reset_cursor` configuration. If set to `true` objects will be read from beginning. If `false`, it will be read from the last-saved cursor position. 
+- If Promtail is stopped or has crashed, the objects which were in the process of being read will resume from the last saved position of the cursor. Since messages are deleted/acknowledged only after the the object is completely read, upon restart, Promtail will re-receive the same messages from the queue and start reading from the last-saved position.
 
 ```yaml
 scrape_configs:
   - job_name: s3_objectstore
-    aws:
+    aws_s3:
       bucketname: <bucketname>
       access_key_id: <access_key_id>
       secret_access_key: <secret_access_key>

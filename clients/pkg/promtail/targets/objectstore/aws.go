@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -20,14 +21,13 @@ import (
 	loki_aws "github.com/grafana/loki/pkg/storage/chunk/aws"
 )
 
-type SQSConfig struct {
-	loki_aws.S3Config
-	Queue string
-}
-
 type s3Client struct {
 	queueURL *string
 	svc      sqsiface.SQSAPI
+}
+
+type s3TestEvent struct {
+	Event string
 }
 
 type s3Results struct {
@@ -37,6 +37,7 @@ type s3Results struct {
 type s3Record struct {
 	S3        s3
 	EventTime string
+	EventName string
 }
 
 type s3 struct {
@@ -52,16 +53,17 @@ var (
 	defaultMaxRetries          = 5
 	defaultMaxNumberOfMessages = int64(10)
 	defaultVisibilityTimeout   = int64(20)
+	s3TestEventName            = "s3:TestEvent"
 )
 
-func newS3Client(cfg SQSConfig) (Client, error) {
+func newS3Client(cfg loki_aws.S3Config, queue *string) (Client, error) {
 	sess, err := buildSQSClient(cfg)
 	if err != nil {
 		return nil, err
 	}
 	svc := sqs.New(sess)
 	urlResult, err := svc.GetQueueUrl(&sqs.GetQueueUrlInput{
-		QueueName: &cfg.Queue,
+		QueueName: queue,
 	})
 	if err != nil {
 		return nil, err
@@ -73,8 +75,8 @@ func newS3Client(cfg SQSConfig) (Client, error) {
 	}, nil
 }
 
-func buildSQSClient(cfg SQSConfig) (*session.Session, error) {
-	var sqsConfig *aws.Config
+func buildSQSClient(cfg loki_aws.S3Config) (*session.Session, error) {
+	sqsConfig := &aws.Config{}
 
 	sqsConfig = sqsConfig.WithMaxRetries(defaultMaxRetries)
 
@@ -134,6 +136,7 @@ func buildSQSClient(cfg SQSConfig) (*session.Session, error) {
 	return sess, nil
 }
 
+// ReceiveMessage implements Client
 func (s3Client *s3Client) ReceiveMessage(timeout int64) ([]messageObject, error) {
 	msgResult, err := s3Client.svc.ReceiveMessage(&sqs.ReceiveMessageInput{
 		AttributeNames: []*string{
@@ -163,36 +166,57 @@ func (s3Client *s3Client) processMessage(messages interface{}) ([]messageObject,
 		if err != nil {
 			return nil, err
 		}
+		fmt.Printf("Message content %s", content)
 		if len(sqsResult.Records) < 1 {
+			var testEvent s3TestEvent
+			err := json.Unmarshal([]byte(content), &testEvent)
+			if err != nil {
+				return nil, err
+			}
+
+			// S3 sends Test event on configuring SQS queue.
+			// Unforutnately, it's not automatically deleted
+			// and we have to handle it.
+			if isTestMessage(testEvent) {
+				if err := s3Client.acknowledgeMessage(message)(); err != nil {
+					return nil, errors.Wrap(err, "error in deleting s3 test event message")
+				}
+			}
 			continue
 		}
+		for _, record := range sqsResult.Records {
+			t, err := time.Parse(time.RFC3339, record.EventTime)
+			if err != nil {
+				return nil, err
+			}
 
-		result := sqsResult.Records[0]
-		layout := "2006-01-02T15:04:05.000Z"
-		t, err := time.Parse(layout, result.EventTime)
-
-		if err != nil {
-			return nil, err
+			messageObjects = append(messageObjects, messageObject{
+				Object: chunk.StorageObject{
+					Key:        record.S3.Object.Key,
+					ModifiedAt: t,
+				},
+				Acknowledge: s3Client.acknowledgeMessage(message),
+			})
 		}
-		messageObjects = append(messageObjects, messageObject{
-			Object: chunk.StorageObject{
-				Key:        result.S3.Object.Key,
-				ModifiedAt: t,
-			},
-			Acknowledge: s3Client.acknowledgeMessage(message),
-		})
+
 	}
 
 	return messageObjects, nil
 }
 
-func (s3Client *s3Client) acknowledgeMessage(message interface{}) ackMessage {
+func (s3Client *s3Client) acknowledgeMessage(message *sqs.Message) ackMessage {
 	return func() error {
-		m := message.(*sqs.Message)
-		_, err := s3Client.svc.DeleteMessage(&sqs.DeleteMessageInput{QueueUrl: s3Client.queueURL, ReceiptHandle: m.ReceiptHandle})
+		_, err := s3Client.svc.DeleteMessage(&sqs.DeleteMessageInput{QueueUrl: s3Client.queueURL, ReceiptHandle: message.ReceiptHandle})
 		if err != nil {
 			return err
 		}
 		return nil
 	}
+}
+
+func isTestMessage(testEvent s3TestEvent) bool {
+	if testEvent.Event == s3TestEventName {
+		return true
+	}
+	return false
 }

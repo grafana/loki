@@ -331,6 +331,9 @@ job_name: <string>
 # Configuration describing how to pull logs from Cloudflare.
 [cloudflare: <cloudflare>]
 
+# Describes how to receive objects from AWS S3 and process logs
+[aws_s3: <aws_s3_config>]
+
 # Describes how to relabel targets to determine if they should
 # be processed.
 relabel_configs:
@@ -796,9 +799,9 @@ use_incoming_timestamp: <bool>
 max_message_length: <int>
 ```
 
-### s3_config
+### aws_s3
 
-The `s3_config` block configures reading log files from s3 bucket.
+The `aws_s3` block configures reading log files from an S3 bucket.
 
 **File Formats Supported** : `GZip` and other flat files `.txt`, `.log`
 
@@ -815,13 +818,13 @@ The `s3_config` block configures reading log files from s3 bucket.
 # AWS region to use
 [region: string]
 
-# S3 Endpoint to connect to
+# S3 endpoint to connect to
 [endpoint: string]
 
-# Set to true to force the request to use path-style addressing
+# A value of true to forces the request to use path-style addressing
 [s3_forcepath_style: <boolean> | default = false]
 
-# Disable https on S3 connection.
+# Disable HTTPS on the S3 connection
 [insecure: <boolean> | default = false]
 
 # SQS queue name to receive s3 events from
@@ -830,26 +833,26 @@ The `s3_config` block configures reading log files from s3 bucket.
 # SQS queue wait timeout value
 [sqs_queue_timeout: int64 | default = 20]
 
-# Set to true to start reading object from begining for already read objects.
+# A value of true reads objects from their beginning for already-read objects
 [reset_cursor: bool | default = false]
 
-# Label map to add to every log message.
+# Label map to add to every log message
 labels:
   [ <labelname>: <labelvalue> ... ]
 
 http_config:
-  # The maximum amount of time an idle connection will be held open.
+  # The maximum amount of time an idle connection will be held open
   [idle_conn_timeout: <duration> | default = 1m30s]
 
   # If non-zero, specifies the amount of time to wait for a server's
-  # response headers after fully writing the request.
+  # response headers after fully writing the request
   [response_header_timeout: <duration> | default = 0s]
 
-  # Set to true to skip verifying the certificate chain and hostname.
+  # Set to true to skip verifying the certificate chain and hostname
   [insecure_skip_verify: <boolean> | default = false]
 
   # Path to the trusted CA file that signed the SSL certificate of the S3
-  # endpoint.
+  # endpoint
   [ca_file: <string> | default = ""]
 
 ```
@@ -1953,7 +1956,7 @@ You can set `grpc_listen_port` to `0` to have a random port assigned if not usin
 
 ## Example S3 Config
 
-This example reads log files from s3
+This example reads log files from S3
 
 ```yaml
 server:
@@ -1968,10 +1971,15 @@ clients:
 
 scrape_configs:
   - job_name: s3
-    aws:
-      s3: s3://acess_key:secret_key@region/bucketname
+    aws_s3:
+      bucketname: example_bucket
+      access_key_id: <access_key_id>
+      secret_access_key: <secret_access_key>
+      region: us-east-1
+      s3_forcepath_style: false
+      insecure: false
+      sqs_queue: example_queueu
+      sqs_queue_timeout: 20
+      reset_cursor: false
       labels:
         job: "awslogs"
-      prefix: ""
-      sync_period: 2m
-```

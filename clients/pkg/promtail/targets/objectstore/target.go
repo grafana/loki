@@ -28,12 +28,10 @@ type Target struct {
 	labels    model.LabelSet
 	watch     map[string]*objectReader
 
-	quit chan struct{}
-	done chan struct{}
-
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+	mtx    sync.Mutex
 
 	objectClient chunk.ObjectClient
 	client       Client
@@ -58,8 +56,6 @@ func NewTarget(metrics *Metrics, logger log.Logger,
 		logger:       logger,
 		handler:      handler,
 		positions:    positions,
-		quit:         make(chan struct{}),
-		done:         make(chan struct{}),
 		objectClient: objectClient,
 		client:       client,
 		watch:        map[string]*objectReader{},
@@ -79,7 +75,6 @@ func (t *Target) run() {
 	defer func() {
 		for _, v := range t.watch {
 			level.Info(t.logger).Log("msg", "updating object last position", "object", v.object.Key)
-			v.markPositionAndSize()
 			level.Info(t.logger).Log("msg", "stopping object reader", "object", v.object.Key)
 			v.stop()
 		}
@@ -107,21 +102,21 @@ func (t *Target) run() {
 	}
 }
 
-func (t *Target) handleObject(object messageObject) {
+func (t *Target) handleObject(msgObject messageObject) {
 	// check if the object's position is already saved
-	modifiedAt, pos, err := t.getPosition(object.Object.Key)
+	modifiedAt, pos, err := t.getPosition(msgObject.Object.Key)
 	if err != nil {
-		level.Error(t.logger).Log("msg", "error in getting position for object", "error", err, "object", object.Object.Key)
+		level.Error(t.logger).Log("msg", "error in getting position for object", "error", err, "object", msgObject.Object.Key)
 	}
-	level.Debug(t.logger).Log("msg", "object position details", "object", object.Object.Key, "modified_at", modifiedAt, "position", pos)
+	level.Debug(t.logger).Log("msg", "object position details", "object", msgObject.Object.Key, "modified_at", modifiedAt, "position", pos)
 
-	v, ok := t.watch[object.Object.Key]
+	v, ok := t.watch[msgObject.Object.Key]
 	if ok {
 		readerActive := v.active.Load()
 		// if the object is still being read and we receive the same object we should
 		// not create one more reader.
-		if readerActive && modifiedAt == object.Object.ModifiedAt.UnixNano() {
-			level.Debug(t.logger).Log("msg", "received same object. object is still being read. not creating new reader", "object", object.Object.Key, "received_modified_at", object.Object.ModifiedAt.UnixNano(), "saved_modified_at", modifiedAt)
+		if readerActive && modifiedAt == msgObject.Object.ModifiedAt.UnixNano() {
+			level.Debug(t.logger).Log("msg", "received same object. object is still being read. not creating new reader", "object", msgObject.Object.Key, "received_modified_at", msgObject.Object.ModifiedAt.UnixNano(), "saved_modified_at", modifiedAt)
 			return
 		}
 		if readerActive {
@@ -131,15 +126,18 @@ func (t *Target) handleObject(object messageObject) {
 	}
 
 	if t.resetCursor {
-		level.Debug(t.logger).Log("msg", "reset_cursor set to true. reading object from beginning", "object", object.Object.Key, "modified_at", modifiedAt, "position", pos)
+		pos = 0
+		level.Debug(t.logger).Log("msg", "reset_cursor set to true. reading object from beginning", "object", msgObject.Object.Key, "modified_at", modifiedAt, "position", pos)
 	}
 
-	objectReader := newObjectReader(t.metrics, t.storeName, object.Object, object.Acknowledge, t.objectClient, t.logger, t.labels, t.positions, t.handler, pos)
-	t.watch[object.Object.Key] = objectReader
+	objectReader := newObjectReader(t.metrics, t.storeName, msgObject.Object, msgObject.Acknowledge, t.objectClient, t.logger, t.labels, t.positions, t.handler, pos)
+	t.mtx.Lock()
+	t.watch[msgObject.Object.Key] = objectReader
+	t.mtx.Unlock()
 }
 
 func (t *Target) getPosition(key string) (int64, int64, error) {
-	positionString := t.positions.GetString(fmt.Sprintf("s3object-%s", key))
+	positionString := t.positions.GetString(positions.CursorKey(fmt.Sprintf("object-%s", key)))
 	if positionString == "" {
 		return 0, 0, nil
 	}
@@ -164,6 +162,8 @@ func (t *Target) getPosition(key string) (int64, int64, error) {
 
 // Ready if at least one object is being read.
 func (t *Target) Ready() bool {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
 	return len(t.watch) > 0
 }
 

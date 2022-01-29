@@ -80,24 +80,23 @@ func newObjectReader(
 	}
 
 	go objectReader.run()
-	metrics.objectActive.Add(1.)
 	return objectReader
 }
 
 func (r *objectReader) run() {
 	level.Info(r.logger).Log("msg", "start reading object", "object", r.object.Key)
+	r.metrics.objectActive.WithLabelValues(r.storeName).Add(1.)
 	r.wg.Add(1)
-	positionSyncPeriod := r.positions.SyncPeriod()
-	positionWait := time.NewTicker(positionSyncPeriod)
+
 	defer func() {
-		positionWait.Stop()
+		r.active.Store(false)
 		r.wg.Done()
+		r.cleanupMetrics()
 	}()
 
 	bufReader, err := r.GetObject()
 	if err != nil {
 		level.Error(r.logger).Log("msg", "error in fetching and initializing object reader", "err", err)
-		r.active.Store(false)
 		return
 	}
 
@@ -110,8 +109,6 @@ func (r *objectReader) run() {
 		select {
 		case <-r.ctx.Done():
 			return
-		case <-positionWait.C:
-			r.markPositionAndSize()
 		default:
 			bytes, err := bufReader.ReadBytes('\n')
 			if err != nil {
@@ -119,13 +116,12 @@ func (r *objectReader) run() {
 					level.Debug(r.logger).Log("msg", "reached EOF while reading object", "object", r.object.Key)
 					r.sendLines(bytes, labels) // send any pending bytes
 					r.object.BytesRead += int64(len(bytes))
-					r.markPositionAndSize()
-					r.active.Store(false)
 					r.acknowledgeMessage()
 					return
 
 				}
 				level.Error(r.logger).Log("msg", "error in reading line", "object", r.object.Key)
+				return
 			}
 			r.sendLines(bytes, labels)
 		}
@@ -159,7 +155,9 @@ func (r *objectReader) sendLines(bytes []byte, labels model.LabelSet) {
 	}
 	// update bytes read
 	r.object.BytesRead += int64(len(bytes))
+	r.markPositionAndSize()
 }
+
 func (r *objectReader) markPositionAndSize() {
 	r.readerMtx.Lock()
 	defer r.readerMtx.Unlock()
@@ -217,7 +215,7 @@ func (r *objectReader) getReader(reader io.ReadCloser) (*bufio.Reader, error) {
 	rd := io.MultiReader(bytes.NewReader(buf[:n]), reader)
 
 	if isGzip(buf) {
-		gzipReader, err := gzip.NewReader(reader)
+		gzipReader, err := gzip.NewReader(rd)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to initialize gzip reader")
 		}
@@ -235,17 +233,17 @@ func isGzip(buf [3]byte) bool {
 }
 
 func (r *objectReader) stop() {
-	// Save the current position before shutting down object reader
-	r.markPositionAndSize()
-
 	r.cancel()
 	r.wg.Wait()
-	r.metrics.objectActive.Add(-1.)
+	level.Info(r.logger).Log("msg", "stopped reading object", "object", r.object.Key)
+}
 
-	// un-export metrics related to the file
+func (r *objectReader) cleanupMetrics() {
+	r.metrics.objectActive.WithLabelValues(r.storeName).Add(-1.)
+
+	// un-export metrics related to the object
 	r.metrics.objectReadLines.DeleteLabelValues(r.object.Key, r.storeName)
 	r.metrics.objectReadBytes.DeleteLabelValues(r.object.Key, r.storeName)
 	r.metrics.objectLogLengthHistogram.DeleteLabelValues(r.object.Key, r.storeName)
 
-	level.Info(r.logger).Log("msg", "stopped reading object", "object", r.object.Key)
 }
