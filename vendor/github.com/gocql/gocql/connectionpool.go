@@ -129,6 +129,20 @@ func newPolicyConnPool(logger log.Logger, registerer prometheus.Registerer, sess
 	pool.endpoints = make([]string, len(session.cfg.Hosts))
 	copy(pool.endpoints, session.cfg.Hosts)
 
+	// err := registerer.Register(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+	// 	Name: "gocql_connection_pool_hosts",
+	// 	Help: "Current number of hosts in the connection pool.",
+	// }, func() float64 {
+	// 	pool.mu.RLock()
+	// 	defer pool.mu.RUnlock()
+	// 	return float64(len(pool.hostConnPools))
+	// }))
+	// if err != nil {
+	// 	fmt.Println("printing err")
+	// 	fmt.Println(err)
+	// }
+	fmt.Println("Registering gocql_connection_pool_hosts")
+	//registerer = prometheus.DefaultRegisterer
 	pool.numHosts = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "gocql_connection_pool_hosts",
 		Help: "Current number of hosts in the connection pool.",
