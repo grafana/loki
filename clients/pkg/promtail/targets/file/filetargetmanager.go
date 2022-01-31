@@ -307,9 +307,14 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 			}
 
 			level.Info(s.log).Log("msg", "Adding target", "key", key)
-			watcher := make(chan fsnotify.Event)
-			s.fileEventWatchers[string(path)] = watcher
-			t, err := s.newTarget(string(path), labels, discoveredLabels, watcher, targetEventHandler)
+
+			wkey := string(path)
+			watcher, ok := s.fileEventWatchers[wkey]
+			if !ok {
+				watcher = make(chan fsnotify.Event)
+				s.fileEventWatchers[wkey] = watcher
+			}
+			t, err := s.newTarget(wkey, labels, discoveredLabels, watcher, targetEventHandler)
 			if err != nil {
 				dropped = append(dropped, target.NewDroppedTarget(fmt.Sprintf("Failed to create target: %s", err.Error()), discoveredLabels))
 				level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
