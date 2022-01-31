@@ -60,9 +60,9 @@ func parseS3Log(b *batch, labels map[string]string, obj io.ReadCloser) error {
 	scanner := bufio.NewScanner(gzreader)
 
 	ls := model.LabelSet{
-		model.LabelName("__aws_log_type"):    model.LabelValue("s3_lb"),
-		model.LabelName("__s3_log_lb"):       model.LabelValue(labels["lb"]),
-		model.LabelName("__s3_log_lb_owner"): model.LabelValue(labels["account_id"]),
+		model.LabelName("__aws_log_type"):        model.LabelValue("s3_lb"),
+		model.LabelName("__aws_s3_log_lb"):       model.LabelValue(labels["lb"]),
+		model.LabelName("__aws_s3_log_lb_owner"): model.LabelValue(labels["account_id"]),
 	}
 
 	for scanner.Scan() {
