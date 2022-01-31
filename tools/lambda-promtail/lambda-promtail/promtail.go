@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 )
@@ -109,7 +109,7 @@ func sendToPromtail(ctx context.Context, b *batch) error {
 		return err
 	}
 
-	backoff := util.NewBackoff(ctx, util.BackoffConfig{minBackoff, maxBackoff, maxRetries})
+	backoff := backoff.New(ctx, backoff.Config{minBackoff, maxBackoff, maxRetries})
 	var status int
 	for {
 		// send uses `timeout` internally, so `context.Background` is good enough.
