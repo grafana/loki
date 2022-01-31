@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/go-kit/log"
@@ -77,6 +78,7 @@ type GetFileFunc func() (io.ReadCloser, error)
 
 // DownloadFileFromStorage downloads a file from storage to given location.
 func DownloadFileFromStorage(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc GetFileFunc) error {
+	start := time.Now()
 	readCloser, err := getFileFunc()
 	if err != nil {
 		return err
@@ -111,7 +113,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 		return err
 	}
 
-	level.Info(logger).Log("msg", "downloaded file")
+	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
 	if sync {
 		return f.Sync()
 	}
