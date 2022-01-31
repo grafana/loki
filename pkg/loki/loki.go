@@ -9,8 +9,6 @@ import (
 	"os"
 	rt "runtime"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -44,9 +42,12 @@ import (
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -108,7 +109,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
-	c.registerQueryRangeFlagsWithChangedDefaultValues(f)
+	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
@@ -137,28 +138,6 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 	})
 }
 
-func (c *Config) registerQueryRangeFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
-	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
-	// NB: We can remove this after removing Loki's dependency on Cortex and bringing in the queryrange.Config.
-	// That will let us change the defaults there rather than include wrapper functions like this one.
-	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
-	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
-	c.QueryRange.RegisterFlags(throwaway)
-
-	throwaway.VisitAll(func(f *flag.Flag) {
-		// Ignore errors when setting new values. We have a test to verify that it works.
-		switch f.Name {
-		case "querier.split-queries-by-interval":
-			_ = f.Value.Set("30m")
-
-		case "querier.parallelise-shardable-queries":
-			_ = f.Value.Set("true")
-		}
-
-		fs.Var(f.Value, f.Name, f.Usage)
-	})
-}
-
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
 // This is primarily used to parse a different flag set without mutating the original *Config.
 func (c *Config) Clone() flagext.Registerer {
@@ -178,6 +157,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid queryrange config")
+	}
+	if err := c.Querier.Validate(); err != nil {
+		return errors.Wrap(err, "invalid querier config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tablemanager config")
@@ -217,6 +199,9 @@ func (c *Config) Validate() error {
 				i,
 			)
 		}
+	}
+	if err := c.QueryRange.Validate(); err != nil {
+		return errors.Wrap(err, "invalid query_range config")
 	}
 	return nil
 }
@@ -261,13 +246,16 @@ type Loki struct {
 	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
 
+	clientMetrics chunk_storage.ClientMetrics
+
 	HTTPAuthMiddleware middleware.Interface
 }
 
 // New makes a new Loki.
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
-		Cfg: cfg,
+		Cfg:           cfg,
+		clientMetrics: chunk_storage.NewClientMetrics(),
 	}
 
 	loki.setupAuthMiddleware()
@@ -275,7 +263,7 @@ func New(cfg Config) (*Loki, error) {
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
-	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, prometheus.DefaultRegisterer)
+	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, loki.clientMetrics, prometheus.DefaultRegisterer)
 
 	return loki, nil
 }

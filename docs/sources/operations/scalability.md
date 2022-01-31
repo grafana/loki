@@ -23,7 +23,8 @@ It is not valid to start the querier with both a configured frontend and a sched
 
 The query scheduler process itself can be started via the `-target=query-scheduler` option of the Loki Docker image. For instance, `docker run grafana/loki:latest -config.file=/cortex/config/cortex.yaml -target=query-scheduler -server.http-listen-port=8009 -server.grpc-listen-port=9009` starts the query scheduler listening on ports `8009` and `9009`.
 
-## Memory Ballast
-In compute constrained environments, garbage collection can become a significant factor. This can be optimised, at the expense of memory consumption, by configuring a memory ballast using the `ballast_bytes` configuration option.
+## Memory ballast
 
-A larger memory ballast will mean that standard heap size volatility is less relatively significant, and therefore less likely to trigger garbage collection. This will result in lower compute overhead, but higher memory consumption, as the heap is cleaned less frequently.
+In compute-constrained environments, garbage collection can become a significant performance factor. Frequently-run garbage collection interferes with running the application by using CPU resources. The use of memory ballast can mitigate the issue. Memory ballast allocates extra, but unused virtual memory in order to inflate the quantity of live heap space. Garbage collection is triggered by the growth of heap space usage. The inflated quantity of heap space reduces the perceived growth, so garbage collection occurs less frequently.
+
+Configure memory ballast using the ballast_bytes configuration option.

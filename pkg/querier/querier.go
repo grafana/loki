@@ -6,23 +6,22 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/go-kit/log/level"
-
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
-	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/tenant"
 	listutil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
+	util_validation "github.com/grafana/loki/pkg/util/validation"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -49,6 +48,7 @@ type Config struct {
 	Engine                        logql.EngineOpts `yaml:"engine,omitempty"`
 	MaxConcurrent                 int              `yaml:"max_concurrent"`
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
+	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 }
 
 // RegisterFlags register flags.
@@ -60,6 +60,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries.")
 	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Queriers should only query the store and not try to query any ingesters")
+	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "Queriers should only query the ingesters and not try to query any store")
+}
+
+// Validate validates the config.
+func (cfg *Config) Validate() error {
+	if cfg.QueryStoreOnly && cfg.QueryIngesterOnly {
+		return errors.New("querier.query_store_only and querier.query_store_only cannot both be true")
+	}
+	return nil
 }
 
 // Querier handlers queries.
@@ -80,13 +89,13 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 		limits:          limits,
 	}
 
-	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits)
+	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits, util_log.Logger)
 
 	return &querier, nil
 }
 
 func (q *Querier) SetQueryable(queryable logql.Querier) {
-	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits)
+	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits, util_log.Logger)
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
@@ -120,7 +129,7 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 		iters = append(iters, ingesterIters...)
 	}
 
-	if storeQueryInterval != nil {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 		level.Debug(spanlogger.FromContext(ctx)).Log(
@@ -165,7 +174,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 		iters = append(iters, ingesterIters...)
 	}
 
-	if storeQueryInterval != nil {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 
@@ -277,17 +286,19 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 		}
 	}
 
-	from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
 	var storeValues []string
-	if req.Values {
-		storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
-		if err != nil {
-			return nil, err
+	if !q.cfg.QueryIngesterOnly {
+		from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+		if req.Values {
+			storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -396,14 +407,16 @@ func (q *Querier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) 
 		}()
 	}
 
-	go func() {
-		storeValues, err := q.seriesForMatchers(ctx, req.Start, req.End, req.GetGroups(), req.Shards)
-		if err != nil {
-			errs <- err
-			return
-		}
-		series <- [][]logproto.SeriesIdentifier{storeValues}
-	}()
+	if !q.cfg.QueryIngesterOnly {
+		go func() {
+			storeValues, err := q.seriesForMatchers(ctx, req.Start, req.End, req.GetGroups(), req.Shards)
+			if err != nil {
+				errs <- err
+				return
+			}
+			series <- [][]logproto.SeriesIdentifier{storeValues}
+		}()
+	}
 
 	var sets [][]logproto.SeriesIdentifier
 	for i := 0; i < 2; i++ {
@@ -524,7 +537,7 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 
 	}
 	if maxQueryLength := limits.MaxQueryLength(userID); maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, cortex_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
 	}
 	if through.Before(from) {
 		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)

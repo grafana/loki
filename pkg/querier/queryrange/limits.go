@@ -7,25 +7,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
-	"github.com/grafana/loki/pkg/tenant"
-
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const (
 	limitErrTmpl = "maximum of series (%d) reached for a single query"
+)
+
+var (
+	ErrMaxQueryParalellism = fmt.Errorf("querying is disabled, please contact your Loki operator")
 )
 
 // Limits extends the cortex limits interface with support for per tenant splitby parameters
@@ -41,32 +43,10 @@ type Limits interface {
 type limits struct {
 	Limits
 	splitDuration time.Duration
-	overrides     bool
 }
 
 func (l limits) QuerySplitDuration(user string) time.Duration {
-	if !l.overrides {
-		return l.splitDuration
-	}
-	dur := l.Limits.QuerySplitDuration(user)
-	if dur == 0 {
-		return l.splitDuration
-	}
-	return dur
-}
-
-// WithDefaults will construct a Limits with a default value for QuerySplitDuration when no overrides are present.
-func WithDefaultLimits(l Limits, conf queryrangebase.Config) Limits {
-	res := limits{
-		Limits:    l,
-		overrides: true,
-	}
-
-	if conf.SplitQueriesByInterval != 0 {
-		res.splitDuration = conf.SplitQueriesByInterval
-	}
-
-	return res
+	return l.splitDuration
 }
 
 // WithSplitByLimits will construct a Limits with a static split by duration.
@@ -82,11 +62,14 @@ type cacheKeyLimits struct {
 	Limits
 }
 
-// GenerateCacheKey will panic if it encounters a 0 split duration. We ensure against this by requiring
-// a nonzero split interval when caching is enabled
 func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrangebase.Request) string {
 	split := l.QuerySplitDuration(userID)
-	currentInterval := r.GetStart() / int64(split/time.Millisecond)
+
+	var currentInterval int64
+	if denominator := int64(split / time.Millisecond); denominator > 0 {
+		currentInterval = r.GetStart() / denominator
+	}
+
 	// include both the currentInterval and the split duration in key to ensure
 	// a cache key can't be reused when an interval changes
 	return fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval, split)
@@ -201,7 +184,7 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 	sl.rw.Lock()
 	var hash uint64
 	for _, s := range promResponse.Response.Data.Result {
-		lbs := cortexpb.FromLabelAdaptersToLabels(s.Labels)
+		lbs := logproto.FromLabelAdaptersToLabels(s.Labels)
 		hash, sl.buf = lbs.HashWithoutLabels(sl.buf, []string(nil)...)
 		sl.hashes[hash] = struct{}{}
 	}
@@ -282,6 +265,9 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 
 	parallelism := rt.limits.MaxQueryParallelism(userid)
+	if parallelism < 1 {
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, ErrMaxQueryParalellism.Error())
+	}
 
 	for i := 0; i < parallelism; i++ {
 		wg.Add(1)

@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/flagext"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -129,6 +129,7 @@ func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.
 
 // consumeChunk manually adds a chunk to the stream that was received during
 // ingester chunk transfer.
+// Must hold chunkMtx
 // DEPRECATED: chunk transfers are no longer suggested and remain for compatibility.
 func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
@@ -136,8 +137,6 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 		return err
 	}
 
-	s.chunkMtx.Lock()
-	defer s.chunkMtx.Unlock()
 	s.chunks = append(s.chunks, chunkDesc{
 		chunk: c,
 	})
@@ -176,9 +175,14 @@ func (s *stream) Push(
 	// with a counter value less than or equal to it's own.
 	// It is set to zero and thus bypassed outside of WAL replays.
 	counter int64,
+	// Lock chunkMtx while pushing.
+	// If this is false, chunkMtx must be held outside Push.
+	lockChunk bool,
 ) (int, error) {
-	s.chunkMtx.Lock()
-	defer s.chunkMtx.Unlock()
+	if lockChunk {
+		s.chunkMtx.Lock()
+		defer s.chunkMtx.Unlock()
+	}
 
 	isReplay := counter > 0
 	if isReplay && counter <= s.entryCt {

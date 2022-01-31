@@ -9,10 +9,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/cloudflare"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/docker"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gelf"
@@ -35,6 +35,8 @@ const (
 	KafkaConfigs         = "kafkaConfigs"
 	GelfConfigs          = "gelfConfigs"
 	CloudflareConfigs    = "cloudflareConfigs"
+	DockerConfigs        = "dockerConfigs"
+	DockerSDConfigs      = "dockerSDConfigs"
 )
 
 type targetManager interface {
@@ -59,20 +61,18 @@ func NewTargetManagers(
 	client api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *file.Config,
-	clientConfigs ...client.Config,
 ) (*TargetManagers, error) {
-	var targetManagers []targetManager
-	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
-
 	if targetConfig.Stdin {
 		level.Debug(logger).Log("msg", "configured to read from stdin")
 		stdin, err := stdin.NewStdinTargetManager(reg, logger, app, client, scrapeConfigs)
 		if err != nil {
 			return nil, err
 		}
-		targetManagers = append(targetManagers, stdin)
-		return &TargetManagers{targetManagers: targetManagers}, nil
+		return &TargetManagers{targetManagers: []targetManager{stdin}}, nil
 	}
+
+	var targetManagers []targetManager
+	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
 
 	for _, cfg := range scrapeConfigs {
 		switch {
@@ -94,6 +94,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[GelfConfigs] = append(targetScrapeConfigs[GelfConfigs], cfg)
 		case cfg.CloudflareConfig != nil:
 			targetScrapeConfigs[CloudflareConfigs] = append(targetScrapeConfigs[CloudflareConfigs], cfg)
+		case cfg.DockerSDConfigs != nil:
+			targetScrapeConfigs[DockerSDConfigs] = append(targetScrapeConfigs[DockerSDConfigs], cfg)
 		default:
 			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
 		}
@@ -119,6 +121,7 @@ func NewTargetManagers(
 		gcplogMetrics     *gcplog.Metrics
 		gelfMetrics       *gelf.Metrics
 		cloudflareMetrics *cloudflare.Metrics
+		dockerMetrics     *docker.Metrics
 	)
 	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
 		fileMetrics = file.NewMetrics(reg)
@@ -134,6 +137,9 @@ func NewTargetManagers(
 	}
 	if len(targetScrapeConfigs[CloudflareConfigs]) > 0 {
 		cloudflareMetrics = cloudflare.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[DockerConfigs]) > 0 || len(targetScrapeConfigs[DockerSDConfigs]) > 0 {
+		dockerMetrics = docker.NewMetrics(reg)
 	}
 
 	for target, scrapeConfigs := range targetScrapeConfigs {
@@ -230,6 +236,26 @@ func NewTargetManagers(
 			cfTargetManager, err := cloudflare.NewTargetManager(cloudflareMetrics, logger, pos, client, scrapeConfigs)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to make cloudflare target manager")
+			}
+			targetManagers = append(targetManagers, cfTargetManager)
+		case DockerConfigs:
+			pos, err := getPositionFile()
+			if err != nil {
+				return nil, err
+			}
+			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make Docker target manager")
+			}
+			targetManagers = append(targetManagers, cfTargetManager)
+		case DockerSDConfigs:
+			pos, err := getPositionFile()
+			if err != nil {
+				return nil, err
+			}
+			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make Docker service discovery target manager")
 			}
 			targetManagers = append(targetManagers, cfTargetManager)
 		default:

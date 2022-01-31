@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
@@ -19,10 +17,12 @@ import (
 	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -37,8 +37,6 @@ const (
 	dropFreePagesTxMaxSize       = 100 * 1024 * 1024 // 100MB
 	recreatedCompactedDBSuffix   = ".r.gz"
 )
-
-var bucketName = []byte("index")
 
 type indexEntry struct {
 	k, v []byte
@@ -135,9 +133,11 @@ func (t *table) compact(applyRetention bool) error {
 		// initialize common compacted db if we need to apply retention, or we need to recreate it
 		t.seedSourceFileIdx = 0
 		downloadAt := filepath.Join(t.workingDirectory, indexFiles[0].Name)
-		err = shipper_util.DownloadFileFromStorage(func() (io.ReadCloser, error) {
-			return t.baseCommonIndexSet.GetFile(t.ctx, t.name, "", indexFiles[0].Name)
-		}, shipper_util.IsCompressedFile(indexFiles[0].Name), downloadAt, false, t.logger)
+		err = shipper_util.DownloadFileFromStorage(downloadAt, shipper_util.IsCompressedFile(indexFiles[0].Name),
+			false, shipper_util.LoggerWithFilename(t.logger, indexFiles[0].Name),
+			func() (io.ReadCloser, error) {
+				return t.baseCommonIndexSet.GetFile(t.ctx, t.name, "", indexFiles[0].Name)
+			})
 		if err != nil {
 			return err
 		}
@@ -203,7 +203,7 @@ func (t *table) done() error {
 // applyRetention applies retention on the index sets
 func (t *table) applyRetention() error {
 	tableInterval := retention.ExtractIntervalFromTableName(t.name)
-	// call runRetention on the already initialized index sets IntervalMayHaveExpiredChunks which may have expired chunks
+	// call runRetention on the already initialized index sets which may have expired chunks
 	for userID, is := range t.indexSets {
 		if !t.expirationChecker.IntervalMayHaveExpiredChunks(tableInterval, userID) {
 			continue
@@ -250,9 +250,10 @@ func (t *table) compactFiles(files []storage.IndexFile) error {
 		compactedDBName = filepath.Join(t.workingDirectory, files[t.seedSourceFileIdx].Name)
 
 		level.Info(t.logger).Log("msg", fmt.Sprintf("using %s as seed file", files[t.seedSourceFileIdx].Name))
-		err = shipper_util.DownloadFileFromStorage(func() (io.ReadCloser, error) {
-			return t.baseCommonIndexSet.GetFile(t.ctx, t.name, "", files[t.seedSourceFileIdx].Name)
-		}, shipper_util.IsCompressedFile(files[t.seedSourceFileIdx].Name), compactedDBName, false, t.logger)
+		err = shipper_util.DownloadFileFromStorage(compactedDBName, shipper_util.IsCompressedFile(files[t.seedSourceFileIdx].Name),
+			false, shipper_util.LoggerWithFilename(t.logger, files[t.seedSourceFileIdx].Name), func() (io.ReadCloser, error) {
+				return t.baseCommonIndexSet.GetFile(t.ctx, t.name, "", files[t.seedSourceFileIdx].Name)
+			})
 		if err != nil {
 			return err
 		}
@@ -277,9 +278,10 @@ func (t *table) compactFiles(files []storage.IndexFile) error {
 		fileName := files[workNum].Name
 		downloadAt := filepath.Join(t.workingDirectory, fileName)
 
-		err = shipper_util.DownloadFileFromStorage(func() (io.ReadCloser, error) {
-			return t.baseCommonIndexSet.GetFile(t.ctx, t.name, "", fileName)
-		}, shipper_util.IsCompressedFile(fileName), downloadAt, false, t.logger)
+		err = shipper_util.DownloadFileFromStorage(downloadAt, shipper_util.IsCompressedFile(fileName),
+			false, shipper_util.LoggerWithFilename(t.logger, fileName), func() (io.ReadCloser, error) {
+				return t.baseCommonIndexSet.GetFile(t.ctx, t.name, "", fileName)
+			})
 		if err != nil {
 			return err
 		}
@@ -289,18 +291,18 @@ func (t *table) compactFiles(files []storage.IndexFile) error {
 }
 
 // writeBatch writes a batch to compactedDB
-func (t *table) writeBatch(userID string, batch []indexEntry) error {
-	if userID == string(bucketName) {
+func (t *table) writeBatch(bucketName string, batch []indexEntry) error {
+	if bucketName == shipper_util.GetUnsafeString(local.IndexBucketName) {
 		return t.writeCommonIndex(batch)
 	}
-	return t.writeUserIndex(userID, batch)
+	return t.writeUserIndex(bucketName, batch)
 }
 
 // writeCommonIndex writes a batch to compactedDB
 func (t *table) writeCommonIndex(batch []indexEntry) error {
 	t.uploadCompactedDB = true
 	return t.compactedDB.Batch(func(tx *bbolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(bucketName)
+		b, err := tx.CreateBucketIfNotExists(local.IndexBucketName)
 		if err != nil {
 			return err
 		}

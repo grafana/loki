@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var testReplaceYamlSingleStageWithoutSource = `

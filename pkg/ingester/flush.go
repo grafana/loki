@@ -7,23 +7,20 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/grafana/loki/pkg/tenant"
+	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util"
 	loki_util "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -170,16 +167,13 @@ func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
 }
 
 func (i *Ingester) sweepInstance(instance *instance, immediate, mayRemoveStreams bool) {
-	instance.streamsMtx.Lock()
-	defer instance.streamsMtx.Unlock()
-
-	for _, stream := range instance.streams {
-		i.sweepStream(instance, stream, immediate)
-		i.removeFlushedChunks(instance, stream, mayRemoveStreams)
-	}
+	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
+		i.sweepStream(instance, s, immediate)
+		i.removeFlushedChunks(instance, s, mayRemoveStreams)
+		return true, nil
+	})
 }
 
-// must hold streamsMtx
 func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate bool) {
 	stream.chunkMtx.RLock()
 	defer stream.chunkMtx.RUnlock()
@@ -253,17 +247,18 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 }
 
 func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *sync.RWMutex) {
-	instance.streamsMtx.Lock()
-	stream, ok := instance.streamsByFP[fp]
-	instance.streamsMtx.Unlock()
+	var stream *stream
+	var ok bool
+	stream, ok = instance.streams.LoadByFP(fp)
 
 	if !ok {
 		return nil, nil, nil
 	}
 
-	var result []*chunkDesc
 	stream.chunkMtx.Lock()
 	defer stream.chunkMtx.Unlock()
+
+	var result []*chunkDesc
 	for j := range stream.chunks {
 		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j])
 		if immediate || shouldFlush {
@@ -304,7 +299,6 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 	return false, ""
 }
 
-// must hold streamsMtx
 func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRemoveStream bool) {
 	now := time.Now()
 
@@ -327,7 +321,16 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRe
 	i.replayController.Sub(int64(subtracted))
 
 	if mayRemoveStream && len(stream.chunks) == 0 {
-		instance.removeStream(stream)
+		// Unlock first, then lock inside streams' lock to prevent deadlock
+		stream.chunkMtx.Unlock()
+		// Only lock streamsMap when it's needed to remove a stream
+		instance.streams.WithLock(func() {
+			stream.chunkMtx.Lock()
+			// Double check length
+			if len(stream.chunks) == 0 {
+				instance.removeStream(stream)
+			}
+		})
 	}
 }
 

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
@@ -43,7 +42,6 @@ import (
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
@@ -52,6 +50,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -204,7 +203,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.HTTPAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
 
-	t.Server.HTTP.Path("/distributor/ring").Methods("GET").Handler(t.distributor)
+	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 
 	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(pushHandler)
@@ -268,7 +267,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	return querier.InitWorkerService(
-		querierWorkerServiceConfig, queryHandlers, alwaysExternalHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
+		querierWorkerServiceConfig, prometheus.DefaultRegisterer, queryHandlers, alwaysExternalHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
 	)
 }
 
@@ -323,13 +322,13 @@ func (t *Loki) initTableManager() (services.Service, error) {
 
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.Cfg.StorageConfig.Config, reg)
+	tableClient, err := chunk_storage.NewTableClient(lastConfig.IndexType, t.Cfg.StorageConfig.Config, reg)
 	if err != nil {
 		return nil, err
 	}
 
-	bucketClient, err := storage.NewBucketClient(t.Cfg.StorageConfig.Config)
-	util_log.CheckFatal("initializing bucket client", err)
+	bucketClient, err := chunk_storage.NewBucketClient(t.Cfg.StorageConfig.Config)
+	util_log.CheckFatal("initializing bucket client", err, util_log.Logger)
 
 	t.tableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.SchemaConfig.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -363,7 +362,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 					// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
 					// IndexCacheValidity guarantees the FIFO cache will expire the object first which can be done without
 					// having to deserialize the object.
-					Validity: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
+					TTL: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 				},
 			}
 			// Force the retain period to be longer than the IndexCacheValidity used in the store, this guarantees we don't
@@ -380,7 +379,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		return
 	}
@@ -601,7 +600,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		}
 	}
 
-	t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, ruler.GroupLoader{}, util_log.Logger)
+	t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, t.clientMetrics, ruler.GroupLoader{}, util_log.Logger)
 
 	return
 }
@@ -619,7 +618,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.overrides)
+	engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.overrides, util_log.Logger)
 
 	t.ruler, err = ruler.NewRuler(
 		t.Cfg.Ruler,
@@ -668,7 +667,8 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 func (t *Loki) initMemberlistKV() (services.Service, error) {
 	reg := prometheus.DefaultRegisterer
-	t.Cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
+
+	t.Cfg.MemberlistKV.MetricsRegisterer = reg
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
@@ -700,7 +700,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, t.Cfg.StorageConfig.Config, t.Cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
+	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, t.Cfg.StorageConfig.Config, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -717,7 +717,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
-	objectClient, err := storage.NewObjectClient(t.Cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType, t.Cfg.StorageConfig.Config)
+	objectClient, err := chunk_storage.NewObjectClient(t.Cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType, t.Cfg.StorageConfig.Config, t.clientMetrics)
 	if err != nil {
 		return nil, err
 	}

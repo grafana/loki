@@ -68,7 +68,7 @@ func TestResetConcurrency(t *testing.T) {
 				MaxConcurrentRequests: tt.maxConcurrent,
 			}
 
-			w, err := newQuerierWorkerWithProcessor(cfg, log.NewNopLogger(), &mockProcessor{}, "", nil, nil)
+			w, err := newQuerierWorkerWithProcessor(cfg, NewMetrics(cfg, nil), log.NewNopLogger(), &mockProcessor{}, "", nil, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), w))
 

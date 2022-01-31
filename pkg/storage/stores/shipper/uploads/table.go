@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
@@ -22,6 +21,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/tenant"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -34,8 +35,6 @@ const (
 	// a snapshot file is created with name of the db + snapshotFileSuffix periodically for read operation.
 	snapshotFileSuffix = ".snapshot"
 )
-
-var bucketName = []byte("index")
 
 type BoltDBIndexClient interface {
 	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
@@ -54,11 +53,12 @@ type dbSnapshot struct {
 // Table is a collection of multiple dbs created for a same table by the ingester.
 // All the public methods are concurrency safe and take care of mutexes to avoid any data race.
 type Table struct {
-	name              string
-	path              string
-	uploader          string
-	storageClient     StorageClient
-	boltdbIndexClient BoltDBIndexClient
+	name                 string
+	path                 string
+	uploader             string
+	storageClient        StorageClient
+	boltdbIndexClient    BoltDBIndexClient
+	makePerTenantBuckets bool
 
 	dbs    map[string]*bbolt.DB
 	dbsMtx sync.RWMutex
@@ -72,17 +72,18 @@ type Table struct {
 }
 
 // NewTable create a new Table without looking for any existing local dbs belonging to the table.
-func NewTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
+func NewTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient, makePerTenantBuckets bool) (*Table, error) {
 	err := chunk_util.EnsureDirectory(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return newTableWithDBs(map[string]*bbolt.DB{}, path, uploader, storageClient, boltdbIndexClient)
+	return newTableWithDBs(map[string]*bbolt.DB{}, path, uploader, storageClient, boltdbIndexClient, makePerTenantBuckets)
 }
 
 // LoadTable loads local dbs belonging to the table and creates a new Table with references to dbs if there are any otherwise it doesn't create a table
-func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient, metrics *metrics) (*Table, error) {
+func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient,
+	makePerTenantBuckets bool, metrics *metrics) (*Table, error) {
 	dbs, err := loadBoltDBsFromDir(path, metrics)
 	if err != nil {
 		return nil, err
@@ -92,20 +93,22 @@ func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexCl
 		return nil, nil
 	}
 
-	return newTableWithDBs(dbs, path, uploader, storageClient, boltdbIndexClient)
+	return newTableWithDBs(dbs, path, uploader, storageClient, boltdbIndexClient, makePerTenantBuckets)
 }
 
-func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
+func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient,
+	makePerTenantBuckets bool) (*Table, error) {
 	return &Table{
-		name:              filepath.Base(path),
-		path:              path,
-		uploader:          uploader,
-		storageClient:     storageClient,
-		boltdbIndexClient: boltdbIndexClient,
-		dbs:               dbs,
-		dbSnapshots:       map[string]*dbSnapshot{},
-		dbUploadTime:      map[string]time.Time{},
-		modifyShardsSince: time.Now().Unix(),
+		name:                 filepath.Base(path),
+		path:                 path,
+		uploader:             uploader,
+		storageClient:        storageClient,
+		boltdbIndexClient:    boltdbIndexClient,
+		dbs:                  dbs,
+		dbSnapshots:          map[string]*dbSnapshot{},
+		dbUploadTime:         map[string]time.Time{},
+		modifyShardsSince:    time.Now().Unix(),
+		makePerTenantBuckets: makePerTenantBuckets,
 	}, nil
 }
 
@@ -189,11 +192,21 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 	lt.dbSnapshotsMtx.RLock()
 	defer lt.dbSnapshotsMtx.RUnlock()
 
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return err
+	}
+
+	userIDBytes := shipper_util.GetUnsafeBytes(userID)
+
 	for _, db := range lt.dbSnapshots {
 		err := db.boltdb.View(func(tx *bbolt.Tx) error {
-			bucket := tx.Bucket(bucketName)
+			bucket := tx.Bucket(userIDBytes)
 			if bucket == nil {
-				return nil
+				bucket = tx.Bucket(local.IndexBucketName)
+				if bucket == nil {
+					return nil
+				}
 			}
 
 			for _, query := range queries {
@@ -244,6 +257,16 @@ func (lt *Table) Write(ctx context.Context, writes local.TableWrites) error {
 // db files are named after the time shard i.e epoch of the truncated time.
 // If a db file does not exist for a shard it gets created.
 func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrites) error {
+	writeToBucket := local.IndexBucketName
+	if lt.makePerTenantBuckets {
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return err
+		}
+
+		writeToBucket = []byte(userID)
+	}
+
 	// do not write to files older than init time otherwise we might endup modifying file which was already created and uploaded before last shutdown.
 	shard := tm.Truncate(ShardDBsByDuration).Unix()
 	if shard < lt.modifyShardsSince {
@@ -255,7 +278,7 @@ func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrit
 		return err
 	}
 
-	return lt.boltdbIndexClient.WriteToDB(ctx, db, bucketName, writes)
+	return lt.boltdbIndexClient.WriteToDB(ctx, db, writeToBucket, writes)
 }
 
 // Stop closes all the open dbs.
@@ -495,15 +518,17 @@ func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, err
 
 		hasBucket := false
 		_ = db.View(func(tx *bbolt.Tx) error {
-			hasBucket = tx.Bucket(bucketName) != nil
-			return nil
+			return tx.ForEach(func(_ []byte, _ *bbolt.Bucket) error {
+				hasBucket = true
+				return nil
+			})
 		})
 
 		if !hasBucket {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("file %s has no bucket named %s, so removing it", fullPath, bucketName))
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("file %s has no buckets, so removing it", fullPath))
 			_ = db.Close()
 			if err := os.Remove(fullPath); err != nil {
-				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove file %s without bucket", fullPath), "err", err)
+				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove file %s without any buckets", fullPath), "err", err)
 			}
 			continue
 		}

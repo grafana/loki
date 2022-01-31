@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -22,9 +21,13 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -130,9 +133,11 @@ func Test_Retention(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// insert in the store.
 			var (
-				store         = newTestStore(t)
+				clientMetrics = storage.NewClientMetrics()
+				store         = newTestStore(t, clientMetrics)
 				expectDeleted = []string{}
 			)
+			defer clientMetrics.Unregister()
 			for _, c := range tt.chunks {
 				require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c}))
 			}
@@ -191,7 +196,9 @@ func (noopCleaner) Cleanup(userID []byte, lbls labels.Labels) error { return nil
 
 func Test_EmptyTable(t *testing.T) {
 	schema := allSchemas[0]
-	store := newTestStore(t)
+	cm := storage.NewClientMetrics()
+	defer cm.Unregister()
+	store := newTestStore(t, cm)
 	c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, schema.from, schema.from.Add(1*time.Hour))
 	c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, schema.from, schema.from.Add(1*time.Hour))
 	c3 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}}, schema.from, schema.from.Add(1*time.Hour))
@@ -205,12 +212,29 @@ func Test_EmptyTable(t *testing.T) {
 	tables := store.indexTables()
 	require.Len(t, tables, 1)
 	err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
-		it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
+		it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
 		require.NoError(t, err)
 		empty, _, err := markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
 			NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
 		require.NoError(t, err)
 		require.True(t, empty)
+		return nil
+	})
+	require.NoError(t, err)
+
+	// table with no chunks should error
+	tempDir := t.TempDir()
+	emptyDB, err := util.SafeOpenBoltdbFile(filepath.Join(tempDir, "empty.db"))
+	require.NoError(t, err)
+	err = emptyDB.Update(func(tx *bbolt.Tx) error {
+		bucket, err := tx.CreateBucket(local.IndexBucketName)
+		require.NoError(t, err)
+
+		it, err := newChunkIndexIterator(bucket, schema.config)
+		require.NoError(t, err)
+		_, _, err = markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
+			NewExpirationChecker(&fakeLimits{}), nil)
+		require.Equal(t, err, errNoChunksFound)
 		return nil
 	})
 	require.NoError(t, err)
@@ -359,14 +383,16 @@ func TestChunkRewriter(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			store := newTestStore(t)
+			cm := storage.NewClientMetrics()
+			defer cm.Unregister()
+			store := newTestStore(t, cm)
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{tt.chunk}))
 			store.Stop()
 
-			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir), objectclient.Base64Encoder, schemaCfg.SchemaConfig)
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.Base64Encoder, schemaCfg.SchemaConfig)
 			for _, indexTable := range store.indexTables() {
 				err := indexTable.DB.Update(func(tx *bbolt.Tx) error {
-					bucket := tx.Bucket(bucketName)
+					bucket := tx.Bucket(local.IndexBucketName)
 					if bucket == nil {
 						return nil
 					}
@@ -625,7 +651,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := newTestStore(t)
+			cm := storage.NewClientMetrics()
+			defer cm.Unregister()
+			store := newTestStore(t, cm)
 
 			require.NoError(t, store.Put(context.TODO(), tc.chunks))
 			chunksExpiry := map[string]chunkExpiry{}
@@ -640,15 +668,15 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			tables := store.indexTables()
 			require.Len(t, tables, len(tc.expectedDeletedSeries))
 
-			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir), objectclient.Base64Encoder, schemaCfg.SchemaConfig)
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.Base64Encoder, schemaCfg.SchemaConfig)
 
 			for i, table := range tables {
 				seriesCleanRecorder := newSeriesCleanRecorder()
 				err := table.DB.Update(func(tx *bbolt.Tx) error {
-					it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
+					it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
 					require.NoError(t, err)
 
-					cr, err := newChunkRewriter(chunkClient, schema.config, table.name, tx.Bucket(bucketName))
+					cr, err := newChunkRewriter(chunkClient, schema.config, table.name, tx.Bucket(local.IndexBucketName))
 					require.NoError(t, err)
 					empty, isModified, err := markforDelete(context.Background(), table.name, noopWriter{}, it, seriesCleanRecorder,
 						expirationChecker, cr)
@@ -667,7 +695,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 
 func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 	schema := allSchemas[2]
-	store := newTestStore(t)
+	cm := storage.NewClientMetrics()
+	defer cm.Unregister()
+	store := newTestStore(t, cm)
 	now := model.Now()
 	todaysTableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
 	retentionPeriod := now.Sub(todaysTableInterval.Start) / 2
@@ -692,7 +722,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 
 	for i, table := range tables {
 		err := table.DB.Update(func(tx *bbolt.Tx) error {
-			it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
+			it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
 			require.NoError(t, err)
 			empty, _, err := markforDelete(context.Background(), table.name, noopWriter{}, it, noopCleaner{},
 				NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil)

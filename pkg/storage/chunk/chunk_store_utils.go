@@ -12,11 +12,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 var (
@@ -213,11 +211,13 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string
 	defer log.Span.Finish()
 
 	// Now fetch the actual chunk data from Memcache / S3
-	cacheHits, cacheBufs, _ := c.cache.Fetch(ctx, keys)
-
-	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
+	cacheHits, cacheBufs, _, err := c.cache.Fetch(ctx, keys)
 	if err != nil {
 		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
+	}
+	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
+	if err != nil {
+		level.Warn(log).Log("msg", "error process response from cache", "err", err)
 	}
 
 	var fromStorage []Chunk
@@ -260,7 +260,10 @@ func (c *Fetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
 		bufs = append(bufs, encoded)
 	}
 
-	c.cache.Store(ctx, keys, bufs)
+	err := c.cache.Store(ctx, keys, bufs)
+	if err != nil {
+		level.Warn(util_log.Logger).Log("msg", "writeBackCache cache store fail", "err", err)
+	}
 	return nil
 }
 

@@ -4,27 +4,20 @@ import (
 	"context"
 	"io"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func Test_GetFileFromStorage(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "get-file-from-storage")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	// write a file to storage.
 	testData := []byte("test-data")
@@ -38,9 +31,10 @@ func Test_GetFileFromStorage(t *testing.T) {
 
 	indexStorageClient := storage.NewIndexStorageClient(objectClient, "")
 
-	require.NoError(t, DownloadFileFromStorage(func() (io.ReadCloser, error) {
-		return indexStorageClient.GetFile(context.Background(), tableName, "src")
-	}, false, filepath.Join(tempDir, "dest"), false, util_log.Logger))
+	require.NoError(t, DownloadFileFromStorage(filepath.Join(tempDir, "dest"), false,
+		false, util_log.Logger, func() (io.ReadCloser, error) {
+			return indexStorageClient.GetFile(context.Background(), tableName, "src")
+		}))
 
 	// verify the contents of the downloaded file.
 	b, err := ioutil.ReadFile(filepath.Join(tempDir, "dest"))
@@ -53,9 +47,10 @@ func Test_GetFileFromStorage(t *testing.T) {
 	require.NoError(t, err)
 
 	// get the compressed file from storage
-	require.NoError(t, DownloadFileFromStorage(func() (io.ReadCloser, error) {
-		return indexStorageClient.GetFile(context.Background(), tableName, "src.gz")
-	}, true, filepath.Join(tempDir, "dest.gz"), false, util_log.Logger))
+	require.NoError(t, DownloadFileFromStorage(filepath.Join(tempDir, "dest.gz"), true,
+		false, util_log.Logger, func() (io.ReadCloser, error) {
+			return indexStorageClient.GetFile(context.Background(), tableName, "src.gz")
+		}))
 
 	// verify the contents of the downloaded gz file.
 	b, err = ioutil.ReadFile(filepath.Join(tempDir, "dest.gz"))
@@ -65,12 +60,7 @@ func Test_GetFileFromStorage(t *testing.T) {
 }
 
 func Test_CompressFile(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "compress-file")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	uncompressedFilePath := filepath.Join(tempDir, "test-file")
 	compressedFilePath := filepath.Join(tempDir, "test-file.gz")

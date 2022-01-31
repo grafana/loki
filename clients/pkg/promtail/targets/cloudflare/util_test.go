@@ -2,6 +2,7 @@ package cloudflare
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/cloudflare/cloudflare-go"
@@ -25,6 +26,8 @@ func (f *fakeCloudflareClient) CallCount() int {
 type fakeLogIterator struct {
 	logs    []string
 	current string
+
+	err error
 }
 
 func (f *fakeLogIterator) Next() bool {
@@ -32,10 +35,14 @@ func (f *fakeLogIterator) Next() bool {
 		return false
 	}
 	f.current = f.logs[0]
+	if f.current == `error` {
+		f.err = errors.New("error")
+		return false
+	}
 	f.logs = f.logs[1:]
 	return true
 }
-func (f *fakeLogIterator) Err() error                         { return nil }
+func (f *fakeLogIterator) Err() error                         { return f.err }
 func (f *fakeLogIterator) Line() []byte                       { return []byte(f.current) }
 func (f *fakeLogIterator) Fields() (map[string]string, error) { return nil, nil }
 func (f *fakeLogIterator) Close() error                       { return nil }

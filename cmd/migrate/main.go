@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -28,6 +27,7 @@ import (
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -92,7 +92,8 @@ func main() {
 	}
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	sourceStore, err := chunk_storage.NewStore(sourceConfig.StorageConfig.Config, sourceConfig.ChunkStoreConfig.StoreConfig, sourceConfig.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	clientMetrics := chunk_storage.NewClientMetrics()
+	sourceStore, err := chunk_storage.NewStore(sourceConfig.StorageConfig.Config, sourceConfig.ChunkStoreConfig.StoreConfig, sourceConfig.SchemaConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		log.Println("Failed to create source store:", err)
 		os.Exit(1)
@@ -105,7 +106,7 @@ func main() {
 
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	destStore, err := chunk_storage.NewStore(destConfig.StorageConfig.Config, destConfig.ChunkStoreConfig.StoreConfig, destConfig.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	destStore, err := chunk_storage.NewStore(destConfig.StorageConfig.Config, destConfig.ChunkStoreConfig.StoreConfig, destConfig.SchemaConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		log.Println("Failed to create destination store:", err)
 		os.Exit(1)

@@ -5,10 +5,13 @@ import (
 	"flag"
 	"sync"
 
+	"github.com/go-kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // BackgroundConfig is config for a Background Cache.
@@ -81,7 +84,7 @@ func (c *backgroundCache) Stop() {
 const keysPerBatch = 100
 
 // Store writes keys for the cache in the background.
-func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
+func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
 	for len(keys) > 0 {
 		num := keysPerBatch
 		if num > len(keys) {
@@ -101,11 +104,12 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 			if sp != nil {
 				sp.LogFields(otlog.Int("dropped", num))
 			}
-			return // queue is full; give up
+			return nil // queue is full; give up
 		}
 		keys = keys[num:]
 		bufs = bufs[num:]
 	}
+	return nil
 }
 
 func (c *backgroundCache) writeBackLoop() {
@@ -118,7 +122,11 @@ func (c *backgroundCache) writeBackLoop() {
 				return
 			}
 			c.queueLength.Sub(float64(len(bgWrite.keys)))
-			c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
+			err := c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
+			if err != nil {
+				level.Warn(util_log.Logger).Log("msg", "backgroundCache writeBackLoop Cache.Store fail", "err", err)
+				continue
+			}
 
 		case <-c.quit:
 			return

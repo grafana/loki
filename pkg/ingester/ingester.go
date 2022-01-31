@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -21,8 +19,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -35,7 +31,10 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util"
 	errUtil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -87,7 +86,6 @@ type Config struct {
 	WAL WALConfig `yaml:"wal,omitempty"`
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
-	LabelFilterer LabelValueFilterer           `yaml:"-"`
 	// Optional wrapper that can be used to modify the behaviour of the ingester
 	Wrapper Wrapper `yaml:"-"`
 
@@ -137,11 +135,6 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
-}
-
-// ChunkFilterer filters chunks based on the metric.
-type LabelValueFilterer interface {
-	Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error)
 }
 
 type Wrapper interface {
@@ -212,7 +205,6 @@ type Ingester struct {
 	wal WAL
 
 	chunkFilter storage.RequestChunkFilterer
-	labelFilter LabelValueFilterer
 }
 
 // New makes a new Ingester.
@@ -276,19 +268,11 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		i.SetChunkFilterer(i.cfg.ChunkFilterer)
 	}
 
-	if i.cfg.LabelFilterer != nil {
-		i.SetLabelFilterer(i.cfg.LabelFilterer)
-	}
-
 	return i, nil
 }
 
 func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
-}
-
-func (i *Ingester) SetLabelFilterer(labelFilter LabelValueFilterer) {
-	i.labelFilter = labelFilter
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
@@ -761,23 +745,8 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		}
 	}
 
-	allValues := errUtil.MergeStringLists(resp.Values, storeValues)
-
-	if req.Values && i.labelFilter != nil {
-		var filteredValues []string
-
-		filteredValues, err = i.labelFilter.Filter(ctx, req.Name, allValues)
-		if err != nil {
-			return nil, err
-		}
-
-		return &logproto.LabelResponse{
-			Values: filteredValues,
-		}, nil
-	}
-
 	return &logproto.LabelResponse{
-		Values: allValues,
+		Values: errUtil.MergeStringLists(resp.Values, storeValues),
 	}, nil
 }
 

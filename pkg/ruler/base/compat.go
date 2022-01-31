@@ -5,9 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,11 +18,15 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // Pusher is an ingester server that accepts pushes.
 type Pusher interface {
-	Push(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
+	Push(context.Context, *logproto.WriteRequest) (*logproto.WriteResponse, error)
 }
 
 type PusherAppender struct {
@@ -35,7 +36,7 @@ type PusherAppender struct {
 	ctx             context.Context
 	pusher          Pusher
 	labels          []labels.Labels
-	samples         []cortexpb.Sample
+	samples         []logproto.Sample
 	userID          string
 	evaluationDelay time.Duration
 }
@@ -55,9 +56,9 @@ func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v
 		t -= a.evaluationDelay.Milliseconds()
 	}
 
-	a.samples = append(a.samples, cortexpb.Sample{
-		TimestampMs: t,
-		Value:       v,
+	a.samples = append(a.samples, logproto.Sample{
+		Timestamp: t,
+		Value:     v,
 	})
 	return 0, nil
 }
@@ -71,7 +72,7 @@ func (a *PusherAppender) Commit() error {
 
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
-	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), cortexpb.ToWriteRequest(a.labels, a.samples, nil, cortexpb.RULE))
+	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), logproto.ToWriteRequest(a.labels, a.samples, nil, logproto.RULE))
 
 	if err != nil {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)

@@ -25,12 +25,12 @@ import (
 	"github.com/uber/jaeger-client-go"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/tenant"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (
@@ -559,7 +559,7 @@ func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Du
 }
 
 func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
-	found, bufs, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)})
+	found, bufs, _, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)})
 	if len(found) != 1 {
 		return nil, false
 	}
@@ -600,7 +600,7 @@ func (s resultsCache) put(ctx context.Context, key string, extents []Extent) {
 		return
 	}
 
-	s.cache.Store(ctx, []string{cache.HashKey(key)}, [][]byte{buf})
+	_ = s.cache.Store(ctx, []string{cache.HashKey(key)}, [][]byte{buf})
 }
 
 func jaegerTraceID(ctx context.Context) string {
@@ -631,10 +631,10 @@ func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
 func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, bool) {
 	result := SampleStream{
 		Labels:  stream.Labels,
-		Samples: make([]cortexpb.Sample, 0, len(stream.Samples)),
+		Samples: make([]logproto.Sample, 0, len(stream.Samples)),
 	}
 	for _, sample := range stream.Samples {
-		if start <= sample.TimestampMs && sample.TimestampMs <= end {
+		if start <= sample.Timestamp && sample.Timestamp <= end {
 			result.Samples = append(result.Samples, sample)
 		}
 	}

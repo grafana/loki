@@ -7,7 +7,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,9 +18,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
-	cutil "github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -30,6 +26,8 @@ import (
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -37,11 +35,6 @@ import (
 const (
 	queryBatchSize       = 128
 	queryBatchSampleSize = 512
-)
-
-// Errors returned on Query.
-var (
-	ErrStreamMissing = errors.New("Stream missing")
 )
 
 var (
@@ -63,15 +56,13 @@ var (
 )
 
 type instance struct {
-	cfg        *Config
-	streamsMtx sync.RWMutex
+	cfg *Config
 
-	buf         []byte // buffer used to compute fps.
-	streams     map[string]*stream
-	streamsByFP map[model.Fingerprint]*stream
+	buf     []byte // buffer used to compute fps.
+	streams *streamsMap
 
 	index  *index.InvertedIndex
-	mapper *fpMapper // using of mapper needs streamsMtx because it calls back
+	mapper *fpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 
 	instanceID string
 
@@ -97,12 +88,11 @@ type instance struct {
 
 func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch, chunkFilter storage.RequestChunkFilterer) *instance {
 	i := &instance{
-		cfg:         cfg,
-		streams:     map[string]*stream{},
-		streamsByFP: map[model.Fingerprint]*stream{},
-		buf:         make([]byte, 0, 1024),
-		index:       index.NewWithShards(uint32(cfg.IndexShards)),
-		instanceID:  instanceID,
+		cfg:        cfg,
+		streams:    newStreamsMap(),
+		buf:        make([]byte, 0, 1024),
+		index:      index.NewWithShards(uint32(cfg.IndexShards)),
+		instanceID: instanceID,
 
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
@@ -124,24 +114,22 @@ func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runt
 // consumeChunk manually adds a chunk that was received during ingester chunk
 // transfer.
 func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *logproto.Chunk) error {
-	i.streamsMtx.Lock()
-	defer i.streamsMtx.Unlock()
-
 	fp := i.getHashForLabels(ls)
 
-	stream, ok := i.streamsByFP[fp]
-	if !ok {
+	s, _, _ := i.streams.LoadOrStoreNewByFP(fp,
+		func() (*stream, error) {
+			s := i.createStreamByFP(ls, fp)
+			s.chunkMtx.Lock()
+			return s, nil
+		},
+		func(s *stream) error {
+			s.chunkMtx.Lock()
+			return nil
+		},
+	)
+	defer s.chunkMtx.Unlock()
 
-		sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(ls), fp)
-		stream = newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
-		i.streamsByFP[fp] = stream
-		i.streams[stream.labelsString] = stream
-		i.streamsCreatedTotal.Inc()
-		memoryStreams.WithLabelValues(i.instanceID).Inc()
-		i.addTailersToNewStream(stream)
-	}
-
-	err := stream.consumeChunk(ctx, chunk)
+	err := s.consumeChunk(ctx, chunk)
 	if err == nil {
 		memoryChunks.Inc()
 	}
@@ -154,22 +142,33 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record.UserID = i.instanceID
 	defer recordPool.PutRecord(record)
 
-	i.streamsMtx.Lock()
-	defer i.streamsMtx.Unlock()
-
 	var appendErr error
-	for _, s := range req.Streams {
+	for _, reqStream := range req.Streams {
 
-		stream, err := i.getOrCreateStream(s, false, record)
+		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
+			func() (*stream, error) {
+				s, err := i.createStream(reqStream, record)
+				// Lock before adding to maps
+				if err == nil {
+					s.chunkMtx.Lock()
+				}
+				return s, err
+			},
+			func(s *stream) error {
+				s.chunkMtx.Lock()
+				return nil
+			},
+		)
 		if err != nil {
 			appendErr = err
 			continue
 		}
 
-		if _, err := stream.Push(ctx, s.Entries, record, 0); err != nil {
+		_, err = s.Push(ctx, reqStream.Entries, record, 0, false)
+		if err != nil {
 			appendErr = err
-			continue
 		}
+		s.chunkMtx.Unlock()
 	}
 
 	if !record.IsEmpty() {
@@ -191,23 +190,12 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-// getOrCreateStream returns the stream or creates it. Must hold streams mutex if not asked to lock.
-func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, record *WALRecord) (*stream, error) {
-	if lock {
-		i.streamsMtx.Lock()
-		defer i.streamsMtx.Unlock()
-	}
-	stream, ok := i.streams[pushReqStream.Labels]
-
-	if ok {
-		return stream, nil
-	}
-
+func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
 	var err error
 	if record != nil {
-		err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
+		err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, i.streams.Len())
 	}
 
 	if err != nil {
@@ -243,10 +231,8 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	}
 	fp := i.getHashForLabels(labels)
 
-	sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(labels), fp)
-	stream = newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
-	i.streams[pushReqStream.Labels] = stream
-	i.streamsByFP[fp] = stream
+	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -261,7 +247,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	i.streamsCreatedTotal.Inc()
-	i.addTailersToNewStream(stream)
+	i.addTailersToNewStream(s)
 
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
@@ -271,16 +257,38 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 		)
 	}
 
-	return stream, nil
+	return s, nil
 }
 
-// removeStream removes a stream from the instance. The streamsMtx must be held.
+func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
+	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
+
+	i.streamsCreatedTotal.Inc()
+	memoryStreams.WithLabelValues(i.instanceID).Inc()
+	i.addTailersToNewStream(s)
+
+	return s
+}
+
+// getOrCreateStream returns the stream or creates it.
+// It's safe to use this function if returned stream is not consistency sensitive to streamsMap(e.g. ingesterRecoverer),
+// otherwise use streamsMap.LoadOrStoreNew with locking stream's chunkMtx inside.
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
+	s, _, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
+		return i.createStream(pushReqStream, record)
+	}, nil)
+
+	return s, err
+}
+
+// removeStream removes a stream from the instance.
 func (i *instance) removeStream(s *stream) {
-	delete(i.streamsByFP, s.fp)
-	delete(i.streams, s.labelsString)
-	i.index.Delete(s.labels, s.fp)
-	i.streamsRemovedTotal.Inc()
-	memoryStreams.WithLabelValues(i.instanceID).Dec()
+	if i.streams.Delete(s) {
+		i.index.Delete(s.labels, s.fp)
+		i.streamsRemovedTotal.Inc()
+		memoryStreams.WithLabelValues(i.instanceID).Dec()
+	}
 }
 
 func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
@@ -289,10 +297,10 @@ func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 	return i.mapper.mapFP(model.Fingerprint(fp), ls)
 }
 
-// Return labels associated with given fingerprint. Used by fingerprint mapper. Must hold streamsMtx.
+// Return labels associated with given fingerprint. Used by fingerprint mapper.
 func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
-	s := i.streamsByFP[fp]
-	if s == nil {
+	s, ok := i.streams.LoadByFP(fp)
+	if !ok {
 		return nil
 	}
 	return s.labels
@@ -450,7 +458,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 
 	// If no matchers were supplied we include all streams.
 	if len(groups) == 0 {
-		series = make([]logproto.SeriesIdentifier, 0, len(i.streams))
+		series = make([]logproto.SeriesIdentifier, 0, i.streams.Len())
 		err = i.forMatchingStreams(ctx, nil, shard, func(stream *stream) error {
 			// consider the stream only if it overlaps the request time range
 			if shouldConsiderStream(stream, req) {
@@ -495,30 +503,29 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *instance) numStreams() int {
-	i.streamsMtx.RLock()
-	defer i.streamsMtx.RUnlock()
-
-	return len(i.streams)
+	return i.streams.Len()
 }
 
 // forAllStreams will execute a function for all streams in the instance.
 // It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forAllStreams(ctx context.Context, fn func(*stream) error) error {
-	i.streamsMtx.RLock()
-	defer i.streamsMtx.RUnlock()
 	var chunkFilter storage.ChunkFilterer
 	if i.chunkFilter != nil {
 		chunkFilter = i.chunkFilter.ForRequest(ctx)
 	}
 
-	for _, stream := range i.streams {
-		if chunkFilter != nil && chunkFilter.ShouldFilter(stream.labels) {
-			continue
+	err := i.streams.ForEach(func(s *stream) (bool, error) {
+		if chunkFilter != nil && chunkFilter.ShouldFilter(s.labels) {
+			return true, nil
 		}
-		err := fn(stream)
+		err := fn(s)
 		if err != nil {
-			return err
+			return false, err
 		}
+		return true, nil
+	})
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -531,10 +538,7 @@ func (i *instance) forMatchingStreams(
 	shards *astmapper.ShardAnnotation,
 	fn func(*stream) error,
 ) error {
-	i.streamsMtx.RLock()
-	defer i.streamsMtx.RUnlock()
-
-	filters, matchers := cutil.SplitFiltersAndMatchers(matchers)
+	filters, matchers := util.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(matchers, shards)
 	if err != nil {
 		return err
@@ -545,9 +549,11 @@ func (i *instance) forMatchingStreams(
 	}
 outer:
 	for _, streamID := range ids {
-		stream, ok := i.streamsByFP[streamID]
+		stream, ok := i.streams.LoadByFP(streamID)
 		if !ok {
-			return ErrStreamMissing
+			// If a stream is missing here, it has already been flushed
+			// and is supposed to be picked up from storage by querier
+			continue
 		}
 		for _, filter := range filters {
 			if !filter.Matches(stream.labels.Get(filter.Name)) {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -16,18 +15,20 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var (
-	bucketName  = []byte("index")
-	chunkBucket = []byte("chunks")
-)
+var chunkBucket = []byte("chunks")
 
 const (
 	logMetricName = "logs"
 	markersFolder = "markers"
 	separator     = "\000"
 )
+
+var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
+	"see if there is a bug causing us to drop whole index table")
 
 type TableMarker interface {
 	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.
@@ -87,7 +88,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 
 	var empty, modified bool
 	err = db.Update(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket(bucketName)
+		bucket := tx.Bucket(local.IndexBucketName)
 		if bucket == nil {
 			return nil
 		}
@@ -136,11 +137,13 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 	empty := true
 	modified := false
 	now := model.Now()
+	chunksFound := false
 
 	for chunkIt.Next() {
 		if chunkIt.Err() != nil {
 			return false, false, chunkIt.Err()
 		}
+		chunksFound = true
 		c := chunkIt.Entry()
 		seriesMap.Add(c.SeriesID, c.UserID, c.Labels)
 
@@ -191,6 +194,9 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 
 		empty = false
 		seriesMap.MarkSeriesNotDeleted(c.SeriesID, c.UserID)
+	}
+	if !chunksFound {
+		return false, false, errNoChunksFound
 	}
 	if empty {
 		return true, true, nil
