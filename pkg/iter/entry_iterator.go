@@ -135,8 +135,8 @@ type HeapIterator interface {
 	Push(EntryIterator)
 }
 
-// heapIterator iterates over a heap of iterators.
-type heapIterator struct {
+// mergeEntryIterator iterates over a heap of iterators and merge duplicate entries.
+type mergeEntryIterator struct {
 	heap interface {
 		heap.Interface
 		Peek() EntryIterator
@@ -145,16 +145,17 @@ type heapIterator struct {
 	prefetched bool
 	stats      *stats.Context
 
-	tuples     []tuple
-	currEntry  logproto.Entry
-	currLabels string
-	errs       []error
+	tuples    []tuple
+	currEntry entryWithLabels
+	errs      []error
 }
 
-// NewHeapIterator returns a new iterator which uses a heap to merge together
-// entries for multiple interators.
-func NewHeapIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) HeapIterator {
-	result := &heapIterator{is: is, stats: stats.FromContext(ctx)}
+// NewMergeEntryIterator returns a new iterator which uses a heap to merge together entries for multiple iterators and deduplicate entries if any.
+// The iterator only order and merge entries across given `is` iterators, it does not merge entries within individual iterator.
+// This means using this iterator with a single iterator will result in the same result as the input iterator.
+// If you don't need to deduplicate entries, use `NewSortEntryIterator` instead.
+func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) HeapIterator {
+	result := &mergeEntryIterator{is: is, stats: stats.FromContext(ctx)}
 	switch direction {
 	case logproto.BACKWARD:
 		result.heap = &iteratorMaxHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
@@ -171,7 +172,7 @@ func NewHeapIterator(ctx context.Context, is []EntryIterator, direction logproto
 // prefetch iterates over all inner iterators to merge together, calls Next() on
 // each of them to prefetch the first entry and pushes of them - who are not
 // empty - to the heap
-func (i *heapIterator) prefetch() {
+func (i *mergeEntryIterator) prefetch() {
 	if i.prefetched {
 		return
 	}
@@ -192,7 +193,7 @@ func (i *heapIterator) prefetch() {
 //
 // If the iterator has no more entries or an error occur while advancing it, the iterator
 // is not pushed to the heap and any possible error captured, so that can be get via Error().
-func (i *heapIterator) requeue(ei EntryIterator, advanced bool) {
+func (i *mergeEntryIterator) requeue(ei EntryIterator, advanced bool) {
 	if advanced || ei.Next() {
 		heap.Push(i.heap, ei)
 		return
@@ -204,7 +205,7 @@ func (i *heapIterator) requeue(ei EntryIterator, advanced bool) {
 	util.LogError("closing iterator", ei.Close)
 }
 
-func (i *heapIterator) Push(ei EntryIterator) {
+func (i *mergeEntryIterator) Push(ei EntryIterator) {
 	i.requeue(ei, false)
 }
 
@@ -213,7 +214,7 @@ type tuple struct {
 	EntryIterator
 }
 
-func (i *heapIterator) Next() bool {
+func (i *mergeEntryIterator) Next() bool {
 	i.prefetch()
 
 	if i.heap.Len() == 0 {
@@ -222,8 +223,8 @@ func (i *heapIterator) Next() bool {
 
 	// shortcut for the last iterator.
 	if i.heap.Len() == 1 {
-		i.currEntry = i.heap.Peek().Entry()
-		i.currLabels = i.heap.Peek().Labels()
+		i.currEntry.entry = i.heap.Peek().Entry()
+		i.currEntry.labels = i.heap.Peek().Labels()
 		if !i.heap.Peek().Next() {
 			i.heap.Pop()
 		}
@@ -250,8 +251,8 @@ func (i *heapIterator) Next() bool {
 
 	// shortcut if we have a single tuple.
 	if len(i.tuples) == 1 {
-		i.currEntry = i.tuples[0].Entry
-		i.currLabels = i.tuples[0].Labels()
+		i.currEntry.entry = i.tuples[0].Entry
+		i.currEntry.labels = i.tuples[0].Labels()
 		i.requeue(i.tuples[0].EntryIterator, false)
 		i.tuples = i.tuples[:0]
 		return true
@@ -260,12 +261,12 @@ func (i *heapIterator) Next() bool {
 	// Find in tuples which entry occurs most often which, due to quorum based
 	// replication, is guaranteed to be the correct next entry.
 	t := i.tuples[0]
-	i.currEntry = t.Entry
-	i.currLabels = t.Labels()
+	i.currEntry.entry = t.Entry
+	i.currEntry.labels = t.Labels()
 
 	// Requeue the iterators, advancing them if they were consumed.
 	for j := range i.tuples {
-		if i.tuples[j].Line != i.currEntry.Line {
+		if i.tuples[j].Line != i.currEntry.entry.Line {
 			i.requeue(i.tuples[j].EntryIterator, true)
 			continue
 		}
@@ -279,15 +280,15 @@ func (i *heapIterator) Next() bool {
 	return true
 }
 
-func (i *heapIterator) Entry() logproto.Entry {
-	return i.currEntry
+func (i *mergeEntryIterator) Entry() logproto.Entry {
+	return i.currEntry.entry
 }
 
-func (i *heapIterator) Labels() string {
-	return i.currLabels
+func (i *mergeEntryIterator) Labels() string {
+	return i.currEntry.labels
 }
 
-func (i *heapIterator) Error() error {
+func (i *mergeEntryIterator) Error() error {
 	switch len(i.errs) {
 	case 0:
 		return nil
@@ -298,7 +299,7 @@ func (i *heapIterator) Error() error {
 	}
 }
 
-func (i *heapIterator) Close() error {
+func (i *mergeEntryIterator) Close() error {
 	for i.heap.Len() > 0 {
 		if err := i.heap.Pop().(EntryIterator).Close(); err != nil {
 			return err
@@ -308,35 +309,143 @@ func (i *heapIterator) Close() error {
 	return nil
 }
 
-func (i *heapIterator) Peek() time.Time {
+func (i *mergeEntryIterator) Peek() time.Time {
 	i.prefetch()
 
 	return i.heap.Peek().Entry().Timestamp
 }
 
 // Len returns the number of inner iterators on the heap, still having entries
-func (i *heapIterator) Len() int {
+func (i *mergeEntryIterator) Len() int {
 	i.prefetch()
 
 	return i.heap.Len()
 }
 
+type entrySortIterator struct {
+	heap interface {
+		heap.Interface
+		Peek() EntryIterator
+	}
+	is         []EntryIterator
+	prefetched bool
+
+	currEntry entryWithLabels
+	errs      []error
+}
+
+// NewSortEntryIterator returns a new EntryIterator that sorts entries by timestamp (depending on the direction) the input iterators.
+// The iterator only order entries across given `is` iterators, it does not sort entries within individual iterator.
+// This means using this iterator with a single iterator will result in the same result as the input iterator.
+func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) EntryIterator {
+	if len(is) == 0 {
+		return NoopIterator
+	}
+	if len(is) == 1 {
+		return is[0]
+	}
+	result := &entrySortIterator{is: is}
+	switch direction {
+	case logproto.BACKWARD:
+		result.heap = &iteratorMaxHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
+	case logproto.FORWARD:
+		result.heap = &iteratorMinHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
+	default:
+		panic("bad direction")
+	}
+	return result
+}
+
+// init initialize the underlaying heap
+func (i *entrySortIterator) init() {
+	if i.prefetched {
+		return
+	}
+
+	i.prefetched = true
+	for _, it := range i.is {
+		if it.Next() {
+			i.heap.Push(it)
+			continue
+		}
+
+		if err := it.Error(); err != nil {
+			i.errs = append(i.errs, err)
+		}
+		util.LogError("closing iterator", it.Close)
+	}
+	heap.Init(i.heap)
+
+	// We can now clear the list of input iterators to merge, given they have all
+	// been processed and the non empty ones have been pushed to the heap
+	i.is = nil
+}
+
+func (i *entrySortIterator) Next() bool {
+	i.init()
+
+	if i.heap.Len() == 0 {
+		return false
+	}
+
+	next := i.heap.Peek()
+	i.currEntry.entry = next.Entry()
+	i.currEntry.labels = next.Labels()
+	// if the top iterator is empty, we remove it.
+	if !next.Next() {
+		heap.Pop(i.heap)
+		if err := next.Error(); err != nil {
+			i.errs = append(i.errs, err)
+		}
+		util.LogError("closing iterator", next.Close)
+		return true
+	}
+	if i.heap.Len() > 1 {
+		heap.Fix(i.heap, 0)
+	}
+	return true
+}
+
+func (i *entrySortIterator) Entry() logproto.Entry {
+	return i.currEntry.entry
+}
+
+func (i *entrySortIterator) Labels() string {
+	return i.currEntry.labels
+}
+
+func (i *entrySortIterator) Error() error {
+	switch len(i.errs) {
+	case 0:
+		return nil
+	case 1:
+		return i.errs[0]
+	default:
+		return util.MultiError(i.errs)
+	}
+}
+
+func (i *entrySortIterator) Close() error {
+	for i.heap.Len() > 0 {
+		if err := i.heap.Pop().(EntryIterator).Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // NewStreamsIterator returns an iterator over logproto.Stream
-func NewStreamsIterator(ctx context.Context, streams []logproto.Stream, direction logproto.Direction) EntryIterator {
+func NewStreamsIterator(streams []logproto.Stream, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(streams))
 	for i := range streams {
 		is = append(is, NewStreamIterator(streams[i]))
 	}
-	return NewHeapIterator(ctx, is, direction)
+	return NewSortEntryIterator(is, direction)
 }
 
 // NewQueryResponseIterator returns an iterator over a QueryResponse.
-func NewQueryResponseIterator(ctx context.Context, resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
-	is := make([]EntryIterator, 0, len(resp.Streams))
-	for i := range resp.Streams {
-		is = append(is, NewStreamIterator(resp.Streams[i]))
-	}
-	return NewHeapIterator(ctx, is, direction)
+func NewQueryResponseIterator(resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
+	return NewStreamsIterator(resp.Streams, direction)
 }
 
 type queryClientIterator struct {
@@ -365,7 +474,7 @@ func (i *queryClientIterator) Next() bool {
 			return false
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
-		i.curr = NewQueryResponseIterator(ctx, batch, i.direction)
+		i.curr = NewQueryResponseIterator(batch, i.direction)
 	}
 
 	return true

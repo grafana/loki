@@ -32,9 +32,7 @@ const (
 	defaultMaxFileSize       = 20 * (1 << 20) // 20MB
 )
 
-var (
-	ErrNotSupported = errors.New("not supported")
-)
+var ErrNotSupported = errors.New("not supported")
 
 // FileClient is a type of LogCLI client that do LogQL on log lines from
 // the given file directly, instead get log lines from Loki servers.
@@ -63,7 +61,6 @@ func NewFileClient(r io.ReadCloser) *FileClient {
 		labels:      []string{defaultLabelKey},
 		labelValues: []string{defaultLabelValue},
 	}
-
 }
 
 func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
@@ -278,7 +275,6 @@ func newFileIterator(
 	}
 
 	return iter.NewStreamsIterator(
-		ctx,
 		streamResult,
 		params.Direction,
 	), nil

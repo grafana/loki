@@ -45,7 +45,7 @@ func TestIterator(t *testing.T) {
 
 		// Test dedupe of overlapping iterators with the heap iterator.
 		{
-			iterator: NewHeapIterator(context.Background(), []EntryIterator{
+			iterator: NewMergeEntryIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(offset(0, identity), defaultLabels),
 				mkStreamIterator(offset(testSize/2, identity), defaultLabels),
 				mkStreamIterator(offset(testSize, identity), defaultLabels),
@@ -57,7 +57,7 @@ func TestIterator(t *testing.T) {
 
 		// Test dedupe of overlapping iterators with the heap iterator (backward).
 		{
-			iterator: NewHeapIterator(context.Background(), []EntryIterator{
+			iterator: NewMergeEntryIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(inverse(offset(0, identity)), defaultLabels),
 				mkStreamIterator(inverse(offset(-testSize/2, identity)), defaultLabels),
 				mkStreamIterator(inverse(offset(-testSize, identity)), defaultLabels),
@@ -69,7 +69,7 @@ func TestIterator(t *testing.T) {
 
 		// Test dedupe of entries with the same timestamp but different entries.
 		{
-			iterator: NewHeapIterator(context.Background(), []EntryIterator{
+			iterator: NewMergeEntryIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(offset(0, constant(0)), defaultLabels),
 				mkStreamIterator(offset(0, constant(0)), defaultLabels),
 				mkStreamIterator(offset(testSize, constant(0)), defaultLabels),
@@ -110,7 +110,7 @@ func TestIteratorMultipleLabels(t *testing.T) {
 	}{
 		// Test merging with differing labels but same timestamps and values.
 		{
-			iterator: NewHeapIterator(context.Background(), []EntryIterator{
+			iterator: NewMergeEntryIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(identity, "{foobar: \"baz1\"}"),
 				mkStreamIterator(identity, "{foobar: \"baz2\"}"),
 			}, logproto.FORWARD),
@@ -128,7 +128,7 @@ func TestIteratorMultipleLabels(t *testing.T) {
 
 		// Test merging with differing labels but all the same timestamps and different values.
 		{
-			iterator: NewHeapIterator(context.Background(), []EntryIterator{
+			iterator: NewMergeEntryIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(constant(0), "{foobar: \"baz1\"}"),
 				mkStreamIterator(constant(0), "{foobar: \"baz2\"}"),
 			}, logproto.FORWARD),
@@ -158,7 +158,7 @@ func TestIteratorMultipleLabels(t *testing.T) {
 	}
 }
 
-func TestHeapIteratorPrefetch(t *testing.T) {
+func TestMergeIteratorPrefetch(t *testing.T) {
 	t.Parallel()
 
 	type tester func(t *testing.T, i HeapIterator)
@@ -182,7 +182,7 @@ func TestHeapIteratorPrefetch(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			i := NewHeapIterator(context.Background(), []EntryIterator{
+			i := NewMergeEntryIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(identity, "{foobar: \"baz1\"}"),
 				mkStreamIterator(identity, "{foobar: \"baz2\"}"),
 			}, logproto.FORWARD)
@@ -234,7 +234,7 @@ func inverse(g generator) generator {
 	}
 }
 
-func TestHeapIteratorDeduplication(t *testing.T) {
+func TestMergeIteratorDeduplication(t *testing.T) {
 	foo := logproto.Stream{
 		Labels: `{app="foo"}`,
 		Entries: []logproto.Entry{
@@ -272,7 +272,7 @@ func TestHeapIteratorDeduplication(t *testing.T) {
 		require.NoError(t, it.Error())
 	}
 	// forward iteration
-	it := NewHeapIterator(context.Background(), []EntryIterator{
+	it := NewMergeEntryIterator(context.Background(), []EntryIterator{
 		NewStreamIterator(foo),
 		NewStreamIterator(bar),
 		NewStreamIterator(foo),
@@ -284,7 +284,7 @@ func TestHeapIteratorDeduplication(t *testing.T) {
 	assertIt(it, false, len(foo.Entries))
 
 	// backward iteration
-	it = NewHeapIterator(context.Background(), []EntryIterator{
+	it = NewMergeEntryIterator(context.Background(), []EntryIterator{
 		mustReverseStreamIterator(NewStreamIterator(foo)),
 		mustReverseStreamIterator(NewStreamIterator(bar)),
 		mustReverseStreamIterator(NewStreamIterator(foo)),
@@ -308,8 +308,8 @@ func TestReverseIterator(t *testing.T) {
 	itr1 := mkStreamIterator(inverse(offset(testSize, identity)), defaultLabels)
 	itr2 := mkStreamIterator(inverse(offset(testSize, identity)), "{foobar: \"bazbar\"}")
 
-	heapIterator := NewHeapIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
-	reversedIter, err := NewReversedIter(heapIterator, testSize, false)
+	mergeIterator := NewMergeEntryIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
+	reversedIter, err := NewReversedIter(mergeIterator, testSize, false)
 	require.NoError(t, err)
 
 	for i := int64((testSize / 2) + 1); i <= testSize; i++ {
@@ -347,8 +347,8 @@ func TestReverseEntryIteratorUnlimited(t *testing.T) {
 	itr1 := mkStreamIterator(offset(testSize, identity), defaultLabels)
 	itr2 := mkStreamIterator(offset(testSize, identity), "{foobar: \"bazbar\"}")
 
-	heapIterator := NewHeapIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
-	reversedIter, err := NewReversedIter(heapIterator, 0, false)
+	mergeIterator := NewMergeEntryIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
+	reversedIter, err := NewReversedIter(mergeIterator, 0, false)
 	require.NoError(t, err)
 
 	var ct int
@@ -546,7 +546,7 @@ func Test_DuplicateCount(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, ctx := stats.NewContext(context.Background())
-			it := NewHeapIterator(ctx, test.iters, test.direction)
+			it := NewMergeEntryIterator(ctx, test.iters, test.direction)
 			defer it.Close()
 			for it.Next() {
 			}
@@ -636,7 +636,7 @@ func TestNonOverlappingClose(t *testing.T) {
 	require.Equal(t, true, b.closed.Load())
 }
 
-func BenchmarkHeapIterator(b *testing.B) {
+func BenchmarkSortIterator(b *testing.B) {
 	var (
 		ctx          = context.Background()
 		streams      []logproto.Stream
@@ -658,18 +658,130 @@ func BenchmarkHeapIterator(b *testing.B) {
 		streams[i], streams[j] = streams[j], streams[i]
 	})
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		var itrs []EntryIterator
-		for i := 0; i < streamsCount; i++ {
-			itrs = append(itrs, NewStreamIterator(streams[i]))
+	b.Run("merge sort", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			var itrs []EntryIterator
+			for i := 0; i < streamsCount; i++ {
+				itrs = append(itrs, NewStreamIterator(streams[i]))
+			}
+			b.StartTimer()
+			it := NewMergeEntryIterator(ctx, itrs, logproto.BACKWARD)
+			for it.Next() {
+				it.Entry()
+			}
+			it.Close()
 		}
-		b.StartTimer()
-		it := NewHeapIterator(ctx, itrs, logproto.BACKWARD)
+	})
+
+	b.Run("sort", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			var itrs []EntryIterator
+			for i := 0; i < streamsCount; i++ {
+				itrs = append(itrs, NewStreamIterator(streams[i]))
+			}
+			b.StartTimer()
+			it := NewSortEntryIterator(itrs, logproto.BACKWARD)
+			for it.Next() {
+				it.Entry()
+			}
+			it.Close()
+		}
+	})
+}
+
+func Test_EntrySortIterator(t *testing.T) {
+	t.Run("backward", func(t *testing.T) {
+		t.Parallel()
+		it := NewSortEntryIterator(
+			[]EntryIterator{
+				NewStreamIterator(logproto.Stream{
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 5)},
+						{Timestamp: time.Unix(0, 3)},
+						{Timestamp: time.Unix(0, 0)},
+					},
+					Labels: `{foo="bar"}`,
+				}),
+				NewStreamIterator(logproto.Stream{
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 4)},
+						{Timestamp: time.Unix(0, 2)},
+						{Timestamp: time.Unix(0, 1)},
+					},
+					Labels: `{foo="buzz"}`,
+				}),
+			}, logproto.BACKWARD)
+		var i int64 = 5
+		defer it.Close()
 		for it.Next() {
-			it.Entry()
+			require.Equal(t, time.Unix(0, i), it.Entry().Timestamp)
+			i--
 		}
-		it.Close()
-	}
+	})
+	t.Run("forward", func(t *testing.T) {
+		t.Parallel()
+		it := NewSortEntryIterator(
+			[]EntryIterator{
+				NewStreamIterator(logproto.Stream{
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 0)},
+						{Timestamp: time.Unix(0, 3)},
+						{Timestamp: time.Unix(0, 5)},
+					},
+					Labels: `{foo="bar"}`,
+				}),
+				NewStreamIterator(logproto.Stream{
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1)},
+						{Timestamp: time.Unix(0, 2)},
+						{Timestamp: time.Unix(0, 4)},
+					},
+					Labels: `{foo="buzz"}`,
+				}),
+			}, logproto.FORWARD)
+		var i int64
+		defer it.Close()
+		for it.Next() {
+			require.Equal(t, time.Unix(0, i), it.Entry().Timestamp)
+			i++
+		}
+	})
+	t.Run("forward sort by stream", func(t *testing.T) {
+		t.Parallel()
+		it := NewSortEntryIterator(
+			[]EntryIterator{
+				NewStreamIterator(logproto.Stream{
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 0)},
+						{Timestamp: time.Unix(0, 3)},
+						{Timestamp: time.Unix(0, 5)},
+					},
+					Labels: `b`,
+				}),
+				NewStreamIterator(logproto.Stream{
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 0)},
+						{Timestamp: time.Unix(0, 1)},
+						{Timestamp: time.Unix(0, 2)},
+						{Timestamp: time.Unix(0, 4)},
+					},
+					Labels: `a`,
+				}),
+			}, logproto.FORWARD)
+		// The first entry appears in both so we expect it to be sorted by Labels.
+		require.True(t, it.Next())
+		require.Equal(t, time.Unix(0, 0), it.Entry().Timestamp)
+		require.Equal(t, `a`, it.Labels())
+
+		var i int64
+		defer it.Close()
+		for it.Next() {
+			require.Equal(t, time.Unix(0, i), it.Entry().Timestamp)
+			i++
+		}
+	})
 }

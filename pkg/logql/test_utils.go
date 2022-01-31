@@ -90,7 +90,7 @@ outer:
 		}
 	}
 
-	return iter.NewHeapIterator(ctx, streamIters, req.Direction), nil
+	return iter.NewSortEntryIterator(streamIters, req.Direction), nil
 }
 
 func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Stream {
@@ -200,7 +200,7 @@ outer:
 	filtered := processSeries(matched, extractor)
 
 	return iter.NewTimeRangedSampleIterator(
-		iter.NewMultiSeriesIterator(ctx, filtered),
+		iter.NewMultiSeriesIterator(filtered),
 		req.Start.UnixNano(),
 		req.End.UnixNano()+1,
 	), nil

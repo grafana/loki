@@ -306,7 +306,7 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	return s.labels
 }
 
-func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter.EntryIterator, error) {
+func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -341,10 +341,10 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 		return nil, err
 	}
 
-	return iters, nil
+	return iter.NewSortEntryIterator(iters, req.Direction), nil
 }
 
-func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) ([]iter.SampleIterator, error) {
+func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
@@ -386,7 +386,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	return iters, nil
+	return iter.NewSortSampleIterator(iters), nil
 }
 
 // Label returns the label names or values depending on the given request
