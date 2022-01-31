@@ -57,7 +57,7 @@ This would create a log line
 }
 ```
 
-**Loki 2.2 also includes a new [`unpack`](../../../../logql/#unpack) parser to work with the pack stage.**
+**Loki 2.2 also includes a new [`unpack`](../../../../logql/log_queries/#unpack) parser to work with the pack stage.**
 
 For example:
 
