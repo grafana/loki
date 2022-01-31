@@ -20,7 +20,7 @@ local helm = tanka.helm.new(std.thisFile) {
   _images+:: {
     grafana: {
       repository: 'grafana/grafana',
-      tag: '8.2.5',
+      tag: 'latest',
       pullPolicy: 'IfNotPresent',
     },
   },
