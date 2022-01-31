@@ -4,9 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/cortexproject/cortex/pkg/configs/client"
-	"github.com/cortexproject/cortex/pkg/configs/userconfig"
-
+	"github.com/grafana/loki/pkg/configs/client"
+	"github.com/grafana/loki/pkg/configs/userconfig"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 )
 

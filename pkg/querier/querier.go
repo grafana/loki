@@ -6,13 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -23,6 +21,7 @@ import (
 	listutil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	util_validation "github.com/grafana/loki/pkg/util/validation"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -143,8 +142,10 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 
 		iters = append(iters, storeIter)
 	}
-
-	return iter.NewHeapIterator(ctx, iters, params.Direction), nil
+	if len(iters) == 1 {
+		return iters[0], nil
+	}
+	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
 }
 
 func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -186,7 +187,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 
 		iters = append(iters, storeIter)
 	}
-	return iter.NewHeapSampleIterator(ctx, iters), nil
+	return iter.NewMergeSampleIterator(ctx, iters), nil
 }
 
 func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
@@ -538,7 +539,7 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 
 	}
 	if maxQueryLength := limits.MaxQueryLength(userID); maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, cortex_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
 	}
 	if through.Before(from) {
 		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)

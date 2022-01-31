@@ -9,7 +9,6 @@ import (
 	"os"
 	rt "runtime"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -46,6 +45,7 @@ import (
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
@@ -109,7 +109,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
-	c.registerQueryRangeFlagsWithChangedDefaultValues(f)
+	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
@@ -131,28 +131,6 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 			_ = f.Value.Set("10s")
 
 		case "server.grpc.keepalive.ping-without-stream-allowed":
-			_ = f.Value.Set("true")
-		}
-
-		fs.Var(f.Value, f.Name, f.Usage)
-	})
-}
-
-func (c *Config) registerQueryRangeFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
-	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
-	// NB: We can remove this after removing Loki's dependency on Cortex and bringing in the queryrange.Config.
-	// That will let us change the defaults there rather than include wrapper functions like this one.
-	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
-	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
-	c.QueryRange.RegisterFlags(throwaway)
-
-	throwaway.VisitAll(func(f *flag.Flag) {
-		// Ignore errors when setting new values. We have a test to verify that it works.
-		switch f.Name {
-		case "querier.split-queries-by-interval":
-			_ = f.Value.Set("30m")
-
-		case "querier.parallelise-shardable-queries":
 			_ = f.Value.Set("true")
 		}
 
@@ -221,6 +199,9 @@ func (c *Config) Validate() error {
 				i,
 			)
 		}
+	}
+	if err := c.QueryRange.Validate(); err != nil {
+		return errors.Wrap(err, "invalid query_range config")
 	}
 	return nil
 }

@@ -106,8 +106,8 @@ var carSeries = logproto.Series{
 	},
 }
 
-func TestNewHeapSampleIterator(t *testing.T) {
-	it := NewHeapSampleIterator(context.Background(),
+func TestNewMergeSampleIterator(t *testing.T) {
+	it := NewMergeSampleIterator(context.Background(),
 		[]SampleIterator{
 			NewSeriesIterator(varSeries),
 			NewSeriesIterator(carSeries),
@@ -197,7 +197,7 @@ func TestReadSampleBatch(t *testing.T) {
 	require.Equal(t, uint32(1), size)
 	require.NoError(t, err)
 
-	res, size, err = ReadSampleBatch(NewMultiSeriesIterator(context.Background(), []logproto.Series{carSeries, varSeries}), 100)
+	res, size, err = ReadSampleBatch(NewMultiSeriesIterator([]logproto.Series{carSeries, varSeries}), 100)
 	require.ElementsMatch(t, []logproto.Series{carSeries, varSeries}, res.Series)
 	require.Equal(t, uint32(6), size)
 	require.NoError(t, err)
@@ -281,7 +281,7 @@ func TestSampleIteratorWithClose_ReturnsError(t *testing.T) {
 	assert.Equal(t, err, err2)
 }
 
-func BenchmarkHeapSampleIterator(b *testing.B) {
+func BenchmarkSortSampleIterator(b *testing.B) {
 	var (
 		ctx          = context.Background()
 		series       []logproto.Series
@@ -303,18 +303,102 @@ func BenchmarkHeapSampleIterator(b *testing.B) {
 		series[i], series[j] = series[j], series[i]
 	})
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		var itrs []SampleIterator
-		for i := 0; i < seriesCount; i++ {
-			itrs = append(itrs, NewSeriesIterator(series[i]))
+	b.Run("merge", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			var itrs []SampleIterator
+			for i := 0; i < seriesCount; i++ {
+				itrs = append(itrs, NewSeriesIterator(series[i]))
+			}
+			b.StartTimer()
+			it := NewMergeSampleIterator(ctx, itrs)
+			for it.Next() {
+				it.Sample()
+			}
+			it.Close()
 		}
-		b.StartTimer()
-		it := NewHeapSampleIterator(ctx, itrs)
+	})
+	b.Run("sort", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			var itrs []SampleIterator
+			for i := 0; i < seriesCount; i++ {
+				itrs = append(itrs, NewSeriesIterator(series[i]))
+			}
+			b.StartTimer()
+			it := NewSortSampleIterator(itrs)
+			for it.Next() {
+				it.Sample()
+			}
+			it.Close()
+		}
+	})
+}
+
+func Test_SampleSortIterator(t *testing.T) {
+	t.Run("forward", func(t *testing.T) {
+		t.Parallel()
+		it := NewSortSampleIterator(
+			[]SampleIterator{
+				NewSeriesIterator(logproto.Series{
+					Samples: []logproto.Sample{
+						{Timestamp: 0},
+						{Timestamp: 3},
+						{Timestamp: 5},
+					},
+					Labels: `{foo="bar"}`,
+				}),
+				NewSeriesIterator(logproto.Series{
+					Samples: []logproto.Sample{
+						{Timestamp: 1},
+						{Timestamp: 2},
+						{Timestamp: 4},
+					},
+					Labels: `{foo="bar"}`,
+				}),
+			})
+		var i int64
+		defer it.Close()
 		for it.Next() {
-			it.Sample()
+			require.Equal(t, i, it.Sample().Timestamp)
+			i++
 		}
-		it.Close()
-	}
+	})
+	t.Run("forward sort by stream", func(t *testing.T) {
+		t.Parallel()
+		it := NewSortSampleIterator(
+			[]SampleIterator{
+				NewSeriesIterator(logproto.Series{
+					Samples: []logproto.Sample{
+						{Timestamp: 0},
+						{Timestamp: 3},
+						{Timestamp: 5},
+					},
+					Labels: `b`,
+				}),
+				NewSeriesIterator(logproto.Series{
+					Samples: []logproto.Sample{
+						{Timestamp: 0},
+						{Timestamp: 1},
+						{Timestamp: 2},
+						{Timestamp: 4},
+					},
+					Labels: `a`,
+				}),
+			})
+
+		// The first entry appears in both so we expect it to be sorted by Labels.
+		require.True(t, it.Next())
+		require.Equal(t, int64(0), it.Sample().Timestamp)
+		require.Equal(t, `a`, it.Labels())
+
+		var i int64
+		defer it.Close()
+		for it.Next() {
+			require.Equal(t, i, it.Sample().Timestamp)
+			i++
+		}
+	})
 }

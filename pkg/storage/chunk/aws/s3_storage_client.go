@@ -22,20 +22,18 @@ import (
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/flagext"
 	"github.com/minio/minio-go/v7/pkg/signer"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 
-	cortex_aws "github.com/cortexproject/cortex/pkg/chunk/aws"
-	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/flagext"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -131,32 +129,6 @@ func (cfg *S3Config) Validate() error {
 		return errUnsupportedSignatureVersion
 	}
 	return nil
-}
-
-func (cfg *S3Config) ToCortexS3Config() cortex_aws.S3Config {
-	return cortex_aws.S3Config{
-		S3:               cfg.S3,
-		S3ForcePathStyle: cfg.S3ForcePathStyle,
-		BucketNames:      cfg.BucketNames,
-		Endpoint:         cfg.Endpoint,
-		Region:           cfg.Region,
-		AccessKeyID:      cfg.AccessKeyID,
-		SecretAccessKey:  cfg.SecretAccessKey,
-		Insecure:         cfg.Insecure,
-		SSEEncryption:    cfg.SSEEncryption,
-		HTTPConfig:       cfg.HTTPConfig.ToCortexHTTPConfig(),
-		SignatureVersion: cfg.SignatureVersion,
-		SSEConfig:        cfg.SSEConfig,
-		Inject:           cortex_aws.InjectRequestMiddleware(cfg.Inject),
-	}
-}
-
-func (cfg *HTTPConfig) ToCortexHTTPConfig() cortex_aws.HTTPConfig {
-	return cortex_aws.HTTPConfig{
-		IdleConnTimeout:       cfg.IdleConnTimeout,
-		ResponseHeaderTimeout: cfg.ResponseHeaderTimeout,
-		InsecureSkipVerify:    cfg.InsecureSkipVerify,
-	}
 }
 
 type S3ObjectClient struct {

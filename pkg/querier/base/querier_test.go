@@ -3,17 +3,11 @@ package base
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
@@ -28,12 +22,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/prom1/storage/metric"
 	"github.com/grafana/loki/pkg/querier/batch"
 	"github.com/grafana/loki/pkg/querier/iterators"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/chunkcompat"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const (
@@ -168,12 +166,7 @@ func TestQuerier(t *testing.T) {
 }
 
 func mockTSDB(t *testing.T, mint model.Time, samples int, step, chunkOffset time.Duration, samplesPerChunk int) storage.Queryable {
-	dir, err := ioutil.TempDir("", "tsdb")
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
+	dir := t.TempDir()
 
 	opts := tsdb.DefaultHeadOptions()
 	opts.ChunkDirRoot = dir
@@ -257,9 +250,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 		},
 	}
 
-	dir, err := ioutil.TempDir("", t.Name())
-	assert.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
 
 	engine := promql.NewEngine(promql.EngineOpts{
@@ -715,7 +706,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *Moc
 	require.NoError(t, err)
 
 	tsc := client.TimeSeriesChunk{
-		Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "foo"}},
+		Labels: []logproto.LabelAdapter{{Name: model.MetricNameLabel, Value: "foo"}},
 		Chunks: chunks,
 	}
 	matrix, err := chunk.ChunksToMatrix(context.Background(), cs.chunks, 0, through)
@@ -728,9 +719,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *Moc
 }
 
 func testRangeQuery(t testing.TB, queryable storage.Queryable, end model.Time, q query) *promql.Result {
-	dir, err := ioutil.TempDir("", "test_query")
-	assert.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
 
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
@@ -875,9 +864,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 		},
 	}
 
-	dir, err := ioutil.TempDir("", t.Name())
-	assert.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
 
 	engine := promql.NewEngine(promql.EngineOpts{

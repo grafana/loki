@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/gogo/status"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -11,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // TranslateToPromqlAPIError converts error to one of promql.Errors for consumption in PromQL API.

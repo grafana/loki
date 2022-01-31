@@ -33,7 +33,7 @@ var (
 )
 
 func newSampleIterator() iter.SampleIterator {
-	return iter.NewHeapSampleIterator(context.Background(), []iter.SampleIterator{
+	return iter.NewSortSampleIterator([]iter.SampleIterator{
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelFoo.String(),
 			Samples:    samples,

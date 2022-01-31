@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -18,12 +17,7 @@ import (
 )
 
 func Test_GetFileFromStorage(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "get-file-from-storage")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	// write a file to storage.
 	testData := []byte("test-data")
@@ -66,12 +60,7 @@ func Test_GetFileFromStorage(t *testing.T) {
 }
 
 func Test_CompressFile(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "compress-file")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	uncompressedFilePath := filepath.Join(tempDir, "test-file")
 	compressedFilePath := filepath.Join(tempDir, "test-file.gz")

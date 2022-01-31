@@ -192,12 +192,7 @@ func TestTable_Compaction(t *testing.T) {
 		}
 
 		t.Run(fmt.Sprintf("%s ; %s", commonDBsConfig.String(), perUserDBsConfig.String()), func(t *testing.T) {
-			tempDir, err := ioutil.TempDir("", "table-compaction")
-			require.NoError(t, err)
-
-			defer func() {
-				require.NoError(t, os.RemoveAll(tempDir))
-			}()
+			tempDir := t.TempDir()
 
 			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 			tablePathInStorage := filepath.Join(objectStoragePath, tableName)
@@ -419,12 +414,7 @@ func listDir(t *testing.T, path string) (files, folders []string) {
 }
 
 func TestTable_CompactionFailure(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-compaction-failure")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	tableName := "test"
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)

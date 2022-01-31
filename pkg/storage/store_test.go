@@ -2,11 +2,9 @@ package storage
 
 import (
 	"context"
-	"io/ioutil"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
-	"os"
 	"path"
 	"runtime"
 	"testing"
@@ -787,12 +785,7 @@ type timeRange struct {
 }
 
 func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "multiple-boltdb-shippers")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)

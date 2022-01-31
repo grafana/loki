@@ -818,7 +818,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if ordered {
 			it = iter.NewNonOverlappingIterator(blockItrs)
 		} else {
-			it = iter.NewHeapIterator(ctx, blockItrs, direction)
+			it = iter.NewSortEntryIterator(blockItrs, direction)
 		}
 
 		return iter.NewTimeRangedIterator(
@@ -851,7 +851,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	if ordered {
 		return iter.NewNonOverlappingIterator(blockItrs), nil
 	}
-	return iter.NewHeapIterator(ctx, blockItrs, direction), nil
+	return iter.NewSortEntryIterator(blockItrs, direction), nil
 }
 
 // Iterator implements Chunk.
@@ -886,7 +886,7 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 	if ordered {
 		it = iter.NewNonOverlappingSampleIterator(its)
 	} else {
-		it = iter.NewHeapSampleIterator(ctx, its)
+		it = iter.NewSortSampleIterator(its)
 	}
 
 	return iter.NewTimeRangedSampleIterator(
@@ -1041,7 +1041,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	for _, stream := range streams {
 		streamsResult = append(streamsResult, *stream)
 	}
-	return iter.NewStreamsIterator(ctx, streamsResult, direction)
+	return iter.NewStreamsIterator(streamsResult, direction)
 }
 
 func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
@@ -1082,7 +1082,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 	for _, s := range series {
 		seriesRes = append(seriesRes, *s)
 	}
-	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(ctx, seriesRes), func() error {
+	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(seriesRes), func() error {
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}

@@ -1,13 +1,11 @@
 package storage
 
 import (
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
@@ -16,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 func TestFactoryStop(t *testing.T) {
@@ -78,10 +77,7 @@ func TestCustomIndexClient(t *testing.T) {
 	cfg := Config{}
 	schemaCfg := chunk.SchemaConfig{}
 
-	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	if err != nil {
-		return
-	}
+	dirname := t.TempDir()
 	cfg.BoltDBConfig.Directory = dirname
 
 	for _, tc := range []struct {

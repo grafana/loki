@@ -146,25 +146,25 @@ func (h sampleIteratorHeap) Less(i, j int) bool {
 	}
 }
 
-// heapSampleIterator iterates over a heap of iterators.
-type heapSampleIterator struct {
+// mergeSampleIterator iterates over a heap of iterators by merging samples.
+type mergeSampleIterator struct {
 	heap       *sampleIteratorHeap
 	is         []SampleIterator
 	prefetched bool
 	stats      *stats.Context
 
-	tuples         []sampletuple
-	curr           logproto.Sample
-	currLabels     string
-	currStreamHash uint64
-	errs           []error
+	tuples []sampletuple
+	curr   sampleWithLabels
+	errs   []error
 }
 
-// NewHeapSampleIterator returns a new iterator which uses a heap to merge together
-// entries for multiple iterators.
-func NewHeapSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
+// NewMergeSampleIterator returns a new iterator which uses a heap to merge together samples for multiple iterators and deduplicate if any.
+// The iterator only order and merge entries across given `is` iterators, it does not merge entries within individual iterator.
+// This means using this iterator with a single iterator will result in the same result as the input iterator.
+// If you don't need to deduplicate sample, use `NewSortSampleIterator` instead.
+func NewMergeSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
 	h := sampleIteratorHeap(make([]SampleIterator, 0, len(is)))
-	return &heapSampleIterator{
+	return &mergeSampleIterator{
 		stats:  stats.FromContext(ctx),
 		is:     is,
 		heap:   &h,
@@ -175,7 +175,7 @@ func NewHeapSampleIterator(ctx context.Context, is []SampleIterator) SampleItera
 // prefetch iterates over all inner iterators to merge together, calls Next() on
 // each of them to prefetch the first entry and pushes of them - who are not
 // empty - to the heap
-func (i *heapSampleIterator) prefetch() {
+func (i *mergeSampleIterator) prefetch() {
 	if i.prefetched {
 		return
 	}
@@ -196,7 +196,7 @@ func (i *heapSampleIterator) prefetch() {
 //
 // If the iterator has no more entries or an error occur while advancing it, the iterator
 // is not pushed to the heap and any possible error captured, so that can be get via Error().
-func (i *heapSampleIterator) requeue(ei SampleIterator, advanced bool) {
+func (i *mergeSampleIterator) requeue(ei SampleIterator, advanced bool) {
 	if advanced || ei.Next() {
 		heap.Push(i.heap, ei)
 		return
@@ -213,7 +213,7 @@ type sampletuple struct {
 	SampleIterator
 }
 
-func (i *heapSampleIterator) Next() bool {
+func (i *mergeSampleIterator) Next() bool {
 	i.prefetch()
 
 	if i.heap.Len() == 0 {
@@ -222,9 +222,9 @@ func (i *heapSampleIterator) Next() bool {
 
 	// shortcut for the last iterator.
 	if i.heap.Len() == 1 {
-		i.curr = i.heap.Peek().Sample()
-		i.currLabels = i.heap.Peek().Labels()
-		i.currStreamHash = i.heap.Peek().StreamHash()
+		i.curr.Sample = i.heap.Peek().Sample()
+		i.curr.labels = i.heap.Peek().Labels()
+		i.curr.streamHash = i.heap.Peek().StreamHash()
 		if !i.heap.Peek().Next() {
 			i.heap.Pop()
 		}
@@ -249,9 +249,9 @@ func (i *heapSampleIterator) Next() bool {
 		})
 	}
 
-	i.curr = i.tuples[0].Sample
-	i.currLabels = i.tuples[0].Labels()
-	i.currStreamHash = i.tuples[0].StreamHash()
+	i.curr.Sample = i.tuples[0].Sample
+	i.curr.labels = i.tuples[0].Labels()
+	i.curr.streamHash = i.tuples[0].StreamHash()
 	t := i.tuples[0]
 	if len(i.tuples) == 1 {
 		i.requeue(i.tuples[0].SampleIterator, false)
@@ -274,19 +274,19 @@ func (i *heapSampleIterator) Next() bool {
 	return true
 }
 
-func (i *heapSampleIterator) Sample() logproto.Sample {
-	return i.curr
+func (i *mergeSampleIterator) Sample() logproto.Sample {
+	return i.curr.Sample
 }
 
-func (i *heapSampleIterator) Labels() string {
-	return i.currLabels
+func (i *mergeSampleIterator) Labels() string {
+	return i.curr.labels
 }
 
-func (i *heapSampleIterator) StreamHash() uint64 {
-	return i.currStreamHash
+func (i *mergeSampleIterator) StreamHash() uint64 {
+	return i.curr.Hash
 }
 
-func (i *heapSampleIterator) Error() error {
+func (i *mergeSampleIterator) Error() error {
 	switch len(i.errs) {
 	case 0:
 		return nil
@@ -297,13 +297,123 @@ func (i *heapSampleIterator) Error() error {
 	}
 }
 
-func (i *heapSampleIterator) Close() error {
+func (i *mergeSampleIterator) Close() error {
 	for i.heap.Len() > 0 {
 		if err := i.heap.Pop().(SampleIterator).Close(); err != nil {
 			return err
 		}
 	}
 	i.tuples = nil
+	return nil
+}
+
+// sortSampleIterator iterates over a heap of iterators by sorting samples.
+type sortSampleIterator struct {
+	heap       *sampleIteratorHeap
+	is         []SampleIterator
+	prefetched bool
+
+	curr sampleWithLabels
+	errs []error
+}
+
+// NewSortSampleIterator returns a new SampleIterator that sorts samples by ascending timestamp the input iterators.
+// The iterator only order sample across given `is` iterators, it does not sort samples within individual iterator.
+// This means using this iterator with a single iterator will result in the same result as the input iterator.
+func NewSortSampleIterator(is []SampleIterator) SampleIterator {
+	if len(is) == 0 {
+		return NoopIterator
+	}
+	if len(is) == 1 {
+		return is[0]
+	}
+	h := sampleIteratorHeap(make([]SampleIterator, 0, len(is)))
+	return &sortSampleIterator{
+		is:   is,
+		heap: &h,
+	}
+}
+
+// init initialize the underlaying heap
+func (i *sortSampleIterator) init() {
+	if i.prefetched {
+		return
+	}
+
+	i.prefetched = true
+	for _, it := range i.is {
+		if it.Next() {
+			i.heap.Push(it)
+			continue
+		}
+
+		if err := it.Error(); err != nil {
+			i.errs = append(i.errs, err)
+		}
+		util.LogError("closing iterator", it.Close)
+	}
+	heap.Init(i.heap)
+
+	// We can now clear the list of input iterators to merge, given they have all
+	// been processed and the non empty ones have been pushed to the heap
+	i.is = nil
+}
+
+func (i *sortSampleIterator) Next() bool {
+	i.init()
+
+	if i.heap.Len() == 0 {
+		return false
+	}
+
+	next := i.heap.Peek()
+	i.curr.Sample = next.Sample()
+	i.curr.labels = next.Labels()
+	i.curr.streamHash = next.StreamHash()
+	// if the top iterator is empty, we remove it.
+	if !next.Next() {
+		heap.Pop(i.heap)
+		if err := next.Error(); err != nil {
+			i.errs = append(i.errs, err)
+		}
+		util.LogError("closing iterator", next.Close)
+		return true
+	}
+	if i.heap.Len() > 1 {
+		heap.Fix(i.heap, 0)
+	}
+	return true
+}
+
+func (i *sortSampleIterator) Sample() logproto.Sample {
+	return i.curr.Sample
+}
+
+func (i *sortSampleIterator) Labels() string {
+	return i.curr.labels
+}
+
+func (i *sortSampleIterator) StreamHash() uint64 {
+	return i.curr.streamHash
+}
+
+func (i *sortSampleIterator) Error() error {
+	switch len(i.errs) {
+	case 0:
+		return nil
+	case 1:
+		return i.errs[0]
+	default:
+		return util.MultiError(i.errs)
+	}
+}
+
+func (i *sortSampleIterator) Close() error {
+	for i.heap.Len() > 0 {
+		if err := i.heap.Pop().(SampleIterator).Close(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -338,7 +448,7 @@ func (i *sampleQueryClientIterator) Next() bool {
 			return false
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
-		i.curr = NewSampleQueryResponseIterator(ctx, batch)
+		i.curr = NewSampleQueryResponseIterator(batch)
 	}
 	return true
 }
@@ -364,8 +474,8 @@ func (i *sampleQueryClientIterator) Close() error {
 }
 
 // NewSampleQueryResponseIterator returns an iterator over a SampleQueryResponse.
-func NewSampleQueryResponseIterator(ctx context.Context, resp *logproto.SampleQueryResponse) SampleIterator {
-	return NewMultiSeriesIterator(ctx, resp.Series)
+func NewSampleQueryResponseIterator(resp *logproto.SampleQueryResponse) SampleIterator {
+	return NewMultiSeriesIterator(resp.Series)
 }
 
 type seriesIterator struct {
@@ -404,12 +514,12 @@ func SampleIteratorWithClose(it SampleIterator, closeFn func() error) SampleIter
 }
 
 // NewMultiSeriesIterator returns an iterator over multiple logproto.Series
-func NewMultiSeriesIterator(ctx context.Context, series []logproto.Series) SampleIterator {
+func NewMultiSeriesIterator(series []logproto.Series) SampleIterator {
 	is := make([]SampleIterator, 0, len(series))
 	for i := range series {
 		is = append(is, NewSeriesIterator(series[i]))
 	}
-	return NewHeapSampleIterator(ctx, is)
+	return NewSortSampleIterator(is)
 }
 
 // NewSeriesIterator iterates over sample in a series.

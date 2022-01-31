@@ -6,13 +6,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/discovery"
+
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/discovery"
 
 	"github.com/grafana/loki/pkg/util"
 )
@@ -30,6 +31,7 @@ type TargetManager struct {
 	logger     log.Logger
 	positions  positions.Positions
 	cancel     context.CancelFunc
+	done       chan struct{}
 	manager    *discovery.Manager
 	pushClient api.EntryHandler
 	groups     map[string]*targetGroup
@@ -47,6 +49,7 @@ func NewTargetManager(
 		metrics:    metrics,
 		logger:     logger,
 		cancel:     cancel,
+		done:       make(chan struct{}),
 		positions:  positions,
 		manager:    discovery.NewManager(ctx, log.With(logger, "component", "docker_discovery")),
 		pushClient: pushClient,
@@ -87,22 +90,28 @@ func NewTargetManager(
 		}
 	}
 
-	go tm.run()
+	go tm.run(ctx)
 	go util.LogError("running target manager", tm.manager.Run)
 
 	return tm, tm.manager.ApplyConfig(configs)
 }
 
 // run listens on the service discovery and adds new targets.
-func (tm *TargetManager) run() {
-	for targetGroups := range tm.manager.SyncCh() {
-		for jobName, groups := range targetGroups {
-			tg, ok := tm.groups[jobName]
-			if !ok {
-				level.Debug(tm.logger).Log("msg", "unknown target for job", "job", jobName)
-				continue
+func (tm *TargetManager) run(ctx context.Context) {
+	defer close(tm.done)
+	for {
+		select {
+		case targetGroups := <-tm.manager.SyncCh():
+			for jobName, groups := range targetGroups {
+				tg, ok := tm.groups[jobName]
+				if !ok {
+					level.Debug(tm.logger).Log("msg", "unknown target for job", "job", jobName)
+					continue
+				}
+				tg.sync(groups)
 			}
-			tg.sync(groups)
+		case <-ctx.Done():
+			return
 		}
 	}
 }
@@ -119,6 +128,7 @@ func (tm *TargetManager) Ready() bool {
 
 func (tm *TargetManager) Stop() {
 	tm.cancel()
+	<-tm.done
 	for _, s := range tm.groups {
 		s.Stop()
 	}

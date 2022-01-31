@@ -4,7 +4,6 @@ import (
 	"context"
 	fmt "fmt"
 	"io/ioutil"
-	"os"
 	"sort"
 	"testing"
 	"time"
@@ -55,9 +54,7 @@ func defaultIngesterTestConfigWithWAL(t *testing.T, walDir string) Config {
 }
 
 func TestIngesterWAL(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-	require.Nil(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 
@@ -137,9 +134,7 @@ func TestIngesterWAL(t *testing.T) {
 }
 
 func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-	require.Nil(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 
@@ -241,9 +236,7 @@ func TestUnflushedChunks(t *testing.T) {
 }
 
 func TestIngesterWALBackpressureSegments(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-	require.Nil(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 	ingesterConfig.WAL.ReplayMemoryCeiling = 1000
@@ -285,9 +278,7 @@ func TestIngesterWALBackpressureSegments(t *testing.T) {
 }
 
 func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-	require.Nil(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 	ingesterConfig.WAL.ReplayMemoryCeiling = 1000
@@ -580,9 +571,7 @@ func buildChunks(t testing.TB, size int) []Chunk {
 func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
 	for _, waitForCheckpoint := range []bool{false, true} {
 		t.Run(fmt.Sprintf("checkpoint-%v", waitForCheckpoint), func(t *testing.T) {
-			walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-			require.Nil(t, err)
-			defer os.RemoveAll(walDir)
+			walDir := t.TempDir()
 
 			ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 

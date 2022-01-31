@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -22,11 +21,13 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -217,6 +218,23 @@ func Test_EmptyTable(t *testing.T) {
 			NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
 		require.NoError(t, err)
 		require.True(t, empty)
+		return nil
+	})
+	require.NoError(t, err)
+
+	// table with no chunks should error
+	tempDir := t.TempDir()
+	emptyDB, err := util.SafeOpenBoltdbFile(filepath.Join(tempDir, "empty.db"))
+	require.NoError(t, err)
+	err = emptyDB.Update(func(tx *bbolt.Tx) error {
+		bucket, err := tx.CreateBucket(local.IndexBucketName)
+		require.NoError(t, err)
+
+		it, err := newChunkIndexIterator(bucket, schema.config)
+		require.NoError(t, err)
+		_, _, err = markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
+			NewExpirationChecker(&fakeLimits{}), nil)
+		require.Equal(t, err, errNoChunksFound)
 		return nil
 	})
 	require.NoError(t, err)

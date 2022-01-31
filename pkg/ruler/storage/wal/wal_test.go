@@ -5,9 +5,7 @@ package wal
 
 import (
 	"context"
-	"io/ioutil"
 	"math"
-	"os"
 	"sort"
 	"testing"
 	"time"
@@ -30,9 +28,7 @@ func newTestStorage(walDir string) (*Storage, error) {
 }
 
 func TestStorage_InvalidSeries(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -72,9 +68,7 @@ func TestStorage_InvalidSeries(t *testing.T) {
 }
 
 func TestStorage(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -114,9 +108,7 @@ func TestStorage(t *testing.T) {
 }
 
 func TestStorage_ExistingWAL(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -179,9 +171,7 @@ func TestStorage_ExistingWAL(t *testing.T) {
 }
 
 func TestStorage_ExistingWAL_RefID(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -212,9 +202,7 @@ func TestStorage_Truncate(t *testing.T) {
 	// after writing all the data, forcefully create 4 more segments,
 	// then do a truncate of a timestamp for _some_ of the data.
 	// then read data back in. Expect to only get the latter half of data.
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -273,9 +261,7 @@ func TestStorage_Truncate(t *testing.T) {
 }
 
 func TestStorage_WriteStalenessMarkers(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -327,9 +313,7 @@ func TestStorage_WriteStalenessMarkers(t *testing.T) {
 }
 
 func TestStorage_TruncateAfterClose(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
