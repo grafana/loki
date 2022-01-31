@@ -72,44 +72,24 @@ func (h *iteratorHeap) Pop() interface{} {
 	return x
 }
 
-type iteratorMinHeap struct {
+type iteratorSortHeap struct {
 	iteratorHeap
+	byAlphabetical bool
+	ascendingTime  bool
 }
 
-func (h iteratorMinHeap) Less(i, j int) bool {
-	t1, t2 := h.iteratorHeap[i].Entry().Timestamp, h.iteratorHeap[j].Entry().Timestamp
-
-	un1 := t1.UnixNano()
-	un2 := t2.UnixNano()
-
-	switch {
-	case un1 < un2:
-		return true
-	case un1 > un2:
-		return false
-	default: // un1 == un2:
+func (h iteratorSortHeap) Less(i, j int) bool {
+	t1, t2 := h.iteratorHeap[i].Entry().Timestamp.UnixNano(), h.iteratorHeap[j].Entry().Timestamp.UnixNano()
+	if t1 == t2 {
+		if h.byAlphabetical {
+			return h.iteratorHeap[i].Labels() < h.iteratorHeap[j].Labels()
+		}
 		return h.iteratorHeap[i].StreamHash() < h.iteratorHeap[j].StreamHash()
 	}
-}
-
-type iteratorMaxHeap struct {
-	iteratorHeap
-}
-
-func (h iteratorMaxHeap) Less(i, j int) bool {
-	t1, t2 := h.iteratorHeap[i].Entry().Timestamp, h.iteratorHeap[j].Entry().Timestamp
-
-	un1 := t1.UnixNano()
-	un2 := t2.UnixNano()
-
-	switch {
-	case un1 < un2:
-		return false
-	case un1 > un2:
-		return true
-	default: // un1 == un2
-		return h.iteratorHeap[i].StreamHash() < h.iteratorHeap[j].StreamHash()
+	if h.ascendingTime {
+		return t1 < t2
 	}
+	return t1 > t2
 }
 
 // HeapIterator iterates over a heap of iterators with ability to push new iterators and get some properties like time of entry at peek and len
@@ -144,9 +124,9 @@ func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction lo
 	result := &mergeEntryIterator{is: is, stats: stats.FromContext(ctx)}
 	switch direction {
 	case logproto.BACKWARD:
-		result.heap = &iteratorMaxHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
+		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), ascendingTime: false}
 	case logproto.FORWARD:
-		result.heap = &iteratorMinHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
+		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), ascendingTime: true}
 	default:
 		panic("bad direction")
 	}
@@ -329,6 +309,7 @@ type entrySortIterator struct {
 // NewSortEntryIterator returns a new EntryIterator that sorts entries by timestamp (depending on the direction) the input iterators.
 // The iterator only order entries across given `is` iterators, it does not sort entries within individual iterator.
 // This means using this iterator with a single iterator will result in the same result as the input iterator.
+// When timestamp is equal, the iterator sorts samples by their label alphabetically.
 func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) EntryIterator {
 	if len(is) == 0 {
 		return NoopIterator
@@ -339,9 +320,9 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 	result := &entrySortIterator{is: is}
 	switch direction {
 	case logproto.BACKWARD:
-		result.heap = &iteratorMaxHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
+		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), ascendingTime: false, byAlphabetical: true}
 	case logproto.FORWARD:
-		result.heap = &iteratorMinHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
+		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), ascendingTime: true, byAlphabetical: true}
 	default:
 		panic("bad direction")
 	}

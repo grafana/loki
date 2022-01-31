@@ -2377,7 +2377,6 @@ func newStream(n int64, f generator, lbsString string) logproto.Stream {
 	return logproto.Stream{
 		Entries: entries,
 		Labels:  labels.String(),
-		Hash:    labels.Hash(),
 	}
 }
 
@@ -2391,9 +2390,8 @@ func newSeries(n int64, f generator, lbsString string) logproto.Series {
 		samples = append(samples, f(i).Sample)
 	}
 	return logproto.Series{
-		Samples:    samples,
-		Labels:     labels.String(),
-		StreamHash: labels.Hash(),
+		Samples: samples,
+		Labels:  labels.String(),
 	}
 }
 

@@ -117,33 +117,34 @@ func (it *peekingSampleIterator) Error() error {
 	return it.iter.Error()
 }
 
-type sampleIteratorHeap []SampleIterator
+type sampleIteratorHeap struct {
+	its            []SampleIterator
+	byAlphabetical bool
+}
 
-func (h sampleIteratorHeap) Len() int             { return len(h) }
-func (h sampleIteratorHeap) Swap(i, j int)        { h[i], h[j] = h[j], h[i] }
-func (h sampleIteratorHeap) Peek() SampleIterator { return h[0] }
+func (h sampleIteratorHeap) Len() int             { return len(h.its) }
+func (h sampleIteratorHeap) Swap(i, j int)        { h.its[i], h.its[j] = h.its[j], h.its[i] }
+func (h sampleIteratorHeap) Peek() SampleIterator { return h.its[0] }
 func (h *sampleIteratorHeap) Push(x interface{}) {
-	*h = append(*h, x.(SampleIterator))
+	h.its = append(h.its, x.(SampleIterator))
 }
 
 func (h *sampleIteratorHeap) Pop() interface{} {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
+	n := len(h.its)
+	x := h.its[n-1]
+	h.its = h.its[0 : n-1]
 	return x
 }
 
 func (h sampleIteratorHeap) Less(i, j int) bool {
-	s1, s2 := h[i].Sample(), h[j].Sample()
-	switch {
-	case s1.Timestamp < s2.Timestamp:
-		return true
-	case s1.Timestamp > s2.Timestamp:
-		return false
-	default:
-		return h[i].StreamHash() < h[j].StreamHash()
+	s1, s2 := h.its[i].Sample(), h.its[j].Sample()
+	if s1.Timestamp == s2.Timestamp {
+		if h.byAlphabetical {
+			return h.its[i].Labels() < h.its[j].Labels()
+		}
+		return h.its[i].StreamHash() < h.its[j].StreamHash()
 	}
+	return s1.Timestamp < s2.Timestamp
 }
 
 // mergeSampleIterator iterates over a heap of iterators by merging samples.
@@ -163,7 +164,9 @@ type mergeSampleIterator struct {
 // This means using this iterator with a single iterator will result in the same result as the input iterator.
 // If you don't need to deduplicate sample, use `NewSortSampleIterator` instead.
 func NewMergeSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
-	h := sampleIteratorHeap(make([]SampleIterator, 0, len(is)))
+	h := sampleIteratorHeap{
+		its: make([]SampleIterator, 0, len(is)),
+	}
 	return &mergeSampleIterator{
 		stats:  stats.FromContext(ctx),
 		is:     is,
@@ -320,6 +323,7 @@ type sortSampleIterator struct {
 // NewSortSampleIterator returns a new SampleIterator that sorts samples by ascending timestamp the input iterators.
 // The iterator only order sample across given `is` iterators, it does not sort samples within individual iterator.
 // This means using this iterator with a single iterator will result in the same result as the input iterator.
+// When timestamp is equal, the iterator sorts samples by their label alphabetically.
 func NewSortSampleIterator(is []SampleIterator) SampleIterator {
 	if len(is) == 0 {
 		return NoopIterator
@@ -327,7 +331,10 @@ func NewSortSampleIterator(is []SampleIterator) SampleIterator {
 	if len(is) == 1 {
 		return is[0]
 	}
-	h := sampleIteratorHeap(make([]SampleIterator, 0, len(is)))
+	h := sampleIteratorHeap{
+		its:            make([]SampleIterator, 0, len(is)),
+		byAlphabetical: true,
+	}
 	return &sortSampleIterator{
 		is:   is,
 		heap: &h,
