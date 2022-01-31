@@ -9,7 +9,7 @@ installation, it is important to know what types of queries you expect.
 
 ## Supported query types
 
-Loki has 5 different types of queries that can be performed:
+Loki has 5 types of queries:
 
 * instant query
 * range query
@@ -23,7 +23,6 @@ datasource, all of these queries are used. Each of them has a different
 provides a [Javascript API](https://github.com/grafana/xk6-loki#javascript-api)
 for all these query types.
 
-> **Note:** The query strings, labels and matchers in the following code fragments need to be adjusted to your own data.
 
 ### Instant query
 
