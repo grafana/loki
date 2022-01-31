@@ -57,10 +57,10 @@ local helm = tanka.helm.new(std.thisFile) {
         },
         paths: {
           provisioning: $._config.provisioningDir,
-        }
+        },
       },
     },
     kubeVersion: 'v1.18.0',
     noHooks: false,
-  })
+  }),
 }

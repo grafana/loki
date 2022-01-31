@@ -18,7 +18,7 @@ local k = import 'github.com/grafana/jsonnet-libs/ksonnet-util/kausal.libsonnet'
       collectorZipkinHttpPort: 9411,
     },
   },
-  
+
   _addJaegerEnvVars:: function(c) c {
     env: [
       envVar.new('JAEGER_AGENT_HOST', $._config.jaegerAgentName),
