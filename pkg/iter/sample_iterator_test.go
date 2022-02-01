@@ -107,28 +107,76 @@ var carSeries = logproto.Series{
 }
 
 func TestNewMergeSampleIterator(t *testing.T) {
-	it := NewMergeSampleIterator(context.Background(),
-		[]SampleIterator{
-			NewSeriesIterator(varSeries),
-			NewSeriesIterator(carSeries),
-			NewSeriesIterator(carSeries),
-			NewSeriesIterator(varSeries),
-			NewSeriesIterator(carSeries),
-			NewSeriesIterator(varSeries),
-			NewSeriesIterator(carSeries),
-		})
+	t.Run("with labels", func(t *testing.T) {
+		it := NewMergeSampleIterator(context.Background(),
+			[]SampleIterator{
+				NewSeriesIterator(varSeries),
+				NewSeriesIterator(carSeries),
+				NewSeriesIterator(carSeries),
+				NewSeriesIterator(varSeries),
+				NewSeriesIterator(carSeries),
+				NewSeriesIterator(varSeries),
+				NewSeriesIterator(carSeries),
+			})
 
-	for i := 1; i < 4; i++ {
-		require.True(t, it.Next(), i)
-		require.Equal(t, `{foo="car"}`, it.Labels(), i)
-		require.Equal(t, sample(i), it.Sample(), i)
-		require.True(t, it.Next(), i)
-		require.Equal(t, `{foo="var"}`, it.Labels(), i)
-		require.Equal(t, sample(i), it.Sample(), i)
-	}
-	require.False(t, it.Next())
-	require.NoError(t, it.Error())
-	require.NoError(t, it.Close())
+		for i := 1; i < 4; i++ {
+			require.True(t, it.Next(), i)
+			require.Equal(t, `{foo="car"}`, it.Labels(), i)
+			require.Equal(t, sample(i), it.Sample(), i)
+			require.True(t, it.Next(), i)
+			require.Equal(t, `{foo="var"}`, it.Labels(), i)
+			require.Equal(t, sample(i), it.Sample(), i)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+		require.NoError(t, it.Close())
+	})
+	t.Run("no labels", func(t *testing.T) {
+		it := NewMergeSampleIterator(context.Background(),
+			[]SampleIterator{
+				NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: carSeries.StreamHash,
+					Samples:    carSeries.Samples,
+				}),
+				NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: varSeries.StreamHash,
+					Samples:    varSeries.Samples,
+				}), NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: carSeries.StreamHash,
+					Samples:    carSeries.Samples,
+				}),
+				NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: varSeries.StreamHash,
+					Samples:    varSeries.Samples,
+				}),
+				NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: carSeries.StreamHash,
+					Samples:    carSeries.Samples,
+				}),
+				NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: varSeries.StreamHash,
+					Samples:    varSeries.Samples,
+				}),
+			})
+
+		for i := 1; i < 4; i++ {
+			require.True(t, it.Next(), i)
+			require.Equal(t, ``, it.Labels(), i)
+			require.Equal(t, sample(i), it.Sample(), i)
+			require.True(t, it.Next(), i)
+			require.Equal(t, ``, it.Labels(), i)
+			require.Equal(t, sample(i), it.Sample(), i)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+		require.NoError(t, it.Close())
+	})
 }
 
 type fakeSampleClient struct {

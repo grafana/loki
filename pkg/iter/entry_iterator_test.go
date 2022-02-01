@@ -306,6 +306,54 @@ func TestMergeIteratorDeduplication(t *testing.T) {
 	assertIt(it, true, len(foo.Entries))
 }
 
+func TestMergeIteratorWithoutLabels(t *testing.T) {
+	foo := logproto.Stream{
+		Labels: ``,
+		Hash:   hashLabels(`{app="foo"}`),
+		Entries: []logproto.Entry{
+			{Timestamp: time.Unix(0, 1), Line: "1"},
+			{Timestamp: time.Unix(0, 2), Line: "2"},
+			{Timestamp: time.Unix(0, 3), Line: "3"},
+		},
+	}
+	bar := logproto.Stream{
+		Labels: `{some="other"}`,
+		Hash:   hashLabels(`{app="bar"}`),
+		Entries: []logproto.Entry{
+			{Timestamp: time.Unix(0, 1), Line: "1"},
+			{Timestamp: time.Unix(0, 2), Line: "2"},
+			{Timestamp: time.Unix(0, 3), Line: "3"},
+		},
+	}
+
+	// forward iteration
+	it := NewMergeEntryIterator(context.Background(), []EntryIterator{
+		NewStreamIterator(foo),
+		NewStreamIterator(bar),
+		NewStreamIterator(foo),
+		NewStreamIterator(bar),
+		NewStreamIterator(foo),
+		NewStreamIterator(bar),
+		NewStreamIterator(foo),
+	}, logproto.FORWARD)
+
+	for i := 0; i < 3; i++ {
+
+		require.True(t, it.Next())
+		require.NoError(t, it.Error())
+		require.Equal(t, bar.Labels, it.Labels())
+		require.Equal(t, bar.Entries[i], it.Entry())
+
+		require.True(t, it.Next())
+		require.NoError(t, it.Error())
+		require.Equal(t, foo.Labels, it.Labels())
+		require.Equal(t, foo.Entries[i], it.Entry())
+
+	}
+	require.False(t, it.Next())
+	require.NoError(t, it.Error())
+}
+
 func mustReverseStreamIterator(it EntryIterator) EntryIterator {
 	reversed, err := NewReversedIter(it, 0, true)
 	if err != nil {
