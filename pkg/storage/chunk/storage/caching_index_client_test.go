@@ -55,12 +55,8 @@ func TestCachingStorageClientBasic(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		if asyncClient, ok := client.(IndexAsyncClient); ok {
-			return asyncClient.AsyncQueueLength() == 0
-		}
-		return true
-	}, time.Second, 10*time.Millisecond)
+	awaitAsyncQueueFlush(t, client)
+
 	assert.EqualValues(t, 1, len(store.queries))
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
@@ -68,12 +64,6 @@ func TestCachingStorageClientBasic(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		if asyncClient, ok := client.(IndexAsyncClient); ok {
-			return asyncClient.AsyncQueueLength() == 0
-		}
-		return true
-	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 }
 
@@ -105,12 +95,8 @@ func TestTempCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		if asyncClient, ok := client.(IndexAsyncClient); ok {
-			return asyncClient.AsyncQueueLength() == 0
-		}
-		return true
-	}, time.Second, 10*time.Millisecond)
+	awaitAsyncQueueFlush(t, client)
+
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
@@ -124,12 +110,6 @@ func TestTempCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		if asyncClient, ok := client.(IndexAsyncClient); ok {
-			return asyncClient.AsyncQueueLength() == 0
-		}
-		return true
-	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
@@ -144,12 +124,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		if asyncClient, ok := client.(IndexAsyncClient); ok {
-			return asyncClient.AsyncQueueLength() == 0
-		}
-		return true
-	}, time.Second, 10*time.Millisecond)
+	awaitAsyncQueueFlush(t, client)
 	assert.EqualValues(t, 2*len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 }
@@ -182,12 +157,8 @@ func TestPermCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		if asyncClient, ok := client.(IndexAsyncClient); ok {
-			return asyncClient.AsyncQueueLength() == 0
-		}
-		return true
-	}, time.Second, 10*time.Millisecond)
+	awaitAsyncQueueFlush(t, client)
+
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
@@ -201,12 +172,6 @@ func TestPermCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		if asyncClient, ok := client.(IndexAsyncClient); ok {
-			return asyncClient.AsyncQueueLength() == 0
-		}
-		return true
-	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 
@@ -221,12 +186,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		if asyncClient, ok := client.(IndexAsyncClient); ok {
-			return asyncClient.AsyncQueueLength() == 0
-		}
-		return true
-	}, time.Second, 10*time.Millisecond)
+	awaitAsyncQueueFlush(t, client)
 	assert.EqualValues(t, len(queries), len(store.queries))
 	assert.EqualValues(t, len(queries), results)
 }
@@ -244,12 +204,8 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		if asyncClient, ok := client.(IndexAsyncClient); ok {
-			return asyncClient.AsyncQueueLength() == 0
-		}
-		return true
-	}, time.Second, 10*time.Millisecond)
+	awaitAsyncQueueFlush(t, client)
+
 	assert.EqualValues(t, 1, len(store.queries))
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
@@ -258,12 +214,6 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		if asyncClient, ok := client.(IndexAsyncClient); ok {
-			return asyncClient.AsyncQueueLength() == 0
-		}
-		return true
-	}, time.Second, 10*time.Millisecond)
 	assert.EqualValues(t, 1, len(store.queries))
 }
 
@@ -306,12 +256,8 @@ func TestCachingStorageClientCollision(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	assert.Eventually(t, func() bool {
-		if asyncClient, ok := client.(IndexAsyncClient); ok {
-			return asyncClient.AsyncQueueLength() == 0
-		}
-		return true
-	}, time.Second, 10*time.Millisecond)
+	awaitAsyncQueueFlush(t, client)
+
 	assert.EqualValues(t, 1, len(store.queries))
 	assert.EqualValues(t, store.results, results)
 
@@ -328,14 +274,17 @@ func TestCachingStorageClientCollision(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
+	assert.EqualValues(t, 1, len(store.queries))
+	assert.EqualValues(t, store.results, results)
+}
+
+func awaitAsyncQueueFlush(t *testing.T, client chunk.IndexClient) {
 	assert.Eventually(t, func() bool {
 		if asyncClient, ok := client.(IndexAsyncClient); ok {
 			return asyncClient.AsyncQueueLength() == 0
 		}
 		return true
 	}, time.Second, 10*time.Millisecond)
-	assert.EqualValues(t, 1, len(store.queries))
-	assert.EqualValues(t, store.results, results)
 }
 
 type mockCache struct {
@@ -489,12 +438,7 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 					return true
 				})
 				require.NoError(t, err)
-				assert.Eventually(t, func() bool {
-					if asyncClient, ok := client.(IndexAsyncClient); ok {
-						return asyncClient.AsyncQueueLength() == 0
-					}
-					return true
-				}, time.Second, 10*time.Millisecond)
+				awaitAsyncQueueFlush(t, client)
 
 				// we do a callback per query sent not per query done to the index store. See if we got as many callbacks as the number of actual queries.
 				sort.Slice(tc.queries, func(i, j int) bool {
@@ -521,12 +465,7 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 					return true
 				})
 				require.NoError(t, err)
-				assert.Eventually(t, func() bool {
-					if asyncClient, ok := client.(IndexAsyncClient); ok {
-						return asyncClient.AsyncQueueLength() == 0
-					}
-					return true
-				}, time.Second, 10*time.Millisecond)
+				awaitAsyncQueueFlush(t, client)
 
 				// verify the callback queries again
 				sort.Slice(callbackQueries, func(i, j int) bool {
