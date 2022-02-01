@@ -272,7 +272,7 @@ func newTailer(
 	waitEntryThrottle time.Duration,
 ) *Tailer {
 	t := Tailer{
-		openStreamIterator:        iter.NewHeapIterator(context.Background(), []iter.EntryIterator{historicEntries}, logproto.FORWARD),
+		openStreamIterator:        iter.NewMergeEntryIterator(context.Background(), []iter.EntryIterator{historicEntries}, logproto.FORWARD),
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
 		responseChan:              make(chan *loghttp.TailResponse, maxBufferedTailResponses),

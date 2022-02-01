@@ -257,7 +257,7 @@ func (hb *unorderedHeadBlock) Iterator(
 	for _, stream := range streams {
 		streamsResult = append(streamsResult, *stream)
 	}
-	return iter.NewStreamsIterator(ctx, streamsResult, direction)
+	return iter.NewStreamsIterator(streamsResult, direction)
 }
 
 // nolint:unused
@@ -308,7 +308,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	for _, s := range series {
 		seriesRes = append(seriesRes, *s)
 	}
-	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(ctx, seriesRes), func() error {
+	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(seriesRes), func() error {
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}

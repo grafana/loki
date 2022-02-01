@@ -561,7 +561,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 
 	instance := i.GetOrCreateInstance(instanceID)
-	itrs, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
+	it, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 	if err != nil {
 		return err
 	}
@@ -577,17 +577,15 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
+			errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 			return err
 		}
-
-		itrs = append(itrs, storeItr)
+		it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
 	}
 
-	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
+	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	defer errUtil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
-
-	return sendBatches(ctx, heapItr, queryServer, req.Limit)
+	return sendBatches(ctx, it, queryServer, req.Limit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
@@ -601,7 +599,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	}
 
 	instance := i.GetOrCreateInstance(instanceID)
-	itrs, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	it, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
 	}
@@ -615,17 +613,16 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
+			errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 			return err
 		}
 
-		itrs = append(itrs, storeItr)
+		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
 	}
 
-	heapItr := iter.NewHeapSampleIterator(ctx, itrs)
+	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	defer errUtil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
-
-	return sendSampleBatches(ctx, heapItr, queryServer)
+	return sendSampleBatches(ctx, it, queryServer)
 }
 
 // boltdbShipperMaxLookBack returns a max look back period only if active index type is boltdb-shipper.
