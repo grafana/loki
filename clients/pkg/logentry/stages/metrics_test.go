@@ -321,8 +321,9 @@ func TestMetricStage_Process(t *testing.T) {
 			"contains_false":  "contains(keys(@),'nope')",
 		},
 	}
+	regexLogFixture := `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932ms"`
 	regexConfig := map[string]interface{}{
-		"expression": "(?P<get>\"GET).*HTTP/1.1\" (?P<status>\\d*) (?P<time>\\d*) ",
+		"expression": "(?P<get>\"GET).*HTTP/1.1\" (?P<status>\\d*) (?P<time>\\d*ms)",
 	}
 	timeSource := "time"
 	true := "true"
@@ -386,12 +387,12 @@ func TestMetricStage_Process(t *testing.T) {
 				Action: metric.CounterInc,
 			},
 		},
-		"response_time_ms": MetricConfig{
+		"response_time_seconds": MetricConfig{
 			MetricType:  "Histogram",
 			Source:      &timeSource,
 			Description: "response time in ms",
 			Config: metric.HistogramConfig{
-				Buckets: []float64{1, 2, 3},
+				Buckets: []float64{0.5, 1, 2},
 			},
 		},
 	}
@@ -473,20 +474,20 @@ promtail_custom_numeric_integer{baz="fu",fu="baz"} 123.0
 # TYPE promtail_custom_numeric_string gauge
 promtail_custom_numeric_string{bar="foo",foo="bar"} 123.0
 promtail_custom_numeric_string{baz="fu",fu="baz"} 123.0
-# HELP promtail_custom_response_time_ms response time in ms
-# TYPE promtail_custom_response_time_ms histogram
-promtail_custom_response_time_ms_bucket{bar="foo",foo="bar",le="1.0"} 0.0
-promtail_custom_response_time_ms_bucket{bar="foo",foo="bar",le="2.0"} 0.0
-promtail_custom_response_time_ms_bucket{bar="foo",foo="bar",le="3.0"} 0.0
-promtail_custom_response_time_ms_bucket{bar="foo",foo="bar",le="+Inf"} 1.0
-promtail_custom_response_time_ms_sum{bar="foo",foo="bar"} 932.0
-promtail_custom_response_time_ms_count{bar="foo",foo="bar"} 1.0
-promtail_custom_response_time_ms_bucket{baz="fu",fu="baz",le="1.0"} 0.0
-promtail_custom_response_time_ms_bucket{baz="fu",fu="baz",le="2.0"} 0.0
-promtail_custom_response_time_ms_bucket{baz="fu",fu="baz",le="3.0"} 0.0
-promtail_custom_response_time_ms_bucket{baz="fu",fu="baz",le="+Inf"} 1.0
-promtail_custom_response_time_ms_sum{baz="fu",fu="baz"} 932.0
-promtail_custom_response_time_ms_count{baz="fu",fu="baz"} 1.0
+# HELP promtail_custom_response_time_seconds response time in ms
+# TYPE promtail_custom_response_time_seconds histogram
+promtail_custom_response_time_seconds_bucket{bar="foo",foo="bar",le="0.5"} 0
+promtail_custom_response_time_seconds_bucket{bar="foo",foo="bar",le="1"} 1
+promtail_custom_response_time_seconds_bucket{bar="foo",foo="bar",le="2"} 1
+promtail_custom_response_time_seconds_bucket{bar="foo",foo="bar",le="+Inf"} 1
+promtail_custom_response_time_seconds_sum{bar="foo",foo="bar"} 0.932
+promtail_custom_response_time_seconds_count{bar="foo",foo="bar"} 1
+promtail_custom_response_time_seconds_bucket{baz="fu",fu="baz",le="0.5"} 0
+promtail_custom_response_time_seconds_bucket{baz="fu",fu="baz",le="1"} 1
+promtail_custom_response_time_seconds_bucket{baz="fu",fu="baz",le="2"} 1
+promtail_custom_response_time_seconds_bucket{baz="fu",fu="baz",le="+Inf"} 1
+promtail_custom_response_time_seconds_sum{baz="fu",fu="baz"} 0.932
+promtail_custom_response_time_seconds_count{baz="fu",fu="baz"} 1.0
 # HELP promtail_custom_total_keys the total keys per doc
 # TYPE promtail_custom_total_keys counter
 promtail_custom_total_keys{bar="foo",foo="bar"} 8.0
