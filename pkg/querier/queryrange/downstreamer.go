@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	DefaultDownstreamConcurrency = 32
+	DefaultDownstreamConcurrency = 128
 )
 
 type DownstreamHandler struct {
