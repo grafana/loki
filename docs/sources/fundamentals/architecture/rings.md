@@ -54,8 +54,6 @@ a compelling reason to use a different key-value store type.
 to propagate information to all the nodes
 to guarantee the eventual consistency of the key-value store contents.
 
-To learn more about `memberlist`, see the [Memberlist](../memberlist) page.
-
 There are additional configuration options for distributor rings,
 ingester rings, and ruler rings.
 These options are for advanced, specialized use only.
