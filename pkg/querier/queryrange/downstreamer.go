@@ -48,6 +48,12 @@ func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebas
 	}
 }
 
+// Note: After the introduction of the LimitedRoundTripper,
+// bounding concurrency in the downstreamer is mostly redundant
+// The reason we don't remove it is to prevent malicious queries
+// from creating an unreasonably large number of goroutines, such as
+// the case of a query like `a / a / a / a / a ..etc`, which could try
+// to shard each leg, quickly dispatching an unreasonable number of goroutines.
 func (h DownstreamHandler) Downstreamer() logql.Downstreamer {
 	p := DefaultDownstreamConcurrency
 	locks := make(chan struct{}, p)
