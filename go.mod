@@ -104,6 +104,7 @@ require (
 require (
 	github.com/google/renameio/v2 v2.0.0
 	github.com/mattn/go-ieproxy v0.0.1
+	github.com/psilva261/timsort/v2 v2.0.0
 	github.com/xdg-go/scram v1.0.2
 	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20191017102106-1550ee647df0
 )

@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"io"
+	"sort"
 	"sync"
 	"time"
 
@@ -323,11 +324,12 @@ func (i *mergeEntryIterator) Len() int {
 }
 
 type entrySortIterator struct {
-	heap interface {
-		heap.Interface
-		Peek() EntryIterator
-	}
+	//heap interface {
+	//	heap.Interface
+	//	Peek() EntryIterator
+	//}
 	is         []EntryIterator
+	curr       int
 	prefetched bool
 
 	currEntry entryWithLabels
@@ -344,7 +346,9 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 	if len(is) == 1 {
 		return is[0]
 	}
-	result := &entrySortIterator{is: is}
+
+	result := &entrySortIterator{is: is, curr: 0}
+	/*
 	switch direction {
 	case logproto.BACKWARD:
 		result.heap = &iteratorMaxHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
@@ -353,7 +357,24 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 	default:
 		panic("bad direction")
 	}
+	*/
 	return result
+}
+
+func (it *entrySortIterator) less(i, j int) bool {
+		t1, t2 := it.is[i].Entry().Timestamp, it.is[j].Entry().Timestamp
+
+		un1 := t1.UnixNano()
+		un2 := t2.UnixNano()
+
+		switch {
+		case un1 < un2:
+			return true
+		case un1 > un2:
+			return false
+		default: // un1 == un2:
+			return it.is[i].Labels() < it.is[j].Labels()
+		}
 }
 
 // init initialize the underlaying heap
@@ -365,7 +386,6 @@ func (i *entrySortIterator) init() {
 	i.prefetched = true
 	for _, it := range i.is {
 		if it.Next() {
-			i.heap.Push(it)
 			continue
 		}
 
@@ -374,34 +394,34 @@ func (i *entrySortIterator) init() {
 		}
 		util.LogError("closing iterator", it.Close)
 	}
-	heap.Init(i.heap)
+	sort.Slice(i.is, i.less)
 
 	// We can now clear the list of input iterators to merge, given they have all
 	// been processed and the non empty ones have been pushed to the heap
-	i.is = nil
+	//i.is = nil
 }
 
 func (i *entrySortIterator) Next() bool {
 	i.init()
 
-	if i.heap.Len() == 0 {
+	if len(i.is) == 0 {
+		return false
+	}
+	if len(i.is) == i.curr {
 		return false
 	}
 
-	next := i.heap.Peek()
+	next := i.is[i.curr]
 	i.currEntry.entry = next.Entry()
 	i.currEntry.labels = next.Labels()
 	// if the top iterator is empty, we remove it.
 	if !next.Next() {
-		heap.Pop(i.heap)
+		i.curr++
 		if err := next.Error(); err != nil {
 			i.errs = append(i.errs, err)
 		}
 		util.LogError("closing iterator", next.Close)
 		return true
-	}
-	if i.heap.Len() > 1 {
-		heap.Fix(i.heap, 0)
 	}
 	return true
 }
@@ -426,11 +446,6 @@ func (i *entrySortIterator) Error() error {
 }
 
 func (i *entrySortIterator) Close() error {
-	for i.heap.Len() > 0 {
-		if err := i.heap.Pop().(EntryIterator).Close(); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
