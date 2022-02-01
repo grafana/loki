@@ -1,4 +1,3 @@
-// +build windows
 package positions
 import (
 	"io/ioutil"

@@ -18,10 +18,5 @@ func writePositionFile(filename string, positions map[string]string) error {
 
 	target := filepath.Clean(filename)
 
-	err = renameio.WriteFile(target, buf, os.FileMode(positionFileMode))
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return renameio.WriteFile(target, buf, os.FileMode(positionFileMode))
 }
