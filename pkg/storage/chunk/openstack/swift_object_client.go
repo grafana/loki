@@ -14,8 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
-
+	bucket_swift "github.com/grafana/loki/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/util/log"
@@ -36,7 +35,7 @@ type SwiftObjectClient struct {
 
 // SwiftConfig is config for the Swift Chunk Client.
 type SwiftConfig struct {
-	cortex_swift.Config `yaml:",inline"`
+	bucket_swift.Config `yaml:",inline"`
 }
 
 // RegisterFlags registers flags.

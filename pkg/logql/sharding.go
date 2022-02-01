@@ -324,7 +324,7 @@ func (ev *DownstreamEvaluator) Iterator(
 			xs = append(xs, iter)
 		}
 
-		return iter.NewHeapIterator(ctx, xs, params.Direction()), nil
+		return iter.NewSortEntryIterator(xs, params.Direction()), nil
 
 	default:
 		return nil, EvaluatorUnsupportedType(expr, ev)
@@ -401,5 +401,5 @@ func ResultIterator(res logqlmodel.Result, params Params) (iter.EntryIterator, e
 	if !ok {
 		return nil, fmt.Errorf("unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), logqlmodel.ValueTypeStreams)
 	}
-	return iter.NewStreamsIterator(context.Background(), streams, params.Direction()), nil
+	return iter.NewStreamsIterator(streams, params.Direction()), nil
 }

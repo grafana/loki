@@ -142,8 +142,10 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 
 		iters = append(iters, storeIter)
 	}
-
-	return iter.NewHeapIterator(ctx, iters, params.Direction), nil
+	if len(iters) == 1 {
+		return iters[0], nil
+	}
+	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
 }
 
 func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -185,7 +187,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 
 		iters = append(iters, storeIter)
 	}
-	return iter.NewHeapSampleIterator(ctx, iters), nil
+	return iter.NewMergeSampleIterator(ctx, iters), nil
 }
 
 func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {

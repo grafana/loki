@@ -64,7 +64,6 @@ func NewTarget(
 		since = pos
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
 	t := &Target{
 		logger:        logger,
 		handler:       handler,
@@ -75,18 +74,19 @@ func NewTarget(
 		relabelConfig: relabelConfig,
 		metrics:       metrics,
 
-		cancel:  cancel,
 		client:  client,
 		running: atomic.NewBool(false),
 	}
-	go t.processLoop(ctx)
+	t.startIfNotRunning()
 	return t, nil
 }
 
 func (t *Target) processLoop(ctx context.Context) {
+	t.running.Store(true)
+	defer t.running.Store(false)
+
 	t.wg.Add(1)
 	defer t.wg.Done()
-	t.running.Store(true)
 
 	opts := docker_types.ContainerLogsOptions{
 		ShowStdout: true,
@@ -130,7 +130,6 @@ func (t *Target) processLoop(ctx context.Context) {
 
 	// Wait until done
 	<-ctx.Done()
-	t.running.Store(false)
 	logs.Close()
 	level.Debug(t.logger).Log("msg", "done processing Docker logs", "container", t.containerName)
 }
@@ -196,6 +195,18 @@ func (t *Target) process(r io.Reader, logStream string) {
 		level.Warn(t.logger).Log("msg", "finished scanning logs lines with an error", "err", err)
 	}
 
+}
+
+// startIfNotRunning starts processing container logs. The operation is idempotent , i.e. the processing cannot be started twice.
+func (t *Target) startIfNotRunning() {
+	if t.running.CAS(false, true) {
+		level.Debug(t.logger).Log("msg", "starting process loop", "container", t.containerName)
+		ctx, cancel := context.WithCancel(context.Background())
+		t.cancel = cancel
+		go t.processLoop(ctx)
+	} else {
+		level.Debug(t.logger).Log("msg", "attempted to start process loop but it's already running", "container", t.containerName)
+	}
 }
 
 func (t *Target) Stop() {
