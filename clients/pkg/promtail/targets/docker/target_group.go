@@ -72,8 +72,7 @@ func (tg *targetGroup) addTarget(id string, discoveredLabels model.LabelSet) err
 		}
 	}
 
-	t, ok := tg.targets[id]
-	if ok {
+	if t, ok := tg.targets[id]; ok {
 		level.Debug(tg.logger).Log("msg", "container target already exists", "container", id)
 		t.startIfNotRunning()
 		return nil
