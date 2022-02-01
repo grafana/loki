@@ -72,9 +72,9 @@ func (tg *targetGroup) addTarget(id string, discoveredLabels model.LabelSet) err
 		}
 	}
 
-	_, ok := tg.targets[id]
-	if ok {
-		level.Debug(tg.logger).Log("msg", "ignoring container that is already being scraped", "container", id)
+	if t, ok := tg.targets[id]; ok {
+		level.Debug(tg.logger).Log("msg", "container target already exists", "container", id)
+		t.startIfNotRunning()
 		return nil
 	}
 
