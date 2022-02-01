@@ -338,7 +338,7 @@ The `frontend` block configures the Loki query-frontend.
 # Maximum number of outstanding requests per tenant per frontend; requests
 # beyond this error with HTTP 429.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
-[max_outstanding_per_tenant: <int> | default = 100]
+[max_outstanding_per_tenant: <int> | default = 2048]
 
 # In the event a tenant is repeatedly sending queries that lead the querier to crash
 # or be killed due to an out-of-memory error, the crashed querier will be disconnected
@@ -1900,10 +1900,15 @@ fifocache:
   # CLI flag: -<prefix>.fifocache.max-size-items
   [max_size_items: <int> | default = 0]
 
-  # The expiry duration for the cache.
+  # Deprecated: The expiry duration for the cache. Use `-<prefix>.fifocache.ttl`.
   # The default value of 0 disables expiration.
   # CLI flag: -<prefix>.fifocache.duration
   [validity: <duration>]
+
+  # The time for items to live in the cache before those items are purged.
+  # The value of 0 disables auto-expiration.
+  # CLI flag: -<prefix>.fifocache.ttl
+  [ttl: <duration> | default = 1h]
 ```
 
 ## schema_config
@@ -2263,10 +2268,8 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.min-sharding-lookback
 [min_sharding_lookback: <duration> | default = 0s]
 
-# Split queries by an interval and execute in parallel, 0 disables it. You
-# should use in multiple of 24 hours (same as the storage bucketing scheme),
-# to avoid queriers downloading and processing the same chunks. This also
-# determines how cache keys are chosen when result caching is enabled
+# Split queries by an interval and execute in parallel, any value less than zero disables it.
+# This also determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
 ```

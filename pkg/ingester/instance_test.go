@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
@@ -497,7 +496,7 @@ func Test_Iterator(t *testing.T) {
 	}
 
 	// prepare iterators.
-	itrs, err := instance.Query(ctx,
+	it, err := instance.Query(ctx,
 		logql.SelectLogParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  `{job="3"} | logfmt`,
@@ -509,12 +508,11 @@ func Test_Iterator(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	heapItr := iter.NewHeapIterator(ctx, itrs, direction)
 
 	// assert the order is preserved.
 	var res *logproto.QueryResponse
 	require.NoError(t,
-		sendBatches(ctx, heapItr,
+		sendBatches(ctx, it,
 			fakeQueryServer(
 				func(qr *logproto.QueryResponse) error {
 					res = qr
@@ -578,7 +576,7 @@ func Test_ChunkFilter(t *testing.T) {
 	}
 
 	// prepare iterators.
-	itrs, err := instance.Query(ctx,
+	it, err := instance.Query(ctx,
 		logql.SelectLogParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  `{job="3"}`,
@@ -590,7 +588,6 @@ func Test_ChunkFilter(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	it := iter.NewHeapIterator(ctx, itrs, direction)
 	defer it.Close()
 
 	for it.Next() {

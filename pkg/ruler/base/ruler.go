@@ -12,9 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
@@ -33,10 +30,13 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (
@@ -698,8 +698,8 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 				for _, a := range rule.ActiveAlerts() {
 					alerts = append(alerts, &AlertStateDesc{
 						State:       a.State.String(),
-						Labels:      cortexpb.FromLabelsToLabelAdapters(a.Labels),
-						Annotations: cortexpb.FromLabelsToLabelAdapters(a.Annotations),
+						Labels:      logproto.FromLabelsToLabelAdapters(a.Labels),
+						Annotations: logproto.FromLabelsToLabelAdapters(a.Annotations),
 						Value:       a.Value,
 						ActiveAt:    a.ActiveAt,
 						FiredAt:     a.FiredAt,
@@ -713,8 +713,8 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 						Expr:        rule.Query().String(),
 						Alert:       rule.Name(),
 						For:         rule.HoldDuration(),
-						Labels:      cortexpb.FromLabelsToLabelAdapters(rule.Labels()),
-						Annotations: cortexpb.FromLabelsToLabelAdapters(rule.Annotations()),
+						Labels:      logproto.FromLabelsToLabelAdapters(rule.Labels()),
+						Annotations: logproto.FromLabelsToLabelAdapters(rule.Annotations()),
 					},
 					State:               rule.State().String(),
 					Health:              string(rule.Health()),
@@ -728,7 +728,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 					Rule: &rulespb.RuleDesc{
 						Record: rule.Name(),
 						Expr:   rule.Query().String(),
-						Labels: cortexpb.FromLabelsToLabelAdapters(rule.Labels()),
+						Labels: logproto.FromLabelsToLabelAdapters(rule.Labels()),
 					},
 					Health:              string(rule.Health()),
 					LastError:           lastError,

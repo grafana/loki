@@ -6,10 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -18,8 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/prom1/storage/metric"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/chunkcompat"
 )
 
@@ -179,13 +179,13 @@ func TestIngesterStreaming(t *testing.T) {
 		&client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []logproto.LabelAdapter{
 						{Name: "bar", Value: "baz"},
 					},
 					Chunks: clientChunks,
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{
+					Labels: []logproto.LabelAdapter{
 						{Name: "foo", Value: "bar"},
 					},
 					Chunks: clientChunks,
@@ -219,28 +219,28 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		mint = 0
 		maxt = 10000
 	)
-	s1 := []cortexpb.Sample{
-		{Value: 1, TimestampMs: 1000},
-		{Value: 2, TimestampMs: 2000},
-		{Value: 3, TimestampMs: 3000},
-		{Value: 4, TimestampMs: 4000},
-		{Value: 5, TimestampMs: 5000},
+	s1 := []logproto.Sample{
+		{Value: 1, Timestamp: 1000},
+		{Value: 2, Timestamp: 2000},
+		{Value: 3, Timestamp: 3000},
+		{Value: 4, Timestamp: 4000},
+		{Value: 5, Timestamp: 5000},
 	}
-	s2 := []cortexpb.Sample{
-		{Value: 1, TimestampMs: 1000},
-		{Value: 2.5, TimestampMs: 2500},
-		{Value: 3, TimestampMs: 3000},
-		{Value: 5.5, TimestampMs: 5500},
+	s2 := []logproto.Sample{
+		{Value: 1, Timestamp: 1000},
+		{Value: 2.5, Timestamp: 2500},
+		{Value: 3, Timestamp: 3000},
+		{Value: 5.5, Timestamp: 5500},
 	}
 
-	mergedSamplesS1S2 := []cortexpb.Sample{
-		{Value: 1, TimestampMs: 1000},
-		{Value: 2, TimestampMs: 2000},
-		{Value: 2.5, TimestampMs: 2500},
-		{Value: 3, TimestampMs: 3000},
-		{Value: 4, TimestampMs: 4000},
-		{Value: 5, TimestampMs: 5000},
-		{Value: 5.5, TimestampMs: 5500},
+	mergedSamplesS1S2 := []logproto.Sample{
+		{Value: 1, Timestamp: 1000},
+		{Value: 2, Timestamp: 2000},
+		{Value: 2.5, Timestamp: 2500},
+		{Value: 3, Timestamp: 3000},
+		{Value: 4, Timestamp: 4000},
+		{Value: 5, Timestamp: 5000},
+		{Value: 5.5, Timestamp: 5500},
 	}
 
 	d := &MockDistributor{}
@@ -248,22 +248,22 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		&client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
 				{
-					Labels: []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "one"}},
+					Labels: []logproto.LabelAdapter{{Name: labels.MetricName, Value: "one"}},
 					Chunks: convertToChunks(t, s1),
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "two"}},
+					Labels: []logproto.LabelAdapter{{Name: labels.MetricName, Value: "two"}},
 					Chunks: convertToChunks(t, s1),
 				},
 			},
 
-			Timeseries: []cortexpb.TimeSeries{
+			Timeseries: []logproto.TimeSeries{
 				{
-					Labels:  []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "two"}},
+					Labels:  []logproto.LabelAdapter{{Name: labels.MetricName, Value: "two"}},
 					Samples: s2,
 				},
 				{
-					Labels:  []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "three"}},
+					Labels:  []logproto.LabelAdapter{{Name: labels.MetricName, Value: "three"}},
 					Samples: s1,
 				},
 			},
@@ -291,7 +291,7 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 	require.NoError(t, seriesSet.Err())
 }
 
-func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples []cortexpb.Sample) {
+func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples []logproto.Sample) {
 	require.Equal(t, l, series.Labels())
 
 	it := series.Iterator()
@@ -300,7 +300,7 @@ func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples 
 		require.Nil(t, it.Err())
 		ts, v := it.At()
 		require.Equal(t, s.Value, v)
-		require.Equal(t, s.TimestampMs, ts)
+		require.Equal(t, s.Timestamp, ts)
 	}
 	require.False(t, it.Next())
 	require.Nil(t, it.Err())
@@ -330,20 +330,20 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 	})
 }
 
-func convertToChunks(t *testing.T, samples []cortexpb.Sample) []client.Chunk {
+func convertToChunks(t *testing.T, samples []logproto.Sample) []client.Chunk {
 	// We need to make sure that there is atleast one chunk present,
 	// else no series will be selected.
 	promChunk, err := encoding.NewForEncoding(encoding.Bigchunk)
 	require.NoError(t, err)
 
 	for _, s := range samples {
-		c, err := promChunk.Add(model.SamplePair{Value: model.SampleValue(s.Value), Timestamp: model.Time(s.TimestampMs)})
+		c, err := promChunk.Add(model.SamplePair{Value: model.SampleValue(s.Value), Timestamp: model.Time(s.Timestamp)})
 		require.NoError(t, err)
 		require.Nil(t, c)
 	}
 
 	clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{
-		chunk.NewChunk("", 0, nil, promChunk, model.Time(samples[0].TimestampMs), model.Time(samples[len(samples)-1].TimestampMs)),
+		chunk.NewChunk("", 0, nil, promChunk, model.Time(samples[0].Timestamp), model.Time(samples[len(samples)-1].Timestamp)),
 	})
 	require.NoError(t, err)
 

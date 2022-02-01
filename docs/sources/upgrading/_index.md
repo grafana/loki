@@ -33,6 +33,57 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### `querier.split-queries-by-interval` flag migrated yaml path and default value.
+
+The CLI flag `querier.split-queries-by-interval` has changed it's corresponding yaml equivalent from
+```yaml
+query_range:
+  split_queries_by_interval: 10m
+```
+->
+```
+limits_config:
+  split_queries_by_interval: 10m
+
+```
+
+Additionally, it has a new default value of `30m` rather than `0`.
+
+This is part of it's migration path from a global configuration to a per-tenant one (still subject to default tenant limits in the `limits_config`).
+It keeps it's CLI flag as `querier.split-queries-by-interval`.
+
+#### Dropped support for old Prometheus rules configuration format
+
+Alerting rules previously could be specified in two formats: 1.x format (legacy one, named `v0` internally) and 2.x.
+We decided to drop support for format `1.x` as it is fairly old and keeping support for it required a lot of code.
+
+In case you're still using the legacy format, take a look at
+[Alerting Rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) for instructions
+on how to write alerting rules in the new format.
+
+For reference, the newer format follows a structure similar to the one below:
+```yaml
+ groups:
+ - name: example
+   rules:
+   - alert: HighErrorRate
+     expr: job:request_latency_seconds:mean5m{job="myjob"} > 0.5
+     for: 10m
+     labels:
+       severity: page
+     annotations:
+       summary: High request latency
+```
+
+Meanwhile, the legacy format is a string in the following format:
+```
+ ALERT <alert name>
+   IF <expression>
+   [ FOR <duration> ]
+   [ LABELS <label set> ]
+   [ ANNOTATIONS <label set> ]
+```
+
 #### Error responses from API
 
 The body of HTTP error responses from API endpoints changed from plain text to

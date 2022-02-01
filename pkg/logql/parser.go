@@ -9,7 +9,6 @@ import (
 	"sync"
 	"text/scanner"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	errors2 "github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"

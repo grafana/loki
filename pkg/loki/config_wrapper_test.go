@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/loki/common"
+	"github.com/grafana/loki/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"

@@ -62,6 +62,7 @@ type Config struct {
 	ResyncInterval           time.Duration            `yaml:"resync_interval"`
 	QueryReadyNumDays        int                      `yaml:"query_ready_num_days"`
 	IndexGatewayClientConfig IndexGatewayClientConfig `yaml:"index_gateway_client"`
+	BuildPerTenantIndex      bool                     `yaml:"build_per_tenant_index"`
 	IngesterName             string                   `yaml:"-"`
 	Mode                     int                      `yaml:"-"`
 	IngesterDBRetainPeriod   time.Duration            `yaml:"-"`
@@ -78,6 +79,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.CacheTTL, "boltdb.shipper.cache-ttl", 24*time.Hour, "TTL for boltDB files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, "boltdb.shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 	f.IntVar(&cfg.QueryReadyNumDays, "boltdb.shipper.query-ready-num-days", 0, "Number of days of index to be kept downloaded for queries. Works only with tables created with 24h period.")
+	f.BoolVar(&cfg.BuildPerTenantIndex, "boltdb.shipper.build-per-tenant-index", false, "Build per tenant index files")
 }
 
 func (cfg *Config) Validate() error {
@@ -134,10 +136,11 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 		}
 
 		cfg := uploads.Config{
-			Uploader:       uploader,
-			IndexDir:       s.cfg.ActiveIndexDirectory,
-			UploadInterval: UploadInterval,
-			DBRetainPeriod: s.cfg.IngesterDBRetainPeriod,
+			Uploader:             uploader,
+			IndexDir:             s.cfg.ActiveIndexDirectory,
+			UploadInterval:       UploadInterval,
+			DBRetainPeriod:       s.cfg.IngesterDBRetainPeriod,
+			MakePerTenantBuckets: s.cfg.BuildPerTenantIndex,
 		}
 		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, indexStorageClient, registerer)
 		if err != nil {

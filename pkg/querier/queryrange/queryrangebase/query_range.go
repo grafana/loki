@@ -13,8 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
@@ -24,6 +22,8 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -31,7 +31,8 @@ import (
 const StatusSuccess = "success"
 
 var (
-	json = jsoniter.Config{
+	matrix = model.ValMatrix.String()
+	json   = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: true,
@@ -137,7 +138,7 @@ func (resp *PrometheusResponse) minTime() int64 {
 	if len(result[0].Samples) == 0 {
 		return -1
 	}
-	return result[0].Samples[0].TimestampMs
+	return result[0].Samples[0].Timestamp
 }
 
 // NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
@@ -357,12 +358,12 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 func (s *SampleStream) UnmarshalJSON(data []byte) error {
 	var stream struct {
 		Metric model.Metric      `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
+		Values []logproto.Sample `json:"values"`
 	}
 	if err := json.Unmarshal(data, &stream); err != nil {
 		return err
 	}
-	s.Labels = cortexpb.FromMetricsToLabelAdapters(stream.Metric)
+	s.Labels = logproto.FromMetricsToLabelAdapters(stream.Metric)
 	s.Samples = stream.Values
 	return nil
 }
@@ -371,9 +372,9 @@ func (s *SampleStream) UnmarshalJSON(data []byte) error {
 func (s *SampleStream) MarshalJSON() ([]byte, error) {
 	stream := struct {
 		Metric model.Metric      `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
+		Values []logproto.Sample `json:"values"`
 	}{
-		Metric: cortexpb.FromLabelAdaptersToMetric(s.Labels),
+		Metric: logproto.FromLabelAdaptersToMetric(s.Labels),
 		Values: s.Samples,
 	}
 	return json.Marshal(stream)
@@ -383,7 +384,7 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	output := map[string]*SampleStream{}
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
-			metric := cortexpb.FromLabelAdaptersToLabels(stream.Labels).String()
+			metric := logproto.FromLabelAdaptersToLabels(stream.Labels).String()
 			existing, ok := output[metric]
 			if !ok {
 				existing = &SampleStream{
@@ -393,12 +394,12 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 			// We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
 			// The prometheus API is inclusive of start and end timestamps.
 			if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
-				existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
-				if existingEndTs == stream.Samples[0].TimestampMs {
+				existingEndTs := existing.Samples[len(existing.Samples)-1].Timestamp
+				if existingEndTs == stream.Samples[0].Timestamp {
 					// Typically this the cases where only 1 sample point overlap,
 					// so optimize with simple code.
 					stream.Samples = stream.Samples[1:]
-				} else if existingEndTs > stream.Samples[0].TimestampMs {
+				} else if existingEndTs > stream.Samples[0].Timestamp {
 					// Overlap might be big, use heavier algorithm to remove overlap.
 					stream.Samples = sliceSamples(stream.Samples, existingEndTs)
 				} // else there is no overlap, yay!
@@ -426,17 +427,17 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 // return a sub slice whose first element's is the smallest timestamp that is strictly
 // bigger than the given minTs. Empty slice is returned if minTs is bigger than all the
 // timestamps in samples.
-func sliceSamples(samples []cortexpb.Sample, minTs int64) []cortexpb.Sample {
-	if len(samples) <= 0 || minTs < samples[0].TimestampMs {
+func sliceSamples(samples []logproto.Sample, minTs int64) []logproto.Sample {
+	if len(samples) <= 0 || minTs < samples[0].Timestamp {
 		return samples
 	}
 
-	if len(samples) > 0 && minTs > samples[len(samples)-1].TimestampMs {
+	if len(samples) > 0 && minTs > samples[len(samples)-1].Timestamp {
 		return samples[len(samples):]
 	}
 
 	searchResult := sort.Search(len(samples), func(i int) bool {
-		return samples[i].TimestampMs > minTs
+		return samples[i].Timestamp > minTs
 	})
 
 	return samples[searchResult:]

@@ -91,8 +91,8 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 	caches := []Cache{}
 
 	if cfg.EnableFifoCache {
-		if cfg.Fifocache.Validity == 0 && cfg.DefaultValidity != 0 {
-			cfg.Fifocache.Validity = cfg.DefaultValidity
+		if cfg.Fifocache.TTL == 0 && cfg.DefaultValidity != 0 {
+			cfg.Fifocache.TTL = cfg.DefaultValidity
 		}
 
 		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger); cache != nil {

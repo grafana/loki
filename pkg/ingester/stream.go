@@ -129,6 +129,7 @@ func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.
 
 // consumeChunk manually adds a chunk to the stream that was received during
 // ingester chunk transfer.
+// Must hold chunkMtx
 // DEPRECATED: chunk transfers are no longer suggested and remain for compatibility.
 func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
@@ -136,8 +137,6 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 		return err
 	}
 
-	s.chunkMtx.Lock()
-	defer s.chunkMtx.Unlock()
 	s.chunks = append(s.chunks, chunkDesc{
 		chunk: c,
 	})
@@ -471,7 +470,7 @@ func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, th
 	if ordered {
 		return iter.NewNonOverlappingIterator(iterators, ""), nil
 	}
-	return iter.NewHeapIterator(ctx, iterators, direction), nil
+	return iter.NewSortEntryIterator(iterators, direction), nil
 }
 
 // Returns an SampleIterator.
@@ -508,7 +507,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 	if ordered {
 		return iter.NewNonOverlappingSampleIterator(iterators, ""), nil
 	}
-	return iter.NewHeapSampleIterator(ctx, iterators), nil
+	return iter.NewSortSampleIterator(iterators), nil
 }
 
 func (s *stream) addTailer(t *tailer) {

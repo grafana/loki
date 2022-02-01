@@ -189,9 +189,10 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if err != nil {
 		return err
 	}
-	storage.RegisterCustomIndexClients(&conf.StorageConfig, prometheus.DefaultRegisterer)
+	cm := chunk_storage.NewClientMetrics()
+	storage.RegisterCustomIndexClients(&conf.StorageConfig, cm, prometheus.DefaultRegisterer)
 	conf.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
-	chunkStore, err := chunk_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig.StoreConfig, conf.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	chunkStore, err := chunk_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig.StoreConfig, conf.SchemaConfig.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		return err
 	}

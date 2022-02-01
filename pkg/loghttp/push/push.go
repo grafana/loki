@@ -1,6 +1,7 @@
 package push
 
 import (
+	"compress/flate"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -9,7 +10,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/util"
 	loki_util "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/unmarshal"
 	unmarshal2 "github.com/grafana/loki/pkg/util/unmarshal/legacy"
@@ -67,6 +68,10 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		}
 		defer gzipReader.Close()
 		body = gzipReader
+	case "deflate":
+		flateReader := flate.NewReader(bodySize)
+		defer flateReader.Close()
+		body = flateReader
 	default:
 		return nil, fmt.Errorf("Content-Encoding %q not supported", contentEncoding)
 	}
