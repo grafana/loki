@@ -217,7 +217,7 @@ func NewStore(
 			return nil, errors.Wrap(err, "error creating index client")
 		}
 		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits, logger, cfg.DisableBroadIndexQueries,
-			chunkCacheCfg.AsyncCacheWriteBackConcurrency, chunkCacheCfg.AsyncCacheWriteBackBufferSize)
+			chunkCacheCfg.AsyncIndexCacheWriteBackConcurrency, chunkCacheCfg.AsyncIndexCacheWriteBackBufferSize)
 
 		objectStoreType := s.ObjectType
 		if objectStoreType == "" {

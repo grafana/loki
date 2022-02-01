@@ -46,6 +46,10 @@ type Config struct {
 	AsyncCacheWriteBackConcurrency int `yaml:"async_cache_write_back_concurrency"`
 	// AsyncCacheWriteBackBufferSize specifies the maximum number of fetched chunks to buffer for writing back to the chunk cache.
 	AsyncCacheWriteBackBufferSize int `yaml:"async_cache_write_back_buffer_size"`
+	// AsyncIndexCacheWriteBackConcurrency specifies the number of goroutines to use when asynchronously writing index fetched from the store to the index cache.
+	AsyncIndexCacheWriteBackConcurrency int `yaml:"async_index_cache_write_back_concurrency"`
+	// AsyncIndexCacheWriteBackBufferSize specifies the maximum number of fetched index to buffer for writing back to the index cache.
+	AsyncIndexCacheWriteBackBufferSize int `yaml:"async_index_cache_write_back_buffer_size"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -55,8 +59,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
-	f.IntVar(&cfg.AsyncCacheWriteBackConcurrency, prefix+"max-async-cache-write-back-concurrency", 16, "The maximum number of concurrent asynchronous writeback cache can occur.")
-	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
+	f.IntVar(&cfg.AsyncCacheWriteBackConcurrency, prefix+"max-async-cache-write-back-concurrency", 16, "The maximum number of concurrent asynchronous writeback chunk cache can occur.")
+	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback chunk cache allowed.")
+	f.IntVar(&cfg.AsyncIndexCacheWriteBackConcurrency, prefix+"max-async-index-cache-write-back-concurrency", 16, "The maximum number of concurrent asynchronous writeback index cache can occur.")
+	f.IntVar(&cfg.AsyncIndexCacheWriteBackBufferSize, prefix+"max-async-index-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback index cache allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
 	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
 
