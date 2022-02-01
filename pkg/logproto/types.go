@@ -12,7 +12,7 @@ import (
 type Stream struct {
 	Labels  string  `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
 	Entries []Entry `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
-	Hash    uint64  `protobuf:"varint,3,opt,name=hash,proto3" json:"hash"`
+	Hash    uint64  `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
 }
 
 // Entry is a log entry with a timestamp.
