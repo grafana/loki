@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -43,12 +42,7 @@ func TestIndexBasic(t *testing.T) {
 				return true
 			})
 			require.NoError(t, err)
-			assert.Eventually(t, func() bool {
-				if asyncClient, ok := client.(IndexAsyncClient); ok {
-					return asyncClient.AsyncQueueLength() == 0
-				}
-				return true
-			}, time.Second, 10*time.Millisecond)
+			awaitAsyncQueueFlush(t, client)
 			require.Equal(t, []chunk.IndexEntry{
 				{RangeValue: []byte(fmt.Sprintf("range%d", i))},
 			}, have)
@@ -193,12 +187,7 @@ func TestQueryPages(t *testing.T) {
 						}
 						return true
 					})
-					assert.Eventually(t, func() bool {
-						if asyncClient, ok := client.(IndexAsyncClient); ok {
-							return asyncClient.AsyncQueueLength() == 0
-						}
-						return true
-					}, time.Second, 10*time.Millisecond)
+					awaitAsyncQueueFlush(t, client)
 					require.NoError(t, err)
 					require.Equal(t, tt.want, have)
 
@@ -238,12 +227,7 @@ func TestCardinalityLimit(t *testing.T) {
 			return true
 		})
 		require.Error(t, err, "cardinality limit exceeded for {}; 10 entries, more than limit of 5")
-		assert.Eventually(t, func() bool {
-			if asyncClient, ok := client.(IndexAsyncClient); ok {
-				return asyncClient.AsyncQueueLength() == 0
-			}
-			return true
-		}, time.Second, 10*time.Millisecond)
+		awaitAsyncQueueFlush(t, client)
 		require.Equal(t, 0, have)
 	})
 }
