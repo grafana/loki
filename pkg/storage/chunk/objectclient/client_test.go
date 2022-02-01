@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 func MustParseDayTime(s string) chunk.DayTime {
@@ -14,7 +15,9 @@ func MustParseDayTime(s string) chunk.DayTime {
 	if err != nil {
 		panic(err)
 	}
-	return chunk.DayTime{model.TimeFromUnix(t.Unix())}
+	return chunk.DayTime{
+		Time: model.TimeFromUnix(t.Unix()),
+	}
 }
 
 func TestFSEncoder(t *testing.T) {
