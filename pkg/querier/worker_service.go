@@ -131,9 +131,6 @@ func InitWorkerService(
 
 	internalHandler = internalMiddleware.Wrap(internalHandler)
 
-	//Querier worker's max concurrent requests must be the same as the querier setting
-	(*cfg.QuerierWorkerConfig).MaxConcurrentRequests = cfg.QuerierMaxConcurrent
-
 	//Return a querier worker pointed to the internal querier HTTP handler so there is not a conflict in routes between the querier
 	//and the query frontend
 	return querier_worker.NewQuerierWorker(
