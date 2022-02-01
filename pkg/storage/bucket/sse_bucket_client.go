@@ -7,9 +7,9 @@ import (
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
+	thanos_s3 "github.com/thanos-io/thanos/pkg/objstore/s3"
 
-	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/pkg/storage/bucket/s3"
 )
 
 // TenantConfigProvider defines a per-tenant config provider.
@@ -53,7 +53,7 @@ func (b *SSEBucketClient) Upload(ctx context.Context, name string, r io.Reader) 
 	} else if sse != nil {
 		// If the underlying bucket client is not S3 and a custom S3 SSE config has been
 		// provided, the config option will be ignored.
-		ctx = s3.ContextWithSSEConfig(ctx, sse)
+		ctx = thanos_s3.ContextWithSSEConfig(ctx, sse)
 	}
 
 	return b.bucket.Upload(ctx, name, r)
@@ -80,7 +80,7 @@ func (b *SSEBucketClient) getCustomS3SSEConfig() (encrypt.ServerSide, error) {
 		return nil, nil
 	}
 
-	cfg := cortex_s3.SSEConfig{
+	cfg := s3.SSEConfig{
 		Type:                 sseType,
 		KMSKeyID:             b.cfgProvider.S3SSEKMSKeyID(b.userID),
 		KMSEncryptionContext: b.cfgProvider.S3SSEKMSEncryptionContext(b.userID),

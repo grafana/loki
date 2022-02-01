@@ -42,7 +42,6 @@ import (
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
@@ -323,12 +322,12 @@ func (t *Loki) initTableManager() (services.Service, error) {
 
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.Cfg.StorageConfig.Config, reg)
+	tableClient, err := chunk_storage.NewTableClient(lastConfig.IndexType, t.Cfg.StorageConfig.Config, reg)
 	if err != nil {
 		return nil, err
 	}
 
-	bucketClient, err := storage.NewBucketClient(t.Cfg.StorageConfig.Config)
+	bucketClient, err := chunk_storage.NewBucketClient(t.Cfg.StorageConfig.Config)
 	util_log.CheckFatal("initializing bucket client", err, util_log.Logger)
 
 	t.tableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.SchemaConfig.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
@@ -363,7 +362,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 					// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
 					// IndexCacheValidity guarantees the FIFO cache will expire the object first which can be done without
 					// having to deserialize the object.
-					Validity: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
+					TTL: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 				},
 			}
 			// Force the retain period to be longer than the IndexCacheValidity used in the store, this guarantees we don't
@@ -718,7 +717,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
-	objectClient, err := storage.NewObjectClient(t.Cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType, t.Cfg.StorageConfig.Config, t.clientMetrics)
+	objectClient, err := chunk_storage.NewObjectClient(t.Cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType, t.Cfg.StorageConfig.Config, t.clientMetrics)
 	if err != nil {
 		return nil, err
 	}

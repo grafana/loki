@@ -1900,10 +1900,15 @@ fifocache:
   # CLI flag: -<prefix>.fifocache.max-size-items
   [max_size_items: <int> | default = 0]
 
-  # The expiry duration for the cache.
+  # Deprecated: The expiry duration for the cache. Use `-<prefix>.fifocache.ttl`.
   # The default value of 0 disables expiration.
   # CLI flag: -<prefix>.fifocache.duration
   [validity: <duration>]
+
+  # The time for items to live in the cache before those items are purged.
+  # The value of 0 disables auto-expiration.
+  # CLI flag: -<prefix>.fifocache.ttl
+  [ttl: <duration> | default = 1h]
 ```
 
 ## schema_config
