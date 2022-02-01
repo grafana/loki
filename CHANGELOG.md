@@ -1,5 +1,6 @@
 ## Main
 
+* [5289](https://github.com/grafana/loki/pull/5289) **ctovena**: Fix deduplication bug in queries when mutating labels.
 * [5280](https://github.com/grafana/loki/pull/5280) **jeschkies**: Fix Docker target connection loss.
 * [5243](https://github.com/grafana/loki/pull/5243) **owen-d**: moves `querier.split-queries-by-interval` to limits code only.
 * [5139](https://github.com/grafana/loki/pull/5139) **DylanGuedes**: Drop support for legacy configuration rules format.
