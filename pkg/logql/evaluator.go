@@ -547,14 +547,33 @@ func binOpStepEvaluator(
 		)
 	}
 
-	// we have two non literal legs
-	lse, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
-	if err != nil {
-		return nil, err
-	}
-	rse, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
-	if err != nil {
-		return nil, err
+	// We have two non literal legs,
+	// load them in parallel
+	var (
+		lse, rse StepEvaluator
+		// prebuffer errCh so we can return after first error is found
+		errCh = make(chan error, 2)
+		// keep a scoped reference to err as it's referenced in the Error()
+		// implementation of this StepEvaluator
+		scopedErr error
+	)
+	go func() {
+		var err error
+		lse, err = ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
+		errCh <- err
+	}()
+	go func() {
+		var err error
+		rse, err = ev.StepEvaluator(ctx, ev, expr.RHS, q)
+		errCh <- err
+	}()
+
+	// ensure both sides are loaded before returning the combined evaluator
+	for i := 0; i < 2; i++ {
+		scopedErr = <-errCh
+		if scopedErr != nil {
+			return nil, scopedErr
+		}
 	}
 
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
@@ -593,7 +612,7 @@ func binOpStepEvaluator(
 		case OpTypeUnless:
 			results = vectorUnless(lhs, rhs, lsigs, rsigs)
 		default:
-			results, err = vectorBinop(expr.Op, expr.Opts, lhs, rhs, lsigs, rsigs)
+			results, scopedErr = vectorBinop(expr.Op, expr.Opts, lhs, rhs, lsigs, rsigs)
 		}
 		return true, ts, results
 	}, func() (lastError error) {
@@ -605,8 +624,8 @@ func binOpStepEvaluator(
 		return lastError
 	}, func() error {
 		var errs []error
-		if err != nil {
-			errs = append(errs, err)
+		if scopedErr != nil {
+			errs = append(errs, scopedErr)
 		}
 		for _, ev := range []StepEvaluator{lse, rse} {
 			if err := ev.Error(); err != nil {
