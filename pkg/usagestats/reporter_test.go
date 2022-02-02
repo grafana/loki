@@ -44,7 +44,7 @@ func Test_LeaderElection(t *testing.T) {
 	}
 	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, JSONCodec, prometheus.DefaultRegisterer, log.NewLogfmtLogger(os.Stdout))
 	require.NoError(t, err)
-
+	// verify that the ID found is also correctly stored in the kv store and not overridden by another leader.
 	data, err := kvClient.Get(context.Background(), seedKey)
 	require.NoError(t, err)
 	require.Equal(t, data.(*ClusterSeed).UID, first)
