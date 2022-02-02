@@ -3,6 +3,7 @@ package iter
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"io"
 	"sort"
 	"sync"
@@ -371,6 +372,31 @@ func (it *entrySortIterator) less(i, j int) bool {
 	}
 }
 
+func(it *entrySortIterator) lessCurried(i int) func(j int) bool {
+	t1 := it.is[i].Entry().Timestamp
+	l1 := it.is[i].Labels()
+
+	return func(j int) bool {
+		fmt.Printf("testing %d at %d", j, it.is[j].(*streamIterator).i)
+		t2 := it.is[j].Entry().Timestamp
+		//if it.dir == logproto.BACKWARD {
+		//	t2, t1 = t1, t2
+		//}
+
+		un1 := t1.UnixNano()
+		un2 := t2.UnixNano()
+
+		switch {
+		case un1 < un2:
+			return true
+		case un1 > un2:
+			return false
+		default: // un1 == un2:
+			return l1 < it.is[j].Labels()
+		}
+	}
+}
+
 // init initialize the underlaying heap
 func (i *entrySortIterator) init() {
 	if i.prefetched {
@@ -397,12 +423,15 @@ func (i *entrySortIterator) init() {
 
 func (i *entrySortIterator) fix() {
 	// shortcut
-	if len(i.is) > 1 && i.less(0, 1) {
+	if len(i.is) <= 1 || i.less(0, 1) {
 		return
 	}
 
 	// First element might be out of place. Find insert index.
-	index := sort.Search(len(i.is), func(in int) bool { return i.less(0, in)})
+	less := i.lessCurried(0)
+	index := sort.Search(len(i.is), less)
+	//index := sort.Search(len(i.is), func(in int) bool { return i.less(0, in)})
+
 
 	// Insert first element at right position
 	if index == len(i.is) {
@@ -433,7 +462,10 @@ func (i *entrySortIterator) Next() bool {
 		return true
 	}
 
-	i.fix()
+	if len(i.is) > 1 {
+		i.fix()
+		fmt.Println("end fix")
+	}
 
 	return true
 }
