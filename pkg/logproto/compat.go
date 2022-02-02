@@ -126,12 +126,12 @@ func (s byLabel) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 var isTesting = false
 
 // MarshalJSON implements json.Marshaler.
-func (s Sample) MarshalJSON() ([]byte, error) {
+func (s LegacySample) MarshalJSON() ([]byte, error) {
 	if isTesting && math.IsNaN(s.Value) {
 		return nil, fmt.Errorf("test sample")
 	}
 
-	t, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(model.Time(s.Timestamp))
+	t, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(model.Time(s.TimestampMs))
 	if err != nil {
 		return nil, err
 	}
@@ -143,14 +143,14 @@ func (s Sample) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
-func (s *Sample) UnmarshalJSON(b []byte) error {
+func (s *LegacySample) UnmarshalJSON(b []byte) error {
 	var t model.Time
 	var v model.SampleValue
 	vs := [...]stdjson.Unmarshaler{&t, &v}
 	if err := jsoniter.ConfigCompatibleWithStandardLibrary.Unmarshal(b, &vs); err != nil {
 		return err
 	}
-	s.Timestamp = int64(t)
+	s.TimestampMs = int64(t)
 	s.Value = float64(v)
 
 	if isTesting && math.IsNaN(float64(v)) {
@@ -160,30 +160,30 @@ func (s *Sample) UnmarshalJSON(b []byte) error {
 }
 
 func SampleJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
-	sample := (*Sample)(ptr)
+	legacySample := (*LegacySample)(ptr)
 
-	if isTesting && math.IsNaN(sample.Value) {
+	if isTesting && math.IsNaN(legacySample.Value) {
 		stream.Error = fmt.Errorf("test sample")
 		return
 	}
 
 	stream.WriteArrayStart()
-	stream.WriteFloat64(float64(sample.Timestamp) / float64(time.Second/time.Millisecond))
+	stream.WriteFloat64(float64(legacySample.TimestampMs) / float64(time.Second/time.Millisecond))
 	stream.WriteMore()
-	stream.WriteString(model.SampleValue(sample.Value).String())
+	stream.WriteString(model.SampleValue(legacySample.Value).String())
 	stream.WriteArrayEnd()
 }
 
 func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	if !iter.ReadArray() {
-		iter.ReportError("logproto.Sample", "expected [")
+		iter.ReportError("logproto.LegacySample", "expected [")
 		return
 	}
 
 	t := model.Time(iter.ReadFloat64() * float64(time.Second/time.Millisecond))
 
 	if !iter.ReadArray() {
-		iter.ReportError("logproto.Sample", "expected ,")
+		iter.ReportError("logproto.LegacySample", "expected ,")
 		return
 	}
 
@@ -191,7 +191,7 @@ func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	ss := *(*string)(unsafe.Pointer(&bs))
 	v, err := strconv.ParseFloat(ss, 64)
 	if err != nil {
-		iter.ReportError("logproto.Sample", err.Error())
+		iter.ReportError("logproto.LegacySample", err.Error())
 		return
 	}
 
@@ -201,16 +201,16 @@ func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	}
 
 	if iter.ReadArray() {
-		iter.ReportError("logproto.Sample", "expected ]")
+		iter.ReportError("logproto.LegacySample", "expected ]")
 	}
 
-	*(*Sample)(ptr) = Sample{
-		Timestamp: int64(t),
-		Value:     v,
+	*(*LegacySample)(ptr) = LegacySample{
+		TimestampMs: int64(t),
+		Value:       v,
 	}
 }
 
 func init() {
-	jsoniter.RegisterTypeEncoderFunc("logproto.Sample", SampleJsoniterEncode, func(unsafe.Pointer) bool { return false })
-	jsoniter.RegisterTypeDecoderFunc("logproto.Sample", SampleJsoniterDecode)
+	jsoniter.RegisterTypeEncoderFunc("logproto.LegacySample", SampleJsoniterEncode, func(unsafe.Pointer) bool { return false })
+	jsoniter.RegisterTypeDecoderFunc("logproto.LegacySample", SampleJsoniterDecode)
 }

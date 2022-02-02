@@ -20,7 +20,7 @@ func TestJsoniterMarshalForSample(t *testing.T) {
 }
 
 func TestStdlibJsonMarshalForSample(t *testing.T) {
-	testMarshalling(t, stdlibjson.Marshal, "json: error calling MarshalJSON for type logproto.Sample: test sample")
+	testMarshalling(t, stdlibjson.Marshal, "json: error calling MarshalJSON for type logproto.LegacySample: test sample")
 }
 
 func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error), expectedError string) {
