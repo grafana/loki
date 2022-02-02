@@ -88,7 +88,7 @@ func Test_Hedging(t *testing.T) {
 			require.NoError(t, err)
 
 			tc.do(c)
-			require.Equal(t, tc.expectedCalls, count.Load())
+			require.Eventually(t, func() bool { return tc.expectedCalls == count.Load() }, time.Second, time.Millisecond)
 		})
 	}
 }
