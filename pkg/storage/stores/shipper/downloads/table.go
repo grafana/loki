@@ -156,7 +156,7 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 	}
 
 	for _, uid := range []string{userID, ""} {
-		indexSet, err := t.getOrCreateIndexSet(uid, true)
+		indexSet, err := t.getOrCreateIndexSet(uid)
 		if err != nil {
 			return err
 		}
@@ -232,7 +232,10 @@ func (t *Table) Sync(ctx context.Context) error {
 	return nil
 }
 
-func (t *Table) getOrCreateIndexSet(id string, async bool) (IndexSet, error) {
+// getOrCreateIndexSet gets or creates the index set for the userID.
+// If it does not exist, it creates a new one and initializes it in a goroutine.
+// Caller can use IndexSet.AwaitReady() to wait until the IndexSet gets ready, if required.
+func (t *Table) getOrCreateIndexSet(id string) (IndexSet, error) {
 	t.indexSetsMtx.RLock()
 	indexSet, ok := t.indexSets[id]
 	t.indexSetsMtx.RUnlock()
@@ -241,41 +244,33 @@ func (t *Table) getOrCreateIndexSet(id string, async bool) (IndexSet, error) {
 	}
 
 	t.indexSetsMtx.Lock()
+	defer t.indexSetsMtx.Unlock()
 
 	indexSet, ok = t.indexSets[id]
-	if !ok {
-		var err error
-		baseIndexSet := t.baseUserIndexSet
-		if id == "" {
-			baseIndexSet = t.baseCommonIndexSet
-		}
-
-		indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient, t.logger, t.metrics)
-		if err != nil {
-			return nil, err
-		}
-		t.indexSets[id] = indexSet
-
+	if ok {
+		return indexSet, nil
 	}
-	t.indexSetsMtx.Unlock()
 
-	// We want to do the initialization of table in async mode while serving the queries to honor their timeouts while
-	// for background tasks like ensuring query readiness, we want to do the initialization in synchronous mode.
-	// The idea here is that we want to create an instance of indexSet first and set its reference so that
-	// no other goroutine creates another instance of indexSet.
-	if async {
-		go func() {
-			err := indexSet.Init()
-			if err != nil {
-				level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
-			}
-		}()
-	} else {
+	var err error
+	baseIndexSet := t.baseUserIndexSet
+	if id == "" {
+		baseIndexSet = t.baseCommonIndexSet
+	}
+
+	// instantiate the index set, add it to the map
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient, t.logger, t.metrics)
+	if err != nil {
+		return nil, err
+	}
+	t.indexSets[id] = indexSet
+
+	// initialize the index set in async mode, it would be upto the caller to wait for its readiness using IndexSet.AwaitReady()
+	go func() {
 		err := indexSet.Init()
 		if err != nil {
-			return nil, err
+			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
 		}
-	}
+	}()
 
 	return indexSet, nil
 }
@@ -286,10 +281,15 @@ func (t *Table) EnsureQueryReadiness(ctx context.Context) error {
 		return err
 	}
 
-	commonIndexSet, err := t.getOrCreateIndexSet("", false)
+	commonIndexSet, err := t.getOrCreateIndexSet("")
 	if err != nil {
 		return err
 	}
+	err = commonIndexSet.AwaitReady(ctx)
+	if err != nil {
+		return err
+	}
+
 	commonIndexSet.UpdateLastUsedAt()
 
 	missingUserIDs := make([]string, 0, len(userIDs))
@@ -309,7 +309,11 @@ func (t *Table) EnsureQueryReadiness(ctx context.Context) error {
 // downloadUserIndexes downloads user specific index files concurrently.
 func (t *Table) downloadUserIndexes(ctx context.Context, userIDs []string) error {
 	return concurrency.ForEach(ctx, concurrency.CreateJobsFromStrings(userIDs), maxDownloadConcurrency, func(ctx context.Context, userID interface{}) error {
-		_, err := t.getOrCreateIndexSet(userID.(string), false)
-		return err
+		indexSet, err := t.getOrCreateIndexSet(userID.(string))
+		if err != nil {
+			return err
+		}
+
+		return indexSet.AwaitReady(ctx)
 	})
 }
