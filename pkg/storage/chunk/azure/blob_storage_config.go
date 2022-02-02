@@ -3,9 +3,10 @@ package azure
 import (
 	"flag"
 	"fmt"
-	"github.com/grafana/dskit/flagext"
 	"strings"
 	"time"
+
+	"github.com/grafana/dskit/flagext"
 )
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
