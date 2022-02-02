@@ -1,7 +1,9 @@
 package file
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,33 +20,21 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/testutils"
 )
 
-func newTestLogDirectories() (string, func(), error) {
-	testutils.InitRandom()
-	dirName := "/tmp/" + testutils.RandName()
-	logFileDir := dirName + "/logdir"
-
-	err := os.MkdirAll(dirName, 0750)
-	if err != nil {
-		return "", nil, err
-	}
-	err = os.MkdirAll(logFileDir, 0750)
-	if err != nil {
-		return "", nil, err
-	}
-
-	return logFileDir, func() {
-		_ = os.RemoveAll(dirName)
-	}, nil
+func newTestLogDirectories(t *testing.T) string {
+	tmpDir := t.TempDir()
+	logFileDir := filepath.Join(tmpDir, "logs")
+	err := os.MkdirAll(logFileDir, 0750)
+	assert.NoError(t, err)
+	return logFileDir
 }
 
 func newTestPositions(logger log.Logger, filePath string) (positions.Positions, error) {
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
 	pos, err := positions.New(logger, positions.Config{
-		SyncPeriod:    10 * time.Second,
+		SyncPeriod:    60 * time.Second,
 		PositionsFile: filePath,
 	})
 	if err != nil {
@@ -76,7 +66,7 @@ func newTestFileTargetManager(logger log.Logger, client api.EntryHandler, positi
 		},
 	}
 	tc := &Config{
-		SyncPeriod: 10 * time.Second,
+		SyncPeriod: 1 * time.Second,
 	}
 
 	metrics := NewMetrics(nil)
@@ -90,14 +80,10 @@ func newTestFileTargetManager(logger log.Logger, client api.EntryHandler, positi
 func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
-	logDirName, cleanup, err := newTestLogDirectories()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cleanup()
+	logDirName := newTestLogDirectories(t)
 
-	logFile := logDirName + "test.log"
-	positionsFileName := logDirName + "/positions.yml"
+	logFile := filepath.Join(logDirName, "test.log")
+	positionsFileName := filepath.Join(logDirName, "positions.yml")
 	ps, err := newTestPositions(logger, positionsFileName)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +92,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"*")
+	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,14 +140,10 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 func TestWatchEntireDirectory(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
-	logDirName, cleanup, err := newTestLogDirectories()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cleanup()
+	logDirName := newTestLogDirectories(t)
 
-	logFile := logDirName + "test.log"
-	positionsFileName := logDirName + "/positions.yml"
+	logFile := filepath.Join(logDirName, "test.log")
+	positionsFileName := filepath.Join(logDirName, "positions.yml")
 	ps, err := newTestPositions(logger, positionsFileName)
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +152,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"*")
+	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,14 +200,10 @@ func TestWatchEntireDirectory(t *testing.T) {
 func TestFileRolls(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
-	logDirName, cleanup, err := newTestLogDirectories()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cleanup()
+	logDirName := newTestLogDirectories(t)
 
-	logFile := logDirName + "/test.log"
-	positionsFileName := logDirName + "/positions.yml"
+	logFile := filepath.Join(logDirName, "test.log")
+	positionsFileName := filepath.Join(logDirName, "positions.yml")
 	ps, err := newTestPositions(logger, positionsFileName)
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +233,7 @@ func TestFileRolls(t *testing.T) {
 	}, time.Second*10, time.Millisecond*1)
 
 	// Rename the log file to something not in the pattern, then create a new file with the same name.
-	err = os.Rename(logFile, logDirName+"/test.log.1")
+	err = os.Rename(logFile, filepath.Join(logDirName, "test.log.1"))
 	if err != nil {
 		t.Fatal("Failed to rename log file for test", err)
 	}
@@ -295,14 +273,10 @@ func TestFileRolls(t *testing.T) {
 func TestResumesWhereLeftOff(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
-	logDirName, cleanup, err := newTestLogDirectories()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cleanup()
+	logDirName := newTestLogDirectories(t)
 
-	logFile := logDirName + "/test.log"
-	positionsFileName := logDirName + "/positions.yml"
+	logFile := filepath.Join(logDirName, "test.log")
+	positionsFileName := filepath.Join(logDirName, "positions.yml")
 	ps, err := newTestPositions(logger, positionsFileName)
 	if err != nil {
 		t.Fatal(err)
@@ -378,15 +352,11 @@ func TestResumesWhereLeftOff(t *testing.T) {
 func TestGlobWithMultipleFiles(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
-	logDirName, cleanup, err := newTestLogDirectories()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cleanup()
+	logDirName := newTestLogDirectories(t)
 
-	logFile1 := logDirName + "/test.log"
-	logFile2 := logDirName + "/dirt.log"
-	positionsFileName := logDirName + "/positions.yml"
+	logFile1 := filepath.Join(logDirName, "test.log")
+	logFile2 := filepath.Join(logDirName, "dirt.log")
+	positionsFileName := filepath.Join(logDirName, "positions.yml")
 	ps, err := newTestPositions(logger, positionsFileName)
 	if err != nil {
 		t.Fatal(err)
@@ -499,4 +469,61 @@ func TestDeadlockTargetManager(t *testing.T) {
 
 	require.Equal(t, len(syncer.targets), 0)
 	require.Equal(t, len(syncer.fileEventWatchers), 0)
+}
+
+func TestDeadlockStartWatchingDuringSync(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+	oldLogDir := newTestLogDirectories(t)
+	newLogDir := newTestLogDirectories(t)
+
+	positionsFileName := filepath.Join(oldLogDir, "positions.yml")
+	ps, err := newTestPositions(logger, positionsFileName)
+	assert.NoError(t, err)
+
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	ftm, err := newTestFileTargetManager(logger, client, ps, oldLogDir+"/*")
+	assert.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 10; i++ {
+			dir := filepath.Join(newLogDir, fmt.Sprintf("%d", i))
+			err := os.MkdirAll(dir, 0750)
+			assert.NoError(t, err)
+			time.Sleep(1 * time.Millisecond)
+			for j := 0; j < 100; j++ {
+				logFile := filepath.Join(dir, fmt.Sprintf("test%d.log", j))
+				f, err := os.Create(logFile)
+				assert.NoError(t, err)
+				_, err = f.WriteString("just a log line\n")
+				assert.NoError(t, err)
+				err = f.Close()
+				assert.NoError(t, err)
+				time.Sleep(1 * time.Millisecond)
+			}
+		}
+		close(done)
+	}()
+
+	tg := targetgroup.Group{
+		Targets: []model.LabelSet{{
+			"localhost": "",
+		}},
+		Labels: model.LabelSet{
+			"job":      "varlogs",
+			"match":    "true",
+			"__path__": model.LabelValue(newLogDir + "/**/*.log"),
+		},
+		Source: "",
+	}
+	for i := 0; i < 10; i++ {
+		ftm.syncers[""].sync([]*targetgroup.Group{&tg}, ftm.targetEventHandler)
+	}
+	<-done
+
+	ftm.Stop()
+	ps.Stop()
 }
