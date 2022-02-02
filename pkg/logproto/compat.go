@@ -19,7 +19,7 @@ import (
 
 // ToWriteRequest converts matched slices of Labels, Samples and Metadata into a WriteRequest proto.
 // It gets timeseries from the pool, so ReuseSlice() should be called when done.
-func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMetadata, source WriteRequest_SourceEnum) *WriteRequest {
+func ToWriteRequest(lbls []labels.Labels, samples []LegacySample, metadata []*MetricMetadata, source WriteRequest_SourceEnum) *WriteRequest {
 	req := &WriteRequest{
 		Timeseries: PreallocTimeseriesSliceFromPool(),
 		Metadata:   metadata,
