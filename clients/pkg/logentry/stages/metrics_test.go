@@ -321,7 +321,7 @@ func TestMetricStage_Process(t *testing.T) {
 			"contains_false":  "contains(keys(@),'nope')",
 		},
 	}
-	regexLogFixture := `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932ms"`
+	regexHTTPFixture := `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932ms"`
 	regexConfig := map[string]interface{}{
 		"expression": "(?P<get>\"GET).*HTTP/1.1\" (?P<status>\\d*) (?P<time>\\d*ms)",
 	}
@@ -411,7 +411,7 @@ func TestMetricStage_Process(t *testing.T) {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
 	out := processEntries(jsonStage, newEntry(nil, labelFoo, logFixture, time.Now()))
-	out[0].Line = regexLogFixture
+	out[0].Line = regexHTTPFixture
 	out = processEntries(regexStage, out...)
 	out = processEntries(metricStage, out...)
 	out[0].Labels = labelFu
