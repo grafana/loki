@@ -27,16 +27,16 @@ func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error)
 	isTesting = true
 	defer func() { isTesting = false }()
 
-	out, err := marshalFn(Sample{Value: 12345, Timestamp: 98765})
+	out, err := marshalFn(LegacySample{Value: 12345, TimestampMs: 98765})
 	require.NoError(t, err)
 	require.Equal(t, `[98.765,"12345"]`, string(out))
 
-	_, err = marshalFn(Sample{Value: math.NaN(), Timestamp: 0})
+	_, err = marshalFn(LegacySample{Value: math.NaN(), TimestampMs: 0})
 	require.EqualError(t, err, expectedError)
 
 	// If not testing, we get normal output.
 	isTesting = false
-	out, err = marshalFn(Sample{Value: math.NaN(), Timestamp: 0})
+	out, err = marshalFn(LegacySample{Value: math.NaN(), TimestampMs: 0})
 	require.NoError(t, err)
 	require.Equal(t, `[0,"NaN"]`, string(out))
 }
@@ -55,11 +55,11 @@ func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v interface{}
 	isTesting = true
 	defer func() { isTesting = false }()
 
-	sample := Sample{}
+	sample := LegacySample{}
 
 	err := unmarshalFn([]byte(`[98.765,"12345"]`), &sample)
 	require.NoError(t, err)
-	require.Equal(t, Sample{Value: 12345, Timestamp: 98765}, sample)
+	require.Equal(t, LegacySample{Value: 12345, TimestampMs: 98765}, sample)
 
 	err = unmarshalFn([]byte(`[0.0,"NaN"]`), &sample)
 	require.EqualError(t, err, expectedError)
@@ -67,7 +67,7 @@ func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v interface{}
 	isTesting = false
 	err = unmarshalFn([]byte(`[0.0,"NaN"]`), &sample)
 	require.NoError(t, err)
-	require.Equal(t, int64(0), sample.Timestamp)
+	require.Equal(t, int64(0), sample.TimestampMs)
 	require.True(t, math.IsNaN(sample.Value))
 }
 
