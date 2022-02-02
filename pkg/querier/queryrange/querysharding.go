@@ -8,6 +8,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
@@ -90,29 +92,37 @@ type astMapperware struct {
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	conf, err := ast.confs.GetConf(r)
 	logger := util_log.WithContext(ctx, ast.logger)
+	sp, _ := opentracing.StartSpanFromContext(ctx, "astmapper")
+	defer sp.Finish()
+	sp.LogFields(otlog.String("msg", "setup"))
 	// cannot shard with this timerange
 	if err != nil {
+		sp.LogKV("msg", "error finding shardable configs", "err", err.Error())
 		level.Warn(logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
 		return ast.next.Do(ctx, r)
 	}
 
 	mapper, err := logql.NewShardMapper(int(conf.RowShards), ast.metrics)
 	if err != nil {
+		sp.LogKV("msg", "error building shardmapper", "err", err.Error())
 		return nil, err
 	}
 
 	noop, parsed, err := mapper.Parse(r.GetQuery())
 	if err != nil {
+		sp.LogKV("msg", "error parsing", "err", err.Error())
 		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
 		return nil, err
 	}
 	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
 
 	if noop {
+		sp.LogKV("msg", "noop")
 		// the ast can't be mapped to a sharded equivalent
 		// so we can bypass the sharding engine.
 		return ast.next.Do(ctx, r)
 	}
+	sp.LogKV("msg", "running query", "query", parsed.String())
 
 	params, err := paramsFromRequest(r)
 	if err != nil {
