@@ -243,20 +243,24 @@ func (t *Table) getOrCreateIndexSet(id string, async bool) (IndexSet, error) {
 	t.indexSetsMtx.Lock()
 
 	indexSet, ok = t.indexSets[id]
-	if !ok {
-		var err error
-		baseIndexSet := t.baseUserIndexSet
-		if id == "" {
-			baseIndexSet = t.baseCommonIndexSet
-		}
-
-		indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient, t.logger, t.metrics)
-		if err != nil {
-			return nil, err
-		}
-		t.indexSets[id] = indexSet
-
+	if ok {
+		t.indexSetsMtx.Unlock()
+		return indexSet, nil
 	}
+
+	var err error
+	baseIndexSet := t.baseUserIndexSet
+	if id == "" {
+		baseIndexSet = t.baseCommonIndexSet
+	}
+
+	// instantiate the index set, add it to the map and unlock the mutex before calling Init()
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient, t.logger, t.metrics)
+	if err != nil {
+		return nil, err
+	}
+	t.indexSets[id] = indexSet
+
 	t.indexSetsMtx.Unlock()
 
 	// We want to do the initialization of table in async mode while serving the queries to honor their timeouts while
