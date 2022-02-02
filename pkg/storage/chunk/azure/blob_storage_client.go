@@ -191,7 +191,7 @@ func newContainerClient(cfg *BlobStorageConfig, hedgingCfg hedging.Config, hedgi
 		&azblob.ClientOptions{
 			Transporter: client,
 			Retry: policy.RetryOptions{
-				MaxRetries:    -1,
+				MaxRetries:    maxRetries,
 				TryTimeout:    cfg.RequestTimeout,
 				RetryDelay:    cfg.MinRetryDelay,
 				MaxRetryDelay: cfg.MaxRetryDelay,
