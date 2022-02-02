@@ -329,8 +329,8 @@ type entrySortIterator struct {
 	//	Peek() EntryIterator
 	//}
 	is         []EntryIterator
-	curr       int
 	prefetched bool
+	dir        logproto.Direction
 
 	currEntry entryWithLabels
 	errs      []error
@@ -347,34 +347,28 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 		return is[0]
 	}
 
-	result := &entrySortIterator{is: is, curr: 0}
-	/*
-	switch direction {
-	case logproto.BACKWARD:
-		result.heap = &iteratorMaxHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
-	case logproto.FORWARD:
-		result.heap = &iteratorMinHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
-	default:
-		panic("bad direction")
-	}
-	*/
+	result := &entrySortIterator{is: is, dir: direction}
 	return result
 }
 
 func (it *entrySortIterator) less(i, j int) bool {
-		t1, t2 := it.is[i].Entry().Timestamp, it.is[j].Entry().Timestamp
+	t1, t2 := it.is[i].Entry().Timestamp, it.is[j].Entry().Timestamp
+	if it.dir == logproto.BACKWARD {
+		t2, t1 = t1, t2
 
-		un1 := t1.UnixNano()
-		un2 := t2.UnixNano()
+	}
 
-		switch {
-		case un1 < un2:
-			return true
-		case un1 > un2:
-			return false
-		default: // un1 == un2:
-			return it.is[i].Labels() < it.is[j].Labels()
-		}
+	un1 := t1.UnixNano()
+	un2 := t2.UnixNano()
+
+	switch {
+	case un1 < un2:
+		return true
+	case un1 > un2:
+		return false
+	default: // un1 == un2:
+		return it.is[i].Labels() < it.is[j].Labels()
+	}
 }
 
 // init initialize the underlaying heap
@@ -387,7 +381,7 @@ func (i *entrySortIterator) init() {
 	for _, it := range i.is {
 		if it.Next() {
 			continue
-		}
+		} // else throw out empty one
 
 		if err := it.Error(); err != nil {
 			i.errs = append(i.errs, err)
@@ -401,28 +395,46 @@ func (i *entrySortIterator) init() {
 	//i.is = nil
 }
 
+func (i *entrySortIterator) fix() {
+	// shortcut
+	if len(i.is) > 1 && i.less(0, 1) {
+		return
+	}
+
+	// First element might be out of place. Find insert index.
+	index := sort.Search(len(i.is), func(in int) bool { return i.less(0, in)})
+
+	// Insert first element at right position
+	if index == len(i.is) {
+		i.is = append(i.is[1:], i.is[0])
+	} else {
+		i.is = append(i.is[1:index+1], i.is[index:]...)
+		i.is[index] = i.is[0]
+	}
+}
+
 func (i *entrySortIterator) Next() bool {
 	i.init()
 
 	if len(i.is) == 0 {
 		return false
 	}
-	if len(i.is) == i.curr {
-		return false
-	}
 
-	next := i.is[i.curr]
+	next := i.is[0]
 	i.currEntry.entry = next.Entry()
 	i.currEntry.labels = next.Labels()
 	// if the top iterator is empty, we remove it.
 	if !next.Next() {
-		i.curr++
+		i.is = i.is[1:]
 		if err := next.Error(); err != nil {
 			i.errs = append(i.errs, err)
 		}
 		util.LogError("closing iterator", next.Close)
 		return true
 	}
+
+	i.fix()
+
 	return true
 }
 
