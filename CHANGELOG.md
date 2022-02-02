@@ -1,5 +1,6 @@
 ## Main
 
+* [5302](https://github.com/grafana/loki/pull/5302) **MasslessParticle** Update azure blobstore client to use new sdk.
 * [5266](https://github.com/grafana/loki/pull/5266) **jeschkies**: Write Promtail position file atomically on Unix.
 * [5280](https://github.com/grafana/loki/pull/5280) **jeschkies**: Fix Docker target connection loss.
 * [5243](https://github.com/grafana/loki/pull/5243) **owen-d**: moves `querier.split-queries-by-interval` to limits code only.
