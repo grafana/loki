@@ -383,7 +383,8 @@ In most cases, you extract data from logs with `regex` or `json` stages. The ext
     <output> |
     <labels> |
     <metrics> |
-    <tenant>
+    <tenant> |
+    <replace>
   ]
 ```
 
@@ -708,6 +709,28 @@ tenant:
   # Value to use to set the tenant ID when this stage is executed. Useful
   # when this stage is included within a conditional pipeline with "match".
   [ value: <string> ]
+```
+
+#### replace
+
+The replace stage is a parsing stage that parses a log line using
+a regular expression and replaces the log line.
+
+```yaml
+replace:
+  # The RE2 regular expression. Each named capture group will be added to extracted.
+  # Each capture group and named capture group will be replaced with the value given in
+  # `replace`
+  expression: <string>
+
+  # Name from extracted data to parse. If empty, uses the log message.
+  # The replaced value will be assigned back to soure key
+  [source: <string>]
+
+  # Value to which the captured group will be replaced. The captured group or the named
+  # captured group will be replaced with this value and the log line will be replaced with
+  # new replaced values. An empty value will remove the captured group from the log line.
+  [replace: <string>]
 ```
 
 ### journal
