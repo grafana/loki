@@ -11,9 +11,9 @@ RUN gem install bundler:2.3.6
 COPY --chown=logstash:logstash ./clients/cmd/logstash/ /home/logstash/
 WORKDIR /home/logstash/
 
+# don't run 'bundle update'. It causes a transitive dependency error
 RUN bundle config set --local path /usr/share/logstash/vendor/bundle && \
     bundle install && \
-    bundle update && \
     bundle exec rake vendor && \
     bundle exec rspec
 
