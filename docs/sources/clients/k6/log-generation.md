@@ -110,7 +110,7 @@ const conf = loki.Config("http://localhost:3100", 5000, 1.0, cardinality);
 const client = loki.Client(conf);
 ```
 
-The total quantity of distict streams is defined by the carthesian product of
+The total quantity of distinct streams is defined by the cartesian product of
 all label values. Keep in mind that high cardinality negatively impacts the performance of
 the Loki instance.
 
@@ -122,8 +122,8 @@ Protobuf is optimized for performance
 and should be preferred when possible.
 
 To define the ratio of Protobuf to JSON requests, the client
-configuration accepts a values of 0.0 to 1.0.
-0.0 means 100% JSON, and 1.0 means 100% Protobuf encoding.
+configuration accepts values of 0.0 to 1.0.
+0.0 means 100% JSON encoding, and 1.0 means 100% Protobuf encoding.
 
 The default value is 0.9.
 
