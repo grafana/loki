@@ -157,7 +157,7 @@ func sampleStreamToMatrix(streams []queryrangebase.SampleStream) parser.Value {
 		x.Points = make([]promql.Point, 0, len(stream.Samples))
 		for _, sample := range stream.Samples {
 			x.Points = append(x.Points, promql.Point{
-				T: sample.Timestamp,
+				T: sample.TimestampMs,
 				V: sample.Value,
 			})
 		}
@@ -177,7 +177,7 @@ func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 		}
 
 		x.Point = promql.Point{
-			T: stream.Samples[0].Timestamp,
+			T: stream.Samples[0].TimestampMs,
 			V: stream.Samples[0].Value,
 		}
 

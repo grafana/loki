@@ -737,11 +737,11 @@ func toProtoMatrix(m loghttp.Matrix) []queryrangebase.SampleStream {
 	}
 
 	for _, stream := range m {
-		samples := make([]logproto.Sample, 0, len(stream.Values))
+		samples := make([]logproto.LegacySample, 0, len(stream.Values))
 		for _, s := range stream.Values {
-			samples = append(samples, logproto.Sample{
-				Value:     float64(s.Value),
-				Timestamp: int64(s.Timestamp),
+			samples = append(samples, logproto.LegacySample{
+				Value:       float64(s.Value),
+				TimestampMs: int64(s.Timestamp),
 			})
 		}
 		res = append(res, queryrangebase.SampleStream{
@@ -760,9 +760,9 @@ func toProtoVector(v loghttp.Vector) []queryrangebase.SampleStream {
 	}
 	for _, s := range v {
 		res = append(res, queryrangebase.SampleStream{
-			Samples: []logproto.Sample{{
-				Value:     float64(s.Value),
-				Timestamp: int64(s.Timestamp),
+			Samples: []logproto.LegacySample{{
+				Value:       float64(s.Value),
+				TimestampMs: int64(s.Timestamp),
 			}},
 			Labels: logproto.FromMetricsToLabelAdapters(s.Metric),
 		})

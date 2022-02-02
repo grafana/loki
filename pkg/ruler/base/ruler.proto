@@ -44,11 +44,11 @@ message RuleStateDesc {
 
 message AlertStateDesc {
   string state = 1;
-  repeated logproto.LabelPair labels = 2 [
+  repeated logproto.LegacyLabelPair labels = 2 [
     (gogoproto.nullable) = false,
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
   ];
-  repeated logproto.LabelPair annotations = 3 [
+  repeated logproto.LegacyLabelPair annotations = 3 [
     (gogoproto.nullable) = false,
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
   ];

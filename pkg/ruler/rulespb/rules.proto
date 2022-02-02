@@ -36,11 +36,11 @@ message RuleDesc {
   string record = 2;
   string alert = 3;
   google.protobuf.Duration for = 4 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true];
-  repeated logproto.LabelPair labels = 5 [
+  repeated logproto.LegacyLabelPair labels = 5 [
     (gogoproto.nullable) = false,
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
   ];
-  repeated logproto.LabelPair annotations = 6 [
+  repeated logproto.LegacyLabelPair annotations = 6 [
     (gogoproto.nullable) = false,
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
   ];

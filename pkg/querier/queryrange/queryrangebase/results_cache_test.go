@@ -61,9 +61,9 @@ var (
 					Labels: []logproto.LabelAdapter{
 						{Name: "foo", Value: "bar"},
 					},
-					Samples: []logproto.Sample{
-						{Value: 137, Timestamp: 1536673680000},
-						{Value: 137, Timestamp: 1536673780000},
+					Samples: []logproto.LegacySample{
+						{Value: 137, TimestampMs: 1536673680000},
+						{Value: 137, TimestampMs: 1536673780000},
 					},
 				},
 			},
@@ -72,11 +72,11 @@ var (
 )
 
 func mkAPIResponse(start, end, step int64) *PrometheusResponse {
-	var samples []logproto.Sample
+	var samples []logproto.LegacySample
 	for i := start; i <= end; i += step {
-		samples = append(samples, logproto.Sample{
-			Timestamp: i,
-			Value:     float64(i),
+		samples = append(samples, logproto.LegacySample{
+			TimestampMs: i,
+			Value:       float64(i),
 		})
 	}
 

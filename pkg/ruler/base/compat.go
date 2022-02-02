@@ -36,7 +36,7 @@ type PusherAppender struct {
 	ctx             context.Context
 	pusher          Pusher
 	labels          []labels.Labels
-	samples         []logproto.Sample
+	samples         []logproto.LegacySample
 	userID          string
 	evaluationDelay time.Duration
 }
@@ -56,9 +56,9 @@ func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v
 		t -= a.evaluationDelay.Milliseconds()
 	}
 
-	a.samples = append(a.samples, logproto.Sample{
-		Timestamp: t,
-		Value:     v,
+	a.samples = append(a.samples, logproto.LegacySample{
+		TimestampMs: t,
+		Value:       v,
 	})
 	return 0, nil
 }
