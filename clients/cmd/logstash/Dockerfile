@@ -13,7 +13,6 @@ WORKDIR /home/logstash/
 
 RUN bundle config set --local path /usr/share/logstash/vendor/bundle && \
     bundle install && \
-    bundle update && \
     bundle exec rake vendor && \
     bundle exec rspec
 
