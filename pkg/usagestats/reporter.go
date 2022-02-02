@@ -22,7 +22,7 @@ import (
 const (
 	ClusterSeedFileName = "loki_cluster_seed.json"
 
-	// attemptNumber how many times we will try to read a corrupted cluster seed before deleting
+	// attemptNumber how many times we will try to read a corrupted cluster seed before deleting it
 	attemptNumber = 4
 
 	seedKey = "usagestats_token"
