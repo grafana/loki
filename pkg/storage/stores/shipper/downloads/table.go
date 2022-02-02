@@ -242,7 +242,6 @@ func (t *Table) getOrCreateIndexSet(id string) (IndexSet, error) {
 	if ok {
 		return indexSet, nil
 	}
-	time.Sleep(time.Second)
 
 	t.indexSetsMtx.Lock()
 	defer t.indexSetsMtx.Unlock()
