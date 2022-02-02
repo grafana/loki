@@ -151,6 +151,11 @@ message LabelPair {
   string value = 2;
 }
 
+message LegacyLabelPair {
+  bytes name = 1;
+  bytes value = 2;
+}
+
 message Chunk {
   bytes data = 1;
 }
