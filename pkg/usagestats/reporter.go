@@ -3,14 +3,18 @@ package usagestats
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
+	"math"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/multierror"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -26,26 +30,50 @@ const (
 	seedKey = "usagestats_token"
 )
 
+var (
+	reportCheckInterval = time.Minute
+	reportInterval      = 2 * time.Hour
+)
+
 type Reporter struct {
 	kvClient     kv.Client
 	logger       log.Logger
 	objectClient chunk.ObjectClient
 	reg          prometheus.Registerer
 
-	cluster *ClusterSeed
+	services.Service
+
+	leader     bool
+	cluster    *ClusterSeed
+	lastReport time.Time
 }
 
-func NewReporter(kvConfig kv.Config, objectClient chunk.ObjectClient, logger log.Logger, reg prometheus.Registerer) (*Reporter, error) {
+func NewReporter(kvConfig kv.Config, objectClient chunk.ObjectClient, logger log.Logger, reg prometheus.Registerer, leader bool) (*Reporter, error) {
 	kvClient, err := kv.NewClient(kvConfig, JSONCodec, kv.RegistererWithKVName(reg, "usagestats"), logger)
 	if err != nil {
 		return nil, err
 	}
-	return &Reporter{
+	r := &Reporter{
 		kvClient:     kvClient,
 		logger:       logger,
 		objectClient: objectClient,
+		leader:       leader,
 		reg:          reg,
-	}, nil
+	}
+	r.Service = services.NewBasicService(r.starting, r.running, nil)
+	return r, nil
+}
+
+func (rep *Reporter) starting(ctx context.Context) error {
+	if rep.leader {
+		return rep.initLeader(ctx)
+	}
+	// follower only wait for the cluster seed to be set.
+	seed, err := rep.fetchSeed(ctx, nil)
+	if err == nil {
+		rep.cluster = seed
+	}
+	return err
 }
 
 func (rep *Reporter) initLeader(ctx context.Context) error {
@@ -97,6 +125,8 @@ func (rep *Reporter) initLeader(ctx context.Context) error {
 	}
 }
 
+// fetchSeed fetches the cluster seed from the object store and try until it succeeds.
+// continueFn allow you to decide if we should continue retrying. Nil means always retry
 func (rep *Reporter) fetchSeed(ctx context.Context, continueFn func(err error) bool) (*ClusterSeed, error) {
 	var (
 		backoff = backoff.New(ctx, backoff.Config{
@@ -159,4 +189,64 @@ func (rep *Reporter) writeSeedFile(ctx context.Context, seed ClusterSeed) error 
 		return err
 	}
 	return rep.objectClient.PutObject(ctx, ClusterSeedFileName, bytes.NewReader(data))
+}
+
+func (rep *Reporter) running(ctx context.Context) error {
+	if rep.cluster == nil {
+		return errors.New("cluster seed is missing")
+	}
+	// check every minute if we should report.
+	ticker := time.NewTicker(reportCheckInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			now := time.Now()
+			// find  when to send the next report.
+			next := nextReport(reportInterval, rep.cluster.CreatedAt, now)
+			level.Warn(rep.logger).Log("msg", "reporting", "next", next, "now", now, "last", rep.lastReport)
+			if rep.lastReport.IsZero() && now.Before(next) {
+				// if we never reported assumed it was the last interval.
+				rep.lastReport = next.Add(-reportInterval)
+			}
+			if next.Equal(now) || now.Sub(rep.lastReport) >= reportInterval {
+				if err := rep.reportUsage(ctx); err != nil {
+					level.Warn(rep.logger).Log("msg", "failed to report usage", "err", err)
+					continue
+				}
+				rep.lastReport = next
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (rep *Reporter) reportUsage(ctx context.Context) error {
+	backoff := backoff.New(ctx, backoff.Config{
+		MinBackoff: time.Second,
+		MaxBackoff: 30 * time.Second,
+		MaxRetries: 5,
+	})
+	var errs multierror.MultiError
+	for backoff.Ongoing() {
+		if err := sendStats(ctx, Stats{
+			ClusterID:         rep.cluster.UID,
+			PrometheusVersion: rep.cluster.PrometheusVersion,
+		}); err != nil {
+			level.Error(rep.logger).Log("msg", "failed to send stats", "retries", backoff.NumRetries(), "err", err)
+			errs.Add(err)
+			backoff.Wait()
+			continue
+		}
+		return nil
+	}
+	return errs.Err()
+}
+
+// nextReport compute the next report time based on the interval.
+// The interval is based off the creation of the cluster seed to avoid all cluster reporting at the same time.
+func nextReport(interval time.Duration, createdAt, now time.Time) time.Time {
+	// createdAt * (x * interval ) >= now
+	return createdAt.Add(time.Duration(math.Ceil(float64(now.Sub(createdAt))/float64(interval))) * interval)
 }
