@@ -23,10 +23,10 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 	case promql.Scalar:
 		return []SampleStream{
 			{
-				Samples: []logproto.Sample{
+				Samples: []logproto.LegacySample{
 					{
-						Value:     v.V,
-						Timestamp: v.T,
+						Value:       v.V,
+						TimestampMs: v.T,
 					},
 				},
 			},
@@ -66,13 +66,13 @@ func mapLabels(ls labels.Labels) []logproto.LabelAdapter {
 	return result
 }
 
-func mapPoints(pts ...promql.Point) []logproto.Sample {
-	result := make([]logproto.Sample, 0, len(pts))
+func mapPoints(pts ...promql.Point) []logproto.LegacySample {
+	result := make([]logproto.LegacySample, 0, len(pts))
 
 	for _, pt := range pts {
-		result = append(result, logproto.Sample{
-			Value:     pt.V,
-			Timestamp: pt.T,
+		result = append(result, logproto.LegacySample{
+			Value:       pt.V,
+			TimestampMs: pt.T,
 		})
 	}
 
@@ -110,7 +110,7 @@ func NewSeriesSet(results []SampleStream) storage.SeriesSet {
 		samples := make([]model.SamplePair, 0, len(stream.Samples))
 		for _, sample := range stream.Samples {
 			samples = append(samples, model.SamplePair{
-				Timestamp: model.Time(sample.Timestamp),
+				Timestamp: model.Time(sample.TimestampMs),
 				Value:     model.SampleValue(sample.Value),
 			})
 		}

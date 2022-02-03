@@ -30,7 +30,8 @@ var (
 	_ Stage = &RegexpParser{}
 	_ Stage = &LogfmtParser{}
 
-	errMissingCapture = errors.New("at least one named capture must be supplied")
+	errUnexpectedJSONObject = fmt.Errorf("expecting json object(%d), but it is not", jsoniter.ObjectValue)
+	errMissingCapture       = errors.New("at least one named capture must be supplied")
 )
 
 type JSONParser struct {
@@ -69,7 +70,7 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 func (j *JSONParser) readObject(it *jsoniter.Iterator) error {
 	// we only care about object and values.
 	if nextType := it.WhatIsNext(); nextType != jsoniter.ObjectValue {
-		return fmt.Errorf("expecting json object(%d), got %d", jsoniter.ObjectValue, nextType)
+		return errUnexpectedJSONObject
 	}
 	_ = it.ReadMapCB(j.parseMap(""))
 	if it.Error != nil && it.Error != io.EOF {
@@ -438,7 +439,7 @@ func (u *UnpackParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBuilder) ([]byte, error) {
 	// we only care about object and values.
 	if nextType := it.WhatIsNext(); nextType != jsoniter.ObjectValue {
-		return nil, fmt.Errorf("expecting json object(%d), got %d", jsoniter.ObjectValue, nextType)
+		return nil, errUnexpectedJSONObject
 	}
 	var isPacked bool
 	_ = it.ReadMapCB(func(iter *jsoniter.Iterator, field string) bool {

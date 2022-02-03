@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"go.uber.org/atomic"
@@ -17,25 +19,17 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/testutils"
 )
 
 func TestFileTargetSync(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	testutils.InitRandom()
-	dirName := "/tmp/" + testutils.RandName()
-	positionsFileName := dirName + "/positions.yml"
-	logDir1 := dirName + "/log1"
-	logDir1File1 := logDir1 + "/test1.log"
-	logDir1File2 := logDir1 + "/test2.log"
-
-	err := os.MkdirAll(dirName, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(dirName) }()
+	dirName := newTestLogDirectories(t)
+	positionsFileName := filepath.Join(dirName, "positions.yml")
+	logDir1 := filepath.Join(dirName, "log1")
+	logDir1File1 := filepath.Join(logDir1, "test1.log")
+	logDir1File2 := filepath.Join(logDir1, "test2.log")
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -74,11 +68,9 @@ func TestFileTargetSync(t *testing.T) {
 	}()
 	path := logDir1 + "/*.log"
 	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
-		SyncPeriod: 10 * time.Second,
+		SyncPeriod: 1 * time.Minute, // assure the sync is not called by the ticker
 	}, nil, fakeHandler)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 
 	// Start with nothing watched.
 	if len(target.watches) != 0 {
@@ -89,12 +81,12 @@ func TestFileTargetSync(t *testing.T) {
 	}
 
 	// Create the base dir, still nothing watched.
-	if err = os.MkdirAll(logDir1, 0750); err != nil {
-		t.Fatal(err)
-	}
-	if err = target.sync(); err != nil {
-		t.Fatal(err)
-	}
+	err = os.MkdirAll(logDir1, 0750)
+	assert.NoError(t, err)
+
+	err = target.sync()
+	assert.NoError(t, err)
+
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
@@ -104,64 +96,64 @@ func TestFileTargetSync(t *testing.T) {
 
 	// Add a file, which should create a watcher and a tailer.
 	_, err = os.Create(logDir1File1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = target.sync(); err != nil {
-		t.Fatal(err)
-	}
-	if len(target.watches) != 1 {
-		t.Fatal("Expected watches to be 1 at this point in the test...")
-	}
-	if len(target.tails) != 1 {
-		t.Fatal("Expected tails to be 1 at this point in the test...")
-	}
+	assert.NoError(t, err)
+
+	// Delay sync() call to make sure the filesystem watch event does not fire during sync()
+	time.Sleep(10 * time.Millisecond)
+	err = target.sync()
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, len(target.watches),
+		"Expected watches to be 1 at this point in the test...",
+	)
+	assert.Equal(t, 1, len(target.tails),
+		"Expected tails to be 1 at this point in the test...",
+	)
 	require.Eventually(t, func() bool {
 		return receivedStartWatch.Load() == 1
 	}, time.Second*10, time.Millisecond*1, "Expected received starting watch event to be 1 at this point in the test...")
 
 	// Add another file, should get another tailer.
 	_, err = os.Create(logDir1File2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = target.sync(); err != nil {
-		t.Fatal(err)
-	}
-	if len(target.watches) != 1 {
-		t.Fatal("Expected watches to be 1 at this point in the test...")
-	}
-	if len(target.tails) != 2 {
-		t.Fatal("Expected tails to be 2 at this point in the test...")
-	}
+	assert.NoError(t, err)
+
+	err = target.sync()
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, len(target.watches),
+		"Expected watches to be 1 at this point in the test...",
+	)
+	assert.Equal(t, 2, len(target.tails),
+		"Expected tails to be 2 at this point in the test...",
+	)
 
 	// Remove one of the files, tailer should stop.
-	if err = os.Remove(logDir1File1); err != nil {
-		t.Fatal(err)
-	}
-	if err = target.sync(); err != nil {
-		t.Fatal(err)
-	}
-	if len(target.watches) != 1 {
-		t.Fatal("Expected watches to be 1 at this point in the test...")
-	}
-	if len(target.tails) != 1 {
-		t.Fatal("Expected tails to be 1 at this point in the test...")
-	}
+	err = os.Remove(logDir1File1)
+	assert.NoError(t, err)
+
+	err = target.sync()
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, len(target.watches),
+		"Expected watches to be 1 at this point in the test...",
+	)
+	assert.Equal(t, 1, len(target.tails),
+		"Expected tails to be 1 at this point in the test...",
+	)
 
 	// Remove the entire directory, other tailer should stop and watcher should go away.
-	if err = os.RemoveAll(logDir1); err != nil {
-		t.Fatal(err)
-	}
-	if err = target.sync(); err != nil {
-		t.Fatal(err)
-	}
-	if len(target.watches) != 0 {
-		t.Fatal("Expected watches to be 0 at this point in the test...")
-	}
-	if len(target.tails) != 0 {
-		t.Fatal("Expected tails to be 0 at this point in the test...")
-	}
+	err = os.RemoveAll(logDir1)
+	assert.NoError(t, err)
+
+	err = target.sync()
+	assert.NoError(t, err)
+
+	assert.Equal(t, 0, len(target.watches),
+		"Expected watches to be 0 at this point in the test...",
+	)
+	assert.Equal(t, 0, len(target.tails),
+		"Expected tails to be 0 at this point in the test...",
+	)
 	require.Eventually(t, func() bool {
 		return receivedStartWatch.Load() == 1
 	}, time.Second*10, time.Millisecond*1, "Expected received starting watch event to be 1 at this point in the test...")
@@ -177,18 +169,12 @@ func TestHandleFileCreationEvent(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	testutils.InitRandom()
-	dirName := "/tmp/" + testutils.RandName()
-	positionsFileName := dirName + "/positions.yml"
-	logDir := dirName + "/log"
-	logFile := logDir + "/test1.log"
+	dirName := newTestLogDirectories(t)
+	positionsFileName := filepath.Join(dirName, "positions.yml")
+	logDir := filepath.Join(dirName, "log")
+	logFile := filepath.Join(logDir, "test1.log")
 
-	err := os.MkdirAll(dirName, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(dirName) }()
-	if err = os.MkdirAll(logDir, 0750); err != nil {
+	if err := os.MkdirAll(logDir, 0750); err != nil {
 		t.Fatal(err)
 	}
 

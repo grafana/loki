@@ -200,11 +200,12 @@ func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request)
 		return splitter.shardingware.Do(ctx, r)
 	}
 	cutoff := splitter.now().Add(-minShardingLookback)
-	// Only attempt to shard queries which are older than the sharding lookback (the period for which ingesters are also queried).
-	if !cutoff.After(util.TimeFromMillis(r.GetEnd())) {
-		return splitter.next.Do(ctx, r)
+	// Only attempt to shard queries which are older than the sharding lookback
+	// (the period for which ingesters are also queried) or when the lookback is disabled.
+	if minShardingLookback == 0 || util.TimeFromMillis(r.GetEnd()).Before(cutoff) {
+		return splitter.shardingware.Do(ctx, r)
 	}
-	return splitter.shardingware.Do(ctx, r)
+	return splitter.next.Do(ctx, r)
 }
 
 func hasShards(confs ShardingConfigs) bool {

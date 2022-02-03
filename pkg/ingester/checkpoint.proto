@@ -28,7 +28,7 @@ message Series {
   string userID = 1;
   // post mapped fingerprint is necessary because subsequent wal writes will reference it.
   uint64 fingerprint = 2;
-  repeated logproto.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
+  repeated logproto.LegacyLabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
   // most recently pushed timestamp.
   google.protobuf.Timestamp to = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];

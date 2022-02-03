@@ -126,14 +126,14 @@ func sampleMatrixResponse() *PrometheusResponse {
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []logproto.Sample{
+					Samples: []logproto.LegacySample{
 						{
-							Timestamp: 5,
-							Value:     1,
+							TimestampMs: 5,
+							Value:       1,
 						},
 						{
-							Timestamp: 10,
-							Value:     2,
+							TimestampMs: 10,
+							Value:       2,
 						},
 					},
 				},
@@ -142,14 +142,14 @@ func sampleMatrixResponse() *PrometheusResponse {
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []logproto.Sample{
+					Samples: []logproto.LegacySample{
 						{
-							Timestamp: 5,
-							Value:     8,
+							TimestampMs: 5,
+							Value:       8,
 						},
 						{
-							Timestamp: 10,
-							Value:     9,
+							TimestampMs: 10,
+							Value:       9,
 						},
 					},
 				},

@@ -105,11 +105,6 @@ func NewFileTarget(
 		targetEventHandler: targetEventHandler,
 	}
 
-	err := t.sync()
-	if err != nil {
-		return nil, errors.Wrap(err, "filetarget.sync")
-	}
-
 	go t.run()
 	return t, nil
 }
@@ -159,7 +154,13 @@ func (t *FileTarget) run() {
 		close(t.done)
 	}()
 
+	err := t.sync()
+	if err != nil {
+		level.Error(t.logger).Log("msg", "error running sync function", "error", err)
+	}
+
 	ticker := time.NewTicker(t.targetConfig.SyncPeriod)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -248,7 +249,7 @@ func (t *FileTarget) startWatching(dirs map[string]struct{}) {
 		if _, ok := t.watches[dir]; ok {
 			continue
 		}
-		level.Debug(t.logger).Log("msg", "watching new directory", "directory", dir)
+		level.Info(t.logger).Log("msg", "watching new directory", "directory", dir)
 		t.targetEventHandler <- fileTargetEvent{
 			path:      dir,
 			eventType: fileTargetEventWatchStart,
@@ -261,7 +262,7 @@ func (t *FileTarget) stopWatching(dirs map[string]struct{}) {
 		if _, ok := t.watches[dir]; !ok {
 			continue
 		}
-		level.Debug(t.logger).Log("msg", "removing directory from watcher", "directory", dir)
+		level.Info(t.logger).Log("msg", "removing directory from watcher", "directory", dir)
 		t.targetEventHandler <- fileTargetEvent{
 			path:      dir,
 			eventType: fileTargetEventWatchStop,
@@ -280,7 +281,7 @@ func (t *FileTarget) startTailing(ps []string) {
 			continue
 		}
 		if fi.IsDir() {
-			level.Error(t.logger).Log("msg", "failed to tail file", "error", "file is a directory", "filename", p)
+			level.Info(t.logger).Log("msg", "failed to tail file", "error", "file is a directory", "filename", p)
 			continue
 		}
 		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)

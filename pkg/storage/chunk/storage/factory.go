@@ -330,7 +330,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, clien
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(store, objectclient.Base64Encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+		return objectclient.NewClientWithMaxParallel(store, objectclient.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
