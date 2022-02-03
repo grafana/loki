@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -24,6 +25,7 @@ var (
 	writeAddress       *url.URL
 	username, password string
 	keepStream         bool
+	batchSize          int
 )
 
 func init() {
@@ -54,6 +56,13 @@ func init() {
 		keepStream = true
 	}
 	fmt.Println("keep stream: ", keepStream)
+
+	batch := os.Getenv("BATCH_SIZE")
+	if batch != "" {
+		batchSize, _ = strconv.Atoi(batch)
+	} else {
+		batchSize = 131072 // 128kb
+	}
 }
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {

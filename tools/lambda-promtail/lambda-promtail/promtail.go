@@ -36,31 +36,44 @@ type entry struct {
 
 type batch struct {
 	streams map[string]*logproto.Stream
+	size    int
 }
 
-func newBatch(entries ...entry) *batch {
+func newBatch(ctx context.Context, entries ...entry) (*batch, error) {
 	b := &batch{
 		streams: map[string]*logproto.Stream{},
 	}
 
 	for _, entry := range entries {
-		b.add(entry)
+		err := b.add(ctx, entry)
+		return b, err
 	}
 
-	return b
+	return b, nil
 }
 
-func (b *batch) add(e entry) {
+func (b *batch) add(ctx context.Context, e entry) error {
 	labels := labelsMapToString(e.labels, reservedLabelTenantID)
 	if stream, ok := b.streams[labels]; ok {
 		stream.Entries = append(stream.Entries, e.entry)
-		return
+
+		b.size += stream.Size()
+
+	} else {
+
+		b.streams[labels] = &logproto.Stream{
+			Labels:  labels,
+			Entries: []logproto.Entry{e.entry},
+		}
+
+		b.size += b.streams[labels].Size()
 	}
 
-	b.streams[labels] = &logproto.Stream{
-		Labels:  labels,
-		Entries: []logproto.Entry{e.entry},
+	if b.size > batchSize {
+		return b.flushBatch(ctx)
 	}
+
+	return nil
 }
 
 func labelsMapToString(ls model.LabelSet, without ...model.LabelName) string {
@@ -101,6 +114,18 @@ func (b *batch) createPushRequest() (*logproto.PushRequest, int) {
 		entriesCount += len(stream.Entries)
 	}
 	return &req, entriesCount
+}
+
+func (b *batch) flushBatch(ctx context.Context) error {
+	fmt.Println("flusing batch")
+	err := sendToPromtail(ctx, b)
+	if err != nil {
+		return err
+	}
+
+	b.streams = make(map[string]*logproto.Stream)
+
+	return nil
 }
 
 func sendToPromtail(ctx context.Context, b *batch) error {

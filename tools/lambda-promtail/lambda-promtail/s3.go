@@ -51,7 +51,7 @@ func getS3Object(ctx context.Context, labels map[string]string) (io.ReadCloser, 
 	return obj.Body, nil
 }
 
-func parseS3Log(b *batch, labels map[string]string, obj io.ReadCloser) error {
+func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser) error {
 	gzreader, err := gzip.NewReader(obj)
 	if err != nil {
 		return err
@@ -75,7 +75,7 @@ func parseS3Log(b *batch, labels map[string]string, obj io.ReadCloser) error {
 			return err
 		}
 
-		b.add(entry{ls, logproto.Entry{
+		b.add(ctx, entry{ls, logproto.Entry{
 			Line:      log_line,
 			Timestamp: timestamp,
 		}})
@@ -106,7 +106,7 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 
 func processS3Event(ctx context.Context, ev *events.S3Event) error {
 
-	batch := newBatch()
+	batch, _ := newBatch(ctx)
 
 	for _, record := range ev.Records {
 		labels, err := getLabels(record)
@@ -119,7 +119,7 @@ func processS3Event(ctx context.Context, ev *events.S3Event) error {
 			return err
 		}
 
-		err = parseS3Log(batch, labels, obj)
+		err = parseS3Log(ctx, batch, labels, obj)
 		if err != nil {
 			return err
 		}
