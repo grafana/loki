@@ -41,6 +41,12 @@ variable "keep_stream" {
   default     = "false"
 }
 
+variable "batch_size" {
+  type        = string
+  description = "Determines when to flush the batch of logs (bytes)."
+  default     = ""
+}
+
 variable "lambda_vpc_subnets" {
   type        = list(string)
   description = "List of subnet IDs associated with the Lambda function."

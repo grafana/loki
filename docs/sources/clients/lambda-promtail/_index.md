@@ -25,7 +25,7 @@ In an effort to make deployment of lambda-promtail as simple as possible, we've 
 
 Terraform:
 ```
-terraform apply -var "lambda_promtail_image=<repo:tag>" -var "write_address=https://logs-prod-us-central1.grafana.net/loki/api/v1/push" -var "password=<password>" -var "username=<user>" -var 'log_group_names=["/aws/lambda/log-group-1", "/aws/lambda/log-group-2]' -var 'bucket_names=["bucket-a", "bucket-b"]'
+terraform apply -var "lambda_promtail_image=<repo:tag>" -var "write_address=https://logs-prod-us-central1.grafana.net/loki/api/v1/push" -var "password=<password>" -var "username=<user>" -var 'log_group_names=["/aws/lambda/log-group-1", "/aws/lambda/log-group-2"]' -var 'bucket_names=["bucket-a", "bucket-b"]' -var 'batch_size=131072'
 ```
 
 The first few lines of `main.tf` define the AWS region to deploy to, you are free to modify this or remove and deploy to 
@@ -106,6 +106,8 @@ For availability concerns, run a set of Promtails behind a load balancer.
 #### Batching
 
 Relevant if lambda-promtail is configured to write to Promtail. Since Promtail batches writes to Loki for performance, it's possible that Promtail will receive a log, issue a successful `204` http status code for the write, then be killed at a later time before it writes upstream to Loki. This should be rare, but is a downside this workflow has.
+
+This lambda will flush logs when the batch size hits the default value of 128KB, this can be changed with `BATCH_SIZE` environment variable.
 
 ### Templating/Deployment
 
