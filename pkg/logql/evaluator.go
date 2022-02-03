@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -547,15 +548,30 @@ func binOpStepEvaluator(
 		)
 	}
 
-	// we have two non literal legs
-	lse, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
-	if err != nil {
+	var lse, rse StepEvaluator
+	g, ctx := errgroup.WithContext(ctx)
+
+	// We have two non literal legs,
+	// load them in parallel
+	g.Go(func() error {
+		var err error
+		lse, err = ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		rse, err = ev.StepEvaluator(ctx, ev, expr.RHS, q)
+		return err
+	})
+
+	// ensure both sides are loaded before returning the combined evaluator
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	rse, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
-	if err != nil {
-		return nil, err
-	}
+
+	// keep a scoped reference to err as it's referenced in the Error()
+	// implementation of this StepEvaluator
+	var scopedErr error
 
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		var (
@@ -593,7 +609,7 @@ func binOpStepEvaluator(
 		case OpTypeUnless:
 			results = vectorUnless(lhs, rhs, lsigs, rsigs)
 		default:
-			results, err = vectorBinop(expr.Op, expr.Opts, lhs, rhs, lsigs, rsigs)
+			results, scopedErr = vectorBinop(expr.Op, expr.Opts, lhs, rhs, lsigs, rsigs)
 		}
 		return true, ts, results
 	}, func() (lastError error) {
@@ -605,8 +621,8 @@ func binOpStepEvaluator(
 		return lastError
 	}, func() error {
 		var errs []error
-		if err != nil {
-			errs = append(errs, err)
+		if scopedErr != nil {
+			errs = append(errs, scopedErr)
 		}
 		for _, ev := range []StepEvaluator{lse, rse} {
 			if err := ev.Error(); err != nil {
