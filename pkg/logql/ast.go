@@ -26,6 +26,10 @@ type Expr interface {
 	fmt.Stringer
 }
 
+func Clone(e Expr) (Expr, error) {
+	return ParseExpr(e.String())
+}
+
 type QueryParams interface {
 	LogSelector() (LogSelectorExpr, error)
 	GetStart() time.Time
