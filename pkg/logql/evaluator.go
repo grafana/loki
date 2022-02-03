@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -547,34 +548,30 @@ func binOpStepEvaluator(
 		)
 	}
 
+	var lse, rse StepEvaluator
+	g, ctx := errgroup.WithContext(ctx)
+
 	// We have two non literal legs,
 	// load them in parallel
-	var (
-		lse, rse StepEvaluator
-		// prebuffer errCh so we can return after first error is found
-		errCh = make(chan error, 2)
-		// keep a scoped reference to err as it's referenced in the Error()
-		// implementation of this StepEvaluator
-		scopedErr error
-	)
-	go func() {
+	g.Go(func() error {
 		var err error
 		lse, err = ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
-		errCh <- err
-	}()
-	go func() {
+		return err
+	})
+	g.Go(func() error {
 		var err error
 		rse, err = ev.StepEvaluator(ctx, ev, expr.RHS, q)
-		errCh <- err
-	}()
+		return err
+	})
 
 	// ensure both sides are loaded before returning the combined evaluator
-	for i := 0; i < 2; i++ {
-		scopedErr = <-errCh
-		if scopedErr != nil {
-			return nil, scopedErr
-		}
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
+
+	// keep a scoped reference to err as it's referenced in the Error()
+	// implementation of this StepEvaluator
+	var scopedErr error
 
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		var (
