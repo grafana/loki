@@ -324,10 +324,6 @@ func (i *mergeEntryIterator) Len() int {
 }
 
 type entrySortIterator struct {
-	//heap interface {
-	//	heap.Interface
-	//	Peek() EntryIterator
-	//}
 	is         []EntryIterator
 	prefetched bool
 	dir        logproto.Direction
