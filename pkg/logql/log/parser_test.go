@@ -426,7 +426,9 @@ func Benchmark_Parser(b *testing.B) {
 		LabelParseHints []string //  hints to reduce label extractions.
 	}{
 		{"json", jsonLine, NewJSONParser(), []string{"response_latency_seconds"}},
+		{"jsonParser-not json line", nginxline, NewJSONParser(), []string{"response_latency_seconds"}},
 		{"unpack", packedLike, NewUnpackParser(), []string{"pod"}},
+		{"unpack-not json line", nginxline, NewUnpackParser(), []string{"pod"}},
 		{"logfmt", logfmtLine, NewLogfmtParser(), []string{"info", "throughput", "org_id"}},
 		{"regex greedy", nginxline, mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)), []string{"path"}},
 		{"regex status digits", nginxline, mustStage(NewRegexpParser(`HTTP/1.1" (?P<statuscode>\d{3}) `)), []string{"statuscode"}},
