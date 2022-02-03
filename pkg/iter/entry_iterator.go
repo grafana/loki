@@ -3,7 +3,6 @@ package iter
 import (
 	"container/heap"
 	"context"
-	"fmt"
 	"io"
 	"sort"
 	"sync"
@@ -372,73 +371,66 @@ func (it *entrySortIterator) less(i, j int) bool {
 	}
 }
 
-func(it *entrySortIterator) lessCurried(i int) func(j int) bool {
-	t1 := it.is[i].Entry().Timestamp
-	l1 := it.is[i].Labels()
+func (it *entrySortIterator) lessThan(t1 time.Time, l1 string, j int) bool {
+	t2 := it.is[j].Entry().Timestamp
+	if it.dir == logproto.BACKWARD {
+		t2, t1 = t1, t2
+	}
 
-	return func(j int) bool {
-		fmt.Printf("testing %d at %d", j, it.is[j].(*streamIterator).i)
-		t2 := it.is[j].Entry().Timestamp
-		//if it.dir == logproto.BACKWARD {
-		//	t2, t1 = t1, t2
-		//}
+	un1 := t1.UnixNano()
+	un2 := t2.UnixNano()
 
-		un1 := t1.UnixNano()
-		un2 := t2.UnixNano()
-
-		switch {
-		case un1 < un2:
-			return true
-		case un1 > un2:
-			return false
-		default: // un1 == un2:
-			return l1 < it.is[j].Labels()
-		}
+	switch {
+	case un1 < un2:
+		return true
+	case un1 > un2:
+		return false
+	default: // un1 == un2:
+		return l1 < it.is[j].Labels()
 	}
 }
 
-// init initialize the underlaying heap
+// init throws out empty iterators and sorts them.
 func (i *entrySortIterator) init() {
 	if i.prefetched {
 		return
 	}
 
 	i.prefetched = true
+	tmp := make([]EntryIterator, 0, len(i.is))
 	for _, it := range i.is {
 		if it.Next() {
+			tmp = append(tmp, it)
 			continue
-		} // else throw out empty one
+		}
 
 		if err := it.Error(); err != nil {
 			i.errs = append(i.errs, err)
 		}
 		util.LogError("closing iterator", it.Close)
 	}
+	i.is = tmp
 	sort.Slice(i.is, i.less)
-
-	// We can now clear the list of input iterators to merge, given they have all
-	// been processed and the non empty ones have been pushed to the heap
-	//i.is = nil
 }
 
 func (i *entrySortIterator) fix() {
+	t1 := i.is[0].Entry().Timestamp
+	l1 := i.is[0].Labels()
+
 	// shortcut
-	if len(i.is) <= 1 || i.less(0, 1) {
+	if len(i.is) <= 1 || i.lessThan(t1, l1, 1) {
 		return
 	}
 
-	// First element might be out of place. Find insert index.
-	less := i.lessCurried(0)
-	index := sort.Search(len(i.is), less)
-	//index := sort.Search(len(i.is), func(in int) bool { return i.less(0, in)})
+	// First element is out of place. So we reposition it.
+	index := sort.Search(len(i.is), func(in int) bool { return i.lessThan(t1, l1, in) })
 
-
-	// Insert first element at right position
+	head := i.is[0]
 	if index == len(i.is) {
-		i.is = append(i.is[1:], i.is[0])
+		i.is = append(i.is[1:], head)
 	} else {
 		i.is = append(i.is[1:index+1], i.is[index:]...)
-		i.is[index] = i.is[0]
+		i.is[index] = head
 	}
 }
 
@@ -464,7 +456,6 @@ func (i *entrySortIterator) Next() bool {
 
 	if len(i.is) > 1 {
 		i.fix()
-		fmt.Println("end fix")
 	}
 
 	return true
