@@ -12,6 +12,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 const (
@@ -26,6 +27,7 @@ var (
 	username, password string
 	keepStream         bool
 	batchSize          int
+	s3Clients          map[string]*s3.Client
 )
 
 func init() {
@@ -63,6 +65,8 @@ func init() {
 	} else {
 		batchSize = 131072 // 128kb
 	}
+
+	s3Clients = make(map[string]*s3.Client)
 }
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {

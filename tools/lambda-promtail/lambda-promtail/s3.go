@@ -30,11 +30,18 @@ var (
 )
 
 func getS3Object(ctx context.Context, labels map[string]string) (io.ReadCloser, error) {
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(labels["bucket_region"]))
-	if err != nil {
-		return nil, err
+	var s3Client *s3.Client
+
+	if c, ok := s3Clients[labels["bucket_region"]]; ok {
+		s3Client = c
+	} else {
+		cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(labels["bucket_region"]))
+		if err != nil {
+			return nil, err
+		}
+		s3Client = s3.NewFromConfig(cfg)
+		s3Clients[labels["bucket_region"]] = s3Client
 	}
-	s3Client := s3.NewFromConfig(cfg)
 
 	obj, err := s3Client.GetObject(ctx,
 		&s3.GetObjectInput{
