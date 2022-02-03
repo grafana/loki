@@ -79,7 +79,7 @@ func (p *LokiPromResponse) marshalVector() ([]byte, error) {
 		}
 		vec[i] = model.Sample{
 			Metric:    model.Metric(lbs),
-			Timestamp: model.Time(v.Samples[0].Timestamp),
+			Timestamp: model.Time(v.Samples[0].TimestampMs),
 			Value:     model.SampleValue(v.Samples[0].Value),
 		}
 	}

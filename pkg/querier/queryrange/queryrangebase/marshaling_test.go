@@ -60,11 +60,11 @@ func mockPrometheusResponse(numSeries, numSamplesPerSeries int) *PrometheusRespo
 	stream := make([]SampleStream, numSeries)
 	for s := 0; s < numSeries; s++ {
 		// Generate random samples.
-		samples := make([]logproto.Sample, numSamplesPerSeries)
+		samples := make([]logproto.LegacySample, numSamplesPerSeries)
 		for i := 0; i < numSamplesPerSeries; i++ {
-			samples[i] = logproto.Sample{
-				Value:     rand.Float64(),
-				Timestamp: int64(i),
+			samples[i] = logproto.LegacySample{
+				Value:       rand.Float64(),
+				TimestampMs: int64(i),
 			}
 		}
 

@@ -111,7 +111,7 @@ func TestPusherAppendable(t *testing.T) {
 
 			require.NoError(t, a.Commit())
 
-			require.Equal(t, tc.expectedTS, pusher.request.Timeseries[0].Samples[0].Timestamp)
+			require.Equal(t, tc.expectedTS, pusher.request.Timeseries[0].Samples[0].TimestampMs)
 
 		})
 	}

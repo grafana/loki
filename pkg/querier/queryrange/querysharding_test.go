@@ -269,7 +269,7 @@ func Test_InstantSharding(t *testing.T) {
 				Result: []queryrangebase.SampleStream{
 					{
 						Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
-						Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
+						Samples: []logproto.LegacySample{{Value: 10, TimestampMs: 10}},
 					},
 				},
 			},
@@ -288,15 +288,15 @@ func Test_InstantSharding(t *testing.T) {
 		Result: []queryrangebase.SampleStream{
 			{
 				Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
-				Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
+				Samples: []logproto.LegacySample{{Value: 10, TimestampMs: 10}},
 			},
 			{
 				Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
-				Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
+				Samples: []logproto.LegacySample{{Value: 10, TimestampMs: 10}},
 			},
 			{
 				Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
-				Samples: []logproto.Sample{{Value: 10, Timestamp: 10}},
+				Samples: []logproto.LegacySample{{Value: 10, TimestampMs: 10}},
 			},
 		},
 	}, response.(*LokiPromResponse).Response.Data)

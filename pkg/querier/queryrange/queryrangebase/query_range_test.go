@@ -187,9 +187,9 @@ func TestMergeAPIResponses(t *testing.T) {
 						Result: []SampleStream{
 							{
 								Labels: []logproto.LabelAdapter{},
-								Samples: []logproto.Sample{
-									{Value: 0, Timestamp: 0},
-									{Value: 1, Timestamp: 1},
+								Samples: []logproto.LegacySample{
+									{Value: 0, TimestampMs: 0},
+									{Value: 1, TimestampMs: 1},
 								},
 							},
 						},
@@ -201,9 +201,9 @@ func TestMergeAPIResponses(t *testing.T) {
 						Result: []SampleStream{
 							{
 								Labels: []logproto.LabelAdapter{},
-								Samples: []logproto.Sample{
-									{Value: 2, Timestamp: 2},
-									{Value: 3, Timestamp: 3},
+								Samples: []logproto.LegacySample{
+									{Value: 2, TimestampMs: 2},
+									{Value: 3, TimestampMs: 3},
 								},
 							},
 						},
@@ -217,11 +217,11 @@ func TestMergeAPIResponses(t *testing.T) {
 					Result: []SampleStream{
 						{
 							Labels: []logproto.LabelAdapter{},
-							Samples: []logproto.Sample{
-								{Value: 0, Timestamp: 0},
-								{Value: 1, Timestamp: 1},
-								{Value: 2, Timestamp: 2},
-								{Value: 3, Timestamp: 3},
+							Samples: []logproto.LegacySample{
+								{Value: 0, TimestampMs: 0},
+								{Value: 1, TimestampMs: 1},
+								{Value: 2, TimestampMs: 2},
+								{Value: 3, TimestampMs: 3},
 							},
 						},
 					},
@@ -242,11 +242,11 @@ func TestMergeAPIResponses(t *testing.T) {
 					Result: []SampleStream{
 						{
 							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
-							Samples: []logproto.Sample{
-								{Value: 0, Timestamp: 0},
-								{Value: 1, Timestamp: 1000},
-								{Value: 2, Timestamp: 2000},
-								{Value: 3, Timestamp: 3000},
+							Samples: []logproto.LegacySample{
+								{Value: 0, TimestampMs: 0},
+								{Value: 1, TimestampMs: 1000},
+								{Value: 2, TimestampMs: 2000},
+								{Value: 3, TimestampMs: 3000},
 							},
 						},
 					},
@@ -267,10 +267,10 @@ func TestMergeAPIResponses(t *testing.T) {
 					Result: []SampleStream{
 						{
 							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
-							Samples: []logproto.Sample{
-								{Value: 1, Timestamp: 1000},
-								{Value: 2, Timestamp: 2000},
-								{Value: 3, Timestamp: 3000},
+							Samples: []logproto.LegacySample{
+								{Value: 1, TimestampMs: 1000},
+								{Value: 2, TimestampMs: 2000},
+								{Value: 3, TimestampMs: 3000},
 							},
 						},
 					},
@@ -290,12 +290,12 @@ func TestMergeAPIResponses(t *testing.T) {
 					Result: []SampleStream{
 						{
 							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
-							Samples: []logproto.Sample{
-								{Value: 1, Timestamp: 1000},
-								{Value: 2, Timestamp: 2000},
-								{Value: 3, Timestamp: 3000},
-								{Value: 4, Timestamp: 4000},
-								{Value: 5, Timestamp: 5000},
+							Samples: []logproto.LegacySample{
+								{Value: 1, TimestampMs: 1000},
+								{Value: 2, TimestampMs: 2000},
+								{Value: 3, TimestampMs: 3000},
+								{Value: 4, TimestampMs: 4000},
+								{Value: 5, TimestampMs: 5000},
 							},
 						},
 					},
@@ -315,11 +315,11 @@ func TestMergeAPIResponses(t *testing.T) {
 					Result: []SampleStream{
 						{
 							Labels: []logproto.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
-							Samples: []logproto.Sample{
-								{Value: 2, Timestamp: 2000},
-								{Value: 3, Timestamp: 3000},
-								{Value: 4, Timestamp: 4000},
-								{Value: 5, Timestamp: 5000},
+							Samples: []logproto.LegacySample{
+								{Value: 2, TimestampMs: 2000},
+								{Value: 3, TimestampMs: 3000},
+								{Value: 4, TimestampMs: 4000},
+								{Value: 5, TimestampMs: 5000},
 							},
 						},
 					},

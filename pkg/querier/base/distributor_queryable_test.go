@@ -219,28 +219,28 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		mint = 0
 		maxt = 10000
 	)
-	s1 := []logproto.Sample{
-		{Value: 1, Timestamp: 1000},
-		{Value: 2, Timestamp: 2000},
-		{Value: 3, Timestamp: 3000},
-		{Value: 4, Timestamp: 4000},
-		{Value: 5, Timestamp: 5000},
+	s1 := []logproto.LegacySample{
+		{Value: 1, TimestampMs: 1000},
+		{Value: 2, TimestampMs: 2000},
+		{Value: 3, TimestampMs: 3000},
+		{Value: 4, TimestampMs: 4000},
+		{Value: 5, TimestampMs: 5000},
 	}
-	s2 := []logproto.Sample{
-		{Value: 1, Timestamp: 1000},
-		{Value: 2.5, Timestamp: 2500},
-		{Value: 3, Timestamp: 3000},
-		{Value: 5.5, Timestamp: 5500},
+	s2 := []logproto.LegacySample{
+		{Value: 1, TimestampMs: 1000},
+		{Value: 2.5, TimestampMs: 2500},
+		{Value: 3, TimestampMs: 3000},
+		{Value: 5.5, TimestampMs: 5500},
 	}
 
-	mergedSamplesS1S2 := []logproto.Sample{
-		{Value: 1, Timestamp: 1000},
-		{Value: 2, Timestamp: 2000},
-		{Value: 2.5, Timestamp: 2500},
-		{Value: 3, Timestamp: 3000},
-		{Value: 4, Timestamp: 4000},
-		{Value: 5, Timestamp: 5000},
-		{Value: 5.5, Timestamp: 5500},
+	mergedSamplesS1S2 := []logproto.LegacySample{
+		{Value: 1, TimestampMs: 1000},
+		{Value: 2, TimestampMs: 2000},
+		{Value: 2.5, TimestampMs: 2500},
+		{Value: 3, TimestampMs: 3000},
+		{Value: 4, TimestampMs: 4000},
+		{Value: 5, TimestampMs: 5000},
+		{Value: 5.5, TimestampMs: 5500},
 	}
 
 	d := &MockDistributor{}
@@ -291,7 +291,7 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 	require.NoError(t, seriesSet.Err())
 }
 
-func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples []logproto.Sample) {
+func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples []logproto.LegacySample) {
 	require.Equal(t, l, series.Labels())
 
 	it := series.Iterator()
@@ -300,7 +300,7 @@ func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples 
 		require.Nil(t, it.Err())
 		ts, v := it.At()
 		require.Equal(t, s.Value, v)
-		require.Equal(t, s.Timestamp, ts)
+		require.Equal(t, s.TimestampMs, ts)
 	}
 	require.False(t, it.Next())
 	require.Nil(t, it.Err())
@@ -330,20 +330,20 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 	})
 }
 
-func convertToChunks(t *testing.T, samples []logproto.Sample) []client.Chunk {
+func convertToChunks(t *testing.T, samples []logproto.LegacySample) []client.Chunk {
 	// We need to make sure that there is atleast one chunk present,
 	// else no series will be selected.
 	promChunk, err := encoding.NewForEncoding(encoding.Bigchunk)
 	require.NoError(t, err)
 
 	for _, s := range samples {
-		c, err := promChunk.Add(model.SamplePair{Value: model.SampleValue(s.Value), Timestamp: model.Time(s.Timestamp)})
+		c, err := promChunk.Add(model.SamplePair{Value: model.SampleValue(s.Value), Timestamp: model.Time(s.TimestampMs)})
 		require.NoError(t, err)
 		require.Nil(t, c)
 	}
 
 	clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{
-		chunk.NewChunk("", 0, nil, promChunk, model.Time(samples[0].Timestamp), model.Time(samples[len(samples)-1].Timestamp)),
+		chunk.NewChunk("", 0, nil, promChunk, model.Time(samples[0].TimestampMs), model.Time(samples[len(samples)-1].TimestampMs)),
 	})
 	require.NoError(t, err)
 
