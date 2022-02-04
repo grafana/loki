@@ -707,8 +707,7 @@ func (i *reverseEntryIterator) load() {
 func (i *reverseEntryIterator) Next() bool {
 	i.load()
 	if len(i.buf.entries) == 0 {
-		entryBufferPool.Put(i.buf)
-		i.buf.entries = nil
+		i.release()
 		return false
 	}
 	i.cur, i.buf.entries = i.buf.entries[len(i.buf.entries)-1], i.buf.entries[:len(i.buf.entries)-1]
@@ -729,12 +728,21 @@ func (i *reverseEntryIterator) StreamHash() uint64 {
 
 func (i *reverseEntryIterator) Error() error { return nil }
 
-func (i *reverseEntryIterator) Close() error {
-	if i.buf.entries != nil {
-		i.buf.entries = i.buf.entries[:0]
-		entryBufferPool.Put(i.buf)
-		i.buf.entries = nil
+func (i *reverseEntryIterator) release() {
+	if i.buf == nil {
+		return
 	}
+
+	if i.buf.entries != nil {
+		// preserve the underlying slice before releasing to pool
+		i.buf.entries = i.buf.entries[:0]
+	}
+	entryBufferPool.Put(i.buf)
+	i.buf = nil
+}
+
+func (i *reverseEntryIterator) Close() error {
+	i.release()
 	if !i.loaded {
 		return i.iter.Close()
 	}
