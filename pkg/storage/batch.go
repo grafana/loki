@@ -338,6 +338,10 @@ func (it *logBatchIterator) Labels() string {
 	return it.curr.Labels()
 }
 
+func (it *logBatchIterator) StreamHash() uint64 {
+	return it.curr.StreamHash()
+}
+
 func (it *logBatchIterator) Error() error {
 	if it.err != nil {
 		return it.err
@@ -439,7 +443,7 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
 		}
-		result = append(result, iter.NewNonOverlappingIterator(iterators, ""))
+		result = append(result, iter.NewNonOverlappingIterator(iterators))
 	}
 
 	return iter.NewMergeEntryIterator(it.ctx, result, it.direction), nil
@@ -477,6 +481,10 @@ func newSampleBatchIterator(
 
 func (it *sampleBatchIterator) Labels() string {
 	return it.curr.Labels()
+}
+
+func (it *sampleBatchIterator) StreamHash() uint64 {
+	return it.curr.StreamHash()
 }
 
 func (it *sampleBatchIterator) Error() error {
@@ -573,7 +581,7 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 			}
 			iterators = append(iterators, iterator)
 		}
-		result = append(result, iter.NewNonOverlappingSampleIterator(iterators, ""))
+		result = append(result, iter.NewNonOverlappingSampleIterator(iterators))
 	}
 
 	return iter.NewMergeSampleIterator(it.ctx, result), nil

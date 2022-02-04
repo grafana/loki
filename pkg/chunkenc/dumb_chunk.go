@@ -153,6 +153,10 @@ func (i *dumbChunkIterator) Labels() string {
 	return ""
 }
 
+func (i *dumbChunkIterator) StreamHash() uint64 {
+	return 0
+}
+
 func (i *dumbChunkIterator) Error() error {
 	return nil
 }

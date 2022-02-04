@@ -104,7 +104,7 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 				var found bool
 				s, found = resByStream[out.String()]
 				if !found {
-					s = &logproto.Stream{Labels: out.String()}
+					s = &logproto.Stream{Labels: out.String(), Hash: sp.BaseLabels().Hash()}
 					resByStream[out.String()] = s
 				}
 				s.Entries = append(s.Entries, logproto.Entry{
@@ -132,7 +132,7 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Seri
 				var found bool
 				s, found = resBySeries[lbs.String()]
 				if !found {
-					s = &logproto.Series{Labels: lbs.String()}
+					s = &logproto.Series{Labels: lbs.String(), StreamHash: exs.BaseLabels().Hash()}
 					resBySeries[lbs.String()] = s
 				}
 				s.Samples = append(s.Samples, logproto.Sample{
@@ -264,6 +264,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (stream
 		}
 
 		stream.Labels = ls.String()
+		stream.Hash = ls.Hash()
 		streams = append(streams, stream)
 	}
 	return streams

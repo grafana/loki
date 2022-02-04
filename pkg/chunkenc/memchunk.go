@@ -816,7 +816,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 
 		var it iter.EntryIterator
 		if ordered {
-			it = iter.NewNonOverlappingIterator(blockItrs, "")
+			it = iter.NewNonOverlappingIterator(blockItrs)
 		} else {
 			it = iter.NewSortEntryIterator(blockItrs, direction)
 		}
@@ -849,7 +849,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	}
 
 	if ordered {
-		return iter.NewNonOverlappingIterator(blockItrs, ""), nil
+		return iter.NewNonOverlappingIterator(blockItrs), nil
 	}
 	return iter.NewSortEntryIterator(blockItrs, direction), nil
 }
@@ -884,7 +884,7 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 
 	var it iter.SampleIterator
 	if ordered {
-		it = iter.NewNonOverlappingSampleIterator(its, "")
+		it = iter.NewNonOverlappingSampleIterator(its)
 	} else {
 		it = iter.NewSortSampleIterator(its)
 	}
@@ -1252,6 +1252,8 @@ func (e *entryBufferedIterator) Entry() logproto.Entry {
 
 func (e *entryBufferedIterator) Labels() string { return e.currLabels.String() }
 
+func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabels().Hash() }
+
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
 		newLine, lbs, ok := e.pipeline.Process(e.currLine)
@@ -1298,6 +1300,8 @@ func (e *sampleBufferedIterator) Next() bool {
 	return false
 }
 func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() }
+
+func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
 
 func (e *sampleBufferedIterator) Sample() logproto.Sample {
 	return e.cur

@@ -82,6 +82,8 @@ message LabelResponse {
 message StreamAdapter {
   string labels = 1 [(gogoproto.jsontag) = "labels"];
   repeated EntryAdapter entries = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "entries"];
+  // hash contains the original hash of the stream.
+  uint64 hash = 3 [(gogoproto.jsontag) = "-"];
 }
 
 message EntryAdapter {
@@ -103,6 +105,7 @@ message LegacySample {
 message Series {
   string labels = 1 [(gogoproto.jsontag) = "labels"];
   repeated Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "samples"];
+  uint64 streamHash = 3 [(gogoproto.jsontag) = "streamHash"];
 }
 
 message TailRequest {
