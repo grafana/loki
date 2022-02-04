@@ -60,10 +60,9 @@ func init() {
 	fmt.Println("keep stream: ", keepStream)
 
 	batch := os.Getenv("BATCH_SIZE")
+	batchSize = 131072
 	if batch != "" {
 		batchSize, _ = strconv.Atoi(batch)
-	} else {
-		batchSize = 131072 // 128kb
 	}
 
 	s3Clients = make(map[string]*s3.Client)

@@ -107,7 +107,7 @@ For availability concerns, run a set of Promtails behind a load balancer.
 
 Relevant if lambda-promtail is configured to write to Promtail. Since Promtail batches writes to Loki for performance, it's possible that Promtail will receive a log, issue a successful `204` http status code for the write, then be killed at a later time before it writes upstream to Loki. This should be rare, but is a downside this workflow has.
 
-This lambda will flush logs when the batch size hits the default value of 128KB, this can be changed with `BATCH_SIZE` environment variable.
+This lambda will flush logs when the batch size hits the default value of `131072` (128KB), this can be changed with `BATCH_SIZE` environment variable, which is set to the number of bytes to use.
 
 ### Templating/Deployment
 

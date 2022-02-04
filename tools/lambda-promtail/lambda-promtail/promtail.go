@@ -54,20 +54,16 @@ func newBatch(ctx context.Context, entries ...entry) (*batch, error) {
 
 func (b *batch) add(ctx context.Context, e entry) error {
 	labels := labelsMapToString(e.labels, reservedLabelTenantID)
-	if stream, ok := b.streams[labels]; ok {
-		stream.Entries = append(stream.Entries, e.entry)
-
-		b.size += stream.Size()
-
-	} else {
-
+	stream, ok := b.streams[labels]
+	if !ok {
 		b.streams[labels] = &logproto.Stream{
 			Labels:  labels,
 			Entries: []logproto.Entry{e.entry},
 		}
-
-		b.size += b.streams[labels].Size()
 	}
+
+	stream.Entries = append(stream.Entries, e.entry)
+	b.size += len(e.entry.Line)
 
 	if b.size > batchSize {
 		return b.flushBatch(ctx)
@@ -117,7 +113,6 @@ func (b *batch) createPushRequest() (*logproto.PushRequest, int) {
 }
 
 func (b *batch) flushBatch(ctx context.Context) error {
-	fmt.Println("flusing batch")
 	err := sendToPromtail(ctx, b)
 	if err != nil {
 		return err
