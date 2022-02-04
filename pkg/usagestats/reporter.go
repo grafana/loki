@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"io"
 	"math"
+	"runtime"
 	"time"
 
 	"github.com/go-kit/log"
@@ -35,6 +37,18 @@ var (
 	reportInterval      = 2 * time.Hour
 )
 
+type Config struct {
+	Disabled bool   `yaml:"disabled"`
+	Leader   bool   `yaml:"-"`
+	Edition  string `yaml:"-"`
+	Target   string `yaml:"-"`
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.Disabled, "usage-report.disabled", false, "Allow to disable usage reporting.")
+}
+
 type Reporter struct {
 	kvClient     kv.Client
 	logger       log.Logger
@@ -43,12 +57,15 @@ type Reporter struct {
 
 	services.Service
 
-	leader     bool
+	conf       Config
 	cluster    *ClusterSeed
 	lastReport time.Time
 }
 
-func NewReporter(kvConfig kv.Config, objectClient chunk.ObjectClient, logger log.Logger, reg prometheus.Registerer, leader bool) (*Reporter, error) {
+func NewReporter(config Config, kvConfig kv.Config, objectClient chunk.ObjectClient, logger log.Logger, reg prometheus.Registerer) (*Reporter, error) {
+	if config.Disabled {
+		return nil, nil
+	}
 	kvClient, err := kv.NewClient(kvConfig, JSONCodec, kv.RegistererWithKVName(reg, "usagestats"), logger)
 	if err != nil {
 		return nil, err
@@ -57,7 +74,7 @@ func NewReporter(kvConfig kv.Config, objectClient chunk.ObjectClient, logger log
 		kvClient:     kvClient,
 		logger:       logger,
 		objectClient: objectClient,
-		leader:       leader,
+		conf:         config,
 		reg:          reg,
 	}
 	r.Service = services.NewBasicService(r.starting, r.running, nil)
@@ -65,7 +82,7 @@ func NewReporter(kvConfig kv.Config, objectClient chunk.ObjectClient, logger log
 }
 
 func (rep *Reporter) starting(ctx context.Context) error {
-	if rep.leader {
+	if rep.conf.Leader {
 		return rep.initLeader(ctx)
 	}
 	// follower only wait for the cluster seed to be set.
@@ -99,7 +116,7 @@ func (rep *Reporter) initLeader(ctx context.Context) error {
 			}
 			return seed, true, nil
 		}); err != nil {
-			level.Error(rep.logger).Log("msg", "failed to CAS cluster seed key", "err", err)
+			level.Info(rep.logger).Log("msg", "failed to CAS cluster seed key", "err", err)
 			continue
 		}
 		// Fetch the remote cluster seed.
@@ -112,7 +129,7 @@ func (rep *Reporter) initLeader(ctx context.Context) error {
 			if rep.objectClient.IsObjectNotFoundErr(err) {
 				// we are the leader and we need to save the file.
 				if err := rep.writeSeedFile(ctx, seed); err != nil {
-					level.Error(rep.logger).Log("msg", "failed to CAS cluster seed key", "err", err)
+					level.Info(rep.logger).Log("msg", "failed to CAS cluster seed key", "err", err)
 					continue
 				}
 				rep.cluster = &seed
@@ -142,7 +159,7 @@ func (rep *Reporter) fetchSeed(ctx context.Context, continueFn func(err error) b
 			if !rep.objectClient.IsObjectNotFoundErr(err) {
 				readingErr++
 			}
-			level.Error(rep.logger).Log("msg", "failed to read cluster seed file", "err", err)
+			level.Debug(rep.logger).Log("msg", "failed to read cluster seed file", "err", err)
 			if readingErr > attemptNumber {
 				if err := rep.objectClient.DeleteObject(ctx, ClusterSeedFileName); err != nil {
 					level.Error(rep.logger).Log("msg", "failed to delete corrupted cluster seed file, deleting it", "err", err)
@@ -198,31 +215,34 @@ func (rep *Reporter) running(ctx context.Context) error {
 	// check every minute if we should report.
 	ticker := time.NewTicker(reportCheckInterval)
 	defer ticker.Stop()
+
+	// find  when to send the next report.
+	next := nextReport(reportInterval, rep.cluster.CreatedAt, time.Now())
+	if rep.lastReport.IsZero() {
+		// if we never reported assumed it was the last interval.
+		rep.lastReport = next.Add(-reportInterval)
+	}
 	for {
 		select {
 		case <-ticker.C:
 			now := time.Now()
-			// find  when to send the next report.
-			next := nextReport(reportInterval, rep.cluster.CreatedAt, now)
-			level.Warn(rep.logger).Log("msg", "reporting", "next", next, "now", now, "last", rep.lastReport)
-			if rep.lastReport.IsZero() && now.Before(next) {
-				// if we never reported assumed it was the last interval.
-				rep.lastReport = next.Add(-reportInterval)
+			if !next.Equal(now) && now.Sub(rep.lastReport) < reportInterval {
+				continue
 			}
-			if next.Equal(now) || now.Sub(rep.lastReport) >= reportInterval {
-				if err := rep.reportUsage(ctx); err != nil {
-					level.Warn(rep.logger).Log("msg", "failed to report usage", "err", err)
-					continue
-				}
-				rep.lastReport = next
+			level.Debug(rep.logger).Log("msg", "reporting cluster stats", "date", time.Now())
+			if err := rep.reportUsage(ctx, next); err != nil {
+				level.Info(rep.logger).Log("msg", "failed to report usage", "err", err)
+				continue
 			}
+			rep.lastReport = next
+			next = next.Add(reportInterval)
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
 }
 
-func (rep *Reporter) reportUsage(ctx context.Context) error {
+func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error {
 	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: time.Second,
 		MaxBackoff: 30 * time.Second,
@@ -232,9 +252,13 @@ func (rep *Reporter) reportUsage(ctx context.Context) error {
 	for backoff.Ongoing() {
 		if err := sendStats(ctx, Stats{
 			ClusterID:         rep.cluster.UID,
-			PrometheusVersion: rep.cluster.PrometheusVersion,
+			PrometheusVersion: build.GetVersion(),
+			CreatedAt:         rep.cluster.CreatedAt,
+			Interval:          interval,
+			Os:                runtime.GOOS,
+			Arch:              runtime.GOARCH,
 		}); err != nil {
-			level.Error(rep.logger).Log("msg", "failed to send stats", "retries", backoff.NumRetries(), "err", err)
+			level.Info(rep.logger).Log("msg", "failed to send stats", "retries", backoff.NumRetries(), "err", err)
 			errs.Add(err)
 			backoff.Wait()
 			continue

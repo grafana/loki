@@ -2,12 +2,15 @@ package usagestats
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/kv"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
@@ -15,21 +18,33 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 )
 
+var metrics = storage.NewClientMetrics()
+
 func Test_LeaderElection(t *testing.T) {
 	result := make(chan *ClusterSeed, 10)
 	objectClient, err := storage.NewObjectClient(storage.StorageTypeFileSystem, storage.Config{
 		FSConfig: local.FSConfig{
 			Directory: t.TempDir(),
 		},
-	}, storage.NewClientMetrics())
+	}, metrics)
 	require.NoError(t, err)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 3; i++ {
 		go func() {
-			r, err := NewReporter(kv.Config{
+			r, err := NewReporter(Config{Leader: true}, kv.Config{
 				Store: "inmemory",
-			}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry(), true)
+			}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 			require.NoError(t, err)
-			require.NoError(t, r.initLeader(context.Background()))
+			require.NoError(t, r.starting(context.Background()))
+			result <- r.cluster
+		}()
+	}
+	for i := 0; i < 7; i++ {
+		go func() {
+			r, err := NewReporter(Config{Leader: false}, kv.Config{
+				Store: "inmemory",
+			}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
+			require.NoError(t, err)
+			require.NoError(t, r.starting(context.Background()))
 			result <- r.cluster
 		}()
 	}
@@ -53,30 +68,47 @@ func Test_LeaderElection(t *testing.T) {
 }
 
 func Test_ReportLoop(t *testing.T) {
-	// stub intervals
-	reportCheckInterval = 500 * time.Millisecond
+	// stub
+	reportCheckInterval = 100 * time.Millisecond
 	reportInterval = time.Second
+
+	totalReport := 0
+	clusterIDs := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		var received Stats
+		totalReport++
+		require.NoError(t, jsoniter.NewDecoder(r.Body).Decode(&received))
+		clusterIDs = append(clusterIDs, received.ClusterID)
+		rw.WriteHeader(http.StatusOK)
+	}))
+	usageStatsURL = server.URL
 
 	objectClient, err := storage.NewObjectClient(storage.StorageTypeFileSystem, storage.Config{
 		FSConfig: local.FSConfig{
 			Directory: t.TempDir(),
 		},
-	}, storage.NewClientMetrics())
+	}, metrics)
 	require.NoError(t, err)
 
-	r, err := NewReporter(kv.Config{
+	r, err := NewReporter(Config{Leader: true}, kv.Config{
 		Store: "inmemory",
-	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry(), true)
+	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
 
 	require.NoError(t, r.initLeader(context.Background()))
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		<-time.After(10 * time.Second)
+		<-time.After(6 * time.Second)
 		cancel()
 	}()
 	require.Equal(t, context.Canceled, r.running(ctx))
+	require.GreaterOrEqual(t, totalReport, 5)
+	first := clusterIDs[0]
+	for _, uid := range clusterIDs {
+		require.Equal(t, first, uid)
+	}
+	require.Equal(t, first, r.cluster.UID)
 }
 
 func Test_NextReport(t *testing.T) {

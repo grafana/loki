@@ -18,8 +18,10 @@ var (
 )
 
 type Stats struct {
-	ClusterID              string `json:"clusterID"`
-	Target                 string `json:"target"`
+	ClusterID              string    `json:"clusterID"`
+	CreatedAt              time.Time `json:"createdAt"`
+	Interval               time.Time `json:"interval"`
+	Target                 string    `json:"target"`
 	prom.PrometheusVersion `json:"version"`
 	Os                     string                 `json:"os"`
 	Arch                   string                 `json:"arch"`

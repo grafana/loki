@@ -17,6 +17,8 @@ var JSONCodec = jsonCodec{}
 
 type jsonCodec struct{}
 
+// todo we need to use the default codec for the rest of the code
+// currently crashing because the in-memory kvstore use a singleton.
 func (jsonCodec) Decode(data []byte) (interface{}, error) {
 	var seed ClusterSeed
 	if err := jsoniter.ConfigFastest.Unmarshal(data, &seed); err != nil {
