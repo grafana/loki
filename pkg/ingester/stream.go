@@ -468,7 +468,7 @@ func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, th
 	}
 
 	if ordered {
-		return iter.NewNonOverlappingIterator(iterators, ""), nil
+		return iter.NewNonOverlappingIterator(iterators), nil
 	}
 	return iter.NewSortEntryIterator(iterators, direction), nil
 }
@@ -505,7 +505,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 	}
 
 	if ordered {
-		return iter.NewNonOverlappingSampleIterator(iterators, ""), nil
+		return iter.NewNonOverlappingSampleIterator(iterators), nil
 	}
 	return iter.NewSortSampleIterator(iterators), nil
 }

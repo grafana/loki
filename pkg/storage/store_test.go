@@ -903,7 +903,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	defer store.Stop()
 
 	// get all the chunks from both the stores
-	chunks, err := store.Get(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName)...)
+	chunks, err := store.Get(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
 	require.NoError(t, err)
 
 	// we get common chunk twice because it is indexed in both the stores
@@ -933,9 +933,10 @@ func parseDate(in string) time.Time {
 	return t
 }
 
-func buildTestStreams(labels string, tr timeRange) logproto.Stream {
+func buildTestStreams(labels labels.Labels, tr timeRange) logproto.Stream {
 	stream := logproto.Stream{
-		Labels:  labels,
+		Labels:  labels.String(),
+		Hash:    labels.Hash(),
 		Entries: []logproto.Entry{},
 	}
 
