@@ -560,7 +560,7 @@ ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
-	$(call push,loki-build-image,$(BUILD_IMAGE_VERSION))
+	$(call push,loki-build-image,$(shell ./loki-build-image/version.sh))
 	$(call push,loki-build-image,latest)
 
 

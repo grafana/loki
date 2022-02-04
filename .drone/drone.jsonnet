@@ -310,6 +310,18 @@ local manifest(apps) = pipeline('manifest') {
 };
 
 [
+  pipeline('build-image') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    steps: [
+      make('build-image-push', container=false) {
+        depends_on: ['clone'],
+        when: condition('include').tagMain,
+      },
+    ],
+  },
   pipeline('check') {
     workspace: {
       base: '/src',
