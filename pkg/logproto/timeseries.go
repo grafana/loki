@@ -31,7 +31,7 @@ var (
 		New: func() interface{} {
 			return &TimeSeries{
 				Labels:  make([]LabelAdapter, 0, expectedLabels),
-				Samples: make([]Sample, 0, expectedSamplesPerSeries),
+				Samples: make([]LegacySample, 0, expectedSamplesPerSeries),
 			}
 		},
 	}

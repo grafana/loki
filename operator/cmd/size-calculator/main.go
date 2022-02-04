@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/grafana/loki-operator/internal/sizes"
+	"github.com/grafana/loki/operator/internal/sizes"
 	"github.com/prometheus/common/model"
 
 	"github.com/ViaQ/logerr/log"

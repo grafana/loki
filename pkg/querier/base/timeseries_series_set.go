@@ -82,7 +82,7 @@ func (t *timeSeriesSeriesIterator) Seek(s int64) bool {
 	}
 
 	t.i = sort.Search(len(t.ts.series.Samples[offset:]), func(i int) bool {
-		return t.ts.series.Samples[offset+i].Timestamp >= s
+		return t.ts.series.Samples[offset+i].TimestampMs >= s
 	}) + offset
 
 	return t.i < len(t.ts.series.Samples)
@@ -93,7 +93,7 @@ func (t *timeSeriesSeriesIterator) At() (int64, float64) {
 	if t.i < 0 || t.i >= len(t.ts.series.Samples) {
 		return 0, 0
 	}
-	return t.ts.series.Samples[t.i].Timestamp, t.ts.series.Samples[t.i].Value
+	return t.ts.series.Samples[t.i].TimestampMs, t.ts.series.Samples[t.i].Value
 }
 
 // Next implements the SeriesIterator interface

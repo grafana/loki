@@ -966,11 +966,11 @@ var (
 	sampleStreams = []queryrangebase.SampleStream{
 		{
 			Labels:  []logproto.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
-			Samples: []logproto.Sample{{Value: 0.013333333333333334, Timestamp: 1568404331324}},
+			Samples: []logproto.LegacySample{{Value: 0.013333333333333334, TimestampMs: 1568404331324}},
 		},
 		{
 			Labels:  []logproto.LabelAdapter{{Name: "filename", Value: "/var/hostlog/syslog"}, {Name: "job", Value: "varlogs"}},
-			Samples: []logproto.Sample{{Value: 3.45, Timestamp: 1568404331324}, {Value: 4.45, Timestamp: 1568404331339}},
+			Samples: []logproto.LegacySample{{Value: 3.45, TimestampMs: 1568404331324}, {Value: 4.45, TimestampMs: 1568404331339}},
 		},
 	}
 	streamsString = `{
@@ -1247,12 +1247,12 @@ func generateMatrix() (res []queryrangebase.SampleStream) {
 	for i := 0; i < 100; i++ {
 		s := queryrangebase.SampleStream{
 			Labels:  []logproto.LabelAdapter{},
-			Samples: []logproto.Sample{},
+			Samples: []logproto.LegacySample{},
 		}
 		for j := 0; j < 1000; j++ {
-			s.Samples = append(s.Samples, logproto.Sample{
-				Value:     float64(j),
-				Timestamp: int64(j),
+			s.Samples = append(s.Samples, logproto.LegacySample{
+				Value:       float64(j),
+				TimestampMs: int64(j),
 			})
 		}
 		res = append(res, s)

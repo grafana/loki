@@ -19,14 +19,14 @@ func Test_ResponseToSamples(t *testing.T) {
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []logproto.Sample{
+					Samples: []logproto.LegacySample{
 						{
-							Value:     1,
-							Timestamp: 1,
+							Value:       1,
+							TimestampMs: 1,
 						},
 						{
-							Value:     2,
-							Timestamp: 2,
+							Value:       2,
+							TimestampMs: 2,
 						},
 					},
 				},
@@ -35,14 +35,14 @@ func Test_ResponseToSamples(t *testing.T) {
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []logproto.Sample{
+					Samples: []logproto.LegacySample{
 						{
-							Value:     8,
-							Timestamp: 1,
+							Value:       8,
+							TimestampMs: 1,
 						},
 						{
-							Value:     9,
-							Timestamp: 2,
+							Value:       9,
+							TimestampMs: 2,
 						},
 					},
 				},
@@ -63,7 +63,7 @@ func Test_ResponseToSamples(t *testing.T) {
 		sampleCt := 0
 		for iter.Next() {
 			ts, v := iter.At()
-			require.Equal(t, input.Data.Result[setCt].Samples[sampleCt].Timestamp, ts)
+			require.Equal(t, input.Data.Result[setCt].Samples[sampleCt].TimestampMs, ts)
 			require.Equal(t, input.Data.Result[setCt].Samples[sampleCt].Value, v)
 			sampleCt++
 		}

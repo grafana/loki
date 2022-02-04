@@ -33,6 +33,10 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### Authenticating to Azure Blobstore using managed credentials.
+
+We've changed the blobstore client to use an [DefaultAzureCredential](https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/overview). This requires ensuring that your Azure VMS have access to storage.
+
 #### `querier.split-queries-by-interval` flag migrated yaml path and default value.
 
 The CLI flag `querier.split-queries-by-interval` has changed it's corresponding yaml equivalent from

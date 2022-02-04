@@ -31,7 +31,7 @@ func Test_Hedging(t *testing.T) {
 	}{
 		{
 			"delete/put/list are not hedged",
-			3,
+			4, // Put makes an additional call to close the stream
 			20 * time.Nanosecond,
 			10,
 			func(c *BlobStorage) {
@@ -72,19 +72,23 @@ func Test_Hedging(t *testing.T) {
 					}),
 				}
 			}
-			c, err := NewBlobStorage(&BlobStorageConfig{
-				ContainerName: "foo",
-				Environment:   azureGlobal,
-				MaxRetries:    1,
-			}, metrics,
+
+			c, err := NewBlobStorage(
+				&BlobStorageConfig{
+					AccountName: "account",
+					Environment: azureGlobal,
+					MaxRetries:  0,
+				},
+				metrics,
 				hedging.Config{
 					At:           tc.hedgeAt,
 					UpTo:         tc.upTo,
 					MaxPerSecond: 1000,
 				})
 			require.NoError(t, err)
+
 			tc.do(c)
-			require.Equal(t, tc.expectedCalls, count.Load())
+			require.Eventually(t, func() bool { return tc.expectedCalls == count.Load() }, time.Second, time.Millisecond)
 		})
 	}
 }

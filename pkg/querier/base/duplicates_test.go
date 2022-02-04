@@ -24,27 +24,27 @@ func TestDuplicatesSamples(t *testing.T) {
 				Value: "val",
 			},
 		},
-		Samples: []logproto.Sample{
-			{Value: 0.948569891, Timestamp: 1583946731937},
-			{Value: 0.948569891, Timestamp: 1583946731937},
-			{Value: 0.949927461, Timestamp: 1583946751878},
-			{Value: 0.949927461, Timestamp: 1583946751878},
-			{Value: 0.951334505, Timestamp: 1583946769353},
-			{Value: 0.951334505, Timestamp: 1583946769353},
-			{Value: 0.951334505, Timestamp: 1583946779855},
-			{Value: 0.951334505, Timestamp: 1583946779855},
-			{Value: 0.952676231, Timestamp: 1583946820080},
-			{Value: 0.952676231, Timestamp: 1583946820080},
-			{Value: 0.954158847, Timestamp: 1583946844857},
-			{Value: 0.954158847, Timestamp: 1583946844857},
-			{Value: 0.955572384, Timestamp: 1583946858609},
-			{Value: 0.955572384, Timestamp: 1583946858609},
-			{Value: 0.955572384, Timestamp: 1583946869878},
-			{Value: 0.955572384, Timestamp: 1583946869878},
-			{Value: 0.955572384, Timestamp: 1583946885903},
-			{Value: 0.955572384, Timestamp: 1583946885903},
-			{Value: 0.956823037, Timestamp: 1583946899767},
-			{Value: 0.956823037, Timestamp: 1583946899767},
+		Samples: []logproto.LegacySample{
+			{Value: 0.948569891, TimestampMs: 1583946731937},
+			{Value: 0.948569891, TimestampMs: 1583946731937},
+			{Value: 0.949927461, TimestampMs: 1583946751878},
+			{Value: 0.949927461, TimestampMs: 1583946751878},
+			{Value: 0.951334505, TimestampMs: 1583946769353},
+			{Value: 0.951334505, TimestampMs: 1583946769353},
+			{Value: 0.951334505, TimestampMs: 1583946779855},
+			{Value: 0.951334505, TimestampMs: 1583946779855},
+			{Value: 0.952676231, TimestampMs: 1583946820080},
+			{Value: 0.952676231, TimestampMs: 1583946820080},
+			{Value: 0.954158847, TimestampMs: 1583946844857},
+			{Value: 0.954158847, TimestampMs: 1583946844857},
+			{Value: 0.955572384, TimestampMs: 1583946858609},
+			{Value: 0.955572384, TimestampMs: 1583946858609},
+			{Value: 0.955572384, TimestampMs: 1583946869878},
+			{Value: 0.955572384, TimestampMs: 1583946869878},
+			{Value: 0.955572384, TimestampMs: 1583946885903},
+			{Value: 0.955572384, TimestampMs: 1583946885903},
+			{Value: 0.956823037, TimestampMs: 1583946899767},
+			{Value: 0.956823037, TimestampMs: 1583946899767},
 		},
 	}
 
@@ -70,16 +70,16 @@ func TestDuplicatesSamples(t *testing.T) {
 	}
 }
 
-func dedupeSorted(samples []logproto.Sample) []logproto.Sample {
-	out := []logproto.Sample(nil)
+func dedupeSorted(samples []logproto.LegacySample) []logproto.LegacySample {
+	out := []logproto.LegacySample(nil)
 	lastTs := int64(0)
 	for _, s := range samples {
-		if s.Timestamp == lastTs {
+		if s.TimestampMs == lastTs {
 			continue
 		}
 
 		out = append(out, s)
-		lastTs = s.Timestamp
+		lastTs = s.TimestampMs
 	}
 	return out
 }
@@ -93,8 +93,8 @@ func runPromQLAndGetJSONResult(t *testing.T, query string, ts logproto.TimeSerie
 		MaxSamples: 1e6,
 	})
 
-	start := model.Time(ts.Samples[0].Timestamp).Time()
-	end := model.Time(ts.Samples[len(ts.Samples)-1].Timestamp).Time()
+	start := model.Time(ts.Samples[0].TimestampMs).Time()
+	end := model.Time(ts.Samples[len(ts.Samples)-1].TimestampMs).Time()
 
 	q, err := engine.NewRangeQuery(tq, query, start, end, step)
 	require.NoError(t, err)

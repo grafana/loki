@@ -97,6 +97,11 @@ message Sample {
   uint64 hash = 3 [(gogoproto.jsontag) = "hash"];
 }
 
+message LegacySample {
+  double value       = 1;
+  int64 timestamp_ms = 2;
+}
+
 message Series {
   string labels = 1 [(gogoproto.jsontag) = "labels"];
   repeated Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "samples"];
@@ -147,6 +152,11 @@ message TimeSeriesChunk {
 message LabelPair {
   string name = 1;
   string value = 2;
+}
+
+message LegacyLabelPair {
+  bytes name = 1;
+  bytes value = 2;
 }
 
 message Chunk {
