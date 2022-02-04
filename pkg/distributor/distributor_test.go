@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/runtime"
@@ -34,10 +35,6 @@ import (
 	loki_net "github.com/grafana/loki/pkg/util/net"
 	"github.com/grafana/loki/pkg/util/test"
 	"github.com/grafana/loki/pkg/validation"
-)
-
-const (
-	numIngesters = 5
 )
 
 var (
@@ -76,7 +73,7 @@ func TestDistributor(t *testing.T) {
 			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string"),
 		},
 	} {
-		t.Run(fmt.Sprintf("[%d](samples=%v)", i, tc.lines), func(t *testing.T) {
+		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
 			limits.EnforceMetricName = false
@@ -84,8 +81,7 @@ func TestDistributor(t *testing.T) {
 			limits.IngestionBurstSizeMB = ingestionRateLimit
 			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
 
-			d := prepare(t, limits, nil, nil)
-			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+			distributors := prepare(t, 1, 5, limits, nil)
 
 			request := makeWriteRequest(tc.lines, 10)
 
@@ -93,7 +89,7 @@ func TestDistributor(t *testing.T) {
 				request.Streams[0].Labels = `{ab"`
 			}
 
-			response, err := d.Push(ctx, request)
+			response, err := distributors[i%len(distributors)].Push(ctx, request)
 			assert.Equal(t, tc.expectedResponse, response)
 			assert.Equal(t, tc.expectedError, err)
 		})
@@ -105,12 +101,11 @@ func Test_SortLabelsOnPush(t *testing.T) {
 	flagext.DefaultValues(limits)
 	limits.EnforceMetricName = false
 	ingester := &mockIngester{}
-	d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
-	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	distributors := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 
 	request := makeWriteRequest(10, 10)
 	request.Streams[0].Labels = `{buzz="f", a="b"}`
-	_, err := d.Push(ctx, request)
+	_, err := distributors[0].Push(ctx, request)
 	require.NoError(t, err)
 	require.Equal(t, `{a="b", buzz="f"}`, ingester.pushed[0].Streams[0].Labels)
 }
@@ -128,11 +123,9 @@ func Test_TruncateLogLines(t *testing.T) {
 
 	t.Run("it truncates lines to MaxLineSize when MaxLineSizeTruncate is true", func(t *testing.T) {
 		limits, ingester := setup()
+		distributors := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 
-		d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
-		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
-
-		_, err := d.Push(ctx, makeWriteRequest(1, 10))
+		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
 		require.NoError(t, err)
 		require.Len(t, ingester.pushed[0].Streams[0].Entries[0].Line, 5)
 	})
@@ -142,9 +135,8 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 	limits.EnforceMetricName = false
-	ingester := &mockIngester{}
-	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
-	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	distributors := prepare(&testing.T{}, 1, 5, limits, nil)
+	d := distributors[0]
 	request := makeWriteRequest(10, 10)
 	vCtx := d.validator.getValidationContextForTime(testTime, "123")
 	for n := 0; n < b.N; n++ {
@@ -168,17 +160,14 @@ func Benchmark_Push(b *testing.B) {
 	limits.RejectOldSamples = true
 	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
 	limits.CreationGracePeriod = model.Duration(24 * time.Hour)
-	ingester := &mockIngester{}
-	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
-	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	distributors := prepare(&testing.T{}, 1, 5, limits, nil)
 	request := makeWriteRequest(100000, 100)
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
-
-		_, err := d.Push(ctx, request)
+		_, err := distributors[0].Push(ctx, request)
 		if err != nil {
 			require.NoError(b, err)
 		}
@@ -193,9 +182,7 @@ func Benchmark_PushWithLineTruncation(b *testing.B) {
 	limits.MaxLineSizeTruncate = true
 	limits.MaxLineSize = 50
 
-	ingester := &mockIngester{}
-	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
-	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	distributors := prepare(&testing.T{}, 1, 5, limits, nil)
 	request := makeWriteRequest(100000, 100)
 
 	b.ResetTimer()
@@ -203,7 +190,7 @@ func Benchmark_PushWithLineTruncation(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 
-		_, err := d.Push(ctx, request)
+		_, err := distributors[0].Push(ctx, request)
 		if err != nil {
 			require.NoError(b, err)
 		}
@@ -272,26 +259,8 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			limits.IngestionRateMB = testData.ingestionRateMB
 			limits.IngestionBurstSizeMB = testData.ingestionBurstSizeMB
 
-			// Init a shared KVStore
-			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
-			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+			distributors := prepare(t, testData.distributors, 5, limits, nil)
 
-			// Start all expected distributors
-			distributors := make([]*Distributor, testData.distributors)
-			for i := 0; i < testData.distributors; i++ {
-				distributors[i] = prepare(t, limits, kvStore, nil)
-				defer services.StopAndAwaitTerminated(context.Background(), distributors[i]) //nolint:errcheck
-			}
-
-			// If the distributors ring is setup, wait until the first distributor
-			// updates to the expected size
-			if distributors[0].distributorsRing != nil {
-				test.Poll(t, time.Second, testData.distributors, func() interface{} {
-					return distributors[0].distributorsLifecycler.HealthyInstancesCount()
-				})
-			}
-
-			// Push samples in multiple requests to the first distributor
 			for _, push := range testData.pushes {
 				request := makeWriteRequest(1, push.bytes)
 				response, err := distributors[0].Push(ctx, request)
@@ -308,51 +277,99 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
-func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client, factory func(addr string) (ring_client.PoolClient, error)) *Distributor {
-	var (
-		distributorConfig Config
-		clientConfig      client.Config
-	)
-	flagext.DefaultValues(&distributorConfig, &clientConfig)
+func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) []*Distributor {
+	t.Helper()
 
-	overrides, err := validation.NewOverrides(*limits, nil)
+	ingesters := make([]mockIngester, numIngesters)
+	for i := 0; i < numIngesters; i++ {
+		ingesters[i] = mockIngester{}
+	}
+
+	ingesterByAddr := map[string]*mockIngester{}
+	ingesterDescs := map[string]ring.InstanceDesc{}
+
+	for i := range ingesters {
+		addr := fmt.Sprintf("ingester-%d", i)
+		ingesterDescs[addr] = ring.InstanceDesc{
+			Addr:                addr,
+			State:               ring.ACTIVE,
+			Timestamp:           time.Now().Unix(),
+			RegisteredTimestamp: time.Now().Add(-10 * time.Minute).Unix(),
+			Tokens:              []uint32{uint32((math.MaxUint32 / numIngesters) * i)},
+		}
+		ingesterByAddr[addr] = &ingesters[i]
+	}
+
+	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+
+	err := kvStore.CAS(context.Background(), ingester.RingKey,
+		func(_ interface{}) (interface{}, bool, error) {
+			return &ring.Desc{
+				Ingesters: ingesterDescs,
+			}, true, nil
+		},
+	)
 	require.NoError(t, err)
 
-	// Mock the ingesters ring
-	ingesters := map[string]*mockIngester{}
-	for i := 0; i < numIngesters; i++ {
-		ingesters[fmt.Sprintf("ingester%d", i)] = &mockIngester{}
-	}
+	ingestersRing, err := ring.New(ring.Config{
+		KVStore: kv.Config{
+			Mock: kvStore,
+		},
+		HeartbeatTimeout:  60 * time.Minute,
+		ReplicationFactor: 3,
+	}, ingester.RingKey, ingester.RingKey, nil, nil)
 
-	ingestersRing := &mockRing{
-		replicationFactor: 3,
-	}
-	for addr := range ingesters {
-		ingestersRing.ingesters = append(ingestersRing.ingesters, ring.InstanceDesc{
-			Addr: addr,
-		})
-	}
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
+
+	test.Poll(t, time.Second, numIngesters, func() interface{} {
+		return ingestersRing.InstancesCount()
+	})
 
 	loopbackName, err := loki_net.LoopbackInterfaceName()
 	require.NoError(t, err)
 
-	distributorConfig.DistributorRing.HeartbeatPeriod = 100 * time.Millisecond
-	distributorConfig.DistributorRing.InstanceID = strconv.Itoa(rand.Int())
-	distributorConfig.DistributorRing.KVStore.Mock = kvStore
-	distributorConfig.DistributorRing.KVStore.Store = "inmemory"
-	distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
-	distributorConfig.factory = factory
-	if factory == nil {
-		distributorConfig.factory = func(addr string) (ring_client.PoolClient, error) {
-			return ingesters[addr], nil
+	distributors := make([]*Distributor, numDistributors)
+	for i := 0; i < numDistributors; i++ {
+		var distributorConfig Config
+		var clientConfig client.Config
+		flagext.DefaultValues(&distributorConfig, &clientConfig)
+
+		distributorConfig.DistributorRing.HeartbeatPeriod = 100 * time.Millisecond
+		distributorConfig.DistributorRing.InstanceID = strconv.Itoa(rand.Int())
+		distributorConfig.DistributorRing.KVStore.Mock = kvStore
+		distributorConfig.DistributorRing.InstanceAddr = "127.0.0.1"
+		distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
+		distributorConfig.factory = factory
+		if factory == nil {
+			distributorConfig.factory = func(addr string) (ring_client.PoolClient, error) {
+				return ingesterByAddr[addr], nil
+			}
 		}
+
+		overrides, err := validation.NewOverrides(*limits, nil)
+		require.NoError(t, err)
+
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry())
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
+		distributors[i] = d
 	}
 
-	d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
+	if distributors[0].distributorsRing != nil {
+		test.Poll(t, time.Second, numDistributors, func() interface{} {
+			return distributors[0].distributorsLifecycler.HealthyInstancesCount()
+		})
+	}
 
-	return d
+	t.Cleanup(func() {
+		assert.NoError(t, closer.Close())
+		for _, d := range distributors {
+			assert.NoError(t, services.StopAndAwaitTerminated(context.Background(), d))
+		}
+		ingestersRing.StopAsync()
+	})
+	return distributors
 }
 
 func makeWriteRequest(lines int, size int) *logproto.PushRequest {
@@ -391,73 +408,4 @@ func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts 
 
 func (i *mockIngester) Close() error {
 	return nil
-}
-
-// Copied from Cortex; TODO(twilkie) - factor this our and share it.
-// mockRing doesn't do virtual nodes, just returns mod(key) + replicationFactor
-// ingesters.
-type mockRing struct {
-	prometheus.Counter
-	ingesters         []ring.InstanceDesc
-	replicationFactor uint32
-}
-
-func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
-	result := ring.ReplicationSet{
-		MaxErrors: 1,
-		Instances: buf[:0],
-	}
-	for i := uint32(0); i < r.replicationFactor; i++ {
-		n := (key + i) % uint32(len(r.ingesters))
-		result.Instances = append(result.Instances, r.ingesters[n])
-	}
-	return result, nil
-}
-
-func (r mockRing) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
-	return r.GetReplicationSetForOperation(op)
-}
-
-func (r mockRing) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
-	return ring.ReplicationSet{
-		Instances: r.ingesters,
-		MaxErrors: 1,
-	}, nil
-}
-
-func (r mockRing) ReplicationFactor() int {
-	return int(r.replicationFactor)
-}
-
-func (r mockRing) InstancesCount() int {
-	return len(r.ingesters)
-}
-
-func (r mockRing) Subring(key uint32, n int) ring.ReadRing {
-	return r
-}
-
-func (r mockRing) HasInstance(instanceID string) bool {
-	for _, ing := range r.ingesters {
-		if ing.Addr != instanceID {
-			return true
-		}
-	}
-	return false
-}
-
-func (r mockRing) ShuffleShard(identifier string, size int) ring.ReadRing {
-	// take advantage of pass by value to bound to size:
-	r.ingesters = r.ingesters[:size]
-	return r
-}
-
-func (r mockRing) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ring.ReadRing {
-	return r
-}
-
-func (r mockRing) CleanupShuffleShardCache(identifier string) {}
-
-func (r mockRing) GetInstanceState(instanceID string) (ring.InstanceState, error) {
-	return 0, nil
 }
