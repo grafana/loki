@@ -97,8 +97,8 @@ These metrics are collected only for instant and range queries.
 
 | name | description                                 |
 | ---- |---------------------------------------------|
-| `loki_bytes_precessed_per_second_summary` | Total of bytes processed by Loki per second |
-| `loki_lines_precessed_per_second_summary` | Total lines processed by Loki per second    |
+| `loki_bytes_processed_per_second` | Total bytes per second processed by Loki |
+| `loki_lines_processed_per_second` | Total lines per second processed by Loki |
 
 ## Labels pool
 
