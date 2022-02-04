@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
-	"github.com/grafana/loki-operator/internal/manifests"
+	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"

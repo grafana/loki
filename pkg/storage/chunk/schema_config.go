@@ -504,6 +504,14 @@ func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
 	}
 }
 
+// VersionForChunk will return the schema version associated with the `From` timestamp of a chunk.
+// The schema and chunk must be valid+compatible as the errors are not checked.
+func (cfg SchemaConfig) VersionForChunk(c Chunk) int {
+	p, _ := cfg.SchemaForTime(c.From)
+	v, _ := p.VersionAsInt()
+	return v
+}
+
 // pre-checksum
 func (cfg SchemaConfig) legacyExternalKey(chunk Chunk) string {
 	// This is the inverse of chunk.parseLegacyExternalKey, with "<user id>/" prepended.

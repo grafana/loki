@@ -23,35 +23,35 @@ func testSampleStreams() []queryrangebase.SampleStream {
 	return []queryrangebase.SampleStream{
 		{
 			Labels: []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
-			Samples: []logproto.Sample{
+			Samples: []logproto.LegacySample{
 				{
-					Value:     0,
-					Timestamp: 0,
+					Value:       0,
+					TimestampMs: 0,
 				},
 				{
-					Value:     1,
-					Timestamp: 1,
+					Value:       1,
+					TimestampMs: 1,
 				},
 				{
-					Value:     2,
-					Timestamp: 2,
+					Value:       2,
+					TimestampMs: 2,
 				},
 			},
 		},
 		{
 			Labels: []logproto.LabelAdapter{{Name: "bazz", Value: "buzz"}},
-			Samples: []logproto.Sample{
+			Samples: []logproto.LegacySample{
 				{
-					Value:     4,
-					Timestamp: 4,
+					Value:       4,
+					TimestampMs: 4,
 				},
 				{
-					Value:     5,
-					Timestamp: 5,
+					Value:       5,
+					TimestampMs: 5,
 				},
 				{
-					Value:     6,
-					Timestamp: 6,
+					Value:       6,
+					TimestampMs: 6,
 				},
 			},
 		},

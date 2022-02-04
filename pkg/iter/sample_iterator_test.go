@@ -91,42 +91,92 @@ func sample(i int) logproto.Sample {
 }
 
 var varSeries = logproto.Series{
-	Labels: `{foo="var"}`,
+	Labels:     `{foo="var"}`,
+	StreamHash: hashLabels(`{foo="var"}`),
 	Samples: []logproto.Sample{
 		sample(1), sample(2), sample(3),
 	},
 }
 
 var carSeries = logproto.Series{
-	Labels: `{foo="car"}`,
+	Labels:     `{foo="car"}`,
+	StreamHash: hashLabels(`{foo="car"}`),
 	Samples: []logproto.Sample{
 		sample(1), sample(2), sample(3),
 	},
 }
 
 func TestNewMergeSampleIterator(t *testing.T) {
-	it := NewMergeSampleIterator(context.Background(),
-		[]SampleIterator{
-			NewSeriesIterator(varSeries),
-			NewSeriesIterator(carSeries),
-			NewSeriesIterator(carSeries),
-			NewSeriesIterator(varSeries),
-			NewSeriesIterator(carSeries),
-			NewSeriesIterator(varSeries),
-			NewSeriesIterator(carSeries),
-		})
+	t.Run("with labels", func(t *testing.T) {
+		it := NewMergeSampleIterator(context.Background(),
+			[]SampleIterator{
+				NewSeriesIterator(varSeries),
+				NewSeriesIterator(carSeries),
+				NewSeriesIterator(carSeries),
+				NewSeriesIterator(varSeries),
+				NewSeriesIterator(carSeries),
+				NewSeriesIterator(varSeries),
+				NewSeriesIterator(carSeries),
+			})
 
-	for i := 1; i < 4; i++ {
-		require.True(t, it.Next(), i)
-		require.Equal(t, `{foo="car"}`, it.Labels(), i)
-		require.Equal(t, sample(i), it.Sample(), i)
-		require.True(t, it.Next(), i)
-		require.Equal(t, `{foo="var"}`, it.Labels(), i)
-		require.Equal(t, sample(i), it.Sample(), i)
-	}
-	require.False(t, it.Next())
-	require.NoError(t, it.Error())
-	require.NoError(t, it.Close())
+		for i := 1; i < 4; i++ {
+			require.True(t, it.Next(), i)
+			require.Equal(t, `{foo="car"}`, it.Labels(), i)
+			require.Equal(t, sample(i), it.Sample(), i)
+			require.True(t, it.Next(), i)
+			require.Equal(t, `{foo="var"}`, it.Labels(), i)
+			require.Equal(t, sample(i), it.Sample(), i)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+		require.NoError(t, it.Close())
+	})
+	t.Run("no labels", func(t *testing.T) {
+		it := NewMergeSampleIterator(context.Background(),
+			[]SampleIterator{
+				NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: carSeries.StreamHash,
+					Samples:    carSeries.Samples,
+				}),
+				NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: varSeries.StreamHash,
+					Samples:    varSeries.Samples,
+				}), NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: carSeries.StreamHash,
+					Samples:    carSeries.Samples,
+				}),
+				NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: varSeries.StreamHash,
+					Samples:    varSeries.Samples,
+				}),
+				NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: carSeries.StreamHash,
+					Samples:    carSeries.Samples,
+				}),
+				NewSeriesIterator(logproto.Series{
+					Labels:     ``,
+					StreamHash: varSeries.StreamHash,
+					Samples:    varSeries.Samples,
+				}),
+			})
+
+		for i := 1; i < 4; i++ {
+			require.True(t, it.Next(), i)
+			require.Equal(t, ``, it.Labels(), i)
+			require.Equal(t, sample(i), it.Sample(), i)
+			require.True(t, it.Next(), i)
+			require.Equal(t, ``, it.Labels(), i)
+			require.Equal(t, sample(i), it.Sample(), i)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+		require.NoError(t, it.Close())
+	})
 }
 
 type fakeSampleClient struct {
@@ -176,7 +226,7 @@ func TestNewNonOverlappingSampleIterator(t *testing.T) {
 			Labels:  varSeries.Labels,
 			Samples: []logproto.Sample{sample(4), sample(5)},
 		}),
-	}, varSeries.Labels)
+	})
 
 	for i := 1; i < 6; i++ {
 		require.True(t, it.Next(), i)
@@ -190,7 +240,7 @@ func TestNewNonOverlappingSampleIterator(t *testing.T) {
 
 func TestReadSampleBatch(t *testing.T) {
 	res, size, err := ReadSampleBatch(NewSeriesIterator(carSeries), 1)
-	require.Equal(t, &logproto.SampleQueryResponse{Series: []logproto.Series{{Labels: carSeries.Labels, Samples: []logproto.Sample{sample(1)}}}}, res)
+	require.Equal(t, &logproto.SampleQueryResponse{Series: []logproto.Series{{Labels: carSeries.Labels, StreamHash: carSeries.StreamHash, Samples: []logproto.Sample{sample(1)}}}}, res)
 	require.Equal(t, uint32(1), size)
 	require.NoError(t, err)
 
@@ -207,6 +257,7 @@ type CloseTestingSmplIterator struct {
 
 func (i *CloseTestingSmplIterator) Next() bool              { return true }
 func (i *CloseTestingSmplIterator) Sample() logproto.Sample { return i.s }
+func (i *CloseTestingSmplIterator) StreamHash() uint64      { return 0 }
 func (i *CloseTestingSmplIterator) Labels() string          { return "" }
 func (i *CloseTestingSmplIterator) Error() error            { return nil }
 func (i *CloseTestingSmplIterator) Close() error {
@@ -216,7 +267,7 @@ func (i *CloseTestingSmplIterator) Close() error {
 
 func TestNonOverlappingSampleClose(t *testing.T) {
 	a, b := &CloseTestingSmplIterator{}, &CloseTestingSmplIterator{}
-	itr := NewNonOverlappingSampleIterator([]SampleIterator{a, b}, "")
+	itr := NewNonOverlappingSampleIterator([]SampleIterator{a, b})
 
 	// Ensure both itr.cur and itr.iterators are non nil
 	itr.Next()

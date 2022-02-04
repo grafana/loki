@@ -120,7 +120,7 @@ message MetricsMetadataResponse {
 message TimeSeriesChunk {
   string from_ingester_id = 1;
   string user_id = 2;
-  repeated logproto.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
+  repeated logproto.LegacyLabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
 }
 
