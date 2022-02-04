@@ -1,4 +1,4 @@
-FROM golang:1.17.2 as build
+FROM grafana/loki-build-image as build
 
 COPY . /src/loki
 WORKDIR /src/loki
