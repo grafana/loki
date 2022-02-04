@@ -89,6 +89,17 @@ export default () => {
 }
 ```
 
+## Metrics
+
+The extension collects two metrics that are printed in the
+[end-of-test summary](https://k6.io/docs/results-visualization/end-of-test-summary/) in addition to the built-in metrics.
+These metrics are collected only for instant and range queries.
+
+| name | description                                 |
+| ---- |---------------------------------------------|
+| `loki_bytes_precessed_per_second_summary` | Total of bytes processed by Loki per second |
+| `loki_lines_precessed_per_second_summary` | Total lines processed by Loki per second    |
+
 ## Labels pool
 
 With the xk6-loki extension, you can use the field `labels` on the `Config`
