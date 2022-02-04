@@ -329,29 +329,29 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 	return result
 }
 
-func (it *entrySortIterator) less(i, j int) bool {
-	t1, t2 := it.is[i].Entry().Timestamp.UnixNano(), it.is[j].Entry().Timestamp.UnixNano()
+func (i *entrySortIterator) lessByIndex(k, j int) bool {
+	t1, t2 := i.is[k].Entry().Timestamp.UnixNano(), i.is[j].Entry().Timestamp.UnixNano()
 	if t1 == t2 {
-		if it.byAlphabetical {
-			return it.is[i].Labels() < it.is[j].Labels()
+		if i.byAlphabetical {
+			return i.is[k].Labels() < i.is[j].Labels()
 		}
-		return it.is[i].StreamHash() < it.is[j].StreamHash()
+		return i.is[k].StreamHash() < i.is[j].StreamHash()
 	}
-	if it.byAscendingTime {
+	if i.byAscendingTime {
 		return t1 < t2
 	}
 	return t1 > t2
 }
 
-func (it *entrySortIterator) lessThan(t1 int64, l1 string, h1 uint64, j int) bool {
-	t2 := it.is[j].Entry().Timestamp.UnixNano()
+func (i *entrySortIterator) lessByValue(t1 int64, l1 string, h1 uint64, index int) bool {
+	t2 := i.is[index].Entry().Timestamp.UnixNano()
 	if t1 == t2 {
-		if it.byAlphabetical {
-			return l1 < it.is[j].Labels()
+		if i.byAlphabetical {
+			return l1 < i.is[index].Labels()
 		}
-		return h1 < it.is[j].StreamHash()
+		return h1 < i.is[index].StreamHash()
 	}
-	if it.byAscendingTime {
+	if i.byAscendingTime {
 		return t1 < t2
 	}
 	return t1 > t2
@@ -377,23 +377,23 @@ func (i *entrySortIterator) init() {
 		util.LogError("closing iterator", it.Close)
 	}
 	i.is = tmp
-	sort.Slice(i.is, i.less)
+	sort.Slice(i.is, i.lessByIndex)
 }
 
 func (i *entrySortIterator) fix() {
-	t1 := i.is[0].Entry().Timestamp.UnixNano()
-	l1 := i.is[0].Labels()
-	h1 := i.is[0].StreamHash()
+	head := i.is[0]
+	t1 := head.Entry().Timestamp.UnixNano()
+	l1 := head.Labels()
+	h1 := head.StreamHash()
 
 	// shortcut
-	if len(i.is) <= 1 || i.lessThan(t1, l1, h1, 1) {
+	if len(i.is) <= 1 || i.lessByValue(t1, l1, h1, 1) {
 		return
 	}
 
 	// First element is out of place. So we reposition it.
-	index := sort.Search(len(i.is), func(in int) bool { return i.lessThan(t1, l1, h1, in) })
+	index := sort.Search(len(i.is), func(in int) bool { return i.lessByValue(t1, l1, h1, in) })
 
-	head := i.is[0]
 	if index == len(i.is) {
 		i.is = append(i.is[1:], head)
 	} else {
@@ -454,6 +454,11 @@ func (i *entrySortIterator) Error() error {
 }
 
 func (i *entrySortIterator) Close() error {
+	if len(i.is) > 0 {
+		if err := i.is[0].(EntryIterator).Close(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
