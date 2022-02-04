@@ -392,12 +392,13 @@ func (i *entrySortIterator) fix() {
 	}
 
 	// First element is out of place. So we reposition it.
+	i.is = i.is[1:] // drop head
 	index := sort.Search(len(i.is), func(in int) bool { return i.lessByValue(t1, l1, h1, in) })
 
 	if index == len(i.is) {
-		i.is = append(i.is[1:], head)
+		i.is = append(i.is, head)
 	} else {
-		i.is = append(i.is[1:index+1], i.is[index:]...)
+		i.is = append(i.is[:index+1], i.is[index:]...)
 		i.is[index] = head
 	}
 }
@@ -455,7 +456,7 @@ func (i *entrySortIterator) Error() error {
 
 func (i *entrySortIterator) Close() error {
 	if len(i.is) > 0 {
-		if err := i.is[0].(EntryIterator).Close(); err != nil {
+		if err := i.is[0].Close(); err != nil {
 			return err
 		}
 	}
