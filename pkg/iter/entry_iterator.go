@@ -74,8 +74,8 @@ func (h *iteratorHeap) Pop() interface{} {
 
 type iteratorSortHeap struct {
 	iteratorHeap
-	byAlphabetical bool
-	ascendingTime  bool
+	byAlphabetical  bool
+	byAscendingTime bool
 }
 
 func (h iteratorSortHeap) Less(i, j int) bool {
@@ -86,7 +86,7 @@ func (h iteratorSortHeap) Less(i, j int) bool {
 		}
 		return h.iteratorHeap[i].StreamHash() < h.iteratorHeap[j].StreamHash()
 	}
-	if h.ascendingTime {
+	if h.byAscendingTime {
 		return t1 < t2
 	}
 	return t1 > t2
@@ -124,9 +124,9 @@ func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction lo
 	result := &mergeEntryIterator{is: is, stats: stats.FromContext(ctx)}
 	switch direction {
 	case logproto.BACKWARD:
-		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), ascendingTime: false}
+		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), byAscendingTime: false}
 	case logproto.FORWARD:
-		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), ascendingTime: true}
+		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), byAscendingTime: true}
 	default:
 		panic("bad direction")
 	}
@@ -320,9 +320,9 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 	result := &entrySortIterator{is: is}
 	switch direction {
 	case logproto.BACKWARD:
-		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), ascendingTime: false, byAlphabetical: true}
+		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), byAscendingTime: false, byAlphabetical: true}
 	case logproto.FORWARD:
-		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), ascendingTime: true, byAlphabetical: true}
+		result.heap = &iteratorSortHeap{iteratorHeap: make([]EntryIterator, 0, len(is)), byAscendingTime: true, byAlphabetical: true}
 	default:
 		panic("bad direction")
 	}

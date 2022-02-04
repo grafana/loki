@@ -220,7 +220,6 @@ func TestNewSampleQueryClientIterator(t *testing.T) {
 }
 
 func TestNewNonOverlappingSampleIterator(t *testing.T) {
-	// todo fix this test
 	it := NewNonOverlappingSampleIterator([]SampleIterator{
 		NewSeriesIterator(varSeries),
 		NewSeriesIterator(logproto.Series{
