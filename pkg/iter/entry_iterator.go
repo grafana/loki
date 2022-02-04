@@ -706,7 +706,7 @@ func (i *reverseEntryIterator) load() {
 
 func (i *reverseEntryIterator) Next() bool {
 	i.load()
-	if len(i.buf.entries) == 0 {
+	if i.buf == nil || len(i.buf.entries) == 0 {
 		i.release()
 		return false
 	}
