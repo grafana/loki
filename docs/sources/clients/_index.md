@@ -15,6 +15,8 @@ Grafana Loki supports the following official clients for sending logs:
 
 There are also a number of third-party clients, see [Unofficial clients](#unofficial-clients).
 
+The [xk6-loki extension](https://github.com/grafana/xk6-loki) permits [load testing Loki](k6/).
+
 ## Picking a client
 
 While all clients can be used simultaneously to cover multiple use cases, which
