@@ -1,14 +1,12 @@
 package distributor
 
 import (
-	"context"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/validation"
@@ -19,11 +17,10 @@ func TestDistributorRingHandler(t *testing.T) {
 	flagext.DefaultValues(limits)
 
 	runServer := func() *httptest.Server {
-		d := prepare(t, limits, nil, nil)
-		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+		distributors := prepare(t, 1, 3, limits, nil)
 
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			d.ServeHTTP(w, r)
+			distributors[0].ServeHTTP(w, r)
 		}))
 	}
 
