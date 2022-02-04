@@ -58,8 +58,9 @@ func (b *batch) add(ctx context.Context, e entry) error {
 	if !ok {
 		b.streams[labels] = &logproto.Stream{
 			Labels:  labels,
-			Entries: []logproto.Entry{e.entry},
+			Entries: []logproto.Entry{},
 		}
+		stream = b.streams[labels]
 	}
 
 	stream.Entries = append(stream.Entries, e.entry)
