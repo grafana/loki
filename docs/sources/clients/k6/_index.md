@@ -32,7 +32,7 @@ Build a custom k6 binary that includes the `xk6-loki` extension.
 1. Check out the `grafana/xk6-loki` repository:
 
    ```bash
-   git clone github.com/grafana/xk6-loki
+   git clone https://github.com/grafana/xk6-loki
    cd xk6-loki
    ```
 
