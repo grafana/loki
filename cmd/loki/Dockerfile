@@ -1,7 +1,25 @@
-FROM grafana/loki-build-image as build
+FROM golang:1.17.2 as build
 
 COPY . /src/loki
 WORKDIR /src/loki
+
+# Copying this from loki-build-image/Dockerfile
+# because these dependencies are required by the Makefile in certain
+# circumstances. This should be removed and the base image above changed
+# from golang to loki-build-image once the latter becomes available for arm.
+RUN GO111MODULE=on go get \
+    github.com/golang/protobuf/protoc-gen-go@v1.3.1 \
+    github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0 \
+    github.com/gogo/protobuf/gogoproto@v1.3.0 \
+    github.com/go-delve/delve/cmd/dlv@v1.3.2 \
+    # Due to the lack of a proper release tag, we use the commit hash of
+    # https://github.com/golang/tools/releases v0.1.7
+    golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69 \
+    github.com/mitchellh/gox && \
+    rm -rf /go/pkg /go/src
+ENV GOCACHE=/go/cache
+
+
 RUN make clean && make BUILD_IN_CONTAINER=false loki
 
 FROM alpine:3.13
