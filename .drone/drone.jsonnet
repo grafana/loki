@@ -321,9 +321,14 @@ local manifest(apps) = pipeline('manifest') {
       path: 'loki',
     },
     steps: [
-      make('build-image', container=false) {
+      {
+        name: 'build-image',
         image: 'r.j3ss.co/img',
         depends_on: ['clone'],
+        commands: [
+          'apk add --no-cache bash make',
+          'make BUILD_IN_CONTAINER=false build-image'
+        ],
         when: condition('include').path('loki-build-image/**'),
         // when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
       },

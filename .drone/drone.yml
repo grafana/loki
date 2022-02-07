@@ -3,6 +3,7 @@ kind: pipeline
 name: loki-build-image
 steps:
 - commands:
+  - apk add --no-cache bash make
   - make BUILD_IN_CONTAINER=false build-image
   depends_on:
   - clone
@@ -1046,6 +1047,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 7b12cd9d9230976a3c87d7ea42ea747c8bb7fed20d0125164e96ac14b1461463
+hmac: 462f803cf24997c38c71435ed50596078fc8774e6a2b095a56bfdc54c3db8c00
 
 ...
