@@ -310,7 +310,7 @@ local manifest(apps) = pipeline('manifest') {
 };
 
 [
-  pipeline('build-image') {
+  pipeline('loki-build-image') {
     workspace: {
       base: '/src',
       path: 'loki',
