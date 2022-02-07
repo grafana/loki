@@ -14,6 +14,11 @@ local condition(verb) = {
         ],
     },
   },
+  path(path): {
+    paths: {
+      [verb]: [path],
+    },
+  },
 };
 
 local pipeline(name) = {
@@ -318,7 +323,7 @@ local manifest(apps) = pipeline('manifest') {
     steps: [
       make('build-image-push', container=false) {
         depends_on: ['clone'],
-        when: condition('include').tagMain,
+        when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
       },
     ],
   },

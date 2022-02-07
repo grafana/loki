@@ -1,6 +1,6 @@
 ---
 kind: pipeline
-name: build-image
+name: loki-build-image
 steps:
 - commands:
   - make BUILD_IN_CONTAINER=false build-image-push
@@ -9,6 +9,9 @@ steps:
   image: grafana/loki-build-image:0.19.0
   name: build-image-push
   when:
+    paths:
+      include:
+      - loki-build-image/**
     ref:
       include:
       - refs/heads/main
@@ -1048,6 +1051,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 4256662ab77abf94cb88d8be33e408a4824af855242d9d8e11b938255f860df4
+hmac: d8d2c3e6801ea9c1c052f30dcfdf953a60c42e3add9f352ae293706e3c88feca
 
 ...
