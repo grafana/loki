@@ -321,9 +321,10 @@ local manifest(apps) = pipeline('manifest') {
       path: 'loki',
     },
     steps: [
-      make('build-image-push', container=false) {
+      make('build-image', container=false) {
         depends_on: ['clone'],
-        when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
+        when: condition('include').path('loki-build-image/**'),
+        // when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
       },
     ],
   },
