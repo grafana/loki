@@ -17,7 +17,10 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-const bufferSizeForTailResponse = 5
+const (
+	bufferSizeForTailResponse = 5
+	maxDroppedStreams         = 10 // make tailer.droppedStreams slice bounded.
+)
 
 type TailServer interface {
 	Send(*logproto.TailResponse) error
@@ -217,6 +220,10 @@ func (t *tailer) dropStream(stream logproto.Stream) {
 	if t.blockedAt == nil {
 		blockedAt := time.Now()
 		t.blockedAt = &blockedAt
+	}
+
+	if len(t.droppedStreams) > maxDroppedStreams {
+		t.droppedStreams = nil
 	}
 
 	t.droppedStreams = append(t.droppedStreams, &logproto.DroppedStream{
