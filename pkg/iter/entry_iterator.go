@@ -455,8 +455,8 @@ func (i *entrySortIterator) Error() error {
 }
 
 func (i *entrySortIterator) Close() error {
-	if len(i.is) > 0 {
-		if err := i.is[0].Close(); err != nil {
+	for _, entryIterator := range i.is {
+		if err := entryIterator.Close(); err != nil {
 			return err
 		}
 	}
