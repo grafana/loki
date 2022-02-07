@@ -26,7 +26,7 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 	}
 
 	for run := 0; run < runs; run++ {
-		tailer, err := newTailer("org-id", stream.Labels, nil)
+		tailer, err := newTailer("org-id", stream.Labels, nil, 10)
 		require.NoError(t, err)
 		require.NotNil(t, tailer)
 
@@ -55,7 +55,7 @@ func (f *fakeTailServer) Send(*logproto.TailResponse) error { return nil }
 func (f *fakeTailServer) Context() context.Context          { return context.Background() }
 
 func Test_TailerSendRace(t *testing.T) {
-	tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{})
+	tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{}, 10)
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
