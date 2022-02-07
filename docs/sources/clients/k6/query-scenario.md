@@ -95,10 +95,10 @@ The extension collects two metrics that are printed in the
 [end-of-test summary](https://k6.io/docs/results-visualization/end-of-test-summary/) in addition to the built-in metrics.
 These metrics are collected only for instant and range queries.
 
-| name | description                                 |
-| ---- |---------------------------------------------|
-| `loki_bytes_processed_per_second` | Total bytes per second processed by Loki |
-| `loki_lines_processed_per_second` | Total lines per second processed by Loki |
+| name                              | description                                  |
+|-----------------------------------|----------------------------------------------|
+| `loki_bytes_processed_per_second` | amount of bytes processed by Loki per second |
+| `loki_lines_processed_per_second` | amount of lines processed by Loki per second |
 
 ## Labels pool
 
