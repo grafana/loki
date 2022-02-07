@@ -64,7 +64,7 @@ func newTailer(orgID, query string, conn TailServer, maxDroppedStreams int) (*ta
 		pipeline:          pipeline,
 		sendChan:          make(chan *logproto.Stream, bufferSizeForTailResponse),
 		conn:              conn,
-		droppedStreams:    []*logproto.DroppedStream{},
+		droppedStreams:    make([]*logproto.DroppedStream, 0, maxDroppedStreams),
 		maxDroppedStreams: maxDroppedStreams,
 		id:                generateUniqueID(orgID, query),
 		closeChan:         make(chan struct{}),
@@ -221,7 +221,7 @@ func (t *tailer) dropStream(stream logproto.Stream) {
 		t.blockedAt = &blockedAt
 	}
 
-	if len(t.droppedStreams) > t.maxDroppedStreams {
+	if len(t.droppedStreams) >= t.maxDroppedStreams {
 		level.Info(util_log.Logger).Log("msg", "tailer dropped streams is reset", "length", len(t.droppedStreams))
 		t.droppedStreams = nil
 	}
