@@ -53,6 +53,7 @@
 * [5077](https://github.com/grafana/loki/pull/5077) **trevorwhitney**: Change some default values for better out-of-the-box performance
 * [5204](https://github.com/grafana/loki/pull/5204) **trevorwhitney**: Default `max_outstanding_per_tenant` to `2048`
 * [5253](https://github.com/grafana/loki/pull/5253) **Juneezee**: refactor: use `T.TempDir` to create temporary test directory
+* [5315](https://github.com/grafana/loki/pull/5315) **bboreham**: filters: use faster regexp package
 
 # 2.4.1 (2021/11/07)
 
