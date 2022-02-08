@@ -337,7 +337,7 @@ func (i *entrySortIterator) lessByIndex(k, j int) bool {
 	return t1 > t2
 }
 
-func (i *entrySortIterator) lessByValue(t1 int64, l1 string, h1 uint64, index int) bool {
+func (i *entrySortIterator) lessByValue(t1 int64, l1 string, index int) bool {
 	t2 := i.is[index].Entry().Timestamp.UnixNano()
 	if t1 == t2 {
 		return l1 < i.is[index].Labels()
@@ -375,16 +375,15 @@ func (i *entrySortIterator) fix() {
 	head := i.is[0]
 	t1 := head.Entry().Timestamp.UnixNano()
 	l1 := head.Labels()
-	h1 := head.StreamHash()
 
 	// shortcut
-	if len(i.is) <= 1 || i.lessByValue(t1, l1, h1, 1) {
+	if len(i.is) <= 1 || i.lessByValue(t1, l1, 1) {
 		return
 	}
 
 	// First element is out of place. So we reposition it.
 	i.is = i.is[1:] // drop head
-	index := sort.Search(len(i.is), func(in int) bool { return i.lessByValue(t1, l1, h1, in) })
+	index := sort.Search(len(i.is), func(in int) bool { return i.lessByValue(t1, l1, in) })
 
 	if index == len(i.is) {
 		i.is = append(i.is, head)
