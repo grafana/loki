@@ -348,21 +348,7 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 		printed++
 	}
 
-	// Loki allows multiple entries at the same timestamp, this is a bit of a mess if a batch ends
-	// with an entry that shared multiple timestamps, so we need to keep a list of all these entries
-	// because the next query is going to contain them too and we want to not duplicate anything already
-	// printed.
-	lel := []*loghttp.Entry{}
-	// Start with the timestamp of the last entry
-	le := allEntries[len(allEntries)-1].entry
-	for i, e := range allEntries {
-		// Save any entry which has this timestamp (most of the time this will only be the single last entry)
-		if e.entry.Timestamp.Equal(le.Timestamp) {
-			lel = append(lel, &allEntries[i].entry)
-		}
-	}
-
-	return printed, lel
+	return printed, streams.LastEntries()
 }
 
 func (q *Query) printMatrix(matrix loghttp.Matrix) {

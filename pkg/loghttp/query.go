@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
@@ -35,7 +36,26 @@ const (
 type QueryResponse struct {
 	Status string            `json:"status"`
 	Data   QueryResponseData `json:"data"`
-	Links  []Link            `json:"links"`
+	Links  []Link            `json:"links,omitempty"`
+}
+
+type Link struct {
+	Rel  string `json:"rel"`
+	Href string `json:"href"`
+}
+
+func NewSelfLink(params logql.LiteralParams) Link {
+	return Link{
+		Rel: "self",
+		Href: fmt.Sprintf("/loki/api/v1/query_range?limit=%d&", params.Limit),
+	}
+}
+
+func NewNextLink(params logql.LiteralParams, ts time.Time) Link {
+	return Link{
+		Rel: "next",
+		Href: fmt.Sprintf("/loki/api/v1/query_range?limit=%d", params.Limit),
+	}
 }
 
 func (q *QueryResponse) UnmarshalJSON(data []byte) error {
@@ -123,6 +143,29 @@ func (s Streams) ToProto() []logproto.Stream {
 		result = append(result, logproto.Stream{Labels: s.Labels.String(), Entries: entries})
 	}
 	return result
+}
+
+func (ss Streams) LastEntries() []*Entry {
+	// TODO: reword comment
+	// Loki allows multiple entries at the same timestamp, this is a bit of a mess if a batch ends
+	// with an entry that shared multiple timestamps, so we need to keep a list of all these entries
+	// because the next query is going to contain them too and we want to not duplicate anything already
+	// printed.
+
+	lel := []*Entry{}
+	// Start with the timestamp of the last entry
+	e := ss[len(ss)-1].Entries
+	le := e[len(e)-1]
+	for _, s := range ss {
+		for _, e := range s.Entries {
+			// Save any entry which has this timestamp (most of the time this will only be the single last entry)
+			if e.Timestamp.Equal(le.Timestamp) {
+				lel = append(lel, &e)
+			}
+		}
+	}
+
+	return lel
 }
 
 // Stream represents a log stream.  It includes a set of log entries and their labels.

@@ -5,6 +5,7 @@ package marshal
 import (
 	"io"
 
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 
 	"github.com/gorilla/websocket"
@@ -17,7 +18,7 @@ import (
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
-func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
+func WriteQueryResponseJSON(params logql.LiteralParams, v logqlmodel.Result, w io.Writer) error {
 	value, err := NewResultValue(v.Data)
 	if err != nil {
 		return err
@@ -33,10 +34,12 @@ func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
 	}
 
 	if value.Type() == logqlmodel.ValueTypeStreams {
-
-		for _, stream := range value.(loghttp.Streams) {
-			stream.Entries[len(stream.Entries)-1].Timestamp
+		lastEntry := value.(loghttp.Streams).LastEntries()[0]
+		q.Links = []loghttp.Link{
+			loghttp.NewSelfLink(params),
+			loghttp.NewNextLink(params, lastEntry.Timestamp),
 		}
+
 	} 
 
 	return jsoniter.NewEncoder(w).Encode(q)

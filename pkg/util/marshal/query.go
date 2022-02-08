@@ -2,7 +2,6 @@ package marshal
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -28,7 +27,7 @@ func NewResultValue(v parser.Value) (loghttp.ResultValue, error) {
 			return nil, fmt.Errorf("unexpected type %T for streams", s)
 		}
 
-		value, lastEntry, err = NewStreams(s)
+		value, err = NewStreams(s)
 
 		if err != nil {
 			return nil, err
