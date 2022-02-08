@@ -32,6 +32,13 @@ func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
 		},
 	}
 
+	if value.Type() == logqlmodel.ValueTypeStreams {
+
+		for _, stream := range value.(loghttp.Streams) {
+			stream.Entries[len(stream.Entries)-1].Timestamp
+		}
+	} 
+
 	return jsoniter.NewEncoder(w).Encode(q)
 }
 

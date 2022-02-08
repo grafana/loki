@@ -35,6 +35,7 @@ const (
 type QueryResponse struct {
 	Status string            `json:"status"`
 	Data   QueryResponseData `json:"data"`
+	Links  []Link            `json:"links"`
 }
 
 func (q *QueryResponse) UnmarshalJSON(data []byte) error {

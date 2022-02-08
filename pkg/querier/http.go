@@ -60,6 +60,7 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
+
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
