@@ -298,7 +298,6 @@ func (i *mergeEntryIterator) Len() int {
 type entrySortIterator struct {
 	is              []EntryIterator
 	prefetched      bool
-	byAlphabetical  bool
 	byAscendingTime bool
 	currEntry       entryWithLabels
 	errs            []error
@@ -319,10 +318,8 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 	switch direction {
 	case logproto.BACKWARD:
 		result.byAscendingTime = false
-		result.byAlphabetical = true
 	case logproto.FORWARD:
 		result.byAscendingTime = true
-		result.byAlphabetical = true
 	default:
 		panic("bad direction")
 	}
@@ -332,10 +329,7 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 func (i *entrySortIterator) lessByIndex(k, j int) bool {
 	t1, t2 := i.is[k].Entry().Timestamp.UnixNano(), i.is[j].Entry().Timestamp.UnixNano()
 	if t1 == t2 {
-		if i.byAlphabetical {
-			return i.is[k].Labels() < i.is[j].Labels()
-		}
-		return i.is[k].StreamHash() < i.is[j].StreamHash()
+		return i.is[k].Labels() < i.is[j].Labels()
 	}
 	if i.byAscendingTime {
 		return t1 < t2
@@ -346,10 +340,7 @@ func (i *entrySortIterator) lessByIndex(k, j int) bool {
 func (i *entrySortIterator) lessByValue(t1 int64, l1 string, h1 uint64, index int) bool {
 	t2 := i.is[index].Entry().Timestamp.UnixNano()
 	if t1 == t2 {
-		if i.byAlphabetical {
-			return l1 < i.is[index].Labels()
-		}
-		return h1 < i.is[index].StreamHash()
+		return l1 < i.is[index].Labels()
 	}
 	if i.byAscendingTime {
 		return t1 < t2
