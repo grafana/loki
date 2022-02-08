@@ -75,7 +75,7 @@ func Test_ReportLoop(t *testing.T) {
 	totalReport := 0
 	clusterIDs := []string{}
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		var received Stats
+		var received Report
 		totalReport++
 		require.NoError(t, jsoniter.NewDecoder(r.Body).Decode(&received))
 		clusterIDs = append(clusterIDs, received.ClusterID)

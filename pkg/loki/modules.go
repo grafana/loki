@@ -760,8 +760,8 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 	if t.isModuleActive(Ingester) {
 		t.Cfg.UsageReport.Leader = true
 	}
-	t.Cfg.UsageReport.Edition = "oss"
-	t.Cfg.UsageReport.Target = t.Cfg.Target.String()
+	usagestats.Edition("oss")
+	usagestats.Target(t.Cfg.Target.String())
 	period, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
 	if err != nil {
 		return nil, err

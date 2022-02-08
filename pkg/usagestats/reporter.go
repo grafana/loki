@@ -7,7 +7,6 @@ import (
 	"flag"
 	"io"
 	"math"
-	"runtime"
 	"time"
 
 	"github.com/go-kit/log"
@@ -38,10 +37,8 @@ var (
 )
 
 type Config struct {
-	Disabled bool   `yaml:"disabled"`
-	Leader   bool   `yaml:"-"`
-	Edition  string `yaml:"-"`
-	Target   string `yaml:"-"`
+	Disabled bool `yaml:"disabled"`
+	Leader   bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -250,14 +247,7 @@ func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error 
 	})
 	var errs multierror.MultiError
 	for backoff.Ongoing() {
-		if err := sendStats(ctx, Stats{
-			ClusterID:         rep.cluster.UID,
-			PrometheusVersion: build.GetVersion(),
-			CreatedAt:         rep.cluster.CreatedAt,
-			Interval:          interval,
-			Os:                runtime.GOOS,
-			Arch:              runtime.GOARCH,
-		}); err != nil {
+		if err := sendReport(ctx, rep.cluster, interval); err != nil {
 			level.Info(rep.logger).Log("msg", "failed to send stats", "retries", backoff.NumRetries(), "err", err)
 			errs.Add(err)
 			backoff.Wait()
