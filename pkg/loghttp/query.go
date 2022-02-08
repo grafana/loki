@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 	"unsafe"
 
@@ -12,7 +14,6 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
@@ -44,17 +45,29 @@ type Link struct {
 	Href string `json:"href"`
 }
 
-func NewSelfLink(params logql.LiteralParams) Link {
+func NewSelfLink(r *RangeQuery) Link {
 	return Link{
-		Rel: "self",
-		Href: fmt.Sprintf("/loki/api/v1/query_range?limit=%d&", params.Limit),
+		Rel:  "self",
+		Href: fmt.Sprintf("/loki/api/v1/query_range?%s", r.Encode()),
 	}
 }
 
-func NewNextLink(params logql.LiteralParams, ts time.Time) Link {
+func NewNextLink(request *RangeQuery, ts time.Time) Link {
+	q := request
+
+	// Based on the query direction we either set the start or end for the next query.
+	// If there are multiple entries in `lastEntry` they have to have the same timestamp so we can pick just the first
+	if q.Direction == logproto.FORWARD {
+		q.Start = ts
+	} else {
+		// The end timestamp is exclusive on a backward query, so to make sure we get back an overlapping result
+		// fudge the timestamp forward in time to make sure to get the last entry from this batch in the next query
+		q.End = ts.Add(1 * time.Nanosecond)
+	}
+
 	return Link{
-		Rel: "next",
-		Href: fmt.Sprintf("/loki/api/v1/query_range?limit=%d", params.Limit),
+		Rel:  "next",
+		Href: fmt.Sprintf("/loki/api/v1/query_range?%s", q.Encode()),
 	}
 }
 
@@ -326,6 +339,19 @@ type RangeQuery struct {
 	Direction logproto.Direction
 	Limit     uint32
 	Shards    []string
+}
+
+func (r *RangeQuery) Encode() string {
+	q := url.Values{}
+	q.Add("start", strconv.FormatInt(r.Start.UnixNano(), 10))
+	q.Add("end", strconv.FormatInt(r.End.UnixNano(), 10))
+	q.Add("step", strconv.FormatInt(r.Step.Nanoseconds(), 10))
+	q.Add("interval", strconv.FormatInt(r.Interval.Nanoseconds(), 10))
+	q.Add("query", r.Query)
+	q.Add("direction", r.Direction.String())
+	q.Add("limit", strconv.FormatUint(uint64(r.Limit), 10))
+
+	return q.Encode()
 }
 
 // ParseRangeQuery parses a RangeQuery request from an http request.

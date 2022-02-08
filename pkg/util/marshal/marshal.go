@@ -5,7 +5,6 @@ package marshal
 import (
 	"io"
 
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 
 	"github.com/gorilla/websocket"
@@ -18,7 +17,27 @@ import (
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
-func WriteQueryResponseJSON(params logql.LiteralParams, v logqlmodel.Result, w io.Writer) error {
+func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
+	value, err := NewResultValue(v.Data)
+	if err != nil {
+		return err
+	}
+
+	q := loghttp.QueryResponse{
+		Status: "success",
+		Data: loghttp.QueryResponseData{
+			ResultType: value.Type(),
+			Result:     value,
+			Statistics: v.Statistics,
+		},
+	}
+
+	return jsoniter.NewEncoder(w).Encode(q)
+}
+
+// WriteRangeQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
+// writes it to the provided io.Writer.
+func WriteRangeQueryResponseJSON(request *loghttp.RangeQuery, v logqlmodel.Result, w io.Writer) error {
 	value, err := NewResultValue(v.Data)
 	if err != nil {
 		return err
@@ -36,8 +55,8 @@ func WriteQueryResponseJSON(params logql.LiteralParams, v logqlmodel.Result, w i
 	if value.Type() == logqlmodel.ValueTypeStreams {
 		lastEntry := value.(loghttp.Streams).LastEntries()[0]
 		q.Links = []loghttp.Link{
-			loghttp.NewSelfLink(params),
-			loghttp.NewNextLink(params, lastEntry.Timestamp),
+			loghttp.NewSelfLink(request),
+			loghttp.NewNextLink(request, lastEntry.Timestamp),
 		}
 
 	} 

@@ -17,7 +17,6 @@ const PackedEntryKey = "_entry"
 type Result struct {
 	Data       parser.Value
 	Statistics stats.Result
-	links      []link ``
 }
 
 // Streams is promql.Value
