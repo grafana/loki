@@ -1,4 +1,4 @@
-# NOTICE: Change the verion in Makefile if you make a change here.
+# NOTICE: Change the verion in Makefile if you make a change here. See ../docs/sources/maintaining/release-loki-build-image.md.
 
 FROM alpine as helm
 ARG HELM_VER="v3.2.3"

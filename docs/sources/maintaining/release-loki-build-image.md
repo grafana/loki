@@ -13,4 +13,4 @@ The image is released with any change to `./loki-build-image` on `main`.
 1. Update the image version in all the other places it exists
     1. Dockerfiles in `cmd` directory
     1. .circleci/config.yml
-1. Run `make drone` to rebuild the drone yml file with the new image version (the image version in the Makefile is used)
+1. Run `make drone BUILD_IN_CONTAINER=false` to rebuild the drone yml file with the new image version (the image version in the Makefile is used)
