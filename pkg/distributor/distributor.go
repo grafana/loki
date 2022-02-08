@@ -201,7 +201,7 @@ func (d *Distributor) stopping(_ error) error {
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type streamTracker struct {
-	stream *logproto.Stream
+	stream logproto.Stream
 	// successBucket the number of minimum required successful pushes
 	// each successful push decrements the counter
 	successBucket atomic.Int32
@@ -278,7 +278,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		stream.Entries = stream.Entries[:n]
 
 		keys = append(keys, util.TokenFor(userID, stream.Labels))
-		streams = append(streams, streamTracker{stream: &stream})
+		streams = append(streams, streamTracker{stream: stream})
 	}
 
 	// Return early if none of the streams contained entries
@@ -366,7 +366,7 @@ func (d *Distributor) sendToIngester(ctx context.Context, ingester ring.Instance
 
 	payload := make([]logproto.Stream, len(streams))
 	for i, s := range streams {
-		payload[i] = *s.stream
+		payload[i] = s.stream
 	}
 
 	err := d.executePushRequest(ctx, ingester, payload)
