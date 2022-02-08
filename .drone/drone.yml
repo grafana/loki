@@ -4,7 +4,7 @@ name: loki-build-image
 steps:
 - commands:
   - apk add --no-cache bash git
-  - echo -n "$(./loki-build-image/version.sh)" > .tag
+  - echo -n "$(./loki-build-image/version.sh)" > .tags
   depends_on:
   - clone
   image: alpine
@@ -1058,6 +1058,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 9de24924e8f55bd69c40647f29389530158bedb8850b3f38ff2e27062bdb64e6
+hmac: c65784a9d13b9b272182e628c3f0d72b88c93f20bdc7de4aa830201a4314cd01
 
 ...
