@@ -550,7 +550,7 @@ func (e *expirationChecker) MarkPhaseFinished() {
 }
 
 func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
-	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, "") || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval, "")
+	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID) || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID)
 }
 
 func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime model.Time, now model.Time) bool {
