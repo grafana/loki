@@ -338,6 +338,7 @@ local manifest(apps) = pipeline('manifest') {
         // when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
         settings: {
           repo: 'grafana/loki-build-image',
+          context: 'loki-build-image',
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },

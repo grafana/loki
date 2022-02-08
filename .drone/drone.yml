@@ -13,6 +13,7 @@ steps:
 - image: plugins/docker
   name: build-image
   settings:
+    context: loki-build-image
     dockerfile: loki-build-image/Dockerfile
     dry_run: true
     password:
@@ -1058,6 +1059,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: bcdd8490cd09de7f8d144d10256ccd94b934da5cf62a0408808dac6f89df0138
+hmac: e11b47fc1fd72ad8c9ffbdb832c46b6ac1e9cb936c7843eccfc55be5a70a1aef
 
 ...
