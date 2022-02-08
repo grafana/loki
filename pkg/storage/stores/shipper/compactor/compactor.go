@@ -408,7 +408,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 
 	interval := retention.ExtractIntervalFromTableName(tableName)
 	intervalMayHaveExpiredChunks := false
-	if c.cfg.RetentionEnabled && applyRetention {
+	if applyRetention {
 		intervalMayHaveExpiredChunks = c.expirationChecker.IntervalMayHaveExpiredChunks(interval, "")
 	}
 
@@ -424,7 +424,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	status := statusSuccess
 	start := time.Now()
 
-	if c.cfg.RetentionEnabled {
+	if applyRetention {
 		c.expirationChecker.MarkPhaseStarted()
 	}
 
@@ -439,7 +439,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 			}
 		}
 
-		if c.cfg.RetentionEnabled {
+		if applyRetention {
 			if status == statusSuccess {
 				c.expirationChecker.MarkPhaseFinished()
 			} else {
