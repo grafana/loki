@@ -3,6 +3,7 @@ package logproto
 import (
 	"encoding/json"
 	stdlibjson "encoding/json"
+	"fmt"
 	"math"
 	"testing"
 	"unsafe"
@@ -104,4 +105,64 @@ func BenchmarkFromLabelAdaptersToLabelsWithCopy(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		FromLabelAdaptersToLabelsWithCopy(input)
 	}
+}
+
+func TestLegacySampleCompatibilityMarshalling(t *testing.T) {
+	ts := int64(1232132123)
+	val := 12345.12345
+	legacySample := LegacySample{Value: val, TimestampMs: ts}
+	got, err := json.Marshal(legacySample)
+	require.NoError(t, err)
+
+	legacyExpected := fmt.Sprintf("[%d.%d,\"%.5f\"]", ts/1000, 123, val)
+	require.Equal(t, []byte(legacyExpected), got)
+
+	// proving that `logproto.Sample` marshal things differently than `logproto.LegacySample`:
+	incompatibleSample := Sample{Value: val, Timestamp: ts}
+	gotIncompatibleSample, err := json.Marshal(incompatibleSample)
+	require.NoError(t, err)
+	require.NotEqual(t, []byte(legacyExpected), gotIncompatibleSample)
+}
+
+func TestLegacySampleCompatibilityUnmarshalling(t *testing.T) {
+	serializedSample := "[123123.123,\"12345.12345\"]"
+	var legacySample LegacySample
+	err := json.Unmarshal([]byte(serializedSample), &legacySample)
+	require.NoError(t, err)
+	expectedLegacySample := LegacySample{Value: 12345.12345, TimestampMs: 123123123}
+	require.EqualValues(t, expectedLegacySample, legacySample)
+
+	// proving that `logproto.Sample` unmarshal things differently than `logproto.LegacySample`:
+	incompatibleSample := Sample{Value: 12345.12345, Timestamp: 123123123}
+	require.NotEqualValues(t, expectedLegacySample, incompatibleSample)
+}
+
+func TestLegacyLabelPairCompatibilityMarshalling(t *testing.T) {
+	legacyLabelPair := LegacyLabelPair{Name: []byte("labelname"), Value: []byte("labelvalue")}
+	got, err := json.Marshal(legacyLabelPair)
+	require.NoError(t, err)
+
+	expectedStr := `{"name":"bGFiZWxuYW1l","value":"bGFiZWx2YWx1ZQ=="}`
+	require.Equal(t, []byte(expectedStr), got)
+
+	// proving that `logproto.LegacyLabelPair` marshal things differently than `logproto.LabelPair`:
+	incompatibleLabelPair := LabelPair{Name: "labelname", Value: "labelvalue"}
+	gotIncompatible, err := json.Marshal(incompatibleLabelPair)
+	require.NoError(t, err)
+	require.NotEqual(t, []byte(expectedStr), gotIncompatible)
+}
+
+func TestLegacyLabelPairCompatibilityUnmarshalling(t *testing.T) {
+	serializedLabelPair := `{"name":"bGFiZWxuYW1l","value":"bGFiZWx2YWx1ZQ=="}`
+	var legacyLabelPair LegacyLabelPair
+	err := json.Unmarshal([]byte(serializedLabelPair), &legacyLabelPair)
+	require.NoError(t, err)
+	expectedLabelPair := LegacyLabelPair{Name: []byte("labelname"), Value: []byte("labelvalue")}
+	require.EqualValues(t, expectedLabelPair, legacyLabelPair)
+
+	// proving that `logproto.LegacyLabelPair` unmarshal things differently than `logproto.LabelPair`:
+	var incompatibleLabelPair LabelPair
+	err = json.Unmarshal([]byte(serializedLabelPair), &incompatibleLabelPair)
+	require.NoError(t, err)
+	require.NotEqualValues(t, expectedLabelPair, incompatibleLabelPair)
 }
