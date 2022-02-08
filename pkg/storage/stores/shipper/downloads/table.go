@@ -101,13 +101,15 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 
 	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(filesInfo))
 
+	// common index files are outside the directories and user index files are in the directories
 	for _, fileInfo := range filesInfo {
 		if !fileInfo.IsDir() {
 			continue
 		}
 
-		userIndexSet, err := NewIndexSet(name, fileInfo.Name(), filepath.Join(cacheLocation, fileInfo.Name()),
-			table.baseUserIndexSet, boltDBIndexClient, table.logger, metrics)
+		userID := fileInfo.Name()
+		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
+			table.baseUserIndexSet, boltDBIndexClient, loggerWithUserID(table.logger, userID), metrics)
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +119,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 			return nil, err
 		}
 
-		table.indexSets[fileInfo.Name()] = userIndexSet
+		table.indexSets[userID] = userIndexSet
 	}
 
 	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet,
@@ -155,6 +157,7 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 		return err
 	}
 
+	// query both user and common index
 	for _, uid := range []string{userID, ""} {
 		indexSet, err := t.getOrCreateIndexSet(uid)
 		if err != nil {
@@ -277,7 +280,8 @@ func (t *Table) getOrCreateIndexSet(id string) (IndexSet, error) {
 	}
 
 	// instantiate the index set, add it to the map
-	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient, t.logger, t.metrics)
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient,
+		loggerWithUserID(t.logger, id), t.metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -335,4 +339,12 @@ func (t *Table) downloadUserIndexes(ctx context.Context, userIDs []string) error
 
 		return indexSet.AwaitReady(ctx)
 	})
+}
+
+func loggerWithUserID(logger log.Logger, userID string) log.Logger {
+	if userID == "" {
+		return logger
+	}
+
+	return log.With(logger, "user-id", userID)
 }

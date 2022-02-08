@@ -117,6 +117,7 @@ func (t *indexSet) Init() (err error) {
 		return err
 	}
 
+	// open all the locally present files first to avoid downloading them again during sync operation below.
 	for _, fileInfo := range filesInfo {
 		if fileInfo.IsDir() {
 			continue
