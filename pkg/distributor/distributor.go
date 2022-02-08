@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
@@ -391,14 +390,11 @@ func (d *Distributor) sendToIngester(ctx context.Context, ingester ring.Instance
 		// (errorBucket is empty), we swap the tracker state to failed.
 		// If the state isn't already failed, we can return early and notify the
 		// tracker.
-		logger := util_log.WithContext(ctx, util_log.Logger)
 		for i := range streams {
 			if streams[i].failureBucket.Dec() >= 0 {
-				level.Warn(logger).Log("msg", "decrement failure bucket for stream", "stream", streams[i].stream.Labels, "counter", streams[i].failureBucket.Load(), "err", err)
 				continue
 			}
 			if !pushTracker.failed.Swap(true) {
-				level.Warn(logger).Log("msg", "mark push tracker as failed", "err", err)
 				pushTracker.err <- err
 			}
 		}
