@@ -326,8 +326,7 @@ local manifest(apps) = pipeline('manifest') {
         image: 'alpine',
         commands: [
           'apk add --no-cache bash git',
-          'git fetch origin --tags',
-          'echo $(./loki-build-image/version.sh) > .tag',
+          'echo $(./loki-build-image/version.sh) > .tags',
         ],
         depends_on: ['clone'],
       },
