@@ -322,15 +322,27 @@ local manifest(apps) = pipeline('manifest') {
     },
     steps: [
       {
-        name: 'build-image',
-        image: 'r.j3ss.co/img',
-        depends_on: ['clone'],
+        name: 'image-tag',
+        image: 'alpine',
         commands: [
-          'apk add --no-cache bash make',
-          'make BUILD_IN_CONTAINER=false build-image'
+          'apk add --no-cache bash git',
+          'git fetch origin --tags',
+          'echo $(./loki-build-image/version.sh) > .tag',
         ],
+        depends_on: ['clone'],
+      },
+      {
+        name: 'build-image',
+        image: 'plugins/docker',
         when: condition('include').path('loki-build-image/**'),
         // when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
+        settings: {
+          repo: 'grafana/loki-build-image',
+          dockerfile: 'loki-build-image/Dockerfile',
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
+          dry_run: true,
+        },
       },
     ],
   },

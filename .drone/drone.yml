@@ -3,12 +3,23 @@ kind: pipeline
 name: loki-build-image
 steps:
 - commands:
-  - apk add --no-cache bash make
-  - make BUILD_IN_CONTAINER=false build-image
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./loki-build-image/version.sh) > .tag
   depends_on:
   - clone
-  image: r.j3ss.co/img
+  image: alpine
+  name: image-tag
+- image: plugins/docker
   name: build-image
+  settings:
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-build-image
+    username:
+      from_secret: docker_username
   when:
     paths:
       include:
@@ -1047,6 +1058,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 462f803cf24997c38c71435ed50596078fc8774e6a2b095a56bfdc54c3db8c00
+hmac: bcdd8490cd09de7f8d144d10256ccd94b934da5cf62a0408808dac6f89df0138
 
 ...
