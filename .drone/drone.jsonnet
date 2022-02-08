@@ -322,15 +322,6 @@ local manifest(apps) = pipeline('manifest') {
     },
     steps: [
       {
-        name: 'image-tag',
-        image: 'alpine',
-        commands: [
-          'apk add --no-cache bash git',
-          'echo -n "$(./loki-build-image/version.sh)" > loki-build-image/.tags',
-        ],
-        depends_on: ['clone'],
-      },
-      {
         name: 'build-image',
         image: 'plugins/docker',
         when: condition('include').path('loki-build-image/**'),
@@ -341,6 +332,7 @@ local manifest(apps) = pipeline('manifest') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
+          tags: [build_image_version],
           dry_run: true,
         },
       },

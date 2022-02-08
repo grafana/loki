@@ -42,7 +42,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.19.0
+BUILD_IMAGE_VERSION := 0.20.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -560,7 +560,7 @@ ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
-	$(call push,loki-build-image,$(shell ./loki-build-image/version.sh))
+	$(call push,loki-build-image,$(BUILD_IMAGE_VERSION))
 	$(call push,loki-build-image,latest)
 
 

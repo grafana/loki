@@ -1,3 +1,5 @@
+# NOTICE: Change the verion in Makefile if you make a change here.
+
 FROM alpine as helm
 ARG HELM_VER="v3.2.3"
 

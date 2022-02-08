@@ -15,5 +15,3 @@ echo "grafana:*:::::::" >>/etc/shadow
 echo "grafana	ALL=(ALL)	NOPASSWD: ALL" >>/etc/sudoers
 
 su grafana -c "PATH=${PATH} make -C ${SRC_PATH} BUILD_IN_CONTAINER=false $*"
-
-# trigger build
