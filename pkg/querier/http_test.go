@@ -14,7 +14,9 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-func TestRangeQueryHandler(t *testing.T) {
+// TestRangeQueryHandlerLinks verifies that the response includes the proper slef and next links for batching.
+// The querier always returns one entry per seconds starting at Unix(100, 0). The limit is 10.
+func TestRangeQueryHandlerLinks(t *testing.T) {
 	limits, _ := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	store := newStoreMock()
 	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(100, 20), nil)
@@ -22,8 +24,6 @@ func TestRangeQueryHandler(t *testing.T) {
 	queryClient := newQueryClientMock()
 	ingesterClient := newQuerierClientMock()
 	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
-	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(100, 1)}), nil).Once()
-	queryClient.On("Recv").Return(nil, io.EOF).Once()
 
 	q, err := newQuerier(
 		mockQuerierConfig(),
@@ -33,29 +33,50 @@ func TestRangeQueryHandler(t *testing.T) {
 		store, limits)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest("GET", "/query_range", nil)
-	req = req.WithContext(user.InjectOrgID(req.Context(), "foobar"))
-	rq := req.URL.Query()
-	rq.Add("query", "{type=\"test\"}")
-	rq.Add("direction", "forward")
-	rq.Add("limit", "10")
-	rq.Add("start", "100000000000")
-	rq.Add("end", "200000000000")
-	req.URL.RawQuery = rq.Encode()
-	err = req.ParseForm()
-	require.NoError(t, err)
-	w := httptest.NewRecorder()
-	q.RangeQueryHandler(w, req)
+	for _, tc := range []struct {
+		direction string
+		self      string
+		next      string
+	}{
+		{
+			"forward",
+			"/loki/api/v1/query_range?direction=FORWARD&end=120000000000&interval=0&limit=10&query=%7Btype%3D%22test%22%7D&start=100000000000&step=1000000000",
+			"/loki/api/v1/query_range?direction=FORWARD&end=120000000000&interval=0&limit=10&query=%7Btype%3D%22test%22%7D&start=109000000001&step=1000000000",
+		},
+		{
+			"backward",
+			"/loki/api/v1/query_range?direction=BACKWARD&end=120000000000&interval=0&limit=10&query=%7Btype%3D%22test%22%7D&start=100000000000&step=1000000000",
+			"/loki/api/v1/query_range?direction=BACKWARD&end=100000000000&interval=0&limit=10&query=%7Btype%3D%22test%22%7D&start=100000000000&step=1000000000",
+		},
+	} {
+		t.Run(tc.direction, func(t *testing.T) {
+			queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(100, 1)}), nil).Once()
+			queryClient.On("Recv").Return(nil, io.EOF).Once()
 
-	resp := w.Result()
-	body, err := ioutil.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equalf(t, 200, resp.StatusCode, "request failed: %s", string(body))
+			req := httptest.NewRequest("GET", "/query_range", nil)
+			req = req.WithContext(user.InjectOrgID(req.Context(), "foobar"))
+			rq := req.URL.Query()
+			rq.Add("query", "{type=\"test\"}")
+			rq.Add("direction", tc.direction)
+			rq.Add("limit", "10")
+			rq.Add("start", "100000000000")
+			rq.Add("end", "120000000000")
+			req.URL.RawQuery = rq.Encode()
+			err = req.ParseForm()
+			require.NoError(t, err)
+			w := httptest.NewRecorder()
+			q.RangeQueryHandler(w, req)
 
-	self := jsoniter.Get(body, "links", 0, "href").ToString()
-	require.Equal(t, "/loki/api/v1/query_range?direction=FORWARD&end=200000000000&interval=0&limit=10&query=%7Btype%3D%22test%22%7D&start=100000000000&step=1000000000", self)
+			resp := w.Result()
+			body, err := ioutil.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equalf(t, 200, resp.StatusCode, "request failed: %s", string(body))
 
-	next := jsoniter.Get(body, "links", 1, "href").ToString()
-	// Since the limit is 10 we get the first ten seconds, ie [100, 109].
-	require.Equal(t, "/loki/api/v1/query_range?direction=FORWARD&end=200000000000&interval=0&limit=10&query=%7Btype%3D%22test%22%7D&start=109000000001&step=1000000000", next)
+			self := jsoniter.Get(body, "links", 0, "href").ToString()
+			require.Equal(t, tc.self, self)
+
+			next := jsoniter.Get(body, "links", 1, "href").ToString()
+			require.Equal(t, tc.next, next)
+		})
+	}
 }
