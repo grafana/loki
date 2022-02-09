@@ -574,7 +574,7 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.2
 ## explicit; go 1.12
 github.com/gorilla/websocket
-# github.com/grafana/dskit v0.0.0-20220105080720-01ce9286d7d5
+# github.com/grafana/dskit v0.0.0-20220209070952-ea22a8f662d0
 ## explicit; go 1.16
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/concurrency

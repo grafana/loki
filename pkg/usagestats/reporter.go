@@ -3,7 +3,6 @@ package usagestats
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"io"
 	"math"
@@ -33,7 +32,7 @@ const (
 
 var (
 	reportCheckInterval = time.Minute
-	reportInterval      = 2 * time.Hour
+	reportInterval      = 1 * time.Hour
 )
 
 type Config struct {
@@ -74,23 +73,11 @@ func NewReporter(config Config, kvConfig kv.Config, objectClient chunk.ObjectCli
 		conf:         config,
 		reg:          reg,
 	}
-	r.Service = services.NewBasicService(r.starting, r.running, nil)
+	r.Service = services.NewBasicService(nil, r.running, nil)
 	return r, nil
 }
 
-func (rep *Reporter) starting(ctx context.Context) error {
-	if rep.conf.Leader {
-		return rep.initLeader(ctx)
-	}
-	// follower only wait for the cluster seed to be set.
-	seed, err := rep.fetchSeed(ctx, nil)
-	if err == nil {
-		rep.cluster = seed
-	}
-	return err
-}
-
-func (rep *Reporter) initLeader(ctx context.Context) error {
+func (rep *Reporter) initLeader(ctx context.Context) *ClusterSeed {
 	// Try to become leader via the kv client
 	for backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: time.Second,
@@ -129,14 +116,23 @@ func (rep *Reporter) initLeader(ctx context.Context) error {
 					level.Info(rep.logger).Log("msg", "failed to CAS cluster seed key", "err", err)
 					continue
 				}
-				rep.cluster = &seed
-				return nil
+				return &seed
 			}
 			continue
 		}
-		rep.cluster = remoteSeed
-		return nil
+		return remoteSeed
 	}
+}
+
+func (rep *Reporter) init(ctx context.Context) {
+	if rep.conf.Leader {
+		rep.cluster = rep.initLeader(ctx)
+		return
+	}
+	// follower only wait for the cluster seed to be set.
+	// it will try forever to fetch the cluster seed.
+	seed, _ := rep.fetchSeed(ctx, nil)
+	rep.cluster = seed
 }
 
 // fetchSeed fetches the cluster seed from the object store and try until it succeeds.
@@ -206,9 +202,8 @@ func (rep *Reporter) writeSeedFile(ctx context.Context, seed ClusterSeed) error 
 }
 
 func (rep *Reporter) running(ctx context.Context) error {
-	if rep.cluster == nil {
-		return errors.New("cluster seed is missing")
-	}
+	rep.init(ctx)
+
 	// check every minute if we should report.
 	ticker := time.NewTicker(reportCheckInterval)
 	defer ticker.Stop()

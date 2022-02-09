@@ -18,16 +18,16 @@ import (
 
 // Config for a gRPC client.
 type Config struct {
-	MaxRecvMsgSize  int     `yaml:"max_recv_msg_size"`
-	MaxSendMsgSize  int     `yaml:"max_send_msg_size"`
-	GRPCCompression string  `yaml:"grpc_compression"`
-	RateLimit       float64 `yaml:"rate_limit"`
-	RateLimitBurst  int     `yaml:"rate_limit_burst"`
+	MaxRecvMsgSize  int     `yaml:"max_recv_msg_size" category:"advanced"`
+	MaxSendMsgSize  int     `yaml:"max_send_msg_size" category:"advanced"`
+	GRPCCompression string  `yaml:"grpc_compression" category:"advanced"`
+	RateLimit       float64 `yaml:"rate_limit" category:"advanced"`
+	RateLimitBurst  int     `yaml:"rate_limit_burst" category:"advanced"`
 
-	BackoffOnRatelimits bool           `yaml:"backoff_on_ratelimits"`
+	BackoffOnRatelimits bool           `yaml:"backoff_on_ratelimits" category:"advanced"`
 	BackoffConfig       backoff.Config `yaml:"backoff_config"`
 
-	TLSEnabled bool             `yaml:"tls_enabled"`
+	TLSEnabled bool             `yaml:"tls_enabled" category:"advanced"`
 	TLS        tls.ClientConfig `yaml:",inline"`
 }
 

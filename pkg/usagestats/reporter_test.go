@@ -34,7 +34,7 @@ func Test_LeaderElection(t *testing.T) {
 				Store: "inmemory",
 			}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 			require.NoError(t, err)
-			require.NoError(t, r.starting(context.Background()))
+			r.init(context.Background())
 			result <- r.cluster
 		}()
 	}
@@ -44,7 +44,7 @@ func Test_LeaderElection(t *testing.T) {
 				Store: "inmemory",
 			}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 			require.NoError(t, err)
-			require.NoError(t, r.starting(context.Background()))
+			r.init(context.Background())
 			result <- r.cluster
 		}()
 	}
@@ -95,7 +95,7 @@ func Test_ReportLoop(t *testing.T) {
 	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
 
-	require.NoError(t, r.initLeader(context.Background()))
+	r.initLeader(context.Background())
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
