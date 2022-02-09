@@ -308,6 +308,24 @@ And `<stream value>` is:
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
+### Batching
+
+If the response is a stream it will include a `links` field with API calls to the current and next batch. Since a range query is always limited the response might not always include all entries for a query. In order to retrieve all entries the `next` call could be used to retreive the next batch.
+
+```
+{
+  "status": "success",
+  "data": {
+    "resultType": "matrix" | "streams",
+    "result": [<matrix value>] | [<stream value>]
+    "stats" : [<statistics>]
+  },
+  "links": [
+    {"rel": "self", "href": "/loki/api/v1/query_range?query..."},
+    {"rel": "next", "href": "/loki/api/v1/query_range?query..."},
+  ]
+}
+```
 ### Examples
 
 ```bash
