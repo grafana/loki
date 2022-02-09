@@ -276,7 +276,10 @@ lint:
 ########
 
 test: all
-	GOGC=10 $(GOTEST) -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./...
+	GOGC=10 $(GOTEST) -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./... | tee test_results.txt
+
+compare-coverage:
+	./tools/diff_coverage.sh $(old) $(new)
 
 #########
 # Clean #
