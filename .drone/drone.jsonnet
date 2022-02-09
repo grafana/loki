@@ -343,6 +343,7 @@ local manifest(apps) = pipeline('manifest') {
       base: '/src',
       path: 'loki',
     },
+    depends_on: ['loki-build-image'],
     steps: [
       make('check-generated-files', container=false) { depends_on: ['clone'] },
       make('test', container=false) { depends_on: ['clone', 'check-generated-files'] },

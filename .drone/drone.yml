@@ -27,6 +27,8 @@ workspace:
   base: /src
   path: loki
 ---
+depends_on:
+- loki-build-image
 kind: pipeline
 name: check
 steps:
@@ -1053,6 +1055,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 7793000225ebd6df6174f9fcdbe3c7da01de287dd8854968a34870c5af7574d5
+hmac: f4669676e95ef727e4fef744320418d57c1ac84dd100aeb45ea29e9dfc49d85a
 
 ...
