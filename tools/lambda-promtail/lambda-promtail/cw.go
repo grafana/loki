@@ -21,8 +21,13 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 		model.LabelName("__aws_cloudwatch_log_group"): model.LabelValue(data.LogGroup),
 		model.LabelName("__aws_cloudwatch_owner"):     model.LabelValue(data.Owner),
 	}
+
 	if keepStream {
 		labels[model.LabelName("__aws_cloudwatch_log_stream")] = model.LabelValue(data.LogStream)
+	}
+
+	for _, label := range extraLabels {
+		labels[model.LabelName("__extra_" + label.key)] = model.LabelValue(label.value)
 	}
 
 	for _, event := range data.LogEvents {

@@ -22,12 +22,19 @@ const (
 	maxErrMsgLen = 1024
 )
 
+type extraLabel struct {
+	key  string
+	value  string
+}
+
+
 var (
 	writeAddress       *url.URL
-	username, password string
+	username, password, extraLabelsRaw string
 	keepStream         bool
 	batchSize          int
 	s3Clients          map[string]*s3.Client
+	extraLabels        []extraLabel
 )
 
 func init() {
@@ -46,6 +53,17 @@ func init() {
 
 	username = os.Getenv("USERNAME")
 	password = os.Getenv("PASSWORD")
+
+	extraLabelsRaw = os.Getenv("EXTRA_LABELS")
+	if len(extraLabelsRaw) != 0{
+		var extraLabelsByte = []byte(extraLabelsRaw)
+
+		err = json.Unmarshal(extraLabelsByte, &extraLabels)
+
+		if err != nil {
+			panic(err)
+		}
+	}
 
 	// If either username or password is set then both must be.
 	if (username != "" && password == "") || (username == "" && password != "") {

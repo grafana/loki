@@ -108,6 +108,10 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 		}
 	}
 
+	for _, label := range extraLabels {
+		labels["__extra_" + label.key] = label.value
+	}
+
 	return labels, nil
 }
 
