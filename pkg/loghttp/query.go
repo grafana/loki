@@ -157,12 +157,6 @@ func (s Streams) ToProto() []logproto.Stream {
 }
 
 func (ss Streams) LastEntries() []*Entry {
-	// TODO: reword comment
-	// Loki allows multiple entries at the same timestamp, this is a bit of a mess if a batch ends
-	// with an entry that shared multiple timestamps, so we need to keep a list of all these entries
-	// because the next query is going to contain them too and we want to not duplicate anything already
-	// printed.
-
 	lel := []*Entry{}
 	// Start with the timestamp of the last entry
 	e := ss[len(ss)-1].Entries

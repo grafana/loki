@@ -348,6 +348,10 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 		printed++
 	}
 
+	// Loki allows multiple entries at the same timestamp, this is a bit of a mess if a batch ends
+	// with an entry that shared multiple timestamps, so we need to keep a list of all these entries
+	// because the next query is going to contain them too and we want to not duplicate anything already
+	// printed.
 	return printed, streams.LastEntries()
 }
 
