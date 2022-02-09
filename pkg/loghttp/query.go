@@ -56,13 +56,11 @@ func NewNextLink(request *RangeQuery, ts time.Time) Link {
 	q := request
 
 	// Based on the query direction we either set the start or end for the next query.
-	// If there are multiple entries in `lastEntry` they have to have the same timestamp so we can pick just the first
 	if q.Direction == logproto.FORWARD {
-		q.Start = ts
+		q.Start = ts.Add(1 * time.Nanosecond)
 	} else {
-		// The end timestamp is exclusive on a backward query, so to make sure we get back an overlapping result
-		// fudge the timestamp forward in time to make sure to get the last entry from this batch in the next query
-		q.End = ts.Add(1 * time.Nanosecond)
+		// The end timestamp is exclusive on a backward query.
+		q.End = ts
 	}
 
 	return Link{

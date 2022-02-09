@@ -100,6 +100,7 @@ func parseInt(value string, def int) (int, error) {
 
 // parseUnixNano parses a ns unix timestamp from a string
 // if the value is empty it returns a default value passed as second parameter
+// if the value is ten digits or less it is interpreted as seconds.
 func parseTimestamp(value string, def time.Time) (time.Time, error) {
 	if value == "" {
 		return def, nil
