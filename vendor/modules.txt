@@ -649,6 +649,10 @@ github.com/grafana/dskit/ring/util
 github.com/grafana/dskit/runtimeconfig
 github.com/grafana/dskit/services
 github.com/grafana/dskit/spanlogger
+# github.com/grafana/regexp v0.0.0-20220202152701-6a046c4caf32
+## explicit; go 1.17
+github.com/grafana/regexp
+github.com/grafana/regexp/syntax
 # github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 ## explicit; go 1.14
 github.com/grpc-ecosystem/go-grpc-middleware

@@ -70,8 +70,8 @@ Where default_value is the value to use if the environment variable is undefined
 - `<filename>`: a valid path relative to current working directory or an
     absolute path.
 - `<host>`: a valid string consisting of a hostname or IP followed by an optional port number
-- `<string>`: a regular string
-- `<secret>`: a regular string that is a secret, such as a password
+- `<string>`: a string
+- `<secret>`: a string that represents a secret, such as a password
 
 ### Supported contents and default values of `config.yaml`:
 

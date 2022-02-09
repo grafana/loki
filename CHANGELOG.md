@@ -1,6 +1,7 @@
 ## Main
 
 * [5355](https://github.com/grafana/loki/pull/5355) **jeschkies** Inlcude batch links in range query response.
+* [5289](https://github.com/grafana/loki/pull/5289) **ctovena**: Fix deduplication bug in queries when mutating labels.
 * [5302](https://github.com/grafana/loki/pull/5302) **MasslessParticle** Update azure blobstore client to use new sdk.
 * [5243](https://github.com/grafana/loki/pull/5290) **ssncferreira**: Update Promtail to support duration string formats.
 * [5266](https://github.com/grafana/loki/pull/5266) **jeschkies**: Write Promtail position file atomically on Unix.
@@ -20,6 +21,7 @@
 * [5081](https://github.com/grafana/loki/pull/5081) **SasSwart**: Add the option to configure memory ballast for Loki
 * [5085](https://github.com/grafana/loki/pull/5085) **aknuds1**: Upgrade Cortex to [e0807c4eb487](https://github.com/cortexproject/cortex/compare/4e9fc3a2b5ab..e0807c4eb487) and Prometheus to [692a54649ed7](https://github.com/prometheus/prometheus/compare/2a3d62ac8456..692a54649ed7)
 * [5067](https://github.com/grafana/loki/pull/5057) **cstyan**: Add a metric to Azure Blob Storage client to track total egress bytes
+* [5065](https://github.com/grafana/loki/pull/5065) **AndreZiviani**: lambda-promtail: Add ability to ingest logs from S3
 * [4950](https://github.com/grafana/loki/pull/4950) **DylanGuedes**: Implement common instance addr/net interface
 * [4949](https://github.com/grafana/loki/pull/4949) **ssncferreira**: Add query `queueTime` metric to statistics and metrics.go
 * [4938](https://github.com/grafana/loki/pull/4938) **DylanGuedes**: Implement ring status page for the distributor
@@ -52,6 +54,7 @@
 * [5077](https://github.com/grafana/loki/pull/5077) **trevorwhitney**: Change some default values for better out-of-the-box performance
 * [5204](https://github.com/grafana/loki/pull/5204) **trevorwhitney**: Default `max_outstanding_per_tenant` to `2048`
 * [5253](https://github.com/grafana/loki/pull/5253) **Juneezee**: refactor: use `T.TempDir` to create temporary test directory
+* [5315](https://github.com/grafana/loki/pull/5315) **bboreham**: filters: use faster regexp package
 
 # 2.4.1 (2021/11/07)
 

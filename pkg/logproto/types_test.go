@@ -12,6 +12,7 @@ var (
 	line   = `level=info ts=2019-12-12T15:00:08.325Z caller=compact.go:441 component=tsdb msg="compact blocks" count=3 mint=1576130400000 maxt=1576152000000 ulid=01DVX9ZHNM71GRCJS7M34Q0EV7 sources="[01DVWNC6NWY1A60AZV3Z6DGS65 01DVWW7XXX75GHA6ZDTD170CSZ 01DVX33N5W86CWJJVRPAVXJRWJ]" duration=2.897213221s`
 	stream = Stream{
 		Labels: `{job="foobar", cluster="foo-central1", namespace="bar", container_name="buzz"}`,
+		Hash:   1234*10 ^ 9,
 		Entries: []Entry{
 			{now, line},
 			{now.Add(1 * time.Second), line},
@@ -21,6 +22,7 @@ var (
 	}
 	streamAdapter = StreamAdapter{
 		Labels: `{job="foobar", cluster="foo-central1", namespace="bar", container_name="buzz"}`,
+		Hash:   1234*10 ^ 9,
 		Entries: []EntryAdapter{
 			{now, line},
 			{now.Add(1 * time.Second), line},
@@ -91,7 +93,6 @@ func BenchmarkStream(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-
 }
 
 func BenchmarkStreamAdapter(b *testing.B) {
@@ -107,5 +108,4 @@ func BenchmarkStreamAdapter(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-
 }

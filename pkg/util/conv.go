@@ -1,7 +1,6 @@
 package util
 
 import (
-	"math"
 	"time"
 	"unsafe"
 
@@ -28,8 +27,15 @@ func MapToModelLabelSet(m map[string]string) model.LabelSet {
 // RoundToMilliseconds returns milliseconds precision time from nanoseconds.
 // from will be rounded down to the nearest milliseconds while through is rounded up.
 func RoundToMilliseconds(from, through time.Time) (model.Time, model.Time) {
-	return model.Time(int64(math.Floor(float64(from.UnixNano()) / float64(time.Millisecond)))),
-		model.Time(int64(math.Ceil(float64(through.UnixNano()) / float64(time.Millisecond))))
+	fromMs := from.UnixNano() / int64(time.Millisecond)
+	throughMs := through.UnixNano() / int64(time.Millisecond)
+
+	// add a millisecond to the through time if the nanosecond offset within the second is not a multiple of milliseconds
+	if int64(through.Nanosecond())%int64(time.Millisecond) != 0 {
+		throughMs++
+	}
+
+	return model.Time(fromMs), model.Time(throughMs)
 }
 
 // LabelsToMetric converts a Labels to Metric

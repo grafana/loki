@@ -156,6 +156,10 @@ func Benchmark_LineFilter(b *testing.B) {
 		{".*foo.*|bar|uzz"},
 		{"((f.*)|foobar.*)|.*buzz"},
 		{"(?P<foo>.*foo.*|bar)"},
+		{"(\\s|\")+(?i)bar"},
+		{"(node:24) buzz*"},
+		{"(HTTP/.*\\\"|HEAD|GET) (2..|5..)"},
+		{"\"@l\":\"(Warning|Error|Fatal)\""},
 	} {
 		benchmarkRegex(b, test.re, logline, true)
 		benchmarkRegex(b, test.re, logline, false)
@@ -180,16 +184,12 @@ func benchmarkRegex(b *testing.B, re, line string, match bool) {
 	b.ResetTimer()
 	b.Run(fmt.Sprintf("default_%v_%s", match, re), func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			for j := 0; j < 1e6; j++ {
-				m = d.Filter(l)
-			}
+			m = d.Filter(l)
 		}
 	})
 	b.Run(fmt.Sprintf("simplified_%v_%s", match, re), func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			for j := 0; j < 1e6; j++ {
-				m = s.Filter(l)
-			}
+			m = s.Filter(l)
 		}
 	})
 	res = m
