@@ -19,6 +19,11 @@ steps:
     paths:
       include:
       - loki-build-image/**
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
 trigger:
   event:
   - push
@@ -1053,6 +1058,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 7174d9bfb7db4858266578e5b1d5e15a94eb7d89d134a577e452f0d82c8b4136
+hmac: d9e5236a5786352d3fa03700d72566995c0f37be5d992e7f478ef3a978f58815
 
 ...

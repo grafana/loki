@@ -324,8 +324,7 @@ local manifest(apps) = pipeline('manifest') {
       {
         name: 'push-image',
         image: 'plugins/docker',
-        //when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
-        when: condition('include').path('loki-build-image/**'),
+        when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
