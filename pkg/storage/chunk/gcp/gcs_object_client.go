@@ -135,9 +135,6 @@ func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, size int64, err error) {
 	reader, err := s.getsBuckets.Object(objectKey).NewReader(ctx)
 	if err != nil {
-		if err == storage.ErrObjectNotExist {
-			return nil, 0, chunk.ErrStorageObjectNotFound
-		}
 		return nil, 0, err
 	}
 
