@@ -1,6 +1,6 @@
 ## Main
 
-* [5355](https://github.com/grafana/loki/pull/5355) **jeschkies** Inlcude batch links in range query response.
+* [5355](https://github.com/grafana/loki/pull/5355) **jeschkies** Include batch links in range query response.
 * [5289](https://github.com/grafana/loki/pull/5289) **ctovena**: Fix deduplication bug in queries when mutating labels.
 * [5302](https://github.com/grafana/loki/pull/5302) **MasslessParticle** Update azure blobstore client to use new sdk.
 * [5243](https://github.com/grafana/loki/pull/5290) **ssncferreira**: Update Promtail to support duration string formats.
