@@ -129,7 +129,9 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
 	}
-	defaultRetentionStats.Set(limits.DefaultLimits().RetentionPeriod.String())
+	if limits != nil {
+		defaultRetentionStats.Set(limits.DefaultLimits().RetentionPeriod.String())
+	}
 	if cfg.SharedStoreType == "" {
 		return nil, errors.New("compactor shared_store_type must be specified")
 	}
