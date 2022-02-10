@@ -247,12 +247,12 @@ func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error 
 	var errs multierror.MultiError
 	for backoff.Ongoing() {
 		if err := sendReport(ctx, rep.cluster, interval); err != nil {
-			level.Info(rep.logger).Log("msg", "failed to send stats", "retries", backoff.NumRetries(), "err", err)
+			level.Info(rep.logger).Log("msg", "failed to send usage report", "retries", backoff.NumRetries(), "err", err)
 			errs.Add(err)
 			backoff.Wait()
 			continue
 		}
-		level.Debug(rep.logger).Log("msg", "usage report send with success")
+		level.Debug(rep.logger).Log("msg", "usage report sent with success")
 		return nil
 	}
 	return errs.Err()
