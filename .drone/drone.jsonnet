@@ -322,29 +322,17 @@ local manifest(apps) = pipeline('manifest') {
     },
     steps: [
       {
-        name: 'build-image',
-        image: 'plugins/docker',
-        when: condition('include').path('loki-build-image/**'),
-        settings: {
-          repo: 'grafana/loki-build-image',
-          context: 'loki-build-image',
-          dockerfile: 'loki-build-image/Dockerfile',
-          tags: [build_image_version],
-          dry_run: true,
-          purge: false,
-        },
-      },
-      {
         name: 'push-image',
         image: 'plugins/docker',
-        when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
+        //when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
+        when: condition('include').path('loki-build-image/**'),
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: [build_image_version],
+          tags: ['0.20.0'],
           dry_run: false,
         },
       },
@@ -355,7 +343,6 @@ local manifest(apps) = pipeline('manifest') {
       base: '/src',
       path: 'loki',
     },
-    depends_on: ['loki-build-image'],
     steps: [
       make('check-generated-files', container=false) { depends_on: ['clone'] },
       make('test', container=false) { depends_on: ['clone', 'check-generated-files'] },
