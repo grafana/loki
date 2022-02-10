@@ -19,6 +19,8 @@ func DecWith(b []byte) (res Decbuf) {
 	return res
 }
 
+func DecWrap(inner encoding.Decbuf) Decbuf { return Decbuf{Decbuf: inner} }
+
 // Decbuf extends encoding.Decbuf with support for multi byte decoding
 type Decbuf struct {
 	encoding.Decbuf
