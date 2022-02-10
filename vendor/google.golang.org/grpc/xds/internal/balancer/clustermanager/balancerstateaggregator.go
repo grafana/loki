@@ -183,13 +183,18 @@ func (bsa *balancerStateAggregator) build() balancer.State {
 	// handling the special connecting after ready, as in UpdateState(). Then a
 	// function to calculate the aggregated connectivity state as in this
 	// function.
-	var readyN, connectingN int
+	//
+	// TODO: use balancer.ConnectivityStateEvaluator to calculate the aggregated
+	// state.
+	var readyN, connectingN, idleN int
 	for _, ps := range bsa.idToPickerState {
 		switch ps.stateToAggregate {
 		case connectivity.Ready:
 			readyN++
 		case connectivity.Connecting:
 			connectingN++
+		case connectivity.Idle:
+			idleN++
 		}
 	}
 	var aggregatedState connectivity.State
@@ -198,6 +203,8 @@ func (bsa *balancerStateAggregator) build() balancer.State {
 		aggregatedState = connectivity.Ready
 	case connectingN > 0:
 		aggregatedState = connectivity.Connecting
+	case idleN > 0:
+		aggregatedState = connectivity.Idle
 	default:
 		aggregatedState = connectivity.TransientFailure
 	}

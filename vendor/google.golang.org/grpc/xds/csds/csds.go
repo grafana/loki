@@ -26,7 +26,6 @@ package csds
 import (
 	"context"
 	"io"
-	"time"
 
 	v3adminpb "github.com/envoyproxy/go-control-plane/envoy/admin/v3"
 	v2corepb "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
@@ -38,10 +37,11 @@ import (
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/xds/internal/xdsclient"
+	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	_ "google.golang.org/grpc/xds/internal/xdsclient/v2" // Register v2 xds_client.
-	_ "google.golang.org/grpc/xds/internal/xdsclient/v3" // Register v3 xds_client.
+	_ "google.golang.org/grpc/xds/internal/xdsclient/controller/version/v2" // Register v2 xds_client.
+	_ "google.golang.org/grpc/xds/internal/xdsclient/controller/version/v3" // Register v3 xds_client.
 )
 
 var (
@@ -54,6 +54,13 @@ var (
 		}
 		return c
 	}
+)
+
+const (
+	listenerTypeURL    = "envoy.config.listener.v3.Listener"
+	routeConfigTypeURL = "envoy.config.route.v3.RouteConfiguration"
+	clusterTypeURL     = "envoy.config.cluster.v3.Cluster"
+	endpointsTypeURL   = "envoy.config.endpoint.v3.ClusterLoadAssignment"
 )
 
 // ClientStatusDiscoveryServer implementations interface ClientStatusDiscoveryServiceServer.
@@ -108,16 +115,21 @@ func (s *ClientStatusDiscoveryServer) buildClientStatusRespForReq(req *v3statusp
 		return nil, status.Errorf(codes.InvalidArgument, "node_matchers are not supported, request contains node_matchers: %v", req.NodeMatchers)
 	}
 
+	lds := dumpToGenericXdsConfig(listenerTypeURL, s.xdsClient.DumpLDS)
+	rds := dumpToGenericXdsConfig(routeConfigTypeURL, s.xdsClient.DumpRDS)
+	cds := dumpToGenericXdsConfig(clusterTypeURL, s.xdsClient.DumpCDS)
+	eds := dumpToGenericXdsConfig(endpointsTypeURL, s.xdsClient.DumpEDS)
+	configs := make([]*v3statuspb.ClientConfig_GenericXdsConfig, 0, len(lds)+len(rds)+len(cds)+len(eds))
+	configs = append(configs, lds...)
+	configs = append(configs, rds...)
+	configs = append(configs, cds...)
+	configs = append(configs, eds...)
+
 	ret := &v3statuspb.ClientStatusResponse{
 		Config: []*v3statuspb.ClientConfig{
 			{
-				Node: nodeProtoToV3(s.xdsClient.BootstrapConfig().NodeProto),
-				XdsConfig: []*v3statuspb.PerXdsConfig{
-					s.buildLDSPerXDSConfig(),
-					s.buildRDSPerXDSConfig(),
-					s.buildCDSPerXDSConfig(),
-					s.buildEDSPerXDSConfig(),
-				},
+				Node:              nodeProtoToV3(s.xdsClient.BootstrapConfig().XDSServer.NodeProto),
+				GenericXdsConfigs: configs,
 			},
 		},
 	}
@@ -162,142 +174,41 @@ func nodeProtoToV3(n proto.Message) *v3corepb.Node {
 	return node
 }
 
-func (s *ClientStatusDiscoveryServer) buildLDSPerXDSConfig() *v3statuspb.PerXdsConfig {
-	version, dump := s.xdsClient.DumpLDS()
-	var resources []*v3adminpb.ListenersConfigDump_DynamicListener
+func dumpToGenericXdsConfig(typeURL string, dumpF func() map[string]xdsresource.UpdateWithMD) []*v3statuspb.ClientConfig_GenericXdsConfig {
+	dump := dumpF()
+	ret := make([]*v3statuspb.ClientConfig_GenericXdsConfig, 0, len(dump))
 	for name, d := range dump {
-		configDump := &v3adminpb.ListenersConfigDump_DynamicListener{
+		config := &v3statuspb.ClientConfig_GenericXdsConfig{
+			TypeUrl:      typeURL,
 			Name:         name,
-			ClientStatus: serviceStatusToProto(d.MD.Status),
-		}
-		if (d.MD.Timestamp != time.Time{}) {
-			configDump.ActiveState = &v3adminpb.ListenersConfigDump_DynamicListenerState{
-				VersionInfo: d.MD.Version,
-				Listener:    d.Raw,
-				LastUpdated: timestamppb.New(d.MD.Timestamp),
-			}
-		}
-		if errState := d.MD.ErrState; errState != nil {
-			configDump.ErrorState = &v3adminpb.UpdateFailureState{
-				LastUpdateAttempt: timestamppb.New(errState.Timestamp),
-				Details:           errState.Err.Error(),
-				VersionInfo:       errState.Version,
-			}
-		}
-		resources = append(resources, configDump)
-	}
-	return &v3statuspb.PerXdsConfig{
-		PerXdsConfig: &v3statuspb.PerXdsConfig_ListenerConfig{
-			ListenerConfig: &v3adminpb.ListenersConfigDump{
-				VersionInfo:      version,
-				DynamicListeners: resources,
-			},
-		},
-	}
-}
-
-func (s *ClientStatusDiscoveryServer) buildRDSPerXDSConfig() *v3statuspb.PerXdsConfig {
-	_, dump := s.xdsClient.DumpRDS()
-	var resources []*v3adminpb.RoutesConfigDump_DynamicRouteConfig
-	for _, d := range dump {
-		configDump := &v3adminpb.RoutesConfigDump_DynamicRouteConfig{
 			VersionInfo:  d.MD.Version,
+			XdsConfig:    d.Raw,
+			LastUpdated:  timestamppb.New(d.MD.Timestamp),
 			ClientStatus: serviceStatusToProto(d.MD.Status),
 		}
-		if (d.MD.Timestamp != time.Time{}) {
-			configDump.RouteConfig = d.Raw
-			configDump.LastUpdated = timestamppb.New(d.MD.Timestamp)
-		}
 		if errState := d.MD.ErrState; errState != nil {
-			configDump.ErrorState = &v3adminpb.UpdateFailureState{
+			config.ErrorState = &v3adminpb.UpdateFailureState{
 				LastUpdateAttempt: timestamppb.New(errState.Timestamp),
 				Details:           errState.Err.Error(),
 				VersionInfo:       errState.Version,
 			}
 		}
-		resources = append(resources, configDump)
+		ret = append(ret, config)
 	}
-	return &v3statuspb.PerXdsConfig{
-		PerXdsConfig: &v3statuspb.PerXdsConfig_RouteConfig{
-			RouteConfig: &v3adminpb.RoutesConfigDump{
-				DynamicRouteConfigs: resources,
-			},
-		},
-	}
+	return ret
 }
 
-func (s *ClientStatusDiscoveryServer) buildCDSPerXDSConfig() *v3statuspb.PerXdsConfig {
-	version, dump := s.xdsClient.DumpCDS()
-	var resources []*v3adminpb.ClustersConfigDump_DynamicCluster
-	for _, d := range dump {
-		configDump := &v3adminpb.ClustersConfigDump_DynamicCluster{
-			VersionInfo:  d.MD.Version,
-			ClientStatus: serviceStatusToProto(d.MD.Status),
-		}
-		if (d.MD.Timestamp != time.Time{}) {
-			configDump.Cluster = d.Raw
-			configDump.LastUpdated = timestamppb.New(d.MD.Timestamp)
-		}
-		if errState := d.MD.ErrState; errState != nil {
-			configDump.ErrorState = &v3adminpb.UpdateFailureState{
-				LastUpdateAttempt: timestamppb.New(errState.Timestamp),
-				Details:           errState.Err.Error(),
-				VersionInfo:       errState.Version,
-			}
-		}
-		resources = append(resources, configDump)
-	}
-	return &v3statuspb.PerXdsConfig{
-		PerXdsConfig: &v3statuspb.PerXdsConfig_ClusterConfig{
-			ClusterConfig: &v3adminpb.ClustersConfigDump{
-				VersionInfo:           version,
-				DynamicActiveClusters: resources,
-			},
-		},
-	}
-}
-
-func (s *ClientStatusDiscoveryServer) buildEDSPerXDSConfig() *v3statuspb.PerXdsConfig {
-	_, dump := s.xdsClient.DumpEDS()
-	var resources []*v3adminpb.EndpointsConfigDump_DynamicEndpointConfig
-	for _, d := range dump {
-		configDump := &v3adminpb.EndpointsConfigDump_DynamicEndpointConfig{
-			VersionInfo:  d.MD.Version,
-			ClientStatus: serviceStatusToProto(d.MD.Status),
-		}
-		if (d.MD.Timestamp != time.Time{}) {
-			configDump.EndpointConfig = d.Raw
-			configDump.LastUpdated = timestamppb.New(d.MD.Timestamp)
-		}
-		if errState := d.MD.ErrState; errState != nil {
-			configDump.ErrorState = &v3adminpb.UpdateFailureState{
-				LastUpdateAttempt: timestamppb.New(errState.Timestamp),
-				Details:           errState.Err.Error(),
-				VersionInfo:       errState.Version,
-			}
-		}
-		resources = append(resources, configDump)
-	}
-	return &v3statuspb.PerXdsConfig{
-		PerXdsConfig: &v3statuspb.PerXdsConfig_EndpointConfig{
-			EndpointConfig: &v3adminpb.EndpointsConfigDump{
-				DynamicEndpointConfigs: resources,
-			},
-		},
-	}
-}
-
-func serviceStatusToProto(serviceStatus xdsclient.ServiceStatus) v3adminpb.ClientResourceStatus {
+func serviceStatusToProto(serviceStatus xdsresource.ServiceStatus) v3adminpb.ClientResourceStatus {
 	switch serviceStatus {
-	case xdsclient.ServiceStatusUnknown:
+	case xdsresource.ServiceStatusUnknown:
 		return v3adminpb.ClientResourceStatus_UNKNOWN
-	case xdsclient.ServiceStatusRequested:
+	case xdsresource.ServiceStatusRequested:
 		return v3adminpb.ClientResourceStatus_REQUESTED
-	case xdsclient.ServiceStatusNotExist:
+	case xdsresource.ServiceStatusNotExist:
 		return v3adminpb.ClientResourceStatus_DOES_NOT_EXIST
-	case xdsclient.ServiceStatusACKed:
+	case xdsresource.ServiceStatusACKed:
 		return v3adminpb.ClientResourceStatus_ACKED
-	case xdsclient.ServiceStatusNACKed:
+	case xdsresource.ServiceStatusNACKed:
 		return v3adminpb.ClientResourceStatus_NACKED
 	default:
 		return v3adminpb.ClientResourceStatus_UNKNOWN

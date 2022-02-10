@@ -40,16 +40,20 @@ type Filter interface {
 	// will be registered by each of its supported message types.
 	TypeURLs() []string
 	// ParseFilterConfig parses the provided configuration proto.Message from
-	// the LDS configuration of this filter.  This may be an anypb.Any or a
-	// udpa.type.v1.TypedStruct for filters that do not accept a custom type.
-	// The resulting FilterConfig will later be passed to Build.
+	// the LDS configuration of this filter.  This may be an anypb.Any, a
+	// udpa.type.v1.TypedStruct, or an xds.type.v3.TypedStruct for filters that
+	// do not accept a custom type. The resulting FilterConfig will later be
+	// passed to Build.
 	ParseFilterConfig(proto.Message) (FilterConfig, error)
 	// ParseFilterConfigOverride parses the provided override configuration
 	// proto.Message from the RDS override configuration of this filter.  This
-	// may be an anypb.Any or a udpa.type.v1.TypedStruct for filters that do
-	// not accept a custom type.  The resulting FilterConfig will later be
-	// passed to Build.
+	// may be an anypb.Any, a udpa.type.v1.TypedStruct, or an
+	// xds.type.v3.TypedStruct for filters that do not accept a custom type.
+	// The resulting FilterConfig will later be passed to Build.
 	ParseFilterConfigOverride(proto.Message) (FilterConfig, error)
+	// IsTerminal returns whether this Filter is terminal or not (i.e. it must
+	// be last filter in the filter chain).
+	IsTerminal() bool
 }
 
 // ClientInterceptorBuilder constructs a Client Interceptor.  If this type is
@@ -89,6 +93,11 @@ func Register(b Filter) {
 	for _, u := range b.TypeURLs() {
 		m[u] = b
 	}
+}
+
+// UnregisterForTesting unregisters the HTTP Filter for testing purposes.
+func UnregisterForTesting(typeURL string) {
+	delete(m, typeURL)
 }
 
 // Get returns the HTTPFilter registered with typeURL.

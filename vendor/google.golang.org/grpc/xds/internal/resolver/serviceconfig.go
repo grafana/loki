@@ -27,24 +27,27 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cespare/xxhash"
+	xxhash "github.com/cespare/xxhash/v2"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/grpcrand"
 	iresolver "google.golang.org/grpc/internal/resolver"
+	"google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/internal/wrr"
-	"google.golang.org/grpc/internal/xds/env"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/xds/internal/balancer/clustermanager"
 	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 	"google.golang.org/grpc/xds/internal/httpfilter"
 	"google.golang.org/grpc/xds/internal/httpfilter/router"
-	"google.golang.org/grpc/xds/internal/xdsclient"
+	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
 const (
-	cdsName               = "cds_experimental"
-	xdsClusterManagerName = "xds_cluster_manager_experimental"
+	cdsName                      = "cds_experimental"
+	xdsClusterManagerName        = "xds_cluster_manager_experimental"
+	clusterPrefix                = "cluster:"
+	clusterSpecifierPluginPrefix = "cluster_specifier_plugin:"
 )
 
 type serviceConfig struct {
@@ -85,10 +88,8 @@ func (r *xdsResolver) pruneActiveClusters() {
 func serviceConfigJSON(activeClusters map[string]*clusterInfo) ([]byte, error) {
 	// Generate children (all entries in activeClusters).
 	children := make(map[string]xdsChildConfig)
-	for cluster := range activeClusters {
-		children[cluster] = xdsChildConfig{
-			ChildPolicy: newBalancerConfig(cdsName, cdsBalancerConfig{Cluster: cluster}),
-		}
+	for cluster, ci := range activeClusters {
+		children[cluster] = ci.cfg
 	}
 
 	sc := serviceConfig{
@@ -107,6 +108,8 @@ func serviceConfigJSON(activeClusters map[string]*clusterInfo) ([]byte, error) {
 type virtualHost struct {
 	// map from filter name to its config
 	httpFilterConfigOverride map[string]httpfilter.FilterConfig
+	// retry policy present in virtual host
+	retryConfig *xdsresource.RetryConfig
 }
 
 // routeCluster holds information about a cluster as referenced by a route.
@@ -117,12 +120,13 @@ type routeCluster struct {
 }
 
 type route struct {
-	m                 *compositeMatcher // converted from route matchers
-	clusters          wrr.WRR           // holds *routeCluster entries
+	m                 *xdsresource.CompositeMatcher // converted from route matchers
+	clusters          wrr.WRR                       // holds *routeCluster entries
 	maxStreamDuration time.Duration
 	// map from filter name to its config
 	httpFilterConfigOverride map[string]httpfilter.FilterConfig
-	hashPolicies             []*xdsclient.HashPolicy
+	retryConfig              *xdsresource.RetryConfig
+	hashPolicies             []*xdsresource.HashPolicy
 }
 
 func (r route) String() string {
@@ -134,7 +138,7 @@ type configSelector struct {
 	virtualHost      virtualHost
 	routes           []route
 	clusters         map[string]*clusterInfo
-	httpFilterConfig []xdsclient.HTTPFilter
+	httpFilterConfig []xdsresource.HTTPFilter
 }
 
 var errNoMatchedRouteFound = status.Errorf(codes.Unavailable, "no matched route was found")
@@ -146,7 +150,7 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 	var rt *route
 	// Loop through routes in order and select first match.
 	for _, r := range cs.routes {
-		if r.m.match(rpcInfo) {
+		if r.m.Match(rpcInfo) {
 			rt = &r
 			break
 		}
@@ -154,10 +158,12 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 	if rt == nil || rt.clusters == nil {
 		return nil, errNoMatchedRouteFound
 	}
+
 	cluster, ok := rt.clusters.Next().(*routeCluster)
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "error retrieving cluster for match: %v (%T)", cluster, cluster)
 	}
+
 	// Add a ref to the selected cluster, as this RPC needs this cluster until
 	// it is committed.
 	ref := &cs.clusters[cluster.name].refCount
@@ -170,7 +176,7 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 
 	lbCtx := clustermanager.SetPickedCluster(rpcInfo.Context, cluster.name)
 	// Request Hashes are only applicable for a Ring Hash LB.
-	if env.RingHashSupport {
+	if envconfig.XDSRingHash {
 		lbCtx = ringhash.SetRequestHash(lbCtx, cs.generateHash(rpcInfo, rt.hashPolicies))
 	}
 
@@ -195,19 +201,34 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 	if rt.maxStreamDuration != 0 {
 		config.MethodConfig.Timeout = &rt.maxStreamDuration
 	}
+	if rt.retryConfig != nil {
+		config.MethodConfig.RetryPolicy = retryConfigToPolicy(rt.retryConfig)
+	} else if cs.virtualHost.retryConfig != nil {
+		config.MethodConfig.RetryPolicy = retryConfigToPolicy(cs.virtualHost.retryConfig)
+	}
 
 	return config, nil
 }
 
-func (cs *configSelector) generateHash(rpcInfo iresolver.RPCInfo, hashPolicies []*xdsclient.HashPolicy) uint64 {
+func retryConfigToPolicy(config *xdsresource.RetryConfig) *serviceconfig.RetryPolicy {
+	return &serviceconfig.RetryPolicy{
+		MaxAttempts:          int(config.NumRetries) + 1,
+		InitialBackoff:       config.RetryBackoff.BaseInterval,
+		MaxBackoff:           config.RetryBackoff.MaxInterval,
+		BackoffMultiplier:    2,
+		RetryableStatusCodes: config.RetryOn,
+	}
+}
+
+func (cs *configSelector) generateHash(rpcInfo iresolver.RPCInfo, hashPolicies []*xdsresource.HashPolicy) uint64 {
 	var hash uint64
 	var generatedHash bool
 	for _, policy := range hashPolicies {
 		var policyHash uint64
 		var generatedPolicyHash bool
 		switch policy.HashPolicyType {
-		case xdsclient.HashPolicyTypeHeader:
-			md, ok := metadata.FromIncomingContext(rpcInfo.Context)
+		case xdsresource.HashPolicyTypeHeader:
+			md, ok := metadata.FromOutgoingContext(rpcInfo.Context)
 			if !ok {
 				continue
 			}
@@ -223,7 +244,7 @@ func (cs *configSelector) generateHash(rpcInfo iresolver.RPCInfo, hashPolicies [
 			policyHash = xxhash.Sum64String(joinedValues)
 			generatedHash = true
 			generatedPolicyHash = true
-		case xdsclient.HashPolicyTypeChannelID:
+		case xdsresource.HashPolicyTypeChannelID:
 			// Hash the ClientConn pointer which logically uniquely
 			// identifies the client.
 			policyHash = xxhash.Sum64String(fmt.Sprintf("%p", &cs.r.cc))
@@ -322,8 +343,11 @@ var newWRR = wrr.NewRandom
 // r.activeClusters for previously-unseen clusters.
 func (r *xdsResolver) newConfigSelector(su serviceUpdate) (*configSelector, error) {
 	cs := &configSelector{
-		r:                r,
-		virtualHost:      virtualHost{httpFilterConfigOverride: su.virtualHost.HTTPFilterConfigOverride},
+		r: r,
+		virtualHost: virtualHost{
+			httpFilterConfigOverride: su.virtualHost.HTTPFilterConfigOverride,
+			retryConfig:              su.virtualHost.RetryConfig,
+		},
 		routes:           make([]route, len(su.virtualHost.Routes)),
 		clusters:         make(map[string]*clusterInfo),
 		httpFilterConfig: su.ldsConfig.httpFilterConfig,
@@ -331,26 +355,30 @@ func (r *xdsResolver) newConfigSelector(su serviceUpdate) (*configSelector, erro
 
 	for i, rt := range su.virtualHost.Routes {
 		clusters := newWRR()
-		for cluster, wc := range rt.WeightedClusters {
+		if rt.ClusterSpecifierPlugin != "" {
+			clusterName := clusterSpecifierPluginPrefix + rt.ClusterSpecifierPlugin
 			clusters.Add(&routeCluster{
-				name:                     cluster,
-				httpFilterConfigOverride: wc.HTTPFilterConfigOverride,
-			}, int64(wc.Weight))
-
-			// Initialize entries in cs.clusters map, creating entries in
-			// r.activeClusters as necessary.  Set to zero as they will be
-			// incremented by incRefs.
-			ci := r.activeClusters[cluster]
-			if ci == nil {
-				ci = &clusterInfo{refCount: 0}
-				r.activeClusters[cluster] = ci
+				name: clusterName,
+			}, 1)
+			cs.initializeCluster(clusterName, xdsChildConfig{
+				ChildPolicy: balancerConfig(su.clusterSpecifierPlugins[rt.ClusterSpecifierPlugin]),
+			})
+		} else {
+			for cluster, wc := range rt.WeightedClusters {
+				clusterName := clusterPrefix + cluster
+				clusters.Add(&routeCluster{
+					name:                     clusterName,
+					httpFilterConfigOverride: wc.HTTPFilterConfigOverride,
+				}, int64(wc.Weight))
+				cs.initializeCluster(clusterName, xdsChildConfig{
+					ChildPolicy: newBalancerConfig(cdsName, cdsBalancerConfig{Cluster: cluster}),
+				})
 			}
-			cs.clusters[cluster] = ci
 		}
 		cs.routes[i].clusters = clusters
 
 		var err error
-		cs.routes[i].m, err = routeToMatcher(rt)
+		cs.routes[i].m, err = xdsresource.RouteToMatcher(rt)
 		if err != nil {
 			return nil, err
 		}
@@ -361,6 +389,7 @@ func (r *xdsResolver) newConfigSelector(su serviceUpdate) (*configSelector, erro
 		}
 
 		cs.routes[i].httpFilterConfigOverride = rt.HTTPFilterConfigOverride
+		cs.routes[i].retryConfig = rt.RetryConfig
 		cs.routes[i].hashPolicies = rt.HashPolicies
 	}
 
@@ -374,9 +403,25 @@ func (r *xdsResolver) newConfigSelector(su serviceUpdate) (*configSelector, erro
 	return cs, nil
 }
 
+// initializeCluster initializes entries in cs.clusters map, creating entries in
+// r.activeClusters as necessary.  Any created entries will have a ref count set
+// to zero as their ref count will be incremented by incRefs.
+func (cs *configSelector) initializeCluster(clusterName string, cfg xdsChildConfig) {
+	ci := cs.r.activeClusters[clusterName]
+	if ci == nil {
+		ci = &clusterInfo{refCount: 0}
+		cs.r.activeClusters[clusterName] = ci
+	}
+	cs.clusters[clusterName] = ci
+	cs.clusters[clusterName].cfg = cfg
+}
+
 type clusterInfo struct {
 	// number of references to this cluster; accessed atomically
 	refCount int32
+	// cfg is the child configuration for this cluster, containing either the
+	// csp config or the cds cluster config.
+	cfg xdsChildConfig
 }
 
 type interceptorList struct {

@@ -43,10 +43,18 @@ func init() {
 // the Attributes field of resolver.Address.
 type handshakeAttrKey struct{}
 
+// Equal reports whether the handshake info structs are identical (have the
+// same pointer).  This is sufficient as all subconns from one CDS balancer use
+// the same one.
+func (hi *HandshakeInfo) Equal(o interface{}) bool {
+	oh, ok := o.(*HandshakeInfo)
+	return ok && oh == hi
+}
+
 // SetHandshakeInfo returns a copy of addr in which the Attributes field is
 // updated with hInfo.
 func SetHandshakeInfo(addr resolver.Address, hInfo *HandshakeInfo) resolver.Address {
-	addr.Attributes = addr.Attributes.WithValues(handshakeAttrKey{}, hInfo)
+	addr.Attributes = addr.Attributes.WithValue(handshakeAttrKey{}, hInfo)
 	return addr
 }
 

@@ -18,11 +18,6 @@
 
 // Package insecure provides an implementation of the
 // credentials.TransportCredentials interface which disables transport security.
-//
-// Experimental
-//
-// Notice: This package is EXPERIMENTAL and may be changed or removed in a
-// later release.
 package insecure
 
 import (
@@ -33,6 +28,9 @@ import (
 )
 
 // NewCredentials returns a credentials which disables transport security.
+//
+// Note that using this credentials with per-RPC credentials which require
+// transport security is incompatible and will cause grpc.Dial() to fail.
 func NewCredentials() credentials.TransportCredentials {
 	return insecureTC{}
 }

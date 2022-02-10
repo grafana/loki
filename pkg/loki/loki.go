@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/pkg/distributor/receiver"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/middleware"
@@ -248,7 +249,8 @@ type Loki struct {
 
 	clientMetrics chunk_storage.ClientMetrics
 
-	HTTPAuthMiddleware middleware.Interface
+	HTTPAuthMiddleware    middleware.Interface
+	LogConsumerMiddleware receiver.Middleware
 }
 
 // New makes a new Loki.
@@ -259,6 +261,7 @@ func New(cfg Config) (*Loki, error) {
 	}
 
 	loki.setupAuthMiddleware()
+
 	loki.setupGRPCRecoveryMiddleware()
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
@@ -282,6 +285,11 @@ func (t *Loki) setupAuthMiddleware() {
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
 		})
+	if t.Cfg.AuthEnabled {
+		t.LogConsumerMiddleware = receiver.MultiTenancyMiddleware()
+	} else {
+		t.LogConsumerMiddleware = receiver.FakeTenantMiddleware()
+	}
 }
 
 func (t *Loki) setupGRPCRecoveryMiddleware() {

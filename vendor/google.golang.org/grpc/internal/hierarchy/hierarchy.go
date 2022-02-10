@@ -30,19 +30,37 @@ type pathKeyType string
 
 const pathKey = pathKeyType("grpc.internal.address.hierarchical_path")
 
+type pathValue []string
+
+func (p pathValue) Equal(o interface{}) bool {
+	op, ok := o.(pathValue)
+	if !ok {
+		return false
+	}
+	if len(op) != len(p) {
+		return false
+	}
+	for i, v := range p {
+		if v != op[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // Get returns the hierarchical path of addr.
 func Get(addr resolver.Address) []string {
-	attrs := addr.Attributes
+	attrs := addr.BalancerAttributes
 	if attrs == nil {
 		return nil
 	}
-	path, _ := attrs.Value(pathKey).([]string)
-	return path
+	path, _ := attrs.Value(pathKey).(pathValue)
+	return ([]string)(path)
 }
 
 // Set overrides the hierarchical path in addr with path.
 func Set(addr resolver.Address, path []string) resolver.Address {
-	addr.Attributes = addr.Attributes.WithValues(pathKey, path)
+	addr.BalancerAttributes = addr.BalancerAttributes.WithValue(pathKey, pathValue(path))
 	return addr
 }
 

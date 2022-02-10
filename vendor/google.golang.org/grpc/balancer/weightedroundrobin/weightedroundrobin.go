@@ -36,6 +36,12 @@ type AddrInfo struct {
 	Weight uint32
 }
 
+// Equal allows the values to be compared by Attributes.Equal.
+func (a AddrInfo) Equal(o interface{}) bool {
+	oa, ok := o.(AddrInfo)
+	return ok && oa.Weight == a.Weight
+}
+
 // SetAddrInfo returns a copy of addr in which the Attributes field is updated
 // with addrInfo.
 //
@@ -44,7 +50,7 @@ type AddrInfo struct {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a
 // later release.
 func SetAddrInfo(addr resolver.Address, addrInfo AddrInfo) resolver.Address {
-	addr.Attributes = addr.Attributes.WithValues(attributeKey{}, addrInfo)
+	addr.BalancerAttributes = addr.BalancerAttributes.WithValue(attributeKey{}, addrInfo)
 	return addr
 }
 
@@ -55,7 +61,7 @@ func SetAddrInfo(addr resolver.Address, addrInfo AddrInfo) resolver.Address {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a
 // later release.
 func GetAddrInfo(addr resolver.Address) AddrInfo {
-	v := addr.Attributes.Value(attributeKey{})
+	v := addr.BalancerAttributes.Value(attributeKey{})
 	ai, _ := v.(AddrInfo)
 	return ai
 }

@@ -22,7 +22,7 @@ import (
 	"net"
 
 	"google.golang.org/grpc"
-	iserver "google.golang.org/grpc/xds/internal/server"
+	"google.golang.org/grpc/connectivity"
 )
 
 type serverOptions struct {
@@ -41,20 +41,6 @@ func ServingModeCallback(cb ServingModeCallbackFunc) grpc.ServerOption {
 	return &serverOption{apply: func(o *serverOptions) { o.modeCallback = cb }}
 }
 
-// ServingMode indicates the current mode of operation of the server.
-type ServingMode = iserver.ServingMode
-
-const (
-	// ServingModeServing indicates the the server contains all required xDS
-	// configuration is serving RPCs.
-	ServingModeServing = iserver.ServingModeServing
-	// ServingModeNotServing indicates that the server is not accepting new
-	// connections. Existing connections will be closed gracefully, allowing
-	// in-progress RPCs to complete. A server enters this mode when it does not
-	// contain the required xDS configuration to serve RPCs.
-	ServingModeNotServing = iserver.ServingModeNotServing
-)
-
 // ServingModeCallbackFunc is the callback that users can register to get
 // notified about the server's serving mode changes. The callback is invoked
 // with the address of the listener and its new mode.
@@ -66,7 +52,7 @@ type ServingModeCallbackFunc func(addr net.Addr, args ServingModeChangeArgs)
 // function.
 type ServingModeChangeArgs struct {
 	// Mode is the new serving mode of the server listener.
-	Mode ServingMode
+	Mode connectivity.ServingMode
 	// Err is set to a non-nil error if the server has transitioned into
 	// not-serving mode.
 	Err error
@@ -80,6 +66,11 @@ type ServingModeChangeArgs struct {
 //
 // This function should ONLY be used for testing and may not work with some
 // other features, including the CSDS service.
+//
+// Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a
+// later release.
 func BootstrapContentsForTesting(contents []byte) grpc.ServerOption {
 	return &serverOption{apply: func(o *serverOptions) { o.bootstrapContents = contents }}
 }

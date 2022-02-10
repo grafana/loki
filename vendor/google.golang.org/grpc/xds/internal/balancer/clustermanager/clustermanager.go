@@ -25,12 +25,12 @@ import (
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/grpclog"
+	"google.golang.org/grpc/internal/balancergroup"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/hierarchy"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
-	"google.golang.org/grpc/xds/internal/balancer/balancergroup"
 )
 
 const balancerName = "xds_cluster_manager_experimental"
@@ -46,7 +46,7 @@ func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Bal
 	b.logger = prefixLogger(b)
 	b.stateAggregator = newBalancerStateAggregator(cc, b.logger)
 	b.stateAggregator.start()
-	b.bg = balancergroup.New(cc, opts, b.stateAggregator, nil, b.logger)
+	b.bg = balancergroup.New(cc, opts, b.stateAggregator, b.logger)
 	b.bg.Start()
 	b.logger.Infof("Created")
 	return b
@@ -134,6 +134,10 @@ func (b *bal) Close() {
 	b.stateAggregator.close()
 	b.bg.Close()
 	b.logger.Infof("Shutdown")
+}
+
+func (b *bal) ExitIdle() {
+	b.bg.ExitIdle()
 }
 
 const prefix = "[xds-cluster-manager-lb %p] "

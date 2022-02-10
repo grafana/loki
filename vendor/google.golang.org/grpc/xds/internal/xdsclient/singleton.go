@@ -28,7 +28,10 @@ import (
 	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 )
 
-const defaultWatchExpiryTimeout = 15 * time.Second
+const (
+	defaultWatchExpiryTimeout         = 15 * time.Second
+	defaultIdleAuthorityDeleteTimeout = 5 * time.Minute
+)
 
 // This is the Client returned by New(). It contains one client implementation,
 // and maintains the refcount.
@@ -82,7 +85,7 @@ func newRefCounted() (*clientRefCounted, error) {
 	if err != nil {
 		return nil, fmt.Errorf("xds: failed to read bootstrap file: %v", err)
 	}
-	c, err := newWithConfig(config, defaultWatchExpiryTimeout)
+	c, err := newWithConfig(config, defaultWatchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +117,7 @@ func NewWithConfig(config *bootstrap.Config) (XDSClient, error) {
 	}
 
 	// Create the new client implementation.
-	c, err := newWithConfig(config, defaultWatchExpiryTimeout)
+	c, err := newWithConfig(config, defaultWatchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +147,7 @@ func (c *clientRefCounted) Close() {
 // Note that this function doesn't set the singleton, so that the testing states
 // don't leak.
 func NewWithConfigForTesting(config *bootstrap.Config, watchExpiryTimeout time.Duration) (XDSClient, error) {
-	cl, err := newWithConfig(config, watchExpiryTimeout)
+	cl, err := newWithConfig(config, watchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +185,7 @@ func NewClientWithBootstrapContents(contents []byte) (XDSClient, error) {
 		return nil, fmt.Errorf("xds: error with bootstrap config: %v", err)
 	}
 
-	cImpl, err := newWithConfig(bcfg, defaultWatchExpiryTimeout)
+	cImpl, err := newWithConfig(bcfg, defaultWatchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
 	if err != nil {
 		return nil, err
 	}

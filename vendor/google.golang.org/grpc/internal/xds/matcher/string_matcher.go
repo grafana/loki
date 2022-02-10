@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	v3matcherpb "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
+	"google.golang.org/grpc/internal/grpcutil"
 )
 
 // StringMatcher contains match criteria for matching a string, and is an
@@ -58,7 +59,7 @@ func (sm StringMatcher) Match(input string) bool {
 	case sm.suffixMatch != nil:
 		return strings.HasSuffix(input, *sm.suffixMatch)
 	case sm.regexMatch != nil:
-		return sm.regexMatch.MatchString(input)
+		return grpcutil.FullMatchWithRegex(sm.regexMatch, input)
 	case sm.containsMatch != nil:
 		return strings.Contains(input, *sm.containsMatch)
 	}

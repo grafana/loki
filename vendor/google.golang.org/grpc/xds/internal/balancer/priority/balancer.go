@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/balancer"
+	"google.golang.org/grpc/internal/balancergroup"
 	"google.golang.org/grpc/internal/buffer"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
@@ -37,7 +38,6 @@ import (
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
-	"google.golang.org/grpc/xds/internal/balancer/balancergroup"
 )
 
 // Name is the name of the priority balancer.
@@ -59,7 +59,7 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 	}
 
 	b.logger = prefixLogger(b)
-	b.bg = balancergroup.New(cc, bOpts, b, nil, b.logger)
+	b.bg = balancergroup.New(cc, bOpts, b, b.logger)
 	b.bg.Start()
 	go b.run()
 	b.logger.Infof("Created")
@@ -199,6 +199,10 @@ func (b *priorityBalancer) Close() {
 	// update, it will be dropped.
 	b.childInUse = ""
 	b.stopPriorityInitTimer()
+}
+
+func (b *priorityBalancer) ExitIdle() {
+	b.bg.ExitIdle()
 }
 
 // stopPriorityInitTimer stops the priorityInitTimer if it's not nil, and set it

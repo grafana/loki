@@ -335,6 +335,21 @@ func (b *clusterImplBalancer) Close() {
 	b.logger.Infof("Shutdown")
 }
 
+func (b *clusterImplBalancer) ExitIdle() {
+	if b.childLB == nil {
+		return
+	}
+	if ei, ok := b.childLB.(balancer.ExitIdler); ok {
+		ei.ExitIdle()
+		return
+	}
+	// Fallback for children that don't support ExitIdle -- connect to all
+	// SubConns.
+	for _, sc := range b.scWrappers {
+		sc.Connect()
+	}
+}
+
 // Override methods to accept updates from the child LB.
 
 func (b *clusterImplBalancer) UpdateState(state balancer.State) {

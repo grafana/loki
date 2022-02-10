@@ -88,6 +88,7 @@ func (b *priorityBalancer) syncPriority() {
 
 		if !child.started ||
 			child.state.ConnectivityState == connectivity.Ready ||
+			child.state.ConnectivityState == connectivity.Idle ||
 			p == len(b.priorities)-1 {
 			if b.childInUse != "" && b.childInUse != child.name {
 				// childInUse was set and is different from this child, will
@@ -225,14 +226,17 @@ func (b *priorityBalancer) handleChildStateUpdate(childName string, s balancer.S
 	child.state = s
 
 	switch s.ConnectivityState {
-	case connectivity.Ready:
+	case connectivity.Ready, connectivity.Idle:
+		// Note that idle is also handled as if it's Ready. It will close the
+		// lower priorities (which will be kept in a cache, not deleted), and
+		// new picks will use the Idle picker.
 		b.handlePriorityWithNewStateReady(child, priority)
 	case connectivity.TransientFailure:
 		b.handlePriorityWithNewStateTransientFailure(child, priority)
 	case connectivity.Connecting:
 		b.handlePriorityWithNewStateConnecting(child, priority, oldState)
 	default:
-		// New state is Idle, should never happen. Don't forward.
+		// New state is Shutdown, should never happen. Don't forward.
 	}
 }
 

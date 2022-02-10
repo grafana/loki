@@ -11,12 +11,14 @@ import (
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/pkg/distributor/receiver"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -39,11 +41,39 @@ const (
 
 var maxLabelCacheSize = 100000
 
+//`
+//receivers:
+//  otlp:
+//    protocols:
+//      grpc:
+//        endpoint: "localhost:4317"
+//      http:
+//        endpoint: "localhost:4318"
+//
+//exporters:
+//  otlphttp:
+//    endpoint: http://localhost:4318/otlphttp/exporter
+//
+//`
+
+var defaultReceivers = map[string]interface{}{
+	"otlp": map[string]interface{}{
+		"protocols": map[string]interface{}{
+			"grpc": map[string]interface{}{
+				"endpoint": "localhost:4317",
+			},
+			"http": map[string]interface{}{
+				"endpoint": "localhost:4318",
+			},
+		},
+	},
+}
+
 // Config for a Distributor.
 type Config struct {
 	// Distributors ring
-	DistributorRing RingConfig `yaml:"ring,omitempty"`
-
+	DistributorRing RingConfig             `yaml:"ring,omitempty"`
+	Receivers       map[string]interface{} `yaml:"receivers"`
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 }
@@ -86,7 +116,7 @@ type Distributor struct {
 }
 
 // New a distributor creates.
-func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, registerer prometheus.Registerer) (*Distributor, error) {
+func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, middleware receiver.Middleware, level logging.Level, registerer prometheus.Registerer) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
 		factory = func(addr string) (ring_client.PoolClient, error) {
@@ -138,7 +168,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 	if err != nil {
 		return nil, err
 	}
-	d := Distributor{
+	d := &Distributor{
 		cfg:                    cfg,
 		clientCfg:              clientCfg,
 		tenantConfigs:          configs,
@@ -170,6 +200,16 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 
 	servs = append(servs, d.pool)
+	cfgReceivers := cfg.Receivers
+	if len(cfgReceivers) == 0 {
+		cfgReceivers = defaultReceivers
+	}
+	receivers, err := receiver.New(cfgReceivers, d, middleware, level)
+	if err != nil {
+		return nil, err
+	}
+	servs = append(servs, receivers)
+
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
 		return nil, errors.Wrap(err, "services manager")
@@ -178,7 +218,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 	d.subservicesWatcher.WatchManager(d.subservices)
 	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 
-	return &d, nil
+	return d, nil
 }
 
 func (d *Distributor) starting(ctx context.Context) error {

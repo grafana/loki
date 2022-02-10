@@ -18,106 +18,46 @@
 
 package xdsclient
 
-import anypb "github.com/golang/protobuf/ptypes/any"
+import (
+	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
+)
 
-// UpdateWithMD contains the raw message of the update and the metadata,
-// including version, raw message, timestamp.
-//
-// This is to be used for config dump and CSDS, not directly by users (like
-// resolvers/balancers).
-type UpdateWithMD struct {
-	MD  UpdateMetadata
-	Raw *anypb.Any
+func mergeMaps(maps []map[string]xdsresource.UpdateWithMD) map[string]xdsresource.UpdateWithMD {
+	ret := make(map[string]xdsresource.UpdateWithMD)
+	for _, m := range maps {
+		for k, v := range m {
+			ret[k] = v
+		}
+	}
+	return ret
 }
 
-func rawFromCache(s string, cache interface{}) *anypb.Any {
-	switch c := cache.(type) {
-	case map[string]ListenerUpdate:
-		v, ok := c[s]
-		if !ok {
-			return nil
-		}
-		return v.Raw
-	case map[string]RouteConfigUpdate:
-		v, ok := c[s]
-		if !ok {
-			return nil
-		}
-		return v.Raw
-	case map[string]ClusterUpdate:
-		v, ok := c[s]
-		if !ok {
-			return nil
-		}
-		return v.Raw
-	case map[string]EndpointsUpdate:
-		v, ok := c[s]
-		if !ok {
-			return nil
-		}
-		return v.Raw
-	default:
-		return nil
+func (c *clientImpl) dump(t xdsresource.ResourceType) map[string]xdsresource.UpdateWithMD {
+	c.authorityMu.Lock()
+	defer c.authorityMu.Unlock()
+	maps := make([]map[string]xdsresource.UpdateWithMD, 0, len(c.authorities))
+	for _, a := range c.authorities {
+		maps = append(maps, a.dump(t))
 	}
-}
-
-func (c *clientImpl) dump(t ResourceType) (string, map[string]UpdateWithMD) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	var (
-		version string
-		md      map[string]UpdateMetadata
-		cache   interface{}
-	)
-	switch t {
-	case ListenerResource:
-		version = c.ldsVersion
-		md = c.ldsMD
-		cache = c.ldsCache
-	case RouteConfigResource:
-		version = c.rdsVersion
-		md = c.rdsMD
-		cache = c.rdsCache
-	case ClusterResource:
-		version = c.cdsVersion
-		md = c.cdsMD
-		cache = c.cdsCache
-	case EndpointsResource:
-		version = c.edsVersion
-		md = c.edsMD
-		cache = c.edsCache
-	default:
-		c.logger.Errorf("dumping resource of unknown type: %v", t)
-		return "", nil
-	}
-
-	ret := make(map[string]UpdateWithMD, len(md))
-	for s, md := range md {
-		ret[s] = UpdateWithMD{
-			MD:  md,
-			Raw: rawFromCache(s, cache),
-		}
-	}
-	return version, ret
+	return mergeMaps(maps)
 }
 
 // DumpLDS returns the status and contents of LDS.
-func (c *clientImpl) DumpLDS() (string, map[string]UpdateWithMD) {
-	return c.dump(ListenerResource)
+func (c *clientImpl) DumpLDS() map[string]xdsresource.UpdateWithMD {
+	return c.dump(xdsresource.ListenerResource)
 }
 
 // DumpRDS returns the status and contents of RDS.
-func (c *clientImpl) DumpRDS() (string, map[string]UpdateWithMD) {
-	return c.dump(RouteConfigResource)
+func (c *clientImpl) DumpRDS() map[string]xdsresource.UpdateWithMD {
+	return c.dump(xdsresource.RouteConfigResource)
 }
 
 // DumpCDS returns the status and contents of CDS.
-func (c *clientImpl) DumpCDS() (string, map[string]UpdateWithMD) {
-	return c.dump(ClusterResource)
+func (c *clientImpl) DumpCDS() map[string]xdsresource.UpdateWithMD {
+	return c.dump(xdsresource.ClusterResource)
 }
 
 // DumpEDS returns the status and contents of EDS.
-func (c *clientImpl) DumpEDS() (string, map[string]UpdateWithMD) {
-	return c.dump(EndpointsResource)
+func (c *clientImpl) DumpEDS() map[string]xdsresource.UpdateWithMD {
+	return c.dump(xdsresource.EndpointsResource)
 }

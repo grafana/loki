@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"google.golang.org/grpc/xds/internal/xdsclient"
+	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
 var errNotReceivedUpdate = errors.New("tried to construct a cluster update on a cluster that has not received an update")
@@ -31,9 +32,17 @@ var errNotReceivedUpdate = errors.New("tried to construct a cluster update on a 
 // (if one doesn't already exist) and pushing the update to it.
 type clusterHandlerUpdate struct {
 	// securityCfg is the Security Config from the top (root) cluster.
-	securityCfg *xdsclient.SecurityConfig
+	securityCfg *xdsresource.SecurityConfig
+	// lbPolicy is the lb policy from the top (root) cluster.
+	//
+	// Currently, we only support roundrobin or ringhash, and since roundrobin
+	// does need configs, this is only set to the ringhash config, if the policy
+	// is ringhash. In the future, if we support more policies, we can make this
+	// an interface, and set it to config of the other policies.
+	lbPolicy *xdsresource.ClusterLBPolicyRingHash
+
 	// updates is a list of ClusterUpdates from all the leaf clusters.
-	updates []xdsclient.ClusterUpdate
+	updates []xdsresource.ClusterUpdate
 	err     error
 }
 
@@ -101,6 +110,7 @@ func (ch *clusterHandler) constructClusterUpdate() {
 	}
 	ch.updateChannel <- clusterHandlerUpdate{
 		securityCfg: ch.root.clusterUpdate.SecurityCfg,
+		lbPolicy:    ch.root.clusterUpdate.LBPolicy,
 		updates:     clusterUpdate,
 	}
 }
@@ -130,7 +140,7 @@ type clusterNode struct {
 
 	// A ClusterUpdate in order to build a list of cluster updates for CDS to
 	// send down to child XdsClusterResolverLoadBalancingPolicy.
-	clusterUpdate xdsclient.ClusterUpdate
+	clusterUpdate xdsresource.ClusterUpdate
 
 	// This boolean determines whether this Node has received an update or not.
 	// This isn't the best practice, but this will protect a list of Cluster
@@ -167,7 +177,7 @@ func (c *clusterNode) delete() {
 }
 
 // Construct cluster update (potentially a list of ClusterUpdates) for a node.
-func (c *clusterNode) constructClusterUpdate() ([]xdsclient.ClusterUpdate, error) {
+func (c *clusterNode) constructClusterUpdate() ([]xdsresource.ClusterUpdate, error) {
 	// If the cluster has not yet received an update, the cluster update is not
 	// yet ready.
 	if !c.receivedUpdate {
@@ -176,13 +186,13 @@ func (c *clusterNode) constructClusterUpdate() ([]xdsclient.ClusterUpdate, error
 
 	// Base case - LogicalDNS or EDS. Both of these cluster types will be tied
 	// to a single ClusterUpdate.
-	if c.clusterUpdate.ClusterType != xdsclient.ClusterTypeAggregate {
-		return []xdsclient.ClusterUpdate{c.clusterUpdate}, nil
+	if c.clusterUpdate.ClusterType != xdsresource.ClusterTypeAggregate {
+		return []xdsresource.ClusterUpdate{c.clusterUpdate}, nil
 	}
 
 	// If an aggregate construct a list by recursively calling down to all of
 	// it's children.
-	var childrenUpdates []xdsclient.ClusterUpdate
+	var childrenUpdates []xdsresource.ClusterUpdate
 	for _, child := range c.children {
 		childUpdateList, err := child.constructClusterUpdate()
 		if err != nil {
@@ -197,7 +207,7 @@ func (c *clusterNode) constructClusterUpdate() ([]xdsclient.ClusterUpdate, error
 // also handles any logic with regards to any child state that may have changed.
 // At the end of the handleResp(), the clusterUpdate will be pinged in certain
 // situations to try and construct an update to send back to CDS.
-func (c *clusterNode) handleResp(clusterUpdate xdsclient.ClusterUpdate, err error) {
+func (c *clusterNode) handleResp(clusterUpdate xdsresource.ClusterUpdate, err error) {
 	c.clusterHandler.clusterMutex.Lock()
 	defer c.clusterHandler.clusterMutex.Unlock()
 	if err != nil { // Write this error for run() to pick up in CDS LB policy.
@@ -221,7 +231,7 @@ func (c *clusterNode) handleResp(clusterUpdate xdsclient.ClusterUpdate, err erro
 	// handler to return. Also, if there was any children from previously,
 	// delete the children, as the cluster type is no longer an aggregate
 	// cluster.
-	if clusterUpdate.ClusterType != xdsclient.ClusterTypeAggregate {
+	if clusterUpdate.ClusterType != xdsresource.ClusterTypeAggregate {
 		for _, child := range c.children {
 			child.delete()
 		}

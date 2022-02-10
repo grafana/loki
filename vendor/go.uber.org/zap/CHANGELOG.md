@@ -3,9 +3,36 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## 1.20.0 (4 Jan 2022)
+
+Enhancements:
+* [#989][]: Add `EncoderConfig.SkipLineEnding` flag to disable adding newline
+  characters between log statements.
+* [#1039][]: Add `EncoderConfig.NewReflectedEncoder` field to customize JSON
+  encoding of reflected log fields.
+
+Bugfixes:
+* [#1011][]: Fix inaccurate precision when encoding complex64 as JSON.
+* [#554][], [#1017][]: Close JSON namespaces opened in `MarshalLogObject`
+  methods when the methods return.
+* [#1033][]: Avoid panicking in Sampler core if `thereafter` is zero.
+
+Other changes:
+* [#1028][]: Drop support for Go < 1.15.
+
+[#554]: https://github.com/uber-go/zap/pull/554
+[#989]: https://github.com/uber-go/zap/pull/989
+[#1011]: https://github.com/uber-go/zap/pull/1011
+[#1017]: https://github.com/uber-go/zap/pull/1017
+[#1028]: https://github.com/uber-go/zap/pull/1028
+[#1033]: https://github.com/uber-go/zap/pull/1033
+[#1039]: https://github.com/uber-go/zap/pull/1039
+
+Thanks to @psrajat, @lruggieri, @sammyrnycreal for their contributions to this release.
+
 ## 1.19.1 (8 Sep 2021)
 
-### Fixed
+Bugfixes:
 * [#1001][]: JSON: Fix complex number encoding with negative imaginary part. Thanks to @hemantjadon.
 * [#1003][]: JSON: Fix inaccurate precision when encoding float32.
 
