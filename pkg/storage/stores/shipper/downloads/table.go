@@ -308,8 +308,8 @@ func (t *Table) EnsureQueryReadiness(ctx context.Context) error {
 
 // downloadUserIndexes downloads user specific index files concurrently.
 func (t *Table) downloadUserIndexes(ctx context.Context, userIDs []string) error {
-	return concurrency.ForEach(ctx, concurrency.CreateJobsFromStrings(userIDs), maxDownloadConcurrency, func(ctx context.Context, userID interface{}) error {
-		indexSet, err := t.getOrCreateIndexSet(userID.(string))
+	return concurrency.ForEachJob(ctx, len(userIDs), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
+		indexSet, err := t.getOrCreateIndexSet(userIDs[idx])
 		if err != nil {
 			return err
 		}

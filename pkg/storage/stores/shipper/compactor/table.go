@@ -264,18 +264,13 @@ func (t *table) compactFiles(files []storage.IndexFile) error {
 		return err
 	}
 
-	jobs := make([]interface{}, len(files))
-	for i := 0; i < len(files); i++ {
-		jobs[i] = i
-	}
-
-	return concurrency.ForEach(t.ctx, jobs, readDBsConcurrency, func(ctx context.Context, job interface{}) error {
-		workNum := job.(int)
+	return concurrency.ForEachJob(t.ctx, len(files), readDBsConcurrency, func(ctx context.Context, idx int) error {
+		workNum := idx
 		// skip seed file
 		if workNum == t.seedSourceFileIdx {
 			return nil
 		}
-		fileName := files[workNum].Name
+		fileName := files[idx].Name
 		downloadAt := filepath.Join(t.workingDirectory, fileName)
 
 		err = shipper_util.DownloadFileFromStorage(downloadAt, shipper_util.IsCompressedFile(fileName),

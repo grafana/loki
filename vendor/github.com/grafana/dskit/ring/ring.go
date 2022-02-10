@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -513,27 +515,32 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 }
 
 // countTokens returns the number of tokens and tokens within the range for each instance.
-// The ring read lock must be already taken when calling this function.
-func (r *Ring) countTokens() (map[string]uint32, map[string]uint32) {
-	owned := map[string]uint32{}
-	numTokens := map[string]uint32{}
-	for i, token := range r.ringTokens {
+func (r *Desc) countTokens() (map[string]uint32, map[string]uint32) {
+	var (
+		owned     = map[string]uint32{}
+		numTokens = map[string]uint32{}
+
+		ringTokens          = r.GetTokens()
+		ringInstanceByToken = r.getTokensInfo()
+	)
+
+	for i, token := range ringTokens {
 		var diff uint32
 
 		// Compute how many tokens are within the range.
-		if i+1 == len(r.ringTokens) {
-			diff = (math.MaxUint32 - token) + r.ringTokens[0]
+		if i+1 == len(ringTokens) {
+			diff = (math.MaxUint32 - token) + ringTokens[0]
 		} else {
-			diff = r.ringTokens[i+1] - token
+			diff = ringTokens[i+1] - token
 		}
 
-		info := r.ringInstanceByToken[token]
+		info := ringInstanceByToken[token]
 		numTokens[info.InstanceID] = numTokens[info.InstanceID] + 1
 		owned[info.InstanceID] = owned[info.InstanceID] + diff
 	}
 
 	// Set to 0 the number of owned tokens by instances which don't have tokens yet.
-	for id := range r.ringDesc.Ingesters {
+	for id := range r.Ingesters {
 		if _, ok := owned[id]; !ok {
 			owned[id] = 0
 			numTokens[id] = 0
@@ -582,7 +589,7 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 
 	prevOwners := r.reportedOwners
 	r.reportedOwners = make(map[string]struct{})
-	numTokens, ownedRange := r.countTokens()
+	numTokens, ownedRange := r.ringDesc.countTokens()
 	for id, totalOwned := range ownedRange {
 		r.memberOwnershipGaugeVec.WithLabelValues(id).Set(float64(totalOwned) / float64(math.MaxUint32))
 		r.numTokensGaugeVec.WithLabelValues(id).Set(float64(numTokens[id]))
@@ -838,6 +845,23 @@ func (r *Ring) CleanupShuffleShardCache(identifier string) {
 			delete(r.shuffledSubringCache, k)
 		}
 	}
+}
+
+func (r *Ring) casRing(ctx context.Context, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+	return r.KVClient.CAS(ctx, r.key, f)
+}
+
+func (r *Ring) getRing(ctx context.Context) (*Desc, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	ringDesc := proto.Clone(r.ringDesc).(*Desc)
+
+	return ringDesc, nil
+}
+
+func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	newRingPageHandler(r, r.cfg.HeartbeatTimeout).handle(w, req)
 }
 
 // Operation describes which instances can be included in the replica set, based on their state.

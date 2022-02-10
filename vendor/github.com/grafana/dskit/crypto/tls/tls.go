@@ -13,11 +13,11 @@ import (
 
 // ClientConfig is the config for client TLS.
 type ClientConfig struct {
-	CertPath           string `yaml:"tls_cert_path"`
-	KeyPath            string `yaml:"tls_key_path"`
-	CAPath             string `yaml:"tls_ca_path"`
-	ServerName         string `yaml:"tls_server_name"`
-	InsecureSkipVerify bool   `yaml:"tls_insecure_skip_verify"`
+	CertPath           string `yaml:"tls_cert_path" category:"advanced"`
+	KeyPath            string `yaml:"tls_key_path" category:"advanced"`
+	CAPath             string `yaml:"tls_ca_path" category:"advanced"`
+	ServerName         string `yaml:"tls_server_name" category:"advanced"`
+	InsecureSkipVerify bool   `yaml:"tls_insecure_skip_verify" category:"advanced"`
 }
 
 var (
