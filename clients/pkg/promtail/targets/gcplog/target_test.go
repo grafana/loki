@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
@@ -114,7 +115,7 @@ func testGcplogTarget(t *testing.T) (*GcplogTarget, *fake.Client, *pubsub.Client
 	ctx, cancel := context.WithCancel(context.Background())
 
 	mockSvr := pstest.NewServer()
-	conn, err := grpc.Dial(mockSvr.Addr, grpc.WithInsecure())
+	conn, err := grpc.Dial(mockSvr.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 
 	mockpubsubClient, err := pubsub.NewClient(ctx, testConfig.ProjectID, option.WithGRPCConn(conn))

@@ -55,7 +55,7 @@ func TestParseLog(t *testing.T) {
 
 	now := time.Now()
 
-	logReocrd := ilm.Logs().AppendEmpty()
+	logReocrd := ilm.LogRecords().AppendEmpty()
 	logReocrd.SetName("testName")
 	logReocrd.SetFlags(31)
 	logReocrd.SetSeverityNumber(1)
@@ -65,7 +65,7 @@ func TestParseLog(t *testing.T) {
 	logReocrd.Attributes().InsertString("level", "WARN")
 	logReocrd.SetTimestamp(pdata.NewTimestampFromTime(now))
 
-	logReocrd2 := ilm.Logs().AppendEmpty()
+	logReocrd2 := ilm.LogRecords().AppendEmpty()
 	logReocrd2.SetName("testName")
 	logReocrd2.SetFlags(31)
 	logReocrd2.SetSeverityNumber(1)

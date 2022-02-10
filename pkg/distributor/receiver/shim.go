@@ -171,7 +171,7 @@ func parseLog(ld pdata.Logs) (*logproto.PushRequest, error) {
 		rs := rss.At(i)
 		ill := rs.InstrumentationLibraryLogs()
 		for i := 0; i < ill.Len(); i++ {
-			logs := ill.At(i).Logs()
+			logs := ill.At(i).LogRecords()
 			for k := 0; k < logs.Len(); k++ {
 				pLog := logs.At(k)
 				labels := parseLabel(rs.Resource().Attributes(), pLog.Attributes())
