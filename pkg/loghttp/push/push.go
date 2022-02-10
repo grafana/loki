@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	loki_util "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/unmarshal"
@@ -39,6 +40,9 @@ var (
 		Name:      "distributor_lines_received_total",
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant"})
+
+	bytesReceivedStats = usagestats.NewCounter("distributor_bytes_received")
+	linesReceivedStats = usagestats.NewCounter("distributor_lines_received")
 )
 
 const applicationJSON = "application/json"
@@ -130,6 +134,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 			totalEntries++
 			entriesSize += int64(len(e.Line))
 			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(int64(len(e.Line))))
+			bytesReceivedStats.Inc(int64(len(e.Line)))
 			if e.Timestamp.After(mostRecentEntry) {
 				mostRecentEntry = e.Timestamp
 			}
@@ -140,6 +145,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	if totalEntries != 0 && userID != "" {
 		linesIngested.WithLabelValues(userID).Add(float64(totalEntries))
 	}
+	linesReceivedStats.Inc(totalEntries)
 
 	level.Debug(logger).Log(
 		"msg", "push request parsed",

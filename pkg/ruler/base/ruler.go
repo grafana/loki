@@ -427,7 +427,7 @@ func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if r.cfg.EnableSharding {
 		r.ring.ServeHTTP(w, req)
 	} else {
-		var unshardedPage = `
+		unshardedPage := `
 			<!DOCTYPE html>
 			<html>
 				<head>
@@ -769,9 +769,9 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 
 	// Concurrently fetch rules from all rulers. Since rules are not replicated,
 	// we need all requests to succeed.
-	jobs := concurrency.CreateJobsFromStrings(rulers.GetAddresses())
-	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
-		addr := job.(string)
+	addresses := rulers.GetAddresses()
+	err = concurrency.ForEachJob(ctx, len(addresses), len(addresses), func(ctx context.Context, idx int) error {
+		addr := addresses[idx]
 
 		rulerClient, err := r.clientsPool.GetClientFor(addr)
 		if err != nil {

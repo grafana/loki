@@ -20,8 +20,9 @@ type ReplicationSet struct {
 	MaxUnavailableZones int
 }
 
-// Do function f in parallel for all replicas in the set, erroring is we exceed
+// Do function f in parallel for all replicas in the set, erroring if we exceed
 // MaxErrors and returning early otherwise.
+// Return a slice of all results from f, or nil if an error occurred.
 func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
 	type instanceResult struct {
 		res      interface{}

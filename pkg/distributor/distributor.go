@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -37,7 +38,10 @@ const (
 	ringKey = "distributor"
 )
 
-var maxLabelCacheSize = 100000
+var (
+	maxLabelCacheSize = 100000
+	rfStats           = usagestats.NewInt("distributor_replication_factor")
+)
 
 // Config for a Distributor.
 type Config struct {
@@ -168,6 +172,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		}),
 	}
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
+	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
 
 	servs = append(servs, d.pool)
 	d.subservices, err = services.NewManager(servs...)

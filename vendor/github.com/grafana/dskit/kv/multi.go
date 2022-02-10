@@ -16,11 +16,11 @@ import (
 
 // MultiConfig is a configuration for MultiClient.
 type MultiConfig struct {
-	Primary   string `yaml:"primary"`
-	Secondary string `yaml:"secondary"`
+	Primary   string `yaml:"primary" category:"advanced"`
+	Secondary string `yaml:"secondary" category:"advanced"`
 
-	MirrorEnabled bool          `yaml:"mirror_enabled"`
-	MirrorTimeout time.Duration `yaml:"mirror_timeout"`
+	MirrorEnabled bool          `yaml:"mirror_enabled" category:"advanced"`
+	MirrorTimeout time.Duration `yaml:"mirror_timeout" category:"advanced"`
 
 	// ConfigProvider returns channel with MultiRuntimeConfig updates.
 	ConfigProvider func() <-chan MultiRuntimeConfig `yaml:"-"`
