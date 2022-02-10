@@ -209,7 +209,8 @@ func (rep *Reporter) running(ctx context.Context) error {
 	rep.init(ctx)
 
 	if rep.cluster == nil {
-		return nil
+		<-ctx.Done()
+		return ctx.Err()
 	}
 	// check every minute if we should report.
 	ticker := time.NewTicker(reportCheckInterval)

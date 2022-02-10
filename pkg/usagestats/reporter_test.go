@@ -158,5 +158,10 @@ func TestWrongKV(t *testing.T) {
 		Store: "",
 	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
-	require.NoError(t, r.running(context.Background()))
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-time.After(1 * time.Second)
+		cancel()
+	}()
+	require.Equal(t, context.Canceled, r.running(ctx))
 }
