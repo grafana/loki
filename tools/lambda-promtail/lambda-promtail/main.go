@@ -22,19 +22,18 @@ const (
 	maxErrMsgLen = 1024
 )
 
-type extraLabel struct {
-	key  string
-	value  string
+type ExtraLabel struct {
+	key   string
+	value string
 }
 
-
 var (
-	writeAddress       *url.URL
+	writeAddress                       *url.URL
 	username, password, extraLabelsRaw string
-	keepStream         bool
-	batchSize          int
-	s3Clients          map[string]*s3.Client
-	extraLabels        []extraLabel
+	keepStream                         bool
+	batchSize                          int
+	s3Clients                          map[string]*s3.Client
+	extraLabels                        []ExtraLabel
 )
 
 func init() {
@@ -55,14 +54,18 @@ func init() {
 	password = os.Getenv("PASSWORD")
 
 	extraLabelsRaw = os.Getenv("EXTRA_LABELS")
-	if len(extraLabelsRaw) != 0{
-		var extraLabelsByte = []byte(extraLabelsRaw)
-
-		err = json.Unmarshal(extraLabelsByte, &extraLabels)
-
-		if err != nil {
-			panic(err)
+	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
+	if len(extraLabelsRaw) > 0 {
+		if len(extraLabelsSplit)%2 != 0 {
+			panic("Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. ")
 		}
+		for i := 0; i < len(extraLabelsSplit); i += 2 {
+			extraLabels = append(extraLabels, ExtraLabel{
+				key:   extraLabelsSplit[i],
+				value: extraLabelsSplit[i+1],
+			})
+		}
+		fmt.Println("extra labels: ", extraLabels)
 	}
 
 	// If either username or password is set then both must be.
