@@ -16,7 +16,7 @@
  *
  */
 
-package xdsclient
+package xdsresource
 
 import "fmt"
 
