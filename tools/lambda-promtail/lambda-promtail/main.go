@@ -36,7 +36,7 @@ var (
 	extraLabels                        []ExtraLabel
 )
 
-func init() {
+func configure() {
 	addr := os.Getenv("WRITE_ADDRESS")
 	if addr == "" {
 		panic(errors.New("required environmental variable WRITE_ADDRESS not present, format: https://<hostname>/loki/api/v1/push"))
@@ -50,24 +50,14 @@ func init() {
 
 	fmt.Println("write address: ", writeAddress.String())
 
-	username = os.Getenv("USERNAME")
-	password = os.Getenv("PASSWORD")
-
 	extraLabelsRaw = os.Getenv("EXTRA_LABELS")
-	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
-	if len(extraLabelsRaw) > 0 {
-		if len(extraLabelsSplit)%2 != 0 {
-			panic("Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. ")
-		}
-		for i := 0; i < len(extraLabelsSplit); i += 2 {
-			extraLabels = append(extraLabels, ExtraLabel{
-				key:   extraLabelsSplit[i],
-				value: extraLabelsSplit[i+1],
-			})
-		}
-		fmt.Println("extra labels: ", extraLabels)
+	extraLabels, err = parseExtraLabels(extraLabelsRaw)
+	if err != nil {
+		panic(err)
 	}
 
+	username = os.Getenv("USERNAME")
+	password = os.Getenv("PASSWORD")
 	// If either username or password is set then both must be.
 	if (username != "" && password == "") || (username == "" && password != "") {
 		panic("both username and password must be set if either one is set")
@@ -87,6 +77,24 @@ func init() {
 	}
 
 	s3Clients = make(map[string]*s3.Client)
+}
+
+func parseExtraLabels(extraLabelsRaw string) ([]ExtraLabel, error) {
+	var extractedLabels []ExtraLabel
+	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
+	if len(extraLabelsRaw) > 0 {
+		if len(extraLabelsSplit)%2 != 0 {
+			return nil, fmt.Errorf("Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. ")
+		}
+		for i := 0; i < len(extraLabelsSplit); i += 2 {
+			extractedLabels = append(extractedLabels, ExtraLabel{
+				key:   extraLabelsSplit[i],
+				value: extraLabelsSplit[i+1],
+			})
+		}
+		fmt.Println("extra labels:", extractedLabels)
+	}
+	return extractedLabels, nil
 }
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {
@@ -116,7 +124,7 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 func handler(ctx context.Context, ev map[string]interface{}) error {
 	event, err := checkEventType(ev)
 	if err != nil {
-		fmt.Println("invalid event: %s", ev)
+		fmt.Printf("invalid event: %s", ev)
 		return err
 	}
 
@@ -131,5 +139,6 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 }
 
 func main() {
+	configure()
 	lambda.Start(handler)
 }
