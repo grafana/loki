@@ -214,7 +214,7 @@ func (o *RuleStore) SetRuleGroup(ctx context.Context, userID string, namespace s
 func (o *RuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespace string, groupName string) error {
 	objectKey := generateRuleObjectKey(userID, namespace, groupName)
 	err := o.client.DeleteObject(ctx, objectKey)
-	if err == chunk.ErrStorageObjectNotFound {
+	if o.client.IsObjectNotFoundErr(err) {
 		return rulestore.ErrGroupNotFound
 	}
 	return err
