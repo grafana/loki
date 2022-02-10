@@ -33,7 +33,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
@@ -55,7 +54,7 @@ const (
 
 type indexWriterSeries struct {
 	labels labels.Labels
-	chunks []chunks.Meta // series file offset of chunks
+	chunks []ChunkMeta // series file offset of chunks
 }
 
 type indexWriterSeriesSlice []*indexWriterSeries
@@ -414,7 +413,7 @@ func (w *Writer) writeMeta() error {
 }
 
 // AddSeries adds the series one at a time along with its chunks.
-func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...chunks.Meta) error {
+func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...ChunkMeta) error {
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
@@ -472,17 +471,15 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		c := chunks[0]
 		w.buf2.PutVarint64(c.MinTime)
 		w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
-		w.buf2.PutUvarint64(uint64(c.Ref))
+		w.buf2.PutBE32(c.Checksum)
 		t0 := c.MaxTime
-		ref0 := int64(c.Ref)
 
 		for _, c := range chunks[1:] {
 			w.buf2.PutUvarint64(uint64(c.MinTime - t0))
 			w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
 			t0 = c.MaxTime
 
-			w.buf2.PutVarint64(int64(c.Ref) - ref0)
-			ref0 = int64(c.Ref)
+			w.buf2.PutBE32(c.Checksum)
 		}
 	}
 
@@ -1603,7 +1600,7 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *Reader) Series(id storage.SeriesRef, lbls *labels.Labels, chks *[]chunks.Meta) error {
+func (r *Reader) Series(id storage.SeriesRef, lbls *labels.Labels, chks *[]ChunkMeta) error {
 	offset := id
 	// In version 2 series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1836,7 +1833,7 @@ func (dec *Decoder) LabelValueFor(b []byte, label string) (string, error) {
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]chunks.Meta) error {
+func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) error {
 	*lbls = (*lbls)[:0]
 	*chks = (*chks)[:0]
 
@@ -1873,30 +1870,29 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]chunks.Meta) e
 
 	t0 := d.Varint64()
 	maxt := int64(d.Uvarint64()) + t0
-	ref0 := int64(d.Uvarint64())
+	checksum := d.Be32()
 
-	*chks = append(*chks, chunks.Meta{
-		Ref:     chunks.ChunkRef(ref0),
-		MinTime: t0,
-		MaxTime: maxt,
+	*chks = append(*chks, ChunkMeta{
+		Checksum: checksum,
+		MinTime:  t0,
+		MaxTime:  maxt,
 	})
 	t0 = maxt
 
 	for i := 1; i < k; i++ {
 		mint := int64(d.Uvarint64()) + t0
 		maxt := int64(d.Uvarint64()) + mint
-
-		ref0 += d.Varint64()
+		checksum := d.Be32()
 		t0 = maxt
 
 		if d.Err() != nil {
 			return errors.Wrapf(d.Err(), "read meta for chunk %d", i)
 		}
 
-		*chks = append(*chks, chunks.Meta{
-			Ref:     chunks.ChunkRef(ref0),
-			MinTime: mint,
-			MaxTime: maxt,
+		*chks = append(*chks, ChunkMeta{
+			Checksum: checksum,
+			MinTime:  mint,
+			MaxTime:  maxt,
 		})
 	}
 	return d.Err()
