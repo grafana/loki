@@ -145,3 +145,23 @@ func Test_NextReport(t *testing.T) {
 		})
 	}
 }
+
+func TestWrongKV(t *testing.T) {
+	objectClient, err := storage.NewObjectClient(storage.StorageTypeFileSystem, storage.Config{
+		FSConfig: local.FSConfig{
+			Directory: t.TempDir(),
+		},
+	}, metrics)
+	require.NoError(t, err)
+
+	r, err := NewReporter(Config{Leader: true}, kv.Config{
+		Store: "",
+	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-time.After(1 * time.Second)
+		cancel()
+	}()
+	require.Equal(t, context.Canceled, r.running(ctx))
+}

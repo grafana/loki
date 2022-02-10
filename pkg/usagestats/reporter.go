@@ -46,7 +46,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 type Reporter struct {
-	kvClient     kv.Client
 	logger       log.Logger
 	objectClient chunk.ObjectClient
 	reg          prometheus.Registerer
@@ -54,6 +53,7 @@ type Reporter struct {
 	services.Service
 
 	conf       Config
+	kvConfig   kv.Config
 	cluster    *ClusterSeed
 	lastReport time.Time
 }
@@ -62,15 +62,11 @@ func NewReporter(config Config, kvConfig kv.Config, objectClient chunk.ObjectCli
 	if config.Disabled {
 		return nil, nil
 	}
-	kvClient, err := kv.NewClient(kvConfig, JSONCodec, kv.RegistererWithKVName(reg, "usagestats"), logger)
-	if err != nil {
-		return nil, err
-	}
 	r := &Reporter{
-		kvClient:     kvClient,
 		logger:       logger,
 		objectClient: objectClient,
 		conf:         config,
+		kvConfig:     kvConfig,
 		reg:          reg,
 	}
 	r.Service = services.NewBasicService(nil, r.running, nil)
@@ -78,6 +74,11 @@ func NewReporter(config Config, kvConfig kv.Config, objectClient chunk.ObjectCli
 }
 
 func (rep *Reporter) initLeader(ctx context.Context) *ClusterSeed {
+	kvClient, err := kv.NewClient(rep.kvConfig, JSONCodec, nil, rep.logger)
+	if err != nil {
+		level.Info(rep.logger).Log("msg", "failed to create kv client", "err", err)
+		return nil
+	}
 	// Try to become leader via the kv client
 	for backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: time.Second,
@@ -90,7 +91,7 @@ func (rep *Reporter) initLeader(ctx context.Context) *ClusterSeed {
 			PrometheusVersion: build.GetVersion(),
 			CreatedAt:         time.Now(),
 		}
-		if err := rep.kvClient.CAS(ctx, seedKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		if err := kvClient.CAS(ctx, seedKey, func(in interface{}) (out interface{}, retry bool, err error) {
 			// The key is already set, so we don't need to do anything
 			if in != nil {
 				if kvSeed, ok := in.(*ClusterSeed); ok && kvSeed.UID != seed.UID {
@@ -207,6 +208,10 @@ func (rep *Reporter) writeSeedFile(ctx context.Context, seed ClusterSeed) error 
 func (rep *Reporter) running(ctx context.Context) error {
 	rep.init(ctx)
 
+	if rep.cluster == nil {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	// check every minute if we should report.
 	ticker := time.NewTicker(reportCheckInterval)
 	defer ticker.Stop()
