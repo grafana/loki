@@ -169,6 +169,7 @@ func (i *Ingester) Merge(m Ingester) {
 }
 
 func (r *Result) Merge(m Result) {
+	r.Summary.Subqueries++
 	r.Querier.Merge(m.Querier)
 	r.Ingester.Merge(m.Ingester)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
