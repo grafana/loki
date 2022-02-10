@@ -252,6 +252,7 @@ func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error 
 			backoff.Wait()
 			continue
 		}
+		level.Debug(rep.logger).Log("msg", "usage report send with success")
 		return nil
 	}
 	return errs.Err()
