@@ -165,7 +165,7 @@ func (r *receiversShim) ConsumeLogs(ctx context.Context, ld pdata.Logs) error {
 }
 
 func parseLog(ld pdata.Logs) (*logproto.PushRequest, error) {
-	streams := make(map[string]*logproto.Stream, 0)
+	streams := make(map[string]*logproto.Stream)
 	rss := ld.ResourceLogs()
 	for i := 0; i < rss.Len(); i++ {
 		rs := rss.At(i)
@@ -209,8 +209,8 @@ func parseEntry(pLog pdata.LogRecord) (*logproto.Entry, error) {
 		Name:           pLog.Name(),
 		Body:           pLog.Body().AsString(),
 		Flags:          pLog.Flags(),
-		TraceId:        pLog.TraceID().HexString(),
-		SpanId:         pLog.SpanID().HexString(),
+		TraceID:        pLog.TraceID().HexString(),
+		SpanID:         pLog.SpanID().HexString(),
 	}
 
 	data, err := json.Marshal(&record)
@@ -265,6 +265,6 @@ type LokiLogRecord struct {
 	Name           string `json:"name,omitempty"`
 	Body           string `json:"body"`
 	Flags          uint32 `json:"flags,omitempty"`
-	TraceId        string `json:"trace_id"`
-	SpanId         string `json:"span_id"`
+	TraceID        string `json:"trace_id"`
+	SpanID         string `json:"span_id"`
 }
