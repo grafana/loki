@@ -28,6 +28,7 @@ import (
 	"sort"
 	"unsafe"
 
+	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/pkg/errors"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -168,8 +169,7 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 	b := bs.Range(bs.Len()-indexTOCLen, bs.Len())
 
 	expCRC := binary.BigEndian.Uint32(b[len(b)-4:])
-	d := tsdb_enc.Decbuf{B: b[:len(b)-4]}
-
+	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b[:len(b)-4]})
 	if d.Crc32(castagnoliTable) != expCRC {
 		return nil, errors.Wrap(tsdb_enc.ErrInvalidChecksum, "read TOC")
 	}
@@ -579,7 +579,7 @@ func (w *Writer) writeLabelIndices() error {
 	}
 	defer f.Close()
 
-	d := tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.fPO.pos))
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.fPO.pos)))
 	cnt := w.cntPO
 	current := []byte{}
 	values := []uint32{}
@@ -749,7 +749,7 @@ func (w *Writer) writePostingsOffsetTable() error {
 			f.Close()
 		}
 	}()
-	d := tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.fPO.pos))
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.fPO.pos)))
 	cnt := w.cntPO
 	for d.Err() == nil && cnt > 0 {
 		w.buf1.Reset()
@@ -832,7 +832,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 
 	// Write out the special all posting.
 	offsets := []uint32{}
-	d := tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.toc.LabelIndices))
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
 	d.Skip(int(w.toc.Series))
 	for d.Len() > 0 {
 		d.ConsumePadding()
@@ -878,7 +878,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 		// Label name -> label value -> positions.
 		postings := map[uint32]map[uint32][]uint32{}
 
-		d := tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.toc.LabelIndices))
+		d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
 		d.Skip(int(w.toc.Series))
 		for d.Len() > 0 {
 			d.ConsumePadding()
@@ -1254,7 +1254,7 @@ func (r *Reader) PostingsRanges() (map[labels.Label]Range, error) {
 		if len(key) != 2 {
 			return errors.Errorf("unexpected key length for posting table %d", len(key))
 		}
-		d := tsdb_enc.NewDecbufAt(r.b, int(off), castagnoliTable)
+		d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(off), castagnoliTable))
 		if d.Err() != nil {
 			return d.Err()
 		}
@@ -1287,7 +1287,7 @@ func NewSymbols(bs ByteSlice, version, off int) (*Symbols, error) {
 		version: version,
 		off:     off,
 	}
-	d := tsdb_enc.NewDecbufAt(bs, off, castagnoliTable)
+	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, off, castagnoliTable))
 	var (
 		origLen = d.Len()
 		cnt     = d.Be32int()
@@ -1308,9 +1308,9 @@ func NewSymbols(bs ByteSlice, version, off int) (*Symbols, error) {
 }
 
 func (s Symbols) Lookup(o uint32) (string, error) {
-	d := tsdb_enc.Decbuf{
+	d := encoding.DecWrap(tsdb_enc.Decbuf{
 		B: s.bs.Range(0, s.bs.Len()),
-	}
+	})
 
 	if s.version == FormatV2 {
 		if int(o) >= s.seen {
@@ -1338,15 +1338,15 @@ func (s Symbols) ReverseLookup(sym string) (uint32, error) {
 	i := sort.Search(len(s.offsets), func(i int) bool {
 		// Any decoding errors here will be lost, however
 		// we already read through all of this at startup.
-		d := tsdb_enc.Decbuf{
+		d := encoding.DecWrap(tsdb_enc.Decbuf{
 			B: s.bs.Range(0, s.bs.Len()),
-		}
+		})
 		d.Skip(s.offsets[i])
 		return yoloString(d.UvarintBytes()) > sym
 	})
-	d := tsdb_enc.Decbuf{
+	d := encoding.DecWrap(tsdb_enc.Decbuf{
 		B: s.bs.Range(0, s.bs.Len()),
-	}
+	})
 	if i > 0 {
 		i--
 	}
@@ -1379,7 +1379,7 @@ func (s Symbols) Size() int {
 }
 
 func (s Symbols) Iter() StringIter {
-	d := tsdb_enc.NewDecbufAt(s.bs, s.off, castagnoliTable)
+	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(s.bs, s.off, castagnoliTable))
 	cnt := d.Be32int()
 	return &symbolsIter{
 		d:   d,
@@ -1389,7 +1389,7 @@ func (s Symbols) Iter() StringIter {
 
 // symbolsIter implements StringIter.
 type symbolsIter struct {
-	d   tsdb_enc.Decbuf
+	d   encoding.Decbuf
 	cnt int
 	cur string
 	err error
@@ -1414,7 +1414,7 @@ func (s symbolsIter) Err() error { return s.err }
 // ReadOffsetTable reads an offset table and at the given position calls f for each
 // found entry. If f returns an error it stops decoding and returns the received error.
 func ReadOffsetTable(bs ByteSlice, off uint64, f func([]string, uint64, int) error) error {
-	d := tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable)
+	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable))
 	startLen := d.Len()
 	cnt := d.Be32()
 
@@ -1504,7 +1504,7 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 	}
 	values := make([]string, 0, len(e)*symbolFactor)
 
-	d := tsdb_enc.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil)
+	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil))
 	d.Skip(e[0].off)
 	lastVal := e[len(e)-1].value
 
@@ -1546,7 +1546,7 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 			offset = id * 16
 		}
 
-		d := tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable)
+		d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 		buf := d.Get()
 		if d.Err() != nil {
 			return nil, errors.Wrap(d.Err(), "get buffer for series")
@@ -1584,7 +1584,7 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 	if r.version == FormatV2 {
 		offset = id * 16
 	}
-	d := tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable)
+	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 	buf := d.Get()
 	if d.Err() != nil {
 		return "", errors.Wrap(d.Err(), "label values for")
@@ -1610,7 +1610,7 @@ func (r *Reader) Series(id storage.SeriesRef, lbls *labels.Labels, chks *[]chunk
 	if r.version == FormatV2 {
 		offset = id * 16
 	}
-	d := tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable)
+	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 	if d.Err() != nil {
 		return d.Err()
 	}
@@ -1630,7 +1630,7 @@ func (r *Reader) Postings(name string, values ...string) (Postings, error) {
 				continue
 			}
 			// Read from the postings table.
-			d := tsdb_enc.NewDecbufAt(r.b, int(postingsOff), castagnoliTable)
+			d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(postingsOff), castagnoliTable))
 			_, p, err := r.dec.Postings(d.Get())
 			if err != nil {
 				return nil, errors.Wrap(err, "decode postings")
@@ -1670,7 +1670,7 @@ func (r *Reader) Postings(name string, values ...string) (Postings, error) {
 		}
 		// Don't Crc32 the entire postings offset table, this is very slow
 		// so hope any issues were caught at startup.
-		d := tsdb_enc.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil)
+		d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil))
 		d.Skip(e[i].off)
 
 		// Iterate on the offset table.
@@ -1691,7 +1691,7 @@ func (r *Reader) Postings(name string, values ...string) (Postings, error) {
 			for string(v) >= value {
 				if string(v) == value {
 					// Read from the postings table.
-					d2 := tsdb_enc.NewDecbufAt(r.b, int(postingsOff), castagnoliTable)
+					d2 := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(postingsOff), castagnoliTable))
 					_, p, err := r.dec.Postings(d2.Get())
 					if err != nil {
 						return nil, errors.Wrap(err, "decode postings")
@@ -1779,7 +1779,7 @@ type Decoder struct {
 
 // Postings returns a postings list for b and its number of elements.
 func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
-	d := tsdb_enc.Decbuf{B: b}
+	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 	n := d.Be32int()
 	l := d.Get()
 	return n, newBigEndianPostings(l), d.Err()
@@ -1788,7 +1788,7 @@ func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
 // LabelNamesOffsetsFor decodes the offsets of the name symbols for a given series.
 // They are returned in the same order they're stored, which should be sorted lexicographically.
 func (dec *Decoder) LabelNamesOffsetsFor(b []byte) ([]uint32, error) {
-	d := tsdb_enc.Decbuf{B: b}
+	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 	k := d.Uvarint()
 
 	offsets := make([]uint32, k)
@@ -1806,7 +1806,7 @@ func (dec *Decoder) LabelNamesOffsetsFor(b []byte) ([]uint32, error) {
 
 // LabelValueFor decodes a label for a given series.
 func (dec *Decoder) LabelValueFor(b []byte, label string) (string, error) {
-	d := tsdb_enc.Decbuf{B: b}
+	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 	k := d.Uvarint()
 
 	for i := 0; i < k; i++ {
@@ -1840,7 +1840,7 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]chunks.Meta) e
 	*lbls = (*lbls)[:0]
 	*chks = (*chks)[:0]
 
-	d := tsdb_enc.Decbuf{B: b}
+	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 
 	k := d.Uvarint()
 
