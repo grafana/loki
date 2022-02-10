@@ -108,7 +108,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 		},
 	}
 
-	gateway := gateway{}
+	gateway := Gateway{}
 	responseSizes := []int{0, 99, maxIndexEntriesPerResponse, 2 * maxIndexEntriesPerResponse, 5*maxIndexEntriesPerResponse - 1}
 	for i, responseSize := range responseSizes {
 		query := chunk.IndexQuery{
