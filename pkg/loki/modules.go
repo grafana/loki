@@ -740,7 +740,10 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		return nil, err
 	}
 
-	gateway := indexgateway.NewIndexGateway(shipperIndexClient)
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, shipperIndexClient.(*shipper.Shipper), shipperIndexClient)
+	if err != nil {
+		return nil, err
+	}
 	indexgatewaypb.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
 	return gateway, nil
 }

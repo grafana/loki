@@ -44,6 +44,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
@@ -64,6 +65,7 @@ type Config struct {
 	Server           server.Config            `yaml:"server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
 	Querier          querier.Config           `yaml:"querier,omitempty"`
+	IndexGateway     indexgateway.Config      `yaml:"index_gateway,omitempty"`
 	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
 	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
 	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`

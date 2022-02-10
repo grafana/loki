@@ -51,8 +51,8 @@ type Gateway struct {
 }
 
 type Config struct {
-	useIndexGatewayRing bool                `yaml:"use_index_gateway_ring"`
-	IndexGatewayRing    lokiutil.RingConfig `yaml:"index_gateway_ring,omitempty"`
+	useIndexGatewayRing bool                `yaml:"use_index_gateway_ring"`       // TODO: maybe just `yaml:"useRing"`?
+	IndexGatewayRing    lokiutil.RingConfig `yaml:"index_gateway_ring,omitempty"` // TODO: maybe just `yaml:"ring"`?
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
