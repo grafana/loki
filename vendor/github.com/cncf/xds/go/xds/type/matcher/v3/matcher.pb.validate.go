@@ -76,12 +76,6 @@ func (m *Matcher) Validate() error {
 			}
 		}
 
-	default:
-		return MatcherValidationError{
-			field:  "MatcherType",
-			reason: "value is required",
-		}
-
 	}
 
 	return nil

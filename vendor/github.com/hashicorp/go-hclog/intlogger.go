@@ -199,6 +199,24 @@ func trimCallerPath(path string) string {
 	return path[idx+1:]
 }
 
+// isNormal indicates if the rune is one allowed to exist as an unquoted
+// string value. This is a subset of ASCII, `-` through `~`.
+func isNormal(r rune) bool {
+	return 0x2D <= r && r <= 0x7E // - through ~
+}
+
+// needsQuoting returns false if all the runes in string are normal, according
+// to isNormal
+func needsQuoting(str string) bool {
+	for _, r := range str {
+		if !isNormal(r) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Non-JSON logging format function
 func (l *intLogger) logPlain(t time.Time, name string, level Level, msg string, args ...interface{}) {
 
@@ -323,13 +341,11 @@ func (l *intLogger) logPlain(t time.Time, name string, level Level, msg string, 
 				l.writer.WriteString("=\n")
 				writeIndent(l.writer, val, "  | ")
 				l.writer.WriteString("  ")
-			} else if !raw && strings.ContainsAny(val, " \t") {
+			} else if !raw && needsQuoting(val) {
 				l.writer.WriteByte(' ')
 				l.writer.WriteString(key)
 				l.writer.WriteByte('=')
-				l.writer.WriteByte('"')
-				l.writer.WriteString(val)
-				l.writer.WriteByte('"')
+				l.writer.WriteString(strconv.Quote(val))
 			} else {
 				l.writer.WriteByte(' ')
 				l.writer.WriteString(key)
