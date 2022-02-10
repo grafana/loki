@@ -30,7 +30,7 @@ func TestParseEntry(t *testing.T) {
 		Line:      `{"severity_number":1,"severity_text":"WARN","name":"testName","body":"","flags":31,"trace_id":"01020304000000000000000000000000","span_id":"0102000000000000"}`,
 	}
 	require.Equal(t, expexted.Line, (*entry).Line)
-	require.Equal(t, expexted.Timestamp.String(), (*entry).Timestamp.String())
+	require.Equal(t, expexted.Timestamp.UnixMilli(), (*entry).Timestamp.UnixMilli())
 }
 
 func TestParseLabel(t *testing.T) {

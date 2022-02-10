@@ -74,6 +74,7 @@ type Config struct {
 	// Distributors ring
 	DistributorRing RingConfig             `yaml:"ring,omitempty"`
 	Receivers       map[string]interface{} `yaml:"receivers"`
+	ReceiverEnable  bool                   `yaml:"receiverEnable"`
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 }
@@ -200,15 +201,17 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 
 	servs = append(servs, d.pool)
-	cfgReceivers := cfg.Receivers
-	if len(cfgReceivers) == 0 {
-		cfgReceivers = defaultReceivers
+	if cfg.ReceiverEnable {
+		cfgReceivers := cfg.Receivers
+		if len(cfgReceivers) == 0 {
+			cfgReceivers = defaultReceivers
+		}
+		receivers, err := receiver.New(cfgReceivers, d, middleware, level)
+		if err != nil {
+			return nil, err
+		}
+		servs = append(servs, receivers)
 	}
-	receivers, err := receiver.New(cfgReceivers, d, middleware, level)
-	if err != nil {
-		return nil, err
-	}
-	servs = append(servs, receivers)
 
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
