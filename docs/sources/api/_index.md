@@ -310,7 +310,7 @@ See [statistics](#statistics) for information about the statistics returned by L
 
 ### Batching
 
-If the response is a stream it will include a `links` field with API calls to the current and next batch. Since a range query is always limited the response might not always include all entries for a query. In order to retrieve all entries the `next` call could be used to retreive the next batch.
+If the response is a stream, the response will include a `links` field with API calls to the current and next batch. Since a range query is always limited, the response may not include all entries for a query. In order to retrieve all entries, use the `next` call  to retrieve the next batch.
 
 ```
 {
