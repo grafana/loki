@@ -7,6 +7,8 @@ func EncWith(b []byte) (res Encbuf) {
 	return res
 }
 
+func EncWrap(inner encoding.Encbuf) Encbuf { return Encbuf{Encbuf: inner} }
+
 // Encbuf extends encoding.Encbuf with support for multi byte encoding
 type Encbuf struct {
 	encoding.Encbuf

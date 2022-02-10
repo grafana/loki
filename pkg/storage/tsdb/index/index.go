@@ -130,8 +130,8 @@ type Writer struct {
 	postingsStart uint64 // Due to padding, can differ from TOC entry.
 
 	// Reusable memory.
-	buf1 tsdb_enc.Encbuf
-	buf2 tsdb_enc.Encbuf
+	buf1 encoding.Encbuf
+	buf2 encoding.Encbuf
 
 	numSymbols  int
 	symbols     *Symbols
@@ -229,8 +229,8 @@ func NewWriter(ctx context.Context, fn string) (*Writer, error) {
 		stage: idxStageNone,
 
 		// Reusable memory.
-		buf1: tsdb_enc.Encbuf{B: make([]byte, 0, 1<<22)},
-		buf2: tsdb_enc.Encbuf{B: make([]byte, 0, 1<<22)},
+		buf1: encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0, 1<<22)}),
+		buf2: encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0, 1<<22)}),
 
 		symbolCache: make(map[string]symbolCacheEntry, 1<<8),
 		labelNames:  make(map[string]uint64, 1<<8),
