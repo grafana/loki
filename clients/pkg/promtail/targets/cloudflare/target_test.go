@@ -251,26 +251,26 @@ func Test_splitRequests(t *testing.T) {
 	tests := []struct {
 		start time.Time
 		end   time.Time
-		want  []interface{}
+		want  []pullRequest
 	}{
 		// perfectly divisible
 		{
 			time.Unix(0, 0),
 			time.Unix(0, int64(time.Minute)),
-			[]interface{}{
-				pullRequest{start: time.Unix(0, 0), end: time.Unix(0, int64(time.Minute/3))},
-				pullRequest{start: time.Unix(0, int64(time.Minute/3)), end: time.Unix(0, int64(time.Minute*2/3))},
-				pullRequest{start: time.Unix(0, int64(time.Minute*2/3)), end: time.Unix(0, int64(time.Minute))},
+			[]pullRequest{
+				{start: time.Unix(0, 0), end: time.Unix(0, int64(time.Minute/3))},
+				{start: time.Unix(0, int64(time.Minute/3)), end: time.Unix(0, int64(time.Minute*2/3))},
+				{start: time.Unix(0, int64(time.Minute*2/3)), end: time.Unix(0, int64(time.Minute))},
 			},
 		},
 		// not divisible
 		{
 			time.Unix(0, 0),
 			time.Unix(0, int64(time.Minute+1)),
-			[]interface{}{
-				pullRequest{start: time.Unix(0, 0), end: time.Unix(0, int64(time.Minute/3))},
-				pullRequest{start: time.Unix(0, int64(time.Minute/3)), end: time.Unix(0, int64(time.Minute*2/3))},
-				pullRequest{start: time.Unix(0, int64(time.Minute*2/3)), end: time.Unix(0, int64(time.Minute+1))},
+			[]pullRequest{
+				{start: time.Unix(0, 0), end: time.Unix(0, int64(time.Minute/3))},
+				{start: time.Unix(0, int64(time.Minute/3)), end: time.Unix(0, int64(time.Minute*2/3))},
+				{start: time.Unix(0, int64(time.Minute*2/3)), end: time.Unix(0, int64(time.Minute+1))},
 			},
 		},
 	}
@@ -279,11 +279,11 @@ func Test_splitRequests(t *testing.T) {
 			got := splitRequests(tt.start, tt.end, 3)
 			if !assert.Equal(t, tt.want, got) {
 				for i := range got {
-					if !assert.Equal(t, tt.want[i].(pullRequest).start, got[i].(pullRequest).start) {
-						t.Logf("expected i:%d start: %d , got: %d", i, tt.want[i].(pullRequest).start.UnixNano(), got[i].(pullRequest).start.UnixNano())
+					if !assert.Equal(t, tt.want[i].start, got[i].start) {
+						t.Logf("expected i:%d start: %d , got: %d", i, tt.want[i].start.UnixNano(), got[i].start.UnixNano())
 					}
-					if !assert.Equal(t, tt.want[i].(pullRequest).end, got[i].(pullRequest).end) {
-						t.Logf("expected i:%d end: %d , got: %d", i, tt.want[i].(pullRequest).end.UnixNano(), got[i].(pullRequest).end.UnixNano())
+					if !assert.Equal(t, tt.want[i].end, got[i].end) {
+						t.Logf("expected i:%d end: %d , got: %d", i, tt.want[i].end.UnixNano(), got[i].end.UnixNano())
 					}
 				}
 			}

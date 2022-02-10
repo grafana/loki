@@ -124,16 +124,16 @@ func (c *Client) awaitKVRunningOrStopping(ctx context.Context) error {
 // KVConfig is a config for memberlist.KV
 type KVConfig struct {
 	// Memberlist options.
-	NodeName            string        `yaml:"node_name"`
-	RandomizeNodeName   bool          `yaml:"randomize_node_name"`
-	StreamTimeout       time.Duration `yaml:"stream_timeout"`
-	RetransmitMult      int           `yaml:"retransmit_factor"`
-	PushPullInterval    time.Duration `yaml:"pull_push_interval"`
-	GossipInterval      time.Duration `yaml:"gossip_interval"`
-	GossipNodes         int           `yaml:"gossip_nodes"`
-	GossipToTheDeadTime time.Duration `yaml:"gossip_to_dead_nodes_time"`
-	DeadNodeReclaimTime time.Duration `yaml:"dead_node_reclaim_time"`
-	EnableCompression   bool          `yaml:"compression_enabled"`
+	NodeName            string        `yaml:"node_name" category:"advanced"`
+	RandomizeNodeName   bool          `yaml:"randomize_node_name" category:"advanced"`
+	StreamTimeout       time.Duration `yaml:"stream_timeout" category:"advanced"`
+	RetransmitMult      int           `yaml:"retransmit_factor" category:"advanced"`
+	PushPullInterval    time.Duration `yaml:"pull_push_interval" category:"advanced"`
+	GossipInterval      time.Duration `yaml:"gossip_interval" category:"advanced"`
+	GossipNodes         int           `yaml:"gossip_nodes" category:"advanced"`
+	GossipToTheDeadTime time.Duration `yaml:"gossip_to_dead_nodes_time" category:"advanced"`
+	DeadNodeReclaimTime time.Duration `yaml:"dead_node_reclaim_time" category:"advanced"`
+	EnableCompression   bool          `yaml:"compression_enabled" category:"advanced"`
 
 	// ip:port to advertise other cluster members. Used for NAT traversal
 	AdvertiseAddr string `yaml:"advertise_addr"`
@@ -141,20 +141,20 @@ type KVConfig struct {
 
 	// List of members to join
 	JoinMembers      flagext.StringSlice `yaml:"join_members"`
-	MinJoinBackoff   time.Duration       `yaml:"min_join_backoff"`
-	MaxJoinBackoff   time.Duration       `yaml:"max_join_backoff"`
-	MaxJoinRetries   int                 `yaml:"max_join_retries"`
+	MinJoinBackoff   time.Duration       `yaml:"min_join_backoff" category:"advanced"`
+	MaxJoinBackoff   time.Duration       `yaml:"max_join_backoff" category:"advanced"`
+	MaxJoinRetries   int                 `yaml:"max_join_retries" category:"advanced"`
 	AbortIfJoinFails bool                `yaml:"abort_if_cluster_join_fails"`
-	RejoinInterval   time.Duration       `yaml:"rejoin_interval"`
+	RejoinInterval   time.Duration       `yaml:"rejoin_interval" category:"advanced"`
 
 	// Remove LEFT ingesters from ring after this timeout.
-	LeftIngestersTimeout time.Duration `yaml:"left_ingesters_timeout"`
+	LeftIngestersTimeout time.Duration `yaml:"left_ingesters_timeout" category:"advanced"`
 
 	// Timeout used when leaving the memberlist cluster.
-	LeaveTimeout time.Duration `yaml:"leave_timeout"`
+	LeaveTimeout time.Duration `yaml:"leave_timeout" category:"advanced"`
 
 	// How much space to use to keep received and sent messages in memory (for troubleshooting).
-	MessageHistoryBufferBytes int `yaml:"message_history_buffer_bytes"`
+	MessageHistoryBufferBytes int `yaml:"message_history_buffer_bytes" category:"advanced"`
 
 	TCPTransport TCPTransportConfig `yaml:",inline"`
 

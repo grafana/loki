@@ -3,6 +3,7 @@ package ring
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -490,4 +491,21 @@ func (l *BasicLifecycler) run(fn func() error) error {
 	case l.actorChan <- wrappedFn:
 		return <-errCh
 	}
+}
+
+func (l *BasicLifecycler) casRing(ctx context.Context, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+	return l.store.CAS(ctx, l.ringKey, f)
+}
+
+func (l *BasicLifecycler) getRing(ctx context.Context) (*Desc, error) {
+	obj, err := l.store.Get(ctx, l.ringKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetOrCreateRingDesc(obj), nil
+}
+
+func (l *BasicLifecycler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	newRingPageHandler(l, l.cfg.HeartbeatPeriod).handle(w, req)
 }
