@@ -97,6 +97,8 @@ type Config struct {
 	Wrapper Wrapper `yaml:"-"`
 
 	IndexShards int `yaml:"index_shards"`
+
+	MaxDroppedStreams int `yaml:"max_dropped_streams"`
 }
 
 // RegisterFlags registers the flags.
@@ -120,6 +122,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
 	f.BoolVar(&cfg.AutoForgetUnhealthy, "ingester.autoforget-unhealthy", false, "Enable to remove unhealthy ingesters from the ring after `ring.kvstore.heartbeat_timeout`")
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
+	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing")
 }
 
 func (cfg *Config) Validate() error {
@@ -824,7 +827,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	}
 
 	instance := i.GetOrCreateInstance(instanceID)
-	tailer, err := newTailer(instanceID, req.Query, queryServer)
+	tailer, err := newTailer(instanceID, req.Query, queryServer, i.cfg.MaxDroppedStreams)
 	if err != nil {
 		return err
 	}

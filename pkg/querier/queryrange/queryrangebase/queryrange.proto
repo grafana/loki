@@ -46,8 +46,8 @@ message PrometheusData {
 }
 
 message SampleStream {
-  repeated logproto.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
-  repeated logproto.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
+  repeated logproto.LegacyLabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
+  repeated logproto.LegacySample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
 }
 
 message CachedResponse  {

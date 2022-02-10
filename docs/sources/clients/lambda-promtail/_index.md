@@ -4,7 +4,7 @@ weight: 20
 ---
 # Lambda Promtail
 
-Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/tree/master/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config](../promtail/configuration#loki_push_api_config).
+Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/tree/master/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config](../promtail/configuration#loki_push_api_config).
 
 ## Deployment
 
@@ -15,9 +15,9 @@ For both deployment types there are a few values that must be defined:
 - basic auth username/password if the write address is a Loki endpoint and has authentication
 - the lambda-promtail image, full ECR repo path:tag
 
-The Terraform deployment also takes in an array of log group names, and can take arrays for VPC subnets and security groups.
+The Terraform deployment also takes in an array of log group and bucket names, and can take arrays for VPC subnets and security groups.
 
-There's also a flag to keep the log stream label when propagating the logs, which defaults to false. This can be helpful when the cardinality is too large, such as the case of a log stream per lambda invocation.
+There's also a flag to keep the log stream label when propagating the logs from Cloudwatch, which defaults to false. This can be helpful when the cardinality is too large, such as the case of a log stream per lambda invocation.
 
 In an effort to make deployment of lambda-promtail as simple as possible, we've created a [public ECR repo](https://gallery.ecr.aws/grafana/lambda-promtail) to publish our builds of lambda-promtail. Users are still able to clone this repo, make their own modifications to the Go code, and upload their own image to their own ECR repo if they wish.
 
@@ -25,7 +25,7 @@ In an effort to make deployment of lambda-promtail as simple as possible, we've 
 
 Terraform:
 ```
-terraform apply -var "lambda_promtail_image=<repo:tag>" -var "write_address=https://logs-prod-us-central1.grafana.net/loki/api/v1/push" -var "password=<password>" -var "username=<user>" -var 'log_group_names=["/aws/lambda/log-group-1", "/aws/lambda/log-group-2]'
+terraform apply -var "lambda_promtail_image=<repo:tag>" -var "write_address=https://logs-prod-us-central1.grafana.net/loki/api/v1/push" -var "password=<password>" -var "username=<user>" -var 'log_group_names=["/aws/lambda/log-group-1", "/aws/lambda/log-group-2"]' -var 'bucket_names=["bucket-a", "bucket-b"]' -var 'batch_size=131072'
 ```
 
 The first few lines of `main.tf` define the AWS region to deploy to, you are free to modify this or remove and deploy to 
@@ -37,7 +37,7 @@ provider "aws" {
 
 To keep the log group label add `-var "keep_stream=true"`.
 
-Note that the creation of subscription filter in the provided Terraform file only accepts an array of log group names, it does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so, or having lambda-promtail write to Promtail and using [pipeline stages](https://grafana.com/docs/loki/latest/clients/promtail/stages/drop/).
+Note that the creation of subscription filter on Cloudwatch in the provided Terraform file only accepts an array of log group names, it does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so, or having lambda-promtail write to Promtail and using [pipeline stages](https://grafana.com/docs/loki/latest/clients/promtail/stages/drop/).
 
 CloudFormation:
 ```
@@ -72,13 +72,20 @@ For those using Cloudwatch and wishing to test out Loki in a low-risk way, this 
 
 Note: Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ for Cloudwatch.
 
+### Loadbalancer logs
+
+This workflow allows ingesting AWS loadbalancer logs stored on S3 to Loki.
+
 ## Propagated Labels
 
 Incoming logs can have three special labels assigned to them which can be used in [relabeling](../promtail/configuration/#relabel_config) or later stages in a Promtail [pipeline](../promtail/pipelines/):
 
+- `__aws_log_type`: Where this log came from (Cloudwatch or S3).
 - `__aws_cloudwatch_log_group`: The associated Cloudwatch Log Group for this log.
 - `__aws_cloudwatch_log_stream`: The associated Cloudwatch Log Stream for this log (if `KEEP_STREAM=true`).
 - `__aws_cloudwatch_owner`: The AWS ID of the owner of this event.
+- `__aws_s3_log_lb`: The name of the loadbalancer.
+- `__aws_s3_log_lb_owner`: The Account ID of the loadbalancer owner.
 
 ## Limitations
 
@@ -100,11 +107,13 @@ For availability concerns, run a set of Promtails behind a load balancer.
 
 Relevant if lambda-promtail is configured to write to Promtail. Since Promtail batches writes to Loki for performance, it's possible that Promtail will receive a log, issue a successful `204` http status code for the write, then be killed at a later time before it writes upstream to Loki. This should be rare, but is a downside this workflow has.
 
+This lambda will flush logs when the batch size hits the default value of `131072` (128KB), this can be changed with `BATCH_SIZE` environment variable, which is set to the number of bytes to use.
+
 ### Templating/Deployment
 
 The current CloudFormation template is rudimentary. If you need to add vpc configs, extra log groups to monitor, subnet declarations, etc, you'll need to edit the template manually. If you need to subscribe to more than one Cloudwatch Log Group you'll also need to copy paste that section of the template for each group.
 
-The Terraform file is a bit more fleshed out, and can be configured to take in an array of log group names, as well as vpc configuration.
+The Terraform file is a bit more fleshed out, and can be configured to take in an array of log group and bucket names, as well as vpc configuration.
 
 The provided Terraform and CloudFormation files are meant to cover the default use case, and more complex deployments will likely require some modification and extenstion of the provided files.
 
@@ -133,9 +142,14 @@ scrape_configs:
         # Adds a label on all streams indicating it was processed by the lambda-promtail workflow.
         promtail: 'lambda-promtail'
       relabel_configs:
+        - source_labels: ['__aws_log_type']
+          taget_label: 'log_type'
         # Maps the cloudwatch log group into a label called `log_group` for use in Loki.
         - source_labels: ['__aws_cloudwatch_log_group']
           target_label: 'log_group'
+        # Maps the loadbalancer name into a label called `loadbalancer_name` for use in Loki.
+        - source_label: ['__aws_s3_log_lb']
+          taget_label: 'loadbalancer_name'
 ```
 
 ## Multiple Promtail Deployment

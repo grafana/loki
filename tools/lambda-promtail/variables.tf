@@ -4,10 +4,16 @@ variable "write_address" {
   default     = "http://localhost:8080/loki/api/v1/push"
 }
 
+variable "bucket_names" {
+  type        = list(string)
+  description = "List of S3 bucket names to create Event Notifications for."
+  default     = []
+}
+
 variable "log_group_names" {
   type        = list(string)
   description = "List of CloudWatch Log Group names to create Subscription Filters for."
-  default     = [""]
+  default     = []
 }
 
 variable "lambda_promtail_image" {
@@ -33,6 +39,12 @@ variable "keep_stream" {
   type        = string
   description = "Determines whether to keep the CloudWatch Log Stream value as a Loki label when writing logs from lambda-promtail."
   default     = "false"
+}
+
+variable "batch_size" {
+  type        = string
+  description = "Determines when to flush the batch of logs (bytes)."
+  default     = ""
 }
 
 variable "lambda_vpc_subnets" {

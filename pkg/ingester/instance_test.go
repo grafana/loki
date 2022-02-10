@@ -420,7 +420,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	ctx := context.Background()
 
 	inst := newInstance(&Config{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
-	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil)
+	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil, 10)
 	require.NoError(b, err)
 	for i := 0; i < 10000; i++ {
 		require.NoError(b, inst.Push(ctx, &logproto.PushRequest{

@@ -95,14 +95,14 @@ func TestSelect(t *testing.T) {
 									{Name: "a", Value: "a1"},
 									{Name: "b", Value: "b1"},
 								},
-								Samples: []logproto.Sample{
+								Samples: []logproto.LegacySample{
 									{
-										Value:     1,
-										Timestamp: 1,
+										Value:       1,
+										TimestampMs: 1,
 									},
 									{
-										Value:     2,
-										Timestamp: 2,
+										Value:       2,
+										TimestampMs: 2,
 									},
 								},
 							},
@@ -111,14 +111,14 @@ func TestSelect(t *testing.T) {
 									{Name: "a", Value: "a1"},
 									{Name: "b", Value: "b1"},
 								},
-								Samples: []logproto.Sample{
+								Samples: []logproto.LegacySample{
 									{
-										Value:     8,
-										Timestamp: 1,
+										Value:       8,
+										TimestampMs: 1,
 									},
 									{
-										Value:     9,
-										Timestamp: 2,
+										Value:       9,
+										TimestampMs: 2,
 									},
 								},
 							},
@@ -145,14 +145,14 @@ func TestSelect(t *testing.T) {
 								{Name: "a", Value: "a1"},
 								{Name: "b", Value: "b1"},
 							},
-							Samples: []logproto.Sample{
+							Samples: []logproto.LegacySample{
 								{
-									Value:     1,
-									Timestamp: 1,
+									Value:       1,
+									TimestampMs: 1,
 								},
 								{
-									Value:     2,
-									Timestamp: 2,
+									Value:       2,
+									TimestampMs: 2,
 								},
 							},
 						},
@@ -161,14 +161,14 @@ func TestSelect(t *testing.T) {
 								{Name: "a", Value: "a1"},
 								{Name: "b", Value: "b1"},
 							},
-							Samples: []logproto.Sample{
+							Samples: []logproto.LegacySample{
 								{
-									Value:     8,
-									Timestamp: 1,
+									Value:       8,
+									TimestampMs: 1,
 								},
 								{
-									Value:     9,
-									Timestamp: 2,
+									Value:       9,
+									TimestampMs: 2,
 								},
 							},
 						},
@@ -222,10 +222,10 @@ func TestSelectConcurrent(t *testing.T) {
 							Labels: []logproto.LabelAdapter{
 								{Name: "a", Value: "1"},
 							},
-							Samples: []logproto.Sample{
+							Samples: []logproto.LegacySample{
 								{
-									Value:     1,
-									Timestamp: 1,
+									Value:       1,
+									TimestampMs: 1,
 								},
 							},
 						},

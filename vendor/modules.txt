@@ -29,11 +29,36 @@ cloud.google.com/go/storage
 # github.com/Azure/azure-pipeline-go v0.2.3
 ## explicit; go 1.14
 github.com/Azure/azure-pipeline-go/pipeline
-# github.com/Azure/azure-sdk-for-go v61.1.0+incompatible => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
+# github.com/Azure/azure-sdk-for-go v58.3.0+incompatible
 ## explicit
 github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute
 github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-10-01/network
 github.com/Azure/azure-sdk-for-go/version
+# github.com/Azure/azure-sdk-for-go/sdk/azcore v0.21.0
+## explicit; go 1.16
+github.com/Azure/azure-sdk-for-go/sdk/azcore
+github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pipeline
+github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers
+github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/loc
+github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/op
+github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared
+github.com/Azure/azure-sdk-for-go/sdk/azcore/policy
+github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime
+github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming
+github.com/Azure/azure-sdk-for-go/sdk/azcore/to
+# github.com/Azure/azure-sdk-for-go/sdk/azidentity v0.13.0
+## explicit; go 1.16
+github.com/Azure/azure-sdk-for-go/sdk/azidentity
+# github.com/Azure/azure-sdk-for-go/sdk/internal v0.9.0
+## explicit; go 1.16
+github.com/Azure/azure-sdk-for-go/sdk/internal/diag
+github.com/Azure/azure-sdk-for-go/sdk/internal/errorinfo
+github.com/Azure/azure-sdk-for-go/sdk/internal/log
+github.com/Azure/azure-sdk-for-go/sdk/internal/uuid
+# github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v0.0.0-00010101000000-000000000000 => github.com/MasslessParticle/azure-sdk-for-go/sdk/storage/azblob v0.2.1-0.20220131200443-9793e6f0cc65
+## explicit; go 1.16
+github.com/Azure/azure-sdk-for-go/sdk/storage/azblob
+github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal
 # github.com/Azure/azure-storage-blob-go v0.13.0
 ## explicit; go 1.15
 github.com/Azure/azure-storage-blob-go/azblob
@@ -72,6 +97,27 @@ github.com/Azure/go-autorest/logger
 # github.com/Azure/go-autorest/tracing v0.6.0
 ## explicit; go 1.12
 github.com/Azure/go-autorest/tracing
+# github.com/AzureAD/microsoft-authentication-library-for-go v0.4.0
+## explicit; go 1.14
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/base
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/base/internal/storage
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/json
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/json/types/time
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/local
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/accesstokens
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/authority
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/internal/comm
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/internal/grant
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/wstrust
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/wstrust/defs
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/shared
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
 # github.com/Masterminds/goutils v1.1.1
 ## explicit
 github.com/Masterminds/goutils
@@ -499,6 +545,9 @@ github.com/gogo/protobuf/types
 # github.com/gogo/status v1.1.0
 ## explicit; go 1.12
 github.com/gogo/status
+# github.com/golang-jwt/jwt v3.2.2+incompatible
+## explicit
+github.com/golang-jwt/jwt
 # github.com/golang-jwt/jwt/v4 v4.0.0
 ## explicit; go 1.15
 github.com/golang-jwt/jwt/v4
@@ -600,6 +649,10 @@ github.com/grafana/dskit/ring/util
 github.com/grafana/dskit/runtimeconfig
 github.com/grafana/dskit/services
 github.com/grafana/dskit/spanlogger
+# github.com/grafana/regexp v0.0.0-20220202152701-6a046c4caf32
+## explicit; go 1.17
+github.com/grafana/regexp
+github.com/grafana/regexp/syntax
 # github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 ## explicit; go 1.14
 github.com/grpc-ecosystem/go-grpc-middleware
@@ -761,6 +814,10 @@ github.com/klauspost/cpuid
 # github.com/klauspost/pgzip v1.2.5
 ## explicit
 github.com/klauspost/pgzip
+# github.com/kylelemons/godebug v1.1.0
+## explicit; go 1.11
+github.com/kylelemons/godebug/diff
+github.com/kylelemons/godebug/pretty
 # github.com/leodido/ragel-machinery v0.0.0-20181214104525-299bdde78165
 ## explicit
 github.com/leodido/ragel-machinery
@@ -870,6 +927,9 @@ github.com/pierrec/lz4/v4/internal/lz4block
 github.com/pierrec/lz4/v4/internal/lz4errors
 github.com/pierrec/lz4/v4/internal/lz4stream
 github.com/pierrec/lz4/v4/internal/xxh32
+# github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8
+## explicit; go 1.14
+github.com/pkg/browser
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
@@ -1185,7 +1245,7 @@ go4.org/intern
 # go4.org/unsafe/assume-no-moving-gc v0.0.0-20201222180813-1025295fd063
 ## explicit; go 1.11
 go4.org/unsafe/assume-no-moving-gc
-# golang.org/x/crypto v0.0.0-20211202192323-5770296d904e
+# golang.org/x/crypto v0.0.0-20220131195533-30dcbda58838
 ## explicit; go 1.17
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
@@ -1200,7 +1260,7 @@ golang.org/x/crypto/sha3
 # golang.org/x/mod v0.5.1
 ## explicit; go 1.17
 golang.org/x/mod/semver
-# golang.org/x/net v0.0.0-20220105145211-5b0dc2dfae98
+# golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd
 ## explicit; go 1.17
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -1234,7 +1294,7 @@ golang.org/x/oauth2/jwt
 ## explicit
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e
+# golang.org/x/sys v0.0.0-20220128215802-99c3d69c2c27
 ## explicit; go 1.17
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
@@ -1244,8 +1304,8 @@ golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
 golang.org/x/sys/windows/svc/eventlog
-# golang.org/x/term v0.0.0-20210220032956-6a3ed077a48d
-## explicit; go 1.11
+# golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
+## explicit; go 1.17
 golang.org/x/term
 # golang.org/x/text v0.3.7
 ## explicit; go 1.17
@@ -1716,7 +1776,7 @@ sigs.k8s.io/structured-merge-diff/v4/value
 sigs.k8s.io/yaml
 # github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
 # github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03
-# github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
+# github.com/Azure/azure-sdk-for-go/sdk/storage/azblob => github.com/MasslessParticle/azure-sdk-for-go/sdk/storage/azblob v0.2.1-0.20220131200443-9793e6f0cc65
 # k8s.io/client-go => k8s.io/client-go v0.21.0
 # k8s.io/api => k8s.io/api v0.21.0
 # k8s.io/apimachinery => k8s.io/apimachinery v0.21.0

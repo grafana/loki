@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -13,12 +14,28 @@ import (
 
 // KeyEncoder is used to encode chunk keys before writing/retrieving chunks
 // from the underlying ObjectClient
-type KeyEncoder func(string) string
+// Schema/Chunk are passed as arguments to allow this to improve over revisions
+type KeyEncoder func(schema chunk.SchemaConfig, chk chunk.Chunk) string
 
-// Base64Encoder is used to encode chunk keys in base64 before storing/retrieving
+// base64Encoder is used to encode chunk keys in base64 before storing/retrieving
 // them from the ObjectClient
-var Base64Encoder = func(key string) string {
+var base64Encoder = func(key string) string {
 	return base64.StdEncoding.EncodeToString([]byte(key))
+}
+
+var FSEncoder = func(schema chunk.SchemaConfig, chk chunk.Chunk) string {
+	// Filesystem encoder pre-v12 encodes the chunk as one base64 string.
+	// This has the downside of making them opaque and storing all chunks in a single
+	// directory, hurting performance at scale and discoverability.
+	// Post v12, we respect the directory structure imposed by chunk keys.
+	key := schema.ExternalKey(chk)
+	if schema.VersionForChunk(chk) > 11 {
+		split := strings.LastIndexByte(key, '/')
+		encodedTail := base64Encoder(key[split+1:])
+		return strings.Join([]string{key[:split], encodedTail}, "/")
+
+	}
+	return base64Encoder(key)
 }
 
 const defaultMaxParallel = 150
@@ -56,7 +73,6 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var (
 		chunkKeys []string
 		chunkBufs [][]byte
-		key       string
 	)
 
 	for i := range chunks {
@@ -65,10 +81,11 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 			return err
 		}
 
-		key = o.schema.ExternalKey(chunks[i])
-
+		var key string
 		if o.keyEncoder != nil {
-			key = o.keyEncoder(key)
+			key = o.keyEncoder(o.schema, chunks[i])
+		} else {
+			key = o.schema.ExternalKey(chunks[i])
 		}
 
 		chunkKeys = append(chunkKeys, key)
@@ -109,7 +126,7 @@ func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 
 	key := o.schema.ExternalKey(c)
 	if o.keyEncoder != nil {
-		key = o.keyEncoder(key)
+		key = o.keyEncoder(o.schema, c)
 	}
 
 	readCloser, size, err := o.store.GetObject(ctx, key)
@@ -137,7 +154,11 @@ func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 func (o *Client) DeleteChunk(ctx context.Context, userID, chunkID string) error {
 	key := chunkID
 	if o.keyEncoder != nil {
-		key = o.keyEncoder(key)
+		c, err := chunk.ParseExternalKey(userID, key)
+		if err != nil {
+			return err
+		}
+		key = o.keyEncoder(o.schema, c)
 	}
 	return o.store.DeleteObject(ctx, key)
 }

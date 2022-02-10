@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -207,11 +208,21 @@ func TestTable_MultiQueries_Response(t *testing.T) {
 		queries = append(queries, chunk.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
 	}
 
-	// query for user 0 which has per user index setup which should return both user and common index.
-	testutil.TestSingleTableQuery(t, testutil.BuildUserID(0), queries, table, 0, 1000)
+	// run the queries concurrently
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// query for user 0 which has per user index setup which should return both user and common index.
+			testutil.TestSingleTableQuery(t, testutil.BuildUserID(0), queries, table, 0, 1000)
 
-	// query for user 1 which does not have per user index setup which should return only common index.
-	testutil.TestSingleTableQuery(t, testutil.BuildUserID(1), queries, table, 0, 500)
+			// query for user 1 which does not have per user index setup which should return only common index.
+			testutil.TestSingleTableQuery(t, testutil.BuildUserID(1), queries, table, 0, 500)
+		}()
+	}
+
+	wg.Wait()
 }
 
 func TestTable_DropUnusedIndex(t *testing.T) {

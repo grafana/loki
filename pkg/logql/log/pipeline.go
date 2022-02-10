@@ -18,6 +18,7 @@ type Pipeline interface {
 // StreamPipeline transform and filter log lines and labels.
 // A StreamPipeline never mutate the received line.
 type StreamPipeline interface {
+	BaseLabels() LabelsResult
 	Process(line []byte) (resultLine []byte, resultLabels LabelsResult, skip bool)
 	ProcessString(line string) (resultLine string, resultLabels LabelsResult, skip bool)
 }
@@ -58,6 +59,8 @@ func (n noopStreamPipeline) Process(line []byte) ([]byte, LabelsResult, bool) {
 func (n noopStreamPipeline) ProcessString(line string) (string, LabelsResult, bool) {
 	return line, n.LabelsResult, true
 }
+
+func (n noopStreamPipeline) BaseLabels() LabelsResult { return n.LabelsResult }
 
 func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	h := labels.Hash()
@@ -152,6 +155,8 @@ func (p *streamPipeline) ProcessString(line string) (string, LabelsResult, bool)
 	// or we created a new buffer for it in which case it is still safe to avoid the string(byte) copy.
 	return unsafeGetString(lb), lr, ok
 }
+
+func (p *streamPipeline) BaseLabels() LabelsResult { return p.builder.currentResult }
 
 // ReduceStages reduces multiple stages into one.
 func ReduceStages(stages []Stage) Stage {
