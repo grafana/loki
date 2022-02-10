@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	errUtil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -45,12 +46,18 @@ const (
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
 // attempted.
-var ErrReadOnly = errors.New("Ingester is shutting down")
+var (
+	ErrReadOnly = errors.New("Ingester is shutting down")
 
-var flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
-	Name: "cortex_ingester_flush_queue_length",
-	Help: "The total number of series pending in the flush queue.",
-})
+	flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_ingester_flush_queue_length",
+		Help: "The total number of series pending in the flush queue.",
+	})
+	compressionStats   = usagestats.NewString("ingester_compression")
+	targetSizeStats    = usagestats.NewInt("ingester_target_size_bytes")
+	walStats           = usagestats.NewString("ingester_wal")
+	activeTenantsStats = usagestats.NewInt("ingester_active_tenants")
+)
 
 // Config for an ingester.
 type Config struct {
@@ -212,7 +219,12 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
-
+	compressionStats.Set(cfg.ChunkEncoding)
+	targetSizeStats.Set(int64(cfg.TargetChunkSize))
+	walStats.Set("disabled")
+	if cfg.WAL.Enabled {
+		walStats.Set("enabled")
+	}
 	metrics := newIngesterMetrics(registerer)
 
 	i := &Ingester{
@@ -546,6 +558,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) *instance {
 	if !ok {
 		inst = newInstance(&i.cfg, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
 		i.instances[instanceID] = inst
+		activeTenantsStats.Set(int64(len(i.instances)))
 	}
 	return inst
 }

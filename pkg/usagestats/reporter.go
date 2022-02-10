@@ -169,6 +169,7 @@ func (rep *Reporter) fetchSeed(ctx context.Context, continueFn func(err error) b
 	return nil, backoff.Err()
 }
 
+// readSeedFile reads the cluster seed file from the object store.
 func (rep *Reporter) readSeedFile(ctx context.Context) (*ClusterSeed, error) {
 	reader, _, err := rep.objectClient.GetObject(ctx, ClusterSeedFileName)
 	if err != nil {
@@ -193,6 +194,7 @@ func (rep *Reporter) readSeedFile(ctx context.Context) (*ClusterSeed, error) {
 	return seed.(*ClusterSeed), nil
 }
 
+// writeSeedFile writes the cluster seed to the object store.
 func (rep *Reporter) writeSeedFile(ctx context.Context, seed ClusterSeed) error {
 	data, err := JSONCodec.Encode(seed)
 	if err != nil {
@@ -201,6 +203,7 @@ func (rep *Reporter) writeSeedFile(ctx context.Context, seed ClusterSeed) error 
 	return rep.objectClient.PutObject(ctx, ClusterSeedFileName, bytes.NewReader(data))
 }
 
+// running inits the reporter seed and start sending report for every interval
 func (rep *Reporter) running(ctx context.Context) error {
 	rep.init(ctx)
 
@@ -234,6 +237,7 @@ func (rep *Reporter) running(ctx context.Context) error {
 	}
 }
 
+// reportUsage reports the usage to grafana.com.
 func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error {
 	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: time.Second,

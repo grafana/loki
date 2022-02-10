@@ -30,6 +30,7 @@ var (
 	editionKey    = "edition"
 )
 
+// Report is the JSON object sent to the stats server
 type Report struct {
 	ClusterID              string    `json:"clusterID"`
 	CreatedAt              time.Time `json:"createdAt"`
@@ -42,8 +43,10 @@ type Report struct {
 	Metrics                map[string]interface{} `json:"metrics"`
 }
 
+// sendReport sends the report to the stats server
 func sendReport(ctx context.Context, seed *ClusterSeed, interval time.Time) error {
-	out, err := jsoniter.MarshalIndent(buildReport(seed, interval), "", " ")
+	report := buildReport(seed, interval)
+	out, err := jsoniter.MarshalIndent(report, "", " ")
 	if err != nil {
 		return err
 	}
@@ -67,6 +70,7 @@ func sendReport(ctx context.Context, seed *ClusterSeed, interval time.Time) erro
 	return nil
 }
 
+// buildReport builds the report to be sent to the stats server
 func buildReport(seed *ClusterSeed, interval time.Time) Report {
 	var (
 		targetName  string
@@ -96,6 +100,7 @@ func buildReport(seed *ClusterSeed, interval time.Time) Report {
 	}
 }
 
+// buildMetrics builds the metrics part of the report to be sent to the stats server
 func buildMetrics() map[string]interface{} {
 	result := map[string]interface{}{
 		"memstats":      memstats(),
@@ -137,39 +142,36 @@ func memstats() interface{} {
 		"alloc":           stats.Alloc,
 		"total_alloc":     stats.TotalAlloc,
 		"sys":             stats.Sys,
-		"mallocs":         stats.Mallocs,
-		"frees":           stats.Frees,
 		"heap_alloc":      stats.HeapAlloc,
-		"heap_sys":        stats.HeapSys,
-		"heap_idle":       stats.HeapIdle,
 		"heap_inuse":      stats.HeapInuse,
-		"heap_released":   stats.HeapReleased,
-		"heap_objects":    stats.HeapObjects,
 		"stack_inuse":     stats.StackInuse,
-		"stack_sys":       stats.StackSys,
-		"other_sys":       stats.OtherSys,
 		"pause_total_ns":  stats.PauseTotalNs,
 		"num_gc":          stats.NumGC,
 		"gc_cpu_fraction": stats.GCCPUFraction,
 	}
 }
 
+// NewFloat returns a new Float stats object.
 func NewFloat(name string) *expvar.Float {
 	return expvar.NewFloat(statsPrefix + name)
 }
 
+// NewInt returns a new Int stats object.
 func NewInt(name string) *expvar.Int {
 	return expvar.NewInt(statsPrefix + name)
 }
 
+// NewString returns a new String stats object.
 func NewString(name string) *expvar.String {
 	return expvar.NewString(statsPrefix + name)
 }
 
+// Target sets the target name.
 func Target(target string) {
 	NewString(targetKey).Set(target)
 }
 
+// Edition sets the edition name.
 func Edition(edition string) {
 	NewString(editionKey).Set(edition)
 }
@@ -186,6 +188,15 @@ type Statistics struct {
 	value *atomic.Float64
 }
 
+// NewStatistics returns a new Statistics object.
+// Statistics object is thread-safe and compute statistics on the fly based on sample recorded.
+// Available statistics are:
+// - min
+// - max
+// - avg
+// - count
+// - stddev
+// - stdvar
 func NewStatistics(name string) *Statistics {
 	s := &Statistics{
 		min:   atomic.NewFloat64(math.Inf(0)),
@@ -206,14 +217,26 @@ func (s *Statistics) String() string {
 
 func (s *Statistics) Value() map[string]interface{} {
 	stdvar := s.value.Load() / float64(s.count.Load())
-	return map[string]interface{}{
-		"min":    s.min.Load(),
-		"max":    s.max.Load(),
-		"avg":    s.avg.Load(),
-		"count":  s.count.Load(),
-		"stddev": math.Sqrt(stdvar),
-		"stdvar": stdvar,
+	stddev := math.Sqrt(stdvar)
+	min := s.min.Load()
+	max := s.max.Load()
+	result := map[string]interface{}{
+		"avg":   s.avg.Load(),
+		"count": s.count.Load(),
 	}
+	if !math.IsInf(min, 0) {
+		result["min"] = min
+	}
+	if !math.IsInf(max, 0) {
+		result["max"] = s.max.Load()
+	}
+	if !math.IsNaN(stddev) {
+		result["stddev"] = stddev
+	}
+	if !math.IsNaN(stdvar) {
+		result["stdvar"] = stdvar
+	}
+	return result
 }
 
 func (s *Statistics) Record(v float64) {
@@ -259,6 +282,7 @@ type Counter struct {
 	resetTime time.Time
 }
 
+// NewCounter returns a new Counter stats object.
 func NewCounter(name string) *Counter {
 	c := &Counter{
 		total:     atomic.NewInt64(0),
@@ -301,6 +325,8 @@ type WordCounter struct {
 	count *atomic.Int64
 }
 
+// NewWordCounter returns a new WordCounter stats object.
+// WordCounter object is thread-safe and count the amount of word recorded.
 func NewWordCounter(name string) *WordCounter {
 	c := &WordCounter{
 		count: atomic.NewInt64(0),
