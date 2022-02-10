@@ -911,7 +911,7 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 
 // Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
 func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
-	// add a nanosecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
+	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
 	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
 		return nil, err
