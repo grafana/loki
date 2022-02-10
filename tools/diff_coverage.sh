@@ -6,7 +6,7 @@ if [[ ! -f "$1" ]] || [[ ! -f "$2" ]]; then
 fi
 
 echo '```diff'
-for pkg in ingester distributor querier ruler storage foo; do
+for pkg in ingester distributor querier ruler storage; do
   old=$(grep "pkg/${pkg}\s" "$1" | sed s/%// | awk '{print $5}')
   new=$(grep "pkg/${pkg}\s" "$2" | sed s/%// | awk '{print $5}')
   echo | awk -v pkg="${pkg}" -v old="${old:-0}" -v new="${new:-0}" \
