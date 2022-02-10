@@ -129,10 +129,14 @@ type store struct {
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, registerer prometheus.Registerer) (Store, error) {
-	index := ActivePeriodConfig(schemaCfg.Configs)
-	indexTypeStats.Set(schemaCfg.Configs[index].IndexType)
-	objectTypeStats.Set(schemaCfg.Configs[index].ObjectType)
-	schemaStats.Set(schemaCfg.Configs[index].Schema)
+	if len(schemaCfg.Configs) != 0 {
+		if index := ActivePeriodConfig(schemaCfg.Configs); index != -1 && index < len(schemaCfg.Configs) {
+			indexTypeStats.Set(schemaCfg.Configs[index].IndexType)
+			objectTypeStats.Set(schemaCfg.Configs[index].ObjectType)
+			schemaStats.Set(schemaCfg.Configs[index].Schema)
+		}
+	}
+
 	return &store{
 		Store:        chunkStore,
 		cfg:          cfg,
