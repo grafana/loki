@@ -152,7 +152,7 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 			if len(nonDeletedIntervals) > 0 {
 				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, nonDeletedIntervals)
 				if err != nil {
-					return false, false, err
+					return false, false, fmt.Errorf("failed to rewrite chunk %s for interval %s with error %s", c.ChunkID, nonDeletedIntervals, err)
 				}
 
 				if wroteChunks {

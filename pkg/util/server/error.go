@@ -41,7 +41,7 @@ func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 func JSONError(w http.ResponseWriter, code int, message string, args ...interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(ErrorResponseBody{
+	_ = json.NewEncoder(w).Encode(ErrorResponseBody{
 		Code:    code,
 		Status:  "error",
 		Message: fmt.Sprintf(message, args...),

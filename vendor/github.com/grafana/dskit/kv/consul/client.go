@@ -40,11 +40,11 @@ var (
 // Config to create a ConsulClient
 type Config struct {
 	Host              string        `yaml:"host"`
-	ACLToken          string        `yaml:"acl_token"`
-	HTTPClientTimeout time.Duration `yaml:"http_client_timeout"`
-	ConsistentReads   bool          `yaml:"consistent_reads"`
-	WatchKeyRateLimit float64       `yaml:"watch_rate_limit"` // Zero disables rate limit
-	WatchKeyBurstSize int           `yaml:"watch_burst_size"` // Burst when doing rate-limit, defaults to 1
+	ACLToken          string        `yaml:"acl_token" category:"advanced"`
+	HTTPClientTimeout time.Duration `yaml:"http_client_timeout" category:"advanced"`
+	ConsistentReads   bool          `yaml:"consistent_reads" category:"advanced"`
+	WatchKeyRateLimit float64       `yaml:"watch_rate_limit" category:"advanced"` // Zero disables rate limit
+	WatchKeyBurstSize int           `yaml:"watch_burst_size" category:"advanced"` // Burst when doing rate-limit, defaults to 1
 
 	// Used in tests only.
 	MaxCasRetries int           `yaml:"-"`
@@ -234,7 +234,6 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		}
 
 		kvp, meta, err := c.kv.Get(key, queryOptions.WithContext(ctx))
-
 		// Don't backoff if value is not found (kvp == nil). In that case, Consul still returns index value,
 		// and next call to Get will block as expected. We handle missing value below.
 		if err != nil {
@@ -396,4 +395,11 @@ func (c *Client) createRateLimiter() *rate.Limiter {
 		burst = 1
 	}
 	return rate.NewLimiter(rate.Limit(c.cfg.WatchKeyRateLimit), burst)
+}
+
+// WithCodec Clones and changes the codec of the consul client.
+func (c *Client) WithCodec(codec codec.Codec) *Client {
+	new := *c
+	new.codec = codec
+	return &new
 }

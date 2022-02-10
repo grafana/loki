@@ -26,7 +26,7 @@ type Loader func(r io.Reader) (interface{}, error)
 // Config holds the config for an Manager instance.
 // It holds config related to loading per-tenant config.
 type Config struct {
-	ReloadPeriod time.Duration `yaml:"period"`
+	ReloadPeriod time.Duration `yaml:"period" category:"advanced"`
 	// LoadPath contains the path to the runtime config file, requires an
 	// non-empty value
 	LoadPath string `yaml:"file"`

@@ -22,9 +22,9 @@ import (
 // Config for a new etcd.Client.
 type Config struct {
 	Endpoints   []string           `yaml:"endpoints"`
-	DialTimeout time.Duration      `yaml:"dial_timeout"`
-	MaxRetries  int                `yaml:"max_retries"`
-	EnableTLS   bool               `yaml:"tls_enabled"`
+	DialTimeout time.Duration      `yaml:"dial_timeout" category:"advanced"`
+	MaxRetries  int                `yaml:"max_retries" category:"advanced"`
+	EnableTLS   bool               `yaml:"tls_enabled" category:"advanced"`
 	TLS         dstls.ClientConfig `yaml:",inline"`
 
 	UserName string `yaml:"username"`
