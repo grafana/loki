@@ -475,7 +475,9 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		t0 := c.MaxTime
 
 		for _, c := range chunks[1:] {
-			w.buf2.PutUvarint64(uint64(c.MinTime - t0))
+			// Encode the diff against previous chunk as varint
+			// instead of uvarint because chunks may overlap
+			w.buf2.PutVarint64(c.MinTime - t0)
 			w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
 			t0 = c.MaxTime
 
@@ -1880,7 +1882,9 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) err
 	t0 = maxt
 
 	for i := 1; i < k; i++ {
-		mint := int64(d.Uvarint64()) + t0
+		// Decode the diff against previous chunk as varint
+		// instead of uvarint because chunks may overlap
+		mint := d.Varint64() + t0
 		maxt := int64(d.Uvarint64()) + mint
 		checksum := d.Be32()
 		t0 = maxt
