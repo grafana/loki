@@ -27,6 +27,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
+	"github.com/prometheus/prometheus/rules"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -132,6 +133,21 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 	}
 }
 
+func mockFactory(_ context.Context, _ string, _ *notifier.Manager, _ log.Logger, _ prometheus.Registerer) RulesManager {
+	return &rulesManagerMock{}
+}
+
+type rulesManagerMock struct {
+	util.ExtendedMock
+}
+
+func (rm *rulesManagerMock) Run()  {}
+func (rm *rulesManagerMock) Stop() {}
+func (rm *rulesManagerMock) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string) error {
+	return nil
+}
+func (rm *rulesManagerMock) RuleGroups() []*rules.Group { return nil }
+
 func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier_base.TestConfig, clientMetrics chunk_storage.ClientMetrics, rulerAddrMap map[string]*Ruler) *Ruler {
 	overrides := ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}
 
@@ -143,7 +159,7 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier_bas
 	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, factory, reg, log.NewNopLogger())
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, mockFactory, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
