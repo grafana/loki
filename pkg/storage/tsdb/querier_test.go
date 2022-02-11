@@ -4,15 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-)
 
-const (
-	testBlockSize  = 256 * 1024
-	testTargetSize = 1500 * 1024
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
 func mustParseLabels(s string) labels.Labels {
@@ -23,7 +19,7 @@ func mustParseLabels(s string) labels.Labels {
 	return ls
 }
 
-func TestIdk(t *testing.T) {
+func TestQueryIndex(t *testing.T) {
 	dir := t.TempDir()
 	b := index.NewBuilder()
 	cases := []struct {

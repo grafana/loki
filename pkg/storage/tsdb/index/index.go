@@ -28,14 +28,14 @@ import (
 	"sort"
 	"unsafe"
 
-	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/pkg/errors"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
+
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 const (
@@ -48,23 +48,7 @@ const (
 	FormatV1 = 1
 	// FormatV2 represents 2 version of index.
 	FormatV2 = 2
-
-	indexFilename = "index"
 )
-
-type indexWriterSeries struct {
-	labels labels.Labels
-	chunks []ChunkMeta // series file offset of chunks
-}
-
-type indexWriterSeriesSlice []*indexWriterSeries
-
-func (s indexWriterSeriesSlice) Len() int      { return len(s) }
-func (s indexWriterSeriesSlice) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-
-func (s indexWriterSeriesSlice) Less(i, j int) bool {
-	return labels.Compare(s[i].labels, s[j].labels) < 0
-}
 
 type indexWriterStage uint8
 
@@ -531,7 +515,7 @@ func (w *Writer) finishSymbols() error {
 	// Write out the length and symbol count.
 	w.buf1.Reset()
 	w.buf1.PutBE32int(int(symbolTableSize))
-	w.buf1.PutBE32int(int(w.numSymbols))
+	w.buf1.PutBE32int(w.numSymbols)
 	if err := w.writeAt(w.buf1.Get(), w.toc.Symbols); err != nil {
 		return err
 	}
