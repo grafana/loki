@@ -36,7 +36,7 @@ var (
 	keepStream                         bool
 	batchSize                          int
 	s3Clients                          map[string]*s3.Client
-	extraLabels                        []ExtraLabel
+	extraLabels                        model.LabelSet
 )
 
 func setupArguments() {
@@ -82,8 +82,8 @@ func setupArguments() {
 	s3Clients = make(map[string]*s3.Client)
 }
 
-func parseExtraLabels(extraLabelsRaw string) ([]ExtraLabel, error) {
-	var extractedLabels []ExtraLabel
+func parseExtraLabels(extraLabelsRaw string) (model.LabelSet, error) {
+	var extractedLabels = model.LabelSet{}
 	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
 
 	if len(extraLabelsRaw) < 1 {
@@ -94,19 +94,18 @@ func parseExtraLabels(extraLabelsRaw string) ([]ExtraLabel, error) {
 		return nil, fmt.Errorf(invalidExtraLabelsError)
 	}
 	for i := 0; i < len(extraLabelsSplit); i += 2 {
-		extractedLabels = append(extractedLabels, ExtraLabel{
-			key:   extraLabelsSplit[i],
-			value: extraLabelsSplit[i+1],
-		})
+		extractedLabels[model.LabelName("__extra_"+extraLabelsSplit[i])] = model.LabelValue(extraLabelsSplit[i+1])
+	}
+	err := extractedLabels.Validate()
+	if err != nil {
+		return nil, err
 	}
 	fmt.Println("extra labels:", extractedLabels)
 	return extractedLabels, nil
 }
 
 func applyExtraLabels(labels model.LabelSet) {
-	for _, label := range extraLabels {
-		labels[model.LabelName("__extra_"+label.key)] = model.LabelValue(label.value)
-	}
+	labels.Merge(extraLabels)
 }
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {
