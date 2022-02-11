@@ -769,11 +769,13 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 
 	objectClient, err := chunk_storage.NewObjectClient(period.ObjectType, t.Cfg.StorageConfig.Config, t.clientMetrics)
 	if err != nil {
-		return nil, err
+		level.Info(util_log.Logger).Log("msg", "failed to initialize usage report", "err", err)
+		return nil, nil
 	}
 	ur, err := usagestats.NewReporter(t.Cfg.UsageReport, t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore, objectClient, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
-		return nil, err
+		level.Info(util_log.Logger).Log("msg", "failed to initialize usage report", "err", err)
+		return nil, nil
 	}
 	t.usageReport = ur
 	return ur, nil
