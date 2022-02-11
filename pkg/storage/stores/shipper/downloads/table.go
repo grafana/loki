@@ -183,13 +183,13 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 	return nil
 }
 
-// DropUnusedIndex drops the index set if it has not been queried for at least ttl duration.
-// It returns true if the whole table gets dropped.
-func (t *Table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) {
-	var cleanedUpIndexSets []string
-
+func (t *Table) findExpiredIndexSets(ttl time.Duration, now time.Time) []string {
 	t.indexSetsMtx.RLock()
+	defer t.indexSetsMtx.RUnlock()
+
+	var expiredIndexSets []string
 	commonIndexSetExpired := false
+
 	for userID, userIndexSet := range t.indexSets {
 		lastUsedAt := userIndexSet.LastUsedAt()
 		if lastUsedAt.Add(ttl).Before(now) {
@@ -199,20 +199,27 @@ func (t *Table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 				// the parent directory of all the user index sets.
 				commonIndexSetExpired = true
 			} else {
-				cleanedUpIndexSets = append(cleanedUpIndexSets, userID)
+				expiredIndexSets = append(expiredIndexSets, userID)
 			}
 		}
 	}
 
 	if commonIndexSetExpired {
-		cleanedUpIndexSets = append(cleanedUpIndexSets, "")
+		expiredIndexSets = append(expiredIndexSets, "")
 	}
-	t.indexSetsMtx.RUnlock()
 
-	if len(cleanedUpIndexSets) > 0 {
+	return expiredIndexSets
+}
+
+// DropUnusedIndex drops the index set if it has not been queried for at least ttl duration.
+// It returns true if the whole table gets dropped.
+func (t *Table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) {
+	indexSetsToCleanup := t.findExpiredIndexSets(ttl, now)
+
+	if len(indexSetsToCleanup) > 0 {
 		t.indexSetsMtx.Lock()
 		defer t.indexSetsMtx.Unlock()
-		for _, userID := range cleanedUpIndexSets {
+		for _, userID := range indexSetsToCleanup {
 			level.Info(t.logger).Log("msg", fmt.Sprintf("cleaning up expired index set %s", userID))
 			err := t.indexSets[userID].DropAllDBs()
 			if err != nil {
