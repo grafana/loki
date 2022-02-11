@@ -21,6 +21,8 @@ import (
 var metrics = storage.NewClientMetrics()
 
 func Test_LeaderElection(t *testing.T) {
+	stabilityCheckInterval = 100 * time.Millisecond
+
 	result := make(chan *ClusterSeed, 10)
 	objectClient, err := storage.NewObjectClient(storage.StorageTypeFileSystem, storage.Config{
 		FSConfig: local.FSConfig{
@@ -71,6 +73,7 @@ func Test_ReportLoop(t *testing.T) {
 	// stub
 	reportCheckInterval = 100 * time.Millisecond
 	reportInterval = time.Second
+	stabilityCheckInterval = 100 * time.Millisecond
 
 	totalReport := 0
 	clusterIDs := []string{}
@@ -94,12 +97,11 @@ func Test_ReportLoop(t *testing.T) {
 		Store: "inmemory",
 	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
-
-	r.initLeader(context.Background())
 	ctx, cancel := context.WithCancel(context.Background())
+	r.initLeader(ctx)
 
 	go func() {
-		<-time.After(6 * time.Second)
+		<-time.After(6*time.Second + (stabilityCheckInterval * time.Duration(stabilityMinimunRequired+1)))
 		cancel()
 	}()
 	require.Equal(t, context.Canceled, r.running(ctx))
