@@ -157,6 +157,7 @@ func ensureStableKey(ctx context.Context, kvClient kv.Client, logger log.Logger)
 			}
 			if previous.UID != seed.UID {
 				previous = seed
+				stableCount = 0
 				continue
 			}
 			stableCount++

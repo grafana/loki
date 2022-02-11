@@ -36,7 +36,8 @@ func (c *ClusterSeed) Merge(mergeable memberlist.Mergeable, localCAS bool) (chan
 		return nil, nil
 	}
 	if c.CreatedAt == other.CreatedAt {
-		// if we have the exact same creation date but the key is different, take the smallest UID to ensure stability.
+		// if we have the exact same creation date but the key is different
+		// we take the smallest UID using string alphabetical comparison to ensure stability.
 		if c.UID > other.UID {
 			*c = *other
 			return other, nil

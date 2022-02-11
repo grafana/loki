@@ -53,7 +53,7 @@ func createMemberlist(t *testing.T, port, memberID int) *memberlist.KV {
 		require.NoError(t, err, "%s failed to join the cluster: %v", memberID, err)
 	}
 	t.Cleanup(func() {
-		services.StopAndAwaitTerminated(context.TODO(), mkv)
+		_ = services.StopAndAwaitTerminated(context.TODO(), mkv)
 	})
 	return mkv
 }
