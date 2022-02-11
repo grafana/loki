@@ -136,7 +136,7 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 func handler(ctx context.Context, ev map[string]interface{}) error {
 	event, err := checkEventType(ev)
 	if err != nil {
-		fmt.Println("invalid event: %s", ev)
+		fmt.Printf("invalid event: %s\n", ev)
 		return err
 	}
 

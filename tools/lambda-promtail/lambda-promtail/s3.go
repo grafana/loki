@@ -51,7 +51,7 @@ func getS3Object(ctx context.Context, labels map[string]string) (io.ReadCloser, 
 		})
 
 	if err != nil {
-		fmt.Println("Failed to get object %s from bucket %s on account %s", labels["key"], labels["bucket"], labels["bucketOwner"])
+		fmt.Printf("Failed to get object %s from bucket %s on account %s\n", labels["key"], labels["bucket"], labels["bucketOwner"])
 		return nil, err
 	}
 
