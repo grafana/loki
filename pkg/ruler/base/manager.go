@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 )
 
+// This is not used in production.
 type DefaultMultiTenantManager struct {
 	cfg            Config
 	notifierCfg    *config.Config

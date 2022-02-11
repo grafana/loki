@@ -10,8 +10,6 @@ import (
 	"os"
 	"reflect"
 	"sort"
-	"strings"
-	"sync"
 	"testing"
 	"time"
 	"unsafe"
@@ -25,14 +23,11 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
-	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/promql"
 	promRules "github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -41,17 +36,14 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/logproto"
-	querier "github.com/grafana/loki/pkg/querier/base"
+	querier_base "github.com/grafana/loki/pkg/querier/base"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
-	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) Config {
@@ -102,73 +94,6 @@ func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 	return r.maxRulesPerRuleGroup
 }
 
-type emptyChunkStore struct {
-	sync.Mutex
-	called bool
-}
-
-func (c *emptyChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	c.Lock()
-	defer c.Unlock()
-	c.called = true
-	return nil, nil
-}
-
-func (c *emptyChunkStore) IsCalled() bool {
-	c.Lock()
-	defer c.Unlock()
-	return c.called
-}
-
-func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Registerer, logger log.Logger) storage.QueryableFunc {
-	if querierTestConfig != nil {
-		// disable active query tracking for test
-		querierTestConfig.Cfg.ActiveQueryTrackerDir = ""
-
-		overrides, _ := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
-		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, reg, logger)
-		return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-			return q.Querier(ctx, mint, maxt)
-		}
-	}
-
-	return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		return storage.NoopQuerier(), nil
-	}
-}
-
-func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
-	dir := t.TempDir()
-
-	tracker := promql.NewActiveQueryTracker(dir, 20, log.NewNopLogger())
-
-	engine := promql.NewEngine(promql.EngineOpts{
-		MaxSamples:         1e6,
-		ActiveQueryTracker: tracker,
-		Timeout:            2 * time.Minute,
-	})
-
-	// Mock the pusher
-	pusher := newPusherMock()
-	pusher.MockPush(&logproto.WriteResponse{}, nil)
-
-	l := log.NewLogfmtLogger(os.Stdout)
-	l = level.NewFilter(l, level.AllowInfo())
-
-	reg := prometheus.NewRegistry()
-	queryable := testQueryableFunc(querierTestConfig, reg, l)
-
-	return engine, queryable, pusher, l, ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg
-}
-
-func newManager(t *testing.T, cfg Config) *DefaultMultiTenantManager {
-	engine, queryable, pusher, logger, overrides, reg := testSetup(t, nil)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger)
-	require.NoError(t, err)
-
-	return manager
-}
-
 type mockRulerClientsPool struct {
 	ClientsPool
 	cfg           Config
@@ -207,13 +132,22 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 	}
 }
 
-func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, clientMetrics chunk_storage.ClientMetrics, rulerAddrMap map[string]*Ruler) *Ruler {
-	engine, queryable, pusher, logger, overrides, reg := testSetup(t, querierTestConfig)
+func mockMangerFactory(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
+	return nil
+}
+
+func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier_base.TestConfig, clientMetrics chunk_storage.ClientMetrics, rulerAddrMap map[string]*Ruler) *Ruler {
+	overrides := ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}
+
+	logger := log.NewLogfmtLogger(os.Stdout)
+	logger = level.NewFilter(logger, level.AllowInfo())
+
+	reg := prometheus.NewRegistry()
+
 	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
-	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger())
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, mockMangerFactory, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
@@ -242,49 +176,6 @@ func newTestRuler(t *testing.T, rulerConfig Config) *Ruler {
 }
 
 var _ MultiTenantManager = &DefaultMultiTenantManager{}
-
-func TestNotifierSendsUserIDHeader(t *testing.T) {
-	var wg sync.WaitGroup
-
-	// We do expect 1 API call for the user create with the getOrCreateNotifier()
-	wg.Add(1)
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
-		assert.NoError(t, err)
-		assert.Equal(t, userID, "1")
-		wg.Done()
-	}))
-	defer ts.Close()
-
-	// We create an empty rule store so that the ruler will not load any rule from it.
-	cfg := defaultRulerConfig(t, newMockRuleStore(nil))
-
-	cfg.AlertmanagerURL = ts.URL
-	cfg.AlertmanagerDiscovery = false
-
-	manager := newManager(t, cfg)
-	defer manager.Stop()
-
-	n, err := manager.getOrCreateNotifier("1")
-	require.NoError(t, err)
-
-	// Loop until notifier discovery syncs up
-	for len(n.Alertmanagers()) == 0 {
-		time.Sleep(10 * time.Millisecond)
-	}
-	n.Send(&notifier.Alert{
-		Labels: labels.Labels{labels.Label{Name: "alertname", Value: "testalert"}},
-	})
-
-	wg.Wait()
-
-	// Ensure we have metrics in the notifier.
-	assert.NoError(t, prom_testutil.GatherAndCompare(manager.registry.(*prometheus.Registry), strings.NewReader(`
-		# HELP cortex_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
-		# TYPE cortex_prometheus_notifications_dropped_total counter
-		cortex_prometheus_notifications_dropped_total{user="1"} 0
-	`), "cortex_prometheus_notifications_dropped_total"))
-}
 
 func TestRuler_Rules(t *testing.T) {
 	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
@@ -1235,7 +1126,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	downAtTimeMs := downAtTime.UnixNano() / int64(time.Millisecond)
 	downAtActiveAtTime := currentTime.Add(time.Minute * -25)
 	downAtActiveSec := downAtActiveAtTime.Unix()
-	d := &querier.MockDistributor{}
+	d := &querier_base.MockDistributor{}
 	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		model.Matrix{
 			&model.SampleStream{
@@ -1249,18 +1140,13 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 		},
 		nil)
 	d.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Panic("This should not be called for the ruler use-cases.")
-	querierConfig := querier.DefaultQuerierConfig()
+	querierConfig := querier_base.DefaultQuerierConfig()
 	querierConfig.IngesterStreaming = false
-
-	// set up an empty store
-	queryables := []querier.QueryableWithFilter{
-		querier.UseAlwaysQueryable(querier.NewChunkStoreQueryable(querierConfig, &emptyChunkStore{})),
-	}
 
 	m := chunk_storage.NewClientMetrics()
 	defer m.Unregister()
 	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
-	r := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, m, nil)
+	r := buildRuler(t, rulerCfg, &querier_base.TestConfig{Cfg: querierConfig, Distributor: d}, m, nil)
 	r.syncRules(context.Background(), rulerSyncReasonInitial)
 
 	// assert initial state of rule group

@@ -51,7 +51,6 @@ func (m *MockDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricM
 type TestConfig struct {
 	Cfg         Config
 	Distributor Distributor
-	Stores      []QueryableWithFilter
 }
 
 func DefaultQuerierConfig() Config {
