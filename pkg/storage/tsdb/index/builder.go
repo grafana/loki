@@ -85,5 +85,5 @@ func (b *Builder) Build(ctx context.Context, dir string) error {
 
 type stream struct {
 	labels labels.Labels
-	chunks ChunkMetas
+	chunks []ChunkMeta
 }
