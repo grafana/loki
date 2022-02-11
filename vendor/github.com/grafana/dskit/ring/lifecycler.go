@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"sort"
 	"sync"
@@ -26,17 +27,20 @@ type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring"`
 
 	// Config for the ingester lifecycle control
-	NumTokens                int           `yaml:"num_tokens"`
-	HeartbeatPeriod          time.Duration `yaml:"heartbeat_period"`
-	ObservePeriod            time.Duration `yaml:"observe_period"`
-	JoinAfter                time.Duration `yaml:"join_after"`
-	MinReadyDuration         time.Duration `yaml:"min_ready_duration"`
-	InfNames                 []string      `yaml:"interface_names"`
-	FinalSleep               time.Duration `yaml:"final_sleep"`
+	NumTokens        int           `yaml:"num_tokens" category:"advanced"`
+	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period" category:"advanced"`
+	ObservePeriod    time.Duration `yaml:"observe_period" category:"advanced"`
+	JoinAfter        time.Duration `yaml:"join_after" category:"advanced"`
+	MinReadyDuration time.Duration `yaml:"min_ready_duration" category:"advanced"`
+	InfNames         []string      `yaml:"interface_names"`
+
+	// FinalSleep's default value can be overridden by
+	// setting it before calling RegisterFlags or RegisterFlagsWithPrefix.
+	FinalSleep               time.Duration `yaml:"final_sleep" category:"advanced"`
 	TokensFilePath           string        `yaml:"tokens_file_path"`
 	Zone                     string        `yaml:"availability_zone"`
-	UnregisterOnShutdown     bool          `yaml:"unregister_on_shutdown"`
-	ReadinessCheckRingHealth bool          `yaml:"readiness_check_ring_health"`
+	UnregisterOnShutdown     bool          `yaml:"unregister_on_shutdown" category:"advanced"`
+	ReadinessCheckRingHealth bool          `yaml:"readiness_check_ring_health" category:"advanced"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr string `yaml:"address" doc:"hidden"`
@@ -47,12 +51,14 @@ type LifecyclerConfig struct {
 	ListenPort int `yaml:"-"`
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet
+// RegisterFlags adds the flags required to config this to the given FlagSet.
+// The default values of some flags can be changed; see docs of LifecyclerConfig.
 func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.
+// The default values of some flags can be changed; see docs of LifecyclerConfig.
 func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.RingConfig.RegisterFlagsWithPrefix(prefix, f)
 
@@ -67,7 +73,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.DurationVar(&cfg.JoinAfter, prefix+"join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
 	f.DurationVar(&cfg.ObservePeriod, prefix+"observe-period", 0*time.Second, "Observe tokens after generating to resolve collisions. Useful when using gossiping ring.")
 	f.DurationVar(&cfg.MinReadyDuration, prefix+"min-ready-duration", 15*time.Second, "Minimum duration to wait after the internal readiness checks have passed but before succeeding the readiness endpoint. This is used to slowdown deployment controllers (eg. Kubernetes) after an instance is ready and before they proceed with a rolling update, to give the rest of the cluster instances enough time to receive ring updates.")
-	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
+	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", cfg.FinalSleep, "Duration to sleep for before exiting, to ensure metrics are scraped.")
 	f.StringVar(&cfg.TokensFilePath, prefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
 	hostname, err := os.Hostname()
@@ -847,6 +853,23 @@ func (i *Lifecycler) processShutdown(ctx context.Context) {
 	// Sleep so the shutdownDuration metric can be collected.
 	level.Info(i.logger).Log("msg", "lifecycler entering final sleep before shutdown", "final_sleep", i.cfg.FinalSleep)
 	time.Sleep(i.cfg.FinalSleep)
+}
+
+func (i *Lifecycler) casRing(ctx context.Context, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+	return i.KVStore.CAS(ctx, i.RingKey, f)
+}
+
+func (i *Lifecycler) getRing(ctx context.Context) (*Desc, error) {
+	obj, err := i.KVStore.Get(ctx, i.RingKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetOrCreateRingDesc(obj), nil
+}
+
+func (i *Lifecycler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	newRingPageHandler(i, i.cfg.HeartbeatPeriod).handle(w, req)
 }
 
 // unregister removes our entry from consul.

@@ -42,7 +42,7 @@ require (
 	github.com/google/go-cmp v0.5.6
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
-	github.com/grafana/dskit v0.0.0-20220105080720-01ce9286d7d5
+	github.com/grafana/dskit v0.0.0-20220209070952-ea22a8f662d0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.12.0
@@ -105,6 +105,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v0.13.0
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v0.0.0-00010101000000-000000000000
 	github.com/google/renameio/v2 v2.0.0
+	github.com/google/uuid v1.2.0
 	github.com/mattn/go-ieproxy v0.0.1
 	github.com/xdg-go/scram v1.0.2
 	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20191017102106-1550ee647df0
@@ -185,7 +186,6 @@ require (
 	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.1.1 // indirect
 	github.com/googleapis/gnostic v0.4.1 // indirect
 	github.com/gophercloud/gophercloud v0.24.0 // indirect
@@ -288,6 +288,7 @@ require (
 	github.com/cloudflare/cloudflare-go v0.27.0
 	github.com/gofrs/flock v0.7.1 // indirect
 	github.com/gogo/status v1.1.0
+	github.com/grafana/regexp v0.0.0-20220202152701-6a046c4caf32
 	github.com/oklog/ulid v1.3.1
 )
 

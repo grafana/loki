@@ -3,10 +3,11 @@ package log
 import (
 	"bytes"
 	"fmt"
-	"regexp"
-	"regexp/syntax"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/grafana/regexp"
+	"github.com/grafana/regexp/syntax"
 
 	"github.com/prometheus/prometheus/model/labels"
 )

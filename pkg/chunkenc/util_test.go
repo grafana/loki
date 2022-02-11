@@ -66,6 +66,7 @@ func fillChunkClose(c Chunk, close bool) int64 {
 func fillChunkRandomOrder(c Chunk, close bool) {
 	ub := int64(1 << 30)
 	i := int64(0)
+	random := rand.New(rand.NewSource(42))
 	entry := &logproto.Entry{
 		Timestamp: time.Unix(0, 0),
 		Line:      testdata.LogString(i),
@@ -77,7 +78,7 @@ func fillChunkRandomOrder(c Chunk, close bool) {
 			panic(err)
 		}
 		i++
-		entry.Timestamp = time.Unix(0, rand.Int63n(ub))
+		entry.Timestamp = time.Unix(0, random.Int63n(ub))
 		entry.Line = testdata.LogString(i)
 
 	}
