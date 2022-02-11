@@ -494,6 +494,7 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
+		UsageReport:              {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
@@ -539,6 +540,12 @@ func (t *Loki) setupModuleManager() error {
 
 	t.deps = deps
 	t.ModuleManager = mm
+
+	if t.isModuleActive(Ingester) {
+		if err := mm.AddDependency(UsageReport, Ring); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

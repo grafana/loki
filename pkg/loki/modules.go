@@ -674,6 +674,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.MemberlistKV.MetricsRegisterer = reg
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
+		usagestats.JSONCodec,
 	}
 
 	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
