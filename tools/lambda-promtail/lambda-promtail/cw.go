@@ -26,7 +26,7 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 		labels[model.LabelName("__aws_cloudwatch_log_stream")] = model.LabelValue(data.LogStream)
 	}
 
-	applyExtraLabels(labels)
+	labels = applyExtraLabels(labels)
 
 	for _, event := range data.LogEvents {
 		timestamp := time.UnixMilli(event.Timestamp)

@@ -99,8 +99,8 @@ func parseExtraLabels(extraLabelsRaw string) (model.LabelSet, error) {
 	return extractedLabels, nil
 }
 
-func applyExtraLabels(labels model.LabelSet) {
-	labels.Merge(extraLabels)
+func applyExtraLabels(labels model.LabelSet) model.LabelSet {
+	return labels.Merge(extraLabels)
 }
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {

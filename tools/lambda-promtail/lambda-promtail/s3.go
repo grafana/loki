@@ -72,7 +72,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		model.LabelName("__aws_s3_log_lb_owner"): model.LabelValue(labels["account_id"]),
 	}
 
-	applyExtraLabels(ls)
+	ls = applyExtraLabels(ls)
 
 	for scanner.Scan() {
 		i := 0
