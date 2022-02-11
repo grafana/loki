@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/prometheus/common/model"
 	"net/url"
 	"os"
 	"strconv"
@@ -20,6 +21,8 @@ const (
 	contentType = "application/x-protobuf"
 
 	maxErrMsgLen = 1024
+
+	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. "
 )
 
 type ExtraLabel struct {
@@ -36,7 +39,7 @@ var (
 	extraLabels                        []ExtraLabel
 )
 
-func configure() {
+func setupArguments() {
 	addr := os.Getenv("WRITE_ADDRESS")
 	if addr == "" {
 		panic(errors.New("required environmental variable WRITE_ADDRESS not present, format: https://<hostname>/loki/api/v1/push"))
@@ -82,19 +85,28 @@ func configure() {
 func parseExtraLabels(extraLabelsRaw string) ([]ExtraLabel, error) {
 	var extractedLabels []ExtraLabel
 	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
-	if len(extraLabelsRaw) > 0 {
-		if len(extraLabelsSplit)%2 != 0 {
-			return nil, fmt.Errorf("Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. ")
-		}
-		for i := 0; i < len(extraLabelsSplit); i += 2 {
-			extractedLabels = append(extractedLabels, ExtraLabel{
-				key:   extraLabelsSplit[i],
-				value: extraLabelsSplit[i+1],
-			})
-		}
-		fmt.Println("extra labels:", extractedLabels)
+
+	if len(extraLabelsRaw) < 1 {
+		return extractedLabels, nil
 	}
+
+	if len(extraLabelsSplit)%2 != 0 {
+		return nil, fmt.Errorf(invalidExtraLabelsError)
+	}
+	for i := 0; i < len(extraLabelsSplit); i += 2 {
+		extractedLabels = append(extractedLabels, ExtraLabel{
+			key:   extraLabelsSplit[i],
+			value: extraLabelsSplit[i+1],
+		})
+	}
+	fmt.Println("extra labels:", extractedLabels)
 	return extractedLabels, nil
+}
+
+func applyExtraLabels(labels model.LabelSet) {
+	for _, label := range extraLabels {
+		labels[model.LabelName("__extra_"+label.key)] = model.LabelValue(label.value)
+	}
 }
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {
@@ -124,7 +136,7 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 func handler(ctx context.Context, ev map[string]interface{}) error {
 	event, err := checkEventType(ev)
 	if err != nil {
-		fmt.Printf("invalid event: %s", ev)
+		fmt.Println("invalid event: %s", ev)
 		return err
 	}
 
@@ -139,6 +151,6 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 }
 
 func main() {
-	configure()
+	setupArguments()
 	lambda.Start(handler)
 }

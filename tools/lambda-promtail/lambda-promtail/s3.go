@@ -72,6 +72,8 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		model.LabelName("__aws_s3_log_lb_owner"): model.LabelValue(labels["account_id"]),
 	}
 
+	applyExtraLabels(ls)
+
 	for scanner.Scan() {
 		i := 0
 		log_line := scanner.Text()
@@ -106,10 +108,6 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 		if i != 0 && name != "" {
 			labels[name] = match[i]
 		}
-	}
-
-	for _, label := range extraLabels {
-		labels["__extra_" + label.key] = label.value
 	}
 
 	return labels, nil

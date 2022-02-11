@@ -2,20 +2,8 @@ package main
 
 import (
 	"github.com/stretchr/testify/require"
-	"os"
 	"testing"
 )
-
-func TestMain(m *testing.M) {
-	err := os.Setenv("WRITE_ADDRESS", "http://localhost:8080/loki/api/v1/push")
-	if err != nil {
-		return
-	}
-
-	exitVal := m.Run()
-
-	os.Exit(exitVal)
-}
 
 func TestLambdaPromtail_TestParseLabelsValid(t *testing.T) {
 	extraLabels, err := parseExtraLabels("A,a,B,b,C,c,D,d")
@@ -30,7 +18,7 @@ func TestLambdaPromtail_TestParseLabelsValid(t *testing.T) {
 func TestLambdaPromtail_TestParseLabelsNotValid(t *testing.T) {
 	extraLabels, err := parseExtraLabels("A,a,B,b,C,c,D")
 	require.Nil(t, extraLabels)
-	require.Errorf(t, err, "Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. ")
+	require.Errorf(t, err, invalidExtraLabelsError)
 }
 
 func TestLambdaPromtail_TestParseLabelsNoneProvided(t *testing.T) {
