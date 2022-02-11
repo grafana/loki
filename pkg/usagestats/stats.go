@@ -35,6 +35,7 @@ type Report struct {
 	ClusterID              string    `json:"clusterID"`
 	CreatedAt              time.Time `json:"createdAt"`
 	Interval               time.Time `json:"interval"`
+	IntervalPeriod         float64   `json:"intervalPeriod"`
 	Target                 string    `json:"target"`
 	prom.PrometheusVersion `json:"version"`
 	Os                     string                 `json:"os"`
@@ -92,6 +93,7 @@ func buildReport(seed *ClusterSeed, interval time.Time) Report {
 		PrometheusVersion: build.GetVersion(),
 		CreatedAt:         seed.CreatedAt,
 		Interval:          interval,
+		IntervalPeriod:    reportInterval.Seconds(),
 		Os:                runtime.GOOS,
 		Arch:              runtime.GOARCH,
 		Target:            targetName,
