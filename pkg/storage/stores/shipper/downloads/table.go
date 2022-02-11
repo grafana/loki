@@ -189,11 +189,23 @@ func (t *Table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 	var cleanedUpIndexSets []string
 
 	t.indexSetsMtx.RLock()
+	commonIndexSetExpired := false
 	for userID, userIndexSet := range t.indexSets {
 		lastUsedAt := userIndexSet.LastUsedAt()
 		if lastUsedAt.Add(ttl).Before(now) {
-			cleanedUpIndexSets = append(cleanedUpIndexSets, userID)
+			if userID == "" {
+				// add the userID for common index set at the end of the list to make sure it is the last one cleaned up
+				// because we remove directories containing the index sets which in case of common index is
+				// the parent directory of all the user index sets.
+				commonIndexSetExpired = true
+			} else {
+				cleanedUpIndexSets = append(cleanedUpIndexSets, userID)
+			}
 		}
+	}
+
+	if commonIndexSetExpired {
+		cleanedUpIndexSets = append(cleanedUpIndexSets, "")
 	}
 	t.indexSetsMtx.RUnlock()
 
