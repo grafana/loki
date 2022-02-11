@@ -120,6 +120,14 @@ The response body has the following schema:
     e.g. if you previously used `__project_id` then you'll need to update your relabel config to use `__gcp_resource_labels_project_id`.
   - `resource_type` has been moved to `__gcp_resource_type`
 
+#### `promtail_log_entries_bytes_bucket` histogram has been removed.
+
+This histogram reports the distribution of log line sizes by file. It has 8 buckets for every file being tailed.
+
+This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
+
+While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](https://grafana.com/docs/loki/latest/clients/promtail/stages/metrics/#counter)
+
 ## 2.4.0
 
 The following are important changes which should be reviewed and understood prior to upgrading Loki.
