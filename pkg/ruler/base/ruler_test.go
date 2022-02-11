@@ -132,10 +132,6 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 	}
 }
 
-func mockMangerFactory(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
-	return nil
-}
-
 func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier_base.TestConfig, clientMetrics chunk_storage.ClientMetrics, rulerAddrMap map[string]*Ruler) *Ruler {
 	overrides := ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}
 
@@ -147,7 +143,7 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier_bas
 	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, mockMangerFactory, reg, log.NewNopLogger())
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, factory, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
