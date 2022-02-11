@@ -32,7 +32,10 @@ const (
 
 var (
 	reportCheckInterval = time.Minute
-	reportInterval      = 1 * time.Hour
+	reportInterval      = 4 * time.Hour
+
+	stabilityCheckInterval   = 5 * time.Second
+	stabilityMinimunRequired = 6
 )
 
 type Config struct {
@@ -80,11 +83,12 @@ func (rep *Reporter) initLeader(ctx context.Context) *ClusterSeed {
 		return nil
 	}
 	// Try to become leader via the kv client
-	for backoff := backoff.New(ctx, backoff.Config{
+	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: time.Second,
 		MaxBackoff: time.Minute,
 		MaxRetries: 0,
-	}); ; backoff.Ongoing() {
+	})
+	for backoff.Ongoing() {
 		// create a new cluster seed
 		seed := ClusterSeed{
 			UID:               uuid.NewString(),
@@ -94,16 +98,19 @@ func (rep *Reporter) initLeader(ctx context.Context) *ClusterSeed {
 		if err := kvClient.CAS(ctx, seedKey, func(in interface{}) (out interface{}, retry bool, err error) {
 			// The key is already set, so we don't need to do anything
 			if in != nil {
-				if kvSeed, ok := in.(*ClusterSeed); ok && kvSeed.UID != seed.UID {
+				if kvSeed, ok := in.(*ClusterSeed); ok && kvSeed != nil && kvSeed.UID != seed.UID {
 					seed = *kvSeed
 					return nil, false, nil
 				}
 			}
-			return seed, true, nil
+			return &seed, true, nil
 		}); err != nil {
 			level.Info(rep.logger).Log("msg", "failed to CAS cluster seed key", "err", err)
 			continue
 		}
+		// ensure stability of the cluster seed
+		stableSeed := ensureStableKey(ctx, kvClient, rep.logger)
+		seed = *stableSeed
 		// Fetch the remote cluster seed.
 		remoteSeed, err := rep.fetchSeed(ctx,
 			func(err error) bool {
@@ -115,13 +122,49 @@ func (rep *Reporter) initLeader(ctx context.Context) *ClusterSeed {
 				// we are the leader and we need to save the file.
 				if err := rep.writeSeedFile(ctx, seed); err != nil {
 					level.Info(rep.logger).Log("msg", "failed to CAS cluster seed key", "err", err)
+					backoff.Wait()
 					continue
 				}
 				return &seed
 			}
+			backoff.Wait()
 			continue
 		}
 		return remoteSeed
+	}
+	return nil
+}
+
+// ensureStableKey ensures that the cluster seed is stable for at least 30seconds.
+// This is required when using gossiping kv client like memberlist which will never have the same seed
+// but will converge eventually.
+func ensureStableKey(ctx context.Context, kvClient kv.Client, logger log.Logger) *ClusterSeed {
+	var (
+		previous    *ClusterSeed
+		stableCount int
+	)
+	for {
+		time.Sleep(stabilityCheckInterval)
+		value, err := kvClient.Get(ctx, seedKey)
+		if err != nil {
+			level.Debug(logger).Log("msg", "failed to get cluster seed key for stability check", "err", err)
+			continue
+		}
+		if seed, ok := value.(*ClusterSeed); ok && seed != nil {
+			if previous == nil {
+				previous = seed
+				continue
+			}
+			if previous.UID != seed.UID {
+				previous = seed
+				stableCount = 0
+				continue
+			}
+			stableCount++
+			if stableCount > stabilityMinimunRequired {
+				return seed
+			}
+		}
 	}
 }
 
@@ -161,6 +204,7 @@ func (rep *Reporter) fetchSeed(ctx context.Context, continueFn func(err error) b
 				readingErr = 0
 			}
 			if continueFn == nil || continueFn(err) {
+				backoff.Wait()
 				continue
 			}
 			return nil, err

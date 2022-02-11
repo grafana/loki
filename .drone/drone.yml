@@ -1,26 +1,59 @@
 ---
 kind: pipeline
+name: loki-build-image
+steps:
+- image: plugins/docker
+  name: push-image
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-build-image
+    tags:
+    - 0.20.0
+    username:
+      from_secret: docker_username
+  when:
+    paths:
+      include:
+      - loki-build-image/**
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
 name: check
 steps:
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.18.0
+  image: grafana/loki-build-image:0.19.0
   name: check-generated-files
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.18.0
+  image: grafana/loki-build-image:0.19.0
   name: test
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.18.0
+  image: grafana/loki-build-image:0.19.0
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -28,7 +61,7 @@ steps:
   - clone
   - test
   - lint
-  image: grafana/loki-build-image:0.18.0
+  image: grafana/loki-build-image:0.19.0
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -38,19 +71,19 @@ steps:
   - make BUILD_IN_CONTAINER=false loki
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.18.0
+  image: grafana/loki-build-image:0.19.0
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
-  image: grafana/loki-build-image:0.18.0
+  image: grafana/loki-build-image:0.19.0
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.18.0
+  image: grafana/loki-build-image:0.19.0
   name: check-example-config-doc
 trigger:
   event:
@@ -84,7 +117,7 @@ node:
 steps:
 - commands:
   - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...
-  image: grafana/loki-build-image:0.18.0
+  image: grafana/loki-build-image:0.19.0
   name: All
 trigger:
   cron:
@@ -1025,6 +1058,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 615276ab546179d2261b1af22830b968afe2e437463f22ac86a349fca3c86428
+hmac: d9e5236a5786352d3fa03700d72566995c0f37be5d992e7f478ef3a978f58815
 
 ...

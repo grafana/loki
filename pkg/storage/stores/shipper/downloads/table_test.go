@@ -243,6 +243,9 @@ func TestTable_DropUnusedIndex(t *testing.T) {
 		logger:    util_log.Logger,
 	}
 
+	// ensure that we only find expiredIndexUserID to be dropped
+	require.Equal(t, []string{expiredIndexUserID}, table.findExpiredIndexSets(ttl, now))
+
 	// dropping unused indexSets should drop only index set for expiredIndexUserID
 	allIndexSetsDropped, err := table.DropUnusedIndex(ttl, now)
 	require.NoError(t, err)
@@ -257,6 +260,9 @@ func TestTable_DropUnusedIndex(t *testing.T) {
 	for _, indexSets := range table.indexSets {
 		indexSets.(*mockIndexSet).lastUsedAt = now.Add(-25 * time.Hour)
 	}
+
+	// ensure that we get userID of common index set at the end
+	require.Equal(t, []string{notExpiredIndexUserID, ""}, table.findExpiredIndexSets(ttl, now))
 
 	allIndexSetsDropped, err = table.DropUnusedIndex(ttl, now)
 	require.NoError(t, err)

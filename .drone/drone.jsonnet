@@ -14,6 +14,11 @@ local condition(verb) = {
         ],
     },
   },
+  path(path): {
+    paths: {
+      [verb]: [path],
+    },
+  },
 };
 
 local pipeline(name) = {
@@ -310,6 +315,28 @@ local manifest(apps) = pipeline('manifest') {
 };
 
 [
+  pipeline('loki-build-image') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    steps: [
+      {
+        name: 'push-image',
+        image: 'plugins/docker',
+        when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
+        settings: {
+          repo: 'grafana/loki-build-image',
+          context: 'loki-build-image',
+          dockerfile: 'loki-build-image/Dockerfile',
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
+          tags: ['0.20.0'],
+          dry_run: false,
+        },
+      },
+    ],
+  },
   pipeline('check') {
     workspace: {
       base: '/src',
