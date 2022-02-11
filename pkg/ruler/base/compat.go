@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
@@ -133,18 +132,6 @@ type RulesLimits interface {
 	RulerMaxRulesPerRuleGroup(userID string) int
 }
 
-// EngineQueryFunc returns a new query function using the rules.EngineQueryFunc function
-// and passing an altered timestamp.
-func EngineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
-	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		orig := rules.EngineQueryFunc(engine, q)
-		// Delay the evaluation of all rules by a set interval to give a buffer
-		// to metric that haven't been forwarded to cortex yet.
-		evaluationDelay := overrides.EvaluationDelay(userID)
-		return orig(ctx, qs, t.Add(-evaluationDelay))
-	}
-}
-
 func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		queries.Inc()
@@ -221,59 +208,6 @@ type RulesManager interface {
 
 // ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
-
-func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
-	totalWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_total",
-		Help: "Number of write requests to ingesters.",
-	})
-	failedWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_failed_total",
-		Help: "Number of failed write requests to ingesters.",
-	})
-
-	totalQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_total",
-		Help: "Number of queries executed by ruler.",
-	})
-	failedQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_failed_total",
-		Help: "Number of failed queries by ruler.",
-	})
-	var rulerQuerySeconds *prometheus.CounterVec
-	if cfg.EnableQueryStats {
-		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ruler_query_seconds_total",
-			Help: "Total amount of wall clock time spent processing queries by the ruler.",
-		}, []string{"user"})
-	}
-
-	// Wrap errors returned by Queryable to our wrapper, so that we can distinguish between those errors
-	// and errors returned by PromQL engine. Errors from Queryable can be either caused by user (limits) or internal errors.
-	// Errors from PromQL are always "user" errors.
-	q = querier.NewErrorTranslateQueryableWithFn(q, WrapQueryableErrors)
-
-	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
-		var queryTime prometheus.Counter
-		if rulerQuerySeconds != nil {
-			queryTime = rulerQuerySeconds.WithLabelValues(userID)
-		}
-
-		return rules.NewManager(&rules.ManagerOptions{
-			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
-			Queryable:       q,
-			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries), queryTime, logger),
-			Context:         user.InjectOrgID(ctx, userID),
-			ExternalURL:     cfg.ExternalURL.URL,
-			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),
-			Logger:          log.With(logger, "user", userID),
-			Registerer:      reg,
-			OutageTolerance: cfg.OutageTolerance,
-			ForGracePeriod:  cfg.ForGracePeriod,
-			ResendDelay:     cfg.ResendDelay,
-		})
-	}
-}
 
 type QueryableError struct {
 	err error

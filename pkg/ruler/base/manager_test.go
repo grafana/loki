@@ -123,5 +123,5 @@ func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, 
 }
 
 func (m *mockRulesManager) RuleGroups() []*promRules.Group {
-	return nil
+	return []*promRules.Group{{}}
 }
