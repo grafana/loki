@@ -651,7 +651,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
 
 	// make sure error is returned to re-trigger reconciliation
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	// make sure status and status-update calls
 	require.NotZero(t, k.StatusCallCount())
@@ -706,7 +706,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
 
 	// make sure error is returned to re-trigger reconciliation
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	// make sure status and status-update calls
 	require.NotZero(t, k.StatusCallCount())
@@ -780,7 +780,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
 
 	// make sure error is returned to re-trigger reconciliation
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	// make sure status and status-update calls
 	require.NotZero(t, k.StatusCallCount())

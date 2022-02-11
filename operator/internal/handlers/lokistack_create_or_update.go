@@ -53,20 +53,28 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
 	if err := k.Get(ctx, key, &s3secret); err != nil {
 		if apierrors.IsNotFound(err) {
-			return status.SetDegradedCondition(ctx, k, req,
+			if statusErr := status.SetDegradedCondition(ctx, k, req,
 				"Missing object storage secret",
 				lokiv1beta1.ReasonMissingObjectStorageSecret,
-			)
+			); statusErr != nil {
+				return kverrors.Wrap(statusErr, "failed to update lokistack condition with missing secret status")
+			}
+
+			return kverrors.Wrap(err, "lokistack s3 secret has not been created", "name", key)
 		}
 		return kverrors.Wrap(err, "failed to lookup lokistack s3 secret", "name", key)
 	}
 
 	storage, err := secrets.Extract(&s3secret)
 	if err != nil {
-		return status.SetDegradedCondition(ctx, k, req,
+		if statusErr := status.SetDegradedCondition(ctx, k, req,
 			"Invalid object storage secret contents",
 			lokiv1beta1.ReasonInvalidObjectStorageSecret,
-		)
+		); statusErr != nil {
+			return kverrors.Wrap(statusErr, "failed to update lokistack condition with invalid secret status")
+		}
+
+		return kverrors.Wrap(err, "failed to extract lokistack s3 secret data", "name", key)
 	}
 
 	var (
@@ -76,10 +84,14 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 	)
 	if flags.EnableGateway && stack.Spec.Tenants != nil {
 		if err = gateway.ValidateModes(stack); err != nil {
-			return status.SetDegradedCondition(ctx, k, req,
+			if statusErr := status.SetDegradedCondition(ctx, k, req,
 				fmt.Sprintf("Invalid tenants configuration: %s", err),
 				lokiv1beta1.ReasonInvalidTenantsConfiguration,
-			)
+			); statusErr != nil {
+				return kverrors.Wrap(statusErr, "failed to update lokistack condition with invalid tenant configuration")
+			}
+
+			return kverrors.Wrap(err, "failed to validate tenant gateway configuration")
 		}
 
 		if stack.Spec.Tenants.Mode != lokiv1beta1.OpenshiftLogging {
@@ -92,7 +104,7 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		if stack.Spec.Tenants.Mode == lokiv1beta1.OpenshiftLogging {
 			baseDomain, err = gateway.GetOpenShiftBaseDomain(ctx, k, req)
 			if err != nil {
-				return nil
+				return err
 			}
 
 			// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
