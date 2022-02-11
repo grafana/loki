@@ -25,11 +25,6 @@ const (
 	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. "
 )
 
-type ExtraLabel struct {
-	key   string
-	value string
-}
-
 var (
 	writeAddress                       *url.URL
 	username, password, extraLabelsRaw string
