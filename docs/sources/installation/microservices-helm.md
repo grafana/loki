@@ -6,7 +6,7 @@ weight: 25
 # Microservices deployment of Grafana Loki with Helm
 
 The Helm installation runs the Grafana Loki cluster in 
-[microservices mode](../../fundamentals/architecture/deployment-modes/#microservices-mode)
+[microservices mode](../../sources/fundamentals/architecture/deployment-modes.md#microservices-mode)
 within a Kubernetes cluster.
 
 ## Prerequisites
