@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -75,6 +76,7 @@ type Config struct {
 	DistributorRing RingConfig             `yaml:"ring,omitempty"`
 	Receivers       map[string]interface{} `yaml:"receivers"`
 	ReceiverEnable  bool                   `yaml:"receiverEnable"`
+	ReceiverFormat  string                 `yaml:"receiverFormat"`
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 }
@@ -82,6 +84,14 @@ type Config struct {
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
+	fs.BoolVar(&cfg.ReceiverEnable, "distributor.receiver-enable", false, "set to true to enable support receiving logs in Loki using OpenTelemetry OTLP")
+	fs.StringVar(&cfg.ReceiverFormat, "distributor.receiver-format", "json", "json or logfmt")
+}
+func (cfg *Config) Validate() error {
+	if cfg.ReceiverFormat != receiver.LogFormatJSON && cfg.ReceiverFormat != receiver.LogFormatLogfmt {
+		return errors.New(fmt.Sprintf("unsupported receiver format type:%s", cfg.ReceiverFormat))
+	}
+	return nil
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -206,7 +216,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		if len(cfgReceivers) == 0 {
 			cfgReceivers = defaultReceivers
 		}
-		receivers, err := receiver.New(cfgReceivers, d, middleware, level)
+		receivers, err := receiver.New(cfgReceivers, d, cfg.ReceiverFormat, middleware, level)
 		if err != nil {
 			return nil, err
 		}

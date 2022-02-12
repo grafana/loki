@@ -171,6 +171,9 @@ func (c *Config) Validate() error {
 	if err := c.Ingester.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
 	}
+	if err := c.Distributor.Validate(); err != nil {
+		return errors.Wrap(err, "invalid distributor config")
+	}
 	if err := c.LimitsConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}

@@ -1,6 +1,7 @@
 package receiver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,8 +11,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/go-logfmt/logfmt"
 	"github.com/grafana/dskit/services"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	prom_client "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/logging"
@@ -29,6 +32,11 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	util_log "github.com/grafana/loki/pkg/util/log"
+)
+
+const (
+	LogFormatJSON   = "json"
+	LogFormatLogfmt = "logfmt"
 )
 
 var (
@@ -50,6 +58,7 @@ type receiversShim struct {
 	receivers []component.Receiver
 	pusher    BatchPusher
 	logger    log.Logger
+	format    string
 }
 
 func (r *receiversShim) Capabilities() consumer.Capabilities {
@@ -58,9 +67,10 @@ func (r *receiversShim) Capabilities() consumer.Capabilities {
 
 // New
 // handler "/v1/logs" go.opentelemetry.io/collector/receiver/otlpreceiver/otlp.go:229
-func New(receiverCfg map[string]interface{}, pusher BatchPusher, middleware Middleware, logLevel logging.Level) (services.Service, error) {
+func New(receiverCfg map[string]interface{}, pusher BatchPusher, format string, middleware Middleware, logLevel logging.Level) (services.Service, error) {
 	shim := &receiversShim{
 		pusher: pusher,
+		format: format,
 		logger: util_log.Logger,
 	}
 
@@ -149,7 +159,7 @@ func (r *receiversShim) stopping(_ error) error {
 func (r *receiversShim) ConsumeLogs(ctx context.Context, ld pdata.Logs) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "distributor.ConsumeLogs")
 	defer span.Finish()
-	req, err := parseLog(ld)
+	req, err := parseLog(ld, r.format)
 	if err != nil {
 		r.logger.Log("msg", "pusher failed to parse log data", "err", err)
 	}
@@ -164,7 +174,7 @@ func (r *receiversShim) ConsumeLogs(ctx context.Context, ld pdata.Logs) error {
 	return err
 }
 
-func parseLog(ld pdata.Logs) (*logproto.PushRequest, error) {
+func parseLog(ld pdata.Logs, format string) (*logproto.PushRequest, error) {
 	streams := make(map[string]*logproto.Stream)
 	rss := ld.ResourceLogs()
 	for i := 0; i < rss.Len(); i++ {
@@ -175,7 +185,7 @@ func parseLog(ld pdata.Logs) (*logproto.PushRequest, error) {
 			for k := 0; k < logs.Len(); k++ {
 				pLog := logs.At(k)
 				labels := parseLabel(rs.Resource().Attributes(), pLog.Attributes())
-				entry, err := parseEntry(pLog)
+				entry, err := parseEntry(pLog, format)
 				if err != nil {
 					return nil, err
 				}
@@ -202,25 +212,62 @@ func parseLog(ld pdata.Logs) (*logproto.PushRequest, error) {
 	return req, nil
 }
 
-func parseEntry(pLog pdata.LogRecord) (*logproto.Entry, error) {
-	record := LokiLogRecord{
-		SeverityNumber: int32(pLog.SeverityNumber()),
-		SeverityText:   pLog.SeverityText(),
-		Name:           pLog.Name(),
-		Body:           pLog.Body().AsString(),
-		Flags:          pLog.Flags(),
-		TraceID:        pLog.TraceID().HexString(),
-		SpanID:         pLog.SpanID().HexString(),
-	}
+func parseEntry(pLog pdata.LogRecord, format string) (*logproto.Entry, error) {
+	var line string
+	if format == LogFormatLogfmt {
+		records := make(map[string]interface{})
+		records["severity_number"] = int32(pLog.SeverityNumber())
+		records["severity_text"] = pLog.SeverityText()
+		records["name"] = pLog.Name()
+		records["body"] = pLog.Body().AsString()
+		records["flags"] = pLog.Flags()
+		records["trace_id"] = pLog.TraceID().HexString()
+		records["span_id"] = pLog.SpanID().HexString()
 
-	data, err := json.Marshal(&record)
-	if err != nil {
-		return nil, err
+		buf := &bytes.Buffer{}
+		enc := logfmt.NewEncoder(buf)
+		keys := make([]string, 0, len(records))
+		for k := range records {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			err := enc.EncodeKeyval(k, records[k])
+			if err == logfmt.ErrUnsupportedValueType {
+				err := enc.EncodeKeyval(k, fmt.Sprintf("%+v", records[k]))
+				if err != nil {
+					return nil, err
+				}
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+		line = buf.String()
+	} else if format == LogFormatJSON {
+		record := LokiLogRecord{
+			SeverityNumber: int32(pLog.SeverityNumber()),
+			SeverityText:   pLog.SeverityText(),
+			Name:           pLog.Name(),
+			Body:           pLog.Body().AsString(),
+			Flags:          pLog.Flags(),
+			TraceID:        pLog.TraceID().HexString(),
+			SpanID:         pLog.SpanID().HexString(),
+		}
+
+		data, err := json.Marshal(&record)
+		if err != nil {
+			return nil, err
+		}
+		line = string(data)
+	} else {
+		return nil, errors.New(fmt.Sprintf("unsupported format type:%s", format))
 	}
 
 	return &logproto.Entry{
 		Timestamp: time.Unix(0, int64(pLog.Timestamp())),
-		Line:      string(data),
+		Line:      line,
 	}, nil
 }
 
