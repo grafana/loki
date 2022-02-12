@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"github.com/go-kit/log"
 	"strings"
 
 	"github.com/dustin/go-humanize"
@@ -72,9 +73,9 @@ var (
 	linePerSecondLogUsage    = usagestats.NewStatistics("query_log_lines_per_second")
 )
 
-func RecordMetrics(ctx context.Context, p Params, status string, stats logql_stats.Result, result promql_parser.Value) {
+func RecordMetrics(ctx context.Context, log log.Logger, p Params, status string, stats logql_stats.Result, result promql_parser.Value) {
 	var (
-		logger        = util_log.WithContext(ctx, util_log.Logger)
+		logger        = util_log.WithContext(ctx, log)
 		rt            = string(GetRangeType(p))
 		latencyType   = latencyTypeFast
 		returnedLines = 0

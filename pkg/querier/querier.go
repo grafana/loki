@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"flag"
+	"github.com/go-kit/log"
 	"net/http"
 	"time"
 
@@ -89,13 +90,13 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 		limits:          limits,
 	}
 
-	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits, util_log.Logger)
+	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits, log.With(util_log.Logger, "component", "querier"))
 
 	return &querier, nil
 }
 
 func (q *Querier) SetQueryable(queryable logql.Querier) {
-	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits, util_log.Logger)
+	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits, log.With(util_log.Logger, "component", "querier"))
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.

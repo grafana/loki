@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/go-kit/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"net"
 	"net/http"
 	"strconv"
@@ -26,7 +28,7 @@ const ctxKey ctxKeyType = "stats"
 
 var (
 	defaultMetricRecorder = metricRecorderFn(func(data *queryData) {
-		logql.RecordMetrics(data.ctx, data.params, data.status, *data.statistics, data.result)
+		logql.RecordMetrics(data.ctx, log.With(util_log.Logger, "component", "frontend"), data.params, data.status, *data.statistics, data.result)
 	})
 	// StatsHTTPMiddleware is an http middleware to record stats for query_range filter.
 	StatsHTTPMiddleware = statsHTTPMiddleware(defaultMetricRecorder)
