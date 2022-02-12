@@ -14,7 +14,6 @@ import (
 	"github.com/go-logfmt/logfmt"
 	"github.com/grafana/dskit/services"
 	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
 	prom_client "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/logging"
@@ -264,7 +263,7 @@ func parseEntry(pLog pdata.LogRecord, format string) (*logproto.Entry, error) {
 		}
 		line = string(data)
 	} else {
-		return nil, errors.New(fmt.Sprintf("unsupported format type:%s", format))
+		return nil, fmt.Errorf("unsupported format type:%s", format)
 	}
 
 	return &logproto.Entry{
