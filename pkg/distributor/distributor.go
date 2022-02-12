@@ -73,10 +73,11 @@ var defaultReceivers = map[string]interface{}{
 // Config for a Distributor.
 type Config struct {
 	// Distributors ring
-	DistributorRing RingConfig             `yaml:"ring,omitempty"`
-	Receivers       map[string]interface{} `yaml:"receivers"`
-	ReceiverEnable  bool                   `yaml:"receiverEnable"`
-	ReceiverFormat  string                 `yaml:"receiverFormat"`
+	DistributorRing      RingConfig             `yaml:"ring,omitempty"`
+	Receivers            map[string]interface{} `yaml:"receivers"`
+	ReceiverEnable       bool                   `yaml:"receiver_enable"`
+	ReceiverFormat       string                 `yaml:"receiver_format"`
+	ReceiverDrainTimeout time.Duration          `yaml:"receiver_drain_timeout"`
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 }
@@ -86,6 +87,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 	fs.BoolVar(&cfg.ReceiverEnable, "distributor.receiver-enable", false, "set to true to enable support receiving logs in Loki using OpenTelemetry OTLP")
 	fs.StringVar(&cfg.ReceiverFormat, "distributor.receiver-format", "json", "json or logfmt")
+	fs.DurationVar(&cfg.ReceiverDrainTimeout, "distributor.receiver-drain-timeout", 2*time.Second, "distributor receiver should drain before terminating")
 }
 func (cfg *Config) Validate() error {
 	if cfg.ReceiverFormat != receiver.LogFormatJSON && cfg.ReceiverFormat != receiver.LogFormatLogfmt {
@@ -216,7 +218,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		if len(cfgReceivers) == 0 {
 			cfgReceivers = defaultReceivers
 		}
-		receivers, err := receiver.New(cfgReceivers, d, cfg.ReceiverFormat, middleware, level)
+		receivers, err := receiver.New(cfgReceivers, d, cfg.ReceiverFormat, cfg.ReceiverDrainTimeout, middleware, level)
 		if err != nil {
 			return nil, err
 		}

@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/user"
 	"go.opentelemetry.io/collector/model/otlpgrpc"
 	"go.opentelemetry.io/collector/model/pdata"
 	"google.golang.org/grpc"
@@ -135,7 +134,7 @@ func TestOtlpPush(t *testing.T) {
 	err := level.Set("debug")
 	require.NoError(t, err)
 	morkPusher := &morkPusher{}
-	service, err := New(defaultReceivers, morkPusher, "json", FakeTenantMiddleware(), level)
+	service, err := New(defaultReceivers, morkPusher, "json", time.Second, FakeTenantMiddleware(), level)
 	require.NoError(t, err)
 	require.NoError(t, service.StartAsync(context.Background()))
 	require.NoError(t, service.AwaitRunning(context.Background()))
@@ -156,24 +155,6 @@ func TestOtlpPush(t *testing.T) {
 	require.Equal(t, 1, len(morkPusher.Data[0].Streams))
 	require.Equal(t, "{app=\"testApp\", level=\"WARN\"}", morkPusher.Data[0].Streams[0].Labels)
 	require.Equal(t, "{\"severity_number\":1,\"severity_text\":\"WARN\",\"name\":\"testName\",\"body\":\"\",\"flags\":31,\"trace_id\":\"01020304000000000000000000000000\",\"span_id\":\"0102000000000000\"}", morkPusher.Data[0].Streams[0].Entries[0].Line)
-}
-
-func TestClient(t *testing.T) {
-	grpcEndpoint := "8.142.116.187:4317"
-	grpcEndpoint = "0.0.0.0:4317"
-	tenantID := "1098370038733503_c59fb20a188724368bcc091b5b874824a"
-
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-	ctx, err := user.InjectIntoGRPCRequest(ctx)
-	require.NoError(t, err)
-
-	conn, err := grpc.Dial(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-
-	client := otlpgrpc.NewLogsClient(conn)
-	request := markRequest()
-	_, err = client.Export(ctx, request)
-	require.NoError(t, err)
 }
 
 func markRequest() otlpgrpc.LogsRequest {

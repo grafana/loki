@@ -55,10 +55,11 @@ type BatchPusher interface {
 type receiversShim struct {
 	services.Service
 
-	receivers []component.Receiver
-	pusher    BatchPusher
-	logger    log.Logger
-	format    string
+	receivers    []component.Receiver
+	pusher       BatchPusher
+	logger       log.Logger
+	format       string
+	drainTimeout time.Duration
 }
 
 func (r *receiversShim) Capabilities() consumer.Capabilities {
@@ -67,11 +68,12 @@ func (r *receiversShim) Capabilities() consumer.Capabilities {
 
 // New
 // handler "/v1/logs" go.opentelemetry.io/collector/receiver/otlpreceiver/otlp.go:229
-func New(receiverCfg map[string]interface{}, pusher BatchPusher, format string, middleware Middleware, logLevel logging.Level) (services.Service, error) {
+func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat string, receiverDrainTimeout time.Duration, middleware Middleware, logLevel logging.Level) (services.Service, error) {
 	shim := &receiversShim{
-		pusher: pusher,
-		format: format,
-		logger: util_log.Logger,
+		pusher:       pusher,
+		format:       receiverFormat,
+		logger:       util_log.Logger,
+		drainTimeout: receiverDrainTimeout,
 	}
 
 	receiverFactories, err := component.MakeReceiverFactoryMap(
@@ -134,7 +136,7 @@ func (r *receiversShim) stopping(_ error) error {
 	// which drops requests on the floor. at this point in the shutdown process
 	// the readiness handler is already down . so we are not receiving any more requests.
 	// sleep for 30 seconds to here to all pending requests to finish.
-	time.Sleep(30 * time.Second)
+	time.Sleep(r.drainTimeout)
 
 	ctx, cancelFn := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelFn()
