@@ -72,8 +72,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 - `<labelvalue>` : a string of unicode characters
 - `<filename>` : a valid path relative to current working directory or an absolute path.
 - `<host>` : a valid string consisting of a hostname or IP followed by an optional port number
-- `<string>` : a regular string
-- `<secret>` : a regular string that is a secret, such as a password
+- `<string>` : a string
+- `<secret>` : a string that represents a secret, such as a password
 
 ### Supported contents and default values of `loki.yaml`
 
@@ -164,6 +164,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # If a more specific configuration is given in other sections,
 # the related configuration within this section will be ignored.
 [common: <common>]
+
+# Configuration for usage report
+[usage_report: <usage_report>]
 ```
 
 ## server
@@ -2494,6 +2497,16 @@ This way, one doesn't have to replicate configuration in multiple places.
 # to be used by the distributor's ring, but only if the distributor's ring itself
 # doesn't have a `heartbeat_period` set.
 [ring: <ring>]
+```
+
+## usage_report
+
+This block allow to configure usage report of Loki to grafana.com
+
+```yaml
+# Whether or not usage report should be disabled.
+# CLI flag: -usage-report.disabled
+[disabled: <boolean>: default = false]
 ```
 
 ### storage

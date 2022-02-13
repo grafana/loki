@@ -390,13 +390,8 @@ func (t *indexSet) doConcurrentDownload(ctx context.Context, files []storage.Ind
 	downloadedFiles := make([]string, 0, len(files))
 	downloadedFilesMtx := sync.Mutex{}
 
-	jobs := make([]interface{}, len(files))
-	for i := 0; i < len(files); i++ {
-		jobs[i] = i
-	}
-
-	err := concurrency.ForEach(ctx, jobs, maxDownloadConcurrency, func(ctx context.Context, job interface{}) error {
-		fileName := files[job.(int)].Name
+	err := concurrency.ForEachJob(ctx, len(files), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
+		fileName := files[idx].Name
 		err := t.downloadFileFromStorage(ctx, fileName, t.cacheLocation)
 		if err != nil {
 			if t.baseIndexSet.IsFileNotFoundErr(err) {
@@ -412,7 +407,6 @@ func (t *indexSet) doConcurrentDownload(ctx context.Context, files []storage.Ind
 
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}

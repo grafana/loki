@@ -1,25 +1,18 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
-	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 const (
@@ -33,18 +26,22 @@ var (
 	writeAddress       *url.URL
 	username, password string
 	keepStream         bool
+	batchSize          int
+	s3Clients          map[string]*s3.Client
 )
 
 func init() {
 	addr := os.Getenv("WRITE_ADDRESS")
 	if addr == "" {
-		panic(errors.New("required environmental variable WRITE_ADDRESS not present"))
+		panic(errors.New("required environmental variable WRITE_ADDRESS not present, format: https://<hostname>/loki/api/v1/push"))
 	}
+
 	var err error
 	writeAddress, err = url.Parse(addr)
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println("write address: ", writeAddress.String())
 
 	username = os.Getenv("USERNAME")
@@ -61,72 +58,54 @@ func init() {
 		keepStream = true
 	}
 	fmt.Println("keep stream: ", keepStream)
+
+	batch := os.Getenv("BATCH_SIZE")
+	batchSize = 131072
+	if batch != "" {
+		batchSize, _ = strconv.Atoi(batch)
+	}
+
+	s3Clients = make(map[string]*s3.Client)
 }
 
-func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
-	data, err := ev.AWSLogs.Parse()
-	if err != nil {
-		fmt.Println("error parsing log event: ", err)
-		return err
-	}
-	labels := model.LabelSet{
-		model.LabelName("__aws_cloudwatch_log_group"): model.LabelValue(data.LogGroup),
-		model.LabelName("__aws_cloudwatch_owner"):     model.LabelValue(data.Owner),
-	}
-	if keepStream {
-		labels[model.LabelName("__aws_cloudwatch_log_stream")] = model.LabelValue(data.LogStream)
-	}
+func checkEventType(ev map[string]interface{}) (interface{}, error) {
+	var s3Event events.S3Event
+	var cwEvent events.CloudwatchLogsEvent
 
-	stream := logproto.Stream{
-		Labels:  labels.String(),
-		Entries: make([]logproto.Entry, 0, len(data.LogEvents)),
-	}
+	types := [...]interface{}{&s3Event, &cwEvent}
 
-	for _, entry := range data.LogEvents {
-		stream.Entries = append(stream.Entries, logproto.Entry{
-			Line: entry.Message,
-			// It's best practice to ignore timestamps from cloudwatch as promtail is responsible for adding those.
-			Timestamp: util.TimeFromMillis(entry.Timestamp),
-		})
-	}
+	j, _ := json.Marshal(ev)
+	reader := strings.NewReader(string(j))
+	d := json.NewDecoder(reader)
+	d.DisallowUnknownFields()
 
-	buf, err := proto.Marshal(&logproto.PushRequest{
-		Streams: []logproto.Stream{stream},
-	})
-	if err != nil {
-		return err
-	}
+	for _, t := range types {
+		err := d.Decode(t)
 
-	// Push to promtail
-	buf = snappy.Encode(nil, buf)
-	req, err := http.NewRequest("POST", writeAddress.String(), bytes.NewReader(buf))
-	if err != nil {
-		fmt.Println("error: ", err)
-		return err
-	}
-	req.Header.Set("Content-Type", contentType)
-
-	// If either is not empty both should be (see initS), but just to be safe.
-	if username != "" && password != "" {
-		fmt.Println("adding basic auth to request")
-		req.SetBasicAuth(username, password)
-	}
-
-	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
-	if err != nil {
-		fmt.Println("error: ", err)
-		return err
-	}
-
-	if resp.StatusCode/100 != 2 {
-		scanner := bufio.NewScanner(io.LimitReader(resp.Body, maxErrMsgLen))
-		line := ""
-		if scanner.Scan() {
-			line = scanner.Text()
+		if err == nil {
+			return t, nil
 		}
-		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, resp.StatusCode, line)
-		fmt.Println("error:", err)
+
+		reader.Seek(0, 0)
 	}
+
+	return nil, fmt.Errorf("unknown event type!")
+}
+
+func handler(ctx context.Context, ev map[string]interface{}) error {
+	event, err := checkEventType(ev)
+	if err != nil {
+		fmt.Println("invalid event: %s", ev)
+		return err
+	}
+
+	switch event.(type) {
+	case *events.S3Event:
+		return processS3Event(ctx, event.(*events.S3Event))
+	case *events.CloudwatchLogsEvent:
+		return processCWEvent(ctx, event.(*events.CloudwatchLogsEvent))
+	}
+
 	return err
 }
 
