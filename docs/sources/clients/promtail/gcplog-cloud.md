@@ -46,32 +46,13 @@ For more information on adding `log-filter` refer this [document](https://cloud.
 
 We cover more advanced `log-filter` [below](#Advanced-Log-filter)
 
-## Grant Log Sink the Pub/Sub Publisher role to the topic.
+## Grant log sink the pubsub publisher role
 
-First we need to find the writer identity service account of the log sink that we just created
+Find the writer identity service account of the log sink just created:
 
 ```bash
-$ gcloud logging sinks describe \
+gcloud logging sinks describe \
  --format='value(writerIdentity)' $SINK_NAME
-```
-
-e.g:
-```bash
-$ gcloud logging sinks describe \
- --format='value(writerIdentity)' cloud-logs
-```
-
-Then we create a IAM policy binding to allow log sink to publish messages to the topic.
-
-```bash
-$ gcloud pubsub topics add-iam-policy-binding $TOPIC_ID \
---member=$WRITER_IDENTITY --role=roles/pubsub.publisher
-```
-
-e.g.:
-```bash
-$ gcloud pubsub topics add-iam-policy-binding cloud-logs \
---member=serviceAccount:p97323568341-442148@gcp-sa-logging.iam.gserviceaccount.com --role=roles/pubsub.publisher
 ```
 
 ## Create Pubsub subscription for Grafana Loki
