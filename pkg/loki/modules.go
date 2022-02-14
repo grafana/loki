@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-kit/log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
