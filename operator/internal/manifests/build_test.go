@@ -263,21 +263,6 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 				},
 			},
 		},
-		{
-			desc: "flag enabled but no tenants spec, no lokistack-gateway created",
-			BuildOptions: Options{
-				Name:      "test",
-				Namespace: "test",
-				Stack: lokiv1beta1.LokiStackSpec{
-					Size:    lokiv1beta1.SizeOneXSmall,
-					Tenants: nil,
-				},
-				Flags: FeatureFlags{
-					EnableGateway:                 true,
-					EnableTLSServiceMonitorConfig: true,
-				},
-			},
-		},
 	}
 	for _, tst := range table {
 		tst := tst
@@ -287,7 +272,7 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 			require.NoError(t, err)
 			objects, buildErr := BuildAll(tst.BuildOptions)
 			require.NoError(t, buildErr)
-			if tst.BuildOptions.Flags.EnableGateway && tst.BuildOptions.Stack.Tenants != nil {
+			if tst.BuildOptions.Flags.EnableGateway {
 				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
 			} else {
 				require.False(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
