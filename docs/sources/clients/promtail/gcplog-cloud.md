@@ -55,6 +55,24 @@ gcloud logging sinks describe \
  --format='value(writerIdentity)' $SINK_NAME
 ```
 
+For example:
+```bash
+$ gcloud logging sinks describe \
+ --format='value(writerIdentity)' cloud-logs
+```
+
+Create an IAM policy binding to allow log sink to publish messages to the topic:
+```bash
+gcloud pubsub topics add-iam-policy-binding $TOPIC_ID \
+--member=$WRITER_IDENTITY --role=roles/pubsub.publisher
+```
+
+For example:
+```bash
+$ gcloud pubsub topics add-iam-policy-binding cloud-logs \
+--member=serviceAccount:pxxxxxxxxx-xxxxxx@gcp-sa-logging.iam.gserviceaccount.com --role=roles/pubsub.publisher
+```
+
 ## Create Pubsub subscription for Grafana Loki
 
 We create subscription for the pubsub topic we create above and Promtail uses this subscription to consume log messages.
