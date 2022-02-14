@@ -3,10 +3,10 @@ package querier
 import (
 	"context"
 	"flag"
-	"github.com/go-kit/log"
 	"net/http"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"

@@ -4,13 +4,12 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/go-kit/log"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"net"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/middleware"
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
