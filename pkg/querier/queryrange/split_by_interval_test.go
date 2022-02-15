@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -572,7 +573,6 @@ func Test_splitByInterval_Do(t *testing.T) {
 					{
 						Labels: `{foo="bar", level="debug"}`,
 						Entries: []logproto.Entry{
-
 							{Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()), Line: fmt.Sprintf("%d", r.(*LokiRequest).StartTs.UnixNano())},
 						},
 					},
@@ -606,10 +606,11 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Path:      "/api/prom/query_range",
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.BACKWARD,
-				Limit:     1000,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.BACKWARD,
+				Limit:      1000,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 4}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -638,10 +639,11 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Path:      "/api/prom/query_range",
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.FORWARD,
-				Limit:     1000,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.FORWARD,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 4}},
+				Limit:      1000,
+				Version:    1,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -670,10 +672,11 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Path:      "/api/prom/query_range",
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.FORWARD,
-				Limit:     2,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.FORWARD,
+				Limit:      2,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -700,10 +703,11 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Path:      "/api/prom/query_range",
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.BACKWARD,
-				Limit:     2,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.BACKWARD,
+				Limit:      2,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -818,7 +822,6 @@ func Test_ExitEarly(t *testing.T) {
 					{
 						Labels: `{foo="bar", level="debug"}`,
 						Entries: []logproto.Entry{
-
 							{
 								Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()),
 								Line:      fmt.Sprintf("%d", r.(*LokiRequest).StartTs.UnixNano()),
@@ -853,6 +856,11 @@ func Test_ExitEarly(t *testing.T) {
 		Direction: logproto.FORWARD,
 		Limit:     2,
 		Version:   1,
+		Statistics: stats.Result{
+			Summary: stats.Summary{
+				Subqueries: 2,
+			},
+		},
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
 			Result: []logproto.Stream{
@@ -895,7 +903,6 @@ func Test_DoesntDeadlock(t *testing.T) {
 					{
 						Labels: `{foo="bar", level="debug"}`,
 						Entries: []logproto.Entry{
-
 							{
 								Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()),
 								Line:      fmt.Sprintf("%d", r.(*LokiRequest).StartTs.UnixNano()),
