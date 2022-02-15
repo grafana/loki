@@ -113,12 +113,12 @@ Considering the record below :
     "pod_name": "promtail-xxx",
     "namespace_name": "prod",
     "labels" : {
-        "team": "x-men",
-    },
+        "team": "x-men"
+    }
   },
   "HOSTNAME": "docker-desktop",
   "log" : "a log line",
-  "time": "20190926T152206Z",
+  "time": "20190926T152206Z"
 }
 ```
 
@@ -131,9 +131,9 @@ and a LabelMap file as follow :
     "pod_name": "pod",
     "namespace_name": "namespace",
     "labels" : {
-        "team": "team",
-    },
-  },
+        "team": "team"
+    }
+  }
 }
 ```
 
