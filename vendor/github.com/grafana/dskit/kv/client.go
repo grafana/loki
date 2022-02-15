@@ -33,8 +33,10 @@ func (r *role) Labels() prometheus.Labels {
 // The NewInMemoryKVClient returned by NewClient() is a singleton, so
 // that distributors and ingesters started in the same process can
 // find themselves.
-var inmemoryStoreInit sync.Once
-var inmemoryStore Client
+var (
+	inmemoryStoreInit sync.Once
+	inmemoryStore     *consul.Client
+)
 
 // StoreConfig is a configuration used for building single store client, either
 // Consul, Etcd, Memberlist or MultiClient. It was extracted from Config to keep
@@ -53,7 +55,7 @@ type StoreConfig struct {
 // where store can be consul or inmemory.
 type Config struct {
 	Store       string `yaml:"store"`
-	Prefix      string `yaml:"prefix"`
+	Prefix      string `yaml:"prefix" category:"advanced"`
 	StoreConfig `yaml:",inline"`
 
 	Mock Client `yaml:"-"`
@@ -76,8 +78,14 @@ func (cfg *Config) RegisterFlagsWithPrefix(flagsPrefix, defaultPrefix string, f 
 	if flagsPrefix == "" {
 		flagsPrefix = "ring."
 	}
+
+	// Allow clients to override default store by setting it before calling this method.
+	if cfg.Store == "" {
+		cfg.Store = "consul"
+	}
+
 	f.StringVar(&cfg.Prefix, flagsPrefix+"prefix", defaultPrefix, "The prefix for the keys in the store. Should end with a /.")
-	f.StringVar(&cfg.Store, flagsPrefix+"store", "consul", "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.")
+	f.StringVar(&cfg.Store, flagsPrefix+"store", cfg.Store, "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.")
 }
 
 // Client is a high-level client for key-value stores (such as Etcd and
@@ -140,7 +148,8 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 		inmemoryStoreInit.Do(func() {
 			inmemoryStore, _ = consul.NewInMemoryClient(codec, logger, reg)
 		})
-		client = inmemoryStore
+		// however we swap the codec so that we can encode different type of values.
+		client = inmemoryStore.WithCodec(codec)
 
 	case "memberlist":
 		kv, err := cfg.MemberlistKV()

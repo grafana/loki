@@ -101,13 +101,15 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 
 	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(filesInfo))
 
+	// common index files are outside the directories and user index files are in the directories
 	for _, fileInfo := range filesInfo {
 		if !fileInfo.IsDir() {
 			continue
 		}
 
-		userIndexSet, err := NewIndexSet(name, fileInfo.Name(), filepath.Join(cacheLocation, fileInfo.Name()),
-			table.baseUserIndexSet, boltDBIndexClient, table.logger, metrics)
+		userID := fileInfo.Name()
+		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
+			table.baseUserIndexSet, boltDBIndexClient, loggerWithUserID(table.logger, userID), metrics)
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +119,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 			return nil, err
 		}
 
-		table.indexSets[fileInfo.Name()] = userIndexSet
+		table.indexSets[userID] = userIndexSet
 	}
 
 	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet,
@@ -155,6 +157,7 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 		return err
 	}
 
+	// query both user and common index
 	for _, uid := range []string{userID, ""} {
 		indexSet, err := t.getOrCreateIndexSet(uid)
 		if err != nil {
@@ -183,24 +186,43 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 	return nil
 }
 
-// DropUnusedIndex drops the index set if it has not been queried for at least ttl duration.
-// It returns true if the whole table gets dropped.
-func (t *Table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) {
-	var cleanedUpIndexSets []string
-
+func (t *Table) findExpiredIndexSets(ttl time.Duration, now time.Time) []string {
 	t.indexSetsMtx.RLock()
+	defer t.indexSetsMtx.RUnlock()
+
+	var expiredIndexSets []string
+	commonIndexSetExpired := false
+
 	for userID, userIndexSet := range t.indexSets {
 		lastUsedAt := userIndexSet.LastUsedAt()
 		if lastUsedAt.Add(ttl).Before(now) {
-			cleanedUpIndexSets = append(cleanedUpIndexSets, userID)
+			if userID == "" {
+				// add the userID for common index set at the end of the list to make sure it is the last one cleaned up
+				// because we remove directories containing the index sets which in case of common index is
+				// the parent directory of all the user index sets.
+				commonIndexSetExpired = true
+			} else {
+				expiredIndexSets = append(expiredIndexSets, userID)
+			}
 		}
 	}
-	t.indexSetsMtx.RUnlock()
 
-	if len(cleanedUpIndexSets) > 0 {
+	if commonIndexSetExpired {
+		expiredIndexSets = append(expiredIndexSets, "")
+	}
+
+	return expiredIndexSets
+}
+
+// DropUnusedIndex drops the index set if it has not been queried for at least ttl duration.
+// It returns true if the whole table gets dropped.
+func (t *Table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) {
+	indexSetsToCleanup := t.findExpiredIndexSets(ttl, now)
+
+	if len(indexSetsToCleanup) > 0 {
 		t.indexSetsMtx.Lock()
 		defer t.indexSetsMtx.Unlock()
-		for _, userID := range cleanedUpIndexSets {
+		for _, userID := range indexSetsToCleanup {
 			level.Info(t.logger).Log("msg", fmt.Sprintf("cleaning up expired index set %s", userID))
 			err := t.indexSets[userID].DropAllDBs()
 			if err != nil {
@@ -258,7 +280,8 @@ func (t *Table) getOrCreateIndexSet(id string) (IndexSet, error) {
 	}
 
 	// instantiate the index set, add it to the map
-	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient, t.logger, t.metrics)
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient,
+		loggerWithUserID(t.logger, id), t.metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -308,12 +331,20 @@ func (t *Table) EnsureQueryReadiness(ctx context.Context) error {
 
 // downloadUserIndexes downloads user specific index files concurrently.
 func (t *Table) downloadUserIndexes(ctx context.Context, userIDs []string) error {
-	return concurrency.ForEach(ctx, concurrency.CreateJobsFromStrings(userIDs), maxDownloadConcurrency, func(ctx context.Context, userID interface{}) error {
-		indexSet, err := t.getOrCreateIndexSet(userID.(string))
+	return concurrency.ForEachJob(ctx, len(userIDs), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
+		indexSet, err := t.getOrCreateIndexSet(userIDs[idx])
 		if err != nil {
 			return err
 		}
 
 		return indexSet.AwaitReady(ctx)
 	})
+}
+
+func loggerWithUserID(logger log.Logger, userID string) log.Logger {
+	if userID == "" {
+		return logger
+	}
+
+	return log.With(logger, "user-id", userID)
 }

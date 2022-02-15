@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -50,6 +51,11 @@ const (
 	// ringNumTokens sets our single token in the ring,
 	// we only need to insert 1 token to be used for leader election purposes.
 	ringNumTokens = 1
+)
+
+var (
+	retentionEnabledStats = usagestats.NewString("compactor_retention_enabled")
+	defaultRetentionStats = usagestats.NewString("compactor_default_retention")
 )
 
 type Config struct {
@@ -119,6 +125,13 @@ type Compactor struct {
 }
 
 func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, clientMetrics storage.ClientMetrics, r prometheus.Registerer) (*Compactor, error) {
+	retentionEnabledStats.Set("false")
+	if cfg.RetentionEnabled {
+		retentionEnabledStats.Set("true")
+	}
+	if limits != nil {
+		defaultRetentionStats.Set(limits.DefaultLimits().RetentionPeriod.String())
+	}
 	if cfg.SharedStoreType == "" {
 		return nil, errors.New("compactor shared_store_type must be specified")
 	}
