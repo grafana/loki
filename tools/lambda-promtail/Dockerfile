@@ -1,4 +1,4 @@
-FROM golang:1-alpine3.14 AS build-image
+FROM golang:alpine3.15 AS build-image
 
 COPY tools/lambda-promtail /src/lambda-promtail
 WORKDIR /src/lambda-promtail
