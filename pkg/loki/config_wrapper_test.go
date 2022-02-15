@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/netutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/bucket/swift"
