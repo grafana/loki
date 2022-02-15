@@ -27,8 +27,8 @@ type Config struct {
 	EnableTLS   bool               `yaml:"tls_enabled" category:"advanced"`
 	TLS         dstls.ClientConfig `yaml:",inline"`
 
-	UserName string `yaml:"username"`
-	Password string `yaml:"password"`
+	UserName string         `yaml:"username"`
+	Password flagext.Secret `yaml:"password"`
 }
 
 // Clientv3Facade is a subset of all Etcd client operations that are required
@@ -58,7 +58,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.IntVar(&cfg.MaxRetries, prefix+"etcd.max-retries", 10, "The maximum number of retries to do for failed ops.")
 	f.BoolVar(&cfg.EnableTLS, prefix+"etcd.tls-enabled", false, "Enable TLS.")
 	f.StringVar(&cfg.UserName, prefix+"etcd.username", "", "Etcd username.")
-	f.StringVar(&cfg.Password, prefix+"etcd.password", "", "Etcd password.")
+	f.Var(&cfg.Password, prefix+"etcd.password", "Etcd password.")
 	cfg.TLS.RegisterFlagsWithPrefix(prefix+"etcd", f)
 }
 
@@ -105,7 +105,7 @@ func New(cfg Config, codec codec.Codec, logger log.Logger) (*Client, error) {
 		PermitWithoutStream:  true,
 		TLS:                  tlsConfig,
 		Username:             cfg.UserName,
-		Password:             cfg.Password,
+		Password:             cfg.Password.String(),
 	})
 	if err != nil {
 		return nil, err
