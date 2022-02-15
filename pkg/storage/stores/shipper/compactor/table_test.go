@@ -3,7 +3,6 @@ package compactor
 import (
 	"context"
 	"fmt"
-	"github.com/go-kit/log"
 	"io/fs"
 	"io/ioutil"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
