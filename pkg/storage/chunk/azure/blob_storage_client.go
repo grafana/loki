@@ -286,6 +286,13 @@ func (c *BlobStorageConfig) Validate() error {
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (b *BlobStorage) IsObjectNotFoundErr(err error) bool {
+	// Some versions of the SDK return a pointer, cover both cases
+	// to be sure
 	var e azblob.StorageError
-	return errors.As(err, &e) && e.ErrorCode == azblob.StorageErrorCodeBlobNotFound
+	if errors.As(err, &e) {
+		return e.ErrorCode == azblob.StorageErrorCodeBlobNotFound
+	}
+
+	var ep *azblob.StorageError
+	return errors.As(err, &ep) && ep.ErrorCode == azblob.StorageErrorCodeBlobNotFound
 }
