@@ -5,7 +5,7 @@
 .PHONY: fluentd-image, fluentd-push, fluentd-test
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
-.PHONY: benchmark-store, drone, check-mod
+.PHONY: benchmark-store, drone, check-drone-drift, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
@@ -588,6 +588,9 @@ else
 	drone lint .drone/drone.yml --trusted
 	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN"
 endif
+
+check-drone-drift:
+	./tools/check-drone-drift.sh
 
 
 # support go modules
