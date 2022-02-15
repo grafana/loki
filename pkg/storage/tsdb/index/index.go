@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -48,6 +49,8 @@ const (
 	FormatV1 = 1
 	// FormatV2 represents 2 version of index.
 	FormatV2 = 2
+
+	indexFilename = "index"
 )
 
 type indexWriterStage uint8
@@ -1765,7 +1768,13 @@ func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
 	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 	n := d.Be32int()
 	l := d.Get()
-	return n, newBigEndianPostings(l), d.Err()
+	if d.Err() != nil {
+		return 0, nil, d.Err()
+	}
+	if len(l) != 4*n {
+		return 0, nil, fmt.Errorf("unexpected postings length, should be %d bytes for %d postings, got %d bytes", 4*n, n, len(l))
+	}
+	return n, newBigEndianPostings(l), nil
 }
 
 // LabelNamesOffsetsFor decodes the offsets of the name symbols for a given series.
