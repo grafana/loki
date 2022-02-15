@@ -54,6 +54,7 @@ type Config struct {
 	ExternalURL       string `yaml:"external_url"`
 	HealthCheckTarget *bool  `yaml:"health_check_target"`
 	Disable           bool   `yaml:"disable"`
+	ProfilingEnabled  bool   `yaml:"profiling_enabled"`
 	Reload            bool   `yaml:"enable_runtime_reload"`
 }
 
@@ -64,6 +65,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
 
 	f.BoolVar(&cfg.Disable, prefix+"server.disable", false, "Disable the http and grpc server.")
+	f.BoolVar(&cfg.ProfilingEnabled, prefix+"server.profiling_enabled", false, "Enable the /debug/fgprof endpoint for profiling.")
 	f.BoolVar(&cfg.Reload, prefix+"server.enable-runtime-reload", false, "Enable reload via HTTP request.")
 }
 
@@ -109,10 +111,12 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))
 	serv.HTTP.Path("/targets").Handler(http.HandlerFunc(serv.targets))
 	serv.HTTP.Path("/config").Handler(http.HandlerFunc(serv.config))
+	if cfg.ProfilingEnabled {
+		serv.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
+	}
 	if cfg.Reload {
 		serv.HTTP.Path("/reload").Handler(http.HandlerFunc(serv.reload))
 	}
-	serv.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 	return serv, nil
 }
 

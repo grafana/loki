@@ -25,6 +25,7 @@
 * [7264](https://github.com/grafana/loki/pull/7264) **bboreham**: Chunks: decode varints directly from byte buffer, for speed.
 * [7263](https://github.com/grafana/loki/pull/7263) **bboreham**: Dependencies: klauspost/compress package to v1.15.11; improves performance.
 * [7270](https://github.com/grafana/loki/pull/7270) **wilfriedroset**: Add support for `username` to redis cache configuration.
+* [5400](https://github.com/grafana/loki/pull/5400) **BenoitKnecht**: promtail/server: Disable profiling by default
 
 ##### Fixes
 * [7426](https://github.com/grafana/loki/pull/7426) **periklis**: Add missing compactor delete client tls client config
@@ -378,7 +379,6 @@ Check the history of the branch `release-2.5.x`.
 ### Dependencies
 
 * Go Version:     1.17.8
-
 
 # 2.4.1 (2021/11/07)
 
