@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
+
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
