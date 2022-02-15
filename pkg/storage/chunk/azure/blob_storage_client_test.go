@@ -3,8 +3,8 @@ package azure
 import (
 	"bytes"
 	"context"
-	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +14,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
 
+var metrics = NewBlobStorageMetrics()
+
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -21,7 +23,6 @@ func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func Test_Hedging(t *testing.T) {
-	metrics := NewBlobStorageMetrics()
 	for _, tc := range []struct {
 		name          string
 		expectedCalls int32
@@ -31,7 +32,7 @@ func Test_Hedging(t *testing.T) {
 	}{
 		{
 			"delete/put/list are not hedged",
-			4, // Put makes an additional call to close the stream
+			3,
 			20 * time.Nanosecond,
 			10,
 			func(c *BlobStorage) {
@@ -66,9 +67,12 @@ func Test_Hedging(t *testing.T) {
 			defaultClientFactory = func() *http.Client {
 				return &http.Client{
 					Transport: RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-						count.Inc()
-						time.Sleep(200 * time.Millisecond)
-						return nil, errors.New("fo")
+						// blocklist is a call that can be fired by the SDK after PUT but is not guaranteed.
+						if !strings.Contains(req.URL.String(), "blocklist") {
+							count.Inc()
+							time.Sleep(50 * time.Millisecond)
+						}
+						return nil, http.ErrNotSupported
 					}),
 				}
 			}
@@ -88,7 +92,7 @@ func Test_Hedging(t *testing.T) {
 			require.NoError(t, err)
 
 			tc.do(c)
-			require.Eventually(t, func() bool { return tc.expectedCalls == count.Load() }, time.Second, time.Millisecond)
+			require.Eventually(t, func() bool { return tc.expectedCalls == count.Load() }, time.Second, time.Millisecond, "expected calls %d, got %d", tc.expectedCalls, count.Load())
 		})
 	}
 }
