@@ -75,15 +75,10 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		tenantConfigMap map[string]openshift.TenantData
 	)
 	if flags.EnableGateway && stack.Spec.Tenants == nil {
-		statusErr := status.SetDegradedCondition(ctx, k, req,
+		return status.SetDegradedCondition(ctx, k, req,
 			"Invalid tenants configuration - TenantsSpec cannot be nil when gateway flag is enabled",
 			lokiv1beta1.ReasonInvalidTenantsConfiguration,
 		)
-		if statusErr != nil {
-			return kverrors.Wrap(statusErr,
-				"Failed to update lokistack condition with invalid tenants configuration")
-		}
-		return kverrors.New("Invalid tenants configuration - TenantsSpec cannot be nil when gateway flag is enabled")
 	} else if flags.EnableGateway && stack.Spec.Tenants != nil {
 		if err = gateway.ValidateModes(stack); err != nil {
 			return status.SetDegradedCondition(ctx, k, req,

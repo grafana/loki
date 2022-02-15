@@ -1002,8 +1002,8 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
 
-	// make sure error is returned to re-trigger reconciliation
-	require.Error(t, err)
+	// make sure no error is returned
+	require.NoError(t, err)
 
 	// make sure status and status-update calls
 	require.NotZero(t, k.StatusCallCount())
