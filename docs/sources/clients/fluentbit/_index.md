@@ -1,16 +1,16 @@
 ---
-title: Fluentbit
+title: Fluent Bit
 weight: 50
 ---
-# Fluentbit Loki Output Plugin
+# Fluent Bit Loki Output
 
-[Fluent Bit](https://fluentbit.io/) is a Fast and Lightweight Data Forwarder, it can be configured with the [Grafana Loki output plugin](https://fluentbit.io/documentation/0.12/output/) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://fluentbit.io/documentation/0.12/input/tail.html) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) [input plugin](https://fluentbit.io/documentation/0.12/getting_started/input.html). Additionally Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
+[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the [Grafana Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
 
 ## Usage
 
 ### Docker
 
-You can run a Fluent Bit container with Loki output plugin pre-installed using our [docker hub](https://cloud.docker.com/u/grafana/repository/docker/grafana/fluent-bit-plugin-loki) image:
+You can run a Fluent Bit container with Loki output plugin pre-installed using our [Docker Hub](https://hub.docker.com/r/grafana/fluent-bit-plugin-loki) image:
 
 ```bash
 docker run -v /var/log:/var/log \
@@ -194,7 +194,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
     RemoveKeys key1,key2
 ```
 
-A full [example configuration file](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/fluent-bit.conf) is also available in this repository.
+A full [example configuration file](https://github.com/grafana/loki/blob/master/clients/cmd/fluent-bit/fluent-bit.conf) is also available in this repository.
 
 ### Running multiple plugin instances
 
