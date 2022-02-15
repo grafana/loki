@@ -79,9 +79,7 @@ func (m mockIndex) AddSeries(ref storage.SeriesRef, l labels.Labels, chunks ...C
 
 	s := series{l: l}
 	// Actual chunk data is not stored in the index.
-	for _, c := range chunks {
-		s.chunks = append(s.chunks, c)
-	}
+	s.chunks = append(s.chunks, chunks...)
 	m.series[ref] = s
 
 	return nil
