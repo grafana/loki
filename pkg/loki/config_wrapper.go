@@ -323,6 +323,10 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 
 	if reflect.DeepEqual(cfg.Distributor.DistributorRing.InstanceInterfaceNames, defaults.Distributor.DistributorRing.InstanceInterfaceNames) {
 		cfg.Distributor.DistributorRing.InstanceInterfaceNames = append(cfg.Distributor.DistributorRing.InstanceInterfaceNames, loopbackIface)
+	} else {
+		fmt.Printf("distributor interface names: %v, defaults: %v\n",
+			cfg.Distributor.DistributorRing.InstanceInterfaceNames,
+			defaults.Distributor.DistributorRing.InstanceInterfaceNames)
 	}
 
 	if reflect.DeepEqual(cfg.Common.Ring.InstanceInterfaceNames, defaults.Common.Ring.InstanceInterfaceNames) {
@@ -335,10 +339,18 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 
 	if reflect.DeepEqual(cfg.QueryScheduler.SchedulerRing.InstanceInterfaceNames, defaults.QueryScheduler.SchedulerRing.InstanceInterfaceNames) {
 		cfg.QueryScheduler.SchedulerRing.InstanceInterfaceNames = append(cfg.QueryScheduler.SchedulerRing.InstanceInterfaceNames, loopbackIface)
+	} else {
+		fmt.Printf("query scheduler interface names: %v, defaults: %v\n",
+			cfg.QueryScheduler.SchedulerRing.InstanceInterfaceNames,
+			defaults.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
 	}
 
 	if reflect.DeepEqual(cfg.Ruler.Ring.InstanceInterfaceNames, defaults.Ruler.Ring.InstanceInterfaceNames) {
 		cfg.Ruler.Ring.InstanceInterfaceNames = append(cfg.Ruler.Ring.InstanceInterfaceNames, loopbackIface)
+	} else {
+		fmt.Printf("ruler interface names: %v, defaults: %v\n",
+			cfg.Ruler.Ring.InstanceInterfaceNames,
+			defaults.Ruler.Ring.InstanceInterfaceNames)
 	}
 }
 
