@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/middleware"
@@ -17,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -26,7 +28,7 @@ const ctxKey ctxKeyType = "stats"
 
 var (
 	defaultMetricRecorder = metricRecorderFn(func(data *queryData) {
-		logql.RecordMetrics(data.ctx, data.params, data.status, *data.statistics, data.result)
+		logql.RecordMetrics(data.ctx, log.With(util_log.Logger, "component", "frontend"), data.params, data.status, *data.statistics, data.result)
 	})
 	// StatsHTTPMiddleware is an http middleware to record stats for query_range filter.
 	StatsHTTPMiddleware = statsHTTPMiddleware(defaultMetricRecorder)
