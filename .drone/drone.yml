@@ -1041,16 +1041,16 @@ steps:
   name: image-tag
 - depends_on:
   - image-tag
-  image: cstyan/ecr:arm64
+  image: cstyan/ecr
   name: build-lambda-promtail-image
   platform:
-    arch: arm64
+    arch: amd64
     os: linux
   privileged: true
   settings:
     access_key:
       from_secret: ecr_key
-    dockerfile: tools/lambda-promtail/Dockerfile
+    dockerfile: tools/lambda-promtail/Dockerfile.arm64
     dry_run: true
     region: us-east-1
     registry: public.ecr.aws/grafana
@@ -1065,16 +1065,16 @@ steps:
       - refs/tags/v*
 - depends_on:
   - image-tag
-  image: cstyan/ecr:arm64
+  image: cstyan/ecr
   name: publish-lambda-promtail-image
   platform:
-    arch: arm64
+    arch: amd64
     os: linux
   privileged: true
   settings:
     access_key:
       from_secret: ecr_key
-    dockerfile: tools/lambda-promtail/Dockerfile
+    dockerfile: tools/lambda-promtail/Dockerfile.arm64
     dry_run: false
     region: us-east-1
     registry: public.ecr.aws/grafana
@@ -1135,6 +1135,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 05a7531bc4521d0d0dbf8cbcfdc030eec25a86daf99d2cc72c801fd57f4a1cc1
+hmac: 278bcda31d5ffb54849fc0cc766d893b4e1afaceea13d7383f8e473260180f9a
 
 ...

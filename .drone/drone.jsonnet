@@ -102,22 +102,41 @@ local lambda_promtail_ecr(app) = {
 
 local lambda_promtail_ecr_arm64(app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
-  image: 'cstyan/ecr:arm64',
+  image: 'cstyan/ecr',
   platform: {
     os: 'linux',
-    arch: 'arm64',
+    arch: 'amd64',
   },
   privileged: true,
   settings: {
     repo: 'public.ecr.aws/grafana/lambda-promtail',
     registry: 'public.ecr.aws/grafana',
-    dockerfile: 'tools/%s/Dockerfile' % app,
+    dockerfile: 'tools/%s/Dockerfile.arm64' % app,
     access_key: { from_secret: ecr_key.name },
     secret_key: { from_secret: ecr_secret_key.name },
     dry_run: false,
     region: 'us-east-1',
   },
 };
+
+// local lambda_promtail_ecr_arm64(app) = {
+//   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
+//   image: 'cstyan/ecr:arm64',
+//   platform: {
+//     os: 'linux',
+//     arch: 'arm64',
+//   },
+//   privileged: true,
+//   settings: {
+//     repo: 'public.ecr.aws/grafana/lambda-promtail',
+//     registry: 'public.ecr.aws/grafana',
+//     dockerfile: 'tools/%s/Dockerfile' % app,
+//     access_key: { from_secret: ecr_key.name },
+//     secret_key: { from_secret: ecr_secret_key.name },
+//     dry_run: false,
+//     region: 'us-east-1',
+//   },
+// };
 
 local arch_image(arch, tags='') = {
   platform: {
