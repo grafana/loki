@@ -84,6 +84,29 @@ local clients_docker(arch, app) = {
 local lambda_promtail_ecr(app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
   image: 'cstyan/ecr',
+  platform: {
+    os: 'linux',
+    arch: 'amd64',
+  },
+  privileged: true,
+  settings: {
+    repo: 'public.ecr.aws/grafana/lambda-promtail',
+    registry: 'public.ecr.aws/grafana',
+    dockerfile: 'tools/%s/Dockerfile' % app,
+    access_key: { from_secret: ecr_key.name },
+    secret_key: { from_secret: ecr_secret_key.name },
+    dry_run: false,
+    region: 'us-east-1',
+  },
+};
+
+local lambda_promtail_ecr_arm64(app) = {
+  name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
+  image: 'cstyan/ecr:arm64',
+  platform: {
+    os: 'linux',
+    arch: 'arm64',
+  },
   privileged: true,
   settings: {
     repo: 'public.ecr.aws/grafana/lambda-promtail',
@@ -229,7 +252,7 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
   depends_on: ['check'],
 };
 
-local lambda_promtail(tags='') = pipeline('lambda-promtail') {
+local lambda_promtail_amd64(tags='') = pipeline('lambda-promtail-amd64') {
   steps+: [
     {
       name: 'image-tag',
@@ -250,6 +273,35 @@ local lambda_promtail(tags='') = pipeline('lambda-promtail') {
   ] + [
     // publish for tag or main
     lambda_promtail_ecr('lambda-promtail') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMain,
+      settings+: {},
+    },
+  ],
+  depends_on: ['check'],
+};
+
+local lambda_promtail_arm64(tags='') = pipeline('lambda-promtail-arm64') {
+  steps+: [
+    {
+      name: 'image-tag',
+      image: 'alpine',
+      commands: [
+        'apk add --no-cache bash git',
+        'git fetch origin --tags',
+        'echo $(./tools/image-tag)-arm64 > .tags',
+      ] + if tags != '' then ['echo ",%s" >> .tags' % tags] else [],
+    },
+    lambda_promtail_ecr_arm64('lambda-promtail') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMain,
+      settings+: {
+        dry_run: true,
+      },
+    },
+  ] + [
+    // publish for tag or main
+    lambda_promtail_ecr_arm64('lambda-promtail') {
       depends_on: ['image-tag'],
       when: condition('include').tagMain,
       settings+: {},
@@ -459,5 +511,6 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
 ] + [promtail_win()]
-+ [lambda_promtail('main')]
++ [lambda_promtail_amd64('main')]
++ [lambda_promtail_arm64('main')]
 + [github_secret, pull_secret, docker_username_secret, docker_password_secret, ecr_key, ecr_secret_key, deploy_configuration]
