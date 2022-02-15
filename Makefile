@@ -590,7 +590,7 @@ else
 endif
 
 check-drone-drift:
-	./tools/check-drone-drift.sh
+	./tools/check-drone-drift.sh main
 
 
 # support go modules
