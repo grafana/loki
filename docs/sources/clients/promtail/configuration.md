@@ -121,7 +121,7 @@ The `server` block configures Promtail's behavior as an HTTP server:
 # Disable the HTTP and GRPC server.
 [disable: <boolean> | default = false]
 
-# Enable the /debug/fgprof endpoint for profiling.
+# Enable the /debug/fgprof and /debug/pprof endpoints for profiling.
 [profiling_enabled: <boolean> | default = false]
 
 # HTTP server listen host
