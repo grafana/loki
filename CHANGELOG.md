@@ -1,5 +1,5 @@
 ## Main
-
+* [5404](https://github.com/grafana/loki/pull/5404) **gilsonmelo**: Add OKE client option to Grafana Loki. 
 * [5361](https://github.com/grafana/loki/pull/5361) **ctovena**: Add usage report to grafana.com.
 * [5289](https://github.com/grafana/loki/pull/5289) **ctovena**: Fix deduplication bug in queries when mutating labels.
 * [5302](https://github.com/grafana/loki/pull/5302) **MasslessParticle** Update azure blobstore client to use new sdk.
