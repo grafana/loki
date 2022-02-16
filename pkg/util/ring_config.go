@@ -30,7 +30,7 @@ type RingConfig struct {
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id"`
-	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
+	InstanceInterfaceNames []string `yaml:"instance_interface_names" doc:"default=[<private network interfaces>]"`
 	InstancePort           int      `yaml:"instance_port"`
 	InstanceAddr           string   `yaml:"instance_addr"`
 	InstanceZone           string   `yaml:"instance_availability_zone"`

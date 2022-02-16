@@ -4,6 +4,7 @@ import (
 	"flag"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/netutil"
 
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
@@ -11,6 +12,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
 	"github.com/grafana/loki/pkg/util"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // Config holds common config that can be shared between multiple other config sections.
@@ -27,7 +30,7 @@ type Config struct {
 	//
 	// Internally, addresses will be resolved in the order that this is configured.
 	// By default, the list of used interfaces are, in order: "eth0", "en0", and your loopback net interface (probably "lo").
-	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
+	InstanceInterfaceNames []string `yaml:"instance_interface_names" doc:"default=[<private network interfaces>]"`
 
 	// InstanceAddr represents a common ip used by instances to advertise their address.
 	//
@@ -44,7 +47,7 @@ func (c *Config) RegisterFlags(_ *flag.FlagSet) {
 	c.Ring.RegisterFlagsWithPrefix("", "collectors/", throwaway)
 
 	// instance related flags.
-	c.InstanceInterfaceNames = []string{"eth0", "en0"}
+	c.InstanceInterfaceNames = netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
 	throwaway.StringVar(&c.InstanceAddr, "common.instance-addr", "", "Default advertised address to be used by Loki components.")
 	throwaway.Var((*flagext.StringSlice)(&c.InstanceInterfaceNames), "common.instance-interface-names", "List of network interfaces to read address from.")
 }
