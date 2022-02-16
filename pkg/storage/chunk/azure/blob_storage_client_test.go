@@ -3,13 +3,10 @@ package azure
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -79,45 +76,19 @@ func Test_Hedging(t *testing.T) {
 					}),
 				}
 			}
-
-			c, err := NewBlobStorage(
-				&BlobStorageConfig{
-					AccountName: "account",
-					Environment: azureGlobal,
-					MaxRetries:  0,
-				},
-				metrics,
+			c, err := NewBlobStorage(&BlobStorageConfig{
+				ContainerName: "foo",
+				Environment:   azureGlobal,
+				MaxRetries:    1,
+			}, metrics,
 				hedging.Config{
 					At:           tc.hedgeAt,
 					UpTo:         tc.upTo,
 					MaxPerSecond: 1000,
 				})
 			require.NoError(t, err)
-
 			tc.do(c)
-			require.Eventually(t, func() bool { return tc.expectedCalls == count.Load() }, time.Second, time.Millisecond, "expected calls %d, got %d", tc.expectedCalls, count.Load())
+			require.Equal(t, tc.expectedCalls, count.Load())
 		})
 	}
-}
-
-func Test_IsObjectNotFoundErr(t *testing.T) {
-	c, err := NewBlobStorage(
-		&BlobStorageConfig{
-			AccountName: "account",
-			Environment: azureGlobal,
-			MaxRetries:  0,
-		},
-		metrics,
-		hedging.Config{})
-	require.NoError(t, err)
-
-	storageError := azblob.StorageError{
-		ErrorCode: azblob.StorageErrorCodeBlobNotFound,
-	}
-
-	err = fmt.Errorf("wrapping error %w", &storageError)
-	require.True(t, c.IsObjectNotFoundErr(err))
-
-	err = fmt.Errorf("wrapping error %w", storageError)
-	require.True(t, c.IsObjectNotFoundErr(err))
 }
