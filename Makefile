@@ -59,6 +59,10 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 # 'make: Entering directory '/src/loki' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
+# These are all the application files, they are included in the various binary rules as dependencies
+# to make sure binaries are rebuilt if any source files change.
+GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -type f -name '*.go' -print)
+
 # Build flags
 VPREFIX := github.com/grafana/loki/pkg/util/build
 GO_LDFLAGS   := -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -144,20 +148,20 @@ check-generated-files: yacc ragel protos clients/pkg/promtail/server/ui/assets_v
 ##########
 # Logcli #
 ##########
-
+.PHONY: cmd/logcli/logcli
 logcli: cmd/logcli/logcli
 
 logcli-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
 
 cmd/logcli/logcli:
-	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
 	$(NETGO_CHECK)
 
 ########
 # Loki #
 ########
-
+.PHONY: cmd/loki/loki cmd/loki/loki-debug
 loki: cmd/loki/loki
 loki-debug: cmd/loki/loki-debug
 
@@ -172,7 +176,7 @@ cmd/loki/loki-debug:
 ###############
 # Loki-Canary #
 ###############
-
+.PHONY: cmd/loki-canary/loki-canary
 loki-canary: cmd/loki-canary/loki-canary
 
 cmd/loki-canary/loki-canary:
@@ -182,9 +186,11 @@ cmd/loki-canary/loki-canary:
 #################
 # Loki-QueryTee #
 #################
+.PHONY: cmd/querytee/querytee
+loki-querytee: cmd/querytee/querytee
 
-loki-querytee:
-	CGO_ENABLED=0 go build $(GO_FLAGS) -o ./cmd/querytee/$@ ./cmd/querytee/
+cmd/querytee/querytee:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 ############
@@ -205,8 +211,8 @@ PROMTAIL_GO_FLAGS = $(DYN_GO_FLAGS)
 PROMTAIL_DEBUG_GO_FLAGS = $(DYN_DEBUG_GO_FLAGS)
 endif
 endif
-
-promtail:clients/cmd/promtail/promtail
+.PHONY: clients/cmd/promtail/promtail clients/cmd/promtail/promtail-debug
+promtail: clients/cmd/promtail/promtail
 promtail-debug: clients/cmd/promtail/promtail-debug
 
 promtail-clean-assets:
@@ -228,7 +234,7 @@ clients/cmd/promtail/promtail-debug:
 ###############
 # Migrate #
 ###############
-
+.PHONY: cmd/migrate/migrate
 migrate: cmd/migrate/migrate
 
 cmd/migrate/migrate:
