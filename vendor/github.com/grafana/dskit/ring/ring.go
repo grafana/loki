@@ -123,10 +123,10 @@ var (
 // Config for a Ring
 type Config struct {
 	KVStore              kv.Config              `yaml:"kvstore"`
-	HeartbeatTimeout     time.Duration          `yaml:"heartbeat_timeout"`
+	HeartbeatTimeout     time.Duration          `yaml:"heartbeat_timeout" category:"advanced"`
 	ReplicationFactor    int                    `yaml:"replication_factor"`
 	ZoneAwarenessEnabled bool                   `yaml:"zone_awareness_enabled"`
-	ExcludedZones        flagext.StringSliceCSV `yaml:"excluded_zones"`
+	ExcludedZones        flagext.StringSliceCSV `yaml:"excluded_zones" category:"advanced"`
 
 	// Whether the shuffle-sharding subring cache is disabled. This option is set
 	// internally and never exposed to the user.
