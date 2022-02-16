@@ -33,7 +33,7 @@ func (tc MiddlewareFunc) Wrap(next consumer.Logs) consumer.Logs {
 
 // Merge produces a middleware that applies multiple middlesware in turn;
 // ie Merge(f,g,h).Wrap(handler) == f.Wrap(g.Wrap(h.Wrap(handler)))
-func Merge(middlesware ...Middleware) Middleware {
+func Merge(middlewares ...Middleware) Middleware {
 	return MiddlewareFunc(func(next consumer.Logs) consumer.Logs {
 		for i := len(middlesware) - 1; i >= 0; i-- {
 			next = middlesware[i].Wrap(next)
