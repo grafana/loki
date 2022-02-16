@@ -30,6 +30,7 @@ type Config struct {
 	//
 	// Internally, addresses will be resolved in the order that this is configured.
 	// By default, the list of used interfaces are, in order: "eth0", "en0", and your loopback net interface (probably "lo").
+	// If an interface does not have a private IP address it is filtered out, falling back to "eth0" and "en0" if none are left.
 	InstanceInterfaceNames []string `yaml:"instance_interface_names" doc:"default=[<private network interfaces>]"`
 
 	// InstanceAddr represents a common ip used by instances to advertise their address.
