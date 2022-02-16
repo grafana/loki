@@ -84,7 +84,7 @@ steps:
   - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
   - 'body=$(jq -Rs ''{body: . }'' diff.txt)'
   - 'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments
-    -d $body > /dev/null'
+    -d "$body" > /dev/null'
   depends_on:
   - compare-coverage
   environment:
@@ -1110,6 +1110,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: b2d64793880da180033f4f48cf2e6afe6d0c261bf7737813bad1139574a8835c
+hmac: 8d723b3c02513bbeca89e5f7cbedb4c0c132ad95e6745b943c3e15aa30593218
 
 ...
