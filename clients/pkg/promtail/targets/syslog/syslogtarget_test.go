@@ -435,7 +435,7 @@ func testSyslogTargetWithTLS(t *testing.T, octetCounting bool) {
 		`<165>1    -   An application event log entry...`,
 		`<165>1 2018-10-11T22:14:15.007Z host5 e -   An application event log entry...`,
 	}
-	messages := append(malformeddMessages,validMessages...)
+	messages := append(malformeddMessages, validMessages...)
 
 	err = writeMessagesToStream(c, messages, octetCounting)
 	require.NoError(t, err)
