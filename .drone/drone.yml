@@ -40,28 +40,28 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: check-drone-drift
 - commands:
   - 'make BUILD_IN_CONTAINER=false check-generated-files '
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: check-generated-files
 - commands:
   - 'make BUILD_IN_CONTAINER=false test '
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: test
 - commands:
   - cd ..
   - git clone $CI_REPO_REMOTE loki-main
   - cd -
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: clone-main
 - commands:
   - cd ../loki-main
@@ -69,7 +69,7 @@ steps:
   depends_on:
   - clone-main
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: test-main
 - commands:
   - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
@@ -78,20 +78,20 @@ steps:
   - test
   - test-main
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: compare-coverage
 - commands:
   - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
-  - diff=$(cat diff.txt)
+  - 'body=$(jq -Rs ''{body: . }'' diff.txt)'
   - 'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments
-    -d "{\"body\":\""$diff"\"}" > /dev/null'
+    -d $body > /dev/null'
   depends_on:
   - compare-coverage
   environment:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: report-coverage
 - commands:
   - 'make BUILD_IN_CONTAINER=false lint '
@@ -99,7 +99,7 @@ steps:
   - clone
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: lint
 - commands:
   - 'make BUILD_IN_CONTAINER=false check-mod '
@@ -108,7 +108,7 @@ steps:
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -119,21 +119,21 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: loki
 - commands:
   - 'make BUILD_IN_CONTAINER=false validate-example-configs '
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: validate-example-configs
 - commands:
   - 'make BUILD_IN_CONTAINER=false check-example-config-doc '
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: check-example-config-doc
 trigger:
   event:
@@ -169,7 +169,7 @@ steps:
 - commands:
   - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...
   environment: {}
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.21.0
   name: All
 trigger:
   cron:
@@ -1110,6 +1110,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 410adaca5ecb366dcfa8f779c1b6958dd7bb06e307e9032048b39a57b6f8ab8c
+hmac: b2d64793880da180033f4f48cf2e6afe6d0c261bf7737813bad1139574a8835c
 
 ...
