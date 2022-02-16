@@ -356,7 +356,7 @@ local manifest(apps) = pipeline('manifest') {
       ]) { depends_on: ['test', 'test-main'] },
       run('report-coverage', commands=[
         'echo $FOO'
-      ], env={FOO:'bar'}) {depends_on: ['compare-coverage']},
+      ], env={FOO:'bar'}) {depends_on: []},
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {
