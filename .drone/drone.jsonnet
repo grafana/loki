@@ -355,9 +355,12 @@ local manifest(apps) = pipeline('manifest') {
         '> diff.txt',
       ]) { depends_on: ['test', 'test-main'] },
       run('report-coverage', commands=[
-        'set +x',
-        'echo $FOO'
-      ], env={FOO:'bar'}) {depends_on: []},
+        'pull=$(echo $CI_COMMIT_REF | awk -F \'/\' \'{print $3}\')',
+        'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d {"body":"This is a comment"}',
+      ], env={
+        USER: 'grafanabot',
+        TOKEN: { from_secret: github_secret.name },
+      }) {depends_on: []},
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {

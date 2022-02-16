@@ -81,11 +81,14 @@ steps:
   image: grafana/loki-build-image:0.20.0
   name: compare-coverage
 - commands:
-  - set +x
-  - echo $FOO
+  - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
+  - 'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments
+    -d {"body":"This is a comment"}'
   depends_on: []
   environment:
-    FOO: bar
+    TOKEN:
+      from_secret: github_token
+    USER: grafanabot
   image: grafana/loki-build-image:0.20.0
   name: report-coverage
 - commands:
@@ -1105,6 +1108,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 116301ebfd2db2724694bc57f713d49f078ba56b36c849c14ecf479392c4221e
+hmac: 4c43088221ea90993f8a1d7f44d4c99c8e4714aecd6027b18053f53c62b65685
 
 ...
