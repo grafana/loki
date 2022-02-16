@@ -14,6 +14,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
 
+var metrics = NewBlobStorageMetrics()
+
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -21,7 +23,6 @@ func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func Test_Hedging(t *testing.T) {
-	metrics := NewBlobStorageMetrics()
 	for _, tc := range []struct {
 		name          string
 		expectedCalls int32
