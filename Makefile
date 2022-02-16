@@ -59,10 +59,6 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 # 'make: Entering directory '/src/loki' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
-# These are all the application files, they are included in the various binary rules as dependencies
-# to make sure binaries are rebuilt if any source files change.
-APP_GO_FILES := $(shell find . $(DONT_FIND) -name .y.go -prune -o -name .pb.go -prune -o -name cmd -prune -o -type f -name '*.go' -print)
-
 # Build flags
 VPREFIX := github.com/grafana/loki/pkg/util/build
 GO_LDFLAGS   := -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -149,12 +145,12 @@ check-generated-files: yacc ragel protos clients/pkg/promtail/server/ui/assets_v
 # Logcli #
 ##########
 
-logcli: yacc ragel cmd/logcli/logcli
+logcli: cmd/logcli/logcli
 
 logcli-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
 
-cmd/logcli/logcli: $(APP_GO_FILES) cmd/logcli/main.go
+cmd/logcli/logcli:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -165,11 +161,11 @@ cmd/logcli/logcli: $(APP_GO_FILES) cmd/logcli/main.go
 loki: cmd/loki/loki
 loki-debug: cmd/loki/loki-debug
 
-cmd/loki/loki: $(APP_GO_FILES) cmd/loki/main.go
+cmd/loki/loki:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
+cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -179,7 +175,7 @@ cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
 
 loki-canary: cmd/loki-canary/loki-canary
 
-cmd/loki-canary/loki-canary: $(APP_GO_FILES) cmd/loki-canary/main.go
+cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -187,7 +183,7 @@ cmd/loki-canary/loki-canary: $(APP_GO_FILES) cmd/loki-canary/main.go
 # Loki-QueryTee #
 #################
 
-loki-querytee: $(APP_GO_FILES) cmd/querytee/main.go
+loki-querytee:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o ./cmd/querytee/$@ ./cmd/querytee/
 	$(NETGO_CHECK)
 
@@ -210,8 +206,8 @@ PROMTAIL_DEBUG_GO_FLAGS = $(DYN_DEBUG_GO_FLAGS)
 endif
 endif
 
-promtail: yacc ragel clients/cmd/promtail/promtail
-promtail-debug: yacc ragel clients/cmd/promtail/promtail-debug
+promtail:clients/cmd/promtail/promtail
+promtail-debug: clients/cmd/promtail/promtail-debug
 
 promtail-clean-assets:
 	rm -rf clients/pkg/promtail/server/ui/assets_vfsdata.go
@@ -221,11 +217,11 @@ $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	@echo ">> writing assets"
 	GOFLAGS="$(MOD_FLAG)" GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
 
-clients/cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) clients/cmd/promtail/main.go
+clients/cmd/promtail/promtail:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-clients/cmd/promtail/promtail-debug: $(APP_GO_FILES) clients/pkg/promtail/server/ui/assets_vfsdata.go clients/cmd/promtail/main.go
+clients/cmd/promtail/promtail-debug:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -235,7 +231,7 @@ clients/cmd/promtail/promtail-debug: $(APP_GO_FILES) clients/pkg/promtail/server
 
 migrate: cmd/migrate/migrate
 
-cmd/migrate/migrate: $(APP_GO_FILES) cmd/migrate/main.go
+cmd/migrate/migrate:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -399,7 +395,7 @@ docker-driver: docker-driver-clean
 	$(build-rootfs)
 	docker plugin create $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH) clients/cmd/docker-driver
 
-clients/cmd/docker-driver/docker-driver: $(APP_GO_FILES)
+clients/cmd/docker-driver/docker-driver:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
