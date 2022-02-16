@@ -1,5 +1,6 @@
 ## Main
 
+
 * [5356](https://github.com/grafana/loki/pull/5356) **jbschami**: Enhance lambda-promtail to support adding extra labels from an environment variable value
 * [5392](https://github.com/grafana/loki/pull/5392) **MichelHollands**: Etcd credentials are parsed as secrets instead of plain text now.
 * [5361](https://github.com/grafana/loki/pull/5361) **ctovena**: Add usage report to grafana.com.
