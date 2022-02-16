@@ -149,6 +149,15 @@ func (l *logCacheNoResult) Do(ctx context.Context, req queryrangebase.Request) (
 		}
 		l.cache.Store(ctx, []string{cacheKey}, [][]byte{data})
 	}
+
+	// if one side is not empty extend the cache to this side and return the other side.
+
+	// if both sides are not empty return both sides.
+	// But don't touch the cache.
+	// inteval 5.
+	// first time 51 55
+	// 50 51, 51 55, 55 60
+
 	// if we have a stream
 	lokiRes, ok := resp.(*LokiResponse)
 	if !ok {
