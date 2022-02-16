@@ -356,11 +356,12 @@ local manifest(apps) = pipeline('manifest') {
       ]) { depends_on: ['test', 'test-main'] },
       run('report-coverage', commands=[
         'pull=$(echo $CI_COMMIT_REF | awk -F \'/\' \'{print $3}\')',
-        'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d \'{"body":"This is a comment"}\'',
+        'diff=$(cat diff.txt)',
+        'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d "{\\"body\\":\\""$diff"\\"}" > /dev/null',
       ], env={
         USER: 'grafanabot',
         TOKEN: { from_secret: github_secret.name },
-      }) {depends_on: []},
+      }) {depends_on: ['compare-coverage']},
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {

@@ -82,9 +82,11 @@ steps:
   name: compare-coverage
 - commands:
   - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
+  - diff=$(cat diff.txt)
   - 'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments
-    -d ''{"body":"This is a comment"}'''
-  depends_on: []
+    -d "{\"body\":\""$diff"\"}" > /dev/null'
+  depends_on:
+  - compare-coverage
   environment:
     TOKEN:
       from_secret: github_token
@@ -1108,6 +1110,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: e7701efe0a493c3c34ecce47fa50658092426acc280d8082dc91999c7b6a82be
+hmac: 410adaca5ecb366dcfa8f779c1b6958dd7bb06e307e9032048b39a57b6f8ab8c
 
 ...
