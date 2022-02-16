@@ -3,24 +3,30 @@ kind: pipeline
 name: check
 steps:
 - commands:
+  - make BUILD_IN_CONTAINER=false check-drone-drift
+  depends_on:
+  - clone
+  image: grafana/loki-build-image:0.20.0
+  name: check-drone-drift
+- commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.19.0
+  image: grafana/loki-build-image:0.20.0
   name: check-generated-files
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.19.0
+  image: grafana/loki-build-image:0.20.0
   name: test
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.19.0
+  image: grafana/loki-build-image:0.20.0
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -28,7 +34,7 @@ steps:
   - clone
   - test
   - lint
-  image: grafana/loki-build-image:0.19.0
+  image: grafana/loki-build-image:0.20.0
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -38,19 +44,19 @@ steps:
   - make BUILD_IN_CONTAINER=false loki
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.19.0
+  image: grafana/loki-build-image:0.20.0
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
-  image: grafana/loki-build-image:0.19.0
+  image: grafana/loki-build-image:0.20.0
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.19.0
+  image: grafana/loki-build-image:0.20.0
   name: check-example-config-doc
 trigger:
   event:
@@ -84,7 +90,7 @@ node:
 steps:
 - commands:
   - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...
-  image: grafana/loki-build-image:0.19.0
+  image: grafana/loki-build-image:0.20.0
   name: All
 trigger:
   cron:
@@ -1025,6 +1031,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 02dfbe3033cac7b29bb38e739127bd9b83bc8b4ad107b814cb5b859e80ae330c
+hmac: ca18b0336abbfa2af076bcf301c13450ce1a8cdad68b0d7c4a5a3e6fbb6a3140
 
 ...
