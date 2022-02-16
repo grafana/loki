@@ -704,7 +704,7 @@ ring:
 
   # Name of network interface to read addresses from.
   # CLI flag: -<prefix>.instance-interface-names
-  [instance_interface_names: <list of string> | default = [eth0 en0]]
+  [instance_interface_names: <list of string> | default = [<private network interfaces>]]
 
   # The number of tokens the lifecycler will generate and put into the ring if
   # it joined without transferring tokens from another lifecycler.
@@ -1079,7 +1079,7 @@ lifecycler:
   # CLI flag: -ingester.lifecycler.interface
   interface_names:
 
-    - [<string> ... | default = ["eth0", "en0"]]
+    - [<string> ... | default = [<private network interfaces>]]
 
   # Duration to sleep before exiting to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
@@ -2483,7 +2483,7 @@ This way, one doesn't have to replicate configuration in multiple places.
 # If "instance_interface_names" under the common ring section is configured,
 # this common "instance_interface_names" is only applied to the frontend, but not for
 # ring related components (ex: distributor, ruler, etc).
-[instance_interface_names: <list of string>]
+[instance_interface_names: <list of string> | default = [<private network interfaces>]]
 
 # A common address used by Loki components to advertise their address.
 # If a more specific "instance_addr" is set, this is ignored.
@@ -2609,7 +2609,7 @@ kvstore:
 
 # Name of network interface to read addresses from.
 # CLI flag: -<prefix>.instance-interface-names
-[instance_interface_names: <list of string> | default = [eth0 en0]]
+[instance_interface_names: <list of string> | default = [<private network interfaces>]]
 
 # IP address to advertise in the ring.
 # CLI flag: -<prefix>.instance-addr
