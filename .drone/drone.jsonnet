@@ -356,7 +356,7 @@ local manifest(apps) = pipeline('manifest') {
       ]) { depends_on: ['test', 'test-main'] },
       run('report-coverage', commands=[
         'pull=$(echo $CI_COMMIT_REF | awk -F \'/\' \'{print $3}\')',
-        'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d {"body":"This is a comment"}',
+        'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d \'{"body":"This is a comment"}\'',
       ], env={
         USER: 'grafanabot',
         TOKEN: { from_secret: github_secret.name },
