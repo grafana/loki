@@ -414,6 +414,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiPromResponse{
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 1}},
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
 					Data: queryrangebase.PrometheusData{
@@ -480,10 +481,11 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.BACKWARD,
-				Limit:     100,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.BACKWARD,
+				Limit:      100,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -567,10 +569,11 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.BACKWARD,
-				Limit:     6,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.BACKWARD,
+				Limit:      6,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -651,17 +654,17 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.FORWARD,
-				Limit:     100,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.FORWARD,
+				Limit:      100,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
 							Labels: `{foo="bar", level="debug"}`,
 							Entries: []logproto.Entry{
-
 								{Timestamp: time.Unix(0, 5), Line: "5"},
 								{Timestamp: time.Unix(0, 6), Line: "6"},
 								{Timestamp: time.Unix(0, 15), Line: "15"},
@@ -739,17 +742,17 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.FORWARD,
-				Limit:     5,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.FORWARD,
+				Limit:      5,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
 							Labels: `{foo="bar", level="debug"}`,
 							Entries: []logproto.Entry{
-
 								{Timestamp: time.Unix(0, 5), Line: "5"},
 								{Timestamp: time.Unix(0, 6), Line: "6"},
 							},
@@ -905,6 +908,7 @@ var (
 			"execTime": 22,
 			"linesProcessedPerSecond": 23,
 			"queueTime": 21,
+			"subqueries": 1,
 			"totalBytesProcessed": 24,
 			"totalLinesProcessed": 25
 		}
@@ -1056,6 +1060,7 @@ var (
 			ExecTime:                22,
 			LinesProcessedPerSecond: 23,
 			TotalBytesProcessed:     24,
+			Subqueries:              1,
 			TotalLinesProcessed:     25,
 		},
 		Querier: stats.Querier{

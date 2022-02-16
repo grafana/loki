@@ -3172,5 +3172,3 @@ type ModuleInfo struct {
 	SizeOfImage uint32
 	EntryPoint  uintptr
 }
-
-const ALL_PROCESSOR_GROUPS = 0xFFFF

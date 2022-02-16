@@ -126,7 +126,7 @@ func (pb PageBlobURL) ClearPages(ctx context.Context, offset int64, count int64,
 		cpk.EncryptionKey, cpk.EncryptionKeySha256, cpk.EncryptionAlgorithm, // CPK
 		cpk.EncryptionScope, // CPK-N
 		ifSequenceNumberLessThanOrEqual, ifSequenceNumberLessThan,
-		ifSequenceNumberEqual, ifModifiedSince, ifUnmodifiedSince, ifMatchETag, ifNoneMatchETag, nil)
+		ifSequenceNumberEqual, ifModifiedSince, ifUnmodifiedSince, ifMatchETag, ifNoneMatchETag, nil, nil)
 }
 
 // GetPageRanges returns the list of valid page ranges for a page blob or snapshot of a page blob.
@@ -175,7 +175,7 @@ func (pb PageBlobURL) Resize(ctx context.Context, size int64, ac BlobAccessCondi
 	return pb.pbClient.Resize(ctx, size, nil, ac.LeaseAccessConditions.pointers(),
 		cpk.EncryptionKey, cpk.EncryptionKeySha256, cpk.EncryptionAlgorithm, // CPK
 		cpk.EncryptionScope, // CPK-N
-		ifModifiedSince, ifUnmodifiedSince, ifMatchETag, ifNoneMatchETag, nil)
+		ifModifiedSince, ifUnmodifiedSince, ifMatchETag, ifNoneMatchETag, nil, nil)
 }
 
 // UpdateSequenceNumber sets the page blob's sequence number.
@@ -188,7 +188,7 @@ func (pb PageBlobURL) UpdateSequenceNumber(ctx context.Context, action SequenceN
 	ifModifiedSince, ifUnmodifiedSince, ifMatch, ifNoneMatch := ac.ModifiedAccessConditions.pointers()
 	return pb.pbClient.UpdateSequenceNumber(ctx, action, nil,
 		ac.LeaseAccessConditions.pointers(), ifModifiedSince, ifUnmodifiedSince, ifMatch, ifNoneMatch,
-		sn, nil)
+		nil, sn, nil)
 }
 
 // StartCopyIncremental begins an operation to start an incremental copy from one page blob's snapshot to this page blob.
@@ -202,7 +202,7 @@ func (pb PageBlobURL) StartCopyIncremental(ctx context.Context, source url.URL, 
 	qp.Set("snapshot", snapshot)
 	source.RawQuery = qp.Encode()
 	return pb.pbClient.CopyIncremental(ctx, source.String(), nil,
-		ifModifiedSince, ifUnmodifiedSince, ifMatchETag, ifNoneMatchETag, nil)
+		ifModifiedSince, ifUnmodifiedSince, ifMatchETag, ifNoneMatchETag, nil, nil)
 }
 
 func (pr PageRange) pointers() *string {
