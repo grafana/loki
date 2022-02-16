@@ -36,33 +36,53 @@ kind: pipeline
 name: check
 steps:
 - commands:
-  - make BUILD_IN_CONTAINER=false check-drone-drift
+  - 'make BUILD_IN_CONTAINER=false check-drone-drift '
   depends_on:
   - clone
   image: grafana/loki-build-image:0.20.0
   name: check-drone-drift
 - commands:
-  - make BUILD_IN_CONTAINER=false check-generated-files
+  - 'make BUILD_IN_CONTAINER=false check-generated-files '
   depends_on:
   - clone
   image: grafana/loki-build-image:0.20.0
   name: check-generated-files
 - commands:
-  - make BUILD_IN_CONTAINER=false test
+  - 'make BUILD_IN_CONTAINER=false test '
   depends_on:
   - clone
-  - check-generated-files
   image: grafana/loki-build-image:0.20.0
   name: test
 - commands:
-  - make BUILD_IN_CONTAINER=false lint
+  - cd ..
+  - git clone $CI_REPO_REMOTE loki-main
+  - cd -
+  image: grafana/loki-build-image:0.20.0
+  name: clone-main
+- commands:
+  - cd ../loki-main
+  - BUILD_IN_CONTAINER=false make test
+  depends_on:
+  - clone-main
+  image: grafana/loki-build-image:0.20.0
+  name: test-main
+- commands:
+  - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
+    new=test_results.txt packages=ingester,distributor,querier,ruler,storage
+  depends_on:
+  - test
+  - test-main
+  image: grafana/loki-build-image:0.20.0
+  name: compare-coverage
+- commands:
+  - 'make BUILD_IN_CONTAINER=false lint '
   depends_on:
   - clone
   - check-generated-files
   image: grafana/loki-build-image:0.20.0
   name: lint
 - commands:
-  - make BUILD_IN_CONTAINER=false check-mod
+  - 'make BUILD_IN_CONTAINER=false check-mod '
   depends_on:
   - clone
   - test
@@ -74,19 +94,19 @@ steps:
   image: koalaman/shellcheck-alpine:stable
   name: shellcheck
 - commands:
-  - make BUILD_IN_CONTAINER=false loki
+  - 'make BUILD_IN_CONTAINER=false loki '
   depends_on:
   - clone
   image: grafana/loki-build-image:0.20.0
   name: loki
 - commands:
-  - make BUILD_IN_CONTAINER=false validate-example-configs
+  - 'make BUILD_IN_CONTAINER=false validate-example-configs '
   depends_on:
   - loki
   image: grafana/loki-build-image:0.20.0
   name: validate-example-configs
 - commands:
-  - make BUILD_IN_CONTAINER=false check-example-config-doc
+  - 'make BUILD_IN_CONTAINER=false check-example-config-doc '
   depends_on:
   - clone
   image: grafana/loki-build-image:0.20.0
@@ -103,7 +123,7 @@ kind: pipeline
 name: mixins
 steps:
 - commands:
-  - make BUILD_IN_CONTAINER=false lint-jsonnet
+  - 'make BUILD_IN_CONTAINER=false lint-jsonnet '
   depends_on:
   - clone
   image: grafana/jsonnet-build:c8b75df
@@ -1064,6 +1084,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: ca18b0336abbfa2af076bcf301c13450ce1a8cdad68b0d7c4a5a3e6fbb6a3140
+hmac: 410295d0f39dd8d68123802010d2d071bb9c2ec036d240aca94c26c77e36999a
 
 ...

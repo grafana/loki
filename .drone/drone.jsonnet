@@ -53,8 +53,8 @@ local run(name, commands) = {
   commands: commands,
 };
 
-local make(target, container=true) = run(target, [
-  'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target,
+local make(target, container=true, args=[]) = run(target, [
+  'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target + ' ' + std.join(" ", args),
 ]);
 
 local docker(arch, app) = {
@@ -345,10 +345,14 @@ local manifest(apps) = pipeline('manifest') {
     steps: [
       make('check-drone-drift', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
-      make('test', container=false) { depends_on: ['clone', 'check-generated-files'] },
+      make('test', container=false) { depends_on: ['clone'] },
       run('clone-main', commands=['cd ..', 'git clone $CI_REPO_REMOTE loki-main', 'cd -']),
-      run('test-main', commands=['cd ../loki-main', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-main', 'check-generated-files'] },
-      make('compare-coverage', container=false) { depends_on: ['test', 'test-main'] },
+      run('test-main', commands=['cd ../loki-main', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-main'] },
+      make('compare-coverage', container=false, args=[
+      'old=../loki-main/test_results.txt',
+      'new=test_results.txt',
+      'packages=ingester,distributor,querier,ruler,storage'
+      ]) { depends_on: ['test', 'test-main'] },
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {

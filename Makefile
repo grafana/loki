@@ -10,7 +10,7 @@
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
 
-SHELL = /usr/bin/env bash
+SHELL = /usr/bin/env bash -o pipefail
 
 # Empty value = no -mod parameter is used.
 # If not empty, GOMOD is passed to -mod= parameter.
@@ -279,7 +279,7 @@ test: all
 	GOGC=10 $(GOTEST) -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./... | tee test_results.txt
 
 compare-coverage:
-	./tools/diff_coverage.sh $(old) $(new)
+	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
 #########
 # Clean #
