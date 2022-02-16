@@ -1,8 +1,8 @@
-## Cloud Pub/Sub [![GoDoc](https://godoc.org/cloud.google.com/go/pubsub?status.svg)](https://godoc.org/cloud.google.com/go/pubsub)
+## Cloud Pub/Sub [![Go Reference](https://pkg.go.dev/badge/cloud.google.com/go/pubsub.svg)](https://pkg.go.dev/cloud.google.com/go/pubsub)
 
 - [About Cloud Pubsub](https://cloud.google.com/pubsub/)
 - [API documentation](https://cloud.google.com/pubsub/docs)
-- [Go client documentation](https://godoc.org/cloud.google.com/go/pubsub)
+- [Go client documentation](https://pkg.go.dev/cloud.google.com/go/pubsub)
 - [Complete sample programs](https://github.com/GoogleCloudPlatform/golang-samples/tree/master/pubsub)
 
 ### Example Usage

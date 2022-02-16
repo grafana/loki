@@ -151,9 +151,9 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 			if grpc.Version >= "1.42" && strings.EqualFold(os.Getenv(enableDirectPathXds), "true") {
 				// google-c2p resolver target must not have a port number
 				if addr, _, err := net.SplitHostPort(endpoint); err == nil {
-					endpoint = "google-c2p:///" + addr
+					endpoint = "google-c2p-experimental:///" + addr
 				} else {
-					endpoint = "google-c2p:///" + endpoint
+					endpoint = "google-c2p-experimental:///" + endpoint
 				}
 			} else {
 				if !strings.HasPrefix(endpoint, "dns:///") {
