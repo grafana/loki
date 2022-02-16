@@ -1,5 +1,38 @@
 ---
 kind: pipeline
+name: loki-build-image
+steps:
+- image: plugins/docker
+  name: push-image
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-build-image
+    tags:
+    - 0.20.0
+    username:
+      from_secret: docker_username
+  when:
+    paths:
+      include:
+      - loki-build-image/**
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
 name: check
 steps:
 - commands:
