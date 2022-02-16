@@ -46,11 +46,11 @@ local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
 local deploy_configuration = secret('deploy_config', 'infra/data/ci/loki/deploy', 'config.json');
 
-
-local run(name, commands) = {
+local run(name, commands, env={}) = {
   name: name,
   image: 'grafana/loki-build-image:%s' % build_image_version,
   commands: commands,
+  environment: env,
 };
 
 local make(target, container=true, args=[]) = run(target, [
@@ -352,7 +352,11 @@ local manifest(apps) = pipeline('manifest') {
         'old=../loki-main/test_results.txt',
         'new=test_results.txt',
         'packages=ingester,distributor,querier,ruler,storage',
+        '> diff.txt',
       ]) { depends_on: ['test', 'test-main'] },
+      run('report-coverage', commands=[
+        'echo $FOO'
+      ], env={FOO:'bar'}) {depends_on: ['compare-coverage']},
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {
