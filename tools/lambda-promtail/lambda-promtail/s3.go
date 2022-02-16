@@ -51,7 +51,7 @@ func getS3Object(ctx context.Context, labels map[string]string) (io.ReadCloser, 
 		})
 
 	if err != nil {
-		fmt.Println("Failed to get object %s from bucket %s on account %s", labels["key"], labels["bucket"], labels["bucketOwner"])
+		fmt.Printf("Failed to get object %s from bucket %s on account %s\n", labels["key"], labels["bucket"], labels["bucketOwner"])
 		return nil, err
 	}
 
@@ -71,6 +71,8 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		model.LabelName("__aws_s3_log_lb"):       model.LabelValue(labels["lb"]),
 		model.LabelName("__aws_s3_log_lb_owner"): model.LabelValue(labels["account_id"]),
 	}
+
+	ls = applyExtraLabels(ls)
 
 	for scanner.Scan() {
 		i := 0
