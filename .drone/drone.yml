@@ -81,7 +81,8 @@ steps:
   image: grafana/loki-build-image:0.20.0
   name: compare-coverage
 - commands:
-  - printenv
+  - set +x
+  - echo $FOO
   depends_on: []
   environment:
     FOO: bar
@@ -1104,6 +1105,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 32f7f79ec1438c63e6be86378ce70a9fc8dbd6cac2c4e196dc870eea5c69a369
+hmac: 116301ebfd2db2724694bc57f713d49f078ba56b36c849c14ecf479392c4221e
 
 ...
