@@ -355,7 +355,7 @@ local manifest(apps) = pipeline('manifest') {
         '> diff.txt',
       ]) { depends_on: ['test', 'test-main'] },
       run('report-coverage', commands=[
-        'echo $FOO'
+        'printenv'
       ], env={FOO:'bar'}) {depends_on: []},
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
