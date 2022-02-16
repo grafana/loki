@@ -83,7 +83,7 @@ local clients_docker(arch, app) = {
 
 local lambda_promtail_ecr(app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
-  image: 'cstyan/ecr',
+  image: 'tlinhart/drone-ecr-public',
   privileged: true,
   settings: {
     repo: 'public.ecr.aws/grafana/lambda-promtail',

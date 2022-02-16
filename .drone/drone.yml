@@ -979,7 +979,7 @@ steps:
   name: image-tag
 - depends_on:
   - image-tag
-  image: cstyan/ecr
+  image: tlinhart/drone-ecr-public
   name: build-lambda-promtail-image
   privileged: true
   settings:
@@ -1000,7 +1000,7 @@ steps:
       - refs/tags/v*
 - depends_on:
   - image-tag
-  image: cstyan/ecr
+  image: tlinhart/drone-ecr-public
   name: publish-lambda-promtail-image
   privileged: true
   settings:
@@ -1041,7 +1041,7 @@ steps:
   name: image-tag
 - depends_on:
   - image-tag
-  image: cstyan/ecr
+  image: tlinhart/drone-ecr-public
   name: build-lambda-promtail-image
   privileged: true
   settings:
@@ -1062,7 +1062,7 @@ steps:
       - refs/tags/v*
 - depends_on:
   - image-tag
-  image: cstyan/ecr
+  image: tlinhart/drone-ecr-public
   name: publish-lambda-promtail-image
   privileged: true
   settings:
