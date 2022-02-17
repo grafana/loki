@@ -34,7 +34,6 @@ func (b *Builder) AddSeries(ls labels.Labels, chks []ChunkMeta) {
 			labels: ls,
 		}
 		b.streams[id] = s
-		return
 	}
 
 	s.chunks = append(s.chunks, chks...)
