@@ -263,7 +263,7 @@ func parseEntry(pLog pdata.LogRecord, format string) (*logproto.Entry, error) {
 		}
 		line = string(data)
 	} else {
-		return nil, fmt.Errorf("unsupported format type:%s", format)
+		return nil, fmt.Errorf("unsupported format type: %s", format)
 	}
 
 	return &logproto.Entry{
