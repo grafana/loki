@@ -196,6 +196,9 @@ func (j *JSONParser) fastParseJSON(line []byte, lbs *LabelsBuilder) ([]byte, boo
 		var beginIndex int
 		if j.tailIndexDirection {
 			beginIndex = strings.LastIndex(jsonLine, key)
+			if beginIndex < lineLens/2 {
+				j.tailIndexDirection = false
+			}
 		} else {
 			beginIndex = strings.Index(jsonLine, key)
 			if beginIndex > lineLens/2 {
