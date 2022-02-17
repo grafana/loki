@@ -59,10 +59,6 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 # 'make: Entering directory '/src/loki' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
-# These are all the application files, they are included in the various binary rules as dependencies
-# to make sure binaries are rebuilt if any source files change.
-GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -type f -name '*.go' -print)
-
 # Build flags
 VPREFIX := github.com/grafana/loki/pkg/util/build
 GO_LDFLAGS   := -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
