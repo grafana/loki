@@ -91,7 +91,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 }
 func (cfg *Config) Validate() error {
 	if cfg.ReceiverFormat != receiver.LogFormatJSON && cfg.ReceiverFormat != receiver.LogFormatLogfmt {
-		return fmt.Errorf("unsupported format type:%s", cfg.ReceiverFormat)
+		return fmt.Errorf("unsupported format type: %s", cfg.ReceiverFormat)
 	}
 	return nil
 }
