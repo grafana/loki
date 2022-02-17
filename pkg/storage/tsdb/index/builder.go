@@ -17,6 +17,11 @@ type Builder struct {
 	streams map[string]*stream
 }
 
+type stream struct {
+	labels labels.Labels
+	chunks []ChunkMeta
+}
+
 func NewBuilder() *Builder {
 	return &Builder{streams: make(map[string]*stream)}
 }
@@ -29,6 +34,7 @@ func (b *Builder) AddSeries(ls labels.Labels, chks []ChunkMeta) {
 			labels: ls,
 		}
 		b.streams[id] = s
+		return
 	}
 
 	s.chunks = append(s.chunks, chks...)
@@ -81,9 +87,4 @@ func (b *Builder) Build(ctx context.Context, dir string) error {
 	}
 
 	return writer.Close()
-}
-
-type stream struct {
-	labels labels.Labels
-	chunks []ChunkMeta
 }
