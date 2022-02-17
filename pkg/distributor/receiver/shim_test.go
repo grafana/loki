@@ -192,7 +192,7 @@ func markRequest() otlpgrpc.LogsRequest {
 	return request
 }
 
-type morkPusher struct {
+type mockPusher struct {
 	Data []*logproto.PushRequest
 }
 
