@@ -92,12 +92,17 @@ func removeLineformat(expr SampleExpr) {
 func optimizeLogSelectorExpr(ctx context.Context, expr LogSelectorExpr) (LogSelectorExpr, error) {
 	var err error
 	logqlExpr := expr.String()
-	defer func() { // 必须要先声明defer，否则不能捕获到panic异常
+	defer func() {
 		if panicErr := recover(); panicErr != nil {
 			err = errors.New("optimizeLogSelectorExpr error")
+			return
 		}
 		if sp := ot.SpanFromContext(ctx); sp != nil {
-			sp.SetTag("optimize", true)
+			if logqlExpr == expr.String() {
+				sp.SetTag("optimize", false)
+			} else {
+				sp.SetTag("optimize", true)
+			}
 			sp.LogFields(otlog.String("expr", logqlExpr))
 			sp.LogFields(otlog.String("optimizeLogSelectorExpr", expr.String()))
 		}
@@ -155,17 +160,12 @@ func optimizeLogSelectorExpr(ctx context.Context, expr LogSelectorExpr) (LogSele
 
 // replaceFastJsonParserAndAppendJsonParser replace fastJsonParser and append JsonParser within a LogSelectorExpr.
 func replaceFastJsonParserAndAppendJsonParser(expr LogSelectorExpr, requiredJsonLabels labels.Labels) {
+	requiredParams, err := requiredJsonLabels.MarshalJSON()
+	if err != nil {
+		return
+	}
+	jsonHintParam := string(requiredParams)
 	//1: replace fastJsonParser
-	expr.Walk(func(e interface{}) {
-		jsonExpr, ok := e.(*log.JSONParser)
-		if !ok {
-			return
-		}
-		if len(jsonExpr.RequiredJsonLabels) > 0 {
-			return
-		}
-		jsonExpr.SetRequiredJsonLabels(requiredJsonLabels)
-	})
 	//2: append simple JsonParser will produce the same result
 	expr.Walk(func(e interface{}) {
 		pipelineExpr, ok := e.(*PipelineExpr)
@@ -187,8 +187,9 @@ func replaceFastJsonParserAndAppendJsonParser(expr LogSelectorExpr, requiredJson
 			if !ok {
 				continue
 			}
+			lpe.Hint = jsonHintParam
 			if fastParseExpr == nil {
-				fastParseExpr = newLabelParserExpr(lpe.Op, lpe.Param)
+				fastParseExpr = newLabelParserExpr(lpe.Op, "")
 			}
 		}
 		pipelineExpr.MultiStages = append(pipelineExpr.MultiStages, fastParseExpr)

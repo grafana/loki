@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,11 +40,14 @@ func Test_optimizeSampleExpr(t *testing.T) {
 
 func Test_optimizeLogSelectorExpr(t *testing.T) {
 	tests := []struct {
+		expectedHintCounts    int
 		name, logql, expected string
 	}{
 		// noop
 		{
+			1,
 			"my slow json parser case ",
+
 			`{log_type="service_metrics",module="api_server",operation="InvokeFunction",accountID="212068714932184585",serviceName="taojimu-fc-prod",functionName="feedflow"}  | json   | durationMs > 2003`,
 			`{log_type="service_metrics", module="api_server", operation="InvokeFunction", accountID="212068714932184585", serviceName="taojimu-fc-prod", functionName="feedflow"} | json | durationMs>2003 | json`,
 		},
@@ -57,7 +61,26 @@ func Test_optimizeLogSelectorExpr(t *testing.T) {
 			case LogSelectorExpr:
 				got, err := optimizeLogSelectorExpr(context.Background(), e)
 				require.NoError(t, err)
-				require.Equal(t, tt.expected, got.String())
+				require.Equal(t, tt.expected, got.String(), "append json fail")
+
+				hintCounts := 0
+				got.Walk(func(e interface{}) {
+					switch expr := e.(type) {
+					case *LabelParserExpr:
+						switch expr.Op {
+						case OpParserTypeJSON:
+							stage, err := expr.Stage()
+							require.NoError(t, err, "replace simple json fail")
+							simpleJsonParser, ok := stage.(*log.JSONParser)
+							if !ok {
+								t.Fatal("replace simple json fail")
+							}
+							hintCounts += len(simpleJsonParser.RequiredJsonLabels)
+						}
+					}
+				})
+				require.Equal(t, tt.expectedHintCounts, hintCounts, "replace simple json fail")
+
 			}
 
 		})

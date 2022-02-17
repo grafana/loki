@@ -52,14 +52,21 @@ func NewJSONParser() *JSONParser {
 	}
 }
 
-func (j *JSONParser) SetRequiredJsonLabels(requiredJsonLabels labels.Labels) {
-	if requiredJsonLabels != nil && requiredJsonLabels.Len() > 0 {
-		result := make([]string, 0)
-		for _, label := range requiredJsonLabels {
-			result = append(result, label.Name)
-		}
-		j.RequiredJsonLabels = result
+func (j *JSONParser) SetHint(hint string) {
+	if hint == "" {
+		return
 	}
+	var requiredJsonLabels labels.Labels
+	err := requiredJsonLabels.UnmarshalJSON([]byte(hint))
+	if err != nil {
+		return
+	}
+	result := make([]string, 0)
+	for _, label := range requiredJsonLabels {
+		result = append(result, label.Name)
+	}
+	j.RequiredJsonLabels = result
+
 }
 
 func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {

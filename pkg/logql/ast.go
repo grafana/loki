@@ -384,6 +384,7 @@ func (e *LineFilterExpr) Stage() (log.Stage, error) {
 type LabelParserExpr struct {
 	Op    string
 	Param string
+	Hint  string
 	implicit
 }
 
@@ -401,7 +402,9 @@ func (e *LabelParserExpr) Walk(f WalkFn) { f(e) }
 func (e *LabelParserExpr) Stage() (log.Stage, error) {
 	switch e.Op {
 	case OpParserTypeJSON:
-		return log.NewJSONParser(), nil
+		jsonParser := log.NewJSONParser()
+		jsonParser.SetHint(e.Hint)
+		return jsonParser, nil
 	case OpParserTypeLogfmt:
 		return log.NewLogfmtParser(), nil
 	case OpParserTypeRegexp:
