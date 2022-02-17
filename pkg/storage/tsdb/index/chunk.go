@@ -1,5 +1,9 @@
 package index
 
+import (
+	"sort"
+)
+
 // Meta holds information about a chunk of data.
 type ChunkMeta struct {
 	Checksum uint32
@@ -37,4 +41,40 @@ func (c ChunkMetas) Less(i, j int) bool {
 	}
 
 	return a.Checksum < b.Checksum
+}
+
+// finalize sorts and dedupes
+// TODO(owen-d): can we remove the need for this by ensuring we only push
+// in order and without duplicates?
+func (c ChunkMetas) finalize() ChunkMetas {
+	sort.Sort(c)
+
+	if len(c) == 0 {
+		return c
+	}
+
+	var res ChunkMetas
+	lastDuplicate := -1
+	prior := c[0]
+
+	// minimize reslicing costs due to duplicates
+	for i := 1; i < len(c); i++ {
+		x := c[i]
+		if x.Checksum == prior.Checksum {
+			res = append(res, c[lastDuplicate+1:i]...)
+			lastDuplicate = i
+		}
+		prior = x
+	}
+
+	// no duplicates were found, short circuit
+	// by returning unmodified underlying slice
+	if len(res) == 0 {
+		return c
+	}
+
+	// otherwise, append any remaining values
+	res = append(res, c[lastDuplicate+1:]...)
+	return res
+
 }

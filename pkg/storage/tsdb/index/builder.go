@@ -19,7 +19,7 @@ type Builder struct {
 
 type stream struct {
 	labels labels.Labels
-	chunks []ChunkMeta
+	chunks ChunkMetas
 }
 
 func NewBuilder() *Builder {
@@ -81,7 +81,7 @@ func (b *Builder) Build(ctx context.Context, dir string) error {
 
 	// Add series
 	for i, s := range streams {
-		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.chunks...); err != nil {
+		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.chunks.finalize()...); err != nil {
 			return err
 		}
 	}
