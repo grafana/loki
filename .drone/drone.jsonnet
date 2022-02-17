@@ -54,7 +54,11 @@ local run(name, commands, env={}) = {
 };
 
 local make(target, container=true, args=[]) = run(target, [
-  'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target + ' ' + std.join(' ', args),
+  std.join(' ', [
+    'make',
+    'BUILD_IN_CONTAINER=' + container,
+    target,
+  ] + args),
 ]);
 
 local docker(arch, app) = {
@@ -351,7 +355,7 @@ local manifest(apps) = pipeline('manifest') {
       make('compare-coverage', container=false, args=[
         'old=../loki-main/test_results.txt',
         'new=test_results.txt',
-        'packages=ingester,distributor,querier,ruler,storage',
+        'packages=ingester,distributor,querier,iter,storage,chunkenc,logql,loki',
         '> diff.txt',
       ]) { depends_on: ['test', 'test-main'] },
       run('report-coverage', commands=[

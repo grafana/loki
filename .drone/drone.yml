@@ -36,21 +36,21 @@ kind: pipeline
 name: check
 steps:
 - commands:
-  - 'make BUILD_IN_CONTAINER=false check-drone-drift '
+  - make BUILD_IN_CONTAINER=false check-drone-drift
   depends_on:
   - clone
   environment: {}
   image: grafana/loki-build-image:0.21.0
   name: check-drone-drift
 - commands:
-  - 'make BUILD_IN_CONTAINER=false check-generated-files '
+  - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
   image: grafana/loki-build-image:0.21.0
   name: check-generated-files
 - commands:
-  - 'make BUILD_IN_CONTAINER=false test '
+  - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
   environment: {}
@@ -73,7 +73,8 @@ steps:
   name: test-main
 - commands:
   - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
-    new=test_results.txt packages=ingester,distributor,querier,ruler,storage > diff.txt
+    new=test_results.txt packages=ingester,distributor,querier,iter,storage,chunkenc,logql,loki
+    > diff.txt
   depends_on:
   - test
   - test-main
@@ -94,7 +95,7 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: report-coverage
 - commands:
-  - 'make BUILD_IN_CONTAINER=false lint '
+  - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
   - check-generated-files
@@ -102,7 +103,7 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: lint
 - commands:
-  - 'make BUILD_IN_CONTAINER=false check-mod '
+  - make BUILD_IN_CONTAINER=false check-mod
   depends_on:
   - clone
   - test
@@ -115,21 +116,21 @@ steps:
   image: koalaman/shellcheck-alpine:stable
   name: shellcheck
 - commands:
-  - 'make BUILD_IN_CONTAINER=false loki '
+  - make BUILD_IN_CONTAINER=false loki
   depends_on:
   - clone
   environment: {}
   image: grafana/loki-build-image:0.21.0
   name: loki
 - commands:
-  - 'make BUILD_IN_CONTAINER=false validate-example-configs '
+  - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
   environment: {}
   image: grafana/loki-build-image:0.21.0
   name: validate-example-configs
 - commands:
-  - 'make BUILD_IN_CONTAINER=false check-example-config-doc '
+  - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
@@ -147,7 +148,7 @@ kind: pipeline
 name: mixins
 steps:
 - commands:
-  - 'make BUILD_IN_CONTAINER=false lint-jsonnet '
+  - make BUILD_IN_CONTAINER=false lint-jsonnet
   depends_on:
   - clone
   environment: {}
@@ -1110,6 +1111,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 8d723b3c02513bbeca89e5f7cbedb4c0c132ad95e6745b943c3e15aa30593218
+hmac: 23a67197a1f2a02e74fdbc6ab269295879fe6575d49d8e9e06a5aa6f8b1d670f
 
 ...
