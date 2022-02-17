@@ -71,11 +71,11 @@ func Test_optimizeLogSelectorExpr(t *testing.T) {
 						case OpParserTypeJSON:
 							stage, err := expr.Stage()
 							require.NoError(t, err, "replace simple json fail")
-							simpleJsonParser, ok := stage.(*log.JSONParser)
+							simpleJSONParser, ok := stage.(*log.JSONParser)
 							if !ok {
 								t.Fatal("replace simple json fail")
 							}
-							hintCounts += len(simpleJsonParser.RequiredJsonLabels)
+							hintCounts += len(simpleJSONParser.RequiredJSONLabels)
 						}
 					}
 				})

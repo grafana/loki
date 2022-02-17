@@ -109,7 +109,7 @@ func optimizeLogSelectorExpr(ctx context.Context, expr LogSelectorExpr) (LogSele
 	}()
 	var skip bool
 	var hasParserTypeJSON bool
-	requiredJsonLabels := labels.Labels{}
+	RequiredJSONLabels := labels.Labels{}
 	// we skip sharding AST for now, it's not easy to clone them since they are not part of the language.
 	expr.Walk(func(e interface{}) {
 		switch expr := e.(type) {
@@ -128,13 +128,13 @@ func optimizeLogSelectorExpr(ctx context.Context, expr LogSelectorExpr) (LogSele
 			}
 			switch labelFilterer := stage.(type) {
 			case *log.DurationLabelFilter:
-				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: labelFilterer.Value.String()})
+				RequiredJSONLabels = append(RequiredJSONLabels, labels.Label{Name: labelFilterer.Name, Value: labelFilterer.Value.String()})
 			case *log.StringLabelFilter:
-				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: labelFilterer.Value})
+				RequiredJSONLabels = append(RequiredJSONLabels, labels.Label{Name: labelFilterer.Name, Value: labelFilterer.Value})
 			case *log.NumericLabelFilter:
-				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: strconv.FormatFloat(labelFilterer.Value, 'E', -1, 64)})
+				RequiredJSONLabels = append(RequiredJSONLabels, labels.Label{Name: labelFilterer.Name, Value: strconv.FormatFloat(labelFilterer.Value, 'E', -1, 64)})
 			case *log.BytesLabelFilter:
-				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: strconv.FormatUint(labelFilterer.Value, 10)})
+				RequiredJSONLabels = append(RequiredJSONLabels, labels.Label{Name: labelFilterer.Name, Value: strconv.FormatUint(labelFilterer.Value, 10)})
 			}
 		}
 
@@ -145,7 +145,7 @@ func optimizeLogSelectorExpr(ctx context.Context, expr LogSelectorExpr) (LogSele
 	if !hasParserTypeJSON {
 		return expr, nil
 	}
-	if len(requiredJsonLabels) == 0 {
+	if len(RequiredJSONLabels) == 0 {
 		return expr, nil
 	}
 	// clone the expr.
@@ -154,12 +154,12 @@ func optimizeLogSelectorExpr(ctx context.Context, expr LogSelectorExpr) (LogSele
 	if err != nil {
 		return nil, err
 	}
-	replaceFastJsonParserAndAppendJsonParser(expr, requiredJsonLabels)
+	replaceFastJSONParserAndAppendJSONParser(expr, RequiredJSONLabels)
 	return expr, nil
 }
 
-// replaceFastJsonParserAndAppendJsonParser replace fastJsonParser and append JsonParser within a LogSelectorExpr.
-func replaceFastJsonParserAndAppendJsonParser(expr LogSelectorExpr, requiredJsonLabels labels.Labels) {
+// replaceFastJSONParserAndAppendJSONParser replace fastJsonParser and append JsonParser within a LogSelectorExpr.
+func replaceFastJSONParserAndAppendJSONParser(expr LogSelectorExpr, requiredJsonLabels labels.Labels) {
 	requiredParams, err := requiredJsonLabels.MarshalJSON()
 	if err != nil {
 		return

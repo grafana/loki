@@ -41,7 +41,7 @@ type JSONParser struct {
 
 	keys internedStringSet
 
-	RequiredJsonLabels []string
+	RequiredJSONLabels []string
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
@@ -65,7 +65,7 @@ func (j *JSONParser) SetHint(hint string) {
 	for _, label := range requiredJsonLabels {
 		result = append(result, label.Name)
 	}
-	j.RequiredJsonLabels = result
+	j.RequiredJSONLabels = result
 
 }
 
@@ -73,7 +73,7 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
-	if len(j.RequiredJsonLabels) > 0 {
+	if len(j.RequiredJSONLabels) > 0 {
 		return j.fastParseJson(line, lbs)
 	}
 	it := jsoniter.ConfigFastest.BorrowIterator(line)
@@ -189,7 +189,7 @@ func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
 func (j *JSONParser) fastParseJson(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	jsonLine := string(line)
-	for _, requiredKey := range j.RequiredJsonLabels {
+	for _, requiredKey := range j.RequiredJSONLabels {
 		key := "\"" + requiredKey + "\":"
 		beginIndex := strings.Index(jsonLine, key)
 		if beginIndex < 0 {

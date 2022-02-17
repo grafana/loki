@@ -444,11 +444,11 @@ func Benchmark_JsonParserFastParse(b *testing.B) {
 func TestJsonParserFastParse(t *testing.T) {
 	jsonLine := `{"invalid":"a\\xc5z","proxy_protocol_addr": "","remote_addr": "3.112.221.14","remote_user": "","upstream_addr": "10.12.15.234:5000","the_real_ip": "3.112.221.14","timestamp": "2020-12-11T16:20:07+00:00","protocol": "HTTP/1.1","upstream_name": "hosted-grafana-hosted-grafana-api-80","request": {"id": "c8eacb6053552c0cd1ae443bc660e140","time": "0.001","method" : "GET","host": "hg-api-qa-us-central1.grafana.net","uri": "/","size" : "128","user_agent": "worldping-api-","referer": ""},"response": {"status": 200,"upstream_status": "200","size": "1155","size_sent": "265","latency_seconds": "0.001"}}`
 
-	fastJsonParser := NewJSONParser()
+	jsonParser := NewJSONParser()
 	data, err := labels.Labels{{Name: "upstream_addr", Value: "10.12.15.234:5000"}}.MarshalJSON()
 	require.NoError(t, err)
 
-	fastJsonParser.SetHint(string(data))
+	jsonParser.SetHint(string(data))
 
 	for _, tt := range []struct {
 		name  string
@@ -460,7 +460,7 @@ func TestJsonParserFastParse(t *testing.T) {
 		{
 			"json",
 			jsonLine,
-			fastJsonParser,
+			jsonParser,
 			labels.Labels{
 				{Name: "remote_addr", Value: "3.112.221.14"},
 			},
