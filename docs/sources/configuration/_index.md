@@ -306,6 +306,9 @@ engine:
   # applicable for instant log queries.
   # CLI flag: -querier.engine.max-lookback-period
   [max_look_back_period: <duration> | default = 30s]
+  # Experimental feature Optimize json parser in limited cases.
+  # CLI flag: -querier.engine.logql-optimize-enable
+  [logql_optimize_enable: <bool> | default = false]
 ```
 
 ## query_scheduler

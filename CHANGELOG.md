@@ -58,6 +58,7 @@
 * [5204](https://github.com/grafana/loki/pull/5204) **trevorwhitney**: Default `max_outstanding_per_tenant` to `2048`
 * [5253](https://github.com/grafana/loki/pull/5253) **Juneezee**: refactor: use `T.TempDir` to create temporary test directory
 * [5315](https://github.com/grafana/loki/pull/5315) **bboreham**: filters: use faster regexp package
+* [5417](https://github.com/grafana/loki/pull/5417) **liguozhong**: Experimental feature: Optimize json parser in limited cases.
 
 # 2.4.1 (2021/11/07)
 
