@@ -42,6 +42,7 @@ type JSONParser struct {
 	keys internedStringSet
 
 	RequiredJSONLabels []string
+	tailIndexDirection bool
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
@@ -56,13 +57,13 @@ func (j *JSONParser) SetHint(hint string) {
 	if hint == "" {
 		return
 	}
-	var requiredJsonLabels labels.Labels
-	err := requiredJsonLabels.UnmarshalJSON([]byte(hint))
+	var requiredJSONLabels labels.Labels
+	err := requiredJSONLabels.UnmarshalJSON([]byte(hint))
 	if err != nil {
 		return
 	}
 	result := make([]string, 0)
-	for _, label := range requiredJsonLabels {
+	for _, label := range requiredJSONLabels {
 		result = append(result, label.Name)
 	}
 	j.RequiredJSONLabels = result
@@ -189,16 +190,25 @@ func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
 func (j *JSONParser) fastParseJson(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	jsonLine := string(line)
+	lineLens := len(jsonLine)
 	for _, requiredKey := range j.RequiredJSONLabels {
 		key := "\"" + requiredKey + "\":"
-		beginIndex := strings.Index(jsonLine, key)
+		var beginIndex int
+		if j.tailIndexDirection {
+			beginIndex = strings.LastIndex(jsonLine, key)
+		} else {
+			beginIndex = strings.Index(jsonLine, key)
+			if beginIndex > lineLens/2 {
+				j.tailIndexDirection = true
+			}
+		}
 		if beginIndex < 0 {
 			continue
 		}
-		subJsonLine := jsonLine[beginIndex:]
-		endIndex := strings.Index(subJsonLine, ",")
+		subJSONLine := jsonLine[beginIndex:]
+		endIndex := strings.Index(subJSONLine, ",")
 		if endIndex < 0 {
-			endIndex = strings.Index(subJsonLine, "}")
+			endIndex = strings.Index(subJSONLine, "}")
 			if endIndex < 0 {
 				continue
 			}

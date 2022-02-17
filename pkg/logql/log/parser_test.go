@@ -404,7 +404,7 @@ func TestJSONExpressionParserFailures(t *testing.T) {
 
 func Benchmark_JsonParserFastParse(b *testing.B) {
 	lbs := labels.Labels{
-		{Name: "remote_addr", Value: "3.112.221.14"},
+		{Name: "latency_seconds", Value: "3.112.221.14"},
 	}
 	jsonParser := NewJSONParser()
 	data, _ := lbs.MarshalJSON()
