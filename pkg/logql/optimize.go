@@ -88,7 +88,7 @@ func removeLineformat(expr SampleExpr) {
 	})
 }
 
-// optimizeLogSelectorExpr Attempt to optimize the v to another that will run faster but will produce the same result.
+// optimizeLogSelectorExpr attempt to optimize the `expr` to another `LogSelectorExpr` that will run faster but will produce the same result.
 func optimizeLogSelectorExpr(ctx context.Context, expr LogSelectorExpr) (LogSelectorExpr, error) {
 	var err error
 	logqlExpr := expr.String()
