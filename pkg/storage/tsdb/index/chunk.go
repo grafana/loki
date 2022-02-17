@@ -4,7 +4,6 @@ package index
 type ChunkMeta struct {
 	Checksum uint32
 
-	// Nanosecond precision
 	MinTime, MaxTime int64
 
 	// Bytes use an uint64 as an uint32 can only hold [0,4GB)
