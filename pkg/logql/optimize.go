@@ -159,8 +159,8 @@ func optimizeLogSelectorExpr(ctx context.Context, expr LogSelectorExpr) (LogSele
 }
 
 // replaceFastJSONParserAndAppendJSONParser replace fastJsonParser and append JsonParser within a LogSelectorExpr.
-func replaceFastJSONParserAndAppendJSONParser(expr LogSelectorExpr, requiredJsonLabels labels.Labels) {
-	requiredParams, err := requiredJsonLabels.MarshalJSON()
+func replaceFastJSONParserAndAppendJSONParser(expr LogSelectorExpr, requiredJSONLabels labels.Labels) {
+	requiredParams, err := requiredJSONLabels.MarshalJSON()
 	if err != nil {
 		return
 	}

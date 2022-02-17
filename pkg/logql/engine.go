@@ -51,7 +51,7 @@ type EngineOpts struct {
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", 5*time.Minute, "Timeout for query execution.")
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
-	f.BoolVar(&opts.LogqlOptimizeEnable, prefix +".engine.logql-optimize-enable", false, "Experimental feature logql optimization")
+	f.BoolVar(&opts.LogqlOptimizeEnable, prefix+".engine.logql-optimize-enable", false, "Experimental feature logql optimization")
 
 }
 

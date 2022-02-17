@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 func Test_optimizeSampleExpr(t *testing.T) {

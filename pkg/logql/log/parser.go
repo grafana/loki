@@ -75,7 +75,7 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		return line, true
 	}
 	if len(j.RequiredJSONLabels) > 0 {
-		return j.fastParseJson(line, lbs)
+		return j.fastParseJSON(line, lbs)
 	}
 	it := jsoniter.ConfigFastest.BorrowIterator(line)
 	defer jsoniter.ConfigFastest.ReturnIterator(it)
@@ -188,7 +188,7 @@ func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field stri
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
-func (j *JSONParser) fastParseJson(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (j *JSONParser) fastParseJSON(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	jsonLine := string(line)
 	lineLens := len(jsonLine)
 	for _, requiredKey := range j.RequiredJSONLabels {
