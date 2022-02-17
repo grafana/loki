@@ -8,8 +8,9 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 // optimizeSampleExpr Attempt to optimize the SampleExpr to another that will run faster but will produce the same result.
@@ -106,10 +107,9 @@ func optimizeLogSelectorExpr(ctx context.Context, expr LogSelectorExpr) (LogSele
 	requiredJsonLabels := labels.Labels{}
 	// we skip sharding AST for now, it's not easy to clone them since they are not part of the language.
 	expr.Walk(func(e interface{}) {
-		switch e.(type) {
+		switch expr := e.(type) {
 		case *LabelParserExpr:
-			labelParserExpr := e.(*LabelParserExpr)
-			switch labelParserExpr.Op {
+			switch expr.Op {
 			case OpParserTypeJSON:
 				hasParserTypeJSON = true
 			}
@@ -117,23 +117,18 @@ func optimizeLogSelectorExpr(ctx context.Context, expr LogSelectorExpr) (LogSele
 			//TODO:@liguozhong handle "linefmt" case logql syntax,This case is more complicated, and the next PR will handle it.
 			skip = true
 		case *LabelFilterExpr:
-			labelFilterExpr := e.(*LabelFilterExpr)
-			stage, err := labelFilterExpr.Stage()
+			stage, err := expr.Stage()
 			if err != nil {
 				return
 			}
-			switch stage.(type) {
+			switch labelFilterer := stage.(type) {
 			case *log.DurationLabelFilter:
-				labelFilterer := stage.(*log.DurationLabelFilter)
 				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: labelFilterer.Value.String()})
 			case *log.StringLabelFilter:
-				labelFilterer := stage.(*log.StringLabelFilter)
 				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: labelFilterer.Value})
 			case *log.NumericLabelFilter:
-				labelFilterer := stage.(*log.NumericLabelFilter)
 				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: strconv.FormatFloat(labelFilterer.Value, 'E', -1, 64)})
 			case *log.BytesLabelFilter:
-				labelFilterer := stage.(*log.BytesLabelFilter)
 				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: strconv.FormatUint(labelFilterer.Value, 10)})
 			}
 		}
@@ -178,7 +173,7 @@ func replaceFastJsonParserAndAppendJsonParser(expr LogSelectorExpr, requiredJson
 			return
 		}
 		stages := pipelineExpr.MultiStages
-		var fastParseExpr *LabelParserExpr = nil
+		var fastParseExpr *LabelParserExpr
 		for _, stageExpr := range stages {
 			stage, err := stageExpr.Stage()
 			if err != nil {

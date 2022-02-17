@@ -406,8 +406,8 @@ func Benchmark_JsonParserFastParse(b *testing.B) {
 	lbs := labels.Labels{
 		{Name: "remote_addr", Value: "3.112.221.14"},
 	}
-	fastJsonParser := NewJSONParser()
-	fastJsonParser.SetRequiredJsonLabels(lbs)
+	jsonParser := NewJSONParser()
+	jsonParser.SetRequiredJsonLabels(lbs)
 
 	jsonLine := `{"invalid":"a\\xc5z","proxy_protocol_addr": "","remote_addr": "3.112.221.14","remote_user": "","upstream_addr": "10.12.15.234:5000","the_real_ip": "3.112.221.14","timestamp": "2020-12-11T16:20:07+00:00","protocol": "HTTP/1.1","upstream_name": "hosted-grafana-hosted-grafana-api-80","request": {"id": "c8eacb6053552c0cd1ae443bc660e140","time": "0.001","method" : "GET","host": "hg-api-qa-us-central1.grafana.net","uri": "/","size" : "128","user_agent": "worldping-api-","referer": ""},"response": {"status": 200,"upstream_status": "200","size": "1155","size_sent": "265","latency_seconds": "0.001"}}`
 	for _, tt := range []struct {
@@ -417,7 +417,7 @@ func Benchmark_JsonParserFastParse(b *testing.B) {
 		sHint           Stage
 		LabelParseHints []string //  hints to reduce label extractions.
 	}{
-		{"json", jsonLine, NewJSONParser(), fastJsonParser, []string{"response_latency_seconds"}},
+		{"json", jsonLine, NewJSONParser(), jsonParser, []string{"response_latency_seconds"}},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
 			line := []byte(tt.line)

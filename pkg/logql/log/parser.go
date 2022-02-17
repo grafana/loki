@@ -52,13 +52,13 @@ func NewJSONParser() *JSONParser {
 	}
 }
 
-func (j *JSONParser) SetRequiredJsonLabels(fastParseRequiredJsonLabels labels.Labels) {
-	if fastParseRequiredJsonLabels != nil && fastParseRequiredJsonLabels.Len() > 0 {
-		requiredJsonLabels := make([]string, 0)
-		for _, label := range fastParseRequiredJsonLabels {
-			requiredJsonLabels = append(requiredJsonLabels, label.Name)
+func (j *JSONParser) SetRequiredJsonLabels(requiredJsonLabels labels.Labels) {
+	if requiredJsonLabels != nil && requiredJsonLabels.Len() > 0 {
+		result := make([]string, 0)
+		for _, label := range requiredJsonLabels {
+			result = append(result, label.Name)
 		}
-		j.RequiredJsonLabels = requiredJsonLabels
+		j.RequiredJsonLabels = result
 	}
 }
 
