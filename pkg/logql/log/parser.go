@@ -189,9 +189,9 @@ func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field stri
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
 func (j *JSONParser) fastParseJSON(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	jsonLine := string(line)
-	lineLens := len(jsonLine)
 	for _, requiredKey := range j.RequiredJSONLabels {
+		jsonLine := string(line)
+		lineLens := len(jsonLine)
 		key := "\"" + requiredKey + "\":"
 		var beginIndex int
 		if j.tailIndexDirection {
