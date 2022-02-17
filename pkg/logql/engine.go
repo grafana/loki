@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -78,6 +79,9 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 	opts.applyDefault()
 	if logger == nil {
 		logger = log.NewNopLogger()
+	}
+	if opts.LogqlOptimizeEnable {
+		logutil.WarnExperimentalUse("Engine Logql Optimize", logger)
 	}
 	return &Engine{
 		logger:              logger,
