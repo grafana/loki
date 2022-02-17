@@ -213,7 +213,7 @@ func Test_EmptyTable(t *testing.T) {
 	tables := store.indexTables()
 	require.Len(t, tables, 1)
 	err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
-		it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
+		it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
 		require.NoError(t, err)
 		empty, _, err := markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
 			NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
@@ -231,7 +231,7 @@ func Test_EmptyTable(t *testing.T) {
 		bucket, err := tx.CreateBucket(local.IndexBucketName)
 		require.NoError(t, err)
 
-		it, err := newChunkIndexIterator(bucket, schema.config)
+		it, err := NewChunkIndexIterator(bucket, schema.config)
 		require.NoError(t, err)
 		_, _, err = markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
 			NewExpirationChecker(&fakeLimits{}), nil)
@@ -674,7 +674,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			for i, table := range tables {
 				seriesCleanRecorder := newSeriesCleanRecorder()
 				err := table.DB.Update(func(tx *bbolt.Tx) error {
-					it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
+					it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
 					require.NoError(t, err)
 
 					cr, err := newChunkRewriter(chunkClient, schema.config, table.name, tx.Bucket(local.IndexBucketName))
@@ -723,7 +723,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 
 	for i, table := range tables {
 		err := table.DB.Update(func(tx *bbolt.Tx) error {
-			it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
+			it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
 			require.NoError(t, err)
 			empty, _, err := markforDelete(context.Background(), table.name, noopWriter{}, it, noopCleaner{},
 				NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil)
