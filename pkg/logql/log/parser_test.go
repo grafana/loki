@@ -402,6 +402,82 @@ func TestJSONExpressionParserFailures(t *testing.T) {
 	}
 }
 
+func Benchmark_JsonParserFastParse(b *testing.B) {
+	lbs := labels.Labels{
+		{Name: "remote_addr", Value: "3.112.221.14"},
+	}
+	fastJsonParser := NewJSONParser()
+	fastJsonParser.SetRequiredJsonLabels(lbs)
+
+	jsonLine := `{"invalid":"a\\xc5z","proxy_protocol_addr": "","remote_addr": "3.112.221.14","remote_user": "","upstream_addr": "10.12.15.234:5000","the_real_ip": "3.112.221.14","timestamp": "2020-12-11T16:20:07+00:00","protocol": "HTTP/1.1","upstream_name": "hosted-grafana-hosted-grafana-api-80","request": {"id": "c8eacb6053552c0cd1ae443bc660e140","time": "0.001","method" : "GET","host": "hg-api-qa-us-central1.grafana.net","uri": "/","size" : "128","user_agent": "worldping-api-","referer": ""},"response": {"status": 200,"upstream_status": "200","size": "1155","size_sent": "265","latency_seconds": "0.001"}}`
+	for _, tt := range []struct {
+		name            string
+		line            string
+		s               Stage
+		sHint           Stage
+		LabelParseHints []string //  hints to reduce label extractions.
+	}{
+		{"json", jsonLine, NewJSONParser(), fastJsonParser, []string{"response_latency_seconds"}},
+	} {
+		b.Run(tt.name, func(b *testing.B) {
+			line := []byte(tt.line)
+			b.Run("no labels hints", func(b *testing.B) {
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				for n := 0; n < b.N; n++ {
+					builder.Reset()
+					_, _ = tt.s.Process(line, builder)
+				}
+			})
+
+			b.Run("labels hints fast parse", func(b *testing.B) {
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				for n := 0; n < b.N; n++ {
+					builder.Reset()
+					_, _ = tt.sHint.Process(line, builder)
+				}
+			})
+		})
+	}
+}
+
+func TestJsonParserFastParse(t *testing.T) {
+	jsonLine := `{"invalid":"a\\xc5z","proxy_protocol_addr": "","remote_addr": "3.112.221.14","remote_user": "","upstream_addr": "10.12.15.234:5000","the_real_ip": "3.112.221.14","timestamp": "2020-12-11T16:20:07+00:00","protocol": "HTTP/1.1","upstream_name": "hosted-grafana-hosted-grafana-api-80","request": {"id": "c8eacb6053552c0cd1ae443bc660e140","time": "0.001","method" : "GET","host": "hg-api-qa-us-central1.grafana.net","uri": "/","size" : "128","user_agent": "worldping-api-","referer": ""},"response": {"status": 200,"upstream_status": "200","size": "1155","size_sent": "265","latency_seconds": "0.001"}}`
+
+	fastJsonParser := NewJSONParser()
+	fastJsonParser.SetRequiredJsonLabels(labels.Labels{{Name: "upstream_addr", Value: "10.12.15.234:5000"}})
+
+	for _, tt := range []struct {
+		name  string
+		line  string
+		sHint Stage
+		lbs   labels.Labels
+		want  labels.Labels
+	}{
+		{
+			"json",
+			jsonLine,
+			fastJsonParser,
+			labels.Labels{
+				{Name: "remote_addr", Value: "3.112.221.14"},
+			},
+			labels.Labels{
+				{Name: "remote_addr", Value: "3.112.221.14"},
+				{Name: "upstream_addr", Value: "10.12.15.234:5000"},
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			line := []byte(tt.line)
+			t.Run("labels hints fast parse", func(t *testing.T) {
+				builder := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+				builder.Reset()
+				_, _ = tt.sHint.Process(line, builder)
+				require.Equal(t, tt.want, builder.Labels())
+			})
+		})
+	}
+}
+
 func Benchmark_Parser(b *testing.B) {
 	lbs := labels.Labels{
 		{Name: "cluster", Value: "qa-us-central1"},

@@ -1,5 +1,17 @@
 package logql
 
+import (
+	"context"
+	"strconv"
+
+	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/pkg/errors"
+)
+
 // optimizeSampleExpr Attempt to optimize the SampleExpr to another that will run faster but will produce the same result.
 func optimizeSampleExpr(expr SampleExpr) (SampleExpr, error) {
 	var skip bool
@@ -72,5 +84,118 @@ func removeLineformat(expr SampleExpr) {
 				matchers: rangeExpr.Left.Left.Matchers(),
 			}
 		}
+	})
+}
+
+// optimizeLogSelectorExpr Attempt to optimize the v to another that will run faster but will produce the same result.
+func optimizeLogSelectorExpr(ctx context.Context, expr LogSelectorExpr) (LogSelectorExpr, error) {
+	var err error
+	logqlExpr := expr.String()
+	defer func() { // 必须要先声明defer，否则不能捕获到panic异常
+		if panicErr := recover(); panicErr != nil {
+			err = errors.New("optimizeLogSelectorExpr error")
+		}
+		if sp := ot.SpanFromContext(ctx); sp != nil {
+			sp.SetTag("optimize", true)
+			sp.LogFields(otlog.String("expr", logqlExpr))
+			sp.LogFields(otlog.String("optimizeLogSelectorExpr", expr.String()))
+		}
+	}()
+	var skip bool
+	var hasParserTypeJSON bool
+	requiredJsonLabels := labels.Labels{}
+	// we skip sharding AST for now, it's not easy to clone them since they are not part of the language.
+	expr.Walk(func(e interface{}) {
+		switch e.(type) {
+		case *LabelParserExpr:
+			labelParserExpr := e.(*LabelParserExpr)
+			switch labelParserExpr.Op {
+			case OpParserTypeJSON:
+				hasParserTypeJSON = true
+			}
+		case *LineFmtExpr:
+			//TODO:@liguozhong handle "linefmt" case logql syntax,This case is more complicated, and the next PR will handle it.
+			skip = true
+		case *LabelFilterExpr:
+			labelFilterExpr := e.(*LabelFilterExpr)
+			stage, err := labelFilterExpr.Stage()
+			if err != nil {
+				return
+			}
+			switch stage.(type) {
+			case *log.DurationLabelFilter:
+				labelFilterer := stage.(*log.DurationLabelFilter)
+				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: labelFilterer.Value.String()})
+			case *log.StringLabelFilter:
+				labelFilterer := stage.(*log.StringLabelFilter)
+				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: labelFilterer.Value})
+			case *log.NumericLabelFilter:
+				labelFilterer := stage.(*log.NumericLabelFilter)
+				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: strconv.FormatFloat(labelFilterer.Value, 'E', -1, 64)})
+			case *log.BytesLabelFilter:
+				labelFilterer := stage.(*log.BytesLabelFilter)
+				requiredJsonLabels = append(requiredJsonLabels, labels.Label{Name: labelFilterer.Name, Value: strconv.FormatUint(labelFilterer.Value, 10)})
+			}
+		}
+
+	})
+	if skip {
+		return expr, nil
+	}
+	if !hasParserTypeJSON {
+		return expr, nil
+	}
+	if len(requiredJsonLabels) == 0 {
+		return expr, nil
+	}
+	// clone the expr.
+	q := expr.String()
+	expr, err = ParseLogSelector(q, true)
+	if err != nil {
+		return nil, err
+	}
+	replaceFastJsonParserAndAppendJsonParser(expr, requiredJsonLabels)
+	return expr, nil
+}
+
+// replaceFastJsonParserAndAppendJsonParser replace fastJsonParser and append JsonParser within a LogSelectorExpr.
+func replaceFastJsonParserAndAppendJsonParser(expr LogSelectorExpr, requiredJsonLabels labels.Labels) {
+	//1: replace fastJsonParser
+	expr.Walk(func(e interface{}) {
+		jsonExpr, ok := e.(*log.JSONParser)
+		if !ok {
+			return
+		}
+		if len(jsonExpr.RequiredJsonLabels) > 0 {
+			return
+		}
+		jsonExpr.SetRequiredJsonLabels(requiredJsonLabels)
+	})
+	//2: append simple JsonParser will produce the same result
+	expr.Walk(func(e interface{}) {
+		pipelineExpr, ok := e.(*PipelineExpr)
+		if !ok {
+			return
+		}
+		stages := pipelineExpr.MultiStages
+		var fastParseExpr *LabelParserExpr = nil
+		for _, stageExpr := range stages {
+			stage, err := stageExpr.Stage()
+			if err != nil {
+				return
+			}
+			_, ok := stage.(*log.JSONParser)
+			if !ok {
+				continue
+			}
+			lpe, ok := stageExpr.(*LabelParserExpr)
+			if !ok {
+				continue
+			}
+			if fastParseExpr == nil {
+				fastParseExpr = newLabelParserExpr(lpe.Op, lpe.Param)
+			}
+		}
+		pipelineExpr.MultiStages = append(pipelineExpr.MultiStages, fastParseExpr)
 	})
 }

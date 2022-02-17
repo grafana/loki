@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 const (
@@ -39,6 +40,8 @@ type JSONParser struct {
 	lbs *LabelsBuilder
 
 	keys internedStringSet
+
+	RequiredJsonLabels []string
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
@@ -49,9 +52,22 @@ func NewJSONParser() *JSONParser {
 	}
 }
 
+func (j *JSONParser) SetRequiredJsonLabels(fastParseRequiredJsonLabels labels.Labels) {
+	if fastParseRequiredJsonLabels != nil && fastParseRequiredJsonLabels.Len() > 0 {
+		requiredJsonLabels := make([]string, 0)
+		for _, label := range fastParseRequiredJsonLabels {
+			requiredJsonLabels = append(requiredJsonLabels, label.Name)
+		}
+		j.RequiredJsonLabels = requiredJsonLabels
+	}
+}
+
 func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
+	}
+	if len(j.RequiredJsonLabels) > 0 {
+		return j.fastParseJson(line, lbs)
 	}
 	it := jsoniter.ConfigFastest.BorrowIterator(line)
 	defer jsoniter.ConfigFastest.ReturnIterator(it)
@@ -163,6 +179,37 @@ func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field stri
 }
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
+
+func (j *JSONParser) fastParseJson(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	jsonLine := string(line)
+	for _, requiredKey := range j.RequiredJsonLabels {
+		key := "\"" + requiredKey + "\":"
+		beginIndex := strings.Index(jsonLine, key)
+		if beginIndex < 0 {
+			continue
+		}
+		subJsonLine := jsonLine[beginIndex:]
+		endIndex := strings.Index(subJsonLine, ",")
+		if endIndex < 0 {
+			endIndex = strings.Index(subJsonLine, "}")
+			if endIndex < 0 {
+				continue
+			}
+		}
+
+		value := jsonLine[beginIndex+len(key)+1 : beginIndex+endIndex]
+		valLen := len(value)
+		if valLen > 0 && strings.HasPrefix(value, "\"") {
+			// case:string
+			valStr := value[1 : valLen-1]
+			lbs.Set(requiredKey, valStr)
+		} else {
+			lbs.Set(requiredKey, value)
+		}
+	}
+
+	return line, true
+}
 
 func readValue(iter *jsoniter.Iterator) string {
 	switch iter.WhatIsNext() {

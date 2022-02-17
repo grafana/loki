@@ -43,11 +43,15 @@ type EngineOpts struct {
 	// MaxLookBackPeriod is the maximum amount of time to look back for log lines.
 	// only used for instant log queries.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
+
+	LogqlOptimizeEnable bool `yaml:"logql_optimize_enable"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", 5*time.Minute, "Timeout for query execution.")
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
+	f.BoolVar(&opts.LogqlOptimizeEnable, "logql-optimize-enablelog-config-reverse-order", false, "Experimental feature logql optimization")
+
 }
 
 func (opts *EngineOpts) applyDefault() {
@@ -65,6 +69,8 @@ type Engine struct {
 	timeout   time.Duration
 	evaluator Evaluator
 	limits    Limits
+
+	logqlOptimizeEnable bool
 }
 
 // NewEngine creates a new LogQL Engine.
@@ -74,10 +80,11 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 		logger = log.NewNopLogger()
 	}
 	return &Engine{
-		logger:    logger,
-		timeout:   opts.Timeout,
-		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
-		limits:    l,
+		logger:              logger,
+		timeout:             opts.Timeout,
+		evaluator:           NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
+		limits:              l,
+		logqlOptimizeEnable: opts.LogqlOptimizeEnable,
 	}
 }
 
@@ -91,8 +98,9 @@ func (ng *Engine) Query(params Params) Query {
 		parse: func(_ context.Context, query string) (Expr, error) {
 			return ParseExpr(query)
 		},
-		record: true,
-		limits: ng.limits,
+		record:              true,
+		limits:              ng.limits,
+		logqlOptimizeEnable: ng.logqlOptimizeEnable,
 	}
 }
 
@@ -103,13 +111,14 @@ type Query interface {
 }
 
 type query struct {
-	logger    log.Logger
-	timeout   time.Duration
-	params    Params
-	parse     func(context.Context, string) (Expr, error)
-	limits    Limits
-	evaluator Evaluator
-	record    bool
+	logger              log.Logger
+	timeout             time.Duration
+	params              Params
+	parse               func(context.Context, string) (Expr, error)
+	limits              Limits
+	evaluator           Evaluator
+	record              bool
+	logqlOptimizeEnable bool
 }
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
@@ -168,7 +177,16 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		return value, err
 
 	case LogSelectorExpr:
-		iter, err := q.evaluator.Iterator(ctx, e, q.params)
+		logSelectorExpr := e
+		if q.logqlOptimizeEnable {
+			optimizeLogSelectorExpr, optimizeErr := optimizeLogSelectorExpr(ctx, logSelectorExpr)
+			if optimizeErr != nil {
+				level.Warn(q.logger).Log("msg", "optimizeLogSelectorExpr", "logSelectorExpr", logSelectorExpr.String(), "err", optimizeErr)
+			} else {
+				logSelectorExpr = optimizeLogSelectorExpr
+			}
+		}
+		iter, err := q.evaluator.Iterator(ctx, logSelectorExpr, q.params)
 		if err != nil {
 			return nil, err
 		}

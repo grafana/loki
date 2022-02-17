@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -32,6 +33,33 @@ func Test_optimizeSampleExpr(t *testing.T) {
 			got, err := optimizeSampleExpr(e)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, got.String())
+		})
+	}
+}
+
+func Test_optimizeLogSelectorExpr(t *testing.T) {
+	tests := []struct {
+		name, logql, expected string
+	}{
+		// noop
+		{
+			"my slow json parser case ",
+			`{log_type="service_metrics",module="api_server",operation="InvokeFunction",accountID="212068714932184585",serviceName="taojimu-fc-prod",functionName="feedflow"}  | json   | durationMs > 2003`,
+			`{log_type="service_metrics", module="api_server", operation="InvokeFunction", accountID="212068714932184585", serviceName="taojimu-fc-prod", functionName="feedflow"} | json | durationMs>2003 | json`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.logql, func(t *testing.T) {
+			expr, err := ParseExpr(tt.logql)
+			require.NoError(t, err)
+
+			switch e := expr.(type) {
+			case LogSelectorExpr:
+				got, err := optimizeLogSelectorExpr(context.Background(), e)
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, got.String())
+			}
+
 		})
 	}
 }
