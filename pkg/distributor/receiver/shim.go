@@ -162,7 +162,7 @@ func (r *receiversShim) ConsumeLogs(ctx context.Context, ld pdata.Logs) error {
 	defer span.Finish()
 	req, err := parseLog(ld, r.format)
 	if err != nil {
-		r.logger.Log("msg", "pusher failed to parse log data", "err", err)
+		level.Error(r.logger).Log("msg", "pusher failed to parse log data", "err", err)
 	}
 
 	start := time.Now()
