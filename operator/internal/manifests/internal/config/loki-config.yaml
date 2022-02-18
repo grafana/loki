@@ -5,9 +5,44 @@ chunk_store_config:
     enable_fifocache: true
     fifocache:
       max_size_bytes: 500MB
+common:
+  storage:
+    {{ if .AzureObjectStorage }}
+    azure:
+      environment: {{ .AzureObjectStorage.Env }}
+      container_name: {{ .AzureObjectStorage.Container }}
+      account_name: {{ .AzureObjectStorage.AccountName }}
+      account_key: {{ .AzureObjectStorage.AccountKey }}
+    {{ else if .GCSObjectStorage }}
+    gcs:
+      bucket_name: {{ .GCSObjectStorage.Bucket }}
+    {{ else if .S3ObjectStorage }}
+    s3:
+      s3: {{ .S3ObjectStorage.Endpoint }}
+      bucketnames: {{ .S3ObjectStorage.Buckets }}
+      region: {{ .S3ObjectStorage.Region }}
+      access_key_id: {{ .S3ObjectStorage.AccessKeyID }}
+      secret_access_key: {{ .S3ObjectStorage.AccessKeySecret }}
+      s3forcepathstyle: true
+    {{ else if .SwiftObjectStorage }}
+    swift:
+      auth_url: {{ .SwiftObjectStorage.AuthURL }}
+      username: {{ .SwiftObjectStorage.Username }}
+      user_domain_name: {{ .SwiftObjectStorage.UserDomainName }}
+      user_domain_id: {{ .SwiftObjectStorage.UserDomainID }}
+      user_id: {{ .SwiftObjectStorage.UserID }}
+      password: {{ .SwiftObjectStorage.Password }}
+      domain_id: {{ .SwiftObjectStorage.DomainID }}
+      domain_name: {{ .SwiftObjectStorage.DomainName }}
+      project_id: {{ .SwiftObjectStorage.ProjectID }}
+      project_name: {{ .SwiftObjectStorage.ProjectName }}
+      project_domain_id: {{ .SwiftObjectStorage.ProjectDomainID }}
+      project_domain_name: {{ .SwiftObjectStorage.ProjectDomainName }}
+      region_name: {{ .SwiftObjectStorage.Region }}
+      container_name: {{ .SwiftObjectStorage.Container }}
+    {{ end }}
 compactor:
   compaction_interval: 2h
-  shared_store: s3
   working_directory: {{ .StorageDirectory }}/compactor
 frontend:
   tail_proxy_url: http://{{ .Querier.FQDN }}:{{ .Querier.Port }}
@@ -135,12 +170,5 @@ storage_config:
     shared_store: s3
     index_gateway_client:
       server_address: dns:///{{ .IndexGateway.FQDN }}:{{ .IndexGateway.Port }}
-  aws:
-    s3: {{ .ObjectStorage.Endpoint }}
-    bucketnames: {{ .ObjectStorage.Buckets }}
-    region: {{ .ObjectStorage.Region }}
-    access_key_id: {{ .ObjectStorage.AccessKeyID }}
-    secret_access_key: {{ .ObjectStorage.AccessKeySecret }}
-    s3forcepathstyle: true
 tracing:
   enabled: false

@@ -307,13 +307,39 @@ type LokiTemplateSpec struct {
 	IndexGateway *LokiComponentSpec `json:"indexGateway,omitempty"`
 }
 
+// ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
+//
+// +kubebuilder:validation:Enum=Azure;GCS;Swift;S3
+type ObjectStorageSecretType string
+
+const (
+	// ObjectStorageSecretAzure when using Azure for Loki storage
+	ObjectStorageSecretAzure ObjectStorageSecretType = "Azure"
+
+	// ObjectStorageSecretGCS when using GCS for Loki storage
+	ObjectStorageSecretGCS ObjectStorageSecretType = "GCS"
+
+	// ObjectStorageSecretS3 when using S3 for Loki storage
+	ObjectStorageSecretS3 ObjectStorageSecretType = "S3"
+
+	// ObjectStorageSecretSwift when using Swift for Loki storage
+	ObjectStorageSecretSwift ObjectStorageSecretType = "Swift"
+)
+
 // ObjectStorageSecretSpec is a secret reference containing name only, no namespace.
 type ObjectStorageSecretSpec struct {
+	// Type of object storage that needs to be configured
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:Azure","urn:alm:descriptor:com.tectonic.ui:select:GCS","urn:alm:descriptor:com.tectonic.ui:select:S3","urn:alm:descriptor:com.tectonic.ui:select:Swift"},displayName="Object Storage Secret Type"
+	Type ObjectStorageSecretType `json:"type"`
+
 	// Name of a secret in the namespace configured for object storage secrets.
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:Secret",displayName="Object Storage Secret"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:Secret",displayName="Object Storage Secret Name"
 	Name string `json:"name"`
 }
 

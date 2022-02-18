@@ -11,16 +11,19 @@ import (
 type Options struct {
 	Stack lokiv1beta1.LokiStackSpec
 
-	Namespace        string
-	Name             string
-	FrontendWorker   Address
-	GossipRing       Address
-	Querier          Address
-	IndexGateway     Address
-	StorageDirectory string
-	ObjectStorage    ObjectStorage
-	QueryParallelism Parallelism
-	WriteAheadLog    WriteAheadLog
+	Namespace          string
+	Name               string
+	FrontendWorker     Address
+	GossipRing         Address
+	Querier            Address
+	IndexGateway       Address
+	StorageDirectory   string
+	AzureObjectStorage *AzureObjectStorage
+	GCSObjectStorage   *GCSObjectStorage
+	S3ObjectStorage    *S3ObjectStorage
+	SwiftObjectStorage *SwiftObjectStorage
+	QueryParallelism   Parallelism
+	WriteAheadLog      WriteAheadLog
 }
 
 // Address FQDN and port for a k8s service.
@@ -31,13 +34,44 @@ type Address struct {
 	Port int
 }
 
-// ObjectStorage for storage config.
-type ObjectStorage struct {
+// AzureObjectStorage for Azure storage config
+type AzureObjectStorage struct {
+	Env         string
+	Container   string
+	AccountName string
+	AccountKey  string
+}
+
+// GCSObjectStorage for GCS storage config
+type GCSObjectStorage struct {
+	Bucket string
+}
+
+// S3ObjectStorage for S3 storage config
+type S3ObjectStorage struct {
 	Endpoint        string
 	Region          string
 	Buckets         string
 	AccessKeyID     string
 	AccessKeySecret string
+}
+
+// SwiftObjectStorage for Swift storage config
+type SwiftObjectStorage struct {
+	AuthURL           string
+	Username          string
+	UserDomainName    string
+	UserDomainID      string
+	UserID            string
+	Password          string
+	DomainID          string
+	DomainName        string
+	ProjectID         string
+	ProjectName       string
+	ProjectDomainID   string
+	ProjectDomainName string
+	Region            string
+	Container         string
 }
 
 // Parallelism for query processing parallelism

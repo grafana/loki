@@ -42,6 +42,49 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 
 // ConfigOptions converts Options to config.Options
 func ConfigOptions(opt Options) config.Options {
+	var azureStorage *config.AzureObjectStorage
+	var gcsStorage *config.GCSObjectStorage
+	var s3Storage *config.S3ObjectStorage
+	var swiftStorage *config.SwiftObjectStorage
+
+	if opt.ObjectStorage.Azure != nil {
+		azureStorage = &config.AzureObjectStorage{
+			Env:         opt.ObjectStorage.Azure.Env,
+			Container:   opt.ObjectStorage.Azure.Container,
+			AccountName: opt.ObjectStorage.Azure.AccountName,
+			AccountKey:  opt.ObjectStorage.Azure.AccountKey,
+		}
+	} else if opt.ObjectStorage.GCS != nil {
+		gcsStorage = &config.GCSObjectStorage{
+			Bucket: opt.ObjectStorage.GCS.Bucket,
+		}
+	} else if opt.ObjectStorage.S3 != nil {
+		s3Storage = &config.S3ObjectStorage{
+			Endpoint:        opt.ObjectStorage.S3.Endpoint,
+			Region:          opt.ObjectStorage.S3.Region,
+			Buckets:         opt.ObjectStorage.S3.Buckets,
+			AccessKeyID:     opt.ObjectStorage.S3.AccessKeyID,
+			AccessKeySecret: opt.ObjectStorage.S3.AccessKeySecret,
+		}
+	} else if opt.ObjectStorage.Swift != nil {
+		swiftStorage = &config.SwiftObjectStorage{
+			AuthURL:           opt.ObjectStorage.Swift.AuthURL,
+			Username:          opt.ObjectStorage.Swift.Username,
+			UserDomainName:    opt.ObjectStorage.Swift.UserDomainName,
+			UserDomainID:      opt.ObjectStorage.Swift.UserDomainID,
+			UserID:            opt.ObjectStorage.Swift.UserID,
+			Password:          opt.ObjectStorage.Swift.Password,
+			DomainID:          opt.ObjectStorage.Swift.DomainID,
+			DomainName:        opt.ObjectStorage.Swift.DomainName,
+			ProjectID:         opt.ObjectStorage.Swift.ProjectID,
+			ProjectName:       opt.ObjectStorage.Swift.ProjectName,
+			ProjectDomainID:   opt.ObjectStorage.Swift.ProjectDomainID,
+			ProjectDomainName: opt.ObjectStorage.Swift.ProjectDomainName,
+			Region:            opt.ObjectStorage.Swift.Region,
+			Container:         opt.ObjectStorage.Swift.Container,
+		}
+	}
+
 	return config.Options{
 		Stack:     opt.Stack,
 		Namespace: opt.Namespace,
@@ -62,14 +105,11 @@ func ConfigOptions(opt Options) config.Options {
 			FQDN: fqdn(NewIndexGatewayGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
 		},
-		StorageDirectory: dataDirectory,
-		ObjectStorage: config.ObjectStorage{
-			Endpoint:        opt.ObjectStorage.Endpoint,
-			Buckets:         opt.ObjectStorage.Buckets,
-			Region:          opt.ObjectStorage.Region,
-			AccessKeyID:     opt.ObjectStorage.AccessKeyID,
-			AccessKeySecret: opt.ObjectStorage.AccessKeySecret,
-		},
+		StorageDirectory:   dataDirectory,
+		AzureObjectStorage: azureStorage,
+		GCSObjectStorage:   gcsStorage,
+		S3ObjectStorage:    s3Storage,
+		SwiftObjectStorage: swiftStorage,
 		QueryParallelism: config.Parallelism{
 			QuerierCPULimits:      opt.ResourceRequirements.Querier.Requests.Cpu().Value(),
 			QueryFrontendReplicas: opt.Stack.Template.QueryFrontend.Replicas,
