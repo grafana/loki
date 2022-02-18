@@ -549,18 +549,26 @@ func binOpStepEvaluator(
 	}
 
 	var lse, rse StepEvaluator
-	g, ctx := errgroup.WithContext(ctx)
+
+	ctx, cancel := context.WithCancel(ctx)
+	g := errgroup.Group{}
 
 	// We have two non literal legs,
 	// load them in parallel
 	g.Go(func() error {
 		var err error
 		lse, err = ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
+		if err != nil {
+			cancel()
+		}
 		return err
 	})
 	g.Go(func() error {
 		var err error
 		rse, err = ev.StepEvaluator(ctx, ev, expr.RHS, q)
+		if err != nil {
+			cancel()
+		}
 		return err
 	})
 
@@ -652,7 +660,7 @@ func matchingSignature(sample promql.Sample, opts *BinOpOptions) uint64 {
 
 func vectorBinop(op string, opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) (promql.Vector, error) {
 	// handle one-to-one or many-to-one matching
-	//for one-to-many, swap
+	// for one-to-many, swap
 	if opts != nil && opts.VectorMatching.Card == CardOneToMany {
 		lhs, rhs = rhs, lhs
 		lsigs, rsigs = rsigs, lsigs
