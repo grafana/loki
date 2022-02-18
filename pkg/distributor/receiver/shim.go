@@ -67,7 +67,7 @@ func (r *receiversShim) Capabilities() consumer.Capabilities {
 
 // New
 // handler "/v1/logs" go.opentelemetry.io/collector/receiver/otlpreceiver/otlp.go:229
-func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat string, receiverDrainTimeout time.Duration, middleware Middleware, logLevel logging.Level) (services.Service, error) {
+func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat string, receiverDrainTimeout time.Duration, middleware Middleware) (services.Service, error) {
 	shim := &receiversShim{
 		pusher:       pusher,
 		format:       receiverFormat,
