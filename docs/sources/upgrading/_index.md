@@ -124,6 +124,23 @@ This creates a lot of series and we don't think this metric has enough value to 
 
 While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](https://grafana.com/docs/loki/latest/clients/promtail/stages/metrics/#counter)
 
+### Jsonnet
+
+#### Compactor config defined as command line args moved to yaml config
+
+Following 2 compactor configs that were defined as command line arguments in jsonnet are now moved to yaml config:
+
+```yaml
+# Directory where files can be downloaded for compaction.
+# CLI flag: -boltdb.shipper.compactor.working-directory
+[working_directory: <string>]
+
+# The shared store used for storing boltdb files.
+# Supported types: gcs, s3, azure, swift, filesystem.
+# CLI flag: -boltdb.shipper.compactor.shared-store
+[shared_store: <string>]
+```
+
 ## 2.4.0
 
 The following are important changes which should be reviewed and understood prior to upgrading Loki.
