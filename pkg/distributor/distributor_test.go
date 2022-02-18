@@ -23,7 +23,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -349,10 +348,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client, factory
 			return ingesters[addr], nil
 		}
 	}
-	level := logging.Level{}
-	err = level.Set("debug")
-	require.NoError(t, err)
-	d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, receiver.FakeTenantMiddleware(), level, nil)
+	d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, receiver.FakeTenantMiddleware(), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 

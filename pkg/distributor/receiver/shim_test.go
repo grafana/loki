@@ -27,26 +27,35 @@ func TestParseEntry(t *testing.T) {
 	now := time.Now()
 	pLog.SetTimestamp(pdata.NewTimestampFromTime(now))
 
-	entry, err := parseEntry(pLog, "json")
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		format   string
+		expexted logproto.Entry
+	}{
+		{
+			"json",
+			logproto.Entry{
+				Timestamp: now,
+				Line:      `{"severity_number":1,"severity_text":"WARN LEVEL","name":"testName","body":"","flags":31,"trace_id":"01020304000000000000000000000000","span_id":"0102000000000000"}`,
+			},
+		},
+		{
+			"logfmt",
+			logproto.Entry{
+				Timestamp: now,
+				Line:      `body= flags=31 name=testName severity_number=1 severity_text="WARN LEVEL" span_id=0102000000000000 trace_id=01020304000000000000000000000000`,
+			},
+		},
 	}
-	expexted := logproto.Entry{
-		Timestamp: now,
-		Line:      `{"severity_number":1,"severity_text":"WARN LEVEL","name":"testName","body":"","flags":31,"trace_id":"01020304000000000000000000000000","span_id":"0102000000000000"}`,
-	}
-	require.Equal(t, expexted.Line, (*entry).Line)
-	require.Equal(t, expexted.Timestamp.UnixMilli(), (*entry).Timestamp.UnixMilli())
 
-	entry, err = parseEntry(pLog, "logfmt")
-	if err != nil {
-		t.Fatal(err)
+	for _, tc := range tests {
+		tc := tc // capture range variable
+		t.Run(tc.format, func(t *testing.T) {
+			entry, err := parseEntry(pLog, tc.format)
+			require.NoError(t, err)
+			require.Equal(t, tc.expexted.Line, (*entry).Line)
+			require.Equal(t, tc.expexted.Timestamp.UnixMilli(), (*entry).Timestamp.UnixMilli())
+		})
 	}
-	expextedLogfmt := logproto.Entry{
-		Timestamp: now,
-		Line:      `body= flags=31 name=testName severity_number=1 severity_text="WARN LEVEL" span_id=0102000000000000 trace_id=01020304000000000000000000000000`,
-	}
-	require.Equal(t, expextedLogfmt.Line, (*entry).Line)
 
 }
 
@@ -133,8 +142,8 @@ func TestOtlpPush(t *testing.T) {
 	level := logging.Level{}
 	err := level.Set("debug")
 	require.NoError(t, err)
-	morkPusher := &morkPusher{}
-	service, err := New(defaultReceivers, morkPusher, "json", time.Second, FakeTenantMiddleware(), level)
+	morkPusher := &mockPusher{}
+	service, err := New(defaultReceivers, morkPusher, "json", time.Second, FakeTenantMiddleware())
 	require.NoError(t, err)
 	require.NoError(t, service.StartAsync(context.Background()))
 	require.NoError(t, service.AwaitRunning(context.Background()))
@@ -196,7 +205,7 @@ type mockPusher struct {
 	Data []*logproto.PushRequest
 }
 
-func (m *morkPusher) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+func (m *mockPusher) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	m.Data = append(m.Data, req)
 	return nil, nil
 }

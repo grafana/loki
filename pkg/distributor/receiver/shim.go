@@ -16,7 +16,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 	prom_client "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/logging"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configunmarshaler"
@@ -119,7 +118,7 @@ func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat 
 }
 func (r *receiversShim) starting(ctx context.Context) error {
 	for _, receiver := range r.receivers {
-		r.logger.Log("msg", "receiver start")
+		level.Debug(r.logger).Log("msg", "receiver start")
 		err := receiver.Start(ctx, r)
 		if err != nil {
 			return fmt.Errorf("error starting receiver %w", err)
@@ -137,7 +136,7 @@ func (r *receiversShim) stopping(_ error) error {
 	// sleep for 30 seconds to here to all pending requests to finish.
 	time.Sleep(r.drainTimeout)
 
-	ctx, cancelFn := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancelFn := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancelFn()
 
 	errs := make([]error, 0)

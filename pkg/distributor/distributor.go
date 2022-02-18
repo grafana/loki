@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -73,25 +72,35 @@ var defaultReceivers = map[string]interface{}{
 // Config for a Distributor.
 type Config struct {
 	// Distributors ring
-	DistributorRing      RingConfig             `yaml:"ring,omitempty"`
-	Receivers            map[string]interface{} `yaml:"receivers"`
-	ReceiverEnable       bool                   `yaml:"receiver_enable"`
-	ReceiverFormat       string                 `yaml:"receiver_format"`
-	ReceiverDrainTimeout time.Duration          `yaml:"receiver_drain_timeout"`
+	DistributorRing RingConfig `yaml:"ring,omitempty"`
+	OTLP            OTLPConfig `yaml:otlp`
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
+}
+
+type OTLPConfig struct {
+	Receivers            map[string]interface{} `yaml:"receivers"`
+	ReceiverEnable       bool                   `yaml:"enable_receivers"`
+	ReceiverFormat       string                 `yaml:"receiver_format"`
+	ReceiverDrainTimeout time.Duration          `yaml:"receiver_drain_timeout"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
-	fs.BoolVar(&cfg.ReceiverEnable, "distributor.receiver-enable", false, "set to true to enable support receiving logs in Loki using OpenTelemetry OTLP")
-	fs.StringVar(&cfg.ReceiverFormat, "distributor.receiver-format", "json", "json or logfmt")
-	fs.DurationVar(&cfg.ReceiverDrainTimeout, "distributor.receiver-drain-timeout", 2*time.Second, "distributor receiver should drain before terminating")
+	cfg.OTLP.RegisterFlags(fs)
 }
+
+// RegisterFlags registers distributor-related flags.
+func (cfg *OTLPConfig) RegisterFlags(fs *flag.FlagSet) {
+	fs.BoolVar(&cfg.ReceiverEnable, "distributor.otlp.enable-receivers", false, "set to true to enable support receiving logs in Loki using OpenTelemetry OTLP")
+	fs.StringVar(&cfg.ReceiverFormat, "distributor.otlp.receiver-format", "json", "json or logfmt")
+	fs.DurationVar(&cfg.ReceiverDrainTimeout, "distributor.otlp.receiver-drain-timeout", 2*time.Second, "distributor receiver should drain before terminating")
+}
+
 func (cfg *Config) Validate() error {
-	if cfg.ReceiverFormat != receiver.LogFormatJSON && cfg.ReceiverFormat != receiver.LogFormatLogfmt {
-		return fmt.Errorf("unsupported format type: %s", cfg.ReceiverFormat)
+	if cfg.OTLP.ReceiverFormat != receiver.LogFormatJSON && cfg.OTLP.ReceiverFormat != receiver.LogFormatLogfmt {
+		return fmt.Errorf("unsupported format type: %s", cfg.OTLP.ReceiverFormat)
 	}
 	return nil
 }
@@ -129,7 +138,7 @@ type Distributor struct {
 }
 
 // New a distributor creates.
-func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, middleware receiver.Middleware, level logging.Level, registerer prometheus.Registerer) (*Distributor, error) {
+func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, middleware receiver.Middleware, registerer prometheus.Registerer) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
 		factory = func(addr string) (ring_client.PoolClient, error) {
@@ -213,12 +222,12 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 
 	servs = append(servs, d.pool)
-	if cfg.ReceiverEnable {
-		cfgReceivers := cfg.Receivers
+	if cfg.OTLP.ReceiverEnable {
+		cfgReceivers := cfg.OTLP.Receivers
 		if len(cfgReceivers) == 0 {
 			cfgReceivers = defaultReceivers
 		}
-		receivers, err := receiver.New(cfgReceivers, d, cfg.ReceiverFormat, cfg.ReceiverDrainTimeout, middleware, level)
+		receivers, err := receiver.New(cfgReceivers, d, cfg.OTLP.ReceiverFormat, cfg.OTLP.ReceiverDrainTimeout, middleware)
 		if err != nil {
 			return nil, err
 		}
