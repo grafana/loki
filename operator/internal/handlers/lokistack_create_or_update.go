@@ -61,7 +61,7 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		return kverrors.Wrap(err, "failed to lookup lokistack s3 secret", "name", key)
 	}
 
-	storage, err := secrets.Extract(&s3secret, stack.Spec.Storage.Secret.Type)
+	storage, err := secrets.ExtractStorageSecret(&s3secret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
 		return status.SetDegradedCondition(ctx, k, req,
 			"Invalid object storage secret contents",

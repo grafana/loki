@@ -39,12 +39,14 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.featureFlags.EnableTLSServiceMonitorConfig, "with-tls-service-monitors", false, "Enable TLS endpoint for service monitors.")
 	f.BoolVar(&c.featureFlags.EnableGateway, "with-lokistack-gateway", false, "Enables the manifest creation for the entire lokistack-gateway.")
 	// Object storage options
-	c.objectStorage = manifests.ObjectStorage{}
-	f.StringVar(&c.objectStorage.Endpoint, "object-storage.endpoint", "", "The S3 endpoint location.")
-	f.StringVar(&c.objectStorage.Buckets, "object-storage.buckets", "", "A comma-separated list of S3 buckets.")
-	f.StringVar(&c.objectStorage.Region, "object-storage.region", "", "An S3 region.")
-	f.StringVar(&c.objectStorage.AccessKeyID, "object-storage.access-key-id", "", "The access key id for S3.")
-	f.StringVar(&c.objectStorage.AccessKeySecret, "object-storage.access-key-secret", "", "The access key secret for S3.")
+	c.objectStorage = manifests.ObjectStorage{
+		S3: &manifests.S3Config{},
+	}
+	f.StringVar(&c.objectStorage.S3.Endpoint, "object-storage.endpoint", "", "The S3 endpoint location.")
+	f.StringVar(&c.objectStorage.S3.Buckets, "object-storage.buckets", "", "A comma-separated list of S3 buckets.")
+	f.StringVar(&c.objectStorage.S3.Region, "object-storage.region", "", "An S3 region.")
+	f.StringVar(&c.objectStorage.S3.AccessKeyID, "object-storage.access-key-id", "", "The access key id for S3.")
+	f.StringVar(&c.objectStorage.S3.AccessKeySecret, "object-storage.access-key-secret", "", "The access key secret for S3.")
 	// Input and output file/dir options
 	f.StringVar(&c.crFilepath, "custom-resource.path", "", "Path to a custom resource YAML file.")
 	f.StringVar(&c.writeToDir, "output.write-dir", "", "write each file to the specified directory.")
@@ -64,19 +66,19 @@ func (c *config) validateFlags() {
 		os.Exit(1)
 	}
 	// Validate manifests.objectStorage
-	if cfg.objectStorage.Endpoint == "" {
+	if cfg.objectStorage.S3.Endpoint == "" {
 		log.Info("-object.storage.endpoint flag is required")
 		os.Exit(1)
 	}
-	if cfg.objectStorage.Buckets == "" {
+	if cfg.objectStorage.S3.Buckets == "" {
 		log.Info("-object.storage.buckets flag is required")
 		os.Exit(1)
 	}
-	if cfg.objectStorage.AccessKeyID == "" {
+	if cfg.objectStorage.S3.AccessKeyID == "" {
 		log.Info("-object.storage.access.key.id flag is required")
 		os.Exit(1)
 	}
-	if cfg.objectStorage.AccessKeySecret == "" {
+	if cfg.objectStorage.S3.AccessKeySecret == "" {
 		log.Info("-object.storage.access.key.secret flag is required")
 		os.Exit(1)
 	}

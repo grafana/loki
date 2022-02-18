@@ -8,12 +8,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// Extract reads a k8s secret into a manifest object storage struct if valid.
-func Extract(s *corev1.Secret, t lokiv1beta1.ObjectStorageSecretType) (*manifests.ObjectStorage, error) {
+// ExtractStorageSecret reads a k8s secret into a manifest object storage struct if valid.
+func ExtractStorageSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretType) (*manifests.ObjectStorage, error) {
 	var err error
 	storage := manifests.ObjectStorage{}
 
-	switch t {
+	switch secretType {
 	case lokiv1beta1.ObjectStorageSecretAzure:
 		storage.Azure, err = extractAzureConfigSecret(s)
 	case lokiv1beta1.ObjectStorageSecretGCS:
@@ -23,7 +23,7 @@ func Extract(s *corev1.Secret, t lokiv1beta1.ObjectStorageSecretType) (*manifest
 	case lokiv1beta1.ObjectStorageSecretSwift:
 		storage.Swift, err = extractSwiftConfigSecret(s)
 	default:
-		return nil, kverrors.New("unknown secret type", "type", t)
+		return nil, kverrors.New("unknown secret type", "type", secretType)
 	}
 
 	if err != nil {

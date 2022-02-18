@@ -16,9 +16,17 @@ chunk_store_config:
     enable_fifocache: true
     fifocache:
       max_size_bytes: 500MB
+common:
+  storage:
+    s3:
+      s3: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: test
+      secret_access_key: test123
+      s3forcepathstyle: true
 compactor:
   compaction_interval: 2h
-  shared_store: s3
   working_directory: /tmp/loki/compactor
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
@@ -146,13 +154,6 @@ storage_config:
     shared_store: s3
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
-  aws:
-    s3: http://test.default.svc.cluster.local.:9000
-    bucketnames: loki
-    region: us-east
-    access_key_id: test
-    secret_access_key: test123
-    s3forcepathstyle: true
 tracing:
   enabled: false
 `
@@ -201,7 +202,7 @@ overrides:
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		ObjectStorage: ObjectStorage{
+		S3ObjectStorage: &S3ObjectStorage{
 			Endpoint:        "http://test.default.svc.cluster.local.:9000",
 			Region:          "us-east",
 			Buckets:         "loki",
@@ -232,9 +233,17 @@ chunk_store_config:
     enable_fifocache: true
     fifocache:
       max_size_bytes: 500MB
+common:
+  storage:
+    s3:
+      s3: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: test
+      secret_access_key: test123
+      s3forcepathstyle: true
 compactor:
   compaction_interval: 2h
-  shared_store: s3
   working_directory: /tmp/loki/compactor
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
@@ -362,13 +371,6 @@ storage_config:
     shared_store: s3
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
-  aws:
-    s3: http://test.default.svc.cluster.local.:9000
-    bucketnames: loki
-    region: us-east
-    access_key_id: test
-    secret_access_key: test123
-    s3forcepathstyle: true
 tracing:
   enabled: false
 `
@@ -434,7 +436,7 @@ overrides:
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		ObjectStorage: ObjectStorage{
+		S3ObjectStorage: &S3ObjectStorage{
 			Endpoint:        "http://test.default.svc.cluster.local.:9000",
 			Region:          "us-east",
 			Buckets:         "loki",
@@ -495,7 +497,7 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		ObjectStorage: ObjectStorage{
+		S3ObjectStorage: &S3ObjectStorage{
 			Endpoint:        "http://test.default.svc.cluster.local.:9000",
 			Region:          "us-east",
 			Buckets:         "loki",
