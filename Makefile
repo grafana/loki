@@ -5,7 +5,7 @@
 .PHONY: fluentd-image, fluentd-push, fluentd-test
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
-.PHONY: benchmark-store, drone, check-mod
+.PHONY: benchmark-store, drone, check-drone-drift, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
@@ -42,7 +42,9 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.19.0
+
+# ensure you run `make drone` after changing this
+BUILD_IMAGE_VERSION := 0.20.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -588,6 +590,9 @@ else
 	drone lint .drone/drone.yml --trusted
 	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN"
 endif
+
+check-drone-drift:
+	./tools/check-drone-drift.sh main
 
 
 # support go modules

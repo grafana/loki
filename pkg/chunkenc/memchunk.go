@@ -1015,6 +1015,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 		if stream, ok = streams[lhash]; !ok {
 			stream = &logproto.Stream{
 				Labels: parsedLbs.String(),
+				Hash:   lhash,
 			}
 			streams[lhash] = stream
 		}
@@ -1062,8 +1063,9 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 		lhash := parsedLabels.Hash()
 		if s, found = series[lhash]; !found {
 			s = &logproto.Series{
-				Labels:  parsedLabels.String(),
-				Samples: SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+				Labels:     parsedLabels.String(),
+				Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+				StreamHash: lhash,
 			}
 			series[lhash] = s
 		}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
@@ -621,7 +622,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.overrides, util_log.Logger)
+	engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.overrides, log.With(util_log.Logger, "component", "ruler"))
 
 	t.ruler, err = ruler.NewRuler(
 		t.Cfg.Ruler,

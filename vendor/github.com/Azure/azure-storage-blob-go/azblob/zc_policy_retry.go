@@ -181,25 +181,25 @@ func NewRetryPolicyFactory(o RetryOptions) pipeline.Factory {
 				}
 
 				// Set the server-side timeout query parameter "timeout=[seconds]"
-				timeout := int32(o.TryTimeout.Seconds()) // Max seconds per try
-				if deadline, ok := ctx.Deadline(); ok {  // If user's ctx has a deadline, make the timeout the smaller of the two
-					t := int32(deadline.Sub(time.Now()).Seconds()) // Duration from now until user's ctx reaches its deadline
-					logf("MaxTryTimeout=%d secs, TimeTilDeadline=%d sec\n", timeout, t)
+				timeout := o.TryTimeout                 // Max time per try
+				if deadline, ok := ctx.Deadline(); ok { // If user's ctx has a deadline, make the timeout the smaller of the two
+					t := deadline.Sub(time.Now()) // Duration from now until user's ctx reaches its deadline
+					logf("MaxTryTimeout=%d secs, TimeTilDeadline=%d sec\n", int32(timeout.Seconds()), int32(t.Seconds()))
 					if t < timeout {
 						timeout = t
 					}
 					if timeout < 0 {
 						timeout = 0 // If timeout ever goes negative, set it to zero; this happen while debugging
 					}
-					logf("TryTimeout adjusted to=%d sec\n", timeout)
+					logf("TryTimeout adjusted to=%d sec\n", int32(timeout.Seconds()))
 				}
 				q := requestCopy.Request.URL.Query()
-				q.Set("timeout", strconv.Itoa(int(timeout+1))) // Add 1 to "round up"
+				q.Set("timeout", strconv.Itoa(int(timeout.Seconds()+1))) // Add 1 to "round up"
 				requestCopy.Request.URL.RawQuery = q.Encode()
 				logf("Url=%s\n", requestCopy.Request.URL.String())
 
 				// Set the time for this particular retry operation and then Do the operation.
-				tryCtx, tryCancel := context.WithTimeout(ctx, time.Second*time.Duration(timeout))
+				tryCtx, tryCancel := context.WithTimeout(ctx, timeout)
 				//requestCopy.Body = &deadlineExceededReadCloser{r: requestCopy.Request.Body}
 				response, err = next.Do(tryCtx, requestCopy) // Make the request
 				/*err = improveDeadlineExceeded(err)

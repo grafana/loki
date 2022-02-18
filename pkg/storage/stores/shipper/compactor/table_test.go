@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
@@ -269,10 +270,10 @@ func TestTable_Compaction(t *testing.T) {
 	}
 }
 
-type TableMarkerFunc func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error)
+type TableMarkerFunc func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error)
 
-func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
-	return t(ctx, tableName, db)
+func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
+	return t(ctx, tableName, userID, db, logger)
 }
 
 type IntervalMayHaveExpiredChunksFunc func(interval model.Interval, userID string) bool
@@ -309,7 +310,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 					require.True(t, os.IsNotExist(err))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 					return true, true, nil
 				}),
 			},
@@ -321,7 +322,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					})
 					compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 					return false, true, nil
 				}),
 			},
@@ -333,7 +334,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					})
 					compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 					return false, false, nil
 				}),
 			},
@@ -554,7 +555,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, false, nil
 			}),
 			expectedIndexSetState: indexSetState{
@@ -571,7 +572,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, false, nil
 			}),
 			compactedDBMtime: time.Now().Add(-recreateCompactedDBOlderThan / 2),
@@ -585,7 +586,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, true, nil
 			}),
 			expectedIndexSetState: indexSetState{
@@ -599,7 +600,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 				require.True(t, os.IsNotExist(err))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return true, true, nil
 			}),
 			expectedIndexSetState: indexSetState{
@@ -616,7 +617,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, false, nil
 			}),
 			compactedDBMtime:          time.Now().Add(-(recreateCompactedDBOlderThan + time.Minute)),

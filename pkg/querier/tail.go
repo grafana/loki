@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -172,7 +173,7 @@ func (t *Tailer) checkIngesterConnections() error {
 
 	newConnections, err := t.tailDisconnectedIngesters(connectedIngestersAddr)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect with one or more ingester(s) during tailing: %w", err)
 	}
 
 	if len(newConnections) != 0 {

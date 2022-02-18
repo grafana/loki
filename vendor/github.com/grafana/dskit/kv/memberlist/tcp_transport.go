@@ -51,7 +51,7 @@ type TCPTransportConfig struct {
 	PacketWriteTimeout time.Duration `yaml:"packet_write_timeout" category:"advanced"`
 
 	// Transport logs lot of messages at debug level, so it deserves an extra flag for turning it on
-	TransportDebug bool `yaml:"-"`
+	TransportDebug bool `yaml:"-" category:"advanced"`
 
 	// Where to put custom metrics. nil = don't register.
 	MetricsRegisterer prometheus.Registerer `yaml:"-"`
