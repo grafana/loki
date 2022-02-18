@@ -95,6 +95,73 @@ func (fn StageFunc) RequiredLabelNames() []string {
 	return fn.requiredLabels
 }
 
+// NewFilteringPipeline creates a pipelines that always runs f before p.
+// if f matches, return false and don't run p. Used for query filtering
+func NewFilteringPipeline(fm []*labels.Matcher, f, p Pipeline) Pipeline {
+	return &filteringPipeline{
+		filterMatchers: fm,
+		filter:         f,
+		pipeline:       p,
+	}
+}
+
+type filteringPipeline struct {
+	filter         Pipeline
+	pipeline       Pipeline
+	filterMatchers []*labels.Matcher
+}
+
+func (p *filteringPipeline) ForStream(labels labels.Labels) StreamPipeline {
+	return &filteringStreamPipeline{
+		filterMatchesStream: p.filterMatches(labels),
+		filter:              p.filter.ForStream(labels),
+		pipeline:            p.pipeline.ForStream(labels),
+	}
+}
+
+func (p *filteringPipeline) filterMatches(labels labels.Labels) bool {
+	for _, m := range p.filterMatchers {
+		for _, l := range labels {
+			if m.Name == l.Name && m.Matches(l.Value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+type filteringStreamPipeline struct {
+	filter              StreamPipeline
+	pipeline            StreamPipeline
+	filterMatchesStream bool
+}
+
+func (sp *filteringStreamPipeline) BaseLabels() LabelsResult {
+	return sp.pipeline.BaseLabels()
+}
+
+func (sp *filteringStreamPipeline) Process(line []byte) ([]byte, LabelsResult, bool) {
+	if sp.filterMatchesStream {
+		_, _, skip := sp.filter.Process(line)
+		if skip { //When the filter matches, don't run the next step
+			return nil, nil, false
+		}
+	}
+
+	return sp.pipeline.Process(line)
+}
+
+func (sp *filteringStreamPipeline) ProcessString(line string) (string, LabelsResult, bool) {
+	if sp.filterMatchesStream {
+		_, _, skip := sp.filter.ProcessString(line)
+		if skip { //When the filter matches, don't run the next step
+			return "", nil, false
+		}
+	}
+
+	return sp.pipeline.ProcessString(line)
+}
+
 // pipeline is a combinations of multiple stages.
 // It can also be reduced into a single stage for convenience.
 type pipeline struct {

@@ -7,6 +7,8 @@ import (
 	"sort"
 	"time"
 
+	logql_log "github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -351,6 +353,10 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
+	if len(lazyChunks) == 0 {
+		return iter.NoopIterator, nil
+	}
+
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -361,15 +367,44 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
-	if len(lazyChunks) == 0 {
-		return iter.NoopIterator, nil
-	}
-	var chunkFilterer ChunkFilterer
+	pipeline, chunkFilterer, err := setupDelete(req, pipeline)
 	if s.chunkFilterer != nil {
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
 	return newLogBatchIterator(ctx, s.schemaCfg.SchemaConfig, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
+}
+
+func setupDelete(req logql.SelectLogParams, p logql_log.Pipeline) (logql_log.Pipeline, ChunkFilterer, error) {
+	if req.Delete == "" {
+		return p, nil, nil
+	}
+
+	deleteReq := logql.SelectLogParams{
+		QueryRequest: &logproto.QueryRequest{
+			Selector: req.Delete,
+			Start:    req.Start,
+			End:      req.End,
+		},
+	}
+
+	expr, err := deleteReq.LogSelector()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// MatcherExprs don't have a pipeline to filter on
+	if _, ok := expr.(*logql.MatchersExpr); ok {
+		cf := NewMatcherChunkFilterer(expr.Matchers())
+		return p, cf, nil
+	}
+
+	deletePipeline, err := expr.Pipeline()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return logql_log.NewFilteringPipeline(expr.Matchers(), deletePipeline, p), nil, nil
 }
 
 func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {

@@ -107,8 +107,14 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 		return nil, err
 	}
 
-	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
+	// TODO: This comes from some dynamic source and also there's probably multiple
+	//params.Delete = `{label2="baz"} |= "e"`
+	//params.Delete = `{label2="baz"}`
+	//params.Delete = `{label2="baz"} |= "e"`
+	//params.Delete = `{label2=~"ba.*"} |= "e"`
+	params.Delete = `{label2=~".*r"} |= "e"`
 
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 	iters := []iter.EntryIterator{}
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		// Make a copy of the request before modifying

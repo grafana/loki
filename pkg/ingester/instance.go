@@ -7,6 +7,8 @@ import (
 	"sync"
 	"syscall"
 
+	logql_log "github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -321,6 +323,11 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
+	pipeline, chunkFilter, err := setupDelete(req, pipeline)
+	if i.chunkFilter != nil {
+		chunkFilter = i.chunkFilter.ForRequest(ctx)
+	}
+
 	stats := stats.FromContext(ctx)
 	var iters []iter.EntryIterator
 
@@ -333,6 +340,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		ctx,
 		expr.Matchers(),
 		shard,
+		chunkFilter,
 		func(stream *stream) error {
 			iter, err := stream.Iterator(ctx, stats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
 			if err != nil {
@@ -347,6 +355,38 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 	}
 
 	return iter.NewSortEntryIterator(iters, req.Direction), nil
+}
+
+func setupDelete(req logql.SelectLogParams, p logql_log.Pipeline) (logql_log.Pipeline, storage.ChunkFilterer, error) {
+	if req.Delete == "" {
+		return p, nil, nil
+	}
+
+	deleteReq := logql.SelectLogParams{
+		QueryRequest: &logproto.QueryRequest{
+			Selector: req.Delete,
+			Start:    req.Start,
+			End:      req.End,
+		},
+	}
+
+	expr, err := deleteReq.LogSelector()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// MatcherExprs don't have a pipeline to filter on
+	if _, ok := expr.(*logql.MatchersExpr); ok {
+		cf := storage.NewMatcherChunkFilterer(expr.Matchers())
+		return p, cf, nil
+	}
+
+	deletePipeline, err := expr.Pipeline()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return logql_log.NewFilteringPipeline(expr.Matchers(), deletePipeline, p), nil, nil
 }
 
 func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -374,10 +414,16 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		shard = &shards[0]
 	}
 
+	var chunkFilter storage.ChunkFilterer
+	if i.chunkFilter != nil {
+		chunkFilter = i.chunkFilter.ForRequest(ctx)
+	}
+
 	err = i.forMatchingStreams(
 		ctx,
 		expr.Selector().Matchers(),
 		shard,
+		chunkFilter,
 		func(stream *stream) error {
 			iter, err := stream.SampleIterator(ctx, stats, req.Start, req.End, extractor.ForStream(stream.labels))
 			if err != nil {
@@ -427,8 +473,13 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 		}, nil
 	}
 
+	var chunkFilter storage.ChunkFilterer
+	if i.chunkFilter != nil {
+		chunkFilter = i.chunkFilter.ForRequest(ctx)
+	}
+
 	labels := make([]string, 0)
-	err := i.forMatchingStreams(ctx, matchers, nil, func(s *stream) error {
+	err := i.forMatchingStreams(ctx, matchers, nil, chunkFilter, func(s *stream) error {
 		for _, label := range s.labels {
 			if req.Values && label.Name == req.Name {
 				labels = append(labels, label.Value)
@@ -463,8 +514,13 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 
 	// If no matchers were supplied we include all streams.
 	if len(groups) == 0 {
+		var chunkFilter storage.ChunkFilterer
+		if i.chunkFilter != nil {
+			chunkFilter = i.chunkFilter.ForRequest(ctx)
+		}
+
 		series = make([]logproto.SeriesIdentifier, 0, i.streams.Len())
-		err = i.forMatchingStreams(ctx, nil, shard, func(stream *stream) error {
+		err = i.forMatchingStreams(ctx, nil, shard, chunkFilter, func(stream *stream) error {
 			// consider the stream only if it overlaps the request time range
 			if shouldConsiderStream(stream, req) {
 				series = append(series, logproto.SeriesIdentifier{
@@ -477,9 +533,13 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 			return nil, err
 		}
 	} else {
+		var chunkFilter storage.ChunkFilterer
+		if i.chunkFilter != nil {
+			chunkFilter = i.chunkFilter.ForRequest(ctx)
+		}
 		dedupedSeries := make(map[uint64]logproto.SeriesIdentifier)
 		for _, matchers := range groups {
-			err = i.forMatchingStreams(ctx, matchers, shard, func(stream *stream) error {
+			err = i.forMatchingStreams(ctx, matchers, shard, chunkFilter, func(stream *stream) error {
 				// consider the stream only if it overlaps the request time range
 				if shouldConsiderStream(stream, req) {
 					// exit early when this stream was added by an earlier group
@@ -541,16 +601,13 @@ func (i *instance) forMatchingStreams(
 	ctx context.Context,
 	matchers []*labels.Matcher,
 	shards *astmapper.ShardAnnotation,
+	chunkFilter storage.ChunkFilterer,
 	fn func(*stream) error,
 ) error {
 	filters, matchers := util.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(matchers, shards)
 	if err != nil {
 		return err
-	}
-	var chunkFilter storage.ChunkFilterer
-	if i.chunkFilter != nil {
-		chunkFilter = i.chunkFilter.ForRequest(ctx)
 	}
 outer:
 	for _, streamID := range ids {
@@ -577,7 +634,12 @@ outer:
 }
 
 func (i *instance) addNewTailer(ctx context.Context, t *tailer) error {
-	if err := i.forMatchingStreams(ctx, t.matchers, nil, func(s *stream) error {
+	var chunkFilter storage.ChunkFilterer
+	if i.chunkFilter != nil {
+		chunkFilter = i.chunkFilter.ForRequest(ctx)
+	}
+
+	if err := i.forMatchingStreams(ctx, t.matchers, nil, chunkFilter, func(s *stream) error {
 		s.addTailer(t)
 		return nil
 	}); err != nil {

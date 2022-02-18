@@ -590,6 +590,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			End:       end,
 			Limit:     req.Limit,
 			Shards:    req.Shards,
+			Delete:    req.Delete,
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
