@@ -7,12 +7,13 @@ import (
 	"log"
 	"strconv"
 
+	"go.etcd.io/bbolt"
+	"gopkg.in/yaml.v2"
+
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
-	"go.etcd.io/bbolt"
-	"gopkg.in/yaml.v2"
 )
 
 var (
@@ -94,5 +95,7 @@ func main() {
 	}
 
 	log.Println("writing index")
-	builder.Build(context.Background(), *dest)
+	if err := builder.Build(context.Background(), *dest); err != nil {
+		panic(err)
+	}
 }

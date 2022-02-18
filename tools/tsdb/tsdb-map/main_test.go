@@ -6,10 +6,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/grafana/loki/pkg/storage/tsdb"
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/tsdb"
+	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
 func TestExtractChecksum(t *testing.T) {
