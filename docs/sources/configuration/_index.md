@@ -971,7 +971,7 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.
 # CLI flag: -querier.worker-match-max-concurrent
-[match_max_concurrent: <boolean> | default = false]
+[match_max_concurrent: <boolean> | default = true]
 
 # How often to query the frontend_address DNS to resolve frontend addresses.
 # Also used to determine how often to poll the scheduler-ring for addresses if configured.
