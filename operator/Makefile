@@ -120,12 +120,12 @@ test: deps generate go-generate lint lint-prom manifests ## Run tests
 test: $(GO_FILES)
 	go test ./... -coverprofile cover.out
 
-.PHONY: prom-template-to-test
-prom-template-to-test: ## Run prom-template-to-test
-	go run ./internal/manifests/internal/alerts/test/prom-template-to-test.go
+.PHONY: generate-prom-testdata
+generate-prom-testdata: ## Run generate-prom-testdata
+	go run ./internal/manifests/internal/alerts/test/generate-prom-testdata.go
 
 .PHONY: test-unit-prom
-test-unit-prom: $(PROMTOOL) prom-template-to-test ## Run prometheus unit tests
+test-unit-prom: $(PROMTOOL) generate-prom-testdata ## Run prometheus unit tests
 	@$(PROMTOOL) test rules ./internal/manifests/internal/alerts/test/generated/test-*.yaml
 
 scorecard: generate go-generate bundle ## Run scorecard test
@@ -135,7 +135,7 @@ lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 	$(GOLANGCI_LINT) run ./...
 
 .PHONY: lint-prom
-lint-prom: $(PROMTOOL) prom-template-to-test ## Run promtool check against recording rules and alerts.
+lint-prom: $(PROMTOOL) generate-prom-testdata ## Run promtool check against recording rules and alerts.
 	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/test/generated/rules-*.yaml
 	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/test/generated/alerts-*.yaml
 

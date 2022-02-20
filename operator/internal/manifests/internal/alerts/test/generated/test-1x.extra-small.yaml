@@ -1,5 +1,5 @@
 # This file was generated from test.yaml.tmpl
-# Please run "make prom-template-to-test" to regenerate it.
+# Please run "make generate-prom-testdata" to regenerate it.
 
 rule_files:
   - ./rules-1x.extra-small.yaml
