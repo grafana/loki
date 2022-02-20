@@ -254,7 +254,7 @@ func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
 	for i := 0; i < consumed; i++ {
 		_ = l.Next()
 	}
-	return time.Duration(duration), true
+	return duration, true
 }
 
 func isDurationRune(r rune) bool {
