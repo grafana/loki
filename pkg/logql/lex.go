@@ -240,10 +240,15 @@ func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
 		return 0, false
 	}
 	// we've found more characters before a whitespace or the end
+	durationString := sb.String()
 	var duration time.Duration
-	prometheusDuration, err := model.ParseDuration(sb.String())
+	// Try to parse promql style durations first, to ensure that we support the same duration
+	// units as promql
+	prometheusDuration, err := model.ParseDuration(durationString)
 	if err != nil {
-		duration, err = time.ParseDuration(sb.String())
+		// Fall back to standard library's time.ParseDuration if a promql style
+		// duration couldn't be parsed.
+		duration, err = time.ParseDuration(durationString)
 		if err != nil {
 			return 0, false
 		}
