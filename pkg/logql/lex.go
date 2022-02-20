@@ -241,25 +241,36 @@ func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
 	}
 	// we've found more characters before a whitespace or the end
 	durationString := sb.String()
-	var duration time.Duration
-	// Try to parse promql style durations first, to ensure that we support the same duration
-	// units as promql
-	prometheusDuration, err := model.ParseDuration(durationString)
+	duration, err := parseDuration(durationString)
 	if err != nil {
-		// Fall back to standard library's time.ParseDuration if a promql style
-		// duration couldn't be parsed.
-		duration, err = time.ParseDuration(durationString)
-		if err != nil {
-			return 0, false
-		}
-	} else {
-		duration = time.Duration(prometheusDuration)
+		return 0, false
 	}
+
 	// we need to consume the scanner, now that we know this is a duration.
 	for i := 0; i < consumed; i++ {
 		_ = l.Next()
 	}
+
 	return duration, true
+}
+
+func parseDuration(d string) (time.Duration, error) {
+	var duration time.Duration
+	// Try to parse promql style durations first, to ensure that we support the same duration
+	// units as promql
+	prometheusDuration, err := model.ParseDuration(d)
+	if err != nil {
+		// Fall back to standard library's time.ParseDuration if a promql style
+		// duration couldn't be parsed.
+		duration, err = time.ParseDuration(d)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		duration = time.Duration(prometheusDuration)
+	}
+
+	return duration, nil
 }
 
 func isDurationRune(r rune) bool {
