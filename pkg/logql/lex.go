@@ -240,21 +240,27 @@ func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
 		return 0, false
 	}
 	// we've found more characters before a whitespace or the end
-	d, err := time.ParseDuration(sb.String())
+	var duration time.Duration
+	prometheusDuration, err := model.ParseDuration(sb.String())
 	if err != nil {
-		return 0, false
+		duration, err = time.ParseDuration(sb.String())
+		if err != nil {
+			return 0, false
+		}
+	} else {
+		duration = time.Duration(prometheusDuration)
 	}
 	// we need to consume the scanner, now that we know this is a duration.
 	for i := 0; i < consumed; i++ {
 		_ = l.Next()
 	}
-	return d, true
+	return time.Duration(duration), true
 }
 
 func isDurationRune(r rune) bool {
 	// "ns", "us" (or "µs"), "ms", "s", "m", "h".
 	switch r {
-	case 'n', 's', 'u', 'm', 'h', 'µ':
+	case 'n', 's', 'u', 'm', 'h', 'µ', 'y', 'w', 'd':
 		return true
 	default:
 		return false
