@@ -45,7 +45,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.Enabled, "reporting.enabled", true, "Enabled anonymous usage reporting.")
+	f.BoolVar(&cfg.Enabled, "reporting.enabled", true, "Enable anonymous usage reporting.")
 }
 
 type Reporter struct {
