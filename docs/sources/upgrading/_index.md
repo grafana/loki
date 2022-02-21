@@ -88,7 +88,7 @@ Meanwhile, the legacy format is a string in the following format:
 
 The body of HTTP error responses from API endpoints changed from plain text to
 JSON. The `Content-Type` header was previously already set incorrectly to
-`application/json`. Therefore returning JSON fixes this incosistency
+`application/json`. Therefore returning JSON fixes this inconsistency.
 
 The response body has the following schema:
 
@@ -102,11 +102,12 @@ The response body has the following schema:
 
 #### Changes to default configuration values
 
-* `parallelise_shardable_queries` under the Query Range config now defaults to `true`, it was `false`.
-* `split_queries_by_interval` under the Query Range config now defaults to `30m`, it was `0s`.
-* `max_chunk_age` for the Ingester now defaults to `2h` instead of `1h`.
-* `query_ingesters_within` under the Queier config now defaults to `3h`, it was previously set to 0, meaning always query ingesters.
-* `max_concurrent` under the Querier config now defaults to `10` instead of `20`, since is should be the same as the Frontend Worker's `parallelism` setting (which is `10`).
+* `parallelise_shardable_queries` under the `query_range` config now defaults to `true`.
+* `split_queries_by_interval` under the `limits_config` config now defaults to `30m`, it was `0s`.
+* `max_chunk_age` in the `ingester` config now defaults to `2h` previously it was `1h`.
+* `query_ingesters_within` under the `querier` config now defaults to `3h`, previously it was `0s`. Any query (or subquery) that has an end time more than `3h` ago will not be sent to the ingesters, this saves work on the ingesters for data they normally don't contain. If you regularly write old data to Loki you may need to return this value to `0s` to always query ingesters. 
+* `max_concurrent` under the `querier` config now defaults to `10` instead of `20`.
+* `match_max_concurrent` under the `frontend_worker` config now defaults to true, this supersedes the `parallelism` setting which can now be removed from your config. Controlling query parallelism of a single process can now be done with the `querier` `max_concurrent` setting.
 
 ### Promtail
 
