@@ -12,23 +12,6 @@
 
 SHELL = /usr/bin/env bash
 
-# Empty value = no -mod parameter is used.
-# If not empty, GOMOD is passed to -mod= parameter.
-# In Go 1.13, "readonly" and "vendor" are accepted.
-# In Go 1.14, "readonly", "vendor" and "mod" values are accepted.
-# If no value is specified, defaults to "vendor".
-#
-# Can be used from command line by using "GOMOD= make" (empty = no -mod parameter), or "GOMOD=vendor make" (default).
-
-GOMOD ?= vendor
-ifeq ($(strip $(GOMOD)),) # Is empty?
-	MOD_FLAG=
-	GOLANGCI_ARG=
-else
-	MOD_FLAG=-mod=$(GOMOD)
-	GOLANGCI_ARG=--modules-download-mode=$(GOMOD)
-endif
-
 GOTEST ?= go test
 
 #############
@@ -62,13 +45,13 @@ DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -
 # Build flags
 VPREFIX := github.com/grafana/loki/pkg/util/build
 GO_LDFLAGS   := -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-GO_FLAGS     := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
-DYN_GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
+GO_FLAGS     := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo
+DYN_GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
 # the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
 # Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
-DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
-DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
+DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo
+DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
 # Docker mount flag, ignored on native docker host. see (https://docs.docker.com/docker-for-mac/osxfs-caching/#delegated)
 MOUNT_FLAGS := :delegated
 
@@ -217,7 +200,7 @@ promtail-clean-assets:
 # Rule to generate promtail static assets file
 $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	@echo ">> writing assets"
-	GOFLAGS="$(MOD_FLAG)" GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
+	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
 
 clients/cmd/promtail/promtail:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
@@ -266,7 +249,7 @@ publish: packages
 # To run this efficiently on your workstation, run this from the root dir:
 # docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.17.0 lint
 lint:
-	GO111MODULE=on GOGC=10 golangci-lint run -v $(GOLANGCI_ARG)
+	GO111MODULE=on GOGC=10 golangci-lint run -v
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
 ########
@@ -274,7 +257,7 @@ lint:
 ########
 
 test: all
-	GOGC=10 $(GOTEST) -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./...
+	GOGC=10 $(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
 
 #########
 # Clean #
@@ -295,7 +278,7 @@ clean:
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
 	rm -rf cmd/migrate/migrate
-	go clean $(MOD_FLAG) ./...
+	go clean ./...
 
 #########
 # YACCs #
@@ -569,8 +552,8 @@ endif
 ########
 
 benchmark-store:
-	go run $(MOD_FLAG) ./pkg/storage/hack/main.go
-	$(GOTEST) $(MOD_FLAG) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
+	go run ./pkg/storage/hack/main.go
+	$(GOTEST) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
 
 # regenerate drone yaml
 drone:
