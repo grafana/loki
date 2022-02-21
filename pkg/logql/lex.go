@@ -274,9 +274,9 @@ func parseDuration(d string) (time.Duration, error) {
 }
 
 func isDurationRune(r rune) bool {
-	// "ns", "us" (or "µs"), "ms", "s", "m", "h".
+	// "ns", "us" (or "µs"), "ms", "s", "m", "h", "d", "w", "y".
 	switch r {
-	case 'n', 's', 'u', 'm', 'h', 'µ', 'y', 'w', 'd':
+	case 'n', 'u', 'µ', 'm', 's', 'h', 'd', 'w', 'y':
 		return true
 	default:
 		return false
