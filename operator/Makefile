@@ -12,10 +12,10 @@ default: all
 # Updates this value when a new version of the product should include this operator and its bundle.
 CLUSTER_LOGGING_VERSION ?= 5.1.preview.1
 
-# CLUSTER_LOGGING_NS
-# defines the default namespace of the OpenShift Cluster Logging product.
+# LOKI_OPERATOR_NS
+# defines the default namespace of the Loki Operator in OpenShift.
 # Loki Operator will be installed in this namespace.
-CLUSTER_LOGGING_NS ?= openshift-operators-redhat
+LOKI_OPERATOR_NS ?= openshift-operators-redhat
 
 # VERSION
 # defines the project version for the bundle.
@@ -179,15 +179,15 @@ olm-deploy:  ## Deploy the operator bundle and the operator via OLM into an Kube
 	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
 else
 olm-deploy: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
-	kubectl create ns $(CLUSTER_LOGGING_NS)
-	kubectl label ns/$(CLUSTER_LOGGING_NS) openshift.io/cluster-monitoring=true --overwrite
-	$(OPERATOR_SDK) run bundle -n $(CLUSTER_LOGGING_NS) --install-mode OwnNamespace $(BUNDLE_IMG)
+	kubectl create ns $(LOKI_OPERATOR_NS)
+	kubectl label ns/$(LOKI_OPERATOR_NS) openshift.io/cluster-monitoring=true --overwrite
+	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode OwnNamespace $(BUNDLE_IMG)
 endif
 
 .PHONY: olm-undeploy
 olm-undeploy: $(OPERATOR_SDK) ## Cleanup deployments of the operator bundle and the operator via OLM on an OpenShift cluster selected via KUBECONFIG.
 	$(OPERATOR_SDK) cleanup loki-operator
-	kubectl delete ns $(CLUSTER_LOGGING_NS)
+	kubectl delete ns $(LOKI_OPERATOR_NS)
 
 .PHONY: deploy-size-calculator
 ifeq ($(findstring openshift-logging,$(CALCULATOR_IMG)),openshift-logging)
