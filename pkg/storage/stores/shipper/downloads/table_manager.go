@@ -185,12 +185,15 @@ func (tm *TableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
+	start := time.Now()
 	var err error
 
 	defer func() {
 		status := statusSuccess
 		if err != nil {
 			status = statusFailure
+		} else {
+			tm.metrics.tablesSyncOperationDurationSeconds.Set(time.Since(start).Seconds())
 		}
 
 		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
