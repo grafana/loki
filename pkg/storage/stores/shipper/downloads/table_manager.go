@@ -192,11 +192,10 @@ func (tm *TableManager) syncTables(ctx context.Context) error {
 		status := statusSuccess
 		if err != nil {
 			status = statusFailure
-		} else {
-			tm.metrics.tablesSyncOperationDurationSeconds.Set(time.Since(start).Seconds())
 		}
 
 		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
+		tm.metrics.tablesDownloadOperationDurationSeconds.Set(time.Since(start).Seconds())
 	}()
 
 	level.Info(util_log.Logger).Log("msg", "syncing tables")
