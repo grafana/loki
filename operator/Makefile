@@ -14,7 +14,8 @@ CLUSTER_LOGGING_VERSION ?= 5.1.preview.1
 
 # CLUSTER_LOGGING_NS
 # defines the default namespace of the OpenShift Cluster Logging product.
-CLUSTER_LOGGING_NS ?= openshift-logging
+# Loki Operator will be installed in this namespace.
+CLUSTER_LOGGING_NS ?= openshift-operators-redhat
 
 # VERSION
 # defines the project version for the bundle.

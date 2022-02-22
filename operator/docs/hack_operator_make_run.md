@@ -130,16 +130,14 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
 * Now you need to create a storage secret for the operator. This can be done using:
 
   ```console
-  make olm-deploy-example-storage-secret
+  ./hack/deploy-aws-storage-secret.sh <BUCKET_NAME>
   ```
 
-  OR
+  This secret will be available in `openshift-logging` namespace. You can check the `hack/deploy-aws-storage-secret.sh` file to check the content of the secret. By default, the script will pull credential information using the `aws` cli. However, these values can be overwritten. For example:
 
   ```console
-  ./hack/deploy-example-secret.sh openshift-logging
+  REGION=us-west-1 ./hack/deploy-aws-storage-secret.sh <BUCKET_NAME>
   ```
-
-  This secret will be available in openshift-logging namespace. You can check the `hack/deploy-example-secret.sh` file to check the content of the secret.
 
 * Once the object storage secret is created, you can now create a LokiStack instance:
 
