@@ -1007,7 +1007,7 @@ pool_config:
   # to disappear. Set this to a value to allow time for a secondary
   # health check to recover the missing client.
   # CLI flag: -ingester.client.healthcheck-timeout
-  [remote_timeout: <duration>]
+  [remote_timeout: <duration> | default = 1s]
 
 # The remote request timeout on the client side.
 # CLI flag: -ingester.client.timeout
