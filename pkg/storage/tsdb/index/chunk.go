@@ -56,7 +56,7 @@ func (c ChunkMetas) finalize() ChunkMetas {
 	// minimize reslicing costs due to duplicates
 	for i := 1; i < len(c); i++ {
 		x := c[i]
-		if x.Checksum == prior.Checksum {
+		if x.MinTime == prior.MinTime && x.MaxTime == prior.MaxTime && x.Checksum == prior.Checksum {
 			res = append(res, c[lastDuplicate+1:i]...)
 			lastDuplicate = i
 		}
