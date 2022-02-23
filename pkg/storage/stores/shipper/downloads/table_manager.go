@@ -185,6 +185,7 @@ func (tm *TableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
+	start := time.Now()
 	var err error
 
 	defer func() {
@@ -194,6 +195,7 @@ func (tm *TableManager) syncTables(ctx context.Context) error {
 		}
 
 		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
+		tm.metrics.tablesDownloadOperationDurationSeconds.Set(time.Since(start).Seconds())
 	}()
 
 	level.Info(util_log.Logger).Log("msg", "syncing tables")

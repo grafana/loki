@@ -94,7 +94,7 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, db *bb
 			return nil
 		}
 
-		chunkIt, err := newChunkIndexIterator(bucket, schemaCfg)
+		chunkIt, err := NewChunkIndexIterator(bucket, schemaCfg)
 		if err != nil {
 			return fmt.Errorf("failed to create chunk index iterator: %w", err)
 		}

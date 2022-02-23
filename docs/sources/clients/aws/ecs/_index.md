@@ -134,8 +134,8 @@ The `log_router` container image is the [Fluent bit Loki docker image][fluentbit
     "logConfiguration": {
         "logDriver": "awsfirelens",
         "options": {
-            "Name": "loki",
-            "Url": "https://<userid>:<grafancloud apikey>@logs-prod-us-central1.grafana.net/loki/api/v1/push",
+            "Name": "grafana-loki",
+            "Url": "https://<userid>:<grafancloud apikey>@<grafanacloud host>/loki/api/v1/push",
             "Labels": "{job=\"firelens\"}",
             "RemoveKeys": "container_id,ecs_task_arn",
             "LabelKeys": "container_name,ecs_task_definition,source,ecs_cluster",

@@ -215,7 +215,6 @@ func (hb *unorderedHeadBlock) Iterator(
 	maxt int64,
 	pipeline log.StreamPipeline,
 ) iter.EntryIterator {
-
 	// We are doing a copy everytime, this is because b.entries could change completely,
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
 	// but the tradeoff is that queries to near-realtime data would be much lower than
@@ -238,6 +237,7 @@ func (hb *unorderedHeadBlock) Iterator(
 			if stream, ok = streams[lhash]; !ok {
 				stream = &logproto.Stream{
 					Labels: parsedLbs.String(),
+					Hash:   lhash,
 				}
 				streams[lhash] = stream
 			}
@@ -267,7 +267,6 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	maxt int64,
 	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
-
 	series := map[uint64]*logproto.Series{}
 
 	_ = hb.forEntries(
@@ -285,8 +284,9 @@ func (hb *unorderedHeadBlock) SampleIterator(
 			lhash := parsedLabels.Hash()
 			if s, found = series[lhash]; !found {
 				s = &logproto.Series{
-					Labels:  parsedLabels.String(),
-					Samples: SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
+					Labels:     parsedLabels.String(),
+					Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
+					StreamHash: parsedLabels.Hash(),
 				}
 				series[lhash] = s
 			}

@@ -77,6 +77,7 @@ steps:
   - make BUILD_IN_CONTAINER=false loki
   depends_on:
   - clone
+  - check-generated-files
   image: grafana/loki-build-image:0.20.0
   name: loki
 - commands:
@@ -1064,6 +1065,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: ca18b0336abbfa2af076bcf301c13450ce1a8cdad68b0d7c4a5a3e6fbb6a3140
+hmac: 6d010031b5c18947ac4710106d06f119e77d715ddc687983227700254b27e6d8
 
 ...

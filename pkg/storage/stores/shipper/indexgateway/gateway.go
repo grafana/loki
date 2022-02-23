@@ -1,6 +1,8 @@
 package indexgateway
 
 import (
+	"sync"
+
 	"github.com/grafana/dskit/services"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -28,7 +30,7 @@ func NewIndexGateway(shipperIndexClient *shipper.Shipper) *gateway {
 	return g
 }
 
-func (g gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
+func (g *gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
 	var outerErr error
 	var innerErr error
 
@@ -42,8 +44,17 @@ func (g gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server in
 			ValueEqual:       query.ValueEqual,
 		})
 	}
+
+	sendBatchMtx := sync.Mutex{}
 	outerErr = g.shipper.QueryPages(server.Context(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		innerErr = g.sendBatch(server, query, batch)
+		innerErr = buildResponses(query, batch, func(response *indexgatewaypb.QueryIndexResponse) error {
+			// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
+			sendBatchMtx.Lock()
+			defer sendBatchMtx.Unlock()
+
+			return server.Send(response)
+		})
+
 		if innerErr != nil {
 			return false
 		}
@@ -58,13 +69,13 @@ func (g gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server in
 	return outerErr
 }
 
-func (g *gateway) sendBatch(server indexgatewaypb.IndexGateway_QueryIndexServer, query chunk.IndexQuery, batch chunk.ReadBatch) error {
+func buildResponses(query chunk.IndexQuery, batch chunk.ReadBatch, callback func(*indexgatewaypb.QueryIndexResponse) error) error {
 	itr := batch.Iterator()
 	var resp []*indexgatewaypb.Row
 
 	for itr.Next() {
 		if len(resp) == maxIndexEntriesPerResponse {
-			err := server.Send(&indexgatewaypb.QueryIndexResponse{
+			err := callback(&indexgatewaypb.QueryIndexResponse{
 				QueryKey: util.QueryKey(query),
 				Rows:     resp,
 			})
@@ -81,7 +92,7 @@ func (g *gateway) sendBatch(server indexgatewaypb.IndexGateway_QueryIndexServer,
 	}
 
 	if len(resp) != 0 {
-		err := server.Send(&indexgatewaypb.QueryIndexResponse{
+		err := callback(&indexgatewaypb.QueryIndexResponse{
 			QueryKey: util.QueryKey(query),
 			Rows:     resp,
 		})

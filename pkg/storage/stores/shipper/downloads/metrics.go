@@ -35,7 +35,8 @@ type metrics struct {
 	// metrics for measuring performance of downloading of files per period initially i.e for the first time
 	tablesDownloadDurationSeconds *downloadTableDurationMetric
 
-	tablesSyncOperationTotal *prometheus.CounterVec
+	tablesSyncOperationTotal               *prometheus.CounterVec
+	tablesDownloadOperationDurationSeconds prometheus.Gauge
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -52,6 +53,11 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "tables_sync_operation_total",
 			Help:      "Total number of tables sync operations done by status",
 		}, []string{"status"}),
+		tablesDownloadOperationDurationSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "tables_download_operation_duration_seconds",
+			Help:      "Time (in seconds) spent in downloading updated files for all the tables",
+		}),
 	}
 
 	return m
