@@ -141,7 +141,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.ClusterRole{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred)
 
-	if r.Flags.EnableServiceMonitors {
+	if r.Flags.EnablePrometheusAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
 	}
 	if r.Flags.EnableGatewayRoute {

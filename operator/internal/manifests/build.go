@@ -69,7 +69,9 @@ func BuildAll(opts Options) ([]client.Object, error) {
 
 	if opts.Flags.EnableServiceMonitors {
 		res = append(res, BuildServiceMonitors(opts)...)
+	}
 
+	if opts.Flags.EnablePrometheusAlerts {
 		prometheusRuleObjs, err := BuildPrometheusRule(opts)
 		if err != nil {
 			return nil, err

@@ -6,6 +6,8 @@ import (
 	"net/http/pprof"
 	"os"
 
+	"github.com/ViaQ/logerr/kverrors"
+
 	"github.com/ViaQ/logerr/log"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -46,6 +48,7 @@ func main() {
 		enableTLSServiceMonitors bool
 		enableGateway            bool
 		enableGatewayRoute       bool
+		enablePrometheusAlerts   bool
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -62,10 +65,16 @@ func main() {
 		"Enables the manifest creation for the entire lokistack-gateway.")
 	flag.BoolVar(&enableGatewayRoute, "with-lokistack-gateway-route", false,
 		"Enables the usage of Route for the lokistack-gateway instead of Ingress (OCP Only!)")
+	flag.BoolVar(&enablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts")
 	flag.Parse()
 
 	log.Init("loki-operator")
 	ctrl.SetLogger(log.GetLogger())
+
+	if enablePrometheusAlerts && !enableServiceMonitors {
+		log.Error(kverrors.New("-with-prometheus-alerts flag requires -with-service-monitors"), "")
+		os.Exit(1)
+	}
 
 	if enableServiceMonitors || enableTLSServiceMonitors {
 		utilruntime.Must(monitoringv1.AddToScheme(scheme))
@@ -98,6 +107,7 @@ func main() {
 		EnableTLSServiceMonitorConfig:   enableTLSServiceMonitors,
 		EnableGateway:                   enableGateway,
 		EnableGatewayRoute:              enableGatewayRoute,
+		EnablePrometheusAlerts:          enablePrometheusAlerts,
 	}
 
 	if err = (&controllers.LokiStackReconciler{
