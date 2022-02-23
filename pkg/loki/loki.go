@@ -120,6 +120,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.CompactorConfig.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.UsageReport.RegisterFlags(f)
+	c.IndexGateway.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -511,7 +512,7 @@ func (t *Loki) setupModuleManager() error {
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
 		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
-		IndexGateway:             {Server, Overrides, UsageReport},
+		IndexGateway:             {Server, Overrides, UsageReport, MemberlistKV},
 		IngesterQuerier:          {Ring},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},

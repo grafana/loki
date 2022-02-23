@@ -128,6 +128,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Ruler.Ring.InstanceAddr = r.Common.InstanceAddr
 		r.QueryScheduler.SchedulerRing.InstanceAddr = r.Common.InstanceAddr
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
+		r.IndexGateway.IndexGatewayRing.InstanceAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -137,6 +138,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Ruler.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 		r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
+		r.IndexGateway.IndexGatewayRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -148,7 +150,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 // 2. If no explicit ring config is set, use the common ring configured if provided.
 // 3. If no common ring was provided, use the memberlist config if provided.
 // 4. If no common ring or memberlist were provided, use the ingester's ring configuration.
-
+//
 // When using the ingester or common ring config, the loopback interface will be appended to the end of
 // the list of default interface names
 func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
@@ -171,13 +173,13 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 	}
 }
 
-//applyConfigToRings will reuse a given RingConfig everywhere else we have a ring configured.
-//`mergeWithExisting` will be true when applying the common config, false when applying the ingester
-//config. This decision was made since the ingester ring copying behavior is likely to be less intuitive,
-//and was added as a stop-gap to prevent the new rings in 2.4 from breaking existing configs before 2.4 that only had an ingester
-//ring defined. When `mergeWithExisting` is false, we will not apply any of the ring config to a ring that has
-//any deviations from defaults. When mergeWithExisting is true, the ring config is overlaid on top of any specified
-//derivations, with the derivations taking precedence.
+// applyConfigToRings will reuse a given RingConfig everywhere else we have a ring configured.
+// `mergeWithExisting` will be true when applying the common config, false when applying the ingester
+// config. This decision was made since the ingester ring copying behavior is likely to be less intuitive,
+// and was added as a stop-gap to prevent the new rings in 2.4 from breaking existing configs before 2.4 that only had an ingester
+// ring defined. When `mergeWithExisting` is false, we will not apply any of the ring config to a ring that has
+// any deviations from defaults. When mergeWithExisting is true, the ring config is overlaid on top of any specified
+// derivations, with the derivations taking precedence.
 func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWithExisting bool) {
 	// Ingester - mergeWithExisting is false when applying the ingester config, and we only want to
 	// change ingester ring values when applying the common config, so there's no need for the DeepEqual
@@ -245,6 +247,19 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.CompactorConfig.CompactorRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.CompactorConfig.CompactorRing.KVStore = rc.KVStore
 	}
+
+	// IndexGateway
+	if mergeWithExisting || reflect.DeepEqual(r.IndexGateway.IndexGatewayRing, defaults.IndexGateway.IndexGatewayRing) {
+		r.IndexGateway.IndexGatewayRing.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IndexGateway.IndexGatewayRing.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IndexGateway.IndexGatewayRing.InstancePort = rc.InstancePort
+		r.IndexGateway.IndexGatewayRing.InstanceAddr = rc.InstanceAddr
+		r.IndexGateway.IndexGatewayRing.InstanceID = rc.InstanceID
+		r.IndexGateway.IndexGatewayRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.IndexGateway.IndexGatewayRing.InstanceZone = rc.InstanceZone
+		r.IndexGateway.IndexGatewayRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IndexGateway.IndexGatewayRing.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -268,6 +283,12 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.QueryScheduler.SchedulerRing.TokensFilePath = f
+
+	f, err = tokensFile(cfg, "indexgateway.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.IndexGateway.IndexGatewayRing.TokensFilePath = f
 
 	return nil
 }
@@ -305,8 +326,10 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 	}
 }
 
-// appendLoopbackInterface will append the loopback interface to the interface names used for the ingester ring,
-// v2 frontend, and common ring config unless an explicit list of names was provided.
+// appendLoopbackInterface will append the loopback interface to the interface names used by the Loki components
+// (ex: rings, v2 frontend, etc).
+//
+// The append won't occur for an specific component if an explicit list of net interface names is provided for that component.
 func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	loopbackIface, err := loki_net.LoopbackInterfaceName()
 	if err != nil {
@@ -340,6 +363,10 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.Ruler.Ring.InstanceInterfaceNames, defaults.Ruler.Ring.InstanceInterfaceNames) {
 		cfg.Ruler.Ring.InstanceInterfaceNames = append(cfg.Ruler.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.IndexGateway.IndexGatewayRing.InstanceInterfaceNames, defaults.IndexGateway.IndexGatewayRing.InstanceInterfaceNames) {
+		cfg.IndexGateway.IndexGatewayRing.InstanceInterfaceNames = append(cfg.IndexGateway.IndexGatewayRing.InstanceInterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -352,6 +379,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.Ruler.Ring.KVStore.Store = memberlistStr
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
+	r.IndexGateway.IndexGatewayRing.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")

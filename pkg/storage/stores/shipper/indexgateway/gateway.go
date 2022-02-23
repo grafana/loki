@@ -51,12 +51,12 @@ type Gateway struct {
 }
 
 type Config struct {
-	useIndexGatewayRing bool                `yaml:"use_index_gateway_ring"`       // TODO: maybe just `yaml:"useRing"`?
-	IndexGatewayRing    lokiutil.RingConfig `yaml:"index_gateway_ring,omitempty"` // TODO: maybe just `yaml:"ring"`?
+	UseIndexGatewayRing bool                `yaml:"use_index_gateway_ring,omitempty"` // TODO: maybe just `yaml:"useRing"`?
+	IndexGatewayRing    lokiutil.RingConfig `yaml:"index_gateway_ring,omitempty"`     // TODO: maybe just `yaml:"ring"`?
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.useIndexGatewayRing, "index-gateway.use-index-gateway-ring", false, "Set to true to enable per-tenant hashing to Index Gateways via a ring. This helps with horizontal scalability by reducing startup time required when provisioning a new Index Gateway")
+	f.BoolVar(&cfg.UseIndexGatewayRing, "index-gateway.use-index-gateway-ring", false, "Set to true to enable per-tenant hashing to Index Gateways via a ring. This helps with horizontal scalability by reducing startup time required when provisioning a new Index Gateway")
 	cfg.IndexGatewayRing.RegisterFlagsWithPrefix("index-gateway.", "collectors/", f)
 }
 
