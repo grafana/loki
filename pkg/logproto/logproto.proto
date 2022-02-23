@@ -98,6 +98,7 @@ message Sample {
 }
 
 message LegacySample {
+  option deprecated = true;
   double value       = 1;
   int64 timestamp_ms = 2;
 }
@@ -155,6 +156,7 @@ message LabelPair {
 }
 
 message LegacyLabelPair {
+  option deprecated = true;
   bytes name = 1;
   bytes value = 2;
 }
