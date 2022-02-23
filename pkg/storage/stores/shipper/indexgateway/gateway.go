@@ -2,11 +2,14 @@ package indexgateway
 
 import (
 	"context"
-	"sync"
-
 	"flag"
+	"fmt"
+	"net/http"
+	"sync"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -18,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	lokiutil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -27,6 +31,7 @@ const (
 	ringNameForServer              = "index-gateway"
 	ringNumTokens                  = 1
 	ringReplicationFactor          = 3
+	ringCheckPeriod                = 3 * time.Second
 )
 
 type IndexQuerier interface {
@@ -60,6 +65,76 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.IndexGatewayRing.RegisterFlagsWithPrefix("index-gateway.", "collectors/", f)
 }
 
+func (g *Gateway) starting(ctx context.Context) (err error) {
+	// In case this function will return error we want to unregister the instance
+	// from the ring. We do it ensuring dependencies are gracefully stopped if they
+	// were already started.
+	defer func() {
+		if err == nil || g.subservices == nil {
+			return
+		}
+
+		level.Error(util_log.Logger).Log("msg", "index gateway error:", "err", err)
+
+		if stopErr := services.StopManagerAndAwaitStopped(context.Background(), g.subservices); stopErr != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to gracefully stop index gateway dependencies", "err", stopErr)
+		}
+	}()
+
+	if err := services.StartManagerAndAwaitHealthy(ctx, g.subservices); err != nil {
+		return errors.Wrap(err, "unable to start index gateway subservices")
+	}
+
+	// The BasicLifecycler does not automatically move state to ACTIVE such that any additional work that
+	// someone wants to do can be done before becoming ACTIVE. For the index gateway we don't currently
+	// have any additional work so we can become ACTIVE right away.
+	// Wait until the ring client detected this instance in the JOINING state to
+	// make sure that when we'll run the initial sync we already know the tokens
+	// assigned to this instance.
+	level.Info(util_log.Logger).Log("msg", "waiting until index gateway is JOINING in the ring")
+	if err := ring.WaitInstanceState(ctx, g.ring, g.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
+		return err
+	}
+	level.Info(util_log.Logger).Log("msg", "index gateway is JOINING in the ring")
+
+	// Change ring state to ACTIVE
+	if err = g.ringLifecycler.ChangeState(ctx, ring.ACTIVE); err != nil {
+		return errors.Wrapf(err, "switch instance to %s in the ring", ring.ACTIVE)
+	}
+
+	// Wait until the ring client detected this instance in the ACTIVE state to
+	// make sure that when we'll run the loop it won't be detected as a ring
+	// topology change.
+	level.Info(util_log.Logger).Log("msg", "waiting until index gateway is ACTIVE in the ring")
+	if err := ring.WaitInstanceState(ctx, g.ring, g.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
+		return err
+	}
+	level.Info(util_log.Logger).Log("msg", "index gateway is ACTIVE in the ring")
+
+	return nil
+}
+
+func (g *Gateway) running(ctx context.Context) error {
+	t := time.NewTicker(ringCheckPeriod)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-g.subservicesWatcher.Chan():
+			return errors.Wrap(err, "running index gateway subservice failed")
+		case <-t.C:
+			continue
+		}
+	}
+}
+
+func (g *Gateway) stopping(_ error) error {
+	level.Debug(util_log.Logger).Log("msg", "stopping index gateway")
+	g.shipper.Stop()
+	return services.StopManagerAndAwaitStopped(context.Background(), g.subservices)
+}
+
 func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, shipperIndexClient *shipper.Shipper, indexQuerier IndexQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
@@ -73,7 +148,7 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 		return nil
 	})
 
-	if cfg.useIndexGatewayRing {
+	if cfg.UseIndexGatewayRing {
 		ringStore, err := kv.NewClient(
 			cfg.IndexGatewayRing.KVStore,
 			ring.GetCodec(),
@@ -96,22 +171,29 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 
 		g.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, ringKey, ringStore, delegate, log, registerer)
 		if err != nil {
-			return nil, errors.Wrap(err, "create ring lifecycler")
+			return nil, errors.Wrap(err, "index gateway create ring lifecycler")
 		}
 
 		ringCfg := cfg.IndexGatewayRing.ToRingConfig(ringReplicationFactor)
 		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), log)
 		if err != nil {
-			return nil, errors.Wrap(err, "create ring client")
+			return nil, errors.Wrap(err, "index gateway create ring client")
 		}
 
 		svcs := []services.Service{g.ringLifecycler, g.ring}
 		g.subservices, err = services.NewManager(svcs...)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("new index gateway services manager: %w", err)
 		}
+
 		g.subservicesWatcher = services.NewFailureWatcher()
 		g.subservicesWatcher.WatchManager(g.subservices)
+		g.Service = services.NewBasicService(g.starting, g.running, g.stopping)
+	} else {
+		g.Service = services.NewIdleService(nil, func(failureCase error) error {
+			g.shipper.Stop()
+			return nil
+		})
 	}
 
 	return g, nil
@@ -189,4 +271,12 @@ func buildResponses(query chunk.IndexQuery, batch chunk.ReadBatch, callback func
 	}
 
 	return nil
+}
+
+func (g *Gateway) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if g.cfg.UseIndexGatewayRing {
+		g.ring.ServeHTTP(w, req)
+	} else {
+		w.Write([]byte("IndexGateway running with 'useIndexGatewayRing' disabled."))
+	}
 }
