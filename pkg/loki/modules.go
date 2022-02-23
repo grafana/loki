@@ -229,7 +229,17 @@ func (t *Loki) initQuerier() (services.Service, error) {
 			return nil, err
 		}
 		limiter := ingester.NewLimiter(t.overrides, nil, nil, t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor)
-		postFetcherChunkFilterer := loki_storage.NewPostFetcherChunkFilterer(enc, t.Cfg.Ingester.BlockSize, t.Cfg.Ingester.TargetChunkSize, limiter)
+
+		postFetcherChunkFilterer := loki_storage.NewPostFetcherChunkFilterer(enc, t.Cfg.Ingester.BlockSize, t.Cfg.Ingester.TargetChunkSize, func(tenantId string) chunkenc.HeadBlockFmt {
+			var blockFmt chunkenc.HeadBlockFmt
+			unorderedWrites := limiter.UnorderedWrites(tenantId)
+			if unorderedWrites {
+				blockFmt = chunkenc.UnorderedHeadBlockFmt
+			} else {
+				blockFmt = chunkenc.OrderedHeadBlockFmt
+			}
+			return blockFmt
+		})
 		t.Store.SetPostFetcherChunkFilterer(postFetcherChunkFilterer)
 
 	}

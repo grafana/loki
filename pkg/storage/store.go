@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -132,6 +131,10 @@ type PostFetcherChunkFilterer interface {
 	ForRequest(req logql.SelectLogParams, tenantId string) PostFetcherChunkFilterer
 }
 
+type BlockFormat interface {
+	BlockFmt(tenantId string) chunkenc.HeadBlockFmt
+}
+
 type chunkFiltererByExpr struct {
 	req      logql.SelectLogParams
 	blockFmt chunkenc.HeadBlockFmt
@@ -140,7 +143,7 @@ type chunkFiltererByExpr struct {
 	blockSize       int
 	targetChunkSize int
 
-	limiter *ingester.Limiter
+	blockFormat func(tenantId string) chunkenc.HeadBlockFmt
 }
 
 func (c *chunkFiltererByExpr) Request() logql.SelectLogParams {
@@ -160,21 +163,12 @@ func (c *chunkFiltererByExpr) TargetChunkSize() int {
 	return c.targetChunkSize
 }
 
-func NewPostFetcherChunkFilterer(encoding chunkenc.Encoding, blockSize int, targetChunkSize int, limiter *ingester.Limiter) PostFetcherChunkFilterer {
-	return &chunkFiltererByExpr{encoding: encoding, blockSize: blockSize, targetChunkSize: targetChunkSize, limiter: limiter}
+func NewPostFetcherChunkFilterer(encoding chunkenc.Encoding, blockSize int, targetChunkSize int, blockFormat func(tenantId string) chunkenc.HeadBlockFmt) PostFetcherChunkFilterer {
+	return &chunkFiltererByExpr{encoding: encoding, blockSize: blockSize, targetChunkSize: targetChunkSize, blockFormat: blockFormat}
 }
 
 func (c *chunkFiltererByExpr) ForRequest(req logql.SelectLogParams, tenantId string) PostFetcherChunkFilterer {
-
-	var blockFmt chunkenc.HeadBlockFmt
-	unorderedWrites := c.limiter.UnorderedWrites(tenantId)
-
-	if unorderedWrites {
-		blockFmt = chunkenc.UnorderedHeadBlockFmt
-	} else {
-		blockFmt = chunkenc.OrderedHeadBlockFmt
-	}
-
+	blockFmt := c.blockFormat(tenantId)
 	return &chunkFiltererByExpr{encoding: c.encoding, blockFmt: blockFmt, blockSize: c.blockSize, targetChunkSize: c.targetChunkSize, req: req}
 }
 
