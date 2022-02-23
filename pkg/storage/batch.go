@@ -735,6 +735,9 @@ func fetchLazyChunks(ctx context.Context, s chunk.SchemaConfig, chunks []*LazyCh
 				return
 
 			}
+			if chks == nil || len(chks) == 0 {
+				return
+			}
 			// assign fetched chunk by key as FetchChunks doesn't guarantee the order.
 			for _, chk := range chks {
 				index[s.ExternalKey(chk)].Chunk = chk
