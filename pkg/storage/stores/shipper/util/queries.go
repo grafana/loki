@@ -8,7 +8,7 @@ import (
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
 
-const maxQueriesPerGoroutine = 100
+const maxQueriesPerGoroutine = 200
 
 type TableQuerier interface {
 	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
@@ -32,7 +32,6 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 	errs := make(chan error)
 
 	id := NewIndexDeduper(callback)
-
 	if len(queries) <= maxQueriesPerGoroutine {
 		return tableQuerier.MultiQueries(ctx, queries, id.Callback)
 	}
