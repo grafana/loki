@@ -50,6 +50,7 @@ type Config struct {
 	MaxConcurrent                 int              `yaml:"max_concurrent"`
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
+	PostFilterChunk               bool             `yaml:"post_filter_chunk"`
 }
 
 // RegisterFlags register flags.

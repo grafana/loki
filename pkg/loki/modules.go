@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
@@ -222,6 +223,16 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 
 	var err error
+	if t.Cfg.Querier.PostFilterChunk {
+		enc, err := chunkenc.ParseEncoding(t.Cfg.Ingester.ChunkEncoding)
+		if err != nil {
+			return nil, err
+		}
+		limiter := ingester.NewLimiter(t.overrides, nil, nil, t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor)
+		postFetcherChunkFilterer := loki_storage.NewPostFetcherChunkFilterer(enc, t.Cfg.Ingester.BlockSize, t.Cfg.Ingester.TargetChunkSize, limiter)
+		t.Store.SetPostFetcherChunkFilterer(postFetcherChunkFilterer)
+
+	}
 	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
