@@ -8,7 +8,7 @@ import (
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
 
-const maxQueriesPerGoroutine = 200
+const maxQueriesPerGoroutine = 100
 
 type TableQuerier interface {
 	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error

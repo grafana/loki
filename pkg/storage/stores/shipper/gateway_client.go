@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	maxQueriesPerGrpc      = 200
+	maxQueriesPerGrpc      = 100
 	maxConcurrentGrpcCalls = 10
 )
 
