@@ -8,7 +8,7 @@ spec:
   storage:
     secret:
       name: test
-      type: S3
+      type: s3
   storageClassName: gp2
   tenants:
     mode: static

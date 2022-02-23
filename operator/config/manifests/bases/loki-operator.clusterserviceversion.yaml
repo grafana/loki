@@ -223,14 +223,14 @@ spec:
         path: storage.secret.name
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:Secret
-      - description: Type of object storage that needs to be configured
+      - description: Type of object storage that should be used
         displayName: Object Storage Secret Type
         path: storage.secret.type
         x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:select:Azure
-        - urn:alm:descriptor:com.tectonic.ui:select:GCS
-        - urn:alm:descriptor:com.tectonic.ui:select:S3
-        - urn:alm:descriptor:com.tectonic.ui:select:Swift
+        - urn:alm:descriptor:com.tectonic.ui:select:azure
+        - urn:alm:descriptor:com.tectonic.ui:select:gcs
+        - urn:alm:descriptor:com.tectonic.ui:select:s3
+        - urn:alm:descriptor:com.tectonic.ui:select:swift
       - description: Storage class name defines the storage class for ingester/querier
           PVCs.
         displayName: Storage Class Name

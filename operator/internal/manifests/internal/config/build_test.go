@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -202,13 +203,6 @@ overrides:
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		S3ObjectStorage: &S3ObjectStorage{
-			Endpoint:        "http://test.default.svc.cluster.local.:9000",
-			Region:          "us-east",
-			Buckets:         "loki",
-			AccessKeyID:     "test",
-			AccessKeySecret: "test123",
-		},
 		QueryParallelism: Parallelism{
 			QuerierCPULimits:      2,
 			QueryFrontendReplicas: 2,
@@ -216,6 +210,15 @@ overrides:
 		WriteAheadLog: WriteAheadLog{
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
+		},
+		ObjectStorage: storage.Options{
+			S3: &storage.S3StorageConfig{
+				Endpoint:        "http://test.default.svc.cluster.local.:9000",
+				Region:          "us-east",
+				Buckets:         "loki",
+				AccessKeyID:     "test",
+				AccessKeySecret: "test123",
+			},
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -436,13 +439,6 @@ overrides:
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		S3ObjectStorage: &S3ObjectStorage{
-			Endpoint:        "http://test.default.svc.cluster.local.:9000",
-			Region:          "us-east",
-			Buckets:         "loki",
-			AccessKeyID:     "test",
-			AccessKeySecret: "test123",
-		},
 		QueryParallelism: Parallelism{
 			QuerierCPULimits:      2,
 			QueryFrontendReplicas: 2,
@@ -450,6 +446,15 @@ overrides:
 		WriteAheadLog: WriteAheadLog{
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
+		},
+		ObjectStorage: storage.Options{
+			S3: &storage.S3StorageConfig{
+				Endpoint:        "http://test.default.svc.cluster.local.:9000",
+				Region:          "us-east",
+				Buckets:         "loki",
+				AccessKeyID:     "test",
+				AccessKeySecret: "test123",
+			},
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -497,13 +502,6 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		S3ObjectStorage: &S3ObjectStorage{
-			Endpoint:        "http://test.default.svc.cluster.local.:9000",
-			Region:          "us-east",
-			Buckets:         "loki",
-			AccessKeyID:     "test",
-			AccessKeySecret: "test123",
-		},
 		QueryParallelism: Parallelism{
 			QuerierCPULimits:      2,
 			QueryFrontendReplicas: 2,
@@ -511,6 +509,15 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 		WriteAheadLog: WriteAheadLog{
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
+		},
+		ObjectStorage: storage.Options{
+			S3: &storage.S3StorageConfig{
+				Endpoint:        "http://test.default.svc.cluster.local.:9000",
+				Region:          "us-east",
+				Buckets:         "loki",
+				AccessKeyID:     "test",
+				AccessKeySecret: "test123",
+			},
 		},
 	}
 	cfg, rCfg, err := Build(opts)

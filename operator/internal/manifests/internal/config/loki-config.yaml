@@ -7,39 +7,42 @@ chunk_store_config:
       max_size_bytes: 500MB
 common:
   storage:
-    {{ if .AzureObjectStorage }}
+    {{ with .ObjectStorage.Azure }}
     azure:
-      environment: {{ .AzureObjectStorage.Env }}
-      container_name: {{ .AzureObjectStorage.Container }}
-      account_name: {{ .AzureObjectStorage.AccountName }}
-      account_key: {{ .AzureObjectStorage.AccountKey }}
-    {{ else if .GCSObjectStorage }}
+      environment: {{ .Env }}
+      container_name: {{ .Container }}
+      account_name: {{ .AccountName }}
+      account_key: {{ .AccountKey }}
+    {{ end }}
+    {{ with .ObjectStorage.GCS }}
     gcs:
-      bucket_name: {{ .GCSObjectStorage.Bucket }}
-    {{ else if .S3ObjectStorage }}
+      bucket_name: {{ .Bucket }}
+    {{ end }}
+    {{ with .ObjectStorage.S3 }}
     s3:
-      s3: {{ .S3ObjectStorage.Endpoint }}
-      bucketnames: {{ .S3ObjectStorage.Buckets }}
-      region: {{ .S3ObjectStorage.Region }}
-      access_key_id: {{ .S3ObjectStorage.AccessKeyID }}
-      secret_access_key: {{ .S3ObjectStorage.AccessKeySecret }}
+      s3: {{ .Endpoint }}
+      bucketnames: {{ .Buckets }}
+      region: {{ .Region }}
+      access_key_id: {{ .AccessKeyID }}
+      secret_access_key: {{ .AccessKeySecret }}
       s3forcepathstyle: true
-    {{ else if .SwiftObjectStorage }}
+    {{ end }}
+    {{ with .ObjectStorage.Swift }}
     swift:
-      auth_url: {{ .SwiftObjectStorage.AuthURL }}
-      username: {{ .SwiftObjectStorage.Username }}
-      user_domain_name: {{ .SwiftObjectStorage.UserDomainName }}
-      user_domain_id: {{ .SwiftObjectStorage.UserDomainID }}
-      user_id: {{ .SwiftObjectStorage.UserID }}
-      password: {{ .SwiftObjectStorage.Password }}
-      domain_id: {{ .SwiftObjectStorage.DomainID }}
-      domain_name: {{ .SwiftObjectStorage.DomainName }}
-      project_id: {{ .SwiftObjectStorage.ProjectID }}
-      project_name: {{ .SwiftObjectStorage.ProjectName }}
-      project_domain_id: {{ .SwiftObjectStorage.ProjectDomainID }}
-      project_domain_name: {{ .SwiftObjectStorage.ProjectDomainName }}
-      region_name: {{ .SwiftObjectStorage.Region }}
-      container_name: {{ .SwiftObjectStorage.Container }}
+      auth_url: {{ .AuthURL }}
+      username: {{ .Username }}
+      user_domain_name: {{ .UserDomainName }}
+      user_domain_id: {{ .UserDomainID }}
+      user_id: {{ .UserID }}
+      password: {{ .Password }}
+      domain_id: {{ .DomainID }}
+      domain_name: {{ .DomainName }}
+      project_id: {{ .ProjectID }}
+      project_name: {{ .ProjectName }}
+      project_domain_id: {{ .ProjectDomainID }}
+      project_domain_name: {{ .ProjectDomainName }}
+      region_name: {{ .Region }}
+      container_name: {{ .Container }}
     {{ end }}
 compactor:
   compaction_interval: 2h

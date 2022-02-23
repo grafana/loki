@@ -4,33 +4,10 @@ import (
 	"github.com/ViaQ/logerr/kverrors"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 
 	corev1 "k8s.io/api/core/v1"
 )
-
-// ExtractStorageSecret reads a k8s secret into a manifest object storage struct if valid.
-func ExtractStorageSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretType) (*manifests.ObjectStorage, error) {
-	var err error
-	storage := manifests.ObjectStorage{}
-
-	switch secretType {
-	case lokiv1beta1.ObjectStorageSecretAzure:
-		storage.Azure, err = extractAzureConfigSecret(s)
-	case lokiv1beta1.ObjectStorageSecretGCS:
-		storage.GCS, err = extractGCSConfigSecret(s)
-	case lokiv1beta1.ObjectStorageSecretS3:
-		storage.S3, err = extractS3ConfigSecret(s)
-	case lokiv1beta1.ObjectStorageSecretSwift:
-		storage.Swift, err = extractSwiftConfigSecret(s)
-	default:
-		return nil, kverrors.New("unknown secret type", "type", secretType)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-	return &storage, nil
-}
 
 // ExtractGatewaySecret reads a k8s secret into a manifest tenant secret struct if valid.
 func ExtractGatewaySecret(s *corev1.Secret, tenantName string) (*manifests.TenantSecrets, error) {
@@ -56,7 +33,31 @@ func ExtractGatewaySecret(s *corev1.Secret, tenantName string) (*manifests.Tenan
 	}, nil
 }
 
-func extractAzureConfigSecret(s *corev1.Secret) (*manifests.AzureConfig, error) {
+// ExtractStorageSecret reads a k8s secret into a manifest object storage struct if valid.
+func ExtractStorageSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretType) (*storage.Options, error) {
+	var err error
+	storage := storage.Options{}
+
+	switch secretType {
+	case lokiv1beta1.ObjectStorageSecretAzure:
+		storage.Azure, err = extractAzureConfigSecret(s)
+	case lokiv1beta1.ObjectStorageSecretGCS:
+		storage.GCS, err = extractGCSConfigSecret(s)
+	case lokiv1beta1.ObjectStorageSecretS3:
+		storage.S3, err = extractS3ConfigSecret(s)
+	case lokiv1beta1.ObjectStorageSecretSwift:
+		storage.Swift, err = extractSwiftConfigSecret(s)
+	default:
+		return nil, kverrors.New("unknown secret type", "type", secretType)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return &storage, nil
+}
+
+func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, error) {
 	// Extract and validate mandatory fields
 	env, ok := s.Data["environment"]
 	if !ok {
@@ -75,7 +76,7 @@ func extractAzureConfigSecret(s *corev1.Secret) (*manifests.AzureConfig, error) 
 		return nil, kverrors.New("missing secret field", "field", "account_key")
 	}
 
-	return &manifests.AzureConfig{
+	return &storage.AzureStorageConfig{
 		Env:         string(env),
 		Container:   string(container),
 		AccountName: string(name),
@@ -83,19 +84,19 @@ func extractAzureConfigSecret(s *corev1.Secret) (*manifests.AzureConfig, error) 
 	}, nil
 }
 
-func extractGCSConfigSecret(s *corev1.Secret) (*manifests.GCSConfig, error) {
+func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error) {
 	// Extract and validate mandatory fields
 	bucket, ok := s.Data["bucketname"]
 	if !ok {
 		return nil, kverrors.New("missing secret field", "field", "bucketname")
 	}
 
-	return &manifests.GCSConfig{
+	return &storage.GCSStorageConfig{
 		Bucket: string(bucket),
 	}, nil
 }
 
-func extractS3ConfigSecret(s *corev1.Secret) (*manifests.S3Config, error) {
+func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
 	endpoint, ok := s.Data["endpoint"]
 	if !ok {
@@ -116,12 +117,9 @@ func extractS3ConfigSecret(s *corev1.Secret) (*manifests.S3Config, error) {
 	}
 
 	// Extract and validate optional fields
-	region, ok := s.Data["region"]
-	if !ok {
-		region = []byte("")
-	}
+	region := s.Data["region"]
 
-	return &manifests.S3Config{
+	return &storage.S3StorageConfig{
 		Endpoint:        string(endpoint),
 		Buckets:         string(buckets),
 		AccessKeyID:     string(id),
@@ -130,7 +128,7 @@ func extractS3ConfigSecret(s *corev1.Secret) (*manifests.S3Config, error) {
 	}, nil
 }
 
-func extractSwiftConfigSecret(s *corev1.Secret) (*manifests.SwiftConfig, error) {
+func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, error) {
 	// Extract and validate mandatory fields
 	url, ok := s.Data["auth_url"]
 	if !ok {
@@ -170,28 +168,13 @@ func extractSwiftConfigSecret(s *corev1.Secret) (*manifests.SwiftConfig, error) 
 	}
 
 	// Extract and validate optional fields
-	projectID, ok := s.Data["project_id"]
-	if !ok {
-		projectID = []byte("")
-	}
-	projectName, ok := s.Data["project_name"]
-	if !ok {
-		projectName = []byte("")
-	}
-	projectDomainID, ok := s.Data["project_domain_id"]
-	if !ok {
-		projectDomainID = []byte("")
-	}
-	projectDomainName, ok := s.Data["project_domain_name"]
-	if !ok {
-		projectDomainName = []byte("")
-	}
-	region, ok := s.Data["region"]
-	if !ok {
-		region = []byte("")
-	}
+	projectID := s.Data["project_id"]
+	projectName := s.Data["project_name"]
+	projectDomainID := s.Data["project_domain_id"]
+	projectDomainName := s.Data["project_domain_name"]
+	region := s.Data["region"]
 
-	return &manifests.SwiftConfig{
+	return &storage.SwiftStorageConfig{
 		AuthURL:           string(url),
 		Username:          string(username),
 		UserDomainName:    string(userDomainName),
