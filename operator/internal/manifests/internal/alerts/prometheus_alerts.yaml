@@ -1,13 +1,3 @@
-package alerts
-
-import (
-	"testing"
-
-	"github.com/stretchr/testify/require"
-)
-
-func TestBuild_HappyPath(t *testing.T) {
-	expAlerts := `
 ---
 "groups":
 - "name": logging_loki.alerts
@@ -50,9 +40,3 @@ func TestBuild_HappyPath(t *testing.T) {
       > 0
     "labels":
         "severity": critical
-`
-
-	alerts, err := Build()
-	require.NoError(t, err)
-	require.YAMLEq(t, expAlerts, string(alerts))
-}

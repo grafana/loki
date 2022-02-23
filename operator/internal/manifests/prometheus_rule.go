@@ -4,7 +4,6 @@ import (
 	"bytes"
 
 	"github.com/ViaQ/logerr/kverrors"
-	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/internal/alerts"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,22 +26,16 @@ func BuildPrometheusRule(opts Options) ([]client.Object, error) {
 
 // NewPrometheusRule creates a prometheus rule
 func NewPrometheusRule(opts Options) (*monitoringv1.PrometheusRule, error) {
-	aopts := AlertsOptions(opts)
-	alertsBytes, rulesBytes, err := alerts.Build(aopts)
+	alertsBytes, err := alerts.Build()
 	if err != nil {
 		return nil, err
 	}
 
-	var alertsSpec, rulesSpec *monitoringv1.PrometheusRuleSpec
+	var alertsSpec *monitoringv1.PrometheusRuleSpec
 	alertsSpec, err = ruleSpec(alertsBytes)
 	if err != nil {
 		return nil, kverrors.Wrap(err, "Failed to decode alerts yaml")
 	}
-	rulesSpec, err = ruleSpec(rulesBytes)
-	if err != nil {
-		return nil, kverrors.Wrap(err, "Failed to decode recording rules yaml")
-	}
-	alertsSpec.Groups = append(alertsSpec.Groups, rulesSpec.Groups...)
 
 	return &monitoringv1.PrometheusRule{
 		TypeMeta: metav1.TypeMeta{
@@ -66,13 +59,4 @@ func ruleSpec(ruleBytes []byte) (*monitoringv1.PrometheusRuleSpec, error) {
 		return nil, err
 	}
 	return &ruleSpec, nil
-}
-
-// AlertsOptions converts Options to alerts.Options
-func AlertsOptions(opts Options) alerts.Options {
-	return alerts.Options{
-		Stack:                      opts.Stack,
-		WritePathHighLoadThreshold: internal.WritePathHighLoadThresholdTable[opts.Stack.Size],
-		ReadPathHighLoadThreshold:  internal.ReadPathHighLoadThresholdTable[opts.Stack.Size],
-	}
 }

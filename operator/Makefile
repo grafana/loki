@@ -120,13 +120,9 @@ test: deps generate go-generate lint lint-prom manifests ## Run tests
 test: $(GO_FILES)
 	go test ./... -coverprofile cover.out
 
-.PHONY: generate-prom-testdata
-generate-prom-testdata: ## Run generate-prom-testdata
-	go run ./internal/manifests/internal/alerts/test/generate-prom-testdata.go
-
 .PHONY: test-unit-prom
-test-unit-prom: $(PROMTOOL) generate-prom-testdata ## Run prometheus unit tests
-	@$(PROMTOOL) test rules ./internal/manifests/internal/alerts/test/generated/test-*.yaml
+test-unit-prom: $(PROMTOOL) ## Run prometheus unit tests
+	@$(PROMTOOL) test rules ./internal/manifests/internal/alerts/test/test.yaml
 
 scorecard: generate go-generate bundle ## Run scorecard test
 	$(OPERATOR_SDK) scorecard bundle
@@ -135,9 +131,8 @@ lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 	$(GOLANGCI_LINT) run ./...
 
 .PHONY: lint-prom
-lint-prom: $(PROMTOOL) generate-prom-testdata ## Run promtool check against recording rules and alerts.
-	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/test/generated/rules-*.yaml
-	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/test/generated/alerts-*.yaml
+lint-prom: $(PROMTOOL) ## Run promtool check against recording rules and alerts.
+	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus_alerts.yaml
 
 fmt: $(GOFUMPT) ## Run gofumpt on source code.
 	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
