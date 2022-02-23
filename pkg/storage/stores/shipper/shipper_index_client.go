@@ -47,7 +47,7 @@ const (
 )
 
 type boltDBIndexClient interface {
-	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error
 	NewWriteBatch() chunk.WriteBatch
 	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 	Stop()
@@ -224,7 +224,7 @@ func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error 
 	})
 }
 
-func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	return instrument.CollectedRequest(ctx, "Shipper.Query", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
 		spanLogger := spanlogger.FromContext(ctx)
 

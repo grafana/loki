@@ -17,7 +17,6 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -88,7 +87,7 @@ type mockIndexSet struct {
 	lastUsedAt  time.Time
 }
 
-func (m *mockIndexSet) MultiQueries(_ context.Context, queries []chunk.IndexQuery, _ chunk_util.Callback) error {
+func (m *mockIndexSet) MultiQueries(_ context.Context, queries []chunk.IndexQuery, _ chunk.QueryPagesCallback) error {
 	m.queriesDone = append(m.queriesDone, queries...)
 	return nil
 }

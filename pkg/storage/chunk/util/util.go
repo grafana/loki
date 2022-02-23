@@ -13,11 +13,8 @@ import (
 	"github.com/grafana/loki/pkg/util/math"
 )
 
-// Callback from an IndexQuery.
-type Callback func(chunk.IndexQuery, chunk.ReadBatch) bool
-
 // DoSingleQuery is the interface for indexes that don't support batching yet.
-type DoSingleQuery func(context.Context, chunk.IndexQuery, Callback) error
+type DoSingleQuery func(context.Context, chunk.IndexQuery, chunk.QueryPagesCallback) error
 
 // QueryParallelism is the maximum number of subqueries run in
 // parallel per higher-level query
@@ -27,7 +24,7 @@ var QueryParallelism = 100
 // and indexes that don't yet support batching.
 func DoParallelQueries(
 	ctx context.Context, doSingleQuery DoSingleQuery, queries []chunk.IndexQuery,
-	callback Callback,
+	callback chunk.QueryPagesCallback,
 ) error {
 	if len(queries) == 1 {
 		return doSingleQuery(ctx, queries[0], callback)
@@ -109,7 +106,7 @@ func (f *filteringBatchIter) Next() bool {
 // QueryFilter wraps a callback to ensure the results are filtered correctly;
 // useful for the cache and Bigtable backend, which only ever fetches the whole
 // row.
-func QueryFilter(callback Callback) Callback {
+func QueryFilter(callback chunk.QueryPagesCallback) chunk.QueryPagesCallback {
 	return func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		return callback(query, &filteringBatch{query, batch})
 	}

@@ -224,11 +224,11 @@ func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch
 	return nil
 }
 
-func (b *BoltIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	return chunk_util.DoParallelQueries(ctx, b.query, queries, callback)
 }
 
-func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	db, err := b.GetDB(query.TableName, DBOperationRead)
 	if err != nil {
 		if err == ErrUnexistentBoltDB {
@@ -242,7 +242,7 @@ func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, cal
 }
 
 func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query chunk.IndexQuery,
-	callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+	callback chunk.QueryPagesCallback) error {
 	return db.View(func(tx *bbolt.Tx) error {
 		if len(bucketName) == 0 {
 			return ErrEmptyIndexBucketName
@@ -256,7 +256,7 @@ func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, bucketName 
 	})
 }
 
-func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	var start []byte
 	if len(query.RangeValuePrefix) > 0 {
 		start = []byte(query.HashValue + separator + string(query.RangeValuePrefix))

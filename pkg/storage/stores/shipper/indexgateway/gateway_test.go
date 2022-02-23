@@ -74,7 +74,7 @@ type mockIndexClient struct {
 	response *mockBatch
 }
 
-func (m mockIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (m mockIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	for _, query := range queries {
 		callback(query, m.response)
 	}

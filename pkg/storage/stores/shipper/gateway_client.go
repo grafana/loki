@@ -15,7 +15,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -78,7 +77,7 @@ func (s *GatewayClient) Stop() {
 	s.conn.Close()
 }
 
-func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	errs := make(chan error)
 
 	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
@@ -99,7 +98,7 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQue
 	return lastErr
 }
 
-func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback util.Callback) error {
+func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	queryKeyQueryMap := make(map[string]chunk.IndexQuery, len(queries))
 	gatewayQueries := make([]*indexgatewaypb.IndexQuery, 0, len(queries))
 
