@@ -427,6 +427,10 @@ The `ruler` block configures the Loki ruler.
 # CLI flag: -ruler.external.url
 [external_url: <url> | default = ]
 
+# Labels to add to all alerts
+external_labels:
+  [<labelname>: <labelvalue> ...]
+
 ruler_client:
   # Path to the client certificate file, which will be used for authenticating
   # with the server. Also requires the key path to be configured.

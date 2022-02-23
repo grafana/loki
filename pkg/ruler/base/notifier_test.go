@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/dns"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/util"
@@ -216,6 +217,38 @@ func TestBuildNotifierConfig(t *testing.T) {
 								},
 							},
 						},
+					},
+				},
+			},
+		},
+		{
+			name: "with external labels",
+			cfg: &Config{
+				AlertmanagerURL: "http://alertmanager.default.svc.cluster.local/alertmanager",
+				ExternalLabels: []labels.Label{
+					{Name: "region", Value: "us-east-1"},
+				},
+			},
+			ncfg: &config.Config{
+				AlertingConfig: config.AlertingConfig{
+					AlertmanagerConfigs: []*config.AlertmanagerConfig{
+						{
+							APIVersion: "v1",
+							Scheme:     "http",
+							PathPrefix: "/alertmanager",
+							ServiceDiscoveryConfigs: discovery.Configs{
+								discovery.StaticConfig{
+									{
+										Targets: []model.LabelSet{{"__address__": "alertmanager.default.svc.cluster.local"}},
+									},
+								},
+							},
+						},
+					},
+				},
+				GlobalConfig: config.GlobalConfig{
+					ExternalLabels: []labels.Label{
+						{Name: "region", Value: "us-east-1"},
 					},
 				},
 			},
