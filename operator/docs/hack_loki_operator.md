@@ -101,6 +101,12 @@ It will undeploy controller from the configured Kubernetes cluster in [~/.kube/c
   kubectl -n openshift-operators-redhat get pods
   ```
 
+* Next step is to create the `openshift-logging` namespace in the cluster:
+
+  ```console
+  kubectl create ns openshift-logging
+  ```
+
 * Now you need to create a storage secret for the operator. This can be done using:
 
   ```console
