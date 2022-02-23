@@ -30,6 +30,10 @@ Parameters:
     Description: Determines whether to keep the CloudWatch Log Stream value as a Loki label when writing logs from lambda-promtail.
     Type: String
     Default: "false"
+  ExtraLabels:
+    Descripton: Comma seperated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by Lambda-Promtail.
+    Type: String
+    Default: ""
 
 Resources:
   LambdaPromtailRole:
@@ -75,6 +79,7 @@ Resources:
           USERNAME: !Ref Username
           PASSWORD: !Ref Password
           KEEP_STREAM: !Ref KeepStream
+          EXTRA_LABELS: !Ref ExtraLabels
   LambdaPromtailVersion:
     Type: AWS::Lambda::Version
     Properties:

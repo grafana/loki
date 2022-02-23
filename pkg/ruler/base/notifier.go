@@ -128,6 +128,9 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	}
 
 	promConfig := &config.Config{
+		GlobalConfig: config.GlobalConfig{
+			ExternalLabels: rulerConfig.ExternalLabels,
+		},
 		AlertingConfig: config.AlertingConfig{
 			AlertmanagerConfigs: amConfigs,
 		},
