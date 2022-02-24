@@ -183,6 +183,7 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 	bclient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{
 		Directory: dir + "/boltdb",
 	})
+	require.NoError(b, err)
 
 	for i := 0; i < numTables; i++ {
 		// setup directory for table in both cache and object storage
