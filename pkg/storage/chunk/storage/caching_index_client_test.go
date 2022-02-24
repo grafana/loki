@@ -24,7 +24,7 @@ type mockStore struct {
 	results ReadBatch
 }
 
-func (m *mockStore) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (m *mockStore) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	for _, query := range queries {
 		callback(query, m.results)
 	}
