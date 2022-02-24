@@ -999,7 +999,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	// cutting of blocks.
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
 	streams := map[string]*logproto.Stream{}
-
+	baseHash := pipeline.BaseLabels().Hash()
 	process := func(e entry) {
 		// apply time filtering
 		if e.t < mint || e.t >= maxt {
@@ -1015,7 +1015,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 		if stream, ok = streams[labels]; !ok {
 			stream = &logproto.Stream{
 				Labels: labels,
-				Hash:   pipeline.BaseLabels().Hash(),
+				Hash:   baseHash,
 			}
 			streams[labels] = stream
 		}
