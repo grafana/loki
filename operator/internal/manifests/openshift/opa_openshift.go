@@ -14,7 +14,7 @@ const (
 	defaultOPAImage    = "quay.io/observatorium/opa-openshift:latest"
 	opaContainerName   = "opa"
 	opaDefaultPackage  = "lokistack"
-	opaDefaultAPIGroup = "loki.openshift.io"
+	opaDefaultAPIGroup = "loki.grafana.com"
 	opaMetricsPortName = "opa-metrics"
 )
 

@@ -203,9 +203,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
-										`--openshift.mappings=application=loki.openshift.io`,
-										`--openshift.mappings=infrastructure=loki.openshift.io`,
-										`--openshift.mappings=audit=loki.openshift.io`,
+										`--openshift.mappings=application=loki.grafana.com`,
+										`--openshift.mappings=infrastructure=loki.grafana.com`,
+										`--openshift.mappings=audit=loki.grafana.com`,
 									},
 									Ports: []corev1.ContainerPort{
 										{
@@ -298,9 +298,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.healthchecks.url=http://localhost:8082",
 										"--tls.internal.server.cert-file=/var/run/tls/tls.crt",
 										"--tls.internal.server.key-file=/var/run/tls/tls.key",
-										`--openshift.mappings=application=loki.openshift.io`,
-										`--openshift.mappings=infrastructure=loki.openshift.io`,
-										`--openshift.mappings=audit=loki.openshift.io`,
+										`--openshift.mappings=application=loki.grafana.com`,
+										`--openshift.mappings=infrastructure=loki.grafana.com`,
+										`--openshift.mappings=audit=loki.grafana.com`,
 									},
 									Ports: []corev1.ContainerPort{
 										{
@@ -435,9 +435,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.healthchecks.url=http://localhost:8082",
 										"--tls.internal.server.cert-file=/var/run/tls/tls.crt",
 										"--tls.internal.server.key-file=/var/run/tls/tls.key",
-										`--openshift.mappings=application=loki.openshift.io`,
-										`--openshift.mappings=infrastructure=loki.openshift.io`,
-										`--openshift.mappings=audit=loki.openshift.io`,
+										`--openshift.mappings=application=loki.grafana.com`,
+										`--openshift.mappings=infrastructure=loki.grafana.com`,
+										`--openshift.mappings=audit=loki.grafana.com`,
 									},
 									Ports: []corev1.ContainerPort{
 										{
