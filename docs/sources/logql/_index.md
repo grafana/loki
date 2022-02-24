@@ -277,7 +277,7 @@ quantile_over_time(
 	) by (cluster)
 ```
 
->Metric queries cannot contains errors, in case errors are found during execution, Loki will return an error and appropriate status code.
+>Metric queries cannot contain errors, in case errors are found during execution, Loki will return an error and appropriate status code.
 
 ## Functions
 
