@@ -2504,7 +2504,7 @@ This way, one doesn't have to replicate configuration in multiple places.
 The `analytics` block configures the reporting of Loki analytics to grafana.com
 
 ```yaml
-# Whether or not usage report should be disabled.
+# When true, enables usage reporting.
 # CLI flag: -reporting.enabled
 [reporting_enabled: <boolean>: default = true]
 ```
