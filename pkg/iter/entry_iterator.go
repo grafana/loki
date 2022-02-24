@@ -325,6 +325,9 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 func (i *entrySortIterator) lessByIndex(k, j int) bool {
 	t1, t2 := i.is[k].Entry().Timestamp.UnixNano(), i.is[j].Entry().Timestamp.UnixNano()
 	if t1 == t2 {
+		// The underlying stream hash may not be available, such as when merging LokiResponses in the
+		// frontend which were sharded. Prefer to use the underlying stream hash when available,
+		// which is needed in deduping code, but defer to label sorting when it's not present.
 		if i.is[k].StreamHash() == 0 {
 			return i.is[k].Labels() < i.is[j].Labels()
 		}
