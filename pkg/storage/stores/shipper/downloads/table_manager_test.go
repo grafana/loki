@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -35,29 +36,50 @@ func buildTestTableManager(t *testing.T, path string) (*TableManager, stopFunc) 
 }
 
 func TestTableManager_QueryPages(t *testing.T) {
-	tempDir := t.TempDir()
+	t.Run("QueryPages", func(t *testing.T) {
+		tempDir := t.TempDir()
+		objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 
-	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-
-	var queries []chunk.IndexQuery
-	for i, name := range []string{"table1", "table2"} {
-		testutil.SetupTable(t, filepath.Join(objectStoragePath, name), testutil.DBsConfig{
-			NumUnCompactedDBs: 5,
-			DBRecordsStart:    i * 1000,
-		}, testutil.PerUserDBsConfig{
-			DBsConfig: testutil.DBsConfig{
+		var queries []chunk.IndexQuery
+		for i, name := range []string{"table1", "table2"} {
+			testutil.SetupTable(t, filepath.Join(objectStoragePath, name), testutil.DBsConfig{
 				NumUnCompactedDBs: 5,
-				DBRecordsStart:    i*1000 + 500,
-			},
-			NumUsers: 1,
-		})
-		queries = append(queries, chunk.IndexQuery{TableName: name})
-	}
+				DBRecordsStart:    i * 1000,
+			}, testutil.PerUserDBsConfig{
+				DBsConfig: testutil.DBsConfig{
+					NumUnCompactedDBs: 5,
+					DBRecordsStart:    i*1000 + 500,
+				},
+				NumUsers: 1,
+			})
+			queries = append(queries, chunk.IndexQuery{TableName: name})
+		}
 
-	tableManager, stopFunc := buildTestTableManager(t, tempDir)
-	defer stopFunc()
+		tableManager, stopFunc := buildTestTableManager(t, tempDir)
+		defer stopFunc()
 
-	testutil.TestMultiTableQuery(t, testutil.BuildUserID(0), queries, tableManager, 0, 2000)
+		testutil.TestMultiTableQuery(t, testutil.BuildUserID(0), queries, tableManager, 0, 2000)
+	})
+
+	t.Run("it doesn't deadlock when table create fails", func(t *testing.T) {
+		tempDir := os.TempDir()
+
+		// This file forces chunk_util.EnsureDirectory to fail. Any write error would cause this
+		// deadlock
+		f, err := os.CreateTemp(filepath.Join(tempDir, "cache"), "not-a-directory")
+		require.NoError(t, err)
+		badTable := filepath.Base(f.Name())
+
+		tableManager, stopFunc := buildTestTableManager(t, tempDir)
+		defer stopFunc()
+
+		err = tableManager.query(context.Background(), badTable, nil, nil)
+		require.Error(t, err)
+
+		// This one deadlocks without the fix
+		err = tableManager.query(context.Background(), badTable, nil, nil)
+		require.Error(t, err)
+	})
 }
 
 func TestTableManager_cleanupCache(t *testing.T) {
