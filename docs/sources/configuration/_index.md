@@ -2501,7 +2501,7 @@ This way, one doesn't have to replicate configuration in multiple places.
 
 ## analytics
 
-This block allows to configure analytics reporting of Loki to grafana.com
+The `analytics` block configures the reporting of Loki analytics to grafana.com
 
 ```yaml
 # Whether or not usage report should be disabled.
