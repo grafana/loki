@@ -1010,10 +1010,11 @@ pool_config:
   # How quickly a dead client will be removed after it has been detected
   # to disappear. Set this to a value to allow time for a secondary
   # health check to recover the missing client.
-  [remotetimeout: <duration>]
+  # CLI flag: -ingester.client.healthcheck-timeout
+  [remote_timeout: <duration> | default = 1s]
 
 # The remote request timeout on the client side.
-# CLI flag: -ingester.client.healthcheck-timeout
+# CLI flag: -ingester.client.timeout
 [remote_timeout: <duration> | default = 5s]
 
 # Configures how the gRPC connection to ingesters work as a client
