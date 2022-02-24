@@ -735,7 +735,15 @@ func fetchLazyChunks(ctx context.Context, s chunk.SchemaConfig, chunks []*LazyCh
 				return
 
 			}
+			if postFetcherChunkFilterer != nil {
+				for i, chk := range chks {
+					chunks[i].Chunk = chk
+				}
+				errChan <- nil
+				return
+			}
 			if chks == nil || len(chks) == 0 {
+				errChan <- nil
 				return
 			}
 			// assign fetched chunk by key as FetchChunks doesn't guarantee the order.
