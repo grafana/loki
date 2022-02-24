@@ -49,19 +49,19 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		gwImg = manifests.DefaultLokiStackGatewayImage
 	}
 
-	var s3secret corev1.Secret
+	var storageSecret corev1.Secret
 	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
-	if err := k.Get(ctx, key, &s3secret); err != nil {
+	if err := k.Get(ctx, key, &storageSecret); err != nil {
 		if apierrors.IsNotFound(err) {
 			return status.SetDegradedCondition(ctx, k, req,
 				"Missing object storage secret",
 				lokiv1beta1.ReasonMissingObjectStorageSecret,
 			)
 		}
-		return kverrors.Wrap(err, "failed to lookup lokistack s3 secret", "name", key)
+		return kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	storage, err := secrets.Extract(&s3secret)
+	storage, err := secrets.ExtractStorageSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
 		return status.SetDegradedCondition(ctx, k, req,
 			"Invalid object storage secret contents",

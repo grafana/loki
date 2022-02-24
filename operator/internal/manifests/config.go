@@ -63,13 +63,6 @@ func ConfigOptions(opt Options) config.Options {
 			Port: grpcPort,
 		},
 		StorageDirectory: dataDirectory,
-		ObjectStorage: config.ObjectStorage{
-			Endpoint:        opt.ObjectStorage.Endpoint,
-			Buckets:         opt.ObjectStorage.Buckets,
-			Region:          opt.ObjectStorage.Region,
-			AccessKeyID:     opt.ObjectStorage.AccessKeyID,
-			AccessKeySecret: opt.ObjectStorage.AccessKeySecret,
-		},
 		QueryParallelism: config.Parallelism{
 			QuerierCPULimits:      opt.ResourceRequirements.Querier.Requests.Cpu().Value(),
 			QueryFrontendReplicas: opt.Stack.Template.QueryFrontend.Replicas,
@@ -78,6 +71,7 @@ func ConfigOptions(opt Options) config.Options {
 			Directory:             walDirectory,
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
+		ObjectStorage: opt.ObjectStorage,
 	}
 }
 
