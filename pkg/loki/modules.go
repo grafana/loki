@@ -732,7 +732,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		return nil, err
 	}
 
-	gateway := indexgateway.NewIndexGateway(shipperIndexClient.(*shipper.Shipper))
+	gateway := indexgateway.NewIndexGateway(shipperIndexClient)
 	indexgatewaypb.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
 	return gateway, nil
 }

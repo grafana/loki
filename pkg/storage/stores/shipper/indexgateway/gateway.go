@@ -1,30 +1,35 @@
 package indexgateway
 
 import (
+	"context"
 	"sync"
 
 	"github.com/grafana/dskit/services"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 const maxIndexEntriesPerResponse = 1000
 
+type IndexQuerier interface {
+	QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	Stop()
+}
+
 type gateway struct {
 	services.Service
 
-	shipper chunk.IndexClient
+	indexQuerier IndexQuerier
 }
 
-func NewIndexGateway(shipperIndexClient *shipper.Shipper) *gateway {
+func NewIndexGateway(indexQuerier IndexQuerier) *gateway {
 	g := &gateway{
-		shipper: shipperIndexClient,
+		indexQuerier: indexQuerier,
 	}
 	g.Service = services.NewIdleService(nil, func(failureCase error) error {
-		g.shipper.Stop()
+		g.indexQuerier.Stop()
 		return nil
 	})
 	return g
@@ -46,7 +51,7 @@ func (g *gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server i
 	}
 
 	sendBatchMtx := sync.Mutex{}
-	outerErr = g.shipper.QueryPages(server.Context(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	outerErr = g.indexQuerier.QueryPages(server.Context(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		innerErr = buildResponses(query, batch, func(response *indexgatewaypb.QueryIndexResponse) error {
 			// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
 			sendBatchMtx.Lock()
