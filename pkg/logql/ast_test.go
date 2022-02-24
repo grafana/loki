@@ -394,7 +394,6 @@ func BenchmarkContainsFilter(b *testing.B) {
 			}
 		})
 	}
-
 }
 
 func Test_parserExpr_Parser(t *testing.T) {
