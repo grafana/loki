@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -221,8 +223,12 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// Querier worker's max concurrent requests must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 
-	var err error
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
+	deleteStore, err := t.deleteRequestsStore()
+	if err != nil {
+		return nil, err
+	}
+
+	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides, deleteStore)
 	if err != nil {
 		return nil, err
 	}
@@ -270,9 +276,21 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/api/prom/tail":    http.HandlerFunc(t.Querier.TailHandler),
 	}
 
-	return querier.InitWorkerService(
-		querierWorkerServiceConfig, prometheus.DefaultRegisterer, queryHandlers, alwaysExternalHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
+	svc, err := querier.InitWorkerService(
+		querierWorkerServiceConfig,
+		prometheus.DefaultRegisterer,
+		queryHandlers,
+		alwaysExternalHandlers,
+		t.Server.HTTP,
+		t.Server.HTTPServer.Handler,
+		t.HTTPAuthMiddleware,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	svc.AddListener(deleteRequestsStoreListener(deleteStore))
+	return svc, nil
 }
 
 func (t *Loki) initIngester() (_ services.Service, err error) {
@@ -617,7 +635,13 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
+
+	deleteStore, err := t.deleteRequestsStore()
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides, deleteStore)
 	if err != nil {
 		return nil, err
 	}
@@ -666,6 +690,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		t.Server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteRuleGroup)))
 	}
 
+	t.ruler.AddListener(deleteRequestsStoreListener(deleteStore))
 	return t.ruler, nil
 }
 
@@ -781,6 +806,19 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 	}
 	t.usageReport = ur
 	return ur, nil
+}
+
+func (t *Loki) deleteRequestsStore() (deletion.DeleteRequestsStore, error) {
+	deleteStore := deletion.NewNoOpDeleteRequestsStore()
+	if loki_storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
+		indexClient, err := chunk_storage.NewIndexClient(shipper.BoltDBShipperType, t.Cfg.StorageConfig.Config, t.Cfg.SchemaConfig.SchemaConfig, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, err
+		}
+
+		deleteStore = deletion.NewDeleteStoreFromIndexClient(indexClient)
+	}
+	return deleteStore, nil
 }
 
 func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {

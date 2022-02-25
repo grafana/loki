@@ -1,0 +1,47 @@
+package loki
+
+import (
+	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
+)
+
+func deleteRequestsStoreListener(d deletion.DeleteRequestsStore) *listener {
+	return &listener{d}
+}
+
+type listener struct {
+	deleteRequestsStore deletion.DeleteRequestsStore
+}
+
+// Starting is called when the service transitions from NEW to STARTING.
+func (l *listener) Starting() {}
+
+// Running is called when the service transitions from STARTING to RUNNING.
+func (l *listener) Running() {}
+
+// Stopping is called when the service transitions to the STOPPING state.
+func (l *listener) Stopping(from services.State) {
+	if from == services.Stopping || from == services.Terminated || from == services.Failed {
+		// no need to do anything
+		return
+	}
+	l.deleteRequestsStore.Stop()
+}
+
+// Terminated is called when the service transitions to the TERMINATED state.
+func (l *listener) Terminated(from services.State) {
+	if from == services.Stopping || from == services.Terminated || from == services.Failed {
+		// no need to do anything
+		return
+	}
+	l.deleteRequestsStore.Stop()
+}
+
+// Failed is called when the service transitions to the FAILED state.
+func (l *listener) Failed(from services.State, failure error) {
+	if from == services.Stopping || from == services.Terminated || from == services.Failed {
+		// no need to do anything
+		return
+	}
+	l.deleteRequestsStore.Stop()
+}

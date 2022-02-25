@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -79,15 +81,21 @@ type Querier struct {
 	engine          *logql.Engine
 	limits          *validation.Overrides
 	ingesterQuerier *IngesterQuerier
+	deleteGetter    deleteGetter
+}
+
+type deleteGetter interface {
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error)
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides) (*Querier, error) {
+func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides, d deleteGetter) (*Querier, error) {
 	querier := Querier{
 		cfg:             cfg,
 		store:           store,
 		ingesterQuerier: ingesterQuerier,
 		limits:          limits,
+		deleteGetter:    d,
 	}
 
 	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits, log.With(util_log.Logger, "component", "querier"))
@@ -103,6 +111,11 @@ func (q *Querier) SetQueryable(queryable logql.Querier) {
 func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	params.QueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +169,11 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 		return nil, err
 	}
 
+	params.SampleQueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
+	if err != nil {
+		return nil, err
+	}
+
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	iters := []iter.SampleIterator{}
@@ -189,6 +207,36 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 		iters = append(iters, storeIter)
 	}
 	return iter.NewMergeSampleIterator(ctx, iters), nil
+}
+
+func (q *Querier) deletesForUser(ctx context.Context, startT, endT time.Time) ([]*logproto.Delete, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	d, err := q.deleteGetter.GetAllDeleteRequestsForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	start := startT.UnixNano()
+	end := endT.UnixNano()
+
+	var deletes []*logproto.Delete
+	for _, del := range d {
+		for _, selector := range del.Selectors {
+			if int64(del.StartTime) <= end && int64(del.EndTime) >= start {
+				deletes = append(deletes, &logproto.Delete{
+					Selector: selector,
+					Start:    int64(del.StartTime),
+					End:      int64(del.EndTime),
+				})
+			}
+		}
+	}
+
+	return deletes, nil
 }
 
 func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {

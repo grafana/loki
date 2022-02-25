@@ -41,6 +41,7 @@ message QueryRequest {
   Direction direction = 5;
   reserved 6;
   repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
+  repeated Delete deletes = 8;
 }
 
 message SampleQueryRequest {
@@ -48,6 +49,13 @@ message SampleQueryRequest {
   google.protobuf.Timestamp start = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp end = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
+  repeated Delete deletes = 5;
+}
+
+message Delete {
+  string selector = 1;
+  int64 start = 2;
+  int64 end = 3;
 }
 
 message QueryResponse {
