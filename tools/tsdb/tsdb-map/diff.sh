@@ -14,5 +14,5 @@ echo
 echo sizing:
 echo
 
-ls -lh $old
-ls -lh $new
+ls -lh "${old}"
+ls -lh "${new}"
