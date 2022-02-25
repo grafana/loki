@@ -3,9 +3,9 @@ package local
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
+	"github.com/pkg/errors"
 	"os"
 	"path"
 	"path/filepath"
@@ -314,9 +314,8 @@ func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, qu
 			rangeValue: rangeValue,
 			value:      value,
 		})
-
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to send row while processing boltdb index query")
 		}
 	}
 
