@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/pkg/errors"
 	"os"
 	"path"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
