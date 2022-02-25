@@ -107,9 +107,9 @@ Some Loki API endpoints return a result of a matrix, a vector, or a stream:
 
 ## Timestamp formats
 
-The API accepts different timestamp formats. An integer with ten or less digits is interpreted as a Unix timestamp in seconds. More than ten digest are interpreted as a Unix timestamp in nanoseconds. A floating point number is a Unix timestamp with subseconds.
+The API accepts several formats for timestamps. An integer with ten or fewer digits is interpreted as a Unix timestamp in seconds. More than ten digits are interpreted as a Unix timestamp in nanoseconds. A floating point number is a Unix timestamp with fractions of a second.
 
-The timestamps can also be written in `RFC3339` and `RFC3339Nano` format supported by Go's [time](https://pkg.go.dev/time) package.
+The timestamps can also be written in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
 ## `GET /loki/api/v1/query`
 
