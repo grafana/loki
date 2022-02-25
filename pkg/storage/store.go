@@ -11,12 +11,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/loki/pkg/chunkenc"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -110,7 +110,7 @@ type Store interface {
 	GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 	GetSchemaConfigs() []chunk.PeriodConfig
 	SetChunkFilterer(chunkFilter RequestChunkFilterer)
-	SetPostFetcherChunkFilterer(postFetcherChunkFiltererEnable bool)
+	SetPostFetcherChunkFilterer(requestPostFetcherChunkFilterer RequestPostFetcherChunkFilterer)
 }
 
 // RequestChunkFilterer creates ChunkFilterer for a given request context.
@@ -123,17 +123,32 @@ type ChunkFilterer interface {
 	ShouldFilter(metric labels.Labels) bool
 }
 
+// RequestChunkFilterer creates ChunkFilterer for a given request context.
+type RequestPostFetcherChunkFilterer interface {
+	ForRequest(req logql.SelectLogParams) PostFetcherChunkFilterer
+}
+
 // PostFetcherChunkFilterer filters chunks based on pipeline for log selector expr.
 type PostFetcherChunkFilterer interface {
 	PostFetchFilter(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
 }
 
-type chunkFiltererByExpr struct {
-	req logql.SelectLogParams
+type requestPostFetcherChunkFilterer struct {
+	blockSize  int
+	targetSize int
 }
 
-func NewPostFetcherChunkFiltererForRequest(req logql.SelectLogParams) PostFetcherChunkFilterer {
-	return &chunkFiltererByExpr{req: req}
+func NewRequestPostFetcherChunkFiltererForRequest(blockSize int, targetSize int) RequestPostFetcherChunkFilterer {
+	return &requestPostFetcherChunkFilterer{blockSize: blockSize, targetSize: targetSize}
+}
+func (c *requestPostFetcherChunkFilterer) ForRequest(req logql.SelectLogParams) PostFetcherChunkFilterer {
+	return &chunkFiltererByExpr{req: req, blockSize: c.blockSize, targetSize: c.targetSize}
+}
+
+type chunkFiltererByExpr struct {
+	req        logql.SelectLogParams
+	blockSize  int
+	targetSize int
 }
 
 func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
@@ -194,7 +209,7 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 
 		postFilterCh := chunk.NewChunk(
 			cnk.UserID, cnk.Fingerprint, cnk.Metric,
-			chunkenc.NewFacade(postFilterChunkData, lokiChunk.BlockSize(), lokiChunk.TargetSize()),
+			chunkenc.NewFacade(postFilterChunkData, c.blockSize, c.targetSize),
 			firstTime,
 			lastTime,
 		)
@@ -215,8 +230,8 @@ type store struct {
 	chunkMetrics *ChunkMetrics
 	schemaCfg    SchemaConfig
 
-	chunkFilterer                  RequestChunkFilterer
-	postFetcherChunkFiltererEnable bool
+	chunkFilterer                   RequestChunkFilterer
+	requestPostFetcherChunkFilterer RequestPostFetcherChunkFilterer
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -299,8 +314,8 @@ func (s *store) SetChunkFilterer(chunkFilterer RequestChunkFilterer) {
 	s.chunkFilterer = chunkFilterer
 }
 
-func (s *store) SetPostFetcherChunkFilterer(postFetcherChunkFiltererEnable bool) {
-	s.postFetcherChunkFiltererEnable = postFetcherChunkFiltererEnable
+func (s *store) SetPostFetcherChunkFilterer(requestPostFetcherChunkFilterer RequestPostFetcherChunkFilterer) {
+	s.requestPostFetcherChunkFilterer = requestPostFetcherChunkFilterer
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
@@ -465,8 +480,8 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 	var postFetcherChunkFilterer PostFetcherChunkFilterer
-	if s.postFetcherChunkFiltererEnable {
-		postFetcherChunkFilterer = NewPostFetcherChunkFiltererForRequest(req)
+	if s.requestPostFetcherChunkFilterer != nil {
+		postFetcherChunkFilterer = s.requestPostFetcherChunkFilterer.ForRequest(req)
 	}
 
 	return newLogBatchIterator(ctx, s.schemaCfg.SchemaConfig, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer, postFetcherChunkFilterer)
