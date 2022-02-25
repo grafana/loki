@@ -738,7 +738,7 @@ func fetchLazyChunks(ctx context.Context, s chunk.SchemaConfig, chunks []*LazyCh
 				errChan <- nil
 				return
 			}
-			if chks == nil || len(chks) == 0 {
+			if len(chks) == 0 {
 				errChan <- nil
 				return
 			}
