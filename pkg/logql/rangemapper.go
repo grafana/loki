@@ -10,17 +10,17 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-func NewRangeVectorMapper(interval time.Duration) (RangeVectorMapper, error) {
-	if interval <= 0 {
-		return RangeVectorMapper{}, fmt.Errorf("Cannot create RangeVectorMapper with <=0 interval. Received %s", interval)
-	}
-	return RangeVectorMapper{
-		interval: interval,
-	}, nil
+type RangeVectorMapper struct {
+	splitByInterval time.Duration
 }
 
-type RangeVectorMapper struct {
-	interval time.Duration
+func NewRangeVectorMapper(interval time.Duration) (RangeVectorMapper, error) {
+	if interval <= 0 {
+		return RangeVectorMapper{}, fmt.Errorf("cannot create RangeVectorMapper with <=0 splitByInterval. Received %s", interval)
+	}
+	return RangeVectorMapper{
+		splitByInterval: interval,
+	}, nil
 }
 
 func (m RangeVectorMapper) Parse(query string) (bool, Expr, error) {
@@ -47,8 +47,6 @@ func (m RangeVectorMapper) Map(expr Expr) (Expr, error) {
 	switch e := expr.(type) {
 	case *VectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e)
-	// case *LabelReplaceExpr:
-	// 	return m.mapLabelReplaceExpr(e, r)
 	case *RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e), nil
 	case *BinOpExpr:
@@ -76,8 +74,9 @@ func (m RangeVectorMapper) Map(expr Expr) (Expr, error) {
 	}
 }
 
-func (m RangeVectorMapper) mapSampleExpr(expr SampleExpr) SampleExpr {
-	var head *ConcatSampleExpr
+// getRangeInterval returns the interval in the range vector
+// Example: expression `count_over_time({app="foo"}[10m])` returns 10m
+func getRangeInterval(expr SampleExpr) time.Duration {
 	var rangeInterval time.Duration
 	expr.Walk(func(e interface{}) {
 		switch concrete := e.(type) {
@@ -85,18 +84,24 @@ func (m RangeVectorMapper) mapSampleExpr(expr SampleExpr) SampleExpr {
 			rangeInterval = concrete.Left.Interval
 		}
 	})
-	// handle case were we don't have it should never happen.
-	// interval = 1m
-	// test = [5m]
-	splitCount := int(rangeInterval / m.interval)
+	return rangeInterval
+}
+
+// mapSampleExpr transform expr in multiple subexpressions split by offset range interval
+// rangeInterval should be greater than m.splitByInterval, otherwise the resultant expression
+// will have an unnecessary aggregation operation
+func (m RangeVectorMapper) mapSampleExpr(expr SampleExpr, rangeInterval time.Duration) SampleExpr {
+	var head *ConcatSampleExpr
+
+	splitCount := int(rangeInterval / m.splitByInterval)
 	for i := 0; i < splitCount; i++ {
 		subExpr, _ := Clone(expr)
 		subSampleExpr := subExpr.(SampleExpr)
-		offset := time.Duration(i) * m.interval
+		offset := time.Duration(i) * m.splitByInterval
 		subSampleExpr.Walk(func(e interface{}) {
 			switch concrete := e.(type) {
 			case *RangeAggregationExpr:
-				concrete.Left.Interval = m.interval
+				concrete.Left.Interval = m.splitByInterval
 				if offset != 0 {
 					concrete.Left.Offset = offset
 				}
@@ -110,6 +115,9 @@ func (m RangeVectorMapper) mapSampleExpr(expr SampleExpr) SampleExpr {
 		}
 	}
 
+	if head == nil {
+		return expr
+	}
 	return head
 }
 
@@ -134,26 +142,47 @@ func (m RangeVectorMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr)
 			Params:    expr.Params,
 			Operation: expr.Operation,
 		}, nil
+	}
 
+	rangeInterval := getRangeInterval(expr)
+
+	// in case the interval is smaller than the configured split interval,
+	// don't split it.
+	// TODO: what if there is another internal expr with an interval that can be split?
+	if rangeInterval <= m.splitByInterval {
+		return expr, nil
 	}
 
 	switch expr.Operation {
 	case OpTypeSum:
-		// sum(x) -> sum(sum(x offset interval) ++ sum(x, shard=2)...)
+		// sum(x) -> sum(sum(x offset splitByInterval1) ++ sum(x offset splitByInterval2)...)
 		return &VectorAggregationExpr{
-			Left:      m.mapSampleExpr(expr),
+			Left:      m.mapSampleExpr(expr, rangeInterval),
 			Grouping:  expr.Grouping,
 			Params:    expr.Params,
 			Operation: expr.Operation,
 		}, nil
 
 	case OpTypeCount:
-		// count(x) -> sum(count(x, shard=1) ++ count(x, shard=2)...)
-		sharded := m.mapSampleExpr(expr)
+		// count(x) -> sum(count(x offset splitByInterval1) ++ count(x offset splitByInterval2)...)
 		return &VectorAggregationExpr{
-			Left:      sharded,
+			Left:      m.mapSampleExpr(expr, rangeInterval),
 			Grouping:  expr.Grouping,
 			Operation: OpTypeSum,
+		}, nil
+	case OpTypeMax:
+		// max(x) -> max(max(x offset splitByInterval1) ++ max(x offset splitByInterval2)...)
+		return &VectorAggregationExpr{
+			Left:      m.mapSampleExpr(expr, rangeInterval),
+			Grouping:  expr.Grouping,
+			Operation: expr.Operation,
+		}, nil
+	case OpTypeMin:
+		// min(x) -> min(min(x offset splitByInterval1) ++ min(x offset splitByInterval2)...)
+		return &VectorAggregationExpr{
+			Left:      m.mapSampleExpr(expr, rangeInterval),
+			Grouping:  expr.Grouping,
+			Operation: expr.Operation,
 		}, nil
 	default:
 		// this should not be reachable. If an operation is shardable it should
@@ -166,39 +195,41 @@ func (m RangeVectorMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr)
 	}
 }
 
-func (m RangeVectorMapper) mapLabelReplaceExpr(expr *LabelReplaceExpr) (SampleExpr, error) {
-	subMapped, err := m.Map(expr.Left)
-	if err != nil {
-		return nil, err
-	}
-	cpy := *expr
-	cpy.Left = subMapped.(SampleExpr)
-	return &cpy, nil
-}
-
 func (m RangeVectorMapper) mapRangeAggregationExpr(expr *RangeAggregationExpr) SampleExpr {
+	// TODO: In case expr is non-splittable, can we attempt to shard a child node?
+
+	rangeInterval := getRangeInterval(expr)
+
+	// in case the interval is smaller than the configured split interval,
+	// don't split it.
+	// TODO: what if there is another internal expr with an interval that can be split?
+	if rangeInterval <= m.splitByInterval {
+		return expr
+	}
+
 	if isSplittableByRange(expr) {
 		switch expr.Operation {
-		case OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeCount, OpRangeTypeRate:
+		case OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeCount, OpRangeTypeRate, OpRangeTypeSum:
 			return &VectorAggregationExpr{
-				Left:      m.mapSampleExpr(expr),
+				Left:      m.mapSampleExpr(expr, rangeInterval),
 				Grouping:  expr.Grouping,
 				Operation: OpTypeSum,
 			}
 		case OpRangeTypeMin:
 			return &VectorAggregationExpr{
-				Left:      m.mapSampleExpr(expr),
+				Left:      m.mapSampleExpr(expr, rangeInterval),
 				Grouping:  expr.Grouping,
 				Operation: OpTypeMin,
 			}
 		case OpRangeTypeMax:
 			return &VectorAggregationExpr{
-				Left:      m.mapSampleExpr(expr),
+				Left:      m.mapSampleExpr(expr, rangeInterval),
 				Grouping:  expr.Grouping,
 				Operation: OpTypeMax,
 			}
 		}
 	}
+
 	return expr
 }
 
