@@ -130,7 +130,7 @@ type RequestPostFetcherChunkFilterer interface {
 
 // PostFetcherChunkFilterer filters chunks based on pipeline for log selector expr.
 type PostFetcherChunkFilterer interface {
-	PostFetchFilter(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
+	PostFetchFilter(ctx context.Context, chunks []chunk.Chunk, s chunk.SchemaConfig) ([]chunk.Chunk, []string, error)
 }
 
 type requestPostFetcherChunkFilterer struct {
@@ -147,9 +147,9 @@ type chunkFiltererByExpr struct {
 	req logql.SelectLogParams
 }
 
-func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chunk.Chunk, s chunk.SchemaConfig) ([]chunk.Chunk, []string, error) {
 	if len(chunks) == 0 {
-		return chunks, nil
+		return chunks, nil, nil
 	}
 	postFilterChunkLen := 0
 	log, ctx := spanlogger.New(ctx, "Batch.ParallelPostFetchFilter")
@@ -161,20 +161,21 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 
 	logSelector, err := logql.ParseLogSelector(c.req.Selector, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !logSelector.HasFilter() {
-		return chunks, nil
+		return chunks, nil, nil
 	}
 	pipeline, err := logSelector.Pipeline()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	//
-	streamPipeline := pipeline.ForStream(chunks[0].Metric.WithoutLabels(labels.MetricName))
 	result := make([]chunk.Chunk, 0)
+	resultKeys := make([]string, 0)
 
 	for _, cnk := range chunks {
+		streamPipeline := pipeline.ForStream(cnk.Metric.WithoutLabels(labels.MetricName))
 		chunkData := cnk.Data
 
 		lokiChunk := chunkData.(*chunkenc.Facade).LokiChunk()
@@ -191,7 +192,7 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 				entry := iterator.Entry()
 				err := postFilterChunkData.Append(&entry)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
 		}
@@ -199,7 +200,7 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 			continue
 		}
 		if err := postFilterChunkData.Close(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		firstTime, lastTime := util.RoundToMilliseconds(postFilterChunkData.Bounds())
 
@@ -211,13 +212,13 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 		)
 		chunkSize := postFilterChunkData.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
 		if err := postFilterCh.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkSize))); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		//postBlocks := postFilterChunkData.Blocks(filterer.Request().Start, filterer.Request().End)
 		postFilterChunkLen++
 		result = append(result, postFilterCh)
+		resultKeys = append(resultKeys, s.ExternalKey(cnk))
 	}
-	return result, nil
+	return result, resultKeys, nil
 }
 
 type store struct {
