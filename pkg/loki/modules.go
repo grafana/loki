@@ -289,7 +289,9 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	svc.AddListener(deleteRequestsStoreListener(deleteStore))
+	if svc != nil {
+		svc.AddListener(deleteRequestsStoreListener(deleteStore))
+	}
 	return svc, nil
 }
 
