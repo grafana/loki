@@ -153,26 +153,31 @@ func (tm *TableManager) query(ctx context.Context, tableName string, queries []c
 }
 
 func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
-	tm.tablesMtx.RLock()
-	defer tm.tablesMtx.RUnlock()
-
 	// if table is already there, use it.
+	tm.tablesMtx.RLock()
 	table, ok := tm.tables[tableName]
-	if ok {
-		return table, nil
+	tm.tablesMtx.RUnlock()
+
+	if !ok {
+		tm.tablesMtx.Lock()
+		defer tm.tablesMtx.Unlock()
+
+		// check if some other competing goroutine got the lock before us and created the table, use it if so.
+		table, ok = tm.tables[tableName]
+		if !ok {
+			// table not found, creating one.
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
+
+			tablePath := filepath.Join(tm.cfg.CacheDir, tableName)
+			err := chunk_util.EnsureDirectory(tablePath)
+			if err != nil {
+				return nil, err
+			}
+
+			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
+			tm.tables[tableName] = table
+		}
 	}
-
-	// table not found, creating one.
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
-
-	tablePath := filepath.Join(tm.cfg.CacheDir, tableName)
-	err := chunk_util.EnsureDirectory(tablePath)
-	if err != nil {
-		return nil, err
-	}
-
-	table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
-	tm.tables[tableName] = table
 
 	return table, nil
 }
