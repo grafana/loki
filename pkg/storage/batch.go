@@ -1,14 +1,11 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"sort"
 	"time"
 
 	"github.com/go-kit/log/level"
-	loki_util "github.com/grafana/loki/pkg/util"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -25,7 +22,6 @@ import (
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 type ChunkMetrics struct {
@@ -722,7 +718,7 @@ func fetchLazyChunks(ctx context.Context, s chunk.SchemaConfig, chunks []*LazyCh
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks, keys)
 			if postFetcherChunkFilterer != nil {
-				chks, err = postFetchFilter(ctx, chks, postFetcherChunkFilterer, s)
+				chks, err = postFetcherChunkFilterer.PostFetchFilter(ctx, chks)
 			}
 			if err != nil {
 				level.Error(logger).Log("msg", "error fetching chunks", "err", err)
@@ -772,79 +768,6 @@ func fetchLazyChunks(ctx context.Context, s chunk.SchemaConfig, chunks []*LazyCh
 		}
 	}
 	return nil
-}
-
-func postFetchFilter(ctx context.Context, chunks []chunk.Chunk, filterer PostFetcherChunkFilterer, schema chunk.SchemaConfig) ([]chunk.Chunk, error) {
-	if len(chunks) == 0 {
-		return chunks, nil
-	}
-	postFilterChunkLen := 0
-	log, ctx := spanlogger.New(ctx, "Batch.ParallelPostFetchFilter")
-	log.Span.LogFields(otlog.Int("chunks", len(chunks)))
-	defer func() {
-		log.Span.LogFields(otlog.Int("postFilterChunkLen", postFilterChunkLen))
-		log.Span.Finish()
-	}()
-
-	logSelector, err := logql.ParseLogSelector(filterer.Request().Selector, true)
-	if err != nil {
-		return nil, err
-	}
-	if !logSelector.HasFilter() {
-		return chunks, nil
-	}
-	pipeline, err := logSelector.Pipeline()
-	if err != nil {
-		return nil, err
-	}
-	//
-	streamPipeline := pipeline.ForStream(chunks[0].Metric.WithoutLabels(labels.MetricName))
-	result := make([]chunk.Chunk, 0)
-
-	for _, cnk := range chunks {
-		chunkData := cnk.Data
-
-		lokiChunk := chunkData.(*chunkenc.Facade).LokiChunk()
-		blocks := lokiChunk.Blocks(filterer.Request().Start, filterer.Request().End)
-		if len(blocks) == 0 {
-			continue
-		}
-
-		postFilterChunkData := chunkenc.NewMemChunk(lokiChunk.Encoding(), chunkenc.OrderedHeadBlockFmt, cnk.Data.Size(), cnk.Data.Size())
-		for _, block := range blocks {
-			iterator := block.Iterator(ctx, streamPipeline)
-			//1: post filter
-			for iterator.Next() {
-				entry := iterator.Entry()
-				err := postFilterChunkData.Append(&entry)
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-		if postFilterChunkData.Size() == 0 {
-			continue
-		}
-		if err := postFilterChunkData.Close(); err != nil {
-			return nil, err
-		}
-		firstTime, lastTime := loki_util.RoundToMilliseconds(postFilterChunkData.Bounds())
-
-		postFilterCh := chunk.NewChunk(
-			cnk.UserID, cnk.Fingerprint, cnk.Metric,
-			chunkenc.NewFacade(postFilterChunkData, lokiChunk.BlockSize(), lokiChunk.TargetSize()),
-			firstTime,
-			lastTime,
-		)
-		chunkSize := postFilterChunkData.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
-		if err := postFilterCh.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkSize))); err != nil {
-			return nil, err
-		}
-		//postBlocks := postFilterChunkData.Blocks(filterer.Request().Start, filterer.Request().End)
-		postFilterChunkLen++
-		result = append(result, postFilterCh)
-	}
-	return result, nil
 }
 
 func isInvalidChunkError(err error) bool {

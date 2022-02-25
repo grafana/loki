@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -10,6 +11,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/loki/pkg/chunkenc"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -26,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 var (
@@ -121,19 +125,88 @@ type ChunkFilterer interface {
 
 // PostFetcherChunkFilterer filters chunks based on pipeline for log selector expr.
 type PostFetcherChunkFilterer interface {
-	Request() logql.SelectLogParams
+	PostFetchFilter(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
 }
 
 type chunkFiltererByExpr struct {
 	req logql.SelectLogParams
 }
 
-func (c *chunkFiltererByExpr) Request() logql.SelectLogParams {
-	return c.req
-}
-
 func NewPostFetcherChunkFiltererForRequest(req logql.SelectLogParams) PostFetcherChunkFilterer {
 	return &chunkFiltererByExpr{req: req}
+}
+
+func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+	if len(chunks) == 0 {
+		return chunks, nil
+	}
+	postFilterChunkLen := 0
+	log, ctx := spanlogger.New(ctx, "Batch.ParallelPostFetchFilter")
+	log.Span.LogFields(otlog.Int("chunks", len(chunks)))
+	defer func() {
+		log.Span.LogFields(otlog.Int("postFilterChunkLen", postFilterChunkLen))
+		log.Span.Finish()
+	}()
+
+	logSelector, err := logql.ParseLogSelector(c.req.Selector, true)
+	if err != nil {
+		return nil, err
+	}
+	if !logSelector.HasFilter() {
+		return chunks, nil
+	}
+	pipeline, err := logSelector.Pipeline()
+	if err != nil {
+		return nil, err
+	}
+	//
+	streamPipeline := pipeline.ForStream(chunks[0].Metric.WithoutLabels(labels.MetricName))
+	result := make([]chunk.Chunk, 0)
+
+	for _, cnk := range chunks {
+		chunkData := cnk.Data
+
+		lokiChunk := chunkData.(*chunkenc.Facade).LokiChunk()
+		blocks := lokiChunk.Blocks(c.req.Start, c.req.End)
+		if len(blocks) == 0 {
+			continue
+		}
+
+		postFilterChunkData := chunkenc.NewMemChunk(lokiChunk.Encoding(), chunkenc.OrderedHeadBlockFmt, cnk.Data.Size(), cnk.Data.Size())
+		for _, block := range blocks {
+			iterator := block.Iterator(ctx, streamPipeline)
+			//1: post filter
+			for iterator.Next() {
+				entry := iterator.Entry()
+				err := postFilterChunkData.Append(&entry)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		if postFilterChunkData.Size() == 0 {
+			continue
+		}
+		if err := postFilterChunkData.Close(); err != nil {
+			return nil, err
+		}
+		firstTime, lastTime := util.RoundToMilliseconds(postFilterChunkData.Bounds())
+
+		postFilterCh := chunk.NewChunk(
+			cnk.UserID, cnk.Fingerprint, cnk.Metric,
+			chunkenc.NewFacade(postFilterChunkData, lokiChunk.BlockSize(), lokiChunk.TargetSize()),
+			firstTime,
+			lastTime,
+		)
+		chunkSize := postFilterChunkData.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
+		if err := postFilterCh.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkSize))); err != nil {
+			return nil, err
+		}
+		//postBlocks := postFilterChunkData.Blocks(filterer.Request().Start, filterer.Request().End)
+		postFilterChunkLen++
+		result = append(result, postFilterCh)
+	}
+	return result, nil
 }
 
 type store struct {

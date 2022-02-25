@@ -24,6 +24,14 @@ type dumbChunk struct {
 	entries []logproto.Entry
 }
 
+func (c *dumbChunk) BlockSize() int {
+	return 0
+}
+
+func (c *dumbChunk) TargetSize() int {
+	return 0
+}
+
 func (c *dumbChunk) Bounds() (time.Time, time.Time) {
 	if len(c.entries) == 0 {
 		return time.Time{}, time.Time{}
