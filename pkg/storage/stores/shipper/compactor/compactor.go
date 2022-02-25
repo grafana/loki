@@ -67,6 +67,7 @@ type Config struct {
 	RetentionEnabled          bool            `yaml:"retention_enabled"`
 	RetentionDeleteDelay      time.Duration   `yaml:"retention_delete_delay"`
 	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
+	DeletionEnabled           bool            `yaml:"deletion_enabled"`
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
@@ -84,6 +85,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
+	f.BoolVar(&cfg.DeletionEnabled, "boltdb.shipper.compactor.deletion-enabled", false, "(Experimental) Activate deletion instead of filtering.")
 	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
 }
 
@@ -225,7 +227,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 		c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
 		c.deleteRequestsManager = deletion.NewDeleteRequestsManager(c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, r)
 
-		c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
+		c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits))
 
 		c.tableMarker, err = retention.NewMarker(retentionWorkDir, schemaConfig, c.expirationChecker, chunkClient, r)
 		if err != nil {
@@ -287,6 +289,8 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 func (c *Compactor) loop(ctx context.Context) error {
 	if c.cfg.RetentionEnabled {
 		defer c.deleteRequestsStore.Stop()
+	}
+	if c.cfg.DeletionEnabled {
 		defer c.deleteRequestsManager.Stop()
 	}
 
@@ -532,11 +536,10 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 
 type expirationChecker struct {
 	retentionExpiryChecker retention.ExpirationChecker
-	deletionExpiryChecker  retention.ExpirationChecker
 }
 
-func newExpirationChecker(retentionExpiryChecker, deletionExpiryChecker retention.ExpirationChecker) retention.ExpirationChecker {
-	return &expirationChecker{retentionExpiryChecker, deletionExpiryChecker}
+func newExpirationChecker(retentionExpiryChecker retention.ExpirationChecker) retention.ExpirationChecker {
+	return &expirationChecker{retentionExpiryChecker}
 }
 
 func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []model.Interval) {
@@ -544,30 +547,27 @@ func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (b
 		return expired, nonDeletedIntervals
 	}
 
-	return e.deletionExpiryChecker.Expired(ref, now)
+	return false, nil
 }
 
 func (e *expirationChecker) MarkPhaseStarted() {
 	e.retentionExpiryChecker.MarkPhaseStarted()
-	e.deletionExpiryChecker.MarkPhaseStarted()
 }
 
 func (e *expirationChecker) MarkPhaseFailed() {
 	e.retentionExpiryChecker.MarkPhaseFailed()
-	e.deletionExpiryChecker.MarkPhaseFailed()
 }
 
 func (e *expirationChecker) MarkPhaseFinished() {
 	e.retentionExpiryChecker.MarkPhaseFinished()
-	e.deletionExpiryChecker.MarkPhaseFinished()
 }
 
 func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
-	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID) || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID)
+	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID)
 }
 
 func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime model.Time, now model.Time) bool {
-	return e.retentionExpiryChecker.DropFromIndex(ref, tableEndTime, now) || e.deletionExpiryChecker.DropFromIndex(ref, tableEndTime, now)
+	return e.retentionExpiryChecker.DropFromIndex(ref, tableEndTime, now)
 }
 
 func (c *Compactor) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
