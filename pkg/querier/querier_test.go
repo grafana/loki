@@ -767,6 +767,7 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 	}
 
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
+	require.NoError(t, err)
 
 	expectedRequest := &logproto.QueryRequest{
 		Selector:  request.Selector,
