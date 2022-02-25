@@ -26,20 +26,20 @@ func TestDeleteRequestsStore(t *testing.T) {
 	var user2ExpectedRequests []DeleteRequest
 	for i := time.Duration(1); i <= 24; i++ {
 		user1ExpectedRequests = append(user1ExpectedRequests, DeleteRequest{
-			UserID:    user1,
-			StartTime: now.Add(-i * time.Hour),
-			EndTime:   now.Add(-i * time.Hour).Add(30 * time.Minute),
-			CreatedAt: now.Add(-i * time.Hour).Add(30 * time.Minute),
-			Selectors: []string{fmt.Sprintf(`{foo="%d", user="%s"}`, i, user1)},
-			Status:    StatusReceived,
+			UserID:       user1,
+			StartTime:    now.Add(-i * time.Hour),
+			EndTime:      now.Add(-i * time.Hour).Add(30 * time.Minute),
+			CreatedAt:    now.Add(-i * time.Hour).Add(30 * time.Minute),
+			LogQLRequest: fmt.Sprintf(`{foo="%d", user="%s"}`, i, user1),
+			Status:       StatusReceived,
 		})
 		user2ExpectedRequests = append(user2ExpectedRequests, DeleteRequest{
-			UserID:    user2,
-			StartTime: now.Add(-i * time.Hour),
-			EndTime:   now.Add(-(i + 1) * time.Hour),
-			CreatedAt: now.Add(-(i + 1) * time.Hour),
-			Selectors: []string{fmt.Sprintf(`{foo="%d", user="%s"}`, i, user2)},
-			Status:    StatusReceived,
+			UserID:       user2,
+			StartTime:    now.Add(-i * time.Hour),
+			EndTime:      now.Add(-(i + 1) * time.Hour),
+			CreatedAt:    now.Add(-(i + 1) * time.Hour),
+			LogQLRequest: fmt.Sprintf(`{foo="%d", user="%s"}`, i, user2),
+			Status:       StatusReceived,
 		})
 	}
 
@@ -66,7 +66,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			user1ExpectedRequests[i].CreatedAt,
 			user1ExpectedRequests[i].StartTime,
 			user1ExpectedRequests[i].EndTime,
-			user1ExpectedRequests[i].Selectors,
+			user1ExpectedRequests[i].LogQLRequest,
 		)
 		require.NoError(t, err)
 		user1ExpectedRequests[i].RequestID = string(requestID)
@@ -77,7 +77,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			user2ExpectedRequests[i].CreatedAt,
 			user2ExpectedRequests[i].StartTime,
 			user2ExpectedRequests[i].EndTime,
-			user2ExpectedRequests[i].Selectors,
+			user2ExpectedRequests[i].LogQLRequest,
 		)
 		require.NoError(t, err)
 		user2ExpectedRequests[i].RequestID = string(requestID)
