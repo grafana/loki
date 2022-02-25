@@ -10,7 +10,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -107,7 +106,7 @@ type Store interface {
 	GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 	GetSchemaConfigs() []chunk.PeriodConfig
 	SetChunkFilterer(chunkFilter RequestChunkFilterer)
-	SetPostFetcherChunkFilterer(postFetcherChunkFilterer PostFetcherChunkFilterer)
+	SetPostFetcherChunkFilterer(postFetcherChunkFiltererEnable bool)
 }
 
 // RequestChunkFilterer creates ChunkFilterer for a given request context.
@@ -123,53 +122,18 @@ type ChunkFilterer interface {
 // PostFetcherChunkFilterer filters chunks based on pipeline for log selector expr.
 type PostFetcherChunkFilterer interface {
 	Request() logql.SelectLogParams
-	Encoding() chunkenc.Encoding
-	HeadBlockFmt() chunkenc.HeadBlockFmt
-	BlockSize() int
-	TargetChunkSize() int
-
-	ForRequest(req logql.SelectLogParams, tenantId string) PostFetcherChunkFilterer
-}
-
-type BlockFormat interface {
-	BlockFmt(tenantId string) chunkenc.HeadBlockFmt
 }
 
 type chunkFiltererByExpr struct {
-	req      logql.SelectLogParams
-	blockFmt chunkenc.HeadBlockFmt
-
-	encoding        chunkenc.Encoding
-	blockSize       int
-	targetChunkSize int
-
-	blockFormat func(tenantId string) chunkenc.HeadBlockFmt
+	req logql.SelectLogParams
 }
 
 func (c *chunkFiltererByExpr) Request() logql.SelectLogParams {
 	return c.req
 }
 
-func (c *chunkFiltererByExpr) Encoding() chunkenc.Encoding {
-	return c.encoding
-}
-func (c *chunkFiltererByExpr) HeadBlockFmt() chunkenc.HeadBlockFmt {
-	return c.blockFmt
-}
-func (c *chunkFiltererByExpr) BlockSize() int {
-	return c.blockSize
-}
-func (c *chunkFiltererByExpr) TargetChunkSize() int {
-	return c.targetChunkSize
-}
-
-func NewPostFetcherChunkFilterer(encoding chunkenc.Encoding, blockSize int, targetChunkSize int, blockFormat func(tenantId string) chunkenc.HeadBlockFmt) PostFetcherChunkFilterer {
-	return &chunkFiltererByExpr{encoding: encoding, blockSize: blockSize, targetChunkSize: targetChunkSize, blockFormat: blockFormat}
-}
-
-func (c *chunkFiltererByExpr) ForRequest(req logql.SelectLogParams, tenantId string) PostFetcherChunkFilterer {
-	blockFmt := c.blockFormat(tenantId)
-	return &chunkFiltererByExpr{encoding: c.encoding, blockFmt: blockFmt, blockSize: c.blockSize, targetChunkSize: c.targetChunkSize, req: req}
+func NewPostFetcherChunkFiltererForRequest(req logql.SelectLogParams) PostFetcherChunkFilterer {
+	return &chunkFiltererByExpr{req: req}
 }
 
 type store struct {
@@ -178,8 +142,8 @@ type store struct {
 	chunkMetrics *ChunkMetrics
 	schemaCfg    SchemaConfig
 
-	chunkFilterer            RequestChunkFilterer
-	postFetcherChunkFilterer PostFetcherChunkFilterer
+	chunkFilterer                  RequestChunkFilterer
+	postFetcherChunkFiltererEnable bool
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -262,8 +226,8 @@ func (s *store) SetChunkFilterer(chunkFilterer RequestChunkFilterer) {
 	s.chunkFilterer = chunkFilterer
 }
 
-func (s *store) SetPostFetcherChunkFilterer(postFetcherChunkFilterer PostFetcherChunkFilterer) {
-	s.postFetcherChunkFilterer = postFetcherChunkFilterer
+func (s *store) SetPostFetcherChunkFilterer(postFetcherChunkFiltererEnable bool) {
+	s.postFetcherChunkFiltererEnable = postFetcherChunkFiltererEnable
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
@@ -428,12 +392,8 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 	var postFetcherChunkFilterer PostFetcherChunkFilterer
-	if s.postFetcherChunkFilterer != nil {
-		tenantID, err := tenant.TenantID(ctx)
-		if err != nil {
-			return nil, err
-		}
-		postFetcherChunkFilterer = s.postFetcherChunkFilterer.ForRequest(req, tenantID)
+	if s.postFetcherChunkFiltererEnable {
+		postFetcherChunkFilterer = NewPostFetcherChunkFiltererForRequest(req)
 	}
 
 	return newLogBatchIterator(ctx, s.schemaCfg.SchemaConfig, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer, postFetcherChunkFilterer)

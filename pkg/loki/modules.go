@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
@@ -224,24 +223,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	var err error
 	if t.Cfg.Querier.PostFilterChunk {
-		enc, err := chunkenc.ParseEncoding(t.Cfg.Ingester.ChunkEncoding)
-		if err != nil {
-			return nil, err
-		}
-		limiter := ingester.NewLimiter(t.overrides, nil, nil, t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor)
-
-		postFetcherChunkFilterer := loki_storage.NewPostFetcherChunkFilterer(enc, t.Cfg.Ingester.BlockSize, t.Cfg.Ingester.TargetChunkSize, func(tenantId string) chunkenc.HeadBlockFmt {
-			var blockFmt chunkenc.HeadBlockFmt
-			unorderedWrites := limiter.UnorderedWrites(tenantId)
-			if unorderedWrites {
-				blockFmt = chunkenc.UnorderedHeadBlockFmt
-			} else {
-				blockFmt = chunkenc.OrderedHeadBlockFmt
-			}
-			return blockFmt
-		})
-		t.Store.SetPostFetcherChunkFilterer(postFetcherChunkFilterer)
-
+		t.Store.SetPostFetcherChunkFilterer(true)
 	}
 	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
 	if err != nil {

@@ -803,12 +803,14 @@ func postFetchFilter(ctx context.Context, chunks []chunk.Chunk, filterer PostFet
 
 	for _, cnk := range chunks {
 		chunkData := cnk.Data
+
 		lokiChunk := chunkData.(*chunkenc.Facade).LokiChunk()
 		blocks := lokiChunk.Blocks(filterer.Request().Start, filterer.Request().End)
 		if len(blocks) == 0 {
 			continue
 		}
-		postFilterChunkData := chunkenc.NewMemChunk(filterer.Encoding(), filterer.HeadBlockFmt(), cnk.Data.Size(), cnk.Data.Size())
+
+		postFilterChunkData := chunkenc.NewMemChunk(lokiChunk.Encoding(), chunkenc.OrderedHeadBlockFmt, cnk.Data.Size(), cnk.Data.Size())
 		for _, block := range blocks {
 			iterator := block.Iterator(ctx, streamPipeline)
 			//1: post filter
@@ -830,7 +832,7 @@ func postFetchFilter(ctx context.Context, chunks []chunk.Chunk, filterer PostFet
 
 		postFilterCh := chunk.NewChunk(
 			cnk.UserID, cnk.Fingerprint, cnk.Metric,
-			chunkenc.NewFacade(postFilterChunkData, filterer.BlockSize(), filterer.TargetChunkSize()),
+			chunkenc.NewFacade(postFilterChunkData, lokiChunk.BlockSize(), lokiChunk.TargetSize()),
 			firstTime,
 			lastTime,
 		)

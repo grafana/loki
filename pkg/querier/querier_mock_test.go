@@ -209,7 +209,7 @@ func newStoreMock() *storeMock {
 
 func (s *storeMock) SetChunkFilterer(storage.RequestChunkFilterer) {}
 
-func (s *storeMock) SetPostFetcherChunkFilterer(storage.PostFetcherChunkFilterer) {}
+func (s *storeMock) SetPostFetcherChunkFilterer(bool) {}
 
 func (s *storeMock) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	args := s.Called(ctx, req)
