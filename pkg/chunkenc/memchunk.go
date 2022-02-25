@@ -721,14 +721,6 @@ func (c *MemChunk) reorder() error {
 	return nil
 }
 
-func (c *MemChunk) BlockSize() int {
-	return c.blockSize
-}
-
-func (c *MemChunk) TargetSize() int {
-	return c.targetSize
-}
-
 func (c *MemChunk) ConvertHead(desired HeadBlockFmt) error {
 	if c.head != nil && c.head.Format() != desired {
 		newH, err := c.head.Convert(desired)

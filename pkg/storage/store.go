@@ -134,21 +134,17 @@ type PostFetcherChunkFilterer interface {
 }
 
 type requestPostFetcherChunkFilterer struct {
-	blockSize  int
-	targetSize int
 }
 
-func NewRequestPostFetcherChunkFiltererForRequest(blockSize int, targetSize int) RequestPostFetcherChunkFilterer {
-	return &requestPostFetcherChunkFilterer{blockSize: blockSize, targetSize: targetSize}
+func NewRequestPostFetcherChunkFiltererForRequest() RequestPostFetcherChunkFilterer {
+	return &requestPostFetcherChunkFilterer{}
 }
 func (c *requestPostFetcherChunkFilterer) ForRequest(req logql.SelectLogParams) PostFetcherChunkFilterer {
-	return &chunkFiltererByExpr{req: req, blockSize: c.blockSize, targetSize: c.targetSize}
+	return &chunkFiltererByExpr{req: req}
 }
 
 type chunkFiltererByExpr struct {
-	req        logql.SelectLogParams
-	blockSize  int
-	targetSize int
+	req logql.SelectLogParams
 }
 
 func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
@@ -209,7 +205,7 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 
 		postFilterCh := chunk.NewChunk(
 			cnk.UserID, cnk.Fingerprint, cnk.Metric,
-			chunkenc.NewFacade(postFilterChunkData, c.blockSize, c.targetSize),
+			chunkenc.NewFacade(postFilterChunkData, 0, 0),
 			firstTime,
 			lastTime,
 		)

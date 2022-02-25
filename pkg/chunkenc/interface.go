@@ -128,8 +128,6 @@ type Chunk interface {
 	Close() error
 	Encoding() Encoding
 	Rebound(start, end time.Time) (Chunk, error)
-	BlockSize() int
-	TargetSize() int
 }
 
 // Block is a chunk block.
