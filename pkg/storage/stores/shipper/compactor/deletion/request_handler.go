@@ -9,7 +9,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -35,7 +34,7 @@ func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, deleteRequestCance
 	return &deleteMgr
 }
 
-// AddDeleteRequestHandler handles addition of new delete request
+// AddDeleteRequestHandler handles addition of a new delete request
 func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
@@ -45,18 +44,16 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	params := r.URL.Query()
-	match := params["match[]"]
-	if len(match) == 0 {
-		http.Error(w, "selectors not set", http.StatusBadRequest)
+	logQLStatement := params.Get("logql")
+	if len(logQLStatement) == 0 {
+		http.Error(w, "logql not set", http.StatusBadRequest)
 		return
 	}
 
-	for i := range match {
-		_, err := parser.ParseMetricSelector(match[i])
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	err = checkLogQLExpressionForDeletion(logQLStatement)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	startParam := params.Get("start")
@@ -90,7 +87,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
-	if err := dm.deleteRequestsStore.AddDeleteRequest(ctx, userID, model.Time(startTime), model.Time(endTime), match); err != nil {
+	if err := dm.deleteRequestsStore.AddDeleteRequest(ctx, userID, model.Time(startTime), model.Time(endTime), logQLStatement); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
