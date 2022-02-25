@@ -84,8 +84,8 @@ func main() {
 				Checksum: extractChecksumFromChunkID(entry.ChunkID),
 				MinTime:  int64(entry.From),
 				MaxTime:  int64(entry.Through),
-				Bytes:    (3 << 20) / 4, // guess: 0.75mb, 1/2 of the max size
-				Entries:  10000,         // guess: 10k entries
+				KB:       ((3 << 20) / 4) / 1024, // guess: 0.75mb, 1/2 of the max size, rounded to KB
+				Entries:  10000,                  // guess: 10k entries
 			}})
 		}
 
