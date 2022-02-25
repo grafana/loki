@@ -458,7 +458,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		c := chunks[0]
 		w.buf2.PutVarint64(c.MinTime)
 		w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
-		w.buf2.PutUvarint64(c.Bytes)
+		w.buf2.PutUvarint32(c.KB)
 		w.buf2.PutUvarint32(c.Entries)
 		w.buf2.PutBE32(c.Checksum)
 		t0 := c.MaxTime
@@ -468,7 +468,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 			// instead of uvarint because chunks may overlap
 			w.buf2.PutVarint64(c.MinTime - t0)
 			w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
-			w.buf2.PutUvarint64(c.Bytes)
+			w.buf2.PutUvarint32(c.KB)
 			w.buf2.PutUvarint32(c.Entries)
 			t0 = c.MaxTime
 
@@ -1869,7 +1869,7 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) err
 
 	t0 := d.Varint64()
 	maxt := int64(d.Uvarint64()) + t0
-	nBytes := d.Uvarint64()
+	kb := uint32(d.Uvarint())
 	entries := uint32(d.Uvarint64())
 	checksum := d.Be32()
 
@@ -1877,7 +1877,7 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) err
 		Checksum: checksum,
 		MinTime:  t0,
 		MaxTime:  maxt,
-		Bytes:    nBytes,
+		KB:       kb,
 		Entries:  entries,
 	})
 	t0 = maxt
@@ -1887,7 +1887,7 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) err
 		// instead of uvarint because chunks may overlap
 		mint := d.Varint64() + t0
 		maxt := int64(d.Uvarint64()) + mint
-		nBytes := d.Uvarint64()
+		kb := uint32(d.Uvarint())
 		entries := uint32(d.Uvarint64())
 		checksum := d.Be32()
 		t0 = maxt
@@ -1900,7 +1900,7 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) err
 			Checksum: checksum,
 			MinTime:  mint,
 			MaxTime:  maxt,
-			Bytes:    nBytes,
+			KB:       kb,
 			Entries:  entries,
 		})
 	}
