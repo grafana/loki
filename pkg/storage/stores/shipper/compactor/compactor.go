@@ -217,6 +217,15 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 			return err
 		}
 
+		c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits))
+
+		c.tableMarker, err = retention.NewMarker(retentionWorkDir, schemaConfig, c.expirationChecker, chunkClient, r)
+		if err != nil {
+			return err
+		}
+	}
+
+	if c.cfg.DeletionEnabled {
 		deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
 		c.deleteRequestsStore, err = deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
@@ -226,13 +235,6 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 
 		c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
 		c.deleteRequestsManager = deletion.NewDeleteRequestsManager(c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, r)
-
-		c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits))
-
-		c.tableMarker, err = retention.NewMarker(retentionWorkDir, schemaConfig, c.expirationChecker, chunkClient, r)
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil
