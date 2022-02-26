@@ -158,7 +158,7 @@ func (t *table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 
 	// query both user and common index
 	for _, uid := range []string{userID, ""} {
-		indexSet, err := t.getOrCreateIndexSet(uid)
+		indexSet, err := t.getOrCreateIndexSet(uid, true)
 		if err != nil {
 			return err
 		}
@@ -256,7 +256,9 @@ func (t *table) Sync(ctx context.Context) error {
 // getOrCreateIndexSet gets or creates the index set for the userID.
 // If it does not exist, it creates a new one and initializes it in a goroutine.
 // Caller can use IndexSet.AwaitReady() to wait until the IndexSet gets ready, if required.
-func (t *table) getOrCreateIndexSet(id string) (IndexSet, error) {
+// forQuerying must be set to true only getting the index for querying since
+// it captures the amount of time it takes to download the index at query time.
+func (t *table) getOrCreateIndexSet(id string, forQuerying bool) (IndexSet, error) {
 	t.indexSetsMtx.RLock()
 	indexSet, ok := t.indexSets[id]
 	t.indexSetsMtx.RUnlock()
@@ -288,6 +290,15 @@ func (t *table) getOrCreateIndexSet(id string) (IndexSet, error) {
 
 	// initialize the index set in async mode, it would be upto the caller to wait for its readiness using IndexSet.AwaitReady()
 	go func() {
+		if forQuerying {
+			start := time.Now()
+			defer func() {
+				duration := time.Since(start).Seconds()
+				t.metrics.queryTimeTableDownloadDurationSeconds.WithLabelValues(t.name).Add(duration)
+				level.Info(loggerWithUserID(t.logger, id)).Log("msg", "downloaded index set at query time", "duration", duration)
+			}()
+		}
+
 		err := indexSet.Init()
 		if err != nil {
 			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
@@ -300,7 +311,7 @@ func (t *table) getOrCreateIndexSet(id string) (IndexSet, error) {
 // EnsureQueryReadiness ensures that we have downloaded the common index as well as user index for the provided userIDs.
 // When ensuring query readiness for a table, we will always download common index set because it can include index for one of the provided user ids.
 func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) error {
-	commonIndexSet, err := t.getOrCreateIndexSet("")
+	commonIndexSet, err := t.getOrCreateIndexSet("", false)
 	if err != nil {
 		return err
 	}
@@ -328,7 +339,7 @@ func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) erro
 // downloadUserIndexes downloads user specific index files concurrently.
 func (t *table) downloadUserIndexes(ctx context.Context, userIDs []string) error {
 	return concurrency.ForEachJob(ctx, len(userIDs), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
-		indexSet, err := t.getOrCreateIndexSet(userIDs[idx])
+		indexSet, err := t.getOrCreateIndexSet(userIDs[idx], false)
 		if err != nil {
 			return err
 		}
