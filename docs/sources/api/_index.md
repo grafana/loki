@@ -23,13 +23,13 @@ These endpoints are exposed by all components:
 
 These endpoints are exposed by the querier and the frontend:
 
-- [Loki's HTTP API](#lokis-http-api)
+- [Loki's HTTP API](#grafana-loki-http-api)
   - [Microservices Mode](#microservices-mode)
   - [Matrix, Vector, And Streams](#matrix-vector-and-streams)
   - [`GET /loki/api/v1/query`](#get-lokiapiv1query)
     - [Examples](#examples)
   - [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
-        - [Step vs Interval](#step-vs-interval)
+        - [Step vs Interval](#step-versus-interval)
     - [Examples](#examples-1)
   - [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
     - [Examples](#examples-2)
