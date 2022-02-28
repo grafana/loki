@@ -149,7 +149,7 @@ type resultsCache struct {
 // see `generateKey`.
 func NewResultsCacheMiddleware(
 	logger log.Logger,
-	cfg ResultsCacheConfig,
+	c cache.Cache,
 	splitter CacheSplitter,
 	limits Limits,
 	merger Merger,
@@ -157,15 +157,7 @@ func NewResultsCacheMiddleware(
 	cacheGenNumberLoader CacheGenNumberLoader,
 	shouldCache ShouldCacheFn,
 	reg prometheus.Registerer,
-) (Middleware, cache.Cache, error) {
-	c, err := cache.New(cfg.CacheConfig, reg, logger)
-	if err != nil {
-		return nil, nil, err
-	}
-	if cfg.Compression == "snappy" {
-		c = cache.NewSnappy(c, logger)
-	}
-
+) (Middleware, error) {
 	if cacheGenNumberLoader != nil {
 		c = cache.NewCacheGenNumMiddleware(c)
 	}
@@ -173,7 +165,6 @@ func NewResultsCacheMiddleware(
 	return MiddlewareFunc(func(next Handler) Handler {
 		return &resultsCache{
 			logger:               logger,
-			cfg:                  cfg,
 			next:                 next,
 			cache:                c,
 			limits:               limits,
@@ -184,7 +175,7 @@ func NewResultsCacheMiddleware(
 			cacheGenNumberLoader: cacheGenNumberLoader,
 			shouldCache:          shouldCache,
 		}
-	}), c, nil
+	}), nil
 }
 
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {

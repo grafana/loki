@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/golang/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"golang.org/x/sync/errgroup"
@@ -23,28 +24,59 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
-func NewLogCacheNoResult(logger log.Logger, limits Limits, cache cache.Cache, reg prometheus.Registerer) (queryrangebase.Middleware, error) {
+// LogCacheMetrics is the metrics wrapper used in log result cache.
+type LogCacheMetrics struct {
+	CacheHit  prometheus.Counter
+	CacheMiss prometheus.Counter
+}
+
+func NewLogCacheMetrics(registerer prometheus.Registerer) *LogCacheMetrics {
+	return &LogCacheMetrics{
+		CacheHit: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "query_frontend_log_result_cache_hit_total",
+		}),
+		CacheMiss: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "query_frontend_log_result_cache_miss_total",
+		}),
+	}
+}
+
+func NewLogCacheNoResult(logger log.Logger, limits Limits, cache cache.Cache, shouldCache queryrangebase.ShouldCacheFn, metrics *LogCacheMetrics) (queryrangebase.Middleware, error) {
+	if metrics == nil {
+		metrics = NewLogCacheMetrics(nil)
+	}
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &logCacheNoResult{
-			next:   next,
-			limits: limits,
-			cache:  cache,
-			logger: logger,
+			next:        next,
+			limits:      limits,
+			cache:       cache,
+			logger:      logger,
+			shouldCache: shouldCache,
+			metrics:     metrics,
 		}
 	}), nil
 }
 
 type logCacheNoResult struct {
-	next   queryrangebase.Handler
-	limits Limits
-	cache  cache.Cache
-	logger log.Logger
+	next        queryrangebase.Handler
+	limits      Limits
+	cache       cache.Cache
+	shouldCache queryrangebase.ShouldCacheFn
+
+	metrics *LogCacheMetrics
+	logger  log.Logger
 }
 
 func (l *logCacheNoResult) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	if l.shouldCache != nil && !l.shouldCache(req) {
+		return l.next.Do(ctx, req)
 	}
 
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, l.limits.MaxCacheFreshness)
@@ -95,6 +127,7 @@ func (l *logCacheNoResult) Do(ctx context.Context, req queryrangebase.Request) (
 
 func (l *logCacheNoResult) handleMiss(ctx context.Context, cacheKey string, req *LokiRequest) (queryrangebase.Response, error) {
 	// cache miss
+	l.metrics.CacheMiss.Inc()
 	level.Debug(l.logger).Log("msg", "cache miss", "key", cacheKey)
 	resp, err := l.next.Do(ctx, req)
 	if err != nil {
@@ -122,6 +155,7 @@ func (l *logCacheNoResult) handleMiss(ctx context.Context, cacheKey string, req 
 }
 
 func (l *logCacheNoResult) handleHit(ctx context.Context, cacheKey string, cachedResquest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
+	l.metrics.CacheHit.Inc()
 	// we start with an empty response
 	result := &LokiResponse{
 		Status:     loghttp.QueryStatusSuccess,
