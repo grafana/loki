@@ -79,7 +79,7 @@ func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, indexStorage
 	}
 
 	// download the missing tables.
-	err = tm.ensureQueryReadiness(context.Background())
+	err = tm.ensureQueryReadiness(ctx)
 	if err != nil {
 		// call Stop to close open file references.
 		tm.Stop()
@@ -109,7 +109,7 @@ func (tm *TableManager) loop() {
 			}
 
 			// we need to keep ensuring query readiness to download every days new table which would otherwise be downloaded only during queries.
-			err = tm.ensureQueryReadiness(context.Background())
+			err = tm.ensureQueryReadiness(tm.ctx)
 			if err != nil {
 				level.Error(util_log.Logger).Log("msg", "error ensuring query readiness of tables", "err", err)
 			}
