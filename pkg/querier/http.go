@@ -32,14 +32,16 @@ type QueryResponse struct {
 	Result     parser.Value     `json:"result"`
 }
 
-type QuerrierAPI struct {
+// QurierAPI defines HTTP handler functions for the querier.
+type QuerierAPI struct {
 	querier Querier
 	cfg     Config
 	limits  *validation.Overrides
 }
 
-func NewQuerierAPI(cfg Config, querier Querier, limits *validation.Overrides) *QuerrierAPI {
-	return &QuerrierAPI{
+// NewQuerierAPI returns an instance of the QuerierAPI.
+func NewQuerierAPI(cfg Config, querier Querier, limits *validation.Overrides) *QuerierAPI {
+	return &QuerierAPI{
 		cfg:     cfg,
 		limits:  limits,
 		querier: querier,
@@ -47,7 +49,7 @@ func NewQuerierAPI(cfg Config, querier Querier, limits *validation.Overrides) *Q
 }
 
 // RangeQueryHandler is a http.HandlerFunc for range queries.
-func (q *QuerrierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
@@ -86,7 +88,7 @@ func (q *QuerrierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
-func (q *QuerrierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
@@ -126,7 +128,7 @@ func (q *QuerrierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request
 }
 
 // LogQueryHandler is a http.HandlerFunc for log only queries.
-func (q *QuerrierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
@@ -184,7 +186,7 @@ func (q *QuerrierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // LabelHandler is a http.HandlerFunc for handling label queries.
-func (q *QuerrierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := loghttp.ParseLabelQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
@@ -209,7 +211,7 @@ func (q *QuerrierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // TailHandler is a http.HandlerFunc for handling tail queries.
-func (q *QuerrierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
@@ -333,7 +335,7 @@ func (q *QuerrierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
-func (q *QuerrierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := logql.ParseAndValidateSeriesQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
@@ -372,7 +374,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	return query, nil
 }
 
-func (q *QuerrierAPI) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
+func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
