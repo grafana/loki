@@ -284,6 +284,9 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 			}
 		}
 	}
+	if it.postFetcherChunkFilterer != nil {
+		it.postFetcherChunkFilterer.SetQueryRangeTime(from, through, nextChunk)
+	}
 	// download chunk for this batch.
 	chksBySeries, err := fetchChunkBySeries(it.ctx, it.schemas, it.metrics, batch, it.matchers, it.chunkFilterer, it.postFetcherChunkFilterer)
 	if err != nil {

@@ -131,6 +131,7 @@ type RequestPostFetcherChunkFilterer interface {
 // PostFetcherChunkFilterer filters chunks based on pipeline for log selector expr.
 type PostFetcherChunkFilterer interface {
 	PostFetchFilter(ctx context.Context, chunks []chunk.Chunk, s chunk.SchemaConfig) ([]chunk.Chunk, []string, error)
+	SetQueryRangeTime(from time.Time, through time.Time, nextChunk *LazyChunk)
 }
 
 type requestPostFetcherChunkFilterer struct {
@@ -144,7 +145,16 @@ func (c *requestPostFetcherChunkFilterer) ForRequest(req logql.SelectLogParams) 
 }
 
 type chunkFiltererByExpr struct {
-	req logql.SelectLogParams
+	req       logql.SelectLogParams
+	from      time.Time
+	through   time.Time
+	nextChunk *LazyChunk
+}
+
+func (c *chunkFiltererByExpr) SetQueryRangeTime(from time.Time, through time.Time, nextChunk *LazyChunk) {
+	c.from = from
+	c.through = through
+	c.nextChunk = nextChunk
 }
 
 func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chunk.Chunk, s chunk.SchemaConfig) ([]chunk.Chunk, []string, error) {
@@ -177,27 +187,19 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 	for _, cnk := range chunks {
 		streamPipeline := pipeline.ForStream(cnk.Metric.WithoutLabels(labels.MetricName))
 		chunkData := cnk.Data
-
+		lazyChunk := LazyChunk{Chunk: cnk}
+		iterator, err := lazyChunk.Iterator(ctx, c.from, c.through, c.req.Direction, streamPipeline, c.nextChunk)
+		if err != nil {
+			return nil, nil, err
+		}
 		lokiChunk := chunkData.(*chunkenc.Facade).LokiChunk()
-		blocks := lokiChunk.Blocks(c.req.Start, c.req.End)
-		if len(blocks) == 0 {
-			continue
-		}
-
-		postFilterChunkData := chunkenc.NewMemChunk(lokiChunk.Encoding(), chunkenc.OrderedHeadBlockFmt, cnk.Data.Size(), cnk.Data.Size())
-		for _, block := range blocks {
-			iterator := block.Iterator(ctx, streamPipeline)
-			//1: post filter
-			for iterator.Next() {
-				entry := iterator.Entry()
-				err := postFilterChunkData.Append(&entry)
-				if err != nil {
-					return nil, nil, err
-				}
+		postFilterChunkData := chunkenc.NewMemChunk(lokiChunk.Encoding(), chunkenc.UnorderedHeadBlockFmt, cnk.Data.Size(), cnk.Data.Size())
+		for iterator.Next() {
+			entry := iterator.Entry()
+			err := postFilterChunkData.Append(&entry)
+			if err != nil {
+				return nil, nil, err
 			}
-		}
-		if postFilterChunkData.Size() == 0 {
-			continue
 		}
 		if err := postFilterChunkData.Close(); err != nil {
 			return nil, nil, err
