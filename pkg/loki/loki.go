@@ -235,6 +235,7 @@ type Loki struct {
 	distributor              *distributor.Distributor
 	Ingester                 ingester.Interface
 	Querier                  querier.Querier
+	querierAPI				 *querier.QuerrierAPI
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
 	tableManager             *chunk.TableManager

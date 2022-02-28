@@ -77,7 +77,10 @@ func (cfg *Config) Validate() error {
 // Querier can select logs and samples and handle query requests.
 type Querier interface {
 	logql.Querier
-	QueryHandlers
+	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
+	Query(params logql.Params) logql.Query
+	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
+	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
 }
 
 // Querier handlers queries.
@@ -90,7 +93,7 @@ type querier struct {
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides) (*querier, error) {
+func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides, logger log.Logger) (*querier, error) {
 	querier := querier{
 		cfg:             cfg,
 		store:           store,
@@ -98,13 +101,17 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 		limits:          limits,
 	}
 
-	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits, log.With(util_log.Logger, "component", "querier"))
+	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits, log.With(logger, "component", "querier"))
 
 	return &querier, nil
 }
 
 func (q *querier) SetQueryable(queryable logql.Querier) {
 	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits, log.With(util_log.Logger, "component", "querier"))
+}
+
+func (q *querier) Query(params logql.Params) logql.Query {
+	return q.engine.Query(params)
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.

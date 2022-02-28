@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -35,7 +36,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 	if err != nil {
 		return nil, err
 	}
-	return New(cfg, store, iq, limits)
+	return New(cfg, store, iq, limits, log.NewNopLogger())
 }
 
 func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
@@ -276,7 +277,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
 				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
-			func(t *testing.T, q*querier, req *logproto.SeriesRequest) {
+			func(t *testing.T, q *querier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
