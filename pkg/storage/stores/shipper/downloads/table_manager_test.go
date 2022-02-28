@@ -3,17 +3,16 @@ package downloads
 import (
 	"context"
 	"fmt"
-	"math"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 func buildTestTableManager(t *testing.T, path string) (*TableManager, stopFunc) {
@@ -24,6 +23,7 @@ func buildTestTableManager(t *testing.T, path string) (*TableManager, stopFunc) 
 		CacheDir:     cachePath,
 		SyncInterval: time.Hour,
 		CacheTTL:     time.Hour,
+		Limits:       &mockLimits{},
 	}
 	tableManager, err := NewTableManager(cfg, boltDBIndexClient, indexStorageClient, nil)
 	require.NoError(t, err)
@@ -70,34 +70,21 @@ func TestTableManager_cleanupCache(t *testing.T) {
 	expiredTableName := "expired-table"
 	nonExpiredTableName := "non-expired-table"
 
-	// query for above 2 tables which should set them up in table manager
-	err := tableManager.QueryPages(user.InjectOrgID(context.Background(), "fake"), []chunk.IndexQuery{
-		{TableName: expiredTableName},
-		{TableName: nonExpiredTableName},
-	}, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		return true
-	})
-
-	require.NoError(t, err)
-	// table manager should now have 2 tables.
-	require.Len(t, tableManager.tables, 2)
+	tableManager.tables[expiredTableName] = &mockTable{}
+	tableManager.tables[nonExpiredTableName] = &mockTable{}
 
 	// call cleanupCache and verify that no tables are cleaned up because they are not yet expired.
 	require.NoError(t, tableManager.cleanupCache())
 	require.Len(t, tableManager.tables, 2)
 
-	// change the last used at time of expiredTable to before the ttl.
-	expiredTable, ok := tableManager.tables[expiredTableName]
-	require.True(t, ok)
-	for _, idxSet := range expiredTable.indexSets {
-		idxSet.(*indexSet).lastUsedAt = time.Now().Add(-(tableManager.cfg.CacheTTL + time.Minute))
-	}
+	// set the flag for expiredTable to expire.
+	tableManager.tables[expiredTableName].(*mockTable).tableExpired = true
 
 	// call the cleanupCache and verify that we still have nonExpiredTable and expiredTable is gone.
 	require.NoError(t, tableManager.cleanupCache())
 	require.Len(t, tableManager.tables, 1)
 
-	_, ok = tableManager.tables[expiredTableName]
+	_, ok := tableManager.tables[expiredTableName]
 	require.False(t, ok)
 
 	_, ok = tableManager.tables[nonExpiredTableName]
@@ -105,120 +92,222 @@ func TestTableManager_cleanupCache(t *testing.T) {
 }
 
 func TestTableManager_ensureQueryReadiness(t *testing.T) {
+	activeTableNumber := getActiveTableNumber()
+	mockIndexStorageClient := &mockIndexStorageClient{
+		userIndexesInTables: map[string][]string{},
+	}
+
+	cfg := Config{
+		SyncInterval: time.Hour,
+		CacheTTL:     time.Hour,
+	}
+
+	tableManager := &TableManager{
+		cfg:                cfg,
+		indexStorageClient: mockIndexStorageClient,
+		tables:             make(map[string]Table),
+		metrics:            newMetrics(nil),
+		ctx:                context.Background(),
+		cancel:             func() {},
+	}
+
+	buildTableName := func(idx int) string {
+		return fmt.Sprintf("table_%d", activeTableNumber-int64(idx))
+	}
+
+	// setup 10 tables with 5 latest tables having user index for user1 and user2
+	for i := 0; i < 10; i++ {
+		tableName := buildTableName(i)
+		tableManager.tables[tableName] = &mockTable{}
+		mockIndexStorageClient.tablesInStorage = append(mockIndexStorageClient.tablesInStorage, tableName)
+		if i < 5 {
+			mockIndexStorageClient.userIndexesInTables[tableName] = []string{"user1", "user2"}
+		}
+	}
+
+	// function for resetting state of mockTables
+	resetTables := func() {
+		for _, table := range tableManager.tables {
+			table.(*mockTable).queryReadinessDoneForUsers = nil
+		}
+	}
+
 	for _, tc := range []struct {
 		name                 string
 		queryReadyNumDaysCfg int
+		queryReadinessLimits mockLimits
+
+		expectedQueryReadinessDoneForUsers map[string][]string
 	}{
 		{
-			name: "0 queryReadyNumDaysCfg with 10 tables in storage",
+			name:                 "no query readiness configured",
+			queryReadinessLimits: mockLimits{},
 		},
 		{
-			name:                 "5 queryReadyNumDaysCfg with 10 tables in storage",
+			name:                 "common index: 5 days",
 			queryReadyNumDaysCfg: 5,
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {},
+				buildTableName(1): {},
+				buildTableName(2): {},
+				buildTableName(3): {},
+				buildTableName(4): {},
+				buildTableName(5): {}, // NOTE: we include an extra table since we are counting days back from current point in time
+			},
 		},
 		{
-			name:                 "20 queryReadyNumDaysCfg with 10 tables in storage",
+			name:                 "common index: 20 days",
 			queryReadyNumDaysCfg: 20,
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {},
+				buildTableName(1): {},
+				buildTableName(2): {},
+				buildTableName(3): {},
+				buildTableName(4): {},
+				buildTableName(5): {},
+				buildTableName(6): {},
+				buildTableName(7): {},
+				buildTableName(8): {},
+				buildTableName(9): {},
+			},
+		},
+		{
+			name: "user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1", "user2"},
+				buildTableName(1): {"user1", "user2"},
+				buildTableName(2): {"user1", "user2"},
+			},
+		},
+		{
+			name: "common index: 5 days, user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			queryReadyNumDaysCfg: 5,
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1", "user2"},
+				buildTableName(1): {"user1", "user2"},
+				buildTableName(2): {"user1", "user2"},
+				buildTableName(3): {},
+				buildTableName(4): {},
+				buildTableName(5): {},
+			},
+		},
+		{
+			name: "user1: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysByUser: map[string]int{"user1": 2},
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1"},
+				buildTableName(1): {"user1"},
+				buildTableName(2): {"user1"},
+			},
+		},
+		{
+			name: "user1: 2 days, user2: 20 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysByUser: map[string]int{"user1": 2, "user2": 20},
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1", "user2"},
+				buildTableName(1): {"user1", "user2"},
+				buildTableName(2): {"user1", "user2"},
+				buildTableName(3): {"user2"},
+				buildTableName(4): {"user2"},
+			},
+		},
+		{
+			name: "user index default: 3 days, user1: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 3,
+				queryReadyIndexNumDaysByUser:  map[string]int{"user1": 2},
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1", "user2"},
+				buildTableName(1): {"user1", "user2"},
+				buildTableName(2): {"user1", "user2"},
+				buildTableName(3): {"user2"},
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			tempDir := t.TempDir()
+			resetTables()
+			tableManager.cfg.QueryReadyNumDays = tc.queryReadyNumDaysCfg
+			tableManager.cfg.Limits = &tc.queryReadinessLimits
+			require.NoError(t, tableManager.ensureQueryReadiness(context.Background()))
 
-			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-
-			tables := map[string]map[string]testutil.DBConfig{}
-			activeTableNumber := getActiveTableNumber()
-			for i := 0; i < 10; i++ {
-				tables[fmt.Sprintf("table_%d", activeTableNumber-int64(i))] = map[string]testutil.DBConfig{
-					"db": {
-						CompressFile: i%2 == 0,
-						DBRecords: testutil.DBRecords{
-							Start:      i * 10,
-							NumRecords: 10,
-						},
-					},
-				}
-			}
-
-			for name, dbs := range tables {
-				testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, name), dbs, nil)
-			}
-
-			boltDBIndexClient, indexStorageClient := buildTestClients(t, tempDir)
-			cachePath := filepath.Join(tempDir, cacheDirName)
-			require.NoError(t, util.EnsureDirectory(cachePath))
-
-			cfg := Config{
-				CacheDir:          cachePath,
-				SyncInterval:      time.Hour,
-				CacheTTL:          time.Hour,
-				QueryReadyNumDays: tc.queryReadyNumDaysCfg,
-			}
-			tableManager := &TableManager{
-				cfg:                cfg,
-				boltIndexClient:    boltDBIndexClient,
-				indexStorageClient: indexStorageClient,
-				tables:             make(map[string]*Table),
-				metrics:            newMetrics(nil),
-				ctx:                context.Background(),
-				cancel:             func() {},
-			}
-
-			defer func() {
-				tableManager.Stop()
-				boltDBIndexClient.Stop()
-			}()
-
-			require.NoError(t, tableManager.ensureQueryReadiness())
-
-			if tc.queryReadyNumDaysCfg == 0 {
-				require.Len(t, tableManager.tables, 0)
-			} else {
-				require.Len(t, tableManager.tables, int(math.Min(float64(tc.queryReadyNumDaysCfg+1), 10)))
+			for name, table := range tableManager.tables {
+				require.Equal(t, tc.expectedQueryReadinessDoneForUsers[name], table.(*mockTable).queryReadinessDoneForUsers, "table: %s", name)
 			}
 		})
 	}
 }
 
-func TestTableManager_tablesRequiredForQueryReadiness(t *testing.T) {
-	numDailyTablesInStorage := 10
-	var tablesInStorage []string
-	// tables with daily table number
-	activeDailyTableNumber := getActiveTableNumber()
-	for i := 0; i < numDailyTablesInStorage; i++ {
-		tablesInStorage = append(tablesInStorage, fmt.Sprintf("table_%d", activeDailyTableNumber-int64(i)))
+type mockLimits struct {
+	queryReadyIndexNumDaysDefault int
+	queryReadyIndexNumDaysByUser  map[string]int
+}
+
+func (m *mockLimits) AllByUserID() map[string]*validation.Limits {
+	allByUserID := map[string]*validation.Limits{}
+	for userID := range m.queryReadyIndexNumDaysByUser {
+		allByUserID[userID] = &validation.Limits{
+			QueryReadyIndexNumDays: m.queryReadyIndexNumDaysByUser[userID],
+		}
 	}
 
-	// tables with weekly table number
-	activeWeeklyTableNumber := time.Now().Unix() / int64((durationDay*7)/time.Second)
-	for i := 0; i < 10; i++ {
-		tablesInStorage = append(tablesInStorage, fmt.Sprintf("table_%d", activeWeeklyTableNumber-int64(i)))
+	return allByUserID
+}
+
+func (m *mockLimits) DefaultLimits() *validation.Limits {
+	return &validation.Limits{
+		QueryReadyIndexNumDays: m.queryReadyIndexNumDaysDefault,
 	}
+}
 
-	// tables without a table number
-	tablesInStorage = append(tablesInStorage, "foo", "bar")
+func (m *mockLimits) QueryReadyIndexNumDays(userID string) int {
+	return m.queryReadyIndexNumDaysByUser[userID]
+}
 
-	for i, tc := range []int{
-		0, 5, 10, 20,
-	} {
-		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			tableManager := &TableManager{
-				cfg: Config{
-					QueryReadyNumDays: tc,
-				},
-			}
+type mockTable struct {
+	tableExpired               bool
+	queryReadinessDoneForUsers []string
+}
 
-			tablesNames, err := tableManager.tablesRequiredForQueryReadiness(tablesInStorage)
-			require.NoError(t, err)
+func (m *mockTable) Close() {}
 
-			numExpectedTables := 0
-			if tc != 0 {
-				numExpectedTables = int(math.Min(float64(tc+1), float64(numDailyTablesInStorage)))
-			}
+func (m *mockTable) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+	return nil
+}
 
-			for i := 0; i < numExpectedTables; i++ {
-				require.Equal(t, fmt.Sprintf("table_%d", activeDailyTableNumber-int64(i)), tablesNames[i])
-			}
-		})
-	}
+func (m *mockTable) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) {
+	return m.tableExpired, nil
+}
+
+func (m *mockTable) Sync(ctx context.Context) error {
+	return nil
+}
+
+func (m *mockTable) EnsureQueryReadiness(ctx context.Context, userIDs []string) error {
+	m.queryReadinessDoneForUsers = userIDs
+	return nil
+}
+
+type mockIndexStorageClient struct {
+	storage.Client
+	tablesInStorage     []string
+	userIndexesInTables map[string][]string
+}
+
+func (m *mockIndexStorageClient) ListTables(ctx context.Context) ([]string, error) {
+	return m.tablesInStorage, nil
+}
+
+func (m *mockIndexStorageClient) ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, []string, error) {
+	return []storage.IndexFile{}, m.userIndexesInTables[tableName], nil
 }

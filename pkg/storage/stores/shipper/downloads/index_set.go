@@ -110,8 +110,6 @@ func (t *indexSet) Init() (err error) {
 		t.dbsMtx.markReady()
 	}()
 
-	startTime := time.Now()
-
 	filesInfo, err := ioutil.ReadDir(t.cacheLocation)
 	if err != nil {
 		return err
@@ -147,9 +145,6 @@ func (t *indexSet) Init() (err error) {
 	if err != nil {
 		return
 	}
-
-	duration := time.Since(startTime).Seconds()
-	t.metrics.tablesDownloadDurationSeconds.add(t.tableName, duration)
 
 	level.Debug(logger).Log("msg", "finished syncing files")
 
