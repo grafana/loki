@@ -49,6 +49,13 @@ func (r *LokiRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
 	return &new
 }
 
+func (r *LokiRequest) WithStartEndTime(s time.Time, e time.Time) *LokiRequest {
+	new := *r
+	new.StartTs = s
+	new.EndTs = e
+	return &new
+}
+
 func (r *LokiRequest) WithQuery(query string) queryrangebase.Request {
 	new := *r
 	new.Query = query
@@ -564,28 +571,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Statistics: mergedStats,
 		}, nil
 	case *LokiResponse:
-		lokiRes := responses[0].(*LokiResponse)
-
-		lokiResponses := make([]*LokiResponse, 0, len(responses))
-		for _, res := range responses {
-			lokiResult := res.(*LokiResponse)
-			mergedStats.Merge(lokiResult.Statistics)
-			lokiResponses = append(lokiResponses, lokiResult)
-		}
-
-		return &LokiResponse{
-			Status:     loghttp.QueryStatusSuccess,
-			Direction:  lokiRes.Direction,
-			Limit:      lokiRes.Limit,
-			Version:    lokiRes.Version,
-			ErrorType:  lokiRes.ErrorType,
-			Error:      lokiRes.Error,
-			Statistics: mergedStats,
-			Data: LokiData{
-				ResultType: loghttp.ResultTypeStream,
-				Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
-			},
-		}, nil
+		return mergeLokiResponse(responses...), nil
 	case *LokiSeriesResponse:
 		lokiSeriesRes := responses[0].(*LokiSeriesResponse)
 
@@ -907,5 +893,33 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
+	}
+}
+
+func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
+	var (
+		lokiRes       = responses[0].(*LokiResponse)
+		mergedStats   stats.Result
+		lokiResponses = make([]*LokiResponse, 0, len(responses))
+	)
+
+	for _, res := range responses {
+		lokiResult := res.(*LokiResponse)
+		mergedStats.Merge(lokiResult.Statistics)
+		lokiResponses = append(lokiResponses, lokiResult)
+	}
+
+	return &LokiResponse{
+		Status:     loghttp.QueryStatusSuccess,
+		Direction:  lokiRes.Direction,
+		Limit:      lokiRes.Limit,
+		Version:    lokiRes.Version,
+		ErrorType:  lokiRes.ErrorType,
+		Error:      lokiRes.Error,
+		Statistics: mergedStats,
+		Data: LokiData{
+			ResultType: loghttp.ResultTypeStream,
+			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
+		},
 	}
 }

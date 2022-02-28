@@ -42,7 +42,6 @@ func NewTripperware(
 	schema chunk.SchemaConfig,
 	registerer prometheus.Registerer,
 ) (queryrangebase.Tripperware, Stopper, error) {
-
 	instrumentMetrics := queryrangebase.NewInstrumentMiddlewareMetrics(registerer)
 	retryMetrics := queryrangebase.NewRetryMiddlewareMetrics(registerer)
 	shardingMetrics := logql.NewShardingMetrics(registerer)
