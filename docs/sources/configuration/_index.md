@@ -296,6 +296,10 @@ The `querier` block configures the Loki Querier.
 # CLI flag: -querier.query-store-only
 [query_store_only: <boolean> | default = false]
 
+# Allow queries for multiple tenants.
+# CLI flag: -querier.multi-tenant-queries-enabled
+[multi_tenant_queries_enabled: <boolean> | default = false]
+
 # Configuration options for the LogQL engine.
 engine:
   # Timeout for query execution
