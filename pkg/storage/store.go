@@ -425,7 +425,7 @@ func RegisterCustomIndexClients(cfg *Config, cm storage.ClientMetrics, registere
 	// in tests for creating multiple instances of it at a time.
 	var boltDBIndexClientWithShipper chunk.IndexClient
 
-	storage.RegisterIndexStore(shipper.BoltDBShipperType, func() (chunk.IndexClient, error) {
+	storage.RegisterIndexStore(shipper.BoltDBShipperType, func(limits storage.StoreLimits) (chunk.IndexClient, error) {
 		if boltDBIndexClientWithShipper != nil {
 			return boltDBIndexClientWithShipper, nil
 		}
@@ -445,7 +445,7 @@ func RegisterCustomIndexClients(cfg *Config, cm storage.ClientMetrics, registere
 			return nil, err
 		}
 
-		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, registerer)
+		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, registerer)
 
 		return boltDBIndexClientWithShipper, err
 	}, func() (client chunk.TableClient, e error) {

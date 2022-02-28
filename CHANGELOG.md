@@ -60,6 +60,7 @@
 * [5315](https://github.com/grafana/loki/pull/5315) **bboreham**: filters: use faster regexp package
 * [5393](https://github.com/grafana/loki/pull/5393) **sandeepsukhani**: jsonnet: move boltdb-shipper configs set as compactor args to yaml config
 * [5450](https://github.com/grafana/loki/pull/5450) **BenoitKnecht**: pkg/ruler/base: Add external_labels option
+* [5484](https://github.com/grafana/loki/pull/5450) **sandeepsukhani**: Add support for per user index query readiness with limits overrides
 
 # 2.4.1 (2021/11/07)
 

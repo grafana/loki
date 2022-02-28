@@ -124,11 +124,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          $.row('BoltDB Shipper')
                          .addPanel(
                            $.panel('QPS') +
-                           $.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
+                           $.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
                          )
                          .addPanel(
                            $.panel('Latency') +
-                           $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
+                           $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
                          )
                        ),
   },

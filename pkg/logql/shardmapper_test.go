@@ -160,6 +160,14 @@ func TestMappingStrings(t *testing.T) {
 			out: `rate({foo="bar"} | json | label_format foo=bar [5m])`,
 		},
 		{
+			in:  `count(rate({foo="bar"} | json [5m]))`,
+			out: `count(downstream<rate({foo="bar"} | json [5m]), shard=0_of_2> ++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>)`,
+		},
+		{
+			in:  `avg(rate({foo="bar"} | json [5m]))`,
+			out: `avg(downstream<rate({foo="bar"} | json [5m]), shard=0_of_2> ++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>)`,
+		},
+		{
 			in:  `{foo="bar"} |= "id=123"`,
 			out: `downstream<{foo="bar"}|="id=123", shard=0_of_2> ++ downstream<{foo="bar"}|="id=123", shard=1_of_2>`,
 		},
