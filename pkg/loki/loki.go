@@ -234,7 +234,7 @@ type Loki struct {
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
 	Ingester                 ingester.Interface
-	Querier                  *querier.Querier
+	Querier                  querier.Querier
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
 	tableManager             *chunk.TableManager

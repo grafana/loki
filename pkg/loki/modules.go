@@ -222,9 +222,18 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 
 	var err error
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
+	}
+
+	if t.Cfg.Querier.MultiTenantQueriesEnabled {
+		t.Querier, err = querier.NewMultiTenantQuerier(q)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		t.Querier = q
 	}
 
 	querierWorkerServiceConfig := querier.WorkerServiceConfig{
