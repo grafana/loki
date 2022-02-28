@@ -21,7 +21,7 @@ func NewMetrics(conf Config, r prometheus.Registerer) *Metrics {
 		inflightRequests: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_querier_worker_inflight_queries",
 			Help: "Number of queries being processed by the querier workers",
-		}, []string{"user"}),
+		}, []string{"user", "querier"}),
 		frontendClientRequestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_querier_query_frontend_request_duration_seconds",
 			Help:    "Time spend doing requests to frontend.",
