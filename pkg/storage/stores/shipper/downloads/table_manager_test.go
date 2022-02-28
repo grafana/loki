@@ -62,7 +62,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 	})
 
 	t.Run("it doesn't deadlock when table create fails", func(t *testing.T) {
-		tempDir := os.TempDir()
+		tempDir := t.TempDir()
 
 		// This file forces chunk_util.EnsureDirectory to fail. Any write error would cause this
 		// deadlock
