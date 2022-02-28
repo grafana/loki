@@ -161,6 +161,7 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 	if len(chunks) == 0 {
 		return chunks, nil, nil
 	}
+
 	postFilterChunkLen := 0
 	log, ctx := spanlogger.New(ctx, "Batch.ParallelPostFetchFilter")
 	log.Span.LogFields(otlog.Int("chunks", len(chunks)))
@@ -188,24 +189,31 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 		streamPipeline := pipeline.ForStream(cnk.Metric.WithoutLabels(labels.MetricName))
 		chunkData := cnk.Data
 		lazyChunk := LazyChunk{Chunk: cnk}
-		iterator, err := lazyChunk.Iterator(ctx, c.from, c.through, c.req.Direction, streamPipeline, c.nextChunk)
+		newCtr, statCtx := stats.NewContext(ctx)
+		iterator, err := lazyChunk.Iterator(statCtx, c.from, c.through, c.req.Direction, streamPipeline, c.nextChunk)
 		if err != nil {
 			return nil, nil, err
 		}
 		lokiChunk := chunkData.(*chunkenc.Facade).LokiChunk()
 		postFilterChunkData := chunkenc.NewMemChunk(lokiChunk.Encoding(), chunkenc.UnorderedHeadBlockFmt, cnk.Data.Size(), cnk.Data.Size())
+		headChunkBytes := int64(0)
+		headChunkLine := int64(0)
+		decompressedLines := int64(0)
 		for iterator.Next() {
 			entry := iterator.Entry()
 			err := postFilterChunkData.Append(&entry)
 			if err != nil {
 				return nil, nil, err
 			}
+			headChunkBytes += int64(len(entry.Line))
+			headChunkLine += int64(1)
+			decompressedLines += int64(1)
+
 		}
 		if err := postFilterChunkData.Close(); err != nil {
 			return nil, nil, err
 		}
 		firstTime, lastTime := util.RoundToMilliseconds(postFilterChunkData.Bounds())
-
 		postFilterCh := chunk.NewChunk(
 			cnk.UserID, cnk.Fingerprint, cnk.Metric,
 			chunkenc.NewFacade(postFilterChunkData, 0, 0),
@@ -217,6 +225,25 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 			return nil, nil, err
 		}
 		postFilterChunkLen++
+
+		decompressedBytes := int64(0)
+		compressedBytes := int64(0)
+		if postFilterChunkData.Size() != 0 {
+			decompressedBytes = int64(postFilterChunkData.BytesSize())
+			encodedBytes, err := postFilterCh.Encoded()
+			if err != nil {
+				return nil, nil, err
+			}
+			compressedBytes = int64(len(encodedBytes))
+		}
+		chunkStats := newCtr.Ingester().Store.Chunk
+		statContext := stats.FromContext(ctx)
+		statContext.AddHeadChunkLines(chunkStats.GetHeadChunkLines() - headChunkLine)
+		statContext.AddDecompressedLines(chunkStats.GetDecompressedLines() - decompressedLines)
+		statContext.AddHeadChunkBytes(chunkStats.GetHeadChunkBytes() - headChunkBytes)
+		statContext.AddDecompressedBytes(chunkStats.GetDecompressedBytes() - decompressedBytes)
+		statContext.AddCompressedBytes(chunkStats.GetCompressedBytes() - compressedBytes)
+
 		result = append(result, postFilterCh)
 		resultKeys = append(resultKeys, s.ExternalKey(cnk))
 	}
