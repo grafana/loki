@@ -29,7 +29,7 @@ These endpoints are exposed by the querier and the frontend:
   - [`GET /loki/api/v1/query`](#get-lokiapiv1query)
     - [Examples](#examples)
   - [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
-        - [Step vs Interval](#step-vs-interval)
+        - [Step vs Interval](#step-versus-interval)
     - [Examples](#examples-1)
   - [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
     - [Examples](#examples-2)
@@ -258,7 +258,7 @@ accepts the following query parameters in the URL:
 
 In microservices mode, `/loki/api/v1/query_range` is exposed by the querier and the frontend.
 
-##### Step versus Interval
+### Step versus Interval
 
 Use the `step` parameter when making metric queries to Loki, or queries which return a matrix response.  It is evaluated in exactly the same way Prometheus evaluates `step`.  First the query will be evaluated at `start` and then evaluated again at `start + step` and again at `start + step + step` until `end` is reached.  The result will be a matrix of the query result evaluated at each step.
 
