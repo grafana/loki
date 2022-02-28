@@ -168,6 +168,8 @@ func (tm *TableManager) getOrCreateTable(tableName string) (Table, error) {
 
 	if !ok {
 		tm.tablesMtx.Lock()
+		defer tm.tablesMtx.Unlock()
+
 		// check if some other competing goroutine got the lock before us and created the table, use it if so.
 		table, ok = tm.tables[tableName]
 		if !ok {
@@ -183,7 +185,6 @@ func (tm *TableManager) getOrCreateTable(tableName string) (Table, error) {
 			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
 			tm.tables[tableName] = table
 		}
-		tm.tablesMtx.Unlock()
 	}
 
 	return table, nil
