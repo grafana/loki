@@ -105,6 +105,12 @@ Some Loki API endpoints return a result of a matrix, a vector, or a stream:
   queried time range. Streams are the only type that will result in log lines
   being returned.
 
+## Timestamp formats
+
+The API accepts several formats for timestamps. An integer with ten or fewer digits is interpreted as a Unix timestamp in seconds. More than ten digits are interpreted as a Unix timestamp in nanoseconds. A floating point number is a Unix timestamp with fractions of a second.
+
+The timestamps can also be written in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
+
 ## `GET /loki/api/v1/query`
 
 `/loki/api/v1/query` allows for doing queries against a single point in time. The URL
@@ -112,7 +118,7 @@ query parameters support the following values:
 
 - `query`: The [LogQL](../logql/) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`.
-- `time`: The evaluation time for the query as a nanosecond Unix epoch. Defaults to now.
+- `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
 In microservices mode, `/loki/api/v1/query` is exposed by the querier and the frontend.
@@ -244,8 +250,8 @@ accepts the following query parameters in the URL:
 
 - `query`: The [LogQL](../logql/) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`.
-- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
-- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago.
+- `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.  Only applies to query types which produce a matrix response.
 - `interval`: <span style="background-color:#f3f973;">This parameter is experimental; see the explanation under Step versus Interval.</span> Only return entries at (or greater than) the specified interval, can be a `duration` format or float number of seconds. Only applies to queries which produce a stream response.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
