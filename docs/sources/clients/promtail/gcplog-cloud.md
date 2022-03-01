@@ -69,7 +69,7 @@ gcloud pubsub topics add-iam-policy-binding $TOPIC_ID \
 
 For example:
 ```bash
-$ gcloud pubsub topics add-iam-policy-binding cloud-logs \
+gcloud pubsub topics add-iam-policy-binding cloud-logs \
 --member=serviceAccount:pxxxxxxxxx-xxxxxx@gcp-sa-logging.iam.gserviceaccount.com --role=roles/pubsub.publisher
 ```
 
