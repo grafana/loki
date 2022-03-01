@@ -221,17 +221,15 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// Querier worker's max concurrent requests must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 
+	logger := log.With(util_log.Logger, "component", "querier")
 	var err error
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides, util_log.Logger)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides, logger)
 	if err != nil {
 		return nil, err
 	}
 
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
-		t.Querier, err = querier.NewMultiTenantQuerier(*q, util_log.Logger)
-		if err != nil {
-			return nil, err
-		}
+		t.Querier = querier.NewMultiTenantQuerier(*q, util_log.Logger)
 	} else {
 		t.Querier = q
 	}
@@ -251,7 +249,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		httpreq.ExtractQueryMetricsMiddleware(),
 	)
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.overrides)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.overrides, logger)
 	queryHandlers := map[string]http.Handler{
 		"/loki/api/v1/query_range":         httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.RangeQueryHandler)),
 		"/loki/api/v1/query":               httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.InstantQueryHandler)),

@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/tenant"
 	listutil "github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
 	"github.com/grafana/loki/pkg/validation"
@@ -78,7 +77,6 @@ func (cfg *Config) Validate() error {
 type Querier interface {
 	logql.Querier
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
-	Query(params logql.Params) logql.Query
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
 }
@@ -87,7 +85,6 @@ type Querier interface {
 type querier struct {
 	cfg             Config
 	store           storage.Store
-	engine          *logql.Engine
 	limits          *validation.Overrides
 	ingesterQuerier *IngesterQuerier
 }
@@ -101,17 +98,7 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 		limits:          limits,
 	}
 
-	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits, log.With(logger, "component", "querier"))
-
 	return &querier, nil
-}
-
-func (q *querier) SetQueryable(queryable logql.Querier) {
-	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits, log.With(util_log.Logger, "component", "querier"))
-}
-
-func (q *querier) Query(params logql.Params) logql.Query {
-	return q.engine.Query(params)
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.

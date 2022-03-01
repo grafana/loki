@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/prometheus/model/labels"
@@ -37,14 +38,17 @@ type QuerierAPI struct {
 	querier Querier
 	cfg     Config
 	limits  *validation.Overrides
+	engine  *logql.Engine
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, querier Querier, limits *validation.Overrides) *QuerierAPI {
+func NewQuerierAPI(cfg Config, querier Querier, limits *validation.Overrides, logger log.Logger) *QuerierAPI {
+	engine := logql.NewEngine(cfg.Engine, querier, limits, logger)
 	return &QuerierAPI{
 		cfg:     cfg,
 		limits:  limits,
 		querier: querier,
+		engine:  engine,
 	}
 }
 
@@ -75,7 +79,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Limit,
 		request.Shards,
 	)
-	query := q.querier.Query(params)
+	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)
@@ -114,7 +118,7 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 		request.Limit,
 		request.Shards,
 	)
-	query := q.querier.Query(params)
+	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)
@@ -171,7 +175,7 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Limit,
 		request.Shards,
 	)
-	query := q.querier.Query(params)
+	query := q.engine.Query(params)
 
 	result, err := query.Exec(ctx)
 	if err != nil {
