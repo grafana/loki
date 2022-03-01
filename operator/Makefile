@@ -122,7 +122,7 @@ test: $(GO_FILES)
 
 .PHONY: test-unit-prom
 test-unit-prom: $(PROMTOOL) ## Run prometheus unit tests
-	@$(PROMTOOL) test rules ./internal/manifests/internal/alerts/test/test.yaml
+	@$(PROMTOOL) test rules ./internal/manifests/internal/alerts/testdata/test.yaml
 
 scorecard: generate go-generate bundle ## Run scorecard test
 	$(OPERATOR_SDK) scorecard bundle
