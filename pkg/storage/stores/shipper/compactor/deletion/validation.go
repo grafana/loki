@@ -3,8 +3,9 @@ package deletion
 import (
 	"errors"
 
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/logql"
 )
 
 var (

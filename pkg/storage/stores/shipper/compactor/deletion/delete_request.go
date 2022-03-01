@@ -1,9 +1,10 @@
 package deletion
 
 import (
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
 
 type DeleteRequest struct {
