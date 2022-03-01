@@ -44,7 +44,7 @@ local pull_secret = secret('dockerconfigjson', 'secret/data/common/gcr', '.docke
 local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 'pat');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
-local deploy_configuration = secret('deploy_config', 'infra/data/ci/loki/deploy', 'config.json');
+local deploy_configuration = secret('deploy_config', 'common/loki/ci/autodeploy', 'config.json');
 
 
 local run(name, commands) = {
