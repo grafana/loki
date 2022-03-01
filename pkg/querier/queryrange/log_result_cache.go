@@ -106,9 +106,9 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	// generate the cache key based on query, tenant and start time.
 	cacheKey := fmt.Sprintf("log:%s:%s:%d", tenant.JoinTenantIDs(tenantIDs), req.GetQuery(), alignedStart.UnixNano()/(interval.Nanoseconds()))
 
-	_, buff, _, err := l.cache.Fetch(ctx, []string{cacheKey})
+	_, buff, _, err := l.cache.Fetch(ctx, []string{cache.HashKey(cacheKey)})
 	if err != nil {
-		level.Warn(l.logger).Log("msg", "error fetching cache", "err", err)
+		level.Warn(l.logger).Log("msg", "error fetching cache", "err", err, "cacheKey", cacheKey)
 		return l.next.Do(ctx, req)
 	}
 	// we expect only one key to be found or missing.
@@ -153,7 +153,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey string, req *L
 		return resp, nil
 	}
 	// cache the result
-	err = l.cache.Store(ctx, []string{cacheKey}, [][]byte{data})
+	err = l.cache.Store(ctx, []string{cache.HashKey(cacheKey)}, [][]byte{data})
 	if err != nil {
 		level.Warn(l.logger).Log("msg", "error storing cache", "err", err)
 	}
@@ -246,7 +246,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 			return result, err
 		}
 		// cache the result
-		err = l.cache.Store(ctx, []string{cacheKey}, [][]byte{data})
+		err = l.cache.Store(ctx, []string{cache.HashKey(cacheKey)}, [][]byte{data})
 		if err != nil {
 			level.Warn(l.logger).Log("msg", "error storing cache", "err", err)
 		}
