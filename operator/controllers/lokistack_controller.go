@@ -144,6 +144,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	if r.Flags.EnablePrometheusAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
 	}
+
 	if r.Flags.EnableGatewayRoute {
 		bld = bld.Owns(&routev1.Route{}, updateOrDeleteOnlyPred)
 	} else {
