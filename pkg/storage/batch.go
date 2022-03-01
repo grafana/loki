@@ -721,7 +721,7 @@ func fetchLazyChunks(ctx context.Context, s chunk.SchemaConfig, chunks []*LazyCh
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks, keys)
 			var chunkKeys []string
-			if postFetcherChunkFilterer != nil {
+			if postFetcherChunkFilterer != nil && len(chks) != 0 {
 				chks, chunkKeys, err = postFetcherChunkFilterer.PostFetchFilter(ctx, chks, s)
 			}
 			if err != nil {
