@@ -1,9 +1,10 @@
 package queryrange
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Metrics struct {
@@ -11,7 +12,7 @@ type Metrics struct {
 	*queryrangebase.RetryMiddlewareMetrics
 	*logql.ShardingMetrics
 	*SplitByMetrics
-	*LogCacheMetrics
+	*LogResultCacheMetrics
 }
 
 func NewMetrics(registerer prometheus.Registerer) *Metrics {
@@ -20,6 +21,6 @@ func NewMetrics(registerer prometheus.Registerer) *Metrics {
 		RetryMiddlewareMetrics:      queryrangebase.NewRetryMiddlewareMetrics(registerer),
 		ShardingMetrics:             logql.NewShardingMetrics(registerer),
 		SplitByMetrics:              NewSplitByMetrics(registerer),
-		LogCacheMetrics:             NewLogCacheMetrics(registerer),
+		LogResultCacheMetrics:       NewLogResultCacheMetrics(registerer),
 	}
 }

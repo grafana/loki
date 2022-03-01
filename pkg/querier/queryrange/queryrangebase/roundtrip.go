@@ -32,14 +32,10 @@ import (
 
 const day = 24 * time.Hour
 
-var (
-	// PassthroughMiddleware is a noop middleware
-	PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
-		return next
-	})
-
-	errInvalidMinShardingLookback = errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
-)
+// PassthroughMiddleware is a noop middleware
+var PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
+	return next
+})
 
 // Config for query_range middleware chain.
 type Config struct {

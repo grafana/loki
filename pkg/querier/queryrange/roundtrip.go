@@ -44,9 +44,12 @@ func NewTripperware(
 ) (queryrangebase.Tripperware, Stopper, error) {
 	metrics := NewMetrics(registerer)
 
-	var c cache.Cache
+	var (
+		c   cache.Cache
+		err error
+	)
 	if cfg.CacheResults {
-		c, err := cache.New(cfg.CacheConfig, registerer, log)
+		c, err = cache.New(cfg.CacheConfig, registerer, log)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -253,18 +256,15 @@ func NewLogFilterTripperware(
 	}
 
 	if cfg.CacheResults {
-		queryCacheMiddleware, err := NewLogCacheNoResult(
+		queryCacheMiddleware := NewLogResultCache(
 			log,
 			limits,
 			c,
 			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
-			metrics.LogCacheMetrics,
+			metrics.LogResultCacheMetrics,
 		)
-		if err != nil {
-			return nil, err
-		}
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
 			queryrangebase.InstrumentMiddleware("log_results_cache", metrics.InstrumentMiddlewareMetrics),

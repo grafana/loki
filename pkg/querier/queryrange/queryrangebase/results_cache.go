@@ -128,7 +128,6 @@ type ShouldCacheFn func(r Request) bool
 
 type resultsCache struct {
 	logger   log.Logger
-	cfg      ResultsCacheConfig
 	next     Handler
 	cache    cache.Cache
 	limits   Limits
