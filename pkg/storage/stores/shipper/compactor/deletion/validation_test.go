@@ -6,29 +6,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInvalidLogQLExpressionForDeletion(t *testing.T) {
+func TestParseLogQLExpressionForDeletion(t *testing.T) {
 	t.Run("invalid logql", func(t *testing.T) {
-		err := checkLogQLExpressionForDeletion("gjgjg ggj")
+		matchers, err := parseLogQLExpressionForDeletion("gjgjg ggj")
+		require.Nil(t, matchers)
 		require.ErrorIs(t, err, errInvalidLogQL)
 	})
 
 	t.Run("matcher expression", func(t *testing.T) {
-		err := checkLogQLExpressionForDeletion(`{env="dev", secret="true"}`)
+		matchers, err := parseLogQLExpressionForDeletion(`{env="dev", secret="true"}`)
+		require.NotNil(t, matchers)
 		require.NoError(t, err)
 	})
 
 	t.Run("pipeline expression with line filter", func(t *testing.T) {
-		err := checkLogQLExpressionForDeletion(`{env="dev", secret="true"} |= "social sec number"`)
-		require.NoError(t, err)
-	})
-
-	t.Run("pipeline expression with label filter ", func(t *testing.T) {
-		err := checkLogQLExpressionForDeletion(`{env="dev", secret="true"} | json bob="top.params[0]"`)
+		matchers, err := parseLogQLExpressionForDeletion(`{env="dev", secret="true"} |= "social sec number"`)
+		require.Nil(t, matchers)
 		require.ErrorIs(t, err, errUnsupportedLogQL)
 	})
 
-	t.Run("pipeline expression with ", func(t *testing.T) {
-		err := checkLogQLExpressionForDeletion(`count_over_time({job="mysql"}[5m])`)
+	t.Run("pipeline expression with label filter ", func(t *testing.T) {
+		matchers, err := parseLogQLExpressionForDeletion(`{env="dev", secret="true"} | json bob="top.params[0]"`)
+		require.Nil(t, matchers)
+		require.ErrorIs(t, err, errUnsupportedLogQL)
+	})
+
+	t.Run("metrics query", func(t *testing.T) {
+		matchers, err := parseLogQLExpressionForDeletion(`count_over_time({job="mysql"}[5m])`)
+		require.Nil(t, matchers)
 		require.ErrorIs(t, err, errUnsupportedLogQL)
 	})
 }

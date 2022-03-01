@@ -14,6 +14,11 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+const (
+	statusSuccess = "success"
+	statusFail    = "fail"
+)
+
 type DeleteRequestsManager struct {
 	deleteRequestsStore       DeleteRequestsStore
 	deleteRequestCancelPeriod time.Duration

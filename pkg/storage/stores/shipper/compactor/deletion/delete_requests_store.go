@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/common/model"
 
@@ -200,7 +201,7 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 				return false
 			}
 
-			deleteRequest.LogQLRequest = string(itr.Value())
+			deleteRequest.AddLogQL(string(itr.Value()))
 			deleteRequests[i] = deleteRequest
 
 			return true
@@ -288,4 +289,9 @@ func splitUserIDAndRequestID(rangeValue string) (userID, requestID string) {
 	requestID = rangeValue[lastIndex+1:]
 
 	return
+}
+
+// unsafeGetString is like yolostring but with a meaningful name
+func unsafeGetString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }

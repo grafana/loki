@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 var (
@@ -11,25 +12,16 @@ var (
 	errUnsupportedLogQL = errors.New("unsupported LogQL expression")
 )
 
-// checkLogQLExpressionForDeletion checks if the given logQL is valid for deletions
-func checkLogQLExpressionForDeletion(logQL string) error {
+// parseLogQLExpressionForDeletion checks if the given logQL is valid for deletions
+func parseLogQLExpressionForDeletion(logQL string) ([]*labels.Matcher, error) {
 	expr, err := logql.ParseExpr(logQL)
 	if err != nil {
-		return errInvalidLogQL
+		return nil, errInvalidLogQL
 	}
 
-	if _, ok := expr.(*logql.MatchersExpr); ok {
-		return nil
-	}
-	if pipelineExpr, ok := expr.(*logql.PipelineExpr); ok {
-		// Only support line filters for now
-		for _, stage := range pipelineExpr.MultiStages {
-			if _, ok := stage.(*logql.LineFilterExpr); !ok {
-				return errUnsupportedLogQL
-			}
-		}
-		return nil
+	if matchersExpr, ok := expr.(*logql.MatchersExpr); ok {
+		return matchersExpr.Matchers(), nil
 	}
 
-	return errUnsupportedLogQL
+	return nil, errUnsupportedLogQL
 }

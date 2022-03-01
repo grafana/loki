@@ -50,7 +50,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
-	err = checkLogQLExpressionForDeletion(logQLStatement)
+	_, err = parseLogQLExpressionForDeletion(logQLStatement)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
