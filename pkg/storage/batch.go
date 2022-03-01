@@ -735,15 +735,15 @@ func fetchLazyChunks(ctx context.Context, s chunk.SchemaConfig, chunks []*LazyCh
 				return
 
 			}
+			if len(chks) == 0 {
+				errChan <- nil
+				return
+			}
 			if postFetcherChunkFilterer != nil {
 				for i, chk := range chks {
 					key := chunkKeys[i]
 					index[key].Chunk = chk
 				}
-				errChan <- nil
-				return
-			}
-			if len(chks) == 0 {
 				errChan <- nil
 				return
 			}
