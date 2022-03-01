@@ -6,10 +6,10 @@ import (
 
 // MultiTenantQuerier is able to query across different tenants.
 type MultiTenantQuerier struct {
-	querier
+	SingleTenantQuerier
 }
 
 // NewMultiTenantQuerier returns a new querier able to query across different tenants.
-func NewMultiTenantQuerier(querier querier, logger log.Logger) *MultiTenantQuerier {
-	return &MultiTenantQuerier{querier: querier}
+func NewMultiTenantQuerier(querier SingleTenantQuerier, logger log.Logger) *MultiTenantQuerier {
+	return &MultiTenantQuerier{SingleTenantQuerier: querier}
 }

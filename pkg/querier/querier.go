@@ -80,8 +80,8 @@ type Querier interface {
 	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
 }
 
-// Querier handlers queries.
-type querier struct {
+// SingleTenantQuerier handlers queries.
+type SingleTenantQuerier struct {
 	cfg             Config
 	store           storage.Store
 	limits          *validation.Overrides
@@ -89,8 +89,8 @@ type querier struct {
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides) (*querier, error) {
-	querier := querier{
+func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides) (*SingleTenantQuerier, error) {
+	querier := SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
 		ingesterQuerier: ingesterQuerier,
@@ -101,7 +101,7 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
-func (q *querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
@@ -150,7 +150,7 @@ func (q *querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
 }
 
-func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
@@ -192,7 +192,7 @@ func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 	return iter.NewMergeSampleIterator(ctx, iters), nil
 }
 
-func (q *querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
+func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
 	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
 	limitQueryInterval := false
 	// ingesterMLB having -1 means query ingester for whole duration.
@@ -268,7 +268,7 @@ func (q *querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval
 }
 
 // Label does the heavy lifting for a Label query.
-func (q *querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -313,12 +313,12 @@ func (q *querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 }
 
 // Check implements the grpc healthcheck
-func (*querier) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+func (*SingleTenantQuerier) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
 // Tail keeps getting matching logs from all ingesters for given query
-func (q *querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
 	err := q.checkTailRequestLimit(ctx)
 	if err != nil {
 		return nil, err
@@ -373,7 +373,7 @@ func (q *querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 }
 
 // Series fetches any matching series for a list of matcher sets
-func (q *querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -390,7 +390,7 @@ func (q *querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*log
 	return q.awaitSeries(ctx, req)
 }
 
-func (q *querier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	// buffer the channels to the # of calls they're expecting su
 	series := make(chan [][]logproto.SeriesIdentifier, 2)
 	errs := make(chan error, 2)
@@ -455,7 +455,7 @@ func (q *querier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) 
 
 // seriesForMatchers fetches series from the store for each matcher set
 // TODO: make efficient if/when the index supports labels so we don't have to read chunks
-func (q *querier) seriesForMatchers(
+func (q *SingleTenantQuerier) seriesForMatchers(
 	ctx context.Context,
 	from, through time.Time,
 	groups []string,
@@ -484,7 +484,7 @@ func (q *querier) seriesForMatchers(
 }
 
 // seriesForMatcher fetches series from the store for a given matcher
-func (q *querier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
+func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
 	ids, err := q.store.GetSeries(ctx, logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  matcher,
@@ -501,7 +501,7 @@ func (q *querier) seriesForMatcher(ctx context.Context, from, through time.Time,
 	return ids, nil
 }
 
-func (q *querier) validateQueryRequest(ctx context.Context, req logql.QueryParams) (time.Time, time.Time, error) {
+func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logql.QueryParams) (time.Time, time.Time, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return time.Time{}, time.Time{}, err
@@ -549,7 +549,7 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 	return from, through, nil
 }
 
-func (q *querier) checkTailRequestLimit(ctx context.Context) error {
+func (q *SingleTenantQuerier) checkTailRequestLimit(ctx context.Context) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
