@@ -217,15 +217,6 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 			return err
 		}
 
-		c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits))
-
-		c.tableMarker, err = retention.NewMarker(retentionWorkDir, schemaConfig, c.expirationChecker, chunkClient, r)
-		if err != nil {
-			return err
-		}
-	}
-
-	if c.cfg.DeletionEnabled {
 		deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
 		c.deleteRequestsStore, err = deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
@@ -235,6 +226,14 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 
 		c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
 		c.deleteRequestsManager = deletion.NewDeleteRequestsManager(c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, r)
+
+		c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
+
+		c.tableMarker, err = retention.NewMarker(retentionWorkDir, schemaConfig, c.expirationChecker, chunkClient, r)
+		if err != nil {
+			return err
+		}
+
 	}
 
 	return nil
@@ -291,8 +290,6 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 func (c *Compactor) loop(ctx context.Context) error {
 	if c.cfg.RetentionEnabled {
 		defer c.deleteRequestsStore.Stop()
-	}
-	if c.cfg.DeletionEnabled {
 		defer c.deleteRequestsManager.Stop()
 	}
 
@@ -538,10 +535,11 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 
 type expirationChecker struct {
 	retentionExpiryChecker retention.ExpirationChecker
+	deletionExpiryChecker  retention.ExpirationChecker
 }
 
-func newExpirationChecker(retentionExpiryChecker retention.ExpirationChecker) retention.ExpirationChecker {
-	return &expirationChecker{retentionExpiryChecker}
+func newExpirationChecker(retentionExpiryChecker, deletionExpiryChecker retention.ExpirationChecker) retention.ExpirationChecker {
+	return &expirationChecker{retentionExpiryChecker, deletionExpiryChecker}
 }
 
 func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []model.Interval) {
@@ -549,27 +547,30 @@ func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (b
 		return expired, nonDeletedIntervals
 	}
 
-	return false, nil
+	return e.deletionExpiryChecker.Expired(ref, now)
 }
 
 func (e *expirationChecker) MarkPhaseStarted() {
 	e.retentionExpiryChecker.MarkPhaseStarted()
+	e.deletionExpiryChecker.MarkPhaseStarted()
 }
 
 func (e *expirationChecker) MarkPhaseFailed() {
 	e.retentionExpiryChecker.MarkPhaseFailed()
+	e.deletionExpiryChecker.MarkPhaseFailed()
 }
 
 func (e *expirationChecker) MarkPhaseFinished() {
 	e.retentionExpiryChecker.MarkPhaseFinished()
+	e.deletionExpiryChecker.MarkPhaseFinished()
 }
 
 func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
-	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID)
+	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID) || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID)
 }
 
 func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime model.Time, now model.Time) bool {
-	return e.retentionExpiryChecker.DropFromIndex(ref, tableEndTime, now)
+	return e.retentionExpiryChecker.DropFromIndex(ref, tableEndTime, now) || e.deletionExpiryChecker.DropFromIndex(ref, tableEndTime, now)
 }
 
 func (c *Compactor) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
