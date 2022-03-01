@@ -38,8 +38,8 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.featureFlags.EnableCertificateSigningService, "with-cert-signing-service", false, "Enable usage of cert-signing service for scraping prometheus metrics via TLS.")
 	f.BoolVar(&c.featureFlags.EnableServiceMonitors, "with-service-monitors", false, "Enable service monitors for all LokiStack components.")
 	f.BoolVar(&c.featureFlags.EnableTLSServiceMonitorConfig, "with-tls-service-monitors", false, "Enable TLS endpoint for service monitors.")
-	f.BoolVar(&c.featureFlags.EnableGateway, "with-lokistack-gateway", false, "Enables the manifest creation for the entire lokistack-gateway.")
 	f.BoolVar(&c.featureFlags.EnablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts")
+	f.BoolVar(&c.featureFlags.EnableGateway, "with-lokistack-gateway", false, "Enables the manifest creation for the entire lokistack-gateway.")
 	// Object storage options
 	c.objectStorage = storage.Options{
 		S3: &storage.S3StorageConfig{},

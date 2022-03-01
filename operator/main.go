@@ -105,9 +105,9 @@ func main() {
 		EnableCertificateSigningService: enableCertSigning,
 		EnableServiceMonitors:           enableServiceMonitors,
 		EnableTLSServiceMonitorConfig:   enableTLSServiceMonitors,
+		EnablePrometheusAlerts:          enablePrometheusAlerts,
 		EnableGateway:                   enableGateway,
 		EnableGatewayRoute:              enableGatewayRoute,
-		EnablePrometheusAlerts:          enablePrometheusAlerts,
 	}
 
 	if err = (&controllers.LokiStackReconciler{

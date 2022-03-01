@@ -34,9 +34,9 @@ type FeatureFlags struct {
 	EnableCertificateSigningService bool
 	EnableServiceMonitors           bool
 	EnableTLSServiceMonitorConfig   bool
+	EnablePrometheusAlerts          bool
 	EnableGateway                   bool
 	EnableGatewayRoute              bool
-	EnablePrometheusAlerts          bool
 }
 
 // TenantSecrets for clientID, clientSecret and issuerCAPath for tenant's authentication.
