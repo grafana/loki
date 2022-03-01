@@ -12,6 +12,7 @@ var (
 
 const (
 	Disabled Mode = iota
+	V1            // The existing experimental log deletion that removes whole streams.
 	FilterOnly
 	FilterAndDelete
 )
@@ -20,6 +21,8 @@ func (m Mode) String() string {
 	switch m {
 	case Disabled:
 		return "disabled"
+	case V1:
+		return "v1"
 	case FilterOnly:
 		return "filter-only"
 	case FilterAndDelete:
@@ -29,13 +32,15 @@ func (m Mode) String() string {
 }
 
 func AllModes() []string {
-	return []string{Disabled.String(), FilterOnly.String(), FilterAndDelete.String()}
+	return []string{Disabled.String(), V1.String(), FilterOnly.String(), FilterAndDelete.String()}
 }
 
 func ParseMode(in string) (Mode, error) {
 	switch in {
 	case "disabled":
 		return Disabled, nil
+	case "v1":
+		return V1, nil
 	case "filter-only":
 		return FilterOnly, nil
 	case "filter-and-delete":

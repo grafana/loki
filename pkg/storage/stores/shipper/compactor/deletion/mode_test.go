@@ -8,13 +8,17 @@ import (
 
 func TestAllModes(t *testing.T) {
 	modes := AllModes()
-	require.ElementsMatch(t, []string{"disabled", "filter-only", "filter-and-delete"}, modes)
+	require.ElementsMatch(t, []string{"disabled", "v1", "filter-only", "filter-and-delete"}, modes)
 }
 
 func TestParseMode(t *testing.T) {
 	mode, err := ParseMode("disabled")
 	require.NoError(t, err)
 	require.Equal(t, Disabled, mode)
+
+	mode, err = ParseMode("v1")
+	require.NoError(t, err)
+	require.Equal(t, V1, mode)
 
 	mode, err = ParseMode("filter-only")
 	require.NoError(t, err)
