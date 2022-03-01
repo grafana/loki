@@ -56,6 +56,7 @@ func copyFromReader(ctx context.Context, from io.Reader, to blockWriter, o Uploa
 	}
 	// If the error is not EOF, then we have a problem.
 	if err != nil && !errors.Is(err, io.EOF) {
+		_ = cp.waitForFinish()
 		return nil, err
 	}
 
@@ -165,25 +166,61 @@ func (c *copier) write(chunk copierChunk) {
 	if err := c.ctx.Err(); err != nil {
 		return
 	}
+
 	_, err := c.to.StageBlock(c.ctx, chunk.id, bytes.NewReader(chunk.buffer), c.o.AccessConditions.LeaseAccessConditions, nil, c.o.ClientProvidedKeyOptions)
 	if err != nil {
 		c.errCh <- fmt.Errorf("write error: %w", err)
 		return
 	}
-	return
 }
 
 // close commits our blocks to blob storage and closes our writer.
 func (c *copier) close() error {
-	c.wg.Wait()
-
-	if err := c.getErr(); err != nil {
+	if err := c.waitForFinish(); err != nil {
 		return err
 	}
 
 	var err error
 	c.result, err = c.to.CommitBlockList(c.ctx, c.id.issued(), c.o.BlobHTTPHeaders, c.o.Metadata, c.o.AccessConditions, c.o.BlobAccessTier, c.o.BlobTagsMap, c.o.ClientProvidedKeyOptions)
 	return err
+}
+
+// waitForFinish waits for all writes to complete while combining errors from errCh
+func (c *copier) waitForFinish() error {
+	var err error
+	done := make(chan struct{})
+	go func() {
+		// when write latencies are long, several errors might have occurred
+		// drain them all as we wait for writes to complete.
+		err = c.drainErrs(done)
+	}()
+
+	c.wg.Wait()
+	close(done)
+	return err
+}
+
+// drainErrs drains all outstanding errors from writes
+func (c *copier) drainErrs(done chan struct{}) error {
+	var err error
+	for {
+		select {
+		case <-done:
+			return err
+		default:
+			if writeErr := c.getErr(); writeErr != nil {
+				err = combineErrs(err, writeErr)
+			}
+		}
+	}
+}
+
+// combineErrs combines err with newErr so multiple errors can be represented
+func combineErrs(err, newErr error) error {
+	if err == nil {
+		return newErr
+	}
+	return fmt.Errorf("%s, %w", err.Error(), newErr)
 }
 
 // id allows the creation of unique IDs based on UUID4 + an int32. This auto-increments.

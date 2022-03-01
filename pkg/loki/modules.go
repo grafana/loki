@@ -221,10 +221,17 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// Querier worker's max concurrent requests must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 
+	logger := log.With(util_log.Logger, "component", "querier")
 	var err error
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
+	}
+
+	if t.Cfg.Querier.MultiTenantQueriesEnabled {
+		t.Querier = querier.NewMultiTenantQuerier(*q, util_log.Logger)
+	} else {
+		t.Querier = q
 	}
 
 	querierWorkerServiceConfig := querier.WorkerServiceConfig{
@@ -242,18 +249,19 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		httpreq.ExtractQueryMetricsMiddleware(),
 	)
 
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.overrides, logger)
 	queryHandlers := map[string]http.Handler{
-		"/loki/api/v1/query_range":         httpMiddleware.Wrap(http.HandlerFunc(t.Querier.RangeQueryHandler)),
-		"/loki/api/v1/query":               httpMiddleware.Wrap(http.HandlerFunc(t.Querier.InstantQueryHandler)),
-		"/loki/api/v1/label":               http.HandlerFunc(t.Querier.LabelHandler),
-		"/loki/api/v1/labels":              http.HandlerFunc(t.Querier.LabelHandler),
-		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
-		"/loki/api/v1/series":              http.HandlerFunc(t.Querier.SeriesHandler),
+		"/loki/api/v1/query_range":         httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.RangeQueryHandler)),
+		"/loki/api/v1/query":               httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.InstantQueryHandler)),
+		"/loki/api/v1/label":               http.HandlerFunc(t.querierAPI.LabelHandler),
+		"/loki/api/v1/labels":              http.HandlerFunc(t.querierAPI.LabelHandler),
+		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.querierAPI.LabelHandler),
+		"/loki/api/v1/series":              http.HandlerFunc(t.querierAPI.SeriesHandler),
 
-		"/api/prom/query":               httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LogQueryHandler)),
-		"/api/prom/label":               http.HandlerFunc(t.Querier.LabelHandler),
-		"/api/prom/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
-		"/api/prom/series":              http.HandlerFunc(t.Querier.SeriesHandler),
+		"/api/prom/query":               httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LogQueryHandler)),
+		"/api/prom/label":               http.HandlerFunc(t.querierAPI.LabelHandler),
+		"/api/prom/label/{name}/values": http.HandlerFunc(t.querierAPI.LabelHandler),
+		"/api/prom/series":              http.HandlerFunc(t.querierAPI.SeriesHandler),
 	}
 
 	// We always want to register tail routes externally, tail requests are different from normal queries, they
@@ -266,8 +274,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// we disable the proxying of the tail routes in initQueryFrontend() and we still want these routes regiestered
 	// on the external router.
 	alwaysExternalHandlers := map[string]http.Handler{
-		"/loki/api/v1/tail": http.HandlerFunc(t.Querier.TailHandler),
-		"/api/prom/tail":    http.HandlerFunc(t.Querier.TailHandler),
+		"/loki/api/v1/tail": http.HandlerFunc(t.querierAPI.TailHandler),
+		"/api/prom/tail":    http.HandlerFunc(t.querierAPI.TailHandler),
 	}
 
 	return querier.InitWorkerService(
@@ -727,12 +735,12 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		return nil, err
 	}
 
-	shipperIndexClient, err := shipper.NewShipper(t.Cfg.StorageConfig.BoltDBShipperConfig, objectClient, prometheus.DefaultRegisterer)
+	shipperIndexClient, err := shipper.NewShipper(t.Cfg.StorageConfig.BoltDBShipperConfig, objectClient, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
 
-	gateway := indexgateway.NewIndexGateway(shipperIndexClient.(*shipper.Shipper))
+	gateway := indexgateway.NewIndexGateway(shipperIndexClient)
 	indexgatewaypb.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
 	return gateway, nil
 }

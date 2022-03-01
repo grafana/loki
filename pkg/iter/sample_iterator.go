@@ -118,8 +118,7 @@ func (it *peekingSampleIterator) Error() error {
 }
 
 type sampleIteratorHeap struct {
-	its            []SampleIterator
-	byAlphabetical bool
+	its []SampleIterator
 }
 
 func (h sampleIteratorHeap) Len() int             { return len(h.its) }
@@ -139,7 +138,7 @@ func (h *sampleIteratorHeap) Pop() interface{} {
 func (h sampleIteratorHeap) Less(i, j int) bool {
 	s1, s2 := h.its[i].Sample(), h.its[j].Sample()
 	if s1.Timestamp == s2.Timestamp {
-		if h.byAlphabetical {
+		if h.its[i].StreamHash() == 0 {
 			return h.its[i].Labels() < h.its[j].Labels()
 		}
 		return h.its[i].StreamHash() < h.its[j].StreamHash()
@@ -286,7 +285,7 @@ func (i *mergeSampleIterator) Labels() string {
 }
 
 func (i *mergeSampleIterator) StreamHash() uint64 {
-	return i.curr.Hash
+	return i.curr.streamHash
 }
 
 func (i *mergeSampleIterator) Error() error {
@@ -332,8 +331,7 @@ func NewSortSampleIterator(is []SampleIterator) SampleIterator {
 		return is[0]
 	}
 	h := sampleIteratorHeap{
-		its:            make([]SampleIterator, 0, len(is)),
-		byAlphabetical: true,
+		its: make([]SampleIterator, 0, len(is)),
 	}
 	return &sortSampleIterator{
 		is:   is,
@@ -673,26 +671,37 @@ func (i *timeRangedSampleIterator) Next() bool {
 
 // ReadBatch reads a set of entries off an iterator.
 func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
-	series := map[string]*logproto.Series{}
-	respSize := uint32(0)
+	var (
+		series      = map[uint64]map[string]*logproto.Series{}
+		respSize    uint32
+		seriesCount int
+	)
 	for ; respSize < size && i.Next(); respSize++ {
 		labels, hash, sample := i.Labels(), i.StreamHash(), i.Sample()
-		s, ok := series[labels]
+		streams, ok := series[hash]
 		if !ok {
+			streams = map[string]*logproto.Series{}
+			series[hash] = streams
+		}
+		s, ok := streams[labels]
+		if !ok {
+			seriesCount++
 			s = &logproto.Series{
 				Labels:     labels,
 				StreamHash: hash,
 			}
-			series[labels] = s
+			streams[labels] = s
 		}
 		s.Samples = append(s.Samples, sample)
 	}
 
 	result := logproto.SampleQueryResponse{
-		Series: make([]logproto.Series, 0, len(series)),
+		Series: make([]logproto.Series, 0, seriesCount),
 	}
-	for _, s := range series {
-		result.Series = append(result.Series, *s)
+	for _, streams := range series {
+		for _, s := range streams {
+			result.Series = append(result.Series, *s)
+		}
 	}
 	return &result, respSize, i.Error()
 }

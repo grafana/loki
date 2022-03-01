@@ -173,8 +173,17 @@ spec:
                       name:
                         description: Name of a secret in the namespace configured for object storage secrets.
                         type: string
+                      type:
+                        description: Type of object storage that should be used
+                        enum:
+                        - azure
+                        - gcs
+                        - s3
+                        - swift
+                        type: string
                     required:
                     - name
+                    - type
                     type: object
                 required:
                 - secret

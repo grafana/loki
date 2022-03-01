@@ -104,7 +104,7 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 				var found bool
 				s, found = resByStream[out.String()]
 				if !found {
-					s = &logproto.Stream{Labels: out.String(), Hash: sp.BaseLabels().Hash()}
+					s = &logproto.Stream{Labels: out.String()}
 					resByStream[out.String()] = s
 				}
 				s.Entries = append(s.Entries, logproto.Entry{

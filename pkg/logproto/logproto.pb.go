@@ -648,6 +648,7 @@ func (m *Sample) GetHash() uint64 {
 	return 0
 }
 
+// LegacySample exists for backwards compatibility reasons and is deprecated. Do not use.
 type LegacySample struct {
 	Value       float64 `protobuf:"fixed64,1,opt,name=value,proto3" json:"value,omitempty"`
 	TimestampMs int64   `protobuf:"varint,2,opt,name=timestamp_ms,json=timestampMs,proto3" json:"timestamp_ms,omitempty"`
@@ -1199,6 +1200,7 @@ func (m *LabelPair) GetValue() string {
 	return ""
 }
 
+// LegacyLabelPair exists for backwards compatibility reasons and is deprecated. Do not use.
 type LegacyLabelPair struct {
 	Name  []byte `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Value []byte `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`

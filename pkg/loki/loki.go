@@ -234,7 +234,8 @@ type Loki struct {
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
 	Ingester                 ingester.Interface
-	Querier                  *querier.Querier
+	Querier                  querier.Querier
+	querierAPI               *querier.QuerierAPI
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
 	tableManager             *chunk.TableManager
@@ -508,7 +509,7 @@ func (t *Loki) setupModuleManager() error {
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
 		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
-		IndexGateway:             {Server, UsageReport},
+		IndexGateway:             {Server, Overrides, UsageReport},
 		IngesterQuerier:          {Ring},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},

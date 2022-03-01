@@ -85,6 +85,7 @@ resource "aws_lambda_function" "lambda_promtail" {
       PASSWORD      = var.password
       KEEP_STREAM   = var.keep_stream
       BATCH_SIZE    = var.batch_size
+      EXTRA_LABELS  = var.extra_labels
     }
   }
 
