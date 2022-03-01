@@ -57,7 +57,7 @@ gcloud logging sinks describe \
 
 For example:
 ```bash
-$ gcloud logging sinks describe \
+gcloud logging sinks describe \
  --format='value(writerIdentity)' cloud-logs
 ```
 
