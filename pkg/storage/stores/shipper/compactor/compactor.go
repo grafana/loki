@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,7 +68,7 @@ type Config struct {
 	RetentionEnabled          bool            `yaml:"retention_enabled"`
 	RetentionDeleteDelay      time.Duration   `yaml:"retention_delete_delay"`
 	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
-	DeletionEnabled           bool            `yaml:"deletion_enabled"`
+	DeletionMode              string          `yaml:"deletion_enabled"`
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
@@ -85,7 +86,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
-	f.BoolVar(&cfg.DeletionEnabled, "boltdb.shipper.compactor.deletion-enabled", false, "(Experimental) Activate deletion instead of filtering.")
+	f.StringVar(&cfg.DeletionMode, "boltdb.shipper.compactor.deletion-mode", "", fmt.Sprintf("(Experimental) Deletion mode. Can be one of %v", strings.Join(deletion.AllModes(), "|")))
 	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
 }
 
@@ -96,6 +97,10 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.RetentionEnabled && cfg.ApplyRetentionInterval != 0 && cfg.ApplyRetentionInterval%cfg.CompactionInterval != 0 {
 		return errors.New("interval for applying retention should either be set to a 0 or a multiple of compaction interval")
+	}
+
+	if _, err := deletion.ParseMode(cfg.DeletionMode); err != nil {
+		return err
 	}
 
 	return shipper_util.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
@@ -233,7 +238,6 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 		if err != nil {
 			return err
 		}
-
 	}
 
 	return nil
