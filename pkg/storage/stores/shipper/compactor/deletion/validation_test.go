@@ -8,31 +8,31 @@ import (
 
 func TestParseLogQLExpressionForDeletion(t *testing.T) {
 	t.Run("invalid logql", func(t *testing.T) {
-		matchers, err := parseLogQLExpressionForDeletion("gjgjg ggj")
+		matchers, err := parseDeletionQuery("gjgjg ggj")
 		require.Nil(t, matchers)
 		require.ErrorIs(t, err, errInvalidLogQL)
 	})
 
 	t.Run("matcher expression", func(t *testing.T) {
-		matchers, err := parseLogQLExpressionForDeletion(`{env="dev", secret="true"}`)
+		matchers, err := parseDeletionQuery(`{env="dev", secret="true"}`)
 		require.NotNil(t, matchers)
 		require.NoError(t, err)
 	})
 
 	t.Run("pipeline expression with line filter", func(t *testing.T) {
-		matchers, err := parseLogQLExpressionForDeletion(`{env="dev", secret="true"} |= "social sec number"`)
+		matchers, err := parseDeletionQuery(`{env="dev", secret="true"} |= "social sec number"`)
 		require.Nil(t, matchers)
 		require.ErrorIs(t, err, errUnsupportedLogQL)
 	})
 
 	t.Run("pipeline expression with label filter ", func(t *testing.T) {
-		matchers, err := parseLogQLExpressionForDeletion(`{env="dev", secret="true"} | json bob="top.params[0]"`)
+		matchers, err := parseDeletionQuery(`{env="dev", secret="true"} | json bob="top.params[0]"`)
 		require.Nil(t, matchers)
 		require.ErrorIs(t, err, errUnsupportedLogQL)
 	})
 
 	t.Run("metrics query", func(t *testing.T) {
-		matchers, err := parseLogQLExpressionForDeletion(`count_over_time({job="mysql"}[5m])`)
+		matchers, err := parseDeletionQuery(`count_over_time({job="mysql"}[5m])`)
 		require.Nil(t, matchers)
 		require.ErrorIs(t, err, errUnsupportedLogQL)
 	})

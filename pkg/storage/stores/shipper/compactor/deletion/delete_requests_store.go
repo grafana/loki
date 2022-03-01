@@ -201,7 +201,7 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 				return false
 			}
 
-			err = deleteRequest.AddLogQL(string(itr.Value()))
+			err = deleteRequest.AddQuery(string(itr.Value()))
 			if err != nil {
 				parseError = err
 				return false

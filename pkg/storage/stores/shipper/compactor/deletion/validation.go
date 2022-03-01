@@ -13,8 +13,8 @@ var (
 	errUnsupportedLogQL = errors.New("unsupported LogQL expression")
 )
 
-// parseLogQLExpressionForDeletion checks if the given logQL is valid for deletions
-func parseLogQLExpressionForDeletion(logQL string) ([]*labels.Matcher, error) {
+// parseDeletionQuery checks if the given logQL is valid for deletions
+func parseDeletionQuery(logQL string) ([]*labels.Matcher, error) {
 	expr, err := logql.ParseExpr(logQL)
 	if err != nil {
 		return nil, errInvalidLogQL

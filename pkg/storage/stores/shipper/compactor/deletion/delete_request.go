@@ -8,20 +8,20 @@ import (
 )
 
 type DeleteRequest struct {
-	RequestID    string              `json:"request_id"`
-	StartTime    model.Time          `json:"start_time"`
-	EndTime      model.Time          `json:"end_time"`
-	LogQLRequest string              `json:"logql_requests"`
-	Status       DeleteRequestStatus `json:"status"`
-	CreatedAt    model.Time          `json:"created_at"`
+	RequestID string              `json:"request_id"`
+	StartTime model.Time          `json:"start_time"`
+	EndTime   model.Time          `json:"end_time"`
+	Query     string              `json:"logql_requests"`
+	Status    DeleteRequestStatus `json:"status"`
+	CreatedAt model.Time          `json:"created_at"`
 
 	UserID   string            `json:"-"`
 	matchers []*labels.Matcher `json:"-"`
 }
 
-func (d *DeleteRequest) AddLogQL(logQL string) error {
-	d.LogQLRequest = logQL
-	matchers, err := parseLogQLExpressionForDeletion(logQL)
+func (d *DeleteRequest) AddQuery(logQL string) error {
+	d.Query = logQL
+	matchers, err := parseDeletionQuery(logQL)
 	if err != nil {
 		return err
 	}

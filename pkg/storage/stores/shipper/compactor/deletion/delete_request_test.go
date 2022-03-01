@@ -40,10 +40,10 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		{
 			name: "whole chunk deleted",
 			deleteRequest: DeleteRequest{
-				UserID:       user1,
-				StartTime:    now.Add(-3 * time.Hour),
-				EndTime:      now.Add(-time.Hour),
-				LogQLRequest: lbls,
+				UserID:    user1,
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     lbls,
 			},
 			expectedResp: resp{
 				isDeleted:           true,
@@ -53,10 +53,10 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		{
 			name: "chunk deleted from beginning",
 			deleteRequest: DeleteRequest{
-				UserID:       user1,
-				StartTime:    now.Add(-3 * time.Hour),
-				EndTime:      now.Add(-2 * time.Hour),
-				LogQLRequest: lbls,
+				UserID:    user1,
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-2 * time.Hour),
+				Query:     lbls,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -71,10 +71,10 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		{
 			name: "chunk deleted from end",
 			deleteRequest: DeleteRequest{
-				UserID:       user1,
-				StartTime:    now.Add(-2 * time.Hour),
-				EndTime:      now,
-				LogQLRequest: lbls,
+				UserID:    user1,
+				StartTime: now.Add(-2 * time.Hour),
+				EndTime:   now,
+				Query:     lbls,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -89,10 +89,10 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		{
 			name: "chunk deleted from end",
 			deleteRequest: DeleteRequest{
-				UserID:       user1,
-				StartTime:    now.Add(-2 * time.Hour),
-				EndTime:      now,
-				LogQLRequest: lbls,
+				UserID:    user1,
+				StartTime: now.Add(-2 * time.Hour),
+				EndTime:   now,
+				Query:     lbls,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -107,10 +107,10 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		{
 			name: "chunk deleted in the middle",
 			deleteRequest: DeleteRequest{
-				UserID:       user1,
-				StartTime:    now.Add(-(2*time.Hour + 30*time.Minute)),
-				EndTime:      now.Add(-(time.Hour + 30*time.Minute)),
-				LogQLRequest: lbls,
+				UserID:    user1,
+				StartTime: now.Add(-(2*time.Hour + 30*time.Minute)),
+				EndTime:   now.Add(-(time.Hour + 30*time.Minute)),
+				Query:     lbls,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -129,10 +129,10 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		{
 			name: "delete request out of range",
 			deleteRequest: DeleteRequest{
-				UserID:       user1,
-				StartTime:    now.Add(-12 * time.Hour),
-				EndTime:      now.Add(-10 * time.Hour),
-				LogQLRequest: lbls,
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     lbls,
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -141,10 +141,10 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		{
 			name: "request not matching due to matchers",
 			deleteRequest: DeleteRequest{
-				UserID:       "user1",
-				StartTime:    now.Add(-3 * time.Hour),
-				EndTime:      now.Add(-time.Hour),
-				LogQLRequest: `{foo1="bar"}`,
+				UserID:    "user1",
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     `{foo1="bar"}`,
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -153,10 +153,10 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		{
 			name: "request for a different user",
 			deleteRequest: DeleteRequest{
-				UserID:       "user2",
-				StartTime:    now.Add(-3 * time.Hour),
-				EndTime:      now.Add(-time.Hour),
-				LogQLRequest: lbls,
+				UserID:    "user2",
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     lbls,
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -164,7 +164,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			tc.deleteRequest.AddLogQL(tc.deleteRequest.LogQLRequest)
+			tc.deleteRequest.AddQuery(tc.deleteRequest.Query)
 			isDeleted, nonDeletedIntervals := tc.deleteRequest.IsDeleted(chunkEntry)
 			require.Equal(t, tc.expectedResp.isDeleted, isDeleted)
 			require.Equal(t, tc.expectedResp.nonDeletedIntervals, nonDeletedIntervals)
