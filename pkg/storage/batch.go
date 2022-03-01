@@ -739,7 +739,7 @@ func fetchLazyChunks(ctx context.Context, s chunk.SchemaConfig, chunks []*LazyCh
 				errChan <- nil
 				return
 			}
-			if postFetcherChunkFilterer != nil {
+			if postFetcherChunkFilterer != nil && len(chunkKeys) > 0 {
 				for i, chk := range chks {
 					key := chunkKeys[i]
 					index[key].Chunk = chk
