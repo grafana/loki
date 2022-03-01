@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -36,7 +35,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 	if err != nil {
 		return nil, err
 	}
-	return New(cfg, store, iq, limits, log.NewNopLogger())
+	return New(cfg, store, iq, limits)
 }
 
 func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
