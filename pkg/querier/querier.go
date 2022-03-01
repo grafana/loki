@@ -80,7 +80,7 @@ type Querier interface {
 	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
 }
 
-// SingleTenantQuerier handlers queries.
+// SingleTenantQuerier handles single tenant queries.
 type SingleTenantQuerier struct {
 	cfg             Config
 	store           storage.Store

@@ -33,7 +33,7 @@ type QueryResponse struct {
 	Result     parser.Value     `json:"result"`
 }
 
-// QurierAPI defines HTTP handler functions for the querier.
+//nolint // QurierAPI defines HTTP handler functions for the querier.
 type QuerierAPI struct {
 	querier Querier
 	cfg     Config
