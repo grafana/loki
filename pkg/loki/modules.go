@@ -52,6 +52,7 @@ import (
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
@@ -749,7 +750,8 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	}
 
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
-	if t.Cfg.CompactorConfig.RetentionEnabled {
+
+	if t.Cfg.CompactorConfig.RetentionEnabled && t.compactor.DeleteMode == deletion.V1 {
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler)))
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler)))
 		t.Server.HTTP.Path("/loki/api/v1/delete/cancel").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler)))

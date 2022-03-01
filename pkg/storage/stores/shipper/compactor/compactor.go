@@ -120,6 +120,7 @@ type Compactor struct {
 	metrics               *metrics
 	running               bool
 	wg                    sync.WaitGroup
+	DeleteMode            deletion.Mode
 
 	// Ring used for running a single compactor
 	ringLifecycler *ring.BasicLifecycler
@@ -187,6 +188,12 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
+	mode, err := deletion.ParseMode(cfg.DeletionMode)
+	if err != nil {
+		return nil, err
+	}
+	compactor.DeleteMode = mode
+
 	if err := compactor.init(storageConfig, schemaConfig, limits, clientMetrics, r); err != nil {
 		return nil, err
 	}
@@ -208,7 +215,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 	c.indexStorageClient = shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
 	c.metrics = newMetrics(r)
 
-	if c.cfg.RetentionEnabled {
+	if c.cfg.RetentionEnabled && c.DeleteMode == deletion.V1 {
 		var encoder objectclient.KeyEncoder
 		if _, ok := objectClient.(*local.FSObjectClient); ok {
 			encoder = objectclient.FSEncoder
