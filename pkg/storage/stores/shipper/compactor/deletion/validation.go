@@ -9,20 +9,20 @@ import (
 )
 
 var (
-	errInvalidLogQL     = errors.New("invalid LogQL expression")
-	errUnsupportedLogQL = errors.New("unsupported LogQL expression")
+	errInvalidQuery     = errors.New("invalid query expression")
+	errUnsupportedQuery = errors.New("unsupported query expression")
 )
 
 // parseDeletionQuery checks if the given logQL is valid for deletions
-func parseDeletionQuery(logQL string) ([]*labels.Matcher, error) {
-	expr, err := logql.ParseExpr(logQL)
+func parseDeletionQuery(query string) ([]*labels.Matcher, error) {
+	expr, err := logql.ParseExpr(query)
 	if err != nil {
-		return nil, errInvalidLogQL
+		return nil, errInvalidQuery
 	}
 
 	if matchersExpr, ok := expr.(*logql.MatchersExpr); ok {
 		return matchersExpr.Matchers(), nil
 	}
 
-	return nil, errUnsupportedLogQL
+	return nil, errUnsupportedQuery
 }

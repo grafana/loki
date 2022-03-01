@@ -44,13 +44,13 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	params := r.URL.Query()
-	logQLStatement := params.Get("logql")
-	if len(logQLStatement) == 0 {
-		http.Error(w, "logql not set", http.StatusBadRequest)
+	query := params.Get("query")
+	if len(query) == 0 {
+		http.Error(w, "query not set", http.StatusBadRequest)
 		return
 	}
 
-	_, err = parseDeletionQuery(logQLStatement)
+	_, err = parseDeletionQuery(query)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -87,7 +87,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
-	if err := dm.deleteRequestsStore.AddDeleteRequest(ctx, userID, model.Time(startTime), model.Time(endTime), logQLStatement); err != nil {
+	if err := dm.deleteRequestsStore.AddDeleteRequest(ctx, userID, model.Time(startTime), model.Time(endTime), query); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
