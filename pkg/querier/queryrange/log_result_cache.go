@@ -143,7 +143,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey string, req *L
 	if !ok {
 		return nil, fmt.Errorf("unexpected response type %T", resp)
 	}
-	// we have data we don't want to cache.
+	// At the moment we only cache empty results
 	if !isEmpty(lokiRes) {
 		return resp, nil
 	}
