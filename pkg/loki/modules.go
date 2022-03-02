@@ -81,6 +81,7 @@ const (
 	MemberlistKV             string = "memberlist-kv"
 	Compactor                string = "compactor"
 	IndexGateway             string = "index-gateway"
+	IndexGatewayRing         string = "index-gateway-ring"
 	QueryScheduler           string = "query-scheduler"
 	All                      string = "all"
 	Read                     string = "read"
@@ -391,7 +392,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.indexGatewayRing, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		return
 	}
@@ -749,6 +750,20 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(gateway)
 	indexgatewaypb.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
 	return gateway, nil
+}
+
+func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
+	t.Cfg.IndexGateway.IndexGatewayRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.IndexGateway.IndexGatewayRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	ringCfg := t.Cfg.IndexGateway.IndexGatewayRing.ToRingConfig(indexgateway.RingReplicationFactor)
+	reg := prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer)
+	t.indexGatewayRing, err = ring.New(ringCfg, indexgateway.RingIdentifier, indexgateway.RingKey, util_log.Logger, reg)
+	if err != nil {
+		return
+	}
+
+	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRing)
+	return t.indexGatewayRing, nil
 }
 
 func (t *Loki) initQueryScheduler() (services.Service, error) {

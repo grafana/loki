@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
@@ -58,7 +59,7 @@ type indexStoreFactories struct {
 }
 
 // IndexClientFactoryFunc defines signature of function which creates chunk.IndexClient for managing index in index store
-type IndexClientFactoryFunc func(limits StoreLimits) (chunk.IndexClient, error)
+type IndexClientFactoryFunc func(limits StoreLimits, indexGatewayRing ring.ReadRing) (chunk.IndexClient, error)
 
 // TableClientFactoryFunc defines signature of function which creates chunk.TableClient for managing tables in index store
 type TableClientFactoryFunc func() (chunk.TableClient, error)
@@ -167,6 +168,7 @@ func NewStore(
 	cfg Config,
 	storeCfg chunk.StoreConfig,
 	schemaCfg chunk.SchemaConfig,
+	indexGatewayRing ring.ReadRing,
 	limits StoreLimits,
 	clientMetrics ClientMetrics,
 	reg prometheus.Registerer,
@@ -214,7 +216,7 @@ func NewStore(
 		indexClientReg := prometheus.WrapRegistererWith(
 			prometheus.Labels{"component": "index-store-" + s.From.String()}, reg)
 
-		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, limits, indexClientReg)
+		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, indexGatewayRing, limits, indexClientReg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
@@ -245,10 +247,10 @@ func NewStore(
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, limits StoreLimits, registerer prometheus.Registerer) (chunk.IndexClient, error) {
+func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, indexGatewayRing ring.ReadRing, limits StoreLimits, registerer prometheus.Registerer) (chunk.IndexClient, error) {
 	if indexClientFactory, ok := customIndexStores[name]; ok {
 		if indexClientFactory.indexClientFactoryFunc != nil {
-			return indexClientFactory.indexClientFactoryFunc(limits)
+			return indexClientFactory.indexClientFactoryFunc(limits, indexGatewayRing)
 		}
 	}
 

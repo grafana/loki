@@ -253,6 +253,7 @@ type Loki struct {
 	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
 	usageReport              *usagestats.Reporter
+	indexGatewayRing         *ring.Ring
 
 	clientMetrics chunk_storage.ClientMetrics
 
@@ -271,7 +272,7 @@ func New(cfg Config) (*Loki, error) {
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
-	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, loki.clientMetrics, prometheus.DefaultRegisterer)
+	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, &loki.Cfg.IndexGateway, loki.clientMetrics, prometheus.DefaultRegisterer)
 
 	return loki, nil
 }
@@ -489,6 +490,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
+	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(UsageReport, t.initUsageReport)
 
 	mm.RegisterModule(All, nil)
@@ -503,7 +505,7 @@ func (t *Loki) setupModuleManager() error {
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
-		Store:                    {Overrides},
+		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
@@ -514,6 +516,7 @@ func (t *Loki) setupModuleManager() error {
 		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
 		IndexGateway:             {Server, Overrides, UsageReport, MemberlistKV},
 		IngesterQuerier:          {Ring},
+		IndexGatewayRing:         {RuntimeConfig, Server, MemberlistKV},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},
 		Write:                    {Ingester, Distributor},

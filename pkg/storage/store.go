@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"sort"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -23,9 +25,11 @@ import (
 	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -419,21 +423,21 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 	return filtered
 }
 
-func RegisterCustomIndexClients(cfg *Config, cm storage.ClientMetrics, registerer prometheus.Registerer) {
+func RegisterCustomIndexClients(cfg *Config, indexGatewayconfig *indexgateway.Config, cm storage.ClientMetrics, registerer prometheus.Registerer) {
 	// BoltDB Shipper is supposed to be run as a singleton.
 	// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
 	// in tests for creating multiple instances of it at a time.
 	var boltDBIndexClientWithShipper chunk.IndexClient
 
-	storage.RegisterIndexStore(shipper.BoltDBShipperType, func(limits storage.StoreLimits) (chunk.IndexClient, error) {
+	storage.RegisterIndexStore(shipper.BoltDBShipperType, func(limits storage.StoreLimits, indexGatewayRing ring.ReadRing) (chunk.IndexClient, error) {
 		if boltDBIndexClientWithShipper != nil {
 			return boltDBIndexClientWithShipper, nil
 		}
 
-		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" {
-			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer)
+		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly {
+			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexGatewayRing, registerer, util_log.Logger)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("shipper new gateway client: %w", err)
 			}
 
 			boltDBIndexClientWithShipper = gateway
