@@ -73,7 +73,7 @@ steps:
   name: test-main
 - commands:
   - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
-    new=test_results.txt packages=ingester,distributor,querier,iter,storage,chunkenc,logql,loki
+    new=test_results.txt packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki
     > diff.txt
   depends_on:
   - test
@@ -1112,6 +1112,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 027476464284ddef12d1e2f203f3926f51c741e591e821c52f8a01c82c1135da
+hmac: bb421a0e0ddae873ece1b68cbc0c0f72c1a7703299d1fea486b01786e229f1d3
 
 ...

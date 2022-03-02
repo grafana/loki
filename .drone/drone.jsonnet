@@ -355,7 +355,7 @@ local manifest(apps) = pipeline('manifest') {
       make('compare-coverage', container=false, args=[
         'old=../loki-main/test_results.txt',
         'new=test_results.txt',
-        'packages=ingester,distributor,querier,iter,storage,chunkenc,logql,loki',
+        'packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki',
         '> diff.txt',
       ]) { depends_on: ['test', 'test-main'] },
       run('report-coverage', commands=[
