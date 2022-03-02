@@ -179,6 +179,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	)
 	g, ctx := errgroup.WithContext(ctx)
 
+	// if we're missing data at the start, start fetching from the start to the cached start.
 	if lokiReq.GetStartTs().Before(cachedResquest.GetStartTs()) {
 		g.Go(func() error {
 			startRequest = lokiReq.WithStartEndTime(lokiReq.GetStartTs(), cachedResquest.GetStartTs())
@@ -195,6 +196,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		})
 	}
 
+	// if we're missing data at the end, start fetching from the cached end to the end.
 	if lokiReq.GetEndTs().After(cachedResquest.GetEndTs()) {
 		g.Go(func() error {
 			endRequest = lokiReq.WithStartEndTime(cachedResquest.GetEndTs(), lokiReq.GetEndTs())
@@ -215,6 +217,8 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		return nil, err
 	}
 
+	// if we have data at the start, we need to merge it with the cached data if it's empty and update the cache.
+	// If it's not empty only merge the response.
 	if startResp != nil {
 		if isEmpty(startResp) {
 			cachedResquest = cachedResquest.WithStartEndTime(startRequest.GetStartTs(), cachedResquest.GetEndTs())
@@ -227,6 +231,8 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		}
 	}
 
+	// if we have data at the end, we need to merge it with the cached data if it's empty and update the cache.
+	// If it's not empty only merge the response.
 	if endResp != nil {
 		if isEmpty(endResp) {
 			cachedResquest = cachedResquest.WithStartEndTime(cachedResquest.GetStartTs(), endRequest.GetEndTs())
@@ -239,6 +245,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		}
 	}
 
+	// we need to update the cache since we fetched more either at the end or the start and it was empty.
 	if updateCache {
 		data, err := proto.Marshal(cachedResquest)
 		if err != nil {
