@@ -93,12 +93,18 @@ It will undeploy controller from the configured Kubernetes cluster in [~/.kube/c
 
   where `$YOUR_QUAY_ORG` is your personal [quay.io](http://quay.io/) account where you can push container images and `$VERSION` can be any random version number such as `v0.0.1`.
 
-  The above command will deploy the operator to your active Openshift cluster defined by your local [kubeconfig](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/). The operator will be running in the `openshift-logging` namespace.
+  The above command will deploy the operator to your active Openshift cluster defined by your local [kubeconfig](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/). The operator will be running in the `openshift-operators-redhat` namespace.
 
 * You can confirm that the operator is up and running using:
 
   ```console
-  kubectl -n openshift-logging get pods
+  kubectl -n openshift-operators-redhat get pods
+  ```
+
+* Next step is to create the `openshift-logging` namespace in the cluster:
+
+  ```console
+  kubectl create ns openshift-logging
   ```
 
 * Now you need to create a storage secret for the operator. This can be done using:
@@ -157,7 +163,7 @@ It will undeploy controller from the configured Kubernetes cluster in [~/.kube/c
   If you don't want `lokistack-gateway` component [1] then you can skip it by removing the `--with-lokistack-gateway` args from the `loki-operator-controller-manager` deployment:
 
   ```console
-  kubectl -n openshift-logging edit deployment/loki-operator-controller-manager
+  kubectl -n openshift-operators-redhat edit deployment/loki-operator-controller-manager
   ```
 
   Delete the flag `--with-lokistack-gateway` from the `args` section and save the file. This will update the deployment and now you can create LokiStack instance using:

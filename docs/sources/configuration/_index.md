@@ -166,7 +166,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [common: <common>]
 
 # Configuration for usage report
-[usage_report: <usage_report>]
+[analytics: <analytics>]
 ```
 
 ## server
@@ -295,6 +295,10 @@ The `querier` block configures the Loki Querier.
 # useful for running a standalone querier pool opearting only against stored data.
 # CLI flag: -querier.query-store-only
 [query_store_only: <boolean> | default = false]
+
+# Allow queries for multiple tenants.
+# CLI flag: -querier.multi-tenant-queries-enabled
+[multi_tenant_queries_enabled: <boolean> | default = false]
 
 # Configuration options for the LogQL engine.
 engine:
@@ -1010,10 +1014,11 @@ pool_config:
   # How quickly a dead client will be removed after it has been detected
   # to disappear. Set this to a value to allow time for a secondary
   # health check to recover the missing client.
-  [remotetimeout: <duration>]
+  # CLI flag: -ingester.client.healthcheck-timeout
+  [remote_timeout: <duration> | default = 1s]
 
 # The remote request timeout on the client side.
-# CLI flag: -ingester.client.healthcheck-timeout
+# CLI flag: -ingester.client.timeout
 [remote_timeout: <duration> | default = 5s]
 
 # Configures how the gRPC connection to ingesters work as a client
@@ -2503,14 +2508,14 @@ This way, one doesn't have to replicate configuration in multiple places.
 [ring: <ring>]
 ```
 
-## usage_report
+## analytics
 
-This block allow to configure usage report of Loki to grafana.com
+The `analytics` block configures the reporting of Loki analytics to grafana.com
 
 ```yaml
-# Whether or not usage report should be disabled.
-# CLI flag: -usage-report.disabled
-[disabled: <boolean>: default = false]
+# When true, enables usage reporting.
+# CLI flag: -reporting.enabled
+[reporting_enabled: <boolean>: default = true]
 ```
 
 ### storage

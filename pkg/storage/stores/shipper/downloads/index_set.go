@@ -28,7 +28,7 @@ import (
 type IndexSet interface {
 	Init() error
 	Close()
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
+	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
 	DropAllDBs() error
 	Err() error
 	LastUsedAt() time.Time
@@ -110,8 +110,6 @@ func (t *indexSet) Init() (err error) {
 		t.dbsMtx.markReady()
 	}()
 
-	startTime := time.Now()
-
 	filesInfo, err := ioutil.ReadDir(t.cacheLocation)
 	if err != nil {
 		return err
@@ -148,9 +146,6 @@ func (t *indexSet) Init() (err error) {
 		return
 	}
 
-	duration := time.Since(startTime).Seconds()
-	t.metrics.tablesDownloadDurationSeconds.add(t.tableName, duration)
-
 	level.Debug(logger).Log("msg", "finished syncing files")
 
 	return
@@ -178,7 +173,7 @@ func (t *indexSet) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err

@@ -21,7 +21,7 @@ var clients = promauto.NewGauge(prometheus.GaugeOpts{
 type PoolConfig struct {
 	ClientCleanupPeriod  time.Duration `yaml:"client_cleanup_period"`
 	HealthCheckIngesters bool          `yaml:"health_check_ingesters"`
-	RemoteTimeout        time.Duration `yaml:"-"`
+	RemoteTimeout        time.Duration `yaml:"remote_timeout"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

@@ -16,7 +16,7 @@ const (
 	protocolTCP = "TCP"
 
 	lokiHTTPPortName   = "metrics"
-	lokiGRPCPortName   = "grpc"
+	lokiGRPCPortName   = "grpclb"
 	lokiGossipPortName = "gossip-ring"
 
 	gatewayContainerName    = "gateway"

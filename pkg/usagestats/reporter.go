@@ -39,13 +39,13 @@ var (
 )
 
 type Config struct {
-	Disabled bool `yaml:"disabled"`
-	Leader   bool `yaml:"-"`
+	Enabled bool `yaml:"reporting_enabled"`
+	Leader  bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.Disabled, "usage-report.disabled", false, "Disable anonymous usage reporting.")
+	f.BoolVar(&cfg.Enabled, "reporting.enabled", true, "Enable anonymous usage reporting.")
 }
 
 type Reporter struct {
@@ -62,7 +62,7 @@ type Reporter struct {
 }
 
 func NewReporter(config Config, kvConfig kv.Config, objectClient chunk.ObjectClient, logger log.Logger, reg prometheus.Registerer) (*Reporter, error) {
-	if config.Disabled {
+	if !config.Enabled {
 		return nil, nil
 	}
 	r := &Reporter{
