@@ -413,7 +413,7 @@ func newQuerierMock() *querierMock {
 
 func (q *querierMock) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	args := q.Called(ctx, params)
-	return args.Get(0).(iter.EntryIterator), args.Error(1)
+	return args.Get(0).(func() iter.EntryIterator)(), args.Error(1)
 }
 
 func (q *querierMock) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
