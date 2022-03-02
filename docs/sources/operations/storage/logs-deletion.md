@@ -28,23 +28,23 @@ The Compactor exposes endpoints to allow for the deletion of log entries from sp
 ### Request log entry deletion
 
 ```
-POST /loki/api/admin/delete
-PUT /loki/api/admin/delete
+POST /loki/api/v1/delete
+PUT /loki/api/v1/delete
 ```
 
 Query parameters:
 
-* `match[]=<series_selector>`: Repeated label matcher argument that identifies the streams from which to delete. At least one `match[]` argument must be provided.
+* `query=<series_selector>`: A label matcher argument that identifies the streams from which to delete. This argument must be provided.
 * `start=<rfc3339 | unix_timestamp>`: A timestamp that identifies the start of the time window within which entries will be deleted. If not specified, defaults to 0, the Unix Epoch time.
 * `end=<rfc3339 | unix_timestamp>`: A timestamp that identifies the end of the time window within which entries will be deleted. If not specified, defaults to the current time.
 
 A 204 response indicates success.
 
-URL encode the `match[]` parameter. This sample form of a cURL command URL encodes `match[]={foo="bar"}`:
+URL encode the `query` parameter. This sample form of a cURL command URL encodes `query={foo="bar"}`:
 
 ```
 curl -g -X POST \ 
-  'http://127.0.0.1:3100/loki/api/admin/delete?match[]={foo="bar"}&start=1591616227&end=1591619692' \ 
+  'http://127.0.0.1:3100/loki/api/v1/delete?query={foo="bar"}&start=1591616227&end=1591619692' \
   -H 'x-scope-orgid: 1'
 ```
 
@@ -53,14 +53,14 @@ curl -g -X POST \
 List the existing delete requests using the following API:
 
 ```
-GET /loki/api/admin/delete
+GET /loki/api/v1/delete
 ```
 
 Sample form of a cURL command:
 
 ```
 curl -X GET \
-  <compactor_addr>/loki/api/admin/delete \
+  <compactor_addr>/loki/api/v1/delete \
   -H 'x-scope-orgid: <orgid>'
 ```
 
@@ -73,20 +73,19 @@ Loki allows cancellation of delete requests until the requests are picked up for
 Cancel a delete request using this Compactor endpoint:
 
 ```
-POST /loki/api/admin/cancel_delete_request
-PUT /loki/api/admin/cancel_delete_request
+DELETE /loki/api/v1/delete
 ```
 
 Query parameters:
 
-* `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
+* `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the GET method on this endpoint.
 
 A 204 response indicates success.
 
 Sample form of a cURL command:
 
 ```
-curl -X POST \
-  '<compactor_addr>/loki/api/admin/cancel_delete_request?request_id=<request_id>' \
+curl -X DELETE \
+  '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>' \
   -H 'x-scope-orgid: <tenant-id>'
 ```
