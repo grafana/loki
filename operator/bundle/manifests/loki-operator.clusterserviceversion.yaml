@@ -653,6 +653,8 @@ spec:
                 volumeMounts:
                 - mountPath: /var/run/secrets/serving-cert
                   name: loki-operator-metrics-cert
+              nodeSelector:
+                kubernetes.io/os: linux
               terminationGracePeriodSeconds: 10
               volumes:
               - name: loki-operator-metrics-cert
@@ -704,6 +706,7 @@ spec:
   - email: loki-operator-team@googlegroups.com
     name: Grafana Loki SIG Operator
   maturity: alpha
+  minKubeVersion: 1.21.1
   provider:
     name: Grafana.com
   version: 0.0.1
