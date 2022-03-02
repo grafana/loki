@@ -26,15 +26,9 @@ func BuildPrometheusRule(opts Options) ([]client.Object, error) {
 
 // NewPrometheusRule creates a prometheus rule
 func NewPrometheusRule(opts Options) (*monitoringv1.PrometheusRule, error) {
-	alertsBytes, err := alerts.Build()
+	alertsSpec, err := getRuleSpec(newAlertsSpec)
 	if err != nil {
-		return nil, err
-	}
-
-	var alertsSpec *monitoringv1.PrometheusRuleSpec
-	alertsSpec, err = ruleSpec(alertsBytes)
-	if err != nil {
-		return nil, kverrors.Wrap(err, "Failed to decode alerts yaml")
+		return nil, kverrors.Wrap(err, "Failed to get alerts spec")
 	}
 
 	return &monitoringv1.PrometheusRule{
@@ -50,13 +44,37 @@ func NewPrometheusRule(opts Options) (*monitoringv1.PrometheusRule, error) {
 	}, nil
 }
 
-func ruleSpec(ruleBytes []byte) (*monitoringv1.PrometheusRuleSpec, error) {
-	ruleSpec := monitoringv1.PrometheusRuleSpec{}
+type newAlertsSpecFunc func() (*monitoringv1.PrometheusRuleSpec, error)
 
-	ruleReader := bytes.NewReader(ruleBytes)
-	err := k8sYAML.NewYAMLOrJSONDecoder(ruleReader, 1000).Decode(&ruleSpec)
+var cachedRuleSpec *monitoringv1.PrometheusRuleSpec
+
+// getRuleSpec returns a PrometheusRuleSpec of alerts. It calls `fn()` and caches its value to avoid subsequent calls.
+// Since the alerts are defined in a static yaml file, we can cache the decoded result rather than re-decoding it in
+// every reconcile loop.
+func getRuleSpec(fn newAlertsSpecFunc) (*monitoringv1.PrometheusRuleSpec, error) {
+	if cachedRuleSpec != nil {
+		return cachedRuleSpec, nil
+	}
+
+	alertsSpec, err := fn()
 	if err != nil {
 		return nil, err
 	}
-	return &ruleSpec, nil
+	cachedRuleSpec = alertsSpec
+	return alertsSpec, nil
+}
+
+func newAlertsSpec() (*monitoringv1.PrometheusRuleSpec, error) {
+	alertsBytes, err := alerts.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	var alertsSpec *monitoringv1.PrometheusRuleSpec
+	r := bytes.NewReader(alertsBytes)
+	err = k8sYAML.NewYAMLOrJSONDecoder(r, 1000).Decode(&alertsSpec)
+	if err != nil {
+		return nil, err
+	}
+	return alertsSpec, nil
 }
