@@ -29,7 +29,7 @@ The following are examples showing the use of the `limit` stage.
 
 Simple `limit` stage configurations.
 
-#### Regex match a line and throttle
+#### Match a line and throttle
 
 Given the pipeline:
 
