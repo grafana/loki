@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -22,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 type ChunkMetrics struct {
@@ -414,6 +416,7 @@ func (it *logBatchIterator) newChunksIterator(b *chunkBatch) (iter.EntryIterator
 }
 
 func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.EntryIterator, error) {
+
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
@@ -705,6 +708,11 @@ func fetchLazyChunks(ctx context.Context, s chunk.SchemaConfig, chunks []*LazyCh
 	level.Debug(logger).Log("msg", "loading lazy chunks", "chunks", totalChunks)
 
 	errChan := make(chan error)
+	log, ctx := spanlogger.New(ctx, "Batch.fetchLazyChunks")
+	log.Span.LogFields(otlog.Int("chksByFetcher", len(chksByFetcher)))
+	defer func() {
+		log.Span.Finish()
+	}()
 	for fetcher, chunks := range chksByFetcher {
 		go func(fetcher *chunk.Fetcher, chunks []*LazyChunk) {
 			keys := make([]string, 0, len(chunks))
