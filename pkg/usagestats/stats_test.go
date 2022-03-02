@@ -19,6 +19,7 @@ func Test_BuildReport(t *testing.T) {
 		CreatedAt: now,
 	}
 
+	Edition("non-OSS")
 	Edition("OSS")
 	Target("compactor")
 	NewString("compression").Set("lz4")

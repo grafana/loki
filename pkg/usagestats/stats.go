@@ -173,8 +173,16 @@ func Target(target string) {
 	NewString(targetKey).Set(target)
 }
 
-// Edition sets the edition name.
+// Edition sets the edition name. This can be set multiple times.
 func Edition(edition string) {
+	existing := expvar.Get(statsPrefix + editionKey)
+	if existing != nil {
+		if s, ok := existing.(*expvar.String); ok {
+			s.Set(edition)
+			return
+		}
+		panic("edition is set to a non-string value")
+	}
 	NewString(editionKey).Set(edition)
 }
 
