@@ -27,7 +27,7 @@ func Test_LeaderElection(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		go func() {
-			r, err := NewReporter(Config{Leader: true}, kv.Config{
+			r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
 				Store: "inmemory",
 			}, objectClient, log.NewLogfmtLogger(os.Stdout), nil)
 			require.NoError(t, err)
@@ -37,7 +37,7 @@ func Test_LeaderElection(t *testing.T) {
 	}
 	for i := 0; i < 7; i++ {
 		go func() {
-			r, err := NewReporter(Config{Leader: false}, kv.Config{
+			r, err := NewReporter(Config{Leader: false, Enabled: true}, kv.Config{
 				Store: "inmemory",
 			}, objectClient, log.NewLogfmtLogger(os.Stdout), nil)
 			require.NoError(t, err)
@@ -86,7 +86,7 @@ func Test_ReportLoop(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	r, err := NewReporter(Config{Leader: true}, kv.Config{
+	r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
 		Store: "inmemory",
 	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestWrongKV(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	r, err := NewReporter(Config{Leader: true}, kv.Config{
+	r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
 		Store: "",
 	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)

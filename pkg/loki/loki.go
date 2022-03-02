@@ -80,7 +80,7 @@ type Config struct {
 	Tracing          tracing.Config           `yaml:"tracing"`
 	CompactorConfig  compactor.Config         `yaml:"compactor,omitempty"`
 	QueryScheduler   scheduler.Config         `yaml:"query_scheduler"`
-	UsageReport      usagestats.Config        `yaml:"usage_report"`
+	UsageReport      usagestats.Config        `yaml:"analytics"`
 }
 
 // RegisterFlags registers flag.
@@ -262,7 +262,7 @@ func New(cfg Config) (*Loki, error) {
 		Cfg:           cfg,
 		clientMetrics: chunk_storage.NewClientMetrics(),
 	}
-
+	usagestats.Edition("oss")
 	loki.setupAuthMiddleware()
 	loki.setupGRPCRecoveryMiddleware()
 	if err := loki.setupModuleManager(); err != nil {
