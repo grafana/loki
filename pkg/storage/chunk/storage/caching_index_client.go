@@ -77,7 +77,7 @@ func (s *cachingIndexClient) Stop() {
 	s.IndexClient.Stop()
 }
 
-func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	if len(queries) == 0 {
 		return nil
 	}
@@ -89,7 +89,7 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 	return s.doQueries(ctx, queries, callback)
 }
 
-func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback,
+func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback,
 	buildIndexQuery func(query chunk.IndexQuery) chunk.IndexQuery, buildQueryKey func(query chunk.IndexQuery) string) error {
 	if len(queries) == 0 {
 		return nil
@@ -210,7 +210,7 @@ func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.Ind
 // doBroadQueries does broad queries on the store by using just TableName and HashValue.
 // This is useful for chunks queries or when we need to reduce QPS on index store at the expense of higher cache requirement.
 // All the results from the index store are cached and the responses are filtered based on the actual queries.
-func (s *cachingIndexClient) doBroadQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (s *cachingIndexClient) doBroadQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	// We cache all the entries for queries looking for Chunk IDs, so filter client side.
 	callback = chunk_util.QueryFilter(callback)
 	return s.queryPages(ctx, queries, callback, func(query chunk.IndexQuery) chunk.IndexQuery {
@@ -221,7 +221,7 @@ func (s *cachingIndexClient) doBroadQueries(ctx context.Context, queries []chunk
 }
 
 // doQueries does the exact same queries as opposed to doBroadQueries doing broad queries with limited query params.
-func (s *cachingIndexClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (s *cachingIndexClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	return s.queryPages(ctx, queries, callback, func(query chunk.IndexQuery) chunk.IndexQuery {
 		return query
 	}, func(q chunk.IndexQuery) string {

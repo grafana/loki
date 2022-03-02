@@ -3,12 +3,120 @@ package secrets_test
 import (
 	"testing"
 
+	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/handlers/internal/secrets"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 )
 
-func TestExtract(t *testing.T) {
+func TestAzureExtract(t *testing.T) {
+	type test struct {
+		name    string
+		secret  *corev1.Secret
+		wantErr bool
+	}
+	table := []test{
+		{
+			name:    "missing environment",
+			secret:  &corev1.Secret{},
+			wantErr: true,
+		},
+		{
+			name: "missing container",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"environment": []byte("here"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing account_name",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"environment": []byte("here"),
+					"container":   []byte("this,that"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing account_key",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("id"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "all set",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("id"),
+					"account_key":  []byte("secret"),
+				},
+			},
+		},
+	}
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := secrets.ExtractStorageSecret(tst.secret, lokiv1beta1.ObjectStorageSecretAzure)
+			if !tst.wantErr {
+				require.NoError(t, err)
+			}
+			if tst.wantErr {
+				require.NotNil(t, err)
+			}
+		})
+	}
+}
+
+func TestGCSExtract(t *testing.T) {
+	type test struct {
+		name    string
+		secret  *corev1.Secret
+		wantErr bool
+	}
+	table := []test{
+		{
+			name:    "missing bucketname",
+			secret:  &corev1.Secret{},
+			wantErr: true,
+		},
+		{
+			name: "all set",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+				},
+			},
+		},
+	}
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := secrets.ExtractStorageSecret(tst.secret, lokiv1beta1.ObjectStorageSecretGCS)
+			if !tst.wantErr {
+				require.NoError(t, err)
+			}
+			if tst.wantErr {
+				require.NotNil(t, err)
+			}
+		})
+	}
+}
+
+func TestS3Extract(t *testing.T) {
 	type test struct {
 		name    string
 		secret  *corev1.Secret
@@ -67,7 +175,152 @@ func TestExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := secrets.Extract(tst.secret)
+			_, err := secrets.ExtractStorageSecret(tst.secret, lokiv1beta1.ObjectStorageSecretS3)
+			if !tst.wantErr {
+				require.NoError(t, err)
+			}
+			if tst.wantErr {
+				require.NotNil(t, err)
+			}
+		})
+	}
+}
+
+func TestSwiftExtract(t *testing.T) {
+	type test struct {
+		name    string
+		secret  *corev1.Secret
+		wantErr bool
+	}
+	table := []test{
+		{
+			name:    "missing auth_url",
+			secret:  &corev1.Secret{},
+			wantErr: true,
+		},
+		{
+			name: "missing username",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"auth_url": []byte("here"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing user_domain_name",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"auth_url": []byte("here"),
+					"username": []byte("this,that"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing user_domain_id",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"auth_url":         []byte("here"),
+					"username":         []byte("this,that"),
+					"user_domain_name": []byte("id"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing user_id",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"auth_url":         []byte("here"),
+					"username":         []byte("this,that"),
+					"user_domain_name": []byte("id"),
+					"user_domain_id":   []byte("secret"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing password",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"auth_url":         []byte("here"),
+					"username":         []byte("this,that"),
+					"user_domain_name": []byte("id"),
+					"user_domain_id":   []byte("secret"),
+					"user_id":          []byte("there"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing domain_id",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"auth_url":         []byte("here"),
+					"username":         []byte("this,that"),
+					"user_domain_name": []byte("id"),
+					"user_domain_id":   []byte("secret"),
+					"user_id":          []byte("there"),
+					"password":         []byte("cred"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing domain_name",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"auth_url":         []byte("here"),
+					"username":         []byte("this,that"),
+					"user_domain_name": []byte("id"),
+					"user_domain_id":   []byte("secret"),
+					"user_id":          []byte("there"),
+					"password":         []byte("cred"),
+					"domain_id":        []byte("text"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing container_name",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"auth_url":         []byte("here"),
+					"username":         []byte("this,that"),
+					"user_domain_name": []byte("id"),
+					"user_domain_id":   []byte("secret"),
+					"user_id":          []byte("there"),
+					"password":         []byte("cred"),
+					"domain_id":        []byte("text"),
+					"domain_name":      []byte("where"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "all set",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"auth_url":         []byte("here"),
+					"username":         []byte("this,that"),
+					"user_domain_name": []byte("id"),
+					"user_domain_id":   []byte("secret"),
+					"user_id":          []byte("there"),
+					"password":         []byte("cred"),
+					"domain_id":        []byte("text"),
+					"domain_name":      []byte("where"),
+					"container_name":   []byte("then"),
+				},
+			},
+		},
+	}
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := secrets.ExtractStorageSecret(tst.secret, lokiv1beta1.ObjectStorageSecretSwift)
 			if !tst.wantErr {
 				require.NoError(t, err)
 			}

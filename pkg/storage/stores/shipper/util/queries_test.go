@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
 type mockTableQuerier struct {
@@ -17,7 +16,7 @@ type mockTableQuerier struct {
 	queries map[string]chunk.IndexQuery
 }
 
-func (m *mockTableQuerier) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (m *mockTableQuerier) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	m.Lock()
 	defer m.Unlock()
 

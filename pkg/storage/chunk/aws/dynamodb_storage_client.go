@@ -247,11 +247,11 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 }
 
 // QueryPages implements chunk.IndexClient.
-func (a dynamoDBStorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+func (a dynamoDBStorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	return chunk_util.DoParallelQueries(ctx, a.query, queries, callback)
 }
 
-func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(query.TableName),
 		KeyConditions: map[string]*dynamodb.Condition{

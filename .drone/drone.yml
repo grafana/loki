@@ -119,6 +119,7 @@ steps:
   - make BUILD_IN_CONTAINER=false loki
   depends_on:
   - clone
+  - check-generated-files
   environment: {}
   image: grafana/loki-build-image:0.21.0
   name: loki
@@ -1106,11 +1107,11 @@ name: ecr_secret_key
 ---
 get:
   name: config.json
-  path: infra/data/ci/loki/deploy
+  path: secret/data/common/loki_ci_autodeploy
 kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 23a67197a1f2a02e74fdbc6ab269295879fe6575d49d8e9e06a5aa6f8b1d670f
+hmac: 027476464284ddef12d1e2f203f3926f51c741e591e821c52f8a01c82c1135da
 
 ...

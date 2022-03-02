@@ -84,12 +84,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('BigTable')
                           .addPanel(
                             $.panel('QPS') +
-                            $.qpsPanel('cortex_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/MutateRows"}' % dashboards['loki-writes.json'].ingesterSelector)
+                            $.qpsPanel('loki_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/MutateRows"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
                             $.panel('Latency') +
                             utils.latencyRecordingRulePanel(
-                              'cortex_bigtable_request_duration_seconds',
+                              'loki_bigtable_request_duration_seconds',
                               dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')]
                             )
                           )

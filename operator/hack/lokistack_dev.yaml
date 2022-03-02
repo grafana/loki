@@ -8,4 +8,5 @@ spec:
   storage:
     secret:
       name: test
+      type: s3
   storageClassName: standard

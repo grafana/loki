@@ -41,6 +41,12 @@ variable "keep_stream" {
   default     = "false"
 }
 
+variable "extra_labels"{
+  type = string
+  description = "Comma seperated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by Lambda-Promtail."
+  default = ""
+}
+
 variable "batch_size" {
   type        = string
   description = "Determines when to flush the batch of logs (bytes)."

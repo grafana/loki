@@ -27,6 +27,10 @@
           cache_location: '/data/boltdb-cache',
         },
       },
+      compactor+: {
+        working_directory: '/data/compactor',
+        shared_store: $._config.boltdb_shipper_shared_store,
+      },
     } else {},
   },
 
@@ -42,8 +46,6 @@
   else {},
 
   compactor_args:: if $._config.using_boltdb_shipper then $._config.commonArgs {
-    'boltdb.shipper.compactor.working-directory': '/data/compactor',
-    'boltdb.shipper.compactor.shared-store': $._config.boltdb_shipper_shared_store,
     target: 'compactor',
   } else {},
 

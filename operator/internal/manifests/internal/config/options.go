@@ -5,6 +5,7 @@ import (
 	"math"
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // Options is used to render the loki-config.yaml file template
@@ -18,9 +19,10 @@ type Options struct {
 	Querier          Address
 	IndexGateway     Address
 	StorageDirectory string
-	ObjectStorage    ObjectStorage
 	QueryParallelism Parallelism
 	WriteAheadLog    WriteAheadLog
+
+	ObjectStorage storage.Options
 }
 
 // Address FQDN and port for a k8s service.
@@ -29,15 +31,6 @@ type Address struct {
 	FQDN string
 	// Port is required
 	Port int
-}
-
-// ObjectStorage for storage config.
-type ObjectStorage struct {
-	Endpoint        string
-	Region          string
-	Buckets         string
-	AccessKeyID     string
-	AccessKeySecret string
 }
 
 // Parallelism for query processing parallelism
