@@ -1,14 +1,10 @@
 package manifests
 
 import (
-	"bytes"
-
 	"github.com/ViaQ/logerr/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/alerts"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8sYAML "k8s.io/apimachinery/pkg/util/yaml"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -26,7 +22,7 @@ func BuildPrometheusRule(opts Options) ([]client.Object, error) {
 
 // NewPrometheusRule creates a prometheus rule
 func NewPrometheusRule(opts Options) (*monitoringv1.PrometheusRule, error) {
-	alertsSpec, err := getRuleSpec(newAlertsSpec)
+	alertsSpec, err := getRuleSpec(alerts.NewAlertsSpec)
 	if err != nil {
 		return nil, kverrors.Wrap(err, "Failed to get alerts spec")
 	}
@@ -61,20 +57,5 @@ func getRuleSpec(fn newAlertsSpecFunc) (*monitoringv1.PrometheusRuleSpec, error)
 		return nil, err
 	}
 	cachedRuleSpec = alertsSpec
-	return alertsSpec, nil
-}
-
-func newAlertsSpec() (*monitoringv1.PrometheusRuleSpec, error) {
-	alertsBytes, err := alerts.Build()
-	if err != nil {
-		return nil, err
-	}
-
-	var alertsSpec *monitoringv1.PrometheusRuleSpec
-	r := bytes.NewReader(alertsBytes)
-	err = k8sYAML.NewYAMLOrJSONDecoder(r, 1000).Decode(&alertsSpec)
-	if err != nil {
-		return nil, err
-	}
 	return alertsSpec, nil
 }
