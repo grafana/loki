@@ -44,7 +44,7 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	}
 
 	iters := make([]iter.EntryIterator, len(tenantIDs))
-	for _, id := range tenantIDs {
+	for i, id := range tenantIDs {
 		singleContext := user.InjectUserID(ctx, id)
 		iter, err := q.Querier.SelectLogs(singleContext, params)
 
@@ -52,7 +52,7 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 			return nil, err
 		}
 
-		iters = append(iters, NewTenantEntryIterator(id, iter))
+		iters[i] = NewTenantEntryIterator(id, iter)
 	}
 	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
 }
@@ -70,7 +70,7 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	}
 
 	iters := make([]iter.SampleIterator, len(tenantIDs))
-	for _, id := range tenantIDs {
+	for i, id := range tenantIDs {
 		singleContext := user.InjectUserID(ctx, id)
 		iter, err := q.Querier.SelectSamples(singleContext, params)
 
@@ -78,7 +78,7 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 			return nil, err
 		}
 
-		iters = append(iters, NewTenantSampleIterator(id, iter))
+		iters[i] = NewTenantSampleIterator(id, iter)
 	}
 	return iter.NewMergeSampleIterator(ctx, iters), nil
 }
