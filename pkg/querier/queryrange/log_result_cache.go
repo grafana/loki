@@ -164,7 +164,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	l.metrics.CacheHit.Inc()
 	// we start with an empty response
 	result := emptyResponse(cachedResquest)
-	// if the request is the same and cover the whole time range.
+	// if the request is the same and covers the whole time range,
 	// we can just return the cached result.
 	if lokiReq.GetStartTs().After(cachedResquest.GetStartTs()) || lokiReq.GetStartTs().Equal(cachedResquest.GetStartTs()) &&
 		lokiReq.GetEndTs().Before(cachedResquest.GetEndTs()) || lokiReq.GetEndTs().Equal(cachedResquest.GetEndTs()) {
