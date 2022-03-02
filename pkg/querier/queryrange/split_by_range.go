@@ -30,10 +30,11 @@ type splitByRange struct {
 func SplitByRangeMiddleware(logger log.Logger, limits Limits, metrics *logql.ShardingMetrics) (queryrangebase.Middleware, error) {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByRange{
-			logger: log.With(logger, "middleware", "QueryShard.splitByRange"),
+			logger: log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
 			next:   next,
 			limits: limits,
-			ng:     logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics, limits, logger),
+			// todo: rename logql.NewDownstreamEngine
+			ng: logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics, limits, logger),
 		}
 	}), nil
 }
