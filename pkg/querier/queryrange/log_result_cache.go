@@ -47,7 +47,7 @@ func NewLogResultCacheMetrics(registerer prometheus.Registerer) *LogResultCacheM
 // NewLogResultCache creates a new log result cache middleware.
 // Currently it only caches empty filter queries, this is because those are usually easily and freely cacheable.
 // Log hits are difficult to handle because of the limit query parameter and the size of the response.
-// In the future it could be extended to cache log hits.
+// In the future it could be extended to cache non-empty query results.
 // see https://docs.google.com/document/d/1_mACOpxdWZ5K0cIedaja5gzMbv-m0lUVazqZd2O4mEU/edit
 func NewLogResultCache(logger log.Logger, limits Limits, cache cache.Cache, shouldCache queryrangebase.ShouldCacheFn, metrics *LogResultCacheMetrics) queryrangebase.Middleware {
 	if metrics == nil {
