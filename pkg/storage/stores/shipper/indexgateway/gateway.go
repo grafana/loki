@@ -27,11 +27,15 @@ import (
 const (
 	maxIndexEntriesPerResponse     = 1000
 	ringAutoForgetUnhealthyPeriods = 10
-	ringKey                        = "index-gateway"
 	ringNameForServer              = "index-gateway"
 	ringNumTokens                  = 1
-	ringReplicationFactor          = 3
 	ringCheckPeriod                = 3 * time.Second
+
+	RingIdentifier = "index-gateway"
+
+	RingKey = "index-gateway"
+
+	RingReplicationFactor = 3
 )
 
 type IndexQuerier interface {
@@ -169,13 +173,13 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 		delegate = ring.NewTokensPersistencyDelegate(cfg.IndexGatewayRing.TokensFilePath, ring.JOINING, delegate, log)
 		delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.IndexGatewayRing.HeartbeatTimeout, delegate, log)
 
-		g.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, ringKey, ringStore, delegate, log, registerer)
+		g.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, RingKey, ringStore, delegate, log, registerer)
 		if err != nil {
 			return nil, errors.Wrap(err, "index gateway create ring lifecycler")
 		}
 
-		ringCfg := cfg.IndexGatewayRing.ToRingConfig(ringReplicationFactor)
-		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), log)
+		ringCfg := cfg.IndexGatewayRing.ToRingConfig(RingReplicationFactor)
+		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), log)
 		if err != nil {
 			return nil, errors.Wrap(err, "index gateway create ring client")
 		}
