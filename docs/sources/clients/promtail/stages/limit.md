@@ -41,7 +41,7 @@ Given the pipeline:
 
 Would throttle any log line.
 
-#### Regex match a line and drop
+#### Match a line and drop
 
 Given the pipeline:
 
