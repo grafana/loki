@@ -229,7 +229,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
-		t.Querier = querier.NewMultiTenantQuerier(*q, util_log.Logger)
+		t.Querier = querier.NewMultiTenantQuerier(q, util_log.Logger)
 	} else {
 		t.Querier = q
 	}

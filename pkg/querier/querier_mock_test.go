@@ -402,3 +402,31 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 		Labels:  labels,
 	}
 }
+
+type querierMock struct {
+	util.ExtendedMock
+}
+
+func newQuerierMock() *querierMock {
+	return &querierMock{}
+}
+
+func (q *querierMock) SelectLogs(context.Context, logql.SelectLogParams) (iter.EntryIterator, error) {
+	return nil, errors.New("querierMock.SelectLogs() has not been mocked")
+}
+
+func (q *querierMock) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
+	return nil, errors.New("querierMock.SelectSamples() has not been mocked")
+}
+
+func (q *querierMock) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	return nil, errors.New("querierMock.Label() has not been mocked")
+}
+
+func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	return nil, errors.New("querierMock.Series() has not been mocked")
+}
+
+func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+	return nil, errors.New("querierMock.Tail() has not been mocked")
+}

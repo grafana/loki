@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -11,17 +12,22 @@ import (
 	"github.com/grafana/loki/pkg/tenant"
 )
 
+const (
+	defaultTenantLabel   = "__tenant_id__"
+	retainExistingPrefix = "original_"
+)
+
 // MultiTenantQuerier is able to query across different tenants.
 type MultiTenantQuerier struct {
-	SingleTenantQuerier
+	Querier
 	resolver tenant.Resolver
 }
 
 // NewMultiTenantQuerier returns a new querier able to query across different tenants.
-func NewMultiTenantQuerier(querier SingleTenantQuerier, logger log.Logger) *MultiTenantQuerier {
+func NewMultiTenantQuerier(querier Querier, logger log.Logger) *MultiTenantQuerier {
 	return &MultiTenantQuerier{
-		SingleTenantQuerier: querier,
-		resolver:            tenant.NewMultiResolver(),
+		Querier:  querier,
+		resolver: tenant.NewMultiResolver(),
 	}
 }
 
@@ -32,17 +38,21 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 		return nil, err
 	}
 
-	iters := make([]iter.EntryIterator, len(tenantIDs))
+	if len(tenantIDs) == 1 {
+		singleContext := user.InjectUserID(ctx, tenantIDs[0])
+		return q.Querier.SelectLogs(singleContext, params)
+	}
 
+	iters := make([]iter.EntryIterator, len(tenantIDs))
 	for _, id := range tenantIDs {
 		singleContext := user.InjectUserID(ctx, id)
-		iter, err := q.SingleTenantQuerier.SelectLogs(singleContext, params)
+		iter, err := q.Querier.SelectLogs(singleContext, params)
 
 		if err != nil {
 			return nil, err
 		}
 
-		iters = append(iters, NewTenantIterator(id, iter))
+		iters = append(iters, NewTenantEntryIterator(id, iter))
 	}
 	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
 }
@@ -54,17 +64,59 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 		return nil, err
 	}
 
-	iters := make([]iter.EntryIterator, len(tenantIDs))
+	if len(tenantIDs) == 1 {
+		singleContext := user.InjectUserID(ctx, tenantIDs[0])
+		return q.Querier.SelectSamples(singleContext, params)
+	}
 
+	iters := make([]iter.SampleIterator, len(tenantIDs))
 	for _, id := range tenantIDs {
 		singleContext := user.InjectUserID(ctx, id)
-		iter, err := q.SingleTenantQuerier.SelectSamples(singleContext, params)
+		iter, err := q.Querier.SelectSamples(singleContext, params)
 
 		if err != nil {
 			return nil, err
 		}
 
-		iters = append(iters, NewTenantIterator(id, iter))
+		iters = append(iters, NewTenantSampleIterator(id, iter))
 	}
-	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
+	return iter.NewMergeSampleIterator(ctx, iters), nil
+}
+
+type TenantEntryIterator struct {
+	iter.EntryIterator
+	tenantID string
+}
+
+func NewTenantEntryIterator(id string, iter iter.EntryIterator) *TenantEntryIterator {
+	return &TenantEntryIterator{EntryIterator: iter, tenantID: id}
+}
+
+func (i *TenantEntryIterator) Labels() string {
+	// TODO: cache manipulated labels
+	lbls, _ := logql.ParseLabels(i.EntryIterator.Labels())
+
+	// TODO: handle if lbls.Has(defaultTenantLabel)
+
+	lbls = append(lbls, labels.Label{Name: defaultTenantLabel, Value: i.tenantID})
+	return lbls.String()
+}
+
+type TenantSampleIterator struct {
+	iter.SampleIterator
+	tenantID string
+}
+
+func NewTenantSampleIterator(id string, iter iter.SampleIterator) *TenantSampleIterator {
+	return &TenantSampleIterator{SampleIterator: iter, tenantID: id}
+}
+
+func (i *TenantSampleIterator) Labels() string {
+	// TODO: cache manipulated labels
+	lbls, _ := logql.ParseLabels(i.SampleIterator.Labels())
+
+	// TODO: handle if lbls.Has(defaultTenantLabel)
+
+	lbls = append(lbls, labels.Label{Name: defaultTenantLabel, Value: i.tenantID})
+	return lbls.String()
 }
