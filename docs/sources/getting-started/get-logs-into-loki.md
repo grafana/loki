@@ -41,7 +41,7 @@ The following instructions should help you get started.
           __path__: /var/log/*log
     ```
 
-    The seven lines under `scrape_configs` are what send the logs that Loki generates to Loki, which then outputs them in the command line and http://localhost:3100/metrics.
+    The seven lines under `scrape_configs` are what send the logs that promtail generates to Loki, which then outputs them in the command line and http://localhost:3100/metrics.
 
     Copy the seven lines under `scrape_configs`, and then paste them under the original job. You can instead edit the original seven lines.
 
