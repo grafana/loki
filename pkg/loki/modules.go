@@ -223,7 +223,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "querier")
 	var err error
- 	if t.Cfg.Querier.PostFilterChunk {
+	if t.Cfg.Querier.PostFilterChunk {
 		t.Store.SetPostFetcherChunkFilterer(loki_storage.NewRequestPostFetcherChunkFiltererForRequest(t.Cfg.Querier.PostFilterMaxParallel))
 	}
 	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
