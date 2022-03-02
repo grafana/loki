@@ -3,8 +3,8 @@ package azure
 import (
 	"bytes"
 	"context"
-	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +13,8 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
+
+var metrics = NewBlobStorageMetrics()
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
 
@@ -65,9 +67,12 @@ func Test_Hedging(t *testing.T) {
 			defaultClientFactory = func() *http.Client {
 				return &http.Client{
 					Transport: RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-						count.Inc()
-						time.Sleep(200 * time.Millisecond)
-						return nil, errors.New("fo")
+						// blocklist is a call that can be fired by the SDK after PUT but is not guaranteed.
+						if !strings.Contains(req.URL.String(), "blocklist") {
+							count.Inc()
+							time.Sleep(50 * time.Millisecond)
+						}
+						return nil, http.ErrNotSupported
 					}),
 				}
 			}
@@ -75,11 +80,12 @@ func Test_Hedging(t *testing.T) {
 				ContainerName: "foo",
 				Environment:   azureGlobal,
 				MaxRetries:    1,
-			}, hedging.Config{
-				At:           tc.hedgeAt,
-				UpTo:         tc.upTo,
-				MaxPerSecond: 1000,
-			})
+			}, metrics,
+				hedging.Config{
+					At:           tc.hedgeAt,
+					UpTo:         tc.upTo,
+					MaxPerSecond: 1000,
+				})
 			require.NoError(t, err)
 			tc.do(c)
 			require.Equal(t, tc.expectedCalls, count.Load())

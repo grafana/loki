@@ -5,8 +5,6 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
@@ -15,6 +13,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type WALReader interface {
@@ -117,8 +116,8 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(logproto.Stream{
-			Labels: cortexpb.FromLabelAdaptersToLabels(series.Labels).String(),
-		}, true, nil)
+			Labels: logproto.FromLabelAdaptersToLabels(series.Labels).String(),
+		}, nil)
 
 		if err != nil {
 			return err
@@ -167,7 +166,6 @@ func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) er
 		logproto.Stream{
 			Labels: series.Labels.String(),
 		},
-		true,
 		nil,
 	)
 	if err != nil {
@@ -195,7 +193,7 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true)
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
@@ -241,7 +239,12 @@ func (r *ingesterRecoverer) Close() {
 			if !isAllowed && old {
 				err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(isAllowed))
 				if err != nil {
-					return err
+					level.Warn(util_log.Logger).Log(
+						"msg", "error converting headblock",
+						"err", err.Error(),
+						"stream", s.labels.String(),
+						"component", "ingesterRecoverer",
+					)
 				}
 			}
 

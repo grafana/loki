@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,13 +16,16 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
 
-const maxQueriesPerGoroutine = 100
+const (
+	maxQueriesPerGrpc      = 100
+	maxConcurrentGrpcCalls = 10
+)
 
 type IndexGatewayClientConfig struct {
 	Address          string            `yaml:"server_address,omitempty"`
@@ -78,28 +81,21 @@ func (s *GatewayClient) Stop() {
 	s.conn.Close()
 }
 
-func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
-	errs := make(chan error)
-
-	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
-		q := queries[i:util_math.Min(i+maxQueriesPerGoroutine, len(queries))]
-		go func(queries []chunk.IndexQuery) {
-			errs <- s.doQueries(ctx, queries, callback)
-		}(q)
+func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+	if len(queries) <= maxQueriesPerGrpc {
+		return s.doQueries(ctx, queries, callback)
 	}
 
-	var lastErr error
-	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
-		err := <-errs
-		if err != nil {
-			lastErr = err
-		}
+	jobsCount := len(queries) / maxQueriesPerGrpc
+	if len(queries)%maxQueriesPerGrpc != 0 {
+		jobsCount++
 	}
-
-	return lastErr
+	return concurrency.ForEachJob(ctx, jobsCount, maxConcurrentGrpcCalls, func(ctx context.Context, idx int) error {
+		return s.doQueries(ctx, queries[idx*maxQueriesPerGrpc:util_math.Min((idx+1)*maxQueriesPerGrpc, len(queries))], callback)
+	})
 }
 
-func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback util.Callback) error {
+func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	queryKeyQueryMap := make(map[string]chunk.IndexQuery, len(queries))
 	gatewayQueries := make([]*indexgatewaypb.IndexQuery, 0, len(queries))
 

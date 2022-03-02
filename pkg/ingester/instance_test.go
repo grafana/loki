@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
@@ -143,7 +142,7 @@ func TestSyncPeriod(t *testing.T) {
 	require.NoError(t, err)
 
 	// let's verify results
-	s, err := inst.getOrCreateStream(pr.Streams[0], false, recordPool.GetRecord())
+	s, err := inst.getOrCreateStream(pr.Streams[0], recordPool.GetRecord())
 	require.NoError(t, err)
 
 	// make sure each chunk spans max 'sync period' time
@@ -181,7 +180,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	}
 
 	for _, testStream := range testStreams {
-		stream, err := instance.getOrCreateStream(testStream, false, recordPool.GetRecord())
+		stream, err := instance.getOrCreateStream(testStream, recordPool.GetRecord())
 		require.NoError(t, err)
 		chunk := newStream(cfg, limiter, "fake", 0, nil, true, NilMetrics).NewChunk()
 		for _, entry := range testStream.Entries {
@@ -421,7 +420,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	ctx := context.Background()
 
 	inst := newInstance(&Config{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
-	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil)
+	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil, 10)
 	require.NoError(b, err)
 	for i := 0; i < 10000; i++ {
 		require.NoError(b, inst.Push(ctx, &logproto.PushRequest{
@@ -497,7 +496,7 @@ func Test_Iterator(t *testing.T) {
 	}
 
 	// prepare iterators.
-	itrs, err := instance.Query(ctx,
+	it, err := instance.Query(ctx,
 		logql.SelectLogParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  `{job="3"} | logfmt`,
@@ -509,12 +508,11 @@ func Test_Iterator(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	heapItr := iter.NewHeapIterator(ctx, itrs, direction)
 
 	// assert the order is preserved.
 	var res *logproto.QueryResponse
 	require.NoError(t,
-		sendBatches(ctx, heapItr,
+		sendBatches(ctx, it,
 			fakeQueryServer(
 				func(qr *logproto.QueryResponse) error {
 					res = qr
@@ -578,7 +576,7 @@ func Test_ChunkFilter(t *testing.T) {
 	}
 
 	// prepare iterators.
-	itrs, err := instance.Query(ctx,
+	it, err := instance.Query(ctx,
 		logql.SelectLogParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  `{job="3"}`,
@@ -590,7 +588,6 @@ func Test_ChunkFilter(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	it := iter.NewHeapIterator(ctx, itrs, direction)
 	defer it.Close()
 
 	for it.Next() {

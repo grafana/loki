@@ -4,10 +4,10 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/grafana/loki/clients/pkg/promtail/limit"
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/clients/pkg/promtail/limit"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/server"

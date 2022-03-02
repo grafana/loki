@@ -10,28 +10,27 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	promRules "github.com/prometheus/prometheus/rules"
 
-	"github.com/cortexproject/cortex/pkg/configs/client"
-	configClient "github.com/cortexproject/cortex/pkg/configs/client"
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
-
+	configClient "github.com/grafana/loki/pkg/configs/client"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/bucketclient"
 	"github.com/grafana/loki/pkg/ruler/rulestore/configdb"
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
+	"github.com/grafana/loki/pkg/storage/bucket"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 )
 
 // RuleStoreConfig configures a rule store.
 // TODO remove this legacy config in Cortex 1.11.
 type RuleStoreConfig struct {
-	Type     string        `yaml:"type"`
-	ConfigDB client.Config `yaml:"configdb"`
+	Type     string              `yaml:"type"`
+	ConfigDB configClient.Config `yaml:"configdb"`
 
 	// Object Storage Configs
 	Azure azure.BlobStorageConfig `yaml:"azure"`
@@ -77,7 +76,7 @@ func (cfg *RuleStoreConfig) IsDefaults() bool {
 // NewLegacyRuleStore returns a rule store backend client based on the provided cfg.
 // The client used by the function is based a legacy object store clients that shouldn't
 // be used anymore.
-func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
+func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetrics storage.ClientMetrics, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
 	if cfg.mock != nil {
 		return cfg.mock, nil
 	}
@@ -97,7 +96,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, loader pro
 		}
 		return configdb.NewConfigRuleStore(c), nil
 	case "azure":
-		client, err = azure.NewBlobStorage(&cfg.Azure, hedgeCfg)
+		client, err = azure.NewBlobStorage(&cfg.Azure, clientMetrics.AzureMetrics, hedgeCfg)
 	case "gcs":
 		client, err = gcp.NewGCSObjectClient(context.Background(), cfg.GCS, hedgeCfg)
 	case "s3":
@@ -120,7 +119,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, loader pro
 // NewRuleStore returns a rule store backend client based on the provided cfg.
 func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, loader promRules.GroupLoader, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
 	if cfg.Backend == configdb.Name {
-		c, err := client.New(cfg.ConfigDB)
+		c, err := configClient.New(cfg.ConfigDB)
 
 		if err != nil {
 			return nil, err

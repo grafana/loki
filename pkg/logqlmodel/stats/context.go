@@ -132,12 +132,10 @@ func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration)
 		r.Ingester.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.HeadChunkLines
 	r.Summary.ExecTime = execTime.Seconds()
 	if execTime != 0 {
-		r.Summary.BytesProcessedPerSecond =
-			int64(float64(r.Summary.TotalBytesProcessed) /
-				execTime.Seconds())
-		r.Summary.LinesProcessedPerSecond =
-			int64(float64(r.Summary.TotalLinesProcessed) /
-				execTime.Seconds())
+		r.Summary.BytesProcessedPerSecond = int64(float64(r.Summary.TotalBytesProcessed) /
+			execTime.Seconds())
+		r.Summary.LinesProcessedPerSecond = int64(float64(r.Summary.TotalLinesProcessed) /
+			execTime.Seconds())
 	}
 	if queueTime != 0 {
 		r.Summary.QueueTime = queueTime.Seconds()
@@ -168,7 +166,10 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalReached += m.TotalReached
 }
 
+// Merge merges two results of statistics.
+// This will increase the total number of Subqueries.
 func (r *Result) Merge(m Result) {
+	r.Summary.Subqueries++
 	r.Querier.Merge(m.Querier)
 	r.Ingester.Merge(m.Ingester)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),

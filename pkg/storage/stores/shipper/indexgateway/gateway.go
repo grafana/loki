@@ -1,34 +1,41 @@
 package indexgateway
 
 import (
+	"context"
+	"sync"
+
 	"github.com/grafana/dskit/services"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 const maxIndexEntriesPerResponse = 1000
 
+type IndexQuerier interface {
+	QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	Stop()
+}
+
 type gateway struct {
 	services.Service
 
-	shipper chunk.IndexClient
+	indexQuerier IndexQuerier
 }
 
-func NewIndexGateway(shipperIndexClient *shipper.Shipper) *gateway {
+func NewIndexGateway(indexQuerier IndexQuerier) *gateway {
 	g := &gateway{
-		shipper: shipperIndexClient,
+		indexQuerier: indexQuerier,
 	}
 	g.Service = services.NewIdleService(nil, func(failureCase error) error {
-		g.shipper.Stop()
+		g.indexQuerier.Stop()
 		return nil
 	})
 	return g
 }
 
-func (g gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
+func (g *gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
 	var outerErr error
 	var innerErr error
 
@@ -42,8 +49,17 @@ func (g gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server in
 			ValueEqual:       query.ValueEqual,
 		})
 	}
-	outerErr = g.shipper.QueryPages(server.Context(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		innerErr = g.sendBatch(server, query, batch)
+
+	sendBatchMtx := sync.Mutex{}
+	outerErr = g.indexQuerier.QueryPages(server.Context(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		innerErr = buildResponses(query, batch, func(response *indexgatewaypb.QueryIndexResponse) error {
+			// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
+			sendBatchMtx.Lock()
+			defer sendBatchMtx.Unlock()
+
+			return server.Send(response)
+		})
+
 		if innerErr != nil {
 			return false
 		}
@@ -58,13 +74,13 @@ func (g gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server in
 	return outerErr
 }
 
-func (g *gateway) sendBatch(server indexgatewaypb.IndexGateway_QueryIndexServer, query chunk.IndexQuery, batch chunk.ReadBatch) error {
+func buildResponses(query chunk.IndexQuery, batch chunk.ReadBatch, callback func(*indexgatewaypb.QueryIndexResponse) error) error {
 	itr := batch.Iterator()
 	var resp []*indexgatewaypb.Row
 
 	for itr.Next() {
 		if len(resp) == maxIndexEntriesPerResponse {
-			err := server.Send(&indexgatewaypb.QueryIndexResponse{
+			err := callback(&indexgatewaypb.QueryIndexResponse{
 				QueryKey: util.QueryKey(query),
 				Rows:     resp,
 			})
@@ -81,7 +97,7 @@ func (g *gateway) sendBatch(server indexgatewaypb.IndexGateway_QueryIndexServer,
 	}
 
 	if len(resp) != 0 {
-		err := server.Send(&indexgatewaypb.QueryIndexResponse{
+		err := callback(&indexgatewaypb.QueryIndexResponse{
 			QueryKey: util.QueryKey(query),
 			Rows:     resp,
 		})

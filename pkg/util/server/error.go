@@ -41,7 +41,7 @@ func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 func JSONError(w http.ResponseWriter, code int, message string, args ...interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(ErrorResponseBody{
+	_ = json.NewEncoder(w).Encode(ErrorResponseBody{
 		Code:    code,
 		Status:  "error",
 		Message: fmt.Sprintf(message, args...),
@@ -56,7 +56,7 @@ func WriteError(err error, w http.ResponseWriter) {
 	)
 
 	me, ok := err.(util.MultiError)
-	if ok && me.IsCancel() {
+	if ok && me.Is(context.Canceled) {
 		JSONError(w, StatusClientClosedRequest, ErrClientCanceled)
 		return
 	}
@@ -68,7 +68,6 @@ func WriteError(err error, w http.ResponseWriter) {
 	s, isRPC := status.FromError(err)
 	switch {
 	case errors.Is(err, context.Canceled) ||
-		(isRPC && s.Code() == codes.Canceled) ||
 		(errors.As(err, &promErr) && errors.Is(promErr.Err, context.Canceled)):
 		JSONError(w, StatusClientClosedRequest, ErrClientCanceled)
 	case errors.Is(err, context.DeadlineExceeded) ||

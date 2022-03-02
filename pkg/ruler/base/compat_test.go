@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -18,15 +17,17 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 type fakePusher struct {
-	request  *cortexpb.WriteRequest
-	response *cortexpb.WriteResponse
+	request  *logproto.WriteRequest
+	response *logproto.WriteResponse
 	err      error
 }
 
-func (p *fakePusher) Push(ctx context.Context, r *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+func (p *fakePusher) Push(ctx context.Context, r *logproto.WriteRequest) (*logproto.WriteResponse, error) {
 	p.request = r
 	return p.response, p.err
 }
@@ -103,7 +104,7 @@ func TestPusherAppendable(t *testing.T) {
 			lbls, err := parser.ParseMetric(tc.series)
 			require.NoError(t, err)
 
-			pusher.response = &cortexpb.WriteResponse{}
+			pusher.response = &logproto.WriteResponse{}
 			a := pa.Appender(ctx)
 			_, err = a.Append(0, lbls, 120_000, tc.value)
 			require.NoError(t, err)
@@ -148,7 +149,7 @@ func TestPusherErrors(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 
-			pusher := &fakePusher{err: tc.returnedError, response: &cortexpb.WriteResponse{}}
+			pusher := &fakePusher{err: tc.returnedError, response: &logproto.WriteResponse{}}
 
 			writes := prometheus.NewCounter(prometheus.CounterOpts{})
 			failures := prometheus.NewCounter(prometheus.CounterOpts{})

@@ -18,12 +18,12 @@ import (
 var now = time.Now()
 
 func Test_loki_sendRecord(t *testing.T) {
-	var simpleRecordFixture = map[interface{}]interface{}{
+	simpleRecordFixture := map[interface{}]interface{}{
 		"foo":   "bar",
 		"bar":   500,
 		"error": make(chan struct{}),
 	}
-	var mapRecordFixture = map[interface{}]interface{}{
+	mapRecordFixture := map[interface{}]interface{}{
 		// lots of key/value pairs in map to increase chances of test hitting in case of unsorted map marshalling
 		"A": "A",
 		"B": "B",
@@ -34,14 +34,14 @@ func Test_loki_sendRecord(t *testing.T) {
 		"G": "G",
 		"H": "H",
 	}
-	var byteArrayRecordFixture = map[interface{}]interface{}{
+	byteArrayRecordFixture := map[interface{}]interface{}{
 		"label": "label",
 		"outer": []byte("foo"),
 		"map": map[interface{}]interface{}{
 			"inner": []byte("bar"),
 		},
 	}
-	var mixedTypesRecordFixture = map[interface{}]interface{}{
+	mixedTypesRecordFixture := map[interface{}]interface{}{
 		"label": "label",
 		"int":   42,
 		"float": 42.42,
@@ -53,7 +53,7 @@ func Test_loki_sendRecord(t *testing.T) {
 			},
 		},
 	}
-	var nestedJSONFixture = map[interface{}]interface{}{
+	nestedJSONFixture := map[interface{}]interface{}{
 		"kubernetes": map[interface{}]interface{}{
 			"annotations": map[interface{}]interface{}{
 				"kubernetes.io/psp":  "test",
@@ -124,10 +124,15 @@ func Test_createLine(t *testing.T) {
 		{"kv with map", map[string]interface{}{"foo": "bar", "map": map[string]interface{}{"foo": "bar", "bar ": "foo "}}, kvPairFormat, `foo=bar map="map[bar :foo  foo:bar]"`, false},
 		{"kv empty", map[string]interface{}{}, kvPairFormat, ``, false},
 		{"bad format", nil, format(3), "", true},
+		{"nested json", map[string]interface{}{"log": `{"level":"error"}`}, jsonFormat, `{"log":{"level":"error"}}`, false},
+		{"nested json", map[string]interface{}{"log": `["level","error"]`}, jsonFormat, `{"log":["level","error"]}`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := createLine(tt.records, tt.f)
+			l := &loki{
+				logger: logger,
+			}
+			got, err := l.createLine(tt.records, tt.f)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("createLine() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -217,8 +222,11 @@ func Test_toStringMap(t *testing.T) {
 	}{
 		{"already string", map[interface{}]interface{}{"string": "foo", "bar": []byte("buzz")}, map[string]interface{}{"string": "foo", "bar": "buzz"}},
 		{"skip non string", map[interface{}]interface{}{"string": "foo", 1.0: []byte("buzz")}, map[string]interface{}{"string": "foo"}},
-		{"byteslice in array", map[interface{}]interface{}{"string": "foo", "bar": []interface{}{map[interface{}]interface{}{"baz": []byte("quux")}}},
-			map[string]interface{}{"string": "foo", "bar": []interface{}{map[string]interface{}{"baz": "quux"}}}},
+		{
+			"byteslice in array",
+			map[interface{}]interface{}{"string": "foo", "bar": []interface{}{map[interface{}]interface{}{"baz": []byte("quux")}}},
+			map[string]interface{}{"string": "foo", "bar": []interface{}{map[string]interface{}{"baz": "quux"}}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

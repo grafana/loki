@@ -45,19 +45,19 @@ type TCPTransportConfig struct {
 
 	// Timeout used when making connections to other nodes to send packet.
 	// Zero = no timeout
-	PacketDialTimeout time.Duration `yaml:"packet_dial_timeout"`
+	PacketDialTimeout time.Duration `yaml:"packet_dial_timeout" category:"advanced"`
 
 	// Timeout for writing packet data. Zero = no timeout.
-	PacketWriteTimeout time.Duration `yaml:"packet_write_timeout"`
+	PacketWriteTimeout time.Duration `yaml:"packet_write_timeout" category:"advanced"`
 
 	// Transport logs lot of messages at debug level, so it deserves an extra flag for turning it on
-	TransportDebug bool `yaml:"-"`
+	TransportDebug bool `yaml:"-" category:"advanced"`
 
 	// Where to put custom metrics. nil = don't register.
 	MetricsRegisterer prometheus.Registerer `yaml:"-"`
 	MetricsNamespace  string                `yaml:"-"`
 
-	TLSEnabled bool               `yaml:"tls_enabled"`
+	TLSEnabled bool               `yaml:"tls_enabled" category:"advanced"`
 	TLS        dstls.ClientConfig `yaml:",inline"`
 }
 

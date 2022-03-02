@@ -9,8 +9,6 @@ import (
 	"os"
 	rt "runtime"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -44,9 +42,13 @@ import (
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/usagestats"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -78,6 +80,7 @@ type Config struct {
 	Tracing          tracing.Config           `yaml:"tracing"`
 	CompactorConfig  compactor.Config         `yaml:"compactor,omitempty"`
 	QueryScheduler   scheduler.Config         `yaml:"query_scheduler"`
+	UsageReport      usagestats.Config        `yaml:"analytics"`
 }
 
 // RegisterFlags registers flag.
@@ -108,12 +111,13 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
-	c.registerQueryRangeFlagsWithChangedDefaultValues(f)
+	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
+	c.UsageReport.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -130,28 +134,6 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 			_ = f.Value.Set("10s")
 
 		case "server.grpc.keepalive.ping-without-stream-allowed":
-			_ = f.Value.Set("true")
-		}
-
-		fs.Var(f.Value, f.Name, f.Usage)
-	})
-}
-
-func (c *Config) registerQueryRangeFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
-	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
-	// NB: We can remove this after removing Loki's dependency on Cortex and bringing in the queryrange.Config.
-	// That will let us change the defaults there rather than include wrapper functions like this one.
-	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
-	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
-	c.QueryRange.RegisterFlags(throwaway)
-
-	throwaway.VisitAll(func(f *flag.Flag) {
-		// Ignore errors when setting new values. We have a test to verify that it works.
-		switch f.Name {
-		case "querier.split-queries-by-interval":
-			_ = f.Value.Set("30m")
-
-		case "querier.parallelise-shardable-queries":
 			_ = f.Value.Set("true")
 		}
 
@@ -178,6 +160,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid queryrange config")
+	}
+	if err := c.Querier.Validate(); err != nil {
+		return errors.Wrap(err, "invalid querier config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tablemanager config")
@@ -218,6 +203,9 @@ func (c *Config) Validate() error {
 			)
 		}
 	}
+	if err := c.QueryRange.Validate(); err != nil {
+		return errors.Wrap(err, "invalid query_range config")
+	}
 	return nil
 }
 
@@ -246,7 +234,8 @@ type Loki struct {
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
 	Ingester                 ingester.Interface
-	Querier                  *querier.Querier
+	Querier                  querier.Querier
+	querierAPI               *querier.QuerierAPI
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
 	tableManager             *chunk.TableManager
@@ -260,6 +249,9 @@ type Loki struct {
 	compactor                *compactor.Compactor
 	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
+	usageReport              *usagestats.Reporter
+
+	clientMetrics chunk_storage.ClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
 }
@@ -267,15 +259,16 @@ type Loki struct {
 // New makes a new Loki.
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
-		Cfg: cfg,
+		Cfg:           cfg,
+		clientMetrics: chunk_storage.NewClientMetrics(),
 	}
-
+	usagestats.Edition("oss")
 	loki.setupAuthMiddleware()
 	loki.setupGRPCRecoveryMiddleware()
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
-	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, prometheus.DefaultRegisterer)
+	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, loki.clientMetrics, prometheus.DefaultRegisterer)
 
 	return loki, nil
 }
@@ -493,6 +486,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
+	mm.RegisterModule(UsageReport, t.initUsageReport)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -501,20 +495,21 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
+		UsageReport:              {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
 		Store:                    {Overrides},
-		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs},
+		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware},
-		QueryScheduler:           {Server, Overrides, MemberlistKV},
-		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
-		TableManager:             {Server},
-		Compactor:                {Server, Overrides, MemberlistKV},
-		IndexGateway:             {Server},
+		QueryFrontend:            {QueryFrontendTripperware, UsageReport},
+		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
+		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
+		TableManager:             {Server, UsageReport},
+		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
+		IndexGateway:             {Server, Overrides, UsageReport},
 		IngesterQuerier:          {Ring},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},
@@ -546,6 +541,12 @@ func (t *Loki) setupModuleManager() error {
 
 	t.deps = deps
 	t.ModuleManager = mm
+
+	if t.isModuleActive(Ingester) {
+		if err := mm.AddDependency(UsageReport, Ring); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

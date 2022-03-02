@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/weaveworks/common/middleware"
@@ -43,7 +44,6 @@ import (
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
@@ -51,7 +51,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -83,6 +85,7 @@ const (
 	All                      string = "all"
 	Read                     string = "read"
 	Write                    string = "write"
+	UsageReport              string = "usage-report"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -204,7 +207,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.HTTPAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
 
-	t.Server.HTTP.Path("/distributor/ring").Methods("GET").Handler(t.distributor)
+	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 
 	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(pushHandler)
@@ -218,10 +221,17 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// Querier worker's max concurrent requests must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 
+	logger := log.With(util_log.Logger, "component", "querier")
 	var err error
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
+	}
+
+	if t.Cfg.Querier.MultiTenantQueriesEnabled {
+		t.Querier = querier.NewMultiTenantQuerier(*q, util_log.Logger)
+	} else {
+		t.Querier = q
 	}
 
 	querierWorkerServiceConfig := querier.WorkerServiceConfig{
@@ -239,18 +249,19 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		httpreq.ExtractQueryMetricsMiddleware(),
 	)
 
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.overrides, logger)
 	queryHandlers := map[string]http.Handler{
-		"/loki/api/v1/query_range":         httpMiddleware.Wrap(http.HandlerFunc(t.Querier.RangeQueryHandler)),
-		"/loki/api/v1/query":               httpMiddleware.Wrap(http.HandlerFunc(t.Querier.InstantQueryHandler)),
-		"/loki/api/v1/label":               http.HandlerFunc(t.Querier.LabelHandler),
-		"/loki/api/v1/labels":              http.HandlerFunc(t.Querier.LabelHandler),
-		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
-		"/loki/api/v1/series":              http.HandlerFunc(t.Querier.SeriesHandler),
+		"/loki/api/v1/query_range":         httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.RangeQueryHandler)),
+		"/loki/api/v1/query":               httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.InstantQueryHandler)),
+		"/loki/api/v1/label":               http.HandlerFunc(t.querierAPI.LabelHandler),
+		"/loki/api/v1/labels":              http.HandlerFunc(t.querierAPI.LabelHandler),
+		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.querierAPI.LabelHandler),
+		"/loki/api/v1/series":              http.HandlerFunc(t.querierAPI.SeriesHandler),
 
-		"/api/prom/query":               httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LogQueryHandler)),
-		"/api/prom/label":               http.HandlerFunc(t.Querier.LabelHandler),
-		"/api/prom/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
-		"/api/prom/series":              http.HandlerFunc(t.Querier.SeriesHandler),
+		"/api/prom/query":               httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LogQueryHandler)),
+		"/api/prom/label":               http.HandlerFunc(t.querierAPI.LabelHandler),
+		"/api/prom/label/{name}/values": http.HandlerFunc(t.querierAPI.LabelHandler),
+		"/api/prom/series":              http.HandlerFunc(t.querierAPI.SeriesHandler),
 	}
 
 	// We always want to register tail routes externally, tail requests are different from normal queries, they
@@ -263,12 +274,12 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// we disable the proxying of the tail routes in initQueryFrontend() and we still want these routes regiestered
 	// on the external router.
 	alwaysExternalHandlers := map[string]http.Handler{
-		"/loki/api/v1/tail": http.HandlerFunc(t.Querier.TailHandler),
-		"/api/prom/tail":    http.HandlerFunc(t.Querier.TailHandler),
+		"/loki/api/v1/tail": http.HandlerFunc(t.querierAPI.TailHandler),
+		"/api/prom/tail":    http.HandlerFunc(t.querierAPI.TailHandler),
 	}
 
 	return querier.InitWorkerService(
-		querierWorkerServiceConfig, queryHandlers, alwaysExternalHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
+		querierWorkerServiceConfig, prometheus.DefaultRegisterer, queryHandlers, alwaysExternalHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
 	)
 }
 
@@ -323,13 +334,13 @@ func (t *Loki) initTableManager() (services.Service, error) {
 
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.Cfg.StorageConfig.Config, reg)
+	tableClient, err := chunk_storage.NewTableClient(lastConfig.IndexType, t.Cfg.StorageConfig.Config, reg)
 	if err != nil {
 		return nil, err
 	}
 
-	bucketClient, err := storage.NewBucketClient(t.Cfg.StorageConfig.Config)
-	util_log.CheckFatal("initializing bucket client", err)
+	bucketClient, err := chunk_storage.NewBucketClient(t.Cfg.StorageConfig.Config)
+	util_log.CheckFatal("initializing bucket client", err, util_log.Logger)
 
 	t.tableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.SchemaConfig.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -363,7 +374,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 					// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
 					// IndexCacheValidity guarantees the FIFO cache will expire the object first which can be done without
 					// having to deserialize the object.
-					Validity: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
+					TTL: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 				},
 			}
 			// Force the retain period to be longer than the IndexCacheValidity used in the store, this guarantees we don't
@@ -380,7 +391,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		return
 	}
@@ -601,7 +612,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		}
 	}
 
-	t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, ruler.GroupLoader{}, util_log.Logger)
+	t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, t.clientMetrics, ruler.GroupLoader{}, util_log.Logger)
 
 	return
 }
@@ -619,7 +630,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.overrides)
+	engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.overrides, log.With(util_log.Logger, "component", "ruler"))
 
 	t.ruler, err = ruler.NewRuler(
 		t.Cfg.Ruler,
@@ -668,9 +679,11 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 func (t *Loki) initMemberlistKV() (services.Service, error) {
 	reg := prometheus.DefaultRegisterer
-	t.Cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
+
+	t.Cfg.MemberlistKV.MetricsRegisterer = reg
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
+		usagestats.JSONCodec,
 	}
 
 	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
@@ -700,7 +713,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, t.Cfg.StorageConfig.Config, t.Cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
+	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, t.Cfg.StorageConfig.Config, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -717,17 +730,17 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
-	objectClient, err := storage.NewObjectClient(t.Cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType, t.Cfg.StorageConfig.Config)
+	objectClient, err := chunk_storage.NewObjectClient(t.Cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType, t.Cfg.StorageConfig.Config, t.clientMetrics)
 	if err != nil {
 		return nil, err
 	}
 
-	shipperIndexClient, err := shipper.NewShipper(t.Cfg.StorageConfig.BoltDBShipperConfig, objectClient, prometheus.DefaultRegisterer)
+	shipperIndexClient, err := shipper.NewShipper(t.Cfg.StorageConfig.BoltDBShipperConfig, objectClient, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
 
-	gateway := indexgateway.NewIndexGateway(shipperIndexClient.(*shipper.Shipper))
+	gateway := indexgateway.NewIndexGateway(shipperIndexClient)
 	indexgatewaypb.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
 	return gateway, nil
 }
@@ -747,6 +760,35 @@ func (t *Loki) initQueryScheduler() (services.Service, error) {
 	t.Server.HTTP.Path("/scheduler/ring").Methods("GET", "POST").Handler(s)
 	t.queryScheduler = s
 	return s, nil
+}
+
+func (t *Loki) initUsageReport() (services.Service, error) {
+	if !t.Cfg.UsageReport.Enabled {
+		return nil, nil
+	}
+	t.Cfg.UsageReport.Leader = false
+	if t.isModuleActive(Ingester) {
+		t.Cfg.UsageReport.Leader = true
+	}
+
+	usagestats.Target(t.Cfg.Target.String())
+	period, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
+	if err != nil {
+		return nil, err
+	}
+
+	objectClient, err := chunk_storage.NewObjectClient(period.ObjectType, t.Cfg.StorageConfig.Config, t.clientMetrics)
+	if err != nil {
+		level.Info(util_log.Logger).Log("msg", "failed to initialize usage report", "err", err)
+		return nil, nil
+	}
+	ur, err := usagestats.NewReporter(t.Cfg.UsageReport, t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore, objectClient, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		level.Info(util_log.Logger).Log("msg", "failed to initialize usage report", "err", err)
+		return nil, nil
+	}
+	t.usageReport = ur
+	return ur, nil
 }
 
 func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {

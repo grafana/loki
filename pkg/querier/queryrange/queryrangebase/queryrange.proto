@@ -6,8 +6,8 @@ option go_package = "github.com/grafana/loki/pkg/querier/queryrange/queryrangeba
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
-import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
 import "google/protobuf/any.proto";
+import "pkg/logproto/logproto.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
@@ -46,8 +46,8 @@ message PrometheusData {
 }
 
 message SampleStream {
-  repeated cortexpb.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
-  repeated cortexpb.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
+  repeated logproto.LegacyLabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
+  repeated logproto.LegacySample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
 }
 
 message CachedResponse  {

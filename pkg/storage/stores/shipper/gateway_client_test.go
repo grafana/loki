@@ -6,17 +6,29 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
+	"strconv"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/grafana/dskit/flagext"
-
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_math "github.com/grafana/loki/pkg/util/math"
 )
 
 const (
@@ -30,6 +42,10 @@ const (
 	// response prefixes
 	rangeValuePrefix = "range-value"
 	valuePrefix      = "value"
+
+	// the number of index entries for benchmarking will be divided amongst numTables
+	benchMarkNumEntries = 1000000
+	numTables           = 50
 )
 
 type mockIndexGatewayServer struct{}
@@ -140,4 +156,130 @@ func TestGatewayClient(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, len(queries), numCallbacks)
+}
+
+func buildTableName(i int) string {
+	return fmt.Sprintf("%s%d", tableNamePrefix, i)
+}
+
+func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
+	buffer := 1024 * 1024
+	listener := bufconn.Listen(buffer)
+
+	// setup the grpc server
+	s := grpc.NewServer(grpc.ChainStreamInterceptor(func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
+	}))
+	conn, _ := grpc.DialContext(context.Background(), "", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}), grpc.WithInsecure())
+	defer func() {
+		s.Stop()
+		conn.Close()
+	}()
+
+	// setup test data
+	dir := b.TempDir()
+	bclient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{
+		Directory: dir + "/boltdb",
+	})
+	require.NoError(b, err)
+
+	for i := 0; i < numTables; i++ {
+		// setup directory for table in both cache and object storage
+		tableName := buildTableName(i)
+		objectStorageDir := filepath.Join(dir, "index", tableName)
+		cacheDir := filepath.Join(dir, "cache", tableName)
+		require.NoError(b, os.MkdirAll(objectStorageDir, 0777))
+		require.NoError(b, os.MkdirAll(cacheDir, 0777))
+
+		// add few rows at a time to the db because doing to many writes in a single transaction puts too much strain on boltdb and makes it slow
+		for i := 0; i < benchMarkNumEntries/numTables; i += 10000 {
+			end := util_math.Min(i+10000, benchMarkNumEntries/numTables)
+			// setup index files in both the cache directory and object storage directory so that we don't spend time syncing files at query time
+			testutil.AddRecordsToDB(b, filepath.Join(objectStorageDir, "db1"), bclient, i, end-i, []byte("index"))
+			testutil.AddRecordsToDB(b, filepath.Join(cacheDir, "db1"), bclient, i, end-i, []byte("index"))
+		}
+	}
+
+	fs, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: dir,
+	})
+	require.NoError(b, err)
+	tm, err := downloads.NewTableManager(downloads.Config{
+		CacheDir:          dir + "/cache",
+		SyncInterval:      15 * time.Minute,
+		CacheTTL:          15 * time.Minute,
+		QueryReadyNumDays: 30,
+	}, bclient, storage.NewIndexStorageClient(fs, "index/"), nil)
+	require.NoError(b, err)
+
+	// initialize the index gateway server
+	gw := indexgateway.NewIndexGateway(tm)
+	indexgatewaypb.RegisterIndexGatewayServer(s, gw)
+	go func() {
+		if err := s.Serve(listener); err != nil {
+			panic(err)
+		}
+	}()
+
+	// setup context for querying
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	ctx, _ = user.InjectIntoGRPCRequest(ctx)
+
+	// initialize the gateway client
+	gatewayClient := GatewayClient{}
+	gatewayClient.grpcClient = indexgatewaypb.NewIndexGatewayClient(conn)
+
+	// build the response we expect to get from queries
+	expected := map[string]int{}
+	for i := 0; i < benchMarkNumEntries/numTables; i++ {
+		expected[strconv.Itoa(i)] = numTables
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		actual := map[string]int{}
+		syncMtx := sync.Mutex{}
+
+		err := gatewayClient.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+			itr := batch.Iterator()
+			for itr.Next() {
+				syncMtx.Lock()
+				actual[string(itr.Value())]++
+				syncMtx.Unlock()
+			}
+			return true
+		})
+		require.NoError(b, err)
+		require.Equal(b, expected, actual)
+	}
+}
+
+func Benchmark_QueriesMatchingSingleRow(b *testing.B) {
+	queries := []chunk.IndexQuery{}
+	// do a query per row from each of the tables
+	for i := 0; i < benchMarkNumEntries/numTables; i++ {
+		for j := 0; j < numTables; j++ {
+			queries = append(queries, chunk.IndexQuery{
+				TableName:        buildTableName(j),
+				RangeValuePrefix: []byte(strconv.Itoa(i)),
+				ValueEqual:       []byte(strconv.Itoa(i)),
+			})
+		}
+	}
+
+	benchmarkIndexQueries(b, queries)
+}
+
+func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
+	var queries []chunk.IndexQuery
+	// do a query per table matching all the rows from it
+	for j := 0; j < numTables; j++ {
+		queries = append(queries, chunk.IndexQuery{
+			TableName: buildTableName(j),
+		})
+	}
+	benchmarkIndexQueries(b, queries)
 }

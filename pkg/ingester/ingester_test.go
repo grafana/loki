@@ -2,7 +2,10 @@ package ingester
 
 import (
 	"fmt"
+	"log"
+	"net"
 	"net/http"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -13,12 +16,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
-
-	"github.com/grafana/loki/pkg/tenant"
+	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -29,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -596,93 +600,235 @@ func Test_InMemoryLabels(t *testing.T) {
 	require.Equal(t, []string{"bar", "foo"}, res.Values)
 }
 
-func InMemoryLabels(t *testing.T, labelFilterer LabelValueFilterer, expectedValues []string) {
-	ingesterConfig := defaultIngesterTestConfig(t)
-	ingesterConfig.QueryStore = true
+func Test_DedupeIngester(t *testing.T) {
+	var (
+		requests      = int64(400)
+		streamCount   = int64(20)
+		streams       []labels.Labels
+		streamHashes  []uint64
+		ingesterCount = 100
+
+		ingesterConfig = defaultIngesterTestConfig(t)
+		ctx, _         = user.InjectIntoGRPCRequest(user.InjectOrgID(context.Background(), "foo"))
+	)
+	// make sure we will cut blocks and chunks and use head chunks
+	ingesterConfig.TargetChunkSize = 800
+	ingesterConfig.BlockSize = 300
+
+	// created many different ingesters
+	ingesterSet, closer := createIngesterSets(t, ingesterConfig, ingesterCount)
+	defer closer()
+
+	for i := int64(0); i < streamCount; i++ {
+		s := labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i))
+		streams = append(streams, s)
+		streamHashes = append(streamHashes, s.Hash())
+	}
+	sort.Slice(streamHashes, func(i, j int) bool { return streamHashes[i] < streamHashes[j] })
+
+	for i := int64(0); i < requests; i++ {
+		for _, ing := range ingesterSet {
+			_, err := ing.Push(ctx, buildPushRequest(i, streams))
+			require.NoError(t, err)
+		}
+	}
+
+	t.Run("backward log", func(t *testing.T) {
+		iterators := make([]iter.EntryIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.Query(ctx, &logproto.QueryRequest{
+				Selector:  `{foo="bar"} | label_format bar=""`, // making it difficult to dedupe by removing uncommon label.
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(0, requests+1),
+				Limit:     uint32(requests * streamCount),
+				Direction: logproto.BACKWARD,
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
+		}
+		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.BACKWARD)
+
+		for i := requests - 1; i >= 0; i-- {
+			actualHashes := []uint64{}
+			for j := 0; j < int(streamCount); j++ {
+				require.True(t, it.Next())
+				require.Equal(t, fmt.Sprintf("line %d", i), it.Entry().Line)
+				require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+				require.Equal(t, `{bar="", foo="bar"}`, it.Labels())
+				actualHashes = append(actualHashes, it.StreamHash())
+			}
+			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			require.Equal(t, streamHashes, actualHashes)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+	t.Run("forward log", func(t *testing.T) {
+		iterators := make([]iter.EntryIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.Query(ctx, &logproto.QueryRequest{
+				Selector:  `{foo="bar"} | label_format bar=""`, // making it difficult to dedupe by removing uncommon label.
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(0, requests+1),
+				Limit:     uint32(requests * streamCount),
+				Direction: logproto.FORWARD,
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.FORWARD))
+		}
+		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.FORWARD)
+
+		for i := int64(0); i < requests; i++ {
+			actualHashes := []uint64{}
+			for j := 0; j < int(streamCount); j++ {
+				require.True(t, it.Next())
+				require.Equal(t, fmt.Sprintf("line %d", i), it.Entry().Line)
+				require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+				require.Equal(t, `{bar="", foo="bar"}`, it.Labels())
+				actualHashes = append(actualHashes, it.StreamHash())
+			}
+			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			require.Equal(t, streamHashes, actualHashes)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+	t.Run("sum by metrics", func(t *testing.T) {
+		iterators := make([]iter.SampleIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.QuerySample(ctx, &logproto.SampleQueryRequest{
+				Selector: `sum(rate({foo="bar"}[1m])) by (bar)`,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, requests+1),
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+		}
+		it := iter.NewMergeSampleIterator(ctx, iterators)
+		var expectedLabels []string
+		for _, s := range streams {
+			expectedLabels = append(expectedLabels, s.WithoutLabels("foo").String())
+		}
+		sort.Strings(expectedLabels)
+		for i := int64(0); i < requests; i++ {
+			labels := []string{}
+			actualHashes := []uint64{}
+			for j := 0; j < int(streamCount); j++ {
+				require.True(t, it.Next())
+				require.Equal(t, float64(1), it.Sample().Value)
+				require.Equal(t, i, it.Sample().Timestamp)
+				labels = append(labels, it.Labels())
+				actualHashes = append(actualHashes, it.StreamHash())
+			}
+			sort.Strings(labels)
+			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			require.Equal(t, expectedLabels, labels)
+			require.Equal(t, streamHashes, actualHashes)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+	t.Run("sum metrics", func(t *testing.T) {
+		iterators := make([]iter.SampleIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.QuerySample(ctx, &logproto.SampleQueryRequest{
+				Selector: `sum(rate({foo="bar"}[1m]))`,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, requests+1),
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+		}
+		it := iter.NewMergeSampleIterator(ctx, iterators)
+		for i := int64(0); i < requests; i++ {
+			actualHashes := []uint64{}
+			for j := 0; j < int(streamCount); j++ {
+				require.True(t, it.Next())
+				require.Equal(t, float64(1), it.Sample().Value)
+				require.Equal(t, i, it.Sample().Timestamp)
+				require.Equal(t, "{}", it.Labels())
+				actualHashes = append(actualHashes, it.StreamHash())
+			}
+			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			require.Equal(t, streamHashes, actualHashes)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+}
+
+type ingesterClient struct {
+	logproto.PusherClient
+	logproto.QuerierClient
+}
+
+func createIngesterSets(t *testing.T, config Config, count int) ([]ingesterClient, func()) {
+	result := make([]ingesterClient, count)
+	closers := make([]func(), count)
+	for i := 0; i < count; i++ {
+		ingester, closer := createIngesterServer(t, config)
+		result[i] = ingester
+		closers[i] = closer
+	}
+	return result, func() {
+		for _, closer := range closers {
+			closer()
+		}
+	}
+}
+
+func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, func()) {
+	t.Helper()
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	store := &mockStore{
-		chunks: map[string][]chunk.Chunk{},
-	}
-
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
-	i.labelFilter = labelFilterer
-	future := time.Now().Local().Add(time.Minute * 5)
-	i.periodicConfigs = []chunk.PeriodConfig{
-		{
-			From: chunk.DayTime{
-				Time: model.TimeFromUnix(future.Unix()),
-			},
-		},
-	}
-	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
-	req := logproto.PushRequest{
-		Streams: []logproto.Stream{
-			{
-				Labels: `{foo="bar",bar="baz1"}`,
+	listener := bufconn.Listen(1024 * 1024)
+
+	server := grpc.NewServer(grpc.ChainStreamInterceptor(func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
+	}), grpc.ChainUnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+		return middleware.ServerUserHeaderInterceptor(ctx, req, info, handler)
+	}))
+
+	logproto.RegisterPusherServer(server, ing)
+	logproto.RegisterQuerierServer(server, ing)
+	go func() {
+		if err := server.Serve(listener); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	conn, err := grpc.DialContext(context.Background(), "", grpc.WithInsecure(), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+		return listener.Dial()
+	}))
+	require.NoError(t, err)
+
+	return ingesterClient{
+			PusherClient:  logproto.NewPusherClient(conn),
+			QuerierClient: logproto.NewQuerierClient(conn),
+		}, func() {
+			_ = services.StopAndAwaitTerminated(context.Background(), ing)
+			server.Stop()
+			_ = listener.Close()
+		}
+}
+
+func buildPushRequest(ts int64, streams []labels.Labels) *logproto.PushRequest {
+	req := &logproto.PushRequest{}
+
+	for _, stream := range streams {
+		req.Streams = append(req.Streams, logproto.Stream{
+			Labels: stream.String(),
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Unix(0, ts),
+					Line:      fmt.Sprintf("line %d", ts),
+				},
 			},
-			{
-				Labels: `{foo="bar",bar="baz2"}`,
-			},
-		},
-	}
-	for i := 0; i < 10; i++ {
-		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
-			Timestamp: time.Unix(0, 0),
-			Line:      fmt.Sprintf("line %d", i),
 		})
-		req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
-			Timestamp: time.Unix(0, 0),
-			Line:      fmt.Sprintf("line %d", i),
-		})
 	}
 
-	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = i.Push(ctx, &req)
-	require.NoError(t, err)
-
-	start := time.Now().Add(-5 * time.Minute)
-	end := time.Now()
-	res, err := i.Label(ctx, &logproto.LabelRequest{
-		Name:   "bar",
-		Values: true,
-		Start:  &start,
-		End:    &end,
-	})
-
-	require.NoError(t, err)
-	require.Equal(t, expectedValues, res.Values)
-
-	res, err = i.Label(ctx, &logproto.LabelRequest{})
-	require.NoError(t, err)
-	require.Equal(t, []string{"bar", "foo"}, res.Values)
-}
-
-func Test_InMemoryLabels_WithoutLabelFilter(t *testing.T) {
-	expectedValues := []string{"baz1", "baz2", "val1", "val2"}
-
-	InMemoryLabels(t, nil, expectedValues)
-}
-
-// DummyLabelValuedFilterer adds i to the front of the label value
-type DummyLabelValueFilterer struct{}
-
-func (*DummyLabelValueFilterer) Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error) {
-	var updatedValues []string
-
-	for _, v := range labelValues {
-		updatedValues = append(updatedValues, fmt.Sprintf("i%v", v))
-	}
-
-	return updatedValues, nil
-}
-
-func Test_InMemoryLabels_WithLabelFilter(t *testing.T) {
-	labelFilter := DummyLabelValueFilterer{}
-	expectedValues := []string{"ibaz1", "ibaz2", "ival1", "ival2"}
-
-	InMemoryLabels(t, &labelFilter, expectedValues)
+	return req
 }

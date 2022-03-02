@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
-
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func TestScheduler_setRunState(t *testing.T) {

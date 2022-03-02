@@ -28,10 +28,11 @@ func TestRedisCache(t *testing.T) {
 
 	ctx := context.Background()
 
-	c.Store(ctx, keys, bufs)
+	err = c.Store(ctx, keys, bufs)
+	require.NoError(t, err)
 
 	// test hits
-	found, data, missed := c.Fetch(ctx, keys)
+	found, data, missed, _ := c.Fetch(ctx, keys)
 
 	require.Len(t, found, nHit)
 	require.Len(t, missed, 0)
@@ -41,7 +42,7 @@ func TestRedisCache(t *testing.T) {
 	}
 
 	// test misses
-	found, _, missed = c.Fetch(ctx, miss)
+	found, _, missed, _ = c.Fetch(ctx, miss)
 
 	require.Len(t, found, 0)
 	require.Len(t, missed, nMiss)

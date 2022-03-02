@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
@@ -192,19 +193,14 @@ func TestTable_Compaction(t *testing.T) {
 		}
 
 		t.Run(fmt.Sprintf("%s ; %s", commonDBsConfig.String(), perUserDBsConfig.String()), func(t *testing.T) {
-			tempDir, err := ioutil.TempDir("", "table-compaction")
-			require.NoError(t, err)
-
-			defer func() {
-				require.NoError(t, os.RemoveAll(tempDir))
-			}()
+			tempDir := t.TempDir()
 
 			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 			tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 			tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
 
-			testutil.SetupTable(t, tableName, objectStoragePath, commonDBsConfig, perUserDBsConfig)
-			testutil.SetupTable(t, fmt.Sprintf("%s-copy", tableName), objectStoragePath, commonDBsConfig, perUserDBsConfig)
+			testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
+			testutil.SetupTable(t, filepath.Join(objectStoragePath, fmt.Sprintf("%s-copy", tableName)), commonDBsConfig, perUserDBsConfig)
 
 			// do the compaction
 			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
@@ -274,10 +270,10 @@ func TestTable_Compaction(t *testing.T) {
 	}
 }
 
-type TableMarkerFunc func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error)
+type TableMarkerFunc func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error)
 
-func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
-	return t(ctx, tableName, db)
+func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
+	return t(ctx, tableName, userID, db, logger)
 }
 
 type IntervalMayHaveExpiredChunksFunc func(interval model.Interval, userID string) bool
@@ -314,7 +310,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 					require.True(t, os.IsNotExist(err))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 					return true, true, nil
 				}),
 			},
@@ -326,7 +322,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					})
 					compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 					return false, true, nil
 				}),
 			},
@@ -338,7 +334,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					})
 					compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 					return false, false, nil
 				}),
 			},
@@ -363,8 +359,8 @@ func TestTable_CompactionRetention(t *testing.T) {
 				}
 				perUserDBsConfig.NumUsers = 10
 
-				testutil.SetupTable(t, tableName, objectStoragePath, commonDBsConfig, perUserDBsConfig)
-				testutil.SetupTable(t, fmt.Sprintf("%s-copy", tableName), objectStoragePath, commonDBsConfig, perUserDBsConfig)
+				testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
+				testutil.SetupTable(t, filepath.Join(objectStoragePath, fmt.Sprintf("%s-copy", tableName)), commonDBsConfig, perUserDBsConfig)
 
 				// do the compaction
 				objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
@@ -419,12 +415,7 @@ func listDir(t *testing.T, path string) (files, folders []string) {
 }
 
 func TestTable_CompactionFailure(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-compaction-failure")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	tableName := "test"
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
@@ -435,15 +426,18 @@ func TestTable_CompactionFailure(t *testing.T) {
 	numDBs := 10
 	numRecordsPerDB := 100
 
-	dbsToSetup := make(map[string]testutil.DBRecords)
+	dbsToSetup := make(map[string]testutil.DBConfig)
 	for i := 0; i < numDBs; i++ {
-		dbsToSetup[fmt.Sprint(i)] = testutil.DBRecords{
-			Start:      i * numRecordsPerDB,
-			NumRecords: (i + 1) * numRecordsPerDB,
+		dbsToSetup[fmt.Sprint(i)] = testutil.DBConfig{
+			CompressFile: i%2 == 0,
+			DBRecords: testutil.DBRecords{
+				Start:      i * numRecordsPerDB,
+				NumRecords: (i + 1) * numRecordsPerDB,
+			},
 		}
 	}
 
-	testutil.SetupDBsAtPath(t, tableName, objectStoragePath, dbsToSetup, true, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName), dbsToSetup, nil)
 
 	// put a non-boltdb file in the table which should cause the compaction to fail in the middle because it would fail to open that file with boltdb client.
 	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, "fail.txt"), []byte("fail the compaction"), 0666))
@@ -561,7 +555,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, false, nil
 			}),
 			expectedIndexSetState: indexSetState{
@@ -578,7 +572,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, false, nil
 			}),
 			compactedDBMtime: time.Now().Add(-recreateCompactedDBOlderThan / 2),
@@ -592,7 +586,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, true, nil
 			}),
 			expectedIndexSetState: indexSetState{
@@ -606,7 +600,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 				require.True(t, os.IsNotExist(err))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return true, true, nil
 			}),
 			expectedIndexSetState: indexSetState{
@@ -623,7 +617,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, false, nil
 			}),
 			compactedDBMtime:          time.Now().Add(-(recreateCompactedDBOlderThan + time.Minute)),
@@ -657,7 +651,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				perUserDBsConfig.NumUnCompactedDBs = tt.dbCount
 			}
 			perUserDBsConfig.NumUsers = 10
-			testutil.SetupTable(t, tableName, objectStoragePath, commonDBsConfig, perUserDBsConfig)
+			testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
 
 			if !tt.compactedDBMtime.IsZero() && tt.dbCount == 1 {
 				err := filepath.WalkDir(tablePathInStorage, func(path string, d fs.DirEntry, err error) error {
@@ -670,7 +664,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				require.NoError(t, err)
 			}
 			// setup exact same copy of dbs for comparison.
-			testutil.SetupTable(t, fmt.Sprintf("%s-copy", tableName), objectStoragePath, commonDBsConfig, perUserDBsConfig)
+			testutil.SetupTable(t, filepath.Join(objectStoragePath, fmt.Sprintf("%s-copy", tableName)), commonDBsConfig, perUserDBsConfig)
 
 			// do the compaction
 			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})

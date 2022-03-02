@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/imdario/mergo"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -27,6 +27,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type PushTarget struct {
@@ -36,13 +37,16 @@ type PushTarget struct {
 	relabelConfig []*relabel.Config
 	jobName       string
 	server        *server.Server
+	registerer    prometheus.Registerer
 }
 
 func NewPushTarget(logger log.Logger,
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
 	jobName string,
-	config *scrapeconfig.PushTargetConfig) (*PushTarget, error) {
+	config *scrapeconfig.PushTargetConfig,
+	reg prometheus.Registerer,
+) (*PushTarget, error) {
 
 	pt := &PushTarget{
 		logger:        logger,
@@ -50,6 +54,7 @@ func NewPushTarget(logger log.Logger,
 		relabelConfig: relabel,
 		jobName:       jobName,
 		config:        config,
+		registerer:    reg,
 	}
 
 	// Bit of a chicken and egg problem trying to register the defaults and apply overrides from the loaded config.
@@ -87,7 +92,7 @@ func (t *PushTarget) run() error {
 	// We don't want the /debug and /metrics endpoints running
 	t.config.Server.RegisterInstrumentation = false
 
-	util_log.InitLogger(&t.config.Server)
+	util_log.InitLogger(&t.config.Server, t.registerer)
 
 	srv, err := server.New(t.config.Server)
 	if err != nil {

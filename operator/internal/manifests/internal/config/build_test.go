@@ -3,7 +3,8 @@ package config
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,9 +17,17 @@ chunk_store_config:
     enable_fifocache: true
     fifocache:
       max_size_bytes: 500MB
+common:
+  storage:
+    s3:
+      s3: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: test
+      secret_access_key: test123
+      s3forcepathstyle: true
 compactor:
   compaction_interval: 2h
-  shared_store: s3
   working_directory: /tmp/loki/compactor
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
@@ -90,7 +99,6 @@ limits_config:
   max_cache_freshness_per_query: 10m
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
-  split_queries_by_interval: 30m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -116,6 +124,7 @@ query_range:
       enable_fifocache: true
       fifocache:
         max_size_bytes: 500MB
+  split_queries_by_interval: 30m
   parallelise_shardable_queries: true
 schema_config:
   configs:
@@ -146,13 +155,6 @@ storage_config:
     shared_store: s3
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
-  aws:
-    s3: http://test.default.svc.cluster.local.:9000
-    bucketnames: loki
-    region: us-east
-    access_key_id: test
-    secret_access_key: test123
-    s3forcepathstyle: true
 tracing:
   enabled: false
 `
@@ -201,13 +203,6 @@ overrides:
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		ObjectStorage: ObjectStorage{
-			Endpoint:        "http://test.default.svc.cluster.local.:9000",
-			Region:          "us-east",
-			Buckets:         "loki",
-			AccessKeyID:     "test",
-			AccessKeySecret: "test123",
-		},
 		QueryParallelism: Parallelism{
 			QuerierCPULimits:      2,
 			QueryFrontendReplicas: 2,
@@ -215,6 +210,15 @@ overrides:
 		WriteAheadLog: WriteAheadLog{
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
+		},
+		ObjectStorage: storage.Options{
+			S3: &storage.S3StorageConfig{
+				Endpoint:        "http://test.default.svc.cluster.local.:9000",
+				Region:          "us-east",
+				Buckets:         "loki",
+				AccessKeyID:     "test",
+				AccessKeySecret: "test123",
+			},
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -232,9 +236,17 @@ chunk_store_config:
     enable_fifocache: true
     fifocache:
       max_size_bytes: 500MB
+common:
+  storage:
+    s3:
+      s3: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: test
+      secret_access_key: test123
+      s3forcepathstyle: true
 compactor:
   compaction_interval: 2h
-  shared_store: s3
   working_directory: /tmp/loki/compactor
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
@@ -306,7 +318,6 @@ limits_config:
   max_cache_freshness_per_query: 10m
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
-  split_queries_by_interval: 30m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -332,6 +343,7 @@ query_range:
       enable_fifocache: true
       fifocache:
         max_size_bytes: 500MB
+  split_queries_by_interval: 30m
   parallelise_shardable_queries: true
 schema_config:
   configs:
@@ -362,13 +374,6 @@ storage_config:
     shared_store: s3
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
-  aws:
-    s3: http://test.default.svc.cluster.local.:9000
-    bucketnames: loki
-    region: us-east
-    access_key_id: test
-    secret_access_key: test123
-    s3forcepathstyle: true
 tracing:
   enabled: false
 `
@@ -434,13 +439,6 @@ overrides:
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		ObjectStorage: ObjectStorage{
-			Endpoint:        "http://test.default.svc.cluster.local.:9000",
-			Region:          "us-east",
-			Buckets:         "loki",
-			AccessKeyID:     "test",
-			AccessKeySecret: "test123",
-		},
 		QueryParallelism: Parallelism{
 			QuerierCPULimits:      2,
 			QueryFrontendReplicas: 2,
@@ -448,6 +446,15 @@ overrides:
 		WriteAheadLog: WriteAheadLog{
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
+		},
+		ObjectStorage: storage.Options{
+			S3: &storage.S3StorageConfig{
+				Endpoint:        "http://test.default.svc.cluster.local.:9000",
+				Region:          "us-east",
+				Buckets:         "loki",
+				AccessKeyID:     "test",
+				AccessKeySecret: "test123",
+			},
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -495,13 +502,6 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		ObjectStorage: ObjectStorage{
-			Endpoint:        "http://test.default.svc.cluster.local.:9000",
-			Region:          "us-east",
-			Buckets:         "loki",
-			AccessKeyID:     "test",
-			AccessKeySecret: "test123",
-		},
 		QueryParallelism: Parallelism{
 			QuerierCPULimits:      2,
 			QueryFrontendReplicas: 2,
@@ -509,6 +509,15 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 		WriteAheadLog: WriteAheadLog{
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
+		},
+		ObjectStorage: storage.Options{
+			S3: &storage.S3StorageConfig{
+				Endpoint:        "http://test.default.svc.cluster.local.:9000",
+				Region:          "us-east",
+				Buckets:         "loki",
+				AccessKeyID:     "test",
+				AccessKeySecret: "test123",
+			},
 		},
 	}
 	cfg, rCfg, err := Build(opts)

@@ -90,7 +90,7 @@ outer:
 		}
 	}
 
-	return iter.NewHeapIterator(ctx, streamIters, req.Direction), nil
+	return iter.NewSortEntryIterator(streamIters, req.Direction), nil
 }
 
 func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Stream {
@@ -132,7 +132,7 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Seri
 				var found bool
 				s, found = resBySeries[lbs.String()]
 				if !found {
-					s = &logproto.Series{Labels: lbs.String()}
+					s = &logproto.Series{Labels: lbs.String(), StreamHash: exs.BaseLabels().Hash()}
 					resBySeries[lbs.String()] = s
 				}
 				s.Samples = append(s.Samples, logproto.Sample{
@@ -200,7 +200,7 @@ outer:
 	filtered := processSeries(matched, extractor)
 
 	return iter.NewTimeRangedSampleIterator(
-		iter.NewMultiSeriesIterator(ctx, filtered),
+		iter.NewMultiSeriesIterator(filtered),
 		req.Start.UnixNano(),
 		req.End.UnixNano()+1,
 	), nil
@@ -264,6 +264,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (stream
 		}
 
 		stream.Labels = ls.String()
+		stream.Hash = ls.Hash()
 		streams = append(streams, stream)
 	}
 	return streams

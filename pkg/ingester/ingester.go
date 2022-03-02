@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -21,8 +19,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -35,7 +31,11 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/usagestats"
+	"github.com/grafana/loki/pkg/util"
 	errUtil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -46,12 +46,18 @@ const (
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
 // attempted.
-var ErrReadOnly = errors.New("Ingester is shutting down")
+var (
+	ErrReadOnly = errors.New("Ingester is shutting down")
 
-var flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
-	Name: "cortex_ingester_flush_queue_length",
-	Help: "The total number of series pending in the flush queue.",
-})
+	flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_ingester_flush_queue_length",
+		Help: "The total number of series pending in the flush queue.",
+	})
+	compressionStats   = usagestats.NewString("ingester_compression")
+	targetSizeStats    = usagestats.NewInt("ingester_target_size_bytes")
+	walStats           = usagestats.NewString("ingester_wal")
+	activeTenantsStats = usagestats.NewInt("ingester_active_tenants")
+)
 
 // Config for an ingester.
 type Config struct {
@@ -87,16 +93,17 @@ type Config struct {
 	WAL WALConfig `yaml:"wal,omitempty"`
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
-	LabelFilterer LabelValueFilterer           `yaml:"-"`
 	// Optional wrapper that can be used to modify the behaviour of the ingester
 	Wrapper Wrapper `yaml:"-"`
 
 	IndexShards int `yaml:"index_shards"`
+
+	MaxDroppedStreams int `yaml:"max_dropped_streams"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.LifecyclerConfig.RegisterFlags(f)
+	cfg.LifecyclerConfig.RegisterFlags(f, util_log.Logger)
 	cfg.WAL.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 0, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
@@ -115,6 +122,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
 	f.BoolVar(&cfg.AutoForgetUnhealthy, "ingester.autoforget-unhealthy", false, "Enable to remove unhealthy ingesters from the ring after `ring.kvstore.heartbeat_timeout`")
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
+	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing")
 }
 
 func (cfg *Config) Validate() error {
@@ -137,11 +145,6 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
-}
-
-// ChunkFilterer filters chunks based on the metric.
-type LabelValueFilterer interface {
-	Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error)
 }
 
 type Wrapper interface {
@@ -212,7 +215,6 @@ type Ingester struct {
 	wal WAL
 
 	chunkFilter storage.RequestChunkFilterer
-	labelFilter LabelValueFilterer
 }
 
 // New makes a new Ingester.
@@ -220,7 +222,12 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
-
+	compressionStats.Set(cfg.ChunkEncoding)
+	targetSizeStats.Set(int64(cfg.TargetChunkSize))
+	walStats.Set("disabled")
+	if cfg.WAL.Enabled {
+		walStats.Set("enabled")
+	}
 	metrics := newIngesterMetrics(registerer)
 
 	i := &Ingester{
@@ -276,19 +283,11 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		i.SetChunkFilterer(i.cfg.ChunkFilterer)
 	}
 
-	if i.cfg.LabelFilterer != nil {
-		i.SetLabelFilterer(i.cfg.LabelFilterer)
-	}
-
 	return i, nil
 }
 
 func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
-}
-
-func (i *Ingester) SetLabelFilterer(labelFilter LabelValueFilterer) {
-	i.labelFilter = labelFilter
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
@@ -562,6 +561,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) *instance {
 	if !ok {
 		inst = newInstance(&i.cfg, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
 		i.instances[instanceID] = inst
+		activeTenantsStats.Set(int64(len(i.instances)))
 	}
 	return inst
 }
@@ -577,7 +577,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 
 	instance := i.GetOrCreateInstance(instanceID)
-	itrs, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
+	it, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 	if err != nil {
 		return err
 	}
@@ -593,17 +593,15 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
+			errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 			return err
 		}
-
-		itrs = append(itrs, storeItr)
+		it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
 	}
 
-	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
+	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	defer errUtil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
-
-	return sendBatches(ctx, heapItr, queryServer, req.Limit)
+	return sendBatches(ctx, it, queryServer, req.Limit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
@@ -617,7 +615,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	}
 
 	instance := i.GetOrCreateInstance(instanceID)
-	itrs, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	it, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
 	}
@@ -631,17 +629,16 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
+			errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 			return err
 		}
 
-		itrs = append(itrs, storeItr)
+		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
 	}
 
-	heapItr := iter.NewHeapSampleIterator(ctx, itrs)
+	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	defer errUtil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
-
-	return sendSampleBatches(ctx, heapItr, queryServer)
+	return sendSampleBatches(ctx, it, queryServer)
 }
 
 // boltdbShipperMaxLookBack returns a max look back period only if active index type is boltdb-shipper.
@@ -761,23 +758,8 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		}
 	}
 
-	allValues := errUtil.MergeStringLists(resp.Values, storeValues)
-
-	if req.Values && i.labelFilter != nil {
-		var filteredValues []string
-
-		filteredValues, err = i.labelFilter.Filter(ctx, req.Name, allValues)
-		if err != nil {
-			return nil, err
-		}
-
-		return &logproto.LabelResponse{
-			Values: filteredValues,
-		}, nil
-	}
-
 	return &logproto.LabelResponse{
-		Values: allValues,
+		Values: errUtil.MergeStringLists(resp.Values, storeValues),
 	}, nil
 }
 
@@ -845,7 +827,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	}
 
 	instance := i.GetOrCreateInstance(instanceID)
-	tailer, err := newTailer(instanceID, req.Query, queryServer)
+	tailer, err := newTailer(instanceID, req.Query, queryServer, i.cfg.MaxDroppedStreams)
 	if err != nil {
 		return err
 	}

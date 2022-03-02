@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
@@ -23,8 +22,8 @@ import (
 func testSampleStreams() []queryrangebase.SampleStream {
 	return []queryrangebase.SampleStream{
 		{
-			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-			Samples: []cortexpb.Sample{
+			Labels: []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+			Samples: []logproto.LegacySample{
 				{
 					Value:       0,
 					TimestampMs: 0,
@@ -40,8 +39,8 @@ func testSampleStreams() []queryrangebase.SampleStream {
 			},
 		},
 		{
-			Labels: []cortexpb.LabelAdapter{{Name: "bazz", Value: "buzz"}},
-			Samples: []cortexpb.Sample{
+			Labels: []logproto.LabelAdapter{{Name: "bazz", Value: "buzz"}},
+			Samples: []logproto.LegacySample{
 				{
 					Value:       4,
 					TimestampMs: 4,

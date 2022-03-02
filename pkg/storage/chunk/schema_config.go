@@ -14,8 +14,7 @@ import (
 	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/util/log"
-
+	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 )
 
@@ -503,6 +502,14 @@ func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
 	} else {
 		return cfg.legacyExternalKey(chunk)
 	}
+}
+
+// VersionForChunk will return the schema version associated with the `From` timestamp of a chunk.
+// The schema and chunk must be valid+compatible as the errors are not checked.
+func (cfg SchemaConfig) VersionForChunk(c Chunk) int {
+	p, _ := cfg.SchemaForTime(c.From)
+	v, _ := p.VersionAsInt()
+	return v
 }
 
 // pre-checksum

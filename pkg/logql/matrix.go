@@ -44,13 +44,6 @@ func (m *MatrixStepper) Next() (bool, int64, promql.Vector) {
 		ln := len(series.Points)
 
 		if ln == 0 || series.Points[0].T != ts {
-			vec = append(vec, promql.Sample{
-				Point: promql.Point{
-					T: ts,
-					V: 0,
-				},
-				Metric: series.Metric,
-			})
 			continue
 		}
 

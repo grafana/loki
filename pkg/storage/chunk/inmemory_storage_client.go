@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/log"
 )
 
 type MockStorageMode int
@@ -258,7 +258,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 }
 
 // QueryPages implements StorageClient.
-func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error {
+func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, callback QueryPagesCallback) error {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 

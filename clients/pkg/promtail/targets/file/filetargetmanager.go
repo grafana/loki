@@ -45,6 +45,8 @@ type FileTargetManager struct {
 
 	watcher            *fsnotify.Watcher
 	targetEventHandler chan fileTargetEvent
+
+	wg sync.WaitGroup
 }
 
 // NewFileTargetManager creates a new TargetManager.
@@ -132,14 +134,19 @@ func NewFileTargetManager(
 		configs[cfg.JobName] = cfg.ServiceDiscoveryConfig.Configs()
 	}
 
-	go tm.run()
-	go tm.watch(ctx)
+	tm.wg.Add(3)
+	go tm.run(ctx)
+	go tm.watchTargetEvents(ctx)
+	go tm.watchFsEvents(ctx)
+
 	go util.LogError("running target manager", tm.manager.Run)
 
 	return tm, tm.manager.ApplyConfig(configs)
 }
 
-func (tm *FileTargetManager) watch(ctx context.Context) {
+func (tm *FileTargetManager) watchTargetEvents(ctx context.Context) {
+	defer tm.wg.Done()
+
 	for {
 		select {
 		case event := <-tm.targetEventHandler:
@@ -153,9 +160,21 @@ func (tm *FileTargetManager) watch(ctx context.Context) {
 					level.Error(tm.log).Log("msg", " failed to remove directory from watcher", "error", err)
 				}
 			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (tm *FileTargetManager) watchFsEvents(ctx context.Context) {
+	defer tm.wg.Done()
+
+	for {
+		select {
 		case event := <-tm.watcher.Events:
 			// we only care about Create events
 			if event.Op == fsnotify.Create {
+				level.Info(tm.log).Log("msg", "received file watcher event", "name", event.Name, "op", event.Op.String())
 				for _, s := range tm.syncers {
 					s.sendFileCreateEvent(event)
 				}
@@ -168,10 +187,17 @@ func (tm *FileTargetManager) watch(ctx context.Context) {
 	}
 }
 
-func (tm *FileTargetManager) run() {
-	for targetGroups := range tm.manager.SyncCh() {
-		for jobName, groups := range targetGroups {
-			tm.syncers[jobName].sync(groups, tm.targetEventHandler)
+func (tm *FileTargetManager) run(ctx context.Context) {
+	defer tm.wg.Done()
+
+	for {
+		select {
+		case targetGroups := <-tm.manager.SyncCh():
+			for jobName, groups := range targetGroups {
+				tm.syncers[jobName].sync(groups, tm.targetEventHandler)
+			}
+		case <-ctx.Done():
+			return
 		}
 	}
 }
@@ -189,6 +215,8 @@ func (tm *FileTargetManager) Ready() bool {
 // Stop the TargetManager.
 func (tm *FileTargetManager) Stop() {
 	tm.quit()
+	tm.wg.Wait()
+
 	for _, s := range tm.syncers {
 		s.stop()
 	}
@@ -298,9 +326,14 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 			}
 
 			level.Info(s.log).Log("msg", "Adding target", "key", key)
-			watcher := make(chan fsnotify.Event)
-			s.fileEventWatchers[string(path)] = watcher
-			t, err := s.newTarget(string(path), labels, discoveredLabels, watcher, targetEventHandler)
+
+			wkey := string(path)
+			watcher, ok := s.fileEventWatchers[wkey]
+			if !ok {
+				watcher = make(chan fsnotify.Event)
+				s.fileEventWatchers[wkey] = watcher
+			}
+			t, err := s.newTarget(wkey, labels, discoveredLabels, watcher, targetEventHandler)
 			if err != nil {
 				dropped = append(dropped, target.NewDroppedTarget(fmt.Sprintf("Failed to create target: %s", err.Error()), discoveredLabels))
 				level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
@@ -319,6 +352,15 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 			target.Stop()
 			s.metrics.targetsActive.Add(-1.)
 			delete(s.targets, key)
+
+			// close related file event watcher
+			k := target.path
+			if _, ok := s.fileEventWatchers[k]; ok {
+				close(s.fileEventWatchers[k])
+				delete(s.fileEventWatchers, k)
+			} else {
+				level.Warn(s.log).Log("msg", "failed to remove file event watcher", "path", k)
+			}
 		}
 	}
 	s.droppedTargets = dropped
@@ -376,6 +418,7 @@ func (s *targetSyncer) ready() bool {
 	}
 	return false
 }
+
 func (s *targetSyncer) stop() {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -385,6 +428,7 @@ func (s *targetSyncer) stop() {
 		target.Stop()
 		delete(s.targets, key)
 	}
+
 	for key, watcher := range s.fileEventWatchers {
 		close(watcher)
 		delete(s.fileEventWatchers, key)

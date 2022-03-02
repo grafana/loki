@@ -11,13 +11,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
-	"github.com/grafana/loki/pkg/tenant"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 var (
@@ -79,7 +77,7 @@ func (s *cachingIndexClient) Stop() {
 	s.IndexClient.Stop()
 }
 
-func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	if len(queries) == 0 {
 		return nil
 	}
@@ -91,7 +89,7 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 	return s.doQueries(ctx, queries, callback)
 }
 
-func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback,
+func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback,
 	buildIndexQuery func(query chunk.IndexQuery) chunk.IndexQuery, buildQueryKey func(query chunk.IndexQuery) string) error {
 	if len(queries) == 0 {
 		return nil
@@ -200,15 +198,19 @@ func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.Ind
 				callback(query, batch)
 			}
 		}
-		s.cacheStore(ctx, keys, batches)
-		return cardinalityErr
+
+		err := s.cacheStore(ctx, keys, batches)
+		if cardinalityErr != nil {
+			return cardinalityErr
+		}
+		return err
 	}
 }
 
 // doBroadQueries does broad queries on the store by using just TableName and HashValue.
 // This is useful for chunks queries or when we need to reduce QPS on index store at the expense of higher cache requirement.
 // All the results from the index store are cached and the responses are filtered based on the actual queries.
-func (s *cachingIndexClient) doBroadQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (s *cachingIndexClient) doBroadQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	// We cache all the entries for queries looking for Chunk IDs, so filter client side.
 	callback = chunk_util.QueryFilter(callback)
 	return s.queryPages(ctx, queries, callback, func(query chunk.IndexQuery) chunk.IndexQuery {
@@ -219,7 +221,7 @@ func (s *cachingIndexClient) doBroadQueries(ctx context.Context, queries []chunk
 }
 
 // doQueries does the exact same queries as opposed to doBroadQueries doing broad queries with limited query params.
-func (s *cachingIndexClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (s *cachingIndexClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	return s.queryPages(ctx, queries, callback, func(query chunk.IndexQuery) chunk.IndexQuery {
 		return query
 	}, func(q chunk.IndexQuery) string {
@@ -271,7 +273,7 @@ func isChunksQuery(q chunk.IndexQuery) bool {
 	return len(q.RangeValueStart) != 0
 }
 
-func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) {
+func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) error {
 	cachePuts.Add(float64(len(keys)))
 
 	// We're doing the hashing to handle unicode and key len properly.
@@ -284,12 +286,12 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 		if err != nil {
 			level.Warn(s.logger).Log("msg", "error marshalling ReadBatch", "err", err)
 			cacheEncodeErrs.Inc()
-			return
+			return err
 		}
 		bufs = append(bufs, out)
 	}
 
-	s.cache.Store(ctx, hashed, bufs)
+	return s.cache.Store(ctx, hashed, bufs)
 }
 
 func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
@@ -314,7 +316,7 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 	// Look up the hashes in a single batch.  If we get an error, we just "miss" all
 	// of the keys.  Eventually I want to push all the errors to the leafs of the cache
 	// tree, to the caches only return found & missed.
-	foundHashes, bufs, _ := s.cache.Fetch(ctx, hashes)
+	foundHashes, bufs, _, _ := s.cache.Fetch(ctx, hashes)
 
 	// Reverse the hash, unmarshal the index entries, check we got what we expected
 	// and that its still valid.

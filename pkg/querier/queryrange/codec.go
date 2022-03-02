@@ -13,7 +13,6 @@ import (
 	strings "strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -738,15 +737,15 @@ func toProtoMatrix(m loghttp.Matrix) []queryrangebase.SampleStream {
 	}
 
 	for _, stream := range m {
-		samples := make([]cortexpb.Sample, 0, len(stream.Values))
+		samples := make([]logproto.LegacySample, 0, len(stream.Values))
 		for _, s := range stream.Values {
-			samples = append(samples, cortexpb.Sample{
+			samples = append(samples, logproto.LegacySample{
 				Value:       float64(s.Value),
 				TimestampMs: int64(s.Timestamp),
 			})
 		}
 		res = append(res, queryrangebase.SampleStream{
-			Labels:  cortexpb.FromMetricsToLabelAdapters(stream.Metric),
+			Labels:  logproto.FromMetricsToLabelAdapters(stream.Metric),
 			Samples: samples,
 		})
 	}
@@ -761,11 +760,11 @@ func toProtoVector(v loghttp.Vector) []queryrangebase.SampleStream {
 	}
 	for _, s := range v {
 		res = append(res, queryrangebase.SampleStream{
-			Samples: []cortexpb.Sample{{
+			Samples: []logproto.LegacySample{{
 				Value:       float64(s.Value),
 				TimestampMs: int64(s.Timestamp),
 			}},
-			Labels: cortexpb.FromMetricsToLabelAdapters(s.Metric),
+			Labels: logproto.FromMetricsToLabelAdapters(s.Metric),
 		})
 	}
 	return res
