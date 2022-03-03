@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_math "github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -162,6 +163,16 @@ func buildTableName(i int) string {
 	return fmt.Sprintf("%s%d", tableNamePrefix, i)
 }
 
+type mockLimits struct{}
+
+func (m mockLimits) AllByUserID() map[string]*validation.Limits {
+	return map[string]*validation.Limits{}
+}
+
+func (m mockLimits) DefaultLimits() *validation.Limits {
+	return &validation.Limits{}
+}
+
 func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 	buffer := 1024 * 1024
 	listener := bufconn.Listen(buffer)
@@ -211,6 +222,7 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 		SyncInterval:      15 * time.Minute,
 		CacheTTL:          15 * time.Minute,
 		QueryReadyNumDays: 30,
+		Limits:            mockLimits{},
 	}, bclient, storage.NewIndexStorageClient(fs, "index/"), nil)
 	require.NoError(b, err)
 
