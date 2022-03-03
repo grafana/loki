@@ -52,7 +52,7 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 			return nil, err
 		}
 
-		iters[i] = NewTenantEntryIterator(id, iter)
+		iters[i] = NewTenantEntryIterator(iter, id)
 	}
 	return iter.NewSortEntryIterator(iters, params.Direction), nil
 }
@@ -78,7 +78,7 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 			return nil, err
 		}
 
-		iters[i] = NewTenantSampleIterator(id, iter)
+		iters[i] = NewTenantSampleIterator(iter, id)
 	}
 	return iter.NewSortSampleIterator(iters), nil
 }
@@ -89,7 +89,7 @@ type TenantEntryIterator struct {
 	tenantID string
 }
 
-func NewTenantEntryIterator(id string, iter iter.EntryIterator) *TenantEntryIterator {
+func NewTenantEntryIterator(iter iter.EntryIterator, id string) *TenantEntryIterator {
 	return &TenantEntryIterator{EntryIterator: iter, tenantID: id}
 }
 
@@ -113,7 +113,7 @@ type TenantSampleIterator struct {
 	tenantID string
 }
 
-func NewTenantSampleIterator(id string, iter iter.SampleIterator) *TenantSampleIterator {
+func NewTenantSampleIterator(iter iter.SampleIterator, id string) *TenantSampleIterator {
 	return &TenantSampleIterator{SampleIterator: iter, tenantID: id}
 }
 
