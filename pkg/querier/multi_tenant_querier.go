@@ -95,11 +95,15 @@ func NewTenantEntryIterator(id string, iter iter.EntryIterator) *TenantEntryIter
 func (i *TenantEntryIterator) Labels() string {
 	// TODO: cache manipulated labels
 	lbls, _ := logql.ParseLabels(i.EntryIterator.Labels())
+	builder := labels.NewBuilder(lbls.WithoutLabels(defaultTenantLabel))
 
-	// TODO: handle if lbls.Has(defaultTenantLabel)
+	// Prefix label if it conflicts with the tenant label.
+	if lbls.Has(defaultTenantLabel) {
+		builder.Set(retainExistingPrefix+defaultTenantLabel, lbls.Get(defaultTenantLabel))
+	}
+	builder.Set(defaultTenantLabel, i.tenantID)
 
-	lbls = append(lbls, labels.Label{Name: defaultTenantLabel, Value: i.tenantID})
-	return lbls.String()
+	return builder.Labels().String()
 }
 
 type TenantSampleIterator struct {
@@ -114,9 +118,13 @@ func NewTenantSampleIterator(id string, iter iter.SampleIterator) *TenantSampleI
 func (i *TenantSampleIterator) Labels() string {
 	// TODO: cache manipulated labels
 	lbls, _ := logql.ParseLabels(i.SampleIterator.Labels())
+	builder := labels.NewBuilder(lbls.WithoutLabels(defaultTenantLabel))
 
-	// TODO: handle if lbls.Has(defaultTenantLabel)
+	// Prefix label if it conflicts with the tenant label.
+	if lbls.Has(defaultTenantLabel) {
+		builder.Set(retainExistingPrefix+defaultTenantLabel, lbls.Get(defaultTenantLabel))
+	}
+	builder.Set(defaultTenantLabel, i.tenantID)
 
-	lbls = append(lbls, labels.Label{Name: defaultTenantLabel, Value: i.tenantID})
-	return lbls.String()
+	return builder.Labels().String()
 }
