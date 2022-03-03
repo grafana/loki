@@ -4,7 +4,7 @@ weight: 50
 ---
 # Fluent Bit Loki Output
 
-[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the [Grafana Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
+[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the [Grafana Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
 
 ## Usage
 
@@ -194,7 +194,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
     RemoveKeys key1,key2
 ```
 
-A full [example configuration file](https://github.com/grafana/loki/blob/master/clients/cmd/fluent-bit/fluent-bit.conf) is also available in this repository.
+A full [example configuration file](https://github.com/grafana/loki/blob/master/clients/cmd/fluent-bit/fluent-bit.conf) is also available in the Loki repository.
 
 ### Running multiple plugin instances
 
