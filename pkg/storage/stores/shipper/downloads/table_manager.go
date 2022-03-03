@@ -29,7 +29,6 @@ const (
 type Limits interface {
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
-	QueryReadyIndexNumDays(userID string) int
 }
 
 type Config struct {
