@@ -176,6 +176,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		startRequest, endRequest *LokiRequest
 		startResp, endResp       *LokiResponse
 		updateCache              bool
+		ok                       bool
 	)
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -187,7 +188,6 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 			if err != nil {
 				return err
 			}
-			var ok bool
 			startResp, ok = resp.(*LokiResponse)
 			if !ok {
 				return fmt.Errorf("unexpected response type %T", resp)
@@ -204,7 +204,6 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 			if err != nil {
 				return err
 			}
-			var ok bool
 			endResp, ok = resp.(*LokiResponse)
 			if !ok {
 				return fmt.Errorf("unexpected response type %T", resp)
