@@ -120,6 +120,9 @@ github.com/alicebob/gopher-json
 github.com/alicebob/miniredis/v2
 github.com/alicebob/miniredis/v2/geohash
 github.com/alicebob/miniredis/v2/server
+# github.com/aliyun/aliyun-oss-go-sdk v2.0.4+incompatible
+## explicit
+github.com/aliyun/aliyun-oss-go-sdk/oss
 # github.com/armon/go-metrics v0.3.9
 ## explicit; go 1.12
 github.com/armon/go-metrics

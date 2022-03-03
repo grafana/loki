@@ -1,0 +1,163 @@
+package alibaba
+
+import (
+	"context"
+	"flag"
+	"io"
+	"strconv"
+
+	"cloud.google.com/go/storage"
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/instrument"
+	"google.golang.org/api/option"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+)
+
+var ossRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Namespace: "loki",
+	Name:      "oss_request_duration_seconds",
+	Help:      "Time spent doing OSS requests.",
+	Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
+}, []string{"operation", "status_code"}))
+
+type ClientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
+
+type OssObjectClient struct {
+	cfg OssConfig
+
+	defaultBucket *oss.Bucket
+	getsBuckets   *storage.BucketHandle
+}
+
+// StorageConfig specifies config for storing data on AWS.
+type StorageConfig struct {
+	OssConfig `yaml:",inline"`
+}
+
+// OssConfig is config for the OSS Chunk Client.
+type OssConfig struct {
+	Bucket          string `yaml:"bucket"`
+	Endpoint        string `yaml:"endpoint"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	SecretAccessKey string `yaml:"secret_access_key"`
+}
+
+// RegisterFlags registers flags.
+func (cfg *OssConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("", f)
+}
+
+// RegisterFlagsWithPrefix registers flags with prefix.
+func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.Bucket, prefix+"oss.bucketname", "", "Name of OSS bucket.")
+	f.StringVar(&cfg.Endpoint, prefix+"oss.endpoint", "", "oss Endpoint to connect to.")
+	f.StringVar(&cfg.AccessKeyID, prefix+"oss.access-key-id", "", "alibaba Access Key ID")
+	f.StringVar(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "", "alibaba Secret Access Key")
+}
+
+// NewOssObjectClient makes a new chunk.Client that writes chunks to OSS.
+func NewOssObjectClient(ctx context.Context, cfg OssConfig) (chunk.ObjectClient, error) {
+	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.SecretAccessKey)
+	if err != nil {
+		// HandleError(err)
+	}
+
+	bucket, err := client.Bucket(cfg.Bucket)
+	if err != nil {
+		// HandleError(err)
+	}
+	return &OssObjectClient{
+		cfg:           cfg,
+		defaultBucket: bucket,
+	}, nil
+}
+
+func (s *OssObjectClient) Stop() {
+}
+
+// GetObject returns a reader and the size for the specified object key from the configured OSS bucket.
+func (s *OssObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
+	var resp *oss.GetObjectResult
+	var options []oss.Option
+	err := instrument.CollectedRequest(ctx, "OSS.DeleteObject", ossRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var requestErr error
+		resp, requestErr = s.defaultBucket.DoGetObject(&oss.GetObjectRequest{objectKey}, options)
+		if requestErr != nil {
+			return requestErr
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	length := resp.Response.Headers.Get("Content-Length")
+	size, err := strconv.Atoi(length)
+	if err != nil {
+		return nil, 0, err
+	}
+	return resp.Response.Body, int64(size), err
+
+}
+
+// PutObject puts the specified bytes into the configured OSS bucket at the provided key
+func (s *OssObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+	return instrument.CollectedRequest(ctx, "OSS.PutObject", ossRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		if err := s.defaultBucket.PutObject(objectKey, object); err != nil {
+			return errors.Wrap(err, "failed to put oss object")
+		}
+		return nil
+	})
+
+}
+
+// List implements chunk.ObjectClient.
+func (s *OssObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+	var storageObjects []chunk.StorageObject
+	var commonPrefixes []chunk.StorageCommonPrefix
+	marker := oss.Marker("")
+	for {
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+
+		objects, err := s.defaultBucket.ListObjects(oss.Prefix(prefix), oss.Delimiter(delimiter), marker)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "list alibaba oss bucket failed")
+		}
+		marker = oss.Marker(objects.NextMarker)
+		for _, object := range objects.Objects {
+			storageObjects = append(storageObjects, chunk.StorageObject{
+				Key:        object.Key,
+				ModifiedAt: object.LastModified,
+			})
+		}
+		for _, object := range objects.CommonPrefixes {
+			if object != "" {
+				commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(object))
+			}
+		}
+		if !objects.IsTruncated {
+			break
+		}
+	}
+	return storageObjects, commonPrefixes, nil
+}
+
+// DeleteObject deletes the specified object key from the configured OSS bucket.
+func (s *OssObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+	return instrument.CollectedRequest(ctx, "OSS.DeleteObject", ossRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		err := s.defaultBucket.DeleteObject(objectKey)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+// IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
+func (s *OssObjectClient) IsObjectNotFoundErr(err error) bool {
+	return errors.Is(err, storage.ErrObjectNotExist)
+}

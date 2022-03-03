@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -35,6 +36,7 @@ const (
 
 // Supported storage clients
 const (
+	StorageTypeAlibaba        = "alibaba"
 	StorageTypeAWS            = "aws"
 	StorageTypeAWSDynamo      = "aws-dynamo"
 	StorageTypeAzure          = "azure"
@@ -48,6 +50,7 @@ const (
 	StorageTypeGCPColumnKey   = "gcp-columnkey"
 	StorageTypeGCS            = "gcs"
 	StorageTypeGrpc           = "grpc-store"
+	StorageTypeOss            = "oss"
 	StorageTypeS3             = "s3"
 	StorageTypeSwift          = "swift"
 )
@@ -82,6 +85,7 @@ type StoreLimits interface {
 // Config chooses which storage client to use.
 type Config struct {
 	Engine                 string                  `yaml:"engine"`
+	AlibabaStorageConfig   alibaba.StorageConfig   `yaml:"alibaba"`
 	AWSStorageConfig       aws.StorageConfig       `yaml:"aws"`
 	AzureStorageConfig     azure.BlobStorageConfig `yaml:"azure"`
 	GCPStorageConfig       gcp.Config              `yaml:"bigtable"`
@@ -294,6 +298,12 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, clien
 			return nil, err
 		}
 		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+	case StorageTypeAlibaba, StorageTypeOss:
+		c, err := alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaStorageConfig.OssConfig)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeAWSDynamo:
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -387,6 +397,8 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (chun
 	switch name {
 	case StorageTypeAWS, StorageTypeS3:
 		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
+	case StorageTypeAlibaba, StorageTypeOss:
+		return alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaStorageConfig.OssConfig)
 	case StorageTypeGCS:
 		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging)
 	case StorageTypeAzure:
