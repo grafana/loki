@@ -79,7 +79,7 @@ func (s *OssObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 	var options []oss.Option
 	err := instrument.CollectedRequest(ctx, "OSS.DeleteObject", ossRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var requestErr error
-		resp, requestErr = s.defaultBucket.DoGetObject(&oss.GetObjectRequest{objectKey}, options)
+		resp, requestErr = s.defaultBucket.DoGetObject(&oss.GetObjectRequest{ObjectKey: objectKey}, options)
 		if requestErr != nil {
 			return requestErr
 		}
