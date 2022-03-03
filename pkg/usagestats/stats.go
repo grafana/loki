@@ -168,7 +168,7 @@ func NewString(name string) *expvar.String {
 	return expvar.NewString(statsPrefix + name)
 }
 
-// Target sets the target name.
+// Target sets the target name. This can be set multiple times.
 func Target(target string) {
 	existing := expvar.Get(statsPrefix + targetKey)
 	if existing != nil {
