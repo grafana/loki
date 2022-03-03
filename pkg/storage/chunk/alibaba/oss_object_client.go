@@ -26,10 +26,7 @@ var ossRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogra
 type ClientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
 
 type OssObjectClient struct {
-	cfg OssConfig
-
 	defaultBucket *oss.Bucket
-	getsBuckets   *storage.BucketHandle
 }
 
 // StorageConfig specifies config for storing data on AWS.
@@ -62,15 +59,13 @@ func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 func NewOssObjectClient(ctx context.Context, cfg OssConfig) (chunk.ObjectClient, error) {
 	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.SecretAccessKey)
 	if err != nil {
-		// HandleError(err)
+		return nil, err
 	}
-
 	bucket, err := client.Bucket(cfg.Bucket)
 	if err != nil {
-		// HandleError(err)
+		return nil, err
 	}
 	return &OssObjectClient{
-		cfg:           cfg,
 		defaultBucket: bucket,
 	}, nil
 }
