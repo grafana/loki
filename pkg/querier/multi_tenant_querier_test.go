@@ -124,7 +124,6 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 	}
 }
 
-// copied from range_vector_test.go
 var samples = []logproto.Sample{
 	{Timestamp: time.Unix(2, 0).UnixNano(), Hash: 1, Value: 1.},
 	{Timestamp: time.Unix(5, 0).UnixNano(), Hash: 2, Value: 1.},
