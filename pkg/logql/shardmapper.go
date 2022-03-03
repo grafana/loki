@@ -111,8 +111,8 @@ func (m ShardMapper) Parse(query string) (noop bool, expr Expr, err error) {
 		return false, nil, err
 	}
 
-	mappedStr := mapped.String()
 	originalStr := parsed.String()
+	mappedStr := mapped.String()
 	noop = originalStr == mappedStr
 	if noop {
 		m.metrics.parsed.WithLabelValues(NoopKey).Inc()
@@ -126,6 +126,12 @@ func (m ShardMapper) Parse(query string) (noop bool, expr Expr, err error) {
 }
 
 func (m ShardMapper) Map(expr Expr, r *shardRecorder) (Expr, error) {
+	// immediately clone the passed expr to avoid mutating the original
+	expr, err := Clone(expr)
+	if err != nil {
+		return nil, err
+	}
+
 	switch e := expr.(type) {
 	case *LiteralExpr:
 		return e, nil

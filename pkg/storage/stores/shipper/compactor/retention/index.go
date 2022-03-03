@@ -1,6 +1,7 @@
 package retention
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strconv"
@@ -109,14 +110,24 @@ func parseChunkID(chunkID []byte) (userID []byte, hexFrom, hexThrough []byte, va
 		hex = chunkID[j+1:]
 		break
 	}
+
 	if len(userID) == 0 {
 		return nil, nil, nil, false
 	}
-	_, i = readOneHexPart(hex)
-	if i == 0 {
-		return nil, nil, nil, false
+
+	// v12+ chunk id format `<user>/<fprint>/<start>:<end>:<checksum>`
+	// older than v12 chunk id format `<user id>/<fingerprint>:<start time>:<end time>:<checksum>`
+	if idx := bytes.IndexByte(hex, '/'); idx != -1 {
+		// v12+ chunk id format, let us skip through the fingerprint using '/`
+		hex = hex[idx+1:]
+	} else {
+		// older than v12 chunk id format, let us skip through the fingerprint using ':'
+		_, i = readOneHexPart(hex)
+		if i == 0 {
+			return nil, nil, nil, false
+		}
+		hex = hex[i+1:]
 	}
-	hex = hex[i+1:]
 	hexFrom, i = readOneHexPart(hex)
 	if i == 0 {
 		return nil, nil, nil, false

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -67,12 +67,14 @@ func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, storag
 	return boltDBIndexClient, storage.NewIndexStorageClient(fsObjectClient, "")
 }
 
-func buildTestTable(t *testing.T, path string) (*Table, *local.BoltIndexClient, stopFunc) {
+func buildTestTable(t *testing.T, path string) (*table, *local.BoltIndexClient, stopFunc) {
 	boltDBIndexClient, storageClient := buildTestClients(t, path)
 	cachePath := filepath.Join(path, cacheDirName)
 
-	table := NewTable(tableName, cachePath, storageClient, boltDBIndexClient, newMetrics(nil))
-	require.NoError(t, table.EnsureQueryReadiness(context.Background()))
+	table := NewTable(tableName, cachePath, storageClient, boltDBIndexClient, newMetrics(nil)).(*table)
+	_, usersWithIndex, err := table.storageClient.ListFiles(context.Background(), tableName)
+	require.NoError(t, err)
+	require.NoError(t, table.EnsureQueryReadiness(context.Background(), usersWithIndex))
 
 	return table, boltDBIndexClient, func() {
 		table.Close()
@@ -87,7 +89,7 @@ type mockIndexSet struct {
 	lastUsedAt  time.Time
 }
 
-func (m *mockIndexSet) MultiQueries(_ context.Context, queries []chunk.IndexQuery, _ chunk_util.Callback) error {
+func (m *mockIndexSet) MultiQueries(_ context.Context, queries []chunk.IndexQuery, _ chunk.QueryPagesCallback) error {
 	m.queriesDone = append(m.queriesDone, queries...)
 	return nil
 }
@@ -130,7 +132,7 @@ func TestTable_MultiQueries(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			table := Table{
+			table := table{
 				indexSets: map[string]IndexSet{},
 				logger:    util_log.Logger,
 			}
@@ -207,11 +209,21 @@ func TestTable_MultiQueries_Response(t *testing.T) {
 		queries = append(queries, chunk.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
 	}
 
-	// query for user 0 which has per user index setup which should return both user and common index.
-	testutil.TestSingleTableQuery(t, testutil.BuildUserID(0), queries, table, 0, 1000)
+	// run the queries concurrently
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// query for user 0 which has per user index setup which should return both user and common index.
+			testutil.TestSingleTableQuery(t, testutil.BuildUserID(0), queries, table, 0, 1000)
 
-	// query for user 1 which does not have per user index setup which should return only common index.
-	testutil.TestSingleTableQuery(t, testutil.BuildUserID(1), queries, table, 0, 500)
+			// query for user 1 which does not have per user index setup which should return only common index.
+			testutil.TestSingleTableQuery(t, testutil.BuildUserID(1), queries, table, 0, 500)
+		}()
+	}
+
+	wg.Wait()
 }
 
 func TestTable_DropUnusedIndex(t *testing.T) {
@@ -227,10 +239,13 @@ func TestTable_DropUnusedIndex(t *testing.T) {
 		expiredIndexUserID:    &mockIndexSet{lastUsedAt: now.Add(-25 * time.Hour)},
 	}
 
-	table := Table{
+	table := table{
 		indexSets: indexSets,
 		logger:    util_log.Logger,
 	}
+
+	// ensure that we only find expiredIndexUserID to be dropped
+	require.Equal(t, []string{expiredIndexUserID}, table.findExpiredIndexSets(ttl, now))
 
 	// dropping unused indexSets should drop only index set for expiredIndexUserID
 	allIndexSetsDropped, err := table.DropUnusedIndex(ttl, now)
@@ -247,6 +262,9 @@ func TestTable_DropUnusedIndex(t *testing.T) {
 		indexSets.(*mockIndexSet).lastUsedAt = now.Add(-25 * time.Hour)
 	}
 
+	// ensure that we get userID of common index set at the end
+	require.Equal(t, []string{notExpiredIndexUserID, ""}, table.findExpiredIndexSets(ttl, now))
+
 	allIndexSetsDropped, err = table.DropUnusedIndex(ttl, now)
 	require.NoError(t, err)
 	require.True(t, allIndexSetsDropped)
@@ -254,44 +272,65 @@ func TestTable_DropUnusedIndex(t *testing.T) {
 
 func TestTable_EnsureQueryReadiness(t *testing.T) {
 	tempDir := t.TempDir()
-
-	dbsToSetup := map[string]testutil.DBRecords{
-		"db1": {
-			Start:      0,
-			NumRecords: 10,
-		},
-	}
-
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
-	testutil.SetupDBsAtPath(t, tablePathInStorage, dbsToSetup, true, nil)
 
-	table, _, stopFunc := buildTestTable(t, tempDir)
-	defer func() {
-		stopFunc()
-	}()
+	// setup table in storage with 1 common db and 2 users with a db each
+	testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), testutil.DBsConfig{
+		DBRecordsStart:    0,
+		NumUnCompactedDBs: 1,
+	}, testutil.PerUserDBsConfig{
+		DBsConfig: testutil.DBsConfig{
+			DBRecordsStart:  100,
+			NumCompactedDBs: 1,
+		},
+		NumUsers: 2,
+	})
 
-	require.Len(t, table.indexSets, 1)
-	ensureIndexSetExistsInTable(t, table, "")
+	boltDBIndexClient, storageClient := buildTestClients(t, tempDir)
+	defer boltDBIndexClient.Stop()
 
-	// EnsureQueryReadiness should update the last used at time of common index set
-	table.indexSets[""].(*indexSet).lastUsedAt = time.Now().Add(-time.Hour)
-	require.NoError(t, table.EnsureQueryReadiness(context.Background()))
-	require.Len(t, table.indexSets, 1)
-	ensureIndexSetExistsInTable(t, table, "")
-	require.InDelta(t, time.Now().Unix(), table.indexSets[""].(*indexSet).lastUsedAt.Unix(), 5)
+	for _, tc := range []struct {
+		name                       string
+		usersToDoQueryReadinessFor []string
+	}{
+		{
+			name: "only common index to be query ready",
+		},
+		{
+			name:                       "one of the users to be query ready",
+			usersToDoQueryReadinessFor: []string{testutil.BuildUserID(0)},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cachePath := t.TempDir()
+			table := NewTable(tableName, cachePath, storageClient, boltDBIndexClient, newMetrics(nil)).(*table)
+			defer func() {
+				table.Close()
+			}()
 
-	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), dbsToSetup, true, nil)
+			// EnsureQueryReadiness should update the last used at time of common index set
+			require.NoError(t, table.EnsureQueryReadiness(context.Background(), tc.usersToDoQueryReadinessFor))
+			require.Len(t, table.indexSets, len(tc.usersToDoQueryReadinessFor)+1)
+			for _, userID := range append(tc.usersToDoQueryReadinessFor, "") {
+				ensureIndexSetExistsInTable(t, table, userID)
+				require.InDelta(t, time.Now().Unix(), table.indexSets[userID].(*indexSet).lastUsedAt.Unix(), 5)
+			}
 
-	// Running EnsureQueryReadiness should initialize newly setup index for userID.
-	// Running it multiple times should behave similarly.
-	for i := 0; i < 2; i++ {
-		require.NoError(t, table.EnsureQueryReadiness(context.Background()))
-		require.Len(t, table.indexSets, 2)
-		ensureIndexSetExistsInTable(t, table, "")
-		ensureIndexSetExistsInTable(t, table, userID)
-		require.InDelta(t, time.Now().Unix(), table.indexSets[""].(*indexSet).lastUsedAt.Unix(), 5)
-		require.InDelta(t, time.Now().Unix(), table.indexSets[userID].(*indexSet).lastUsedAt.Unix(), 5)
+			// change the last used at to verify that it gets updated when we do the query readiness again
+			for _, idxSet := range table.indexSets {
+				idxSet.(*indexSet).lastUsedAt = time.Now().Add(-time.Hour)
+			}
+
+			// Running it multiple times should not have an impact other than updating last used at time
+			for i := 0; i < 2; i++ {
+				require.NoError(t, table.EnsureQueryReadiness(context.Background(), tc.usersToDoQueryReadinessFor))
+				require.Len(t, table.indexSets, len(tc.usersToDoQueryReadinessFor)+1)
+				for _, userID := range append(tc.usersToDoQueryReadinessFor, "") {
+					ensureIndexSetExistsInTable(t, table, userID)
+					require.InDelta(t, time.Now().Unix(), table.indexSets[userID].(*indexSet).lastUsedAt.Unix(), 5)
+				}
+			}
+		})
 	}
 }
 
@@ -306,19 +345,23 @@ func TestTable_Sync(t *testing.T) {
 	noUpdatesDB := "no-updates"
 	newDB := "new"
 
-	testDBs := map[string]testutil.DBRecords{
+	testDBs := map[string]testutil.DBConfig{
 		deleteDB: {
-			Start:      0,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		noUpdatesDB: {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
 	}
 
 	// setup the table in storage with some records
-	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName), testDBs, false, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(objectStoragePath, tableName), testDBs, nil)
 
 	// create table instance
 	table, boltdbClient, stopFunc := buildTestTable(t, tempDir)
@@ -367,46 +410,67 @@ func TestTable_QueryResponse(t *testing.T) {
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 
-	commonDBs := map[string]testutil.DBRecords{
+	commonDBs := map[string]testutil.DBConfig{
 		"db1": {
-			Start:      0,
-			NumRecords: 10,
+			CompressFile: true,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		"duplicate_db1": {
-			Start:      0,
-			NumRecords: 10,
+			CompressFile: true,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
 		"partially_duplicate_db2": {
-			Start:      10,
-			NumRecords: 5,
+			CompressFile: true,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 5,
+			},
 		},
 		"db3": {
-			Start:      20,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      20,
+				NumRecords: 10,
+			},
 		},
 	}
 
-	userDBs := map[string]testutil.DBRecords{
+	userDBs := map[string]testutil.DBConfig{
 		"overlaps_with_common_dbs": {
-			Start:      10,
-			NumRecords: 30,
+			CompressFile: true,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 30,
+			},
 		},
 		"same_db_again": {
-			Start:      10,
-			NumRecords: 20,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 20,
+			},
 		},
 		"additional_records": {
-			Start:      30,
-			NumRecords: 10,
+			CompressFile: true,
+			DBRecords: testutil.DBRecords{
+				Start:      30,
+				NumRecords: 10,
+			},
 		},
 	}
 
-	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, true, nil)
-	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, true, nil)
+	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, nil)
 
 	table, _, stopFunc := buildTestTable(t, tempDir)
 	defer func() {
@@ -429,32 +493,31 @@ func TestTable_QueryResponse(t *testing.T) {
 }
 
 func TestLoadTable(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "load-table")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 
-	commonDBs := make(map[string]testutil.DBRecords)
-	userDBs := make(map[string]testutil.DBRecords)
+	commonDBs := make(map[string]testutil.DBConfig)
+	userDBs := make(map[string]testutil.DBConfig)
 	for i := 0; i < 10; i++ {
-		commonDBs[fmt.Sprint(i)] = testutil.DBRecords{
-			Start:      i,
-			NumRecords: 1,
+		commonDBs[fmt.Sprint(i)] = testutil.DBConfig{
+			DBRecords: testutil.DBRecords{
+				Start:      i,
+				NumRecords: 1,
+			},
 		}
-		userDBs[fmt.Sprint(i+10)] = testutil.DBRecords{
-			Start:      i + 10,
-			NumRecords: 1,
+		userDBs[fmt.Sprint(i+10)] = testutil.DBConfig{
+			DBRecords: testutil.DBRecords{
+				Start:      i + 10,
+				NumRecords: 1,
+			},
 		}
 	}
 
 	// setup the table in storage with some records
-	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, false, nil)
-	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, false, nil)
+	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, nil)
 
 	boltDBIndexClient, storageClient := buildTestClients(t, tempDir)
 	tablePathInCache := filepath.Join(tempDir, cacheDirName, tableName)
@@ -481,21 +544,25 @@ func TestLoadTable(t *testing.T) {
 	require.Error(t, err)
 
 	// add some more files to the storage.
-	commonDBs = make(map[string]testutil.DBRecords)
-	userDBs = make(map[string]testutil.DBRecords)
+	commonDBs = make(map[string]testutil.DBConfig)
+	userDBs = make(map[string]testutil.DBConfig)
 	for i := 20; i < 30; i++ {
-		commonDBs[fmt.Sprint(i)] = testutil.DBRecords{
-			Start:      i,
-			NumRecords: 1,
+		commonDBs[fmt.Sprint(i)] = testutil.DBConfig{
+			DBRecords: testutil.DBRecords{
+				Start:      i,
+				NumRecords: 1,
+			},
 		}
-		userDBs[fmt.Sprint(i+10)] = testutil.DBRecords{
-			Start:      i + 10,
-			NumRecords: 1,
+		userDBs[fmt.Sprint(i+10)] = testutil.DBConfig{
+			DBRecords: testutil.DBRecords{
+				Start:      i + 10,
+				NumRecords: 1,
+			},
 		}
 	}
 
-	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, false, nil)
-	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, false, nil)
+	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, nil)
+	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, nil)
 
 	// try loading the table, it should skip loading corrupt file and reload it from storage.
 	table, err = LoadTable(tableName, tablePathInCache, storageClient, boltDBIndexClient, newMetrics(nil))
@@ -508,7 +575,7 @@ func TestLoadTable(t *testing.T) {
 	testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, table, 0, 40)
 }
 
-func ensureIndexSetExistsInTable(t *testing.T, table *Table, indexSetName string) {
+func ensureIndexSetExistsInTable(t *testing.T, table *table, indexSetName string) {
 	_, ok := table.indexSets[indexSetName]
 	require.True(t, ok)
 }

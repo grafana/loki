@@ -5,10 +5,10 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
-	"github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/tsdb/record"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 // RecordType represents the type of the WAL/Checkpoint record.
@@ -82,7 +82,7 @@ type RefEntries struct {
 }
 
 func (r *WALRecord) encodeSeries(b []byte) []byte {
-	buf := EncWith(b)
+	buf := encoding.EncWith(b)
 	buf.PutByte(byte(WALRecordSeries))
 	buf.PutUvarintStr(r.UserID)
 
@@ -96,7 +96,7 @@ func (r *WALRecord) encodeSeries(b []byte) []byte {
 }
 
 func (r *WALRecord) encodeEntries(version RecordType, b []byte) []byte {
-	buf := EncWith(b)
+	buf := encoding.EncWith(b)
 	buf.PutByte(byte(version))
 	buf.PutUvarintStr(r.UserID)
 
@@ -141,7 +141,7 @@ func decodeEntries(b []byte, version RecordType, rec *WALRecord) error {
 		return nil
 	}
 
-	dec := DecWith(b)
+	dec := encoding.DecWith(b)
 	baseTime := dec.Be64int64()
 
 	for len(dec.B) > 0 && dec.Err() == nil {
@@ -190,7 +190,7 @@ func decodeWALRecord(b []byte, walRec *WALRecord) (err error) {
 		dec     record.Decoder
 		rSeries []record.RefSeries
 
-		decbuf = DecWith(b)
+		decbuf = encoding.DecWith(b)
 		t      = RecordType(decbuf.Byte())
 	)
 
@@ -217,39 +217,4 @@ func decodeWALRecord(b []byte, walRec *WALRecord) (err error) {
 	walRec.UserID = userID
 	walRec.Series = rSeries
 	return nil
-}
-
-func EncWith(b []byte) (res Encbuf) {
-	res.B = b
-	return res
-}
-
-// Encbuf extends encoding.Encbuf with support for multi byte encoding
-type Encbuf struct {
-	encoding.Encbuf
-}
-
-func (e *Encbuf) PutString(s string) { e.B = append(e.B, s...) }
-
-func DecWith(b []byte) (res Decbuf) {
-	res.B = b
-	return res
-}
-
-// Decbuf extends encoding.Decbuf with support for multi byte decoding
-type Decbuf struct {
-	encoding.Decbuf
-}
-
-func (d *Decbuf) Bytes(n int) []byte {
-	if d.E != nil {
-		return nil
-	}
-	if len(d.B) < n {
-		d.E = encoding.ErrInvalidSize
-		return nil
-	}
-	x := d.B[:n]
-	d.B = d.B[n:]
-	return x
 }

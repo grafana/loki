@@ -15,20 +15,20 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"go.etcd.io/bbolt"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 type IndexSet interface {
 	Init() error
 	Close()
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
+	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
 	DropAllDBs() error
 	Err() error
 	LastUsedAt() time.Time
@@ -110,13 +110,12 @@ func (t *indexSet) Init() (err error) {
 		t.dbsMtx.markReady()
 	}()
 
-	startTime := time.Now()
-
 	filesInfo, err := ioutil.ReadDir(t.cacheLocation)
 	if err != nil {
 		return err
 	}
 
+	// open all the locally present files first to avoid downloading them again during sync operation below.
 	for _, fileInfo := range filesInfo {
 		if fileInfo.IsDir() {
 			continue
@@ -147,9 +146,6 @@ func (t *indexSet) Init() (err error) {
 		return
 	}
 
-	duration := time.Since(startTime).Seconds()
-	t.metrics.tablesDownloadDurationSeconds.add(t.tableName, duration)
-
 	level.Debug(logger).Log("msg", "finished syncing files")
 
 	return
@@ -177,13 +173,13 @@ func (t *indexSet) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}
 
-	userIDBytes := []byte(userID)
+	userIDBytes := shipper_util.GetUnsafeBytes(userID)
 
 	err = t.dbsMtx.rLock(ctx)
 	if err != nil {
@@ -204,7 +200,7 @@ func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery,
 		err := db.View(func(tx *bbolt.Tx) error {
 			bucket := tx.Bucket(userIDBytes)
 			if bucket == nil {
-				bucket = tx.Bucket(defaultBucketName)
+				bucket = tx.Bucket(local.IndexBucketName)
 				if bucket == nil {
 					return nil
 				}
@@ -390,13 +386,8 @@ func (t *indexSet) doConcurrentDownload(ctx context.Context, files []storage.Ind
 	downloadedFiles := make([]string, 0, len(files))
 	downloadedFilesMtx := sync.Mutex{}
 
-	jobs := make([]interface{}, len(files))
-	for i := 0; i < len(files); i++ {
-		jobs[i] = i
-	}
-
-	err := concurrency.ForEach(ctx, jobs, maxDownloadConcurrency, func(ctx context.Context, job interface{}) error {
-		fileName := files[job.(int)].Name
+	err := concurrency.ForEachJob(ctx, len(files), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
+		fileName := files[idx].Name
 		err := t.downloadFileFromStorage(ctx, fileName, t.cacheLocation)
 		if err != nil {
 			if t.baseIndexSet.IsFileNotFoundErr(err) {
@@ -412,7 +403,6 @@ func (t *indexSet) doConcurrentDownload(ctx context.Context, files []storage.Ind
 
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}

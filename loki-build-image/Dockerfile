@@ -1,3 +1,5 @@
+# NOTICE: Change the verion in Makefile if you make a change here. See ../docs/sources/maintaining/release-loki-build-image.md.
+
 FROM alpine as helm
 ARG HELM_VER="v3.2.3"
 
@@ -26,7 +28,7 @@ RUN apk add --no-cache docker-cli
 # TODO this should be fixed to download and extract the specific release binary from github as we do for golangci and helm above
 # however we need a commit which hasn't been released yet: https://github.com/drone/drone-cli/commit/1fad337d74ca0ecf420993d9d2d7229a1c99f054
 # Read the comment below regarding GO111MODULE=on and why it is necessary
-FROM golang:1.17.2 as drone
+FROM golang:1.17.6 as drone
 RUN curl -L https://github.com/drone/drone-cli/releases/download/v1.4.0/drone_linux_amd64.tar.gz | tar zx && \
     install -t /usr/local/bin drone
 
@@ -35,19 +37,19 @@ RUN curl -L https://github.com/drone/drone-cli/releases/download/v1.4.0/drone_li
 # Error:
 #	github.com/fatih/faillint@v1.5.0 requires golang.org/x/tools@v0.0.0-20200207224406-61798d64f025
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
-FROM golang:1.17.2 as faillint
+FROM golang:1.17.6 as faillint
 RUN GO111MODULE=on go get github.com/fatih/faillint@v1.5.0
 
 # Install ghr used to push binaries and template the release
 # This collides with the version of go tools used in the base image, thus we install it in its own image and copy it over.
-FROM golang:1.17.2 as ghr
+FROM golang:1.17.6 as ghr
 RUN GO111MODULE=on go get github.com/tcnksm/ghr
 
 # Install nfpm (https://nfpm.goreleaser.com) for creating .deb and .rpm packages.
-FROM golang:1.17.2 as nfpm
+FROM golang:1.17.6 as nfpm
 RUN GO111MODULE=on go get github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.11.3
 
-FROM golang:1.17.2-buster
+FROM golang:1.17.6-buster
 RUN apt-get update && \
     apt-get install -qy \
     musl gnupg ragel \

@@ -17,12 +17,45 @@ import (
 	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                    Below we show various formats that we have for structuring index in the object store.                       //
+//                                                                                                                                //
+//                    FORMAT1                         FORMAT2                                      FORMAT3                        //
+//                                                                                                                                //
+//               table1                        table1                                 table1                                      //
+//                |                             |                                      |                                          //
+//                 ----> db1.gz                  ----> db1.gz                           ----> user1                               //
+//                         |                             |                             |        |                                 //
+//                         ----> index                    ----> user1                  |         ----> db1.gz                     //
+//                                                        ----> user2                  |                 |                        //
+//                                                                                     |                  ----> index             //
+//                                                                                      ----> user2                               //
+//                                                                                              |                                 //
+//                                                                                               ----> db1.gz                     //
+//                                                                                                       |                        //
+//                                                                                                        ----> index             //
+//                                                                                                                                //
+// FORMAT1 - `table1` has 1 db named db1.gz and 1 boltdb bucket named `index` which contains index for all the users.             //
+//           It is in use when the flag to build per user index is not enabled.                                                   //
+//           Ingesters write the index in Format1 which then compactor compacts down in same format.                              //
+//                                                                                                                                //
+// FORMAT2 - `table1` has 1 db named db1.gz and 1 boltdb bucket each for `user1` and `user2` containing                       //
+//           index just for those users.                                                                                          //
+//           It is an intermediate format built by ingesters when the flag to build per user index is enabled.                    //
+//                                                                                                                                //
+// FORMAT3 - `table1` has 1 folder each for `user1` and `user2` containing index files having index just for those users.         //
+//            Compactor builds index in this format from Format2.                                                                 //
+//                                                                                                                                //
+//                THING TO NOTE HERE IS COMPACTOR BUILDS INDEX IN FORMAT1 FROM FORMAT1 AND FORMAT3 FROM FORMAT2.                  //
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const (
 	uploaderName = "compactor"
@@ -36,8 +69,6 @@ const (
 	dropFreePagesTxMaxSize       = 100 * 1024 * 1024 // 100MB
 	recreatedCompactedDBSuffix   = ".r.gz"
 )
-
-var bucketName = []byte("index")
 
 type indexEntry struct {
 	k, v []byte
@@ -61,7 +92,6 @@ type table struct {
 	usersWithPerUserIndex []string
 	uploadCompactedDB     bool
 	compactedDB           *bbolt.DB
-	seedSourceFileIdx     int
 	logger                log.Logger
 
 	ctx context.Context
@@ -84,7 +114,6 @@ func newTable(ctx context.Context, workingDirectory string, indexStorageClient s
 		indexSets:          map[string]*indexSet{},
 		baseUserIndexSet:   storage.NewIndexSet(indexStorageClient, true),
 		baseCommonIndexSet: storage.NewIndexSet(indexStorageClient, false),
-		seedSourceFileIdx:  -1,
 	}
 	table.logger = log.With(util_log.Logger, "table-name", table.name)
 
@@ -131,8 +160,8 @@ func (t *table) compact(applyRetention bool) error {
 			return err
 		}
 	} else if len(indexFiles) == 1 && (applyRetention || mustRecreateCompactedDB(indexFiles)) {
+		// we have just 1 common index file which is already compacted.
 		// initialize common compacted db if we need to apply retention, or we need to recreate it
-		t.seedSourceFileIdx = 0
 		downloadAt := filepath.Join(t.workingDirectory, indexFiles[0].Name)
 		err = shipper_util.DownloadFileFromStorage(downloadAt, shipper_util.IsCompressedFile(indexFiles[0].Name),
 			false, shipper_util.LoggerWithFilename(t.logger, indexFiles[0].Name),
@@ -183,6 +212,9 @@ func (t *table) done() error {
 			return err
 		}
 
+		// initialize the user index sets for:
+		// - compaction if we have more than 1 index file, taken care of by index set initialization
+		// - recreation if mustRecreateCompactedDB says so, taken care of by indexSet.done call below
 		if len(indexFiles) > 1 || mustRecreateCompactedDB(indexFiles) {
 			t.indexSets[userID], err = t.getOrCreateUserIndex(userID)
 			if err != nil {
@@ -244,16 +276,17 @@ func (t *table) compactFiles(files []storage.IndexFile) error {
 	level.Info(t.logger).Log("msg", "starting compaction of dbs")
 
 	compactedDBName := filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix()))
-	t.seedSourceFileIdx = findSeedFileIdx(files)
+	// if we find a previously compacted file, use it as a seed file to copy other index into it
+	seedSourceFileIdx := compactedFileIdx(files)
 
-	if t.seedSourceFileIdx != -1 {
+	if seedSourceFileIdx != -1 {
 		t.uploadCompactedDB = true
-		compactedDBName = filepath.Join(t.workingDirectory, files[t.seedSourceFileIdx].Name)
+		compactedDBName = filepath.Join(t.workingDirectory, files[seedSourceFileIdx].Name)
 
-		level.Info(t.logger).Log("msg", fmt.Sprintf("using %s as seed file", files[t.seedSourceFileIdx].Name))
-		err = shipper_util.DownloadFileFromStorage(compactedDBName, shipper_util.IsCompressedFile(files[t.seedSourceFileIdx].Name),
-			false, shipper_util.LoggerWithFilename(t.logger, files[t.seedSourceFileIdx].Name), func() (io.ReadCloser, error) {
-				return t.baseCommonIndexSet.GetFile(t.ctx, t.name, "", files[t.seedSourceFileIdx].Name)
+		level.Info(t.logger).Log("msg", fmt.Sprintf("using %s as seed file", files[seedSourceFileIdx].Name))
+		err = shipper_util.DownloadFileFromStorage(compactedDBName, shipper_util.IsCompressedFile(files[seedSourceFileIdx].Name),
+			false, shipper_util.LoggerWithFilename(t.logger, files[seedSourceFileIdx].Name), func() (io.ReadCloser, error) {
+				return t.baseCommonIndexSet.GetFile(t.ctx, t.name, "", files[seedSourceFileIdx].Name)
 			})
 		if err != nil {
 			return err
@@ -265,18 +298,14 @@ func (t *table) compactFiles(files []storage.IndexFile) error {
 		return err
 	}
 
-	jobs := make([]interface{}, len(files))
-	for i := 0; i < len(files); i++ {
-		jobs[i] = i
-	}
-
-	return concurrency.ForEach(t.ctx, jobs, readDBsConcurrency, func(ctx context.Context, job interface{}) error {
-		workNum := job.(int)
+	// go through each file and build index in FORMAT1 from FORMAT1 files and FORMAT3 from FORMAT2 files
+	return concurrency.ForEachJob(t.ctx, len(files), readDBsConcurrency, func(ctx context.Context, idx int) error {
+		workNum := idx
 		// skip seed file
-		if workNum == t.seedSourceFileIdx {
+		if workNum == seedSourceFileIdx {
 			return nil
 		}
-		fileName := files[workNum].Name
+		fileName := files[idx].Name
 		downloadAt := filepath.Join(t.workingDirectory, fileName)
 
 		err = shipper_util.DownloadFileFromStorage(downloadAt, shipper_util.IsCompressedFile(fileName),
@@ -292,18 +321,18 @@ func (t *table) compactFiles(files []storage.IndexFile) error {
 }
 
 // writeBatch writes a batch to compactedDB
-func (t *table) writeBatch(userID string, batch []indexEntry) error {
-	if userID == string(bucketName) {
+func (t *table) writeBatch(bucketName string, batch []indexEntry) error {
+	if bucketName == shipper_util.GetUnsafeString(local.IndexBucketName) {
 		return t.writeCommonIndex(batch)
 	}
-	return t.writeUserIndex(userID, batch)
+	return t.writeUserIndex(bucketName, batch)
 }
 
-// writeCommonIndex writes a batch to compactedDB
+// writeCommonIndex writes a batch to compactedDB which is for FORMAT1 index
 func (t *table) writeCommonIndex(batch []indexEntry) error {
 	t.uploadCompactedDB = true
 	return t.compactedDB.Batch(func(tx *bbolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(bucketName)
+		b, err := tx.CreateBucketIfNotExists(local.IndexBucketName)
 		if err != nil {
 			return err
 		}
@@ -319,7 +348,7 @@ func (t *table) writeCommonIndex(batch []indexEntry) error {
 	})
 }
 
-// writeUserIndex sends a batch to write to the user index set
+// writeUserIndex sends a batch to write to the user index set which is for FORMAT3 index
 func (t *table) writeUserIndex(userID string, batch []indexEntry) error {
 	ui, err := t.getOrCreateUserIndex(userID)
 	if err != nil {
@@ -370,11 +399,9 @@ func openBoltdbFileWithNoSync(path string) (*bbolt.DB, error) {
 	return boltdb, nil
 }
 
-// findSeedFileIdx returns index of file to use as seed which would then get index from all the files written to.
-// It tries to find previously compacted file(which has uploaderName) which would be the biggest file.
-// In a large cluster, using previously compacted file as seed would significantly reduce compaction time.
+// compactedFileIdx returns index of previously compacted file(which starts with uploaderName).
 // If it can't find a previously compacted file, it would return -1.
-func findSeedFileIdx(files []storage.IndexFile) int {
+func compactedFileIdx(files []storage.IndexFile) int {
 	for i, file := range files {
 		if strings.HasPrefix(file.Name, uploaderName) {
 			return i

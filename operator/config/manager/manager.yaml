@@ -35,4 +35,6 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
+      nodeSelector:
+        kubernetes.io/os: linux
       terminationGracePeriodSeconds: 10

@@ -5,10 +5,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -16,8 +12,12 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/prom1/storage/metric"
 	"github.com/grafana/loki/pkg/querier/series"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/chunkcompat"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -158,7 +158,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, minT, maxT int
 			continue
 		}
 
-		ls := cortexpb.FromLabelAdaptersToLabels(result.Labels)
+		ls := logproto.FromLabelAdaptersToLabels(result.Labels)
 		sort.Sort(ls)
 
 		chunks, err := chunkcompat.FromChunks(userID, ls, result.Chunks)
@@ -270,8 +270,7 @@ func (q *distributorExemplarQuerier) Select(start, end int64, matchers ...[]*lab
 	var e exemplar.QueryResult
 	ret := make([]exemplar.QueryResult, len(allResults.Timeseries))
 	for i, ts := range allResults.Timeseries {
-		e.SeriesLabels = cortexpb.FromLabelAdaptersToLabels(ts.Labels)
-		e.Exemplars = cortexpb.FromExemplarProtosToExemplars(ts.Exemplars)
+		e.SeriesLabels = logproto.FromLabelAdaptersToLabels(ts.Labels)
 		ret[i] = e
 	}
 	return ret, nil

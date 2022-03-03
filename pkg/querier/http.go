@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/prometheus/model/labels"
@@ -20,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 	serverutil "github.com/grafana/loki/pkg/util/server"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -31,8 +33,27 @@ type QueryResponse struct {
 	Result     parser.Value     `json:"result"`
 }
 
+//nolint // QurierAPI defines HTTP handler functions for the querier.
+type QuerierAPI struct {
+	querier Querier
+	cfg     Config
+	limits  *validation.Overrides
+	engine  *logql.Engine
+}
+
+// NewQuerierAPI returns an instance of the QuerierAPI.
+func NewQuerierAPI(cfg Config, querier Querier, limits *validation.Overrides, logger log.Logger) *QuerierAPI {
+	engine := logql.NewEngine(cfg.Engine, querier, limits, logger)
+	return &QuerierAPI{
+		cfg:     cfg,
+		limits:  limits,
+		querier: querier,
+		engine:  engine,
+	}
+}
+
 // RangeQueryHandler is a http.HandlerFunc for range queries.
-func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
@@ -71,7 +92,7 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
-func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
@@ -111,7 +132,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // LogQueryHandler is a http.HandlerFunc for log only queries.
-func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
@@ -169,14 +190,14 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // LabelHandler is a http.HandlerFunc for handling label queries.
-func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := loghttp.ParseLabelQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
-	resp, err := q.Label(r.Context(), req)
+	resp, err := q.querier.Label(r.Context(), req)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
@@ -194,7 +215,7 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // TailHandler is a http.HandlerFunc for handling tail queries.
-func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
@@ -236,7 +257,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	tailer, err := q.Tail(r.Context(), req)
+	tailer, err := q.querier.Tail(r.Context(), req)
 	if err != nil {
 		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
 			level.Error(logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
@@ -318,14 +339,14 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
-func (q *Querier) SeriesHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := logql.ParseAndValidateSeriesQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
-	resp, err := q.Series(r.Context(), req)
+	resp, err := q.querier.Series(r.Context(), req)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
@@ -357,7 +378,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	return query, nil
 }
 
-func (q *Querier) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
+func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())

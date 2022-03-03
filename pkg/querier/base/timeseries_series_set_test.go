@@ -3,21 +3,22 @@ package base
 import (
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestTimeSeriesSeriesSet(t *testing.T) {
 
-	timeseries := []cortexpb.TimeSeries{
+	timeseries := []logproto.TimeSeries{
 		{
-			Labels: []cortexpb.LabelAdapter{
+			Labels: []logproto.LabelAdapter{
 				{
 					Name:  "label1",
 					Value: "value1",
 				},
 			},
-			Samples: []cortexpb.Sample{
+			Samples: []logproto.LegacySample{
 				{
 					Value:       3.14,
 					TimestampMs: 1234,
@@ -42,7 +43,7 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 	require.False(t, ss.Next())
 
 	// Append a new sample to seek to
-	timeseries[0].Samples = append(timeseries[0].Samples, cortexpb.Sample{
+	timeseries[0].Samples = append(timeseries[0].Samples, logproto.LegacySample{
 		Value:       1.618,
 		TimestampMs: 2345,
 	})
@@ -58,14 +59,14 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 
 func TestTimeSeriesIterator(t *testing.T) {
 	ts := timeseries{
-		series: cortexpb.TimeSeries{
-			Labels: []cortexpb.LabelAdapter{
+		series: logproto.TimeSeries{
+			Labels: []logproto.LabelAdapter{
 				{
 					Name:  "label1",
 					Value: "value1",
 				},
 			},
-			Samples: []cortexpb.Sample{
+			Samples: []logproto.LegacySample{
 				{
 					Value:       3.14,
 					TimestampMs: 1234,

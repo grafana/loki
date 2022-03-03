@@ -172,7 +172,7 @@ func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch chunk.WriteB
 	}
 
 	for _, tableWrites := range boltWriteBatch.Writes {
-		if err := t.boltdbIndexClient.WriteToDB(ctx, t.db, nil, tableWrites); err != nil {
+		if err := t.boltdbIndexClient.WriteToDB(ctx, t.db, local.IndexBucketName, tableWrites); err != nil {
 			return err
 		}
 	}
@@ -180,9 +180,9 @@ func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch chunk.WriteB
 	return nil
 }
 
-func (t *deleteRequestsTable) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (t *deleteRequestsTable) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	for _, query := range queries {
-		if err := t.boltdbIndexClient.QueryDB(ctx, t.db, query, callback); err != nil {
+		if err := t.boltdbIndexClient.QueryDB(ctx, t.db, local.IndexBucketName, query, callback); err != nil {
 			return err
 		}
 	}

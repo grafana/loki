@@ -3,7 +3,6 @@ package local
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -21,8 +21,9 @@ import (
 )
 
 var (
-	defaultBucketName   = []byte("index")
-	ErrUnexistentBoltDB = errors.New("boltdb file does not exist")
+	IndexBucketName         = []byte("index")
+	ErrUnexistentBoltDB     = errors.New("boltdb file does not exist")
+	ErrEmptyIndexBucketName = errors.New("empty index bucket name")
 )
 
 const (
@@ -170,11 +171,11 @@ func (b *BoltIndexClient) GetDB(name string, operation int) (*bbolt.DB, error) {
 	return db, nil
 }
 
-func (b *BoltIndexClient) WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes TableWrites) error {
+func (b *BoltIndexClient) WriteToDB(_ context.Context, db *bbolt.DB, bucketName []byte, writes TableWrites) error {
 	return db.Update(func(tx *bbolt.Tx) error {
 		var b *bbolt.Bucket
 		if len(bucketName) == 0 {
-			bucketName = defaultBucketName
+			return ErrEmptyIndexBucketName
 		}
 
 		// a bucket should already exist for deletes, for other writes we create one otherwise.
@@ -214,7 +215,7 @@ func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch
 			return err
 		}
 
-		err = b.WriteToDB(ctx, db, nil, writes)
+		err = b.WriteToDB(ctx, db, IndexBucketName, writes)
 		if err != nil {
 			return err
 		}
@@ -223,11 +224,11 @@ func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch
 	return nil
 }
 
-func (b *BoltIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	return chunk_util.DoParallelQueries(ctx, b.query, queries, callback)
 }
 
-func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	db, err := b.GetDB(query.TableName, DBOperationRead)
 	if err != nil {
 		if err == ErrUnexistentBoltDB {
@@ -237,12 +238,16 @@ func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, cal
 		return err
 	}
 
-	return b.QueryDB(ctx, db, query, callback)
+	return b.QueryDB(ctx, db, IndexBucketName, query, callback)
 }
 
-func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query chunk.IndexQuery,
+	callback chunk.QueryPagesCallback) error {
 	return db.View(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket(defaultBucketName)
+		if len(bucketName) == 0 {
+			return ErrEmptyIndexBucketName
+		}
+		bucket := tx.Bucket(bucketName)
 		if bucket == nil {
 			return nil
 		}
@@ -251,7 +256,7 @@ func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, query chunk
 	})
 }
 
-func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	var start []byte
 	if len(query.RangeValuePrefix) > 0 {
 		start = []byte(query.HashValue + separator + string(query.RangeValuePrefix))
@@ -263,7 +268,15 @@ func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, qu
 
 	rowPrefix := []byte(query.HashValue + separator)
 
-	var batch boltReadBatch
+	// sync.WaitGroup is needed to wait for the caller to finish processing all the index entries being streamed
+	wg := sync.WaitGroup{}
+	batch := newReadBatch()
+	defer func() {
+		batch.done()
+		wg.Wait()
+	}()
+
+	callbackDone := false
 
 	for k, v := c.Seek(start); k != nil; k, v = c.Next() {
 		if !bytes.HasPrefix(k, rowPrefix) {
@@ -277,16 +290,32 @@ func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, qu
 			continue
 		}
 
+		// we need to do callback only once to pass the batch iterator
+		if !callbackDone {
+			wg.Add(1)
+			// do the callback in a goroutine to stream back the index entries
+			go func() {
+				// wait for callback to finish processing the batch and return
+				defer wg.Done()
+				callback(query, batch)
+			}()
+			callbackDone = true
+		}
+
 		// make a copy since k, v are only valid for the life of the transaction.
 		// See: https://godoc.org/github.com/boltdb/bolt#Cursor.Seek
-		batch.rangeValue = make([]byte, len(k)-len(rowPrefix))
-		copy(batch.rangeValue, k[len(rowPrefix):])
+		rangeValue := make([]byte, len(k)-len(rowPrefix))
+		copy(rangeValue, k[len(rowPrefix):])
 
-		batch.value = make([]byte, len(v))
-		copy(batch.value, v)
+		value := make([]byte, len(v))
+		copy(value, v)
 
-		if !callback(query, &batch) {
-			break
+		err := batch.send(singleResponse{
+			rangeValue: rangeValue,
+			value:      value,
+		})
+		if err != nil {
+			return errors.Wrap(err, "failed to send row while processing boltdb index query")
 		}
 	}
 
@@ -329,36 +358,49 @@ func (b *BoltWriteBatch) Add(tableName, hashValue string, rangeValue []byte, val
 	writes.puts[key] = value
 }
 
-type boltReadBatch struct {
+type singleResponse struct {
 	rangeValue []byte
 	value      []byte
 }
 
-func (b boltReadBatch) Iterator() chunk.ReadBatchIterator {
-	return &boltReadBatchIterator{
-		boltReadBatch: b,
+type readBatch struct {
+	respChan chan singleResponse
+	curr     singleResponse
+}
+
+func newReadBatch() *readBatch {
+	return &readBatch{respChan: make(chan singleResponse)}
+}
+
+func (r *readBatch) Iterator() chunk.ReadBatchIterator {
+	return r
+}
+
+func (r *readBatch) Next() bool {
+	var ok bool
+	r.curr, ok = <-r.respChan
+	return ok
+}
+
+func (r *readBatch) RangeValue() []byte {
+	return r.curr.rangeValue
+}
+
+func (r *readBatch) Value() []byte {
+	return r.curr.value
+}
+
+func (r *readBatch) done() {
+	close(r.respChan)
+}
+
+func (r *readBatch) send(resp singleResponse) error {
+	select {
+	case r.respChan <- resp:
+		return nil
+	case <-time.After(10 * time.Second):
+		return errors.New("timed out sending response")
 	}
-}
-
-type boltReadBatchIterator struct {
-	consumed bool
-	boltReadBatch
-}
-
-func (b *boltReadBatchIterator) Next() bool {
-	if b.consumed {
-		return false
-	}
-	b.consumed = true
-	return true
-}
-
-func (b *boltReadBatchIterator) RangeValue() []byte {
-	return b.rangeValue
-}
-
-func (b *boltReadBatchIterator) Value() []byte {
-	return b.value
 }
 
 // Open the database.

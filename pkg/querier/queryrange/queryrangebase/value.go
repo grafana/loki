@@ -1,7 +1,6 @@
 package queryrangebase
 
 import (
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -9,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/series"
 )
 
@@ -23,7 +23,7 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 	case promql.Scalar:
 		return []SampleStream{
 			{
-				Samples: []cortexpb.Sample{
+				Samples: []logproto.LegacySample{
 					{
 						Value:       v.V,
 						TimestampMs: v.T,
@@ -57,20 +57,20 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 	return nil, errors.Errorf("Unexpected value type: [%s]", res.Value.Type())
 }
 
-func mapLabels(ls labels.Labels) []cortexpb.LabelAdapter {
-	result := make([]cortexpb.LabelAdapter, 0, len(ls))
+func mapLabels(ls labels.Labels) []logproto.LabelAdapter {
+	result := make([]logproto.LabelAdapter, 0, len(ls))
 	for _, l := range ls {
-		result = append(result, cortexpb.LabelAdapter(l))
+		result = append(result, logproto.LabelAdapter(l))
 	}
 
 	return result
 }
 
-func mapPoints(pts ...promql.Point) []cortexpb.Sample {
-	result := make([]cortexpb.Sample, 0, len(pts))
+func mapPoints(pts ...promql.Point) []logproto.LegacySample {
+	result := make([]logproto.LegacySample, 0, len(pts))
 
 	for _, pt := range pts {
-		result = append(result, cortexpb.Sample{
+		result = append(result, logproto.LegacySample{
 			Value:       pt.V,
 			TimestampMs: pt.T,
 		})

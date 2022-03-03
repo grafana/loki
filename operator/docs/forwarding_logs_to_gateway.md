@@ -36,7 +36,7 @@ metadata:
   name: lokistack-dev-tenant-logs-role
 rules:
 - apiGroups:
-  - 'loki.openshift.io'
+  - 'loki.grafana.com'
   resources:
   - application
   - infrastructure

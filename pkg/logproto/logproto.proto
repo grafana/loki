@@ -82,6 +82,8 @@ message LabelResponse {
 message StreamAdapter {
   string labels = 1 [(gogoproto.jsontag) = "labels"];
   repeated EntryAdapter entries = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "entries"];
+  // hash contains the original hash of the stream.
+  uint64 hash = 3 [(gogoproto.jsontag) = "-"];
 }
 
 message EntryAdapter {
@@ -95,9 +97,16 @@ message Sample {
   uint64 hash = 3 [(gogoproto.jsontag) = "hash"];
 }
 
+// LegacySample exists for backwards compatibility reasons and is deprecated. Do not use.
+message LegacySample {
+  double value       = 1;
+  int64 timestamp_ms = 2;
+}
+
 message Series {
   string labels = 1 [(gogoproto.jsontag) = "labels"];
   repeated Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "samples"];
+  uint64 streamHash = 3 [(gogoproto.jsontag) = "streamHash"];
 }
 
 message TailRequest {
@@ -144,6 +153,12 @@ message TimeSeriesChunk {
 message LabelPair {
   string name = 1;
   string value = 2;
+}
+
+// LegacyLabelPair exists for backwards compatibility reasons and is deprecated. Do not use.
+message LegacyLabelPair {
+  bytes name = 1;
+  bytes value = 2;
 }
 
 message Chunk {

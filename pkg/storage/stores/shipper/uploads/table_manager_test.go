@@ -2,7 +2,6 @@ package uploads
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -38,12 +37,7 @@ func buildTestTableManager(t *testing.T, testDir string) (*TableManager, *local.
 }
 
 func TestLoadTables(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "load-tables")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(testDir))
-	}()
+	testDir := t.TempDir()
 
 	boltDBIndexClient, storageClient := buildTestClients(t, testDir)
 	indexPath := filepath.Join(testDir, indexDirName)
@@ -56,28 +50,36 @@ func TestLoadTables(t *testing.T) {
 	testutil.AddRecordsToDB(t, filepath.Join(indexPath, "table0"), boltDBIndexClient, 0, 10, nil)
 
 	// table1 with 2 dbs
-	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table1"), map[string]testutil.DBRecords{
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table1"), map[string]testutil.DBConfig{
 		"db1": {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      20,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      20,
+				NumRecords: 10,
+			},
 		},
-	}, false, nil)
+	}, nil)
 
 	// table2 with 2 dbs
-	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table2"), map[string]testutil.DBRecords{
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table2"), map[string]testutil.DBConfig{
 		"db1": {
-			Start:      30,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      30,
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      40,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      40,
+				NumRecords: 10,
+			},
 		},
-	}, false, nil)
+	}, nil)
 
 	expectedTables := map[string]struct {
 		start, numRecords int
@@ -109,12 +111,7 @@ func TestLoadTables(t *testing.T) {
 }
 
 func TestTableManager_BatchWrite(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "batch-write")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(testDir))
-	}()
+	testDir := t.TempDir()
 
 	tm, boltIndexClient, stopFunc := buildTestTableManager(t, testDir)
 	defer func() {
@@ -136,7 +133,6 @@ func TestTableManager_BatchWrite(t *testing.T) {
 
 	require.NoError(t, tm.BatchWrite(context.Background(), writeBatch))
 
-	require.NoError(t, err)
 	require.Len(t, tm.tables, len(tc))
 
 	for tableName, expectedIndex := range tc {
@@ -146,12 +142,7 @@ func TestTableManager_BatchWrite(t *testing.T) {
 }
 
 func TestTableManager_QueryPages(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "query-pages")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(testDir))
-	}()
+	testDir := t.TempDir()
 
 	tm, boltIndexClient, stopFunc := buildTestTableManager(t, testDir)
 	defer func() {

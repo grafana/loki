@@ -10,16 +10,6 @@ func StringRef(value string) *string {
 	return &value
 }
 
-func StringSliceContains(slice []string, value string) bool {
-	for _, item := range slice {
-		if item == value {
-			return true
-		}
-	}
-
-	return false
-}
-
 // SnakeCase converts given string `s` into `snake_case`.
 func SnakeCase(s string) string {
 	var buf bytes.Buffer
@@ -31,4 +21,15 @@ func SnakeCase(s string) string {
 		fmt.Fprintf(&buf, "%c", r)
 	}
 	return buf.String()
+}
+
+// StringsContain returns true if the search value is within the list of input values.
+func StringsContain(values []string, search string) bool {
+	for _, v := range values {
+		if search == v {
+			return true
+		}
+	}
+
+	return false
 }

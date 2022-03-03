@@ -19,7 +19,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/dns"
 	"github.com/prometheus/prometheus/notifier"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type NotifierConfig struct {
@@ -128,6 +128,9 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	}
 
 	promConfig := &config.Config{
+		GlobalConfig: config.GlobalConfig{
+			ExternalLabels: rulerConfig.ExternalLabels,
+		},
 		AlertingConfig: config.AlertingConfig{
 			AlertmanagerConfigs: amConfigs,
 		},

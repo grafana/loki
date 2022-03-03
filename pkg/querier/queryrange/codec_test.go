@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -415,6 +414,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiPromResponse{
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 1}},
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
 					Data: queryrangebase.PrometheusData{
@@ -481,10 +481,11 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.BACKWARD,
-				Limit:     100,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.BACKWARD,
+				Limit:      100,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -568,10 +569,11 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.BACKWARD,
-				Limit:     6,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.BACKWARD,
+				Limit:      6,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -652,17 +654,17 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.FORWARD,
-				Limit:     100,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.FORWARD,
+				Limit:      100,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
 							Labels: `{foo="bar", level="debug"}`,
 							Entries: []logproto.Entry{
-
 								{Timestamp: time.Unix(0, 5), Line: "5"},
 								{Timestamp: time.Unix(0, 6), Line: "6"},
 								{Timestamp: time.Unix(0, 15), Line: "15"},
@@ -740,17 +742,17 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.FORWARD,
-				Limit:     5,
-				Version:   1,
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.FORWARD,
+				Limit:      5,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
 							Labels: `{foo="bar", level="debug"}`,
 							Entries: []logproto.Entry{
-
 								{Timestamp: time.Unix(0, 5), Line: "5"},
 								{Timestamp: time.Unix(0, 6), Line: "6"},
 							},
@@ -906,6 +908,7 @@ var (
 			"execTime": 22,
 			"linesProcessedPerSecond": 23,
 			"queueTime": 21,
+			"subqueries": 1,
 			"totalBytesProcessed": 24,
 			"totalLinesProcessed": 25
 		}
@@ -966,12 +969,12 @@ var (
 
 	sampleStreams = []queryrangebase.SampleStream{
 		{
-			Labels:  []cortexpb.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
-			Samples: []cortexpb.Sample{{Value: 0.013333333333333334, TimestampMs: 1568404331324}},
+			Labels:  []logproto.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
+			Samples: []logproto.LegacySample{{Value: 0.013333333333333334, TimestampMs: 1568404331324}},
 		},
 		{
-			Labels:  []cortexpb.LabelAdapter{{Name: "filename", Value: "/var/hostlog/syslog"}, {Name: "job", Value: "varlogs"}},
-			Samples: []cortexpb.Sample{{Value: 3.45, TimestampMs: 1568404331324}, {Value: 4.45, TimestampMs: 1568404331339}},
+			Labels:  []logproto.LabelAdapter{{Name: "filename", Value: "/var/hostlog/syslog"}, {Name: "job", Value: "varlogs"}},
+			Samples: []logproto.LegacySample{{Value: 3.45, TimestampMs: 1568404331324}, {Value: 4.45, TimestampMs: 1568404331339}},
 		},
 	}
 	streamsString = `{
@@ -1057,6 +1060,7 @@ var (
 			ExecTime:                22,
 			LinesProcessedPerSecond: 23,
 			TotalBytesProcessed:     24,
+			Subqueries:              1,
 			TotalLinesProcessed:     25,
 		},
 		Querier: stats.Querier{
@@ -1247,11 +1251,11 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 func generateMatrix() (res []queryrangebase.SampleStream) {
 	for i := 0; i < 100; i++ {
 		s := queryrangebase.SampleStream{
-			Labels:  []cortexpb.LabelAdapter{},
-			Samples: []cortexpb.Sample{},
+			Labels:  []logproto.LabelAdapter{},
+			Samples: []logproto.LegacySample{},
 		}
 		for j := 0; j < 1000; j++ {
-			s.Samples = append(s.Samples, cortexpb.Sample{
+			s.Samples = append(s.Samples, logproto.LegacySample{
 				Value:       float64(j),
 				TimestampMs: int64(j),
 			})

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"text/scanner"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -124,5 +125,33 @@ func Test_isFunction(t *testing.T) {
 				t.Errorf("isFunction() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func Test_parseDuration(t *testing.T) {
+	const MICROSECOND = 1000 * time.Nanosecond
+	const DAY = 24 * time.Hour
+	const WEEK = 7 * DAY
+	const YEAR = 365 * DAY
+
+	for _, tc := range []struct {
+		input    string
+		expected time.Duration
+	}{
+		{"1ns", time.Nanosecond},
+		{"1s", time.Second},
+		{"1us", MICROSECOND},
+		{"1m", time.Minute},
+		{"1h", time.Hour},
+		{"1µs", MICROSECOND},
+		{"1y", YEAR},
+		{"1w", WEEK},
+		{"1d", DAY},
+		{"1h15m30.918273645s", time.Hour + 15*time.Minute + 30*time.Second + 918273645*time.Nanosecond},
+	} {
+		actual, err := parseDuration(tc.input)
+
+		require.Equal(t, err, nil)
+		require.Equal(t, tc.expected, actual)
 	}
 }

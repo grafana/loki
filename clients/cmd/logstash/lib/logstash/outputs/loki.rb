@@ -47,6 +47,9 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   ## 'Backoff configuration. Initial backoff time between retries. Default 1s'
   config :min_delay, :validate => :number, :default => 1, :required => false
 
+  ## 'An array of fields to map to labels, if defined only fields in this list will be mapped.'
+  config :include_fields, :validate => :array, :default => [], :required => false
+
   ## 'Backoff configuration. Maximum backoff time between retries. Default 300s'
   config :max_delay, :validate => :number, :default => 300, :required => false
 
@@ -198,7 +201,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   ## Receives logstash events
   public
   def receive(event)
-    @entries << Entry.new(event, @message_field)
+    @entries << Entry.new(event, @message_field, @include_fields)
   end
 
   def close

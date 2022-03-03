@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type lokiResult struct {
@@ -327,6 +328,20 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 	}
 
 	lokiReq := r.(*LokiRequest)
+
+	// step align start and end time of the query. Start time is rounded down and end time is rounded up.
+	stepNs := r.GetStep() * 1e6
+	startNs := lokiReq.StartTs.UnixNano()
+	start := time.Unix(0, startNs-startNs%stepNs)
+
+	endNs := lokiReq.EndTs.UnixNano()
+	if mod := endNs % stepNs; mod != 0 {
+		endNs += stepNs - mod
+	}
+	end := time.Unix(0, endNs)
+
+	lokiReq = lokiReq.WithStartEnd(util.TimeToMillis(start), util.TimeToMillis(end)).(*LokiRequest)
+
 	// step is >= configured split interval, let us just split the query interval by step
 	if lokiReq.Step >= interval.Milliseconds() {
 		forInterval(time.Duration(lokiReq.Step*1e6), lokiReq.StartTs, lokiReq.EndTs, false, func(start, end time.Time) {
@@ -344,12 +359,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 		return reqs, nil
 	}
 
-	// nextIntervalBoundary always moves ahead in a multiple of steps but the time it returns would not be step aligned.
-	// To have step aligned intervals for better cache-ability of results, let us step align the start time which make all the split intervals step aligned.
-	startNs := lokiReq.StartTs.UnixNano()
-	start := time.Unix(0, startNs-startNs%(r.GetStep()*1e6))
-
-	for start := start; start.Before(lokiReq.EndTs); start = nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * time.Millisecond) {
+	for start := lokiReq.StartTs; start.Before(lokiReq.EndTs); start = nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * time.Millisecond) {
 		end := nextIntervalBoundary(start, r.GetStep(), interval)
 		if end.Add(time.Duration(r.GetStep())*time.Millisecond).After(lokiReq.EndTs) || end.Add(time.Duration(r.GetStep())*time.Millisecond) == lokiReq.EndTs {
 			end = lokiReq.EndTs
@@ -365,10 +375,6 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 		})
 	}
 
-	if len(reqs) != 0 {
-		// change the start time to original time
-		reqs[0] = reqs[0].WithStartEnd(lokiReq.GetStart(), reqs[0].GetEnd())
-	}
 	return reqs, nil
 }
 

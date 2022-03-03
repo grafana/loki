@@ -242,22 +242,3 @@ func readPositionsFile(cfg Config, logger log.Logger) (map[string]string, error)
 
 	return p.Positions, nil
 }
-
-func writePositionFile(filename string, positions map[string]string) error {
-	buf, err := yaml.Marshal(File{
-		Positions: positions,
-	})
-	if err != nil {
-		return err
-	}
-
-	target := filepath.Clean(filename)
-	temp := target + "-new"
-
-	err = ioutil.WriteFile(temp, buf, os.FileMode(positionFileMode))
-	if err != nil {
-		return err
-	}
-
-	return os.Rename(temp, target)
-}

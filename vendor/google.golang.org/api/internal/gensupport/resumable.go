@@ -177,6 +177,22 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 				return prepareReturn(resp, err)
 			}
 
+			// Check for context cancellation or timeout once more. If more than one
+			// case in the select statement above was satisfied at the same time, Go
+			// will choose one arbitrarily.
+			// That can cause an operation to go through even if the context was
+			// canceled before or the timeout was reached.
+			select {
+			case <-ctx.Done():
+				if err == nil {
+					err = ctx.Err()
+				}
+				return prepareReturn(resp, err)
+			case <-quitAfter:
+				return prepareReturn(resp, err)
+			default:
+			}
+
 			resp, err = rx.transferChunk(ctx)
 
 			var status int

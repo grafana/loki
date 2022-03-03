@@ -215,7 +215,7 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 	return nil
 }
 
-func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages")
 	defer sp.Finish()
 
@@ -323,11 +323,11 @@ func (c *columnKeyIterator) Value() []byte {
 	return c.items[c.i].Value
 }
 
-func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	return chunk_util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	const null = string('\xff')
 
 	log, ctx := spanlogger.New(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})

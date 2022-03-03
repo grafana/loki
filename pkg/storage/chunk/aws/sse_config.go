@@ -6,7 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
+	bucket_s3 "github.com/grafana/loki/pkg/storage/bucket/s3"
 )
 
 const (
@@ -23,13 +23,13 @@ type SSEParsedConfig struct {
 }
 
 // NewSSEParsedConfig creates a struct to configure server side encryption (SSE)
-func NewSSEParsedConfig(cfg cortex_s3.SSEConfig) (*SSEParsedConfig, error) {
+func NewSSEParsedConfig(cfg bucket_s3.SSEConfig) (*SSEParsedConfig, error) {
 	switch cfg.Type {
-	case cortex_s3.SSES3:
+	case bucket_s3.SSES3:
 		return &SSEParsedConfig{
 			ServerSideEncryption: sseS3Type,
 		}, nil
-	case cortex_s3.SSEKMS:
+	case bucket_s3.SSEKMS:
 		if cfg.KMSKeyID == "" {
 			return nil, errors.New("KMS key id must be passed when SSE-KMS encryption is selected")
 		}

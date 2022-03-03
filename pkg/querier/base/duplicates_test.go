@@ -6,24 +6,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestDuplicatesSamples(t *testing.T) {
-	ts := cortexpb.TimeSeries{
-		Labels: []cortexpb.LabelAdapter{
+	ts := logproto.TimeSeries{
+		Labels: []logproto.LabelAdapter{
 			{
 				Name:  "lbl",
 				Value: "val",
 			},
 		},
-		Samples: []cortexpb.Sample{
+		Samples: []logproto.LegacySample{
 			{Value: 0.948569891, TimestampMs: 1583946731937},
 			{Value: 0.948569891, TimestampMs: 1583946731937},
 			{Value: 0.949927461, TimestampMs: 1583946751878},
@@ -53,8 +54,8 @@ func TestDuplicatesSamples(t *testing.T) {
 	}
 
 	// run same query, but with deduplicated samples
-	deduped := cortexpb.TimeSeries{
-		Labels: []cortexpb.LabelAdapter{
+	deduped := logproto.TimeSeries{
+		Labels: []logproto.LabelAdapter{
 			{
 				Name:  "lbl",
 				Value: "val",
@@ -69,8 +70,8 @@ func TestDuplicatesSamples(t *testing.T) {
 	}
 }
 
-func dedupeSorted(samples []cortexpb.Sample) []cortexpb.Sample {
-	out := []cortexpb.Sample(nil)
+func dedupeSorted(samples []logproto.LegacySample) []logproto.LegacySample {
+	out := []logproto.LegacySample(nil)
 	lastTs := int64(0)
 	for _, s := range samples {
 		if s.TimestampMs == lastTs {
@@ -83,8 +84,8 @@ func dedupeSorted(samples []cortexpb.Sample) []cortexpb.Sample {
 	return out
 }
 
-func runPromQLAndGetJSONResult(t *testing.T, query string, ts cortexpb.TimeSeries, step time.Duration) string {
-	tq := &testQueryable{ts: newTimeSeriesSeriesSet([]cortexpb.TimeSeries{ts})}
+func runPromQLAndGetJSONResult(t *testing.T, query string, ts logproto.TimeSeries, step time.Duration) string {
+	tq := &testQueryable{ts: newTimeSeriesSeriesSet([]logproto.TimeSeries{ts})}
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:     log.NewNopLogger(),

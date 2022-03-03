@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -50,6 +51,11 @@ const (
 	// ringNumTokens sets our single token in the ring,
 	// we only need to insert 1 token to be used for leader election purposes.
 	ringNumTokens = 1
+)
+
+var (
+	retentionEnabledStats = usagestats.NewString("compactor_retention_enabled")
+	defaultRetentionStats = usagestats.NewString("compactor_default_retention")
 )
 
 type Config struct {
@@ -118,7 +124,14 @@ type Compactor struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, clientMetrics storage.ClientMetrics, r prometheus.Registerer) (*Compactor, error) {
+	retentionEnabledStats.Set("false")
+	if cfg.RetentionEnabled {
+		retentionEnabledStats.Set("true")
+	}
+	if limits != nil {
+		defaultRetentionStats.Set(limits.DefaultLimits().RetentionPeriod.String())
+	}
 	if cfg.SharedStoreType == "" {
 		return nil, errors.New("compactor shared_store_type must be specified")
 	}
@@ -167,7 +180,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	if err := compactor.init(storageConfig, schemaConfig, limits, r); err != nil {
+	if err := compactor.init(storageConfig, schemaConfig, limits, clientMetrics, r); err != nil {
 		return nil, err
 	}
 
@@ -175,8 +188,8 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	return compactor, nil
 }
 
-func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, r prometheus.Registerer) error {
-	objectClient, err := storage.NewObjectClient(c.cfg.SharedStoreType, storageConfig)
+func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, clientMetrics storage.ClientMetrics, r prometheus.Registerer) error {
+	objectClient, err := storage.NewObjectClient(c.cfg.SharedStoreType, storageConfig, clientMetrics)
 	if err != nil {
 		return err
 	}
@@ -191,7 +204,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 	if c.cfg.RetentionEnabled {
 		var encoder objectclient.KeyEncoder
 		if _, ok := objectClient.(*local.FSObjectClient); ok {
-			encoder = objectclient.Base64Encoder
+			encoder = objectclient.FSEncoder
 		}
 
 		chunkClient := objectclient.NewClient(objectClient, encoder, schemaConfig.SchemaConfig)
@@ -408,7 +421,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 
 	interval := retention.ExtractIntervalFromTableName(tableName)
 	intervalMayHaveExpiredChunks := false
-	if c.cfg.RetentionEnabled && applyRetention {
+	if applyRetention {
 		intervalMayHaveExpiredChunks = c.expirationChecker.IntervalMayHaveExpiredChunks(interval, "")
 	}
 
@@ -424,7 +437,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	status := statusSuccess
 	start := time.Now()
 
-	if c.cfg.RetentionEnabled {
+	if applyRetention {
 		c.expirationChecker.MarkPhaseStarted()
 	}
 
@@ -439,7 +452,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 			}
 		}
 
-		if c.cfg.RetentionEnabled {
+		if applyRetention {
 			if status == statusSuccess {
 				c.expirationChecker.MarkPhaseFinished()
 			} else {
@@ -550,7 +563,7 @@ func (e *expirationChecker) MarkPhaseFinished() {
 }
 
 func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
-	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, "") || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval, "")
+	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID) || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID)
 }
 
 func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime model.Time, now model.Time) bool {

@@ -29,7 +29,7 @@ type TokenCredential interface {
 // TokenCredential's token value by calling SetToken. Your tokenRefresher function must return a time.Duration
 // indicating how long the TokenCredential object should wait before calling your tokenRefresher function again.
 // If your tokenRefresher callback fails to refresh the token, you can return a duration of 0 to stop your
-// TokenCredential object from ever invoking tokenRefresher again. Also, oen way to deal with failing to refresh a
+// TokenCredential object from ever invoking tokenRefresher again. Also, one way to deal with failing to refresh a
 // token is to cancel a context.Context object used by requests that have the TokenCredential object in their pipeline.
 func NewTokenCredential(initialToken string, tokenRefresher TokenRefresher) TokenCredential {
 	tc := &tokenCredential{}

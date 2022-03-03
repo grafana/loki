@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
@@ -117,7 +116,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(logproto.Stream{
-			Labels: cortexpb.FromLabelAdaptersToLabels(series.Labels).String(),
+			Labels: logproto.FromLabelAdaptersToLabels(series.Labels).String(),
 		}, nil)
 
 		if err != nil {

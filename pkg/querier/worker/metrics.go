@@ -7,7 +7,7 @@ import (
 
 type Metrics struct {
 	concurrentWorkers             prometheus.Gauge
-	inflightRequests              prometheus.Gauge
+	inflightRequests              *prometheus.GaugeVec
 	frontendClientRequestDuration *prometheus.HistogramVec
 	frontendClientsGauge          prometheus.Gauge
 }
@@ -18,10 +18,10 @@ func NewMetrics(conf Config, r prometheus.Registerer) *Metrics {
 			Name: "loki_querier_worker_concurrency",
 			Help: "Number of concurrent querier workers",
 		}),
-		inflightRequests: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		inflightRequests: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_querier_worker_inflight_queries",
 			Help: "Number of queries being processed by the querier workers",
-		}),
+		}, []string{"user"}),
 		frontendClientRequestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_querier_query_frontend_request_duration_seconds",
 			Help:    "Time spend doing requests to frontend.",

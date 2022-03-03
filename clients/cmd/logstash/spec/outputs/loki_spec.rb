@@ -28,12 +28,15 @@ describe LogStash::Outputs::Loki do
 
   context 'when adding en entry to the batch' do
     let (:simple_loki_config) {{'url' => 'http://localhost:3100'}}
-    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message")}
-    let (:lbs) { {"buzz"=>"bar","cluster"=>"us-central1"}.sort.to_h}
+    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", [])}
+    let (:lbs) {{"buzz"=>"bar","cluster"=>"us-central1"}.sort.to_h}
+    let (:include_loki_config) {{ 'url' => 'http://localhost:3100', 'include_fields' => ["cluster"] }}
+    let (:include_entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", ["cluster"])}
+    let (:include_lbs) {{"cluster"=>"us-central1"}.sort.to_h}
 
     it 'should not add empty line' do
       plugin = LogStash::Plugin.lookup("output", "loki").new(simple_loki_config)
-      emptyEntry = Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"foo")
+      emptyEntry = Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"foo", [])
       expect(plugin.add_entry_to_batch(emptyEntry)).to eql true
       expect(plugin.batch).to eql nil
     end
@@ -47,6 +50,18 @@ describe LogStash::Outputs::Loki do
       expect(plugin.batch.streams.length).to eq 1
       expect(plugin.batch.streams[lbs.to_s]['entries'].length).to eq 2
       expect(plugin.batch.streams[lbs.to_s]['labels']).to eq lbs
+      expect(plugin.batch.size_bytes).to eq 14
+    end
+
+    it 'should only allowed labels defined in include_fields' do
+      plugin = LogStash::Plugin.lookup("output", "loki").new(include_loki_config)
+      expect(plugin.batch).to eql nil
+      expect(plugin.add_entry_to_batch(include_entry)).to eql true
+      expect(plugin.add_entry_to_batch(include_entry)).to eql true
+      expect(plugin.batch).not_to be_nil
+      expect(plugin.batch.streams.length).to eq 1
+      expect(plugin.batch.streams[include_lbs.to_s]['entries'].length).to eq 2
+      expect(plugin.batch.streams[include_lbs.to_s]['labels']).to eq include_lbs
       expect(plugin.batch.size_bytes).to eq 14
     end
 
@@ -69,7 +84,7 @@ describe LogStash::Outputs::Loki do
   end
 
   context 'batch expiration' do
-    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message")}
+    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", [])}
 
     it 'should not expire if empty' do
       loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>0.5}))
@@ -138,7 +153,7 @@ describe LogStash::Outputs::Loki do
   end
 
   context 'http requests' do
-    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message")}
+    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", [])}
 
     it 'should send credentials' do
       conf = {

@@ -9,11 +9,10 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
-	"github.com/cortexproject/cortex/pkg/util/validation"
-
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/prom1/storage/metric"
 	base_querier "github.com/grafana/loki/pkg/querier/base"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type MockDistributor struct {

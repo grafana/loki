@@ -7,8 +7,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	cutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,6 +26,8 @@ import (
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/usagestats"
+	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"
@@ -36,11 +36,6 @@ import (
 const (
 	queryBatchSize       = 128
 	queryBatchSampleSize = 512
-)
-
-// Errors returned on Query.
-var (
-	ErrStreamMissing = errors.New("Stream missing")
 )
 
 var (
@@ -59,6 +54,8 @@ var (
 		Name:      "ingester_streams_removed_total",
 		Help:      "The total number of streams removed per tenant.",
 	}, []string{"tenant"})
+
+	streamsCountStats = usagestats.NewInt("ingester_streams_count")
 )
 
 type instance struct {
@@ -122,15 +119,18 @@ func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runt
 func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *logproto.Chunk) error {
 	fp := i.getHashForLabels(ls)
 
-	s, loaded, _ := i.streams.LoadOrStoreNewByFP(fp, func() (*stream, error) {
-		sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(ls), fp)
-		return newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics), nil
-	})
-	if !loaded {
-		i.streamsCreatedTotal.Inc()
-		memoryStreams.WithLabelValues(i.instanceID).Inc()
-		i.addTailersToNewStream(s)
-	}
+	s, _, _ := i.streams.LoadOrStoreNewByFP(fp,
+		func() (*stream, error) {
+			s := i.createStreamByFP(ls, fp)
+			s.chunkMtx.Lock()
+			return s, nil
+		},
+		func(s *stream) error {
+			s.chunkMtx.Lock()
+			return nil
+		},
+	)
+	defer s.chunkMtx.Unlock()
 
 	err := s.consumeChunk(ctx, chunk)
 	if err == nil {
@@ -146,16 +146,32 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	defer recordPool.PutRecord(record)
 
 	var appendErr error
-	for _, s := range req.Streams {
+	for _, reqStream := range req.Streams {
 
-		err := i.executeWithGetOrCreateStream(s, record, func(stream *stream) error {
-			_, err := stream.Push(ctx, s.Entries, record, 0, false)
-			return err
-		})
+		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
+			func() (*stream, error) {
+				s, err := i.createStream(reqStream, record)
+				// Lock before adding to maps
+				if err == nil {
+					s.chunkMtx.Lock()
+				}
+				return s, err
+			},
+			func(s *stream) error {
+				s.chunkMtx.Lock()
+				return nil
+			},
+		)
 		if err != nil {
 			appendErr = err
 			continue
 		}
+
+		_, err = s.Push(ctx, reqStream.Entries, record, 0, false)
+		if err != nil {
+			appendErr = err
+		}
+		s.chunkMtx.Unlock()
 	}
 
 	if !record.IsEmpty() {
@@ -218,7 +234,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	}
 	fp := i.getHashForLabels(labels)
 
-	sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(labels), fp)
+	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
@@ -235,6 +251,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
+	streamsCountStats.Add(1)
 
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
@@ -247,60 +264,26 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	return s, nil
 }
 
+func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
+	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
+
+	i.streamsCreatedTotal.Inc()
+	memoryStreams.WithLabelValues(i.instanceID).Inc()
+	i.addTailersToNewStream(s)
+
+	return s
+}
+
 // getOrCreateStream returns the stream or creates it.
+// It's safe to use this function if returned stream is not consistency sensitive to streamsMap(e.g. ingesterRecoverer),
+// otherwise use streamsMap.LoadOrStoreNew with locking stream's chunkMtx inside.
 func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
 	s, _, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
 		return i.createStream(pushReqStream, record)
-	})
+	}, nil)
 
 	return s, err
-}
-
-// executeWithGetOrCreateStream executes fn after find or create stream, with chunkMtx locked.
-// Use this to keep Load and Delete consistency for streams while executing fn.
-// If fn doesn't care about stream deletion from streams, use getOrCreateStream directly(e.g. ingesterRecoverer).
-func (i *instance) executeWithGetOrCreateStream(pushReqStream logproto.Stream, record *WALRecord, fn func(*stream) error) error {
-	var s *stream
-	prev, loaded, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
-		prev, err := i.createStream(pushReqStream, record)
-		if err != nil {
-			return nil, err
-		}
-		// Lock before adding to maps
-		prev.chunkMtx.Lock()
-		return prev, nil
-	})
-	if err != nil {
-		return err
-	}
-	if !loaded {
-		defer prev.chunkMtx.Unlock()
-		s = prev
-	} else {
-		prev.chunkMtx.Lock()
-		defer prev.chunkMtx.Unlock()
-		// Double check with prev locked
-		s, loaded, err = i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
-			s, err := i.createStream(pushReqStream, record)
-			if err != nil {
-				return nil, err
-			}
-			s.chunkMtx.Lock()
-			return s, nil
-		})
-		if err != nil {
-			return err
-		}
-		if prev != s {
-			if loaded {
-				// s is not created in this push request, lock it
-				s.chunkMtx.Lock()
-			}
-			defer s.chunkMtx.Unlock()
-		}
-	}
-
-	return fn(s)
 }
 
 // removeStream removes a stream from the instance.
@@ -309,6 +292,7 @@ func (i *instance) removeStream(s *stream) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
+		streamsCountStats.Add(-1)
 	}
 }
 
@@ -327,7 +311,7 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	return s.labels
 }
 
-func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter.EntryIterator, error) {
+func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -362,10 +346,10 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 		return nil, err
 	}
 
-	return iters, nil
+	return iter.NewSortEntryIterator(iters, req.Direction), nil
 }
 
-func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) ([]iter.SampleIterator, error) {
+func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
@@ -407,7 +391,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	return iters, nil
+	return iter.NewSortSampleIterator(iters), nil
 }
 
 // Label returns the label names or values depending on the given request
@@ -559,7 +543,7 @@ func (i *instance) forMatchingStreams(
 	shards *astmapper.ShardAnnotation,
 	fn func(*stream) error,
 ) error {
-	filters, matchers := cutil.SplitFiltersAndMatchers(matchers)
+	filters, matchers := util.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(matchers, shards)
 	if err != nil {
 		return err
@@ -572,7 +556,9 @@ outer:
 	for _, streamID := range ids {
 		stream, ok := i.streams.LoadByFP(streamID)
 		if !ok {
-			return ErrStreamMissing
+			// If a stream is missing here, it has already been flushed
+			// and is supposed to be picked up from storage by querier
+			continue
 		}
 		for _, filter := range filters {
 			if !filter.Matches(stream.labels.Get(filter.Name)) {

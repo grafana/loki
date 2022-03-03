@@ -72,8 +72,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 - `<labelvalue>` : a string of unicode characters
 - `<filename>` : a valid path relative to current working directory or an absolute path.
 - `<host>` : a valid string consisting of a hostname or IP followed by an optional port number
-- `<string>` : a regular string
-- `<secret>` : a regular string that is a secret, such as a password
+- `<string>` : a string
+- `<secret>` : a string that represents a secret, such as a password
 
 ### Supported contents and default values of `loki.yaml`
 
@@ -164,6 +164,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # If a more specific configuration is given in other sections,
 # the related configuration within this section will be ignored.
 [common: <common>]
+
+# Configuration for usage report
+[analytics: <analytics>]
 ```
 
 ## server
@@ -293,6 +296,10 @@ The `querier` block configures the Loki Querier.
 # CLI flag: -querier.query-store-only
 [query_store_only: <boolean> | default = false]
 
+# Allow queries for multiple tenants.
+# CLI flag: -querier.multi-tenant-queries-enabled
+[multi_tenant_queries_enabled: <boolean> | default = false]
+
 # Configuration options for the LogQL engine.
 engine:
   # Timeout for query execution
@@ -338,7 +345,7 @@ The `frontend` block configures the Loki query-frontend.
 # Maximum number of outstanding requests per tenant per frontend; requests
 # beyond this error with HTTP 429.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
-[max_outstanding_per_tenant: <int> | default = 100]
+[max_outstanding_per_tenant: <int> | default = 2048]
 
 # In the event a tenant is repeatedly sending queries that lead the querier to crash
 # or be killed due to an out-of-memory error, the crashed querier will be disconnected
@@ -423,6 +430,10 @@ The `ruler` block configures the Loki ruler.
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
 [external_url: <url> | default = ]
+
+# Labels to add to all alerts
+external_labels:
+  [<labelname>: <labelvalue> ...]
 
 ruler_client:
   # Path to the client certificate file, which will be used for authenticating
@@ -701,7 +712,7 @@ ring:
 
   # Name of network interface to read addresses from.
   # CLI flag: -<prefix>.instance-interface-names
-  [instance_interface_names: <list of string> | default = [eth0 en0]]
+  [instance_interface_names: <list of string> | default = [<private network interfaces>]]
 
   # The number of tokens the lifecycler will generate and put into the ring if
   # it joined without transferring tokens from another lifecycler.
@@ -968,7 +979,7 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.
 # CLI flag: -querier.worker-match-max-concurrent
-[match_max_concurrent: <boolean> | default = false]
+[match_max_concurrent: <boolean> | default = true]
 
 # How often to query the frontend_address DNS to resolve frontend addresses.
 # Also used to determine how often to poll the scheduler-ring for addresses if configured.
@@ -1003,10 +1014,11 @@ pool_config:
   # How quickly a dead client will be removed after it has been detected
   # to disappear. Set this to a value to allow time for a secondary
   # health check to recover the missing client.
-  [remotetimeout: <duration>]
+  # CLI flag: -ingester.client.healthcheck-timeout
+  [remote_timeout: <duration> | default = 1s]
 
 # The remote request timeout on the client side.
-# CLI flag: -ingester.client.healthcheck-timeout
+# CLI flag: -ingester.client.timeout
 [remote_timeout: <duration> | default = 5s]
 
 # Configures how the gRPC connection to ingesters work as a client
@@ -1076,7 +1088,7 @@ lifecycler:
   # CLI flag: -ingester.lifecycler.interface
   interface_names:
 
-    - [<string> ... | default = ["eth0", "en0"]]
+    - [<string> ... | default = [<private network interfaces>]]
 
   # Duration to sleep before exiting to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
@@ -1900,10 +1912,15 @@ fifocache:
   # CLI flag: -<prefix>.fifocache.max-size-items
   [max_size_items: <int> | default = 0]
 
-  # The expiry duration for the cache.
+  # Deprecated: The expiry duration for the cache. Use `-<prefix>.fifocache.ttl`.
   # The default value of 0 disables expiration.
   # CLI flag: -<prefix>.fifocache.duration
   [validity: <duration>]
+
+  # The time for items to live in the cache before those items are purged.
+  # The value of 0 disables auto-expiration.
+  # CLI flag: -<prefix>.fifocache.ttl
+  [ttl: <duration> | default = 1h]
 ```
 
 ## schema_config
@@ -2263,10 +2280,8 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.min-sharding-lookback
 [min_sharding_lookback: <duration> | default = 0s]
 
-# Split queries by an interval and execute in parallel, 0 disables it. You
-# should use in multiple of 24 hours (same as the storage bucketing scheme),
-# to avoid queriers downloading and processing the same chunks. This also
-# determines how cache keys are chosen when result caching is enabled
+# Split queries by an interval and execute in parallel, any value less than zero disables it.
+# This also determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
 ```
@@ -2477,7 +2492,7 @@ This way, one doesn't have to replicate configuration in multiple places.
 # If "instance_interface_names" under the common ring section is configured,
 # this common "instance_interface_names" is only applied to the frontend, but not for
 # ring related components (ex: distributor, ruler, etc).
-[instance_interface_names: <list of string>]
+[instance_interface_names: <list of string> | default = [<private network interfaces>]]
 
 # A common address used by Loki components to advertise their address.
 # If a more specific "instance_addr" is set, this is ignored.
@@ -2491,6 +2506,16 @@ This way, one doesn't have to replicate configuration in multiple places.
 # to be used by the distributor's ring, but only if the distributor's ring itself
 # doesn't have a `heartbeat_period` set.
 [ring: <ring>]
+```
+
+## analytics
+
+The `analytics` block configures the reporting of Loki analytics to grafana.com
+
+```yaml
+# When true, enables usage reporting.
+# CLI flag: -reporting.enabled
+[reporting_enabled: <boolean>: default = true]
 ```
 
 ### storage
@@ -2593,7 +2618,7 @@ kvstore:
 
 # Name of network interface to read addresses from.
 # CLI flag: -<prefix>.instance-interface-names
-[instance_interface_names: <list of string> | default = [eth0 en0]]
+[instance_interface_names: <list of string> | default = [<private network interfaces>]]
 
 # IP address to advertise in the ring.
 # CLI flag: -<prefix>.instance-addr

@@ -338,6 +338,10 @@ func (it *logBatchIterator) Labels() string {
 	return it.curr.Labels()
 }
 
+func (it *logBatchIterator) StreamHash() uint64 {
+	return it.curr.StreamHash()
+}
+
 func (it *logBatchIterator) Error() error {
 	if it.err != nil {
 		return it.err
@@ -396,8 +400,10 @@ func (it *logBatchIterator) newChunksIterator(b *chunkBatch) (iter.EntryIterator
 	if err != nil {
 		return nil, err
 	}
-
-	return iter.NewHeapIterator(it.ctx, iters, it.direction), nil
+	if len(iters) == 1 {
+		return iters[0], nil
+	}
+	return iter.NewSortEntryIterator(iters, it.direction), nil
 }
 
 func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.EntryIterator, error) {
@@ -437,10 +443,10 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
 		}
-		result = append(result, iter.NewNonOverlappingIterator(iterators, ""))
+		result = append(result, iter.NewNonOverlappingIterator(iterators))
 	}
 
-	return iter.NewHeapIterator(it.ctx, result, it.direction), nil
+	return iter.NewMergeEntryIterator(it.ctx, result, it.direction), nil
 }
 
 type sampleBatchIterator struct {
@@ -475,6 +481,10 @@ func newSampleBatchIterator(
 
 func (it *sampleBatchIterator) Labels() string {
 	return it.curr.Labels()
+}
+
+func (it *sampleBatchIterator) StreamHash() uint64 {
+	return it.curr.StreamHash()
 }
 
 func (it *sampleBatchIterator) Error() error {
@@ -537,7 +547,7 @@ func (it *sampleBatchIterator) newChunksIterator(b *chunkBatch) (iter.SampleIter
 		return nil, err
 	}
 
-	return iter.NewHeapSampleIterator(it.ctx, iters), nil
+	return iter.NewSortSampleIterator(iters), nil
 }
 
 func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.SampleIterator, error) {
@@ -571,10 +581,10 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 			}
 			iterators = append(iterators, iterator)
 		}
-		result = append(result, iter.NewNonOverlappingSampleIterator(iterators, ""))
+		result = append(result, iter.NewNonOverlappingSampleIterator(iterators))
 	}
 
-	return iter.NewHeapSampleIterator(it.ctx, result), nil
+	return iter.NewMergeSampleIterator(it.ctx, result), nil
 }
 
 func removeMatchersByName(matchers []*labels.Matcher, names ...string) []*labels.Matcher {

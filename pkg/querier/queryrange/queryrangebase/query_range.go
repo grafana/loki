@@ -13,8 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
@@ -24,6 +22,8 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -31,7 +31,8 @@ import (
 const StatusSuccess = "success"
 
 var (
-	json = jsoniter.Config{
+	matrix = model.ValMatrix.String()
+	json   = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: true,
@@ -356,13 +357,13 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 // UnmarshalJSON implements json.Unmarshaler.
 func (s *SampleStream) UnmarshalJSON(data []byte) error {
 	var stream struct {
-		Metric model.Metric      `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
+		Metric model.Metric            `json:"metric"`
+		Values []logproto.LegacySample `json:"values"`
 	}
 	if err := json.Unmarshal(data, &stream); err != nil {
 		return err
 	}
-	s.Labels = cortexpb.FromMetricsToLabelAdapters(stream.Metric)
+	s.Labels = logproto.FromMetricsToLabelAdapters(stream.Metric)
 	s.Samples = stream.Values
 	return nil
 }
@@ -370,10 +371,10 @@ func (s *SampleStream) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements json.Marshaler.
 func (s *SampleStream) MarshalJSON() ([]byte, error) {
 	stream := struct {
-		Metric model.Metric      `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
+		Metric model.Metric            `json:"metric"`
+		Values []logproto.LegacySample `json:"values"`
 	}{
-		Metric: cortexpb.FromLabelAdaptersToMetric(s.Labels),
+		Metric: logproto.FromLabelAdaptersToMetric(s.Labels),
 		Values: s.Samples,
 	}
 	return json.Marshal(stream)
@@ -383,7 +384,7 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	output := map[string]*SampleStream{}
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
-			metric := cortexpb.FromLabelAdaptersToLabels(stream.Labels).String()
+			metric := logproto.FromLabelAdaptersToLabels(stream.Labels).String()
 			existing, ok := output[metric]
 			if !ok {
 				existing = &SampleStream{
@@ -426,7 +427,7 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 // return a sub slice whose first element's is the smallest timestamp that is strictly
 // bigger than the given minTs. Empty slice is returned if minTs is bigger than all the
 // timestamps in samples.
-func sliceSamples(samples []cortexpb.Sample, minTs int64) []cortexpb.Sample {
+func sliceSamples(samples []logproto.LegacySample, minTs int64) []logproto.LegacySample {
 	if len(samples) <= 0 || minTs < samples[0].TimestampMs {
 		return samples
 	}

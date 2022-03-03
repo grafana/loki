@@ -98,7 +98,9 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     }) +
     k.util.configVolumeMount('gateway-config', '/etc/nginx') +
     k.util.secretVolumeMount('gateway-secret', '/etc/nginx/secrets', defaultMode=420) +
-    k.util.antiAffinity,
+    k.util.antiAffinity +
+    deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(5) +
+    deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1),
 
   gateway_service:
     k.util.serviceFor($.gateway_deployment),

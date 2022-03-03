@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
@@ -98,7 +99,7 @@ func (is *indexSet) initUserIndexSet(workingDir string) {
 	}
 
 	compactedDBName := filepath.Join(workingDir, fmt.Sprint(time.Now().Unix()))
-	seedFileIdx := findSeedFileIdx(is.sourceObjects)
+	seedFileIdx := compactedFileIdx(is.sourceObjects)
 
 	if len(is.sourceObjects) > 0 {
 		// we would only have compacted files in user index folder, so it is not expected to have -1 for seedFileIdx but
@@ -217,7 +218,7 @@ func (is *indexSet) writeBatch(_ string, batch []indexEntry) error {
 	is.uploadCompactedDB = true
 	is.removeSourceObjects = true
 	return is.compactedDB.Batch(func(tx *bbolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(bucketName)
+		b, err := tx.CreateBucketIfNotExists(local.IndexBucketName)
 		if err != nil {
 			return err
 		}
@@ -235,7 +236,7 @@ func (is *indexSet) writeBatch(_ string, batch []indexEntry) error {
 
 // runRetention runs the retention on index set
 func (is *indexSet) runRetention(tableMarker retention.TableMarker) error {
-	empty, modified, err := tableMarker.MarkForDelete(is.ctx, is.tableName, is.compactedDB)
+	empty, modified, err := tableMarker.MarkForDelete(is.ctx, is.tableName, is.userID, is.compactedDB, is.logger)
 	if err != nil {
 		return err
 	}
