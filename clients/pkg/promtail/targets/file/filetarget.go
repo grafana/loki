@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	fsnotify "gopkg.in/fsnotify.v1"
 
@@ -304,7 +305,7 @@ func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 			delete(t.tails, p)
 		}
 		if h, ok := t.handler.(api.InstrumentedEntryHandler); ok {
-			h.UnregisterLatencyMetric(model.LabelSet{model.LabelName(client.LatencyLabel): model.LabelValue(p)})
+			h.UnregisterLatencyMetric(prometheus.Labels{client.LatencyLabel: p})
 		}
 	}
 }
