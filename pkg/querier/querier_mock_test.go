@@ -416,8 +416,9 @@ func (q *querierMock) SelectLogs(ctx context.Context, params logql.SelectLogPara
 	return args.Get(0).(func() iter.EntryIterator)(), args.Error(1)
 }
 
-func (q *querierMock) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return nil, errors.New("querierMock.SelectSamples() has not been mocked")
+func (q *querierMock) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+	args := q.Called(ctx, params)
+	return args.Get(0).(func() iter.SampleIterator)(), args.Error(1)
 }
 
 func (q *querierMock) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {

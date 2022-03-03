@@ -80,9 +80,10 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 
 		iters[i] = NewTenantSampleIterator(id, iter)
 	}
-	return iter.NewMergeSampleIterator(ctx, iters), nil
+	return iter.NewSortSampleIterator(iters), nil
 }
 
+// TenantEntry Iterator wraps an entry iterator and adds the tenant label.
 type TenantEntryIterator struct {
 	iter.EntryIterator
 	tenantID string
@@ -106,6 +107,7 @@ func (i *TenantEntryIterator) Labels() string {
 	return builder.Labels().String()
 }
 
+// TenantEntry Iterator wraps a sample iterator and adds the tenant label.
 type TenantSampleIterator struct {
 	iter.SampleIterator
 	tenantID string
