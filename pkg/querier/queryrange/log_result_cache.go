@@ -123,13 +123,13 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	}
 
 	// cache hit
-	var cachedResquest LokiRequest
-	err = proto.Unmarshal(buff[0], &cachedResquest)
+	var cachedRequest LokiRequest
+	err = proto.Unmarshal(buff[0], &cachedRequest)
 	if err != nil {
 		level.Warn(l.logger).Log("msg", "error unmarshalling request from cache", "err", err)
 		return l.next.Do(ctx, req)
 	}
-	return l.handleHit(ctx, cacheKey, &cachedResquest, lokiReq)
+	return l.handleHit(ctx, cacheKey, &cachedRequest, lokiReq)
 }
 
 func (l *logResultCache) handleMiss(ctx context.Context, cacheKey string, req *LokiRequest) (queryrangebase.Response, error) {
@@ -160,14 +160,14 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey string, req *L
 	return resp, nil
 }
 
-func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedResquest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
+func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.Inc()
 	// we start with an empty response
-	result := emptyResponse(cachedResquest)
+	result := emptyResponse(cachedRequest)
 	// if the request is the same and cover the whole time range.
 	// we can just return the cached result.
-	if lokiReq.GetStartTs().After(cachedResquest.GetStartTs()) || lokiReq.GetStartTs().Equal(cachedResquest.GetStartTs()) &&
-		lokiReq.GetEndTs().Before(cachedResquest.GetEndTs()) || lokiReq.GetEndTs().Equal(cachedResquest.GetEndTs()) {
+	if lokiReq.GetStartTs().After(cachedRequest.GetStartTs()) || lokiReq.GetStartTs().Equal(cachedRequest.GetStartTs()) &&
+		lokiReq.GetEndTs().Before(cachedRequest.GetEndTs()) || lokiReq.GetEndTs().Equal(cachedRequest.GetEndTs()) {
 		return result, nil
 	}
 	// we could be missing data at the start and the end.
@@ -180,9 +180,9 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	g, ctx := errgroup.WithContext(ctx)
 
 	// if we're missing data at the start, start fetching from the start to the cached start.
-	if lokiReq.GetStartTs().Before(cachedResquest.GetStartTs()) {
+	if lokiReq.GetStartTs().Before(cachedRequest.GetStartTs()) {
 		g.Go(func() error {
-			startRequest = lokiReq.WithStartEndTime(lokiReq.GetStartTs(), cachedResquest.GetStartTs())
+			startRequest = lokiReq.WithStartEndTime(lokiReq.GetStartTs(), cachedRequest.GetStartTs())
 			resp, err := l.next.Do(ctx, startRequest)
 			if err != nil {
 				return err
@@ -197,9 +197,9 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	}
 
 	// if we're missing data at the end, start fetching from the cached end to the end.
-	if lokiReq.GetEndTs().After(cachedResquest.GetEndTs()) {
+	if lokiReq.GetEndTs().After(cachedRequest.GetEndTs()) {
 		g.Go(func() error {
-			endRequest = lokiReq.WithStartEndTime(cachedResquest.GetEndTs(), lokiReq.GetEndTs())
+			endRequest = lokiReq.WithStartEndTime(cachedRequest.GetEndTs(), lokiReq.GetEndTs())
 			resp, err := l.next.Do(ctx, endRequest)
 			if err != nil {
 				return err
@@ -221,7 +221,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	// If it's not empty only merge the response.
 	if startResp != nil {
 		if isEmpty(startResp) {
-			cachedResquest = cachedResquest.WithStartEndTime(startRequest.GetStartTs(), cachedResquest.GetEndTs())
+			cachedRequest = cachedRequest.WithStartEndTime(startRequest.GetStartTs(), cachedRequest.GetEndTs())
 			updateCache = true
 		} else {
 			if startResp.Status != loghttp.QueryStatusSuccess {
@@ -235,7 +235,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	// If it's not empty only merge the response.
 	if endResp != nil {
 		if isEmpty(endResp) {
-			cachedResquest = cachedResquest.WithStartEndTime(cachedResquest.GetStartTs(), endRequest.GetEndTs())
+			cachedRequest = cachedRequest.WithStartEndTime(cachedRequest.GetStartTs(), endRequest.GetEndTs())
 			updateCache = true
 		} else {
 			if endResp.Status != loghttp.QueryStatusSuccess {
@@ -247,7 +247,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 
 	// we need to update the cache since we fetched more either at the end or the start and it was empty.
 	if updateCache {
-		data, err := proto.Marshal(cachedResquest)
+		data, err := proto.Marshal(cachedRequest)
 		if err != nil {
 			level.Warn(l.logger).Log("msg", "error marshalling request", "err", err)
 			return result, err
