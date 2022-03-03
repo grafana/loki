@@ -170,6 +170,14 @@ func NewString(name string) *expvar.String {
 
 // Target sets the target name.
 func Target(target string) {
+	existing := expvar.Get(statsPrefix + targetKey)
+	if existing != nil {
+		if s, ok := existing.(*expvar.String); ok {
+			s.Set(target)
+			return
+		}
+		panic("target is set to a non-string value")
+	}
 	NewString(targetKey).Set(target)
 }
 
