@@ -154,17 +154,41 @@ func memstats() interface{} {
 }
 
 // NewFloat returns a new Float stats object.
+// If a Float stats object with the same name already exists it is returned.
 func NewFloat(name string) *expvar.Float {
+	existing := expvar.Get(statsPrefix + name)
+	if existing != nil {
+		if f, ok := existing.(*expvar.Float); ok {
+			return f
+		}
+		panic(fmt.Sprintf("%v is set to a non-float value", name))
+	}
 	return expvar.NewFloat(statsPrefix + name)
 }
 
 // NewInt returns a new Int stats object.
+// If an Int stats object object with the same name already exists it is returned.
 func NewInt(name string) *expvar.Int {
+	existing := expvar.Get(statsPrefix + name)
+	if existing != nil {
+		if i, ok := existing.(*expvar.Int); ok {
+			return i
+		}
+		panic(fmt.Sprintf("%v is set to a non-int value", name))
+	}
 	return expvar.NewInt(statsPrefix + name)
 }
 
 // NewString returns a new String stats object.
+// If a String stats object with the same name already exists it is returned.
 func NewString(name string) *expvar.String {
+	existing := expvar.Get(statsPrefix + name)
+	if existing != nil {
+		if s, ok := existing.(*expvar.String); ok {
+			return s
+		}
+		panic(fmt.Sprintf("%v is set to a non-string value", name))
+	}
 	return expvar.NewString(statsPrefix + name)
 }
 
@@ -215,6 +239,7 @@ type Statistics struct {
 // - count
 // - stddev
 // - stdvar
+// If a Statistics object with the same name already exists it is returned.
 func NewStatistics(name string) *Statistics {
 	s := &Statistics{
 		min:   atomic.NewFloat64(math.Inf(0)),
@@ -223,6 +248,13 @@ func NewStatistics(name string) *Statistics {
 		avg:   atomic.NewFloat64(0),
 		mean:  atomic.NewFloat64(0),
 		value: atomic.NewFloat64(0),
+	}
+	existing := expvar.Get(statsPrefix + name)
+	if existing != nil {
+		if s, ok := existing.(*Statistics); ok {
+			return s
+		}
+		panic(fmt.Sprintf("%v is set to a non-Statistics value", name))
 	}
 	expvar.Publish(statsPrefix+name, s)
 	return s
@@ -301,11 +333,19 @@ type Counter struct {
 }
 
 // NewCounter returns a new Counter stats object.
+// If a Counter stats object with the same name already exists it is returned.
 func NewCounter(name string) *Counter {
 	c := &Counter{
 		total:     atomic.NewInt64(0),
 		rate:      atomic.NewFloat64(0),
 		resetTime: time.Now(),
+	}
+	existing := expvar.Get(statsPrefix + name)
+	if existing != nil {
+		if c, ok := existing.(*Counter); ok {
+			return c
+		}
+		panic(fmt.Sprintf("%v is set to a non-Counter value", name))
 	}
 	expvar.Publish(statsPrefix+name, c)
 	return c
@@ -344,11 +384,19 @@ type WordCounter struct {
 }
 
 // NewWordCounter returns a new WordCounter stats object.
-// WordCounter object is thread-safe and count the amount of word recorded.
+// The WordCounter object is thread-safe and counts the number of words recorded.
+// If a WordCounter stats object with the same name already exists it is returned.
 func NewWordCounter(name string) *WordCounter {
 	c := &WordCounter{
 		count: atomic.NewInt64(0),
 		words: sync.Map{},
+	}
+	existing := expvar.Get(statsPrefix + name)
+	if existing != nil {
+		if w, ok := existing.(*WordCounter); ok {
+			return w
+		}
+		panic(fmt.Sprintf("%v is set to a non-WordCounter value", name))
 	}
 	expvar.Publish(statsPrefix+name, c)
 	return c
