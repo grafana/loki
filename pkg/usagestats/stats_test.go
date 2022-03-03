@@ -21,6 +21,7 @@ func Test_BuildReport(t *testing.T) {
 
 	Edition("non-OSS")
 	Edition("OSS")
+	Target("distributor")
 	Target("compactor")
 	NewString("compression").Set("lz4")
 	NewInt("compression_ratio").Set(100)
