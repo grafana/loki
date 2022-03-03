@@ -94,7 +94,7 @@ func NewTenantEntryIterator(id string, iter iter.EntryIterator) *TenantEntryIter
 }
 
 func (i *TenantEntryIterator) Labels() string {
-	// TODO: cache manipulated labels
+	// TODO: cache manipulated labels and add a benchmark.
 	lbls, _ := logql.ParseLabels(i.EntryIterator.Labels())
 	builder := labels.NewBuilder(lbls.WithoutLabels(defaultTenantLabel))
 
