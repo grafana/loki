@@ -179,7 +179,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 					&logproto.SampleQueryRequest{
 						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
 						End:      q.End().Add(-rangExpr.Left.Offset),
-						Selector: e.String(), // intentionally send the the vector for reducing labels.
+						Selector: e.String(), // intentionally send the vector for reducing labels.
 						Shards:   q.Shards(),
 					},
 				})
@@ -218,6 +218,9 @@ func vectorAggEvaluator(
 	expr *syntax.VectorAggregationExpr,
 	q Params,
 ) (StepEvaluator, error) {
+	if expr.Grouping == nil {
+		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
+	}
 	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
 	if err != nil {
 		return nil, err
@@ -554,7 +557,7 @@ func binOpStepEvaluator(
 	ctx, cancel := context.WithCancel(ctx)
 	g := errgroup.Group{}
 
-	// We have two non literal legs,
+	// We have two non-literal legs,
 	// load them in parallel
 	g.Go(func() error {
 		var err error
@@ -670,7 +673,7 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 	matchedSigs := make(map[uint64]map[uint64]struct{})
 	results := make(promql.Vector, 0)
 
-	// Add all rhs samples to a map so we can easily find matches later.
+	// Add all rhs samples to a map, so we can easily find matches later.
 	for i, sample := range rhs {
 		sig := rsigs[i]
 		if rightSigs[sig] != nil {
@@ -830,7 +833,7 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 }
 
 // literalStepEvaluator merges a literal with a StepEvaluator. Since order matters in
-// non commutative operations, inverted should be true when the literalExpr is not the left argument.
+// non-commutative operations, inverted should be true when the literalExpr is not the left argument.
 func literalStepEvaluator(
 	op string,
 	lit *syntax.LiteralExpr,
