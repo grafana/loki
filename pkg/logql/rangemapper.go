@@ -216,15 +216,25 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *RangeAggregationExpr) S
 				Operation: OpTypeSum,
 			}
 		case OpRangeTypeMin:
+			// min_over_time support grouping
+			grouping := expr.Grouping
+			if grouping == nil {
+				grouping = &Grouping{}
+			}
 			return &VectorAggregationExpr{
 				Left:      m.mapSampleExpr(expr, rangeInterval),
-				Grouping:  &Grouping{},
+				Grouping:  grouping,
 				Operation: OpTypeMin,
 			}
 		case OpRangeTypeMax:
+			// max_over_time support grouping
+			grouping := expr.Grouping
+			if grouping == nil {
+				grouping = &Grouping{}
+			}
 			return &VectorAggregationExpr{
 				Left:      m.mapSampleExpr(expr, rangeInterval),
-				Grouping:  &Grouping{},
+				Grouping:  grouping,
 				Operation: OpTypeMax,
 			}
 		}

@@ -214,6 +214,19 @@ func Test_RangeVectorSplit(t *testing.T) {
 		},
 		{
 			in: &LokiInstantRequest{
+				Query:  `min_over_time({app="foo"} | unwrap bar [3m]) by (bar)`,
+				TimeTs: time.Unix(1, 0),
+				Path:   "/loki/api/v1/query",
+			},
+			subQueries: []queryrangebase.RequestResponse{
+				subQueryRequestResponse(`min_over_time({app="foo"} | unwrap bar[1m]) by(bar)`, 1),
+				subQueryRequestResponse(`min_over_time({app="foo"} | unwrap bar[1m] offset 1m0s) by(bar)`, 2),
+				subQueryRequestResponse(`min_over_time({app="foo"} | unwrap bar[1m] offset 2m0s) by(bar)`, 3),
+			},
+			expected: expectedMergedResponse(1),
+		},
+		{
+			in: &LokiInstantRequest{
 				Query:  `max_over_time({app="foo"} | unwrap bar [3m])`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
@@ -222,6 +235,19 @@ func Test_RangeVectorSplit(t *testing.T) {
 				subQueryRequestResponse(`max_over_time({app="foo"} | unwrap bar[1m])`, 1),
 				subQueryRequestResponse(`max_over_time({app="foo"} | unwrap bar[1m] offset 1m0s)`, 2),
 				subQueryRequestResponse(`max_over_time({app="foo"} | unwrap bar[1m] offset 2m0s)`, 3),
+			},
+			expected: expectedMergedResponse(3),
+		},
+		{
+			in: &LokiInstantRequest{
+				Query:  `max_over_time({app="foo"} | unwrap bar [3m]) by (bar)`,
+				TimeTs: time.Unix(1, 0),
+				Path:   "/loki/api/v1/query",
+			},
+			subQueries: []queryrangebase.RequestResponse{
+				subQueryRequestResponse(`max_over_time({app="foo"} | unwrap bar[1m]) by(bar)`, 1),
+				subQueryRequestResponse(`max_over_time({app="foo"} | unwrap bar[1m] offset 1m0s) by(bar)`, 2),
+				subQueryRequestResponse(`max_over_time({app="foo"} | unwrap bar[1m] offset 2m0s) by(bar)`, 3),
 			},
 			expected: expectedMergedResponse(3),
 		},

@@ -117,10 +117,24 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			false,
 		},
 		{
+			`min_over_time({app="foo"} | unwrap bar [3m]) by (bar)`,
+			`min by(bar)(downstream<min_over_time({app="foo"} | unwrap bar [1m] offset 2m0s) by (bar), shard=<nil>>
+				++ downstream<min_over_time({app="foo"} | unwrap bar [1m] offset 1m0s) by (bar), shard=<nil>>
+				++ downstream<min_over_time({app="foo"} | unwrap bar [1m]) by (bar), shard=<nil>>)`,
+			false,
+		},
+		{
 			`max_over_time({app="foo"} | unwrap bar [3m])`,
 			`max(downstream<max_over_time({app="foo"} | unwrap bar [1m] offset 2m0s), shard=<nil>>
 				++ downstream<max_over_time({app="foo"} | unwrap bar [1m] offset 1m0s), shard=<nil>>
 				++ downstream<max_over_time({app="foo"} | unwrap bar[1m]), shard=<nil>>)`,
+			false,
+		},
+		{
+			`max_over_time({app="foo"} | unwrap bar [3m]) by (bar)`,
+			`max by(bar)(downstream<max_over_time({app="foo"} | unwrap bar [1m] offset 2m0s) by (bar), shard=<nil>>
+				++ downstream<max_over_time({app="foo"} | unwrap bar [1m] offset 1m0s) by (bar), shard=<nil>>
+				++ downstream<max_over_time({app="foo"} | unwrap bar [1m]) by (bar), shard=<nil>>)`,
 			false,
 		},
 		// TODO: Add more binary operations
