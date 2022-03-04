@@ -63,7 +63,7 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if j.bugerJsonParserEnable {
 		requiredLabels := j.lbs.ParserLabelHints().RequiredLabels()
 		if len(requiredLabels) > 0 {
-			err := j.parseJsonKeyVal(line, requiredLabels)
+			err := j.parseJSONKeyVal(line, requiredLabels)
 			if err != nil {
 				lbs.SetErr(errJSON)
 			}
@@ -81,18 +81,6 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		return line, true
 	}
 	return line, true
-}
-
-func (j *JSONParser) ParseJsonVal(line []byte, field string, keys []string) error {
-	val, err := jsonparser.GetString(line, keys...)
-	if err != nil {
-		return nil
-	}
-	if j.lbs.BaseHas(field) {
-		field = field + duplicateSuffix
-	}
-	j.lbs.Set(field, val)
-	return nil
 }
 
 func (j *JSONParser) readObject(it *jsoniter.Iterator) error {
@@ -192,7 +180,7 @@ func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field stri
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
-func (j *JSONParser) parseJsonKeyVal(line []byte, requiredLabels []string) error {
+func (j *JSONParser) parseJSONKeyVal(line []byte, requiredLabels []string) error {
 	//check for "jsonParser-not json line" benchmark
 	if strings.Index(string(line), "{") != 0 {
 		return errors.New("illegal format")
