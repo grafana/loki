@@ -212,19 +212,19 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *RangeAggregationExpr) S
 		case OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeCount, OpRangeTypeRate, OpRangeTypeSum:
 			return &VectorAggregationExpr{
 				Left:      m.mapSampleExpr(expr, rangeInterval),
-				Grouping:  expr.Grouping,
+				Grouping:  &Grouping{},
 				Operation: OpTypeSum,
 			}
 		case OpRangeTypeMin:
 			return &VectorAggregationExpr{
 				Left:      m.mapSampleExpr(expr, rangeInterval),
-				Grouping:  expr.Grouping,
+				Grouping:  &Grouping{},
 				Operation: OpTypeMin,
 			}
 		case OpRangeTypeMax:
 			return &VectorAggregationExpr{
 				Left:      m.mapSampleExpr(expr, rangeInterval),
-				Grouping:  expr.Grouping,
+				Grouping:  &Grouping{},
 				Operation: OpTypeMax,
 			}
 		}

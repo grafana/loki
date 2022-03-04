@@ -123,19 +123,45 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<max_over_time({app="foo"} | unwrap bar[1m]), shard=<nil>>)`,
 			false,
 		},
+		// TODO: Add more binary operations
 		{
-			// TODO: Add more binary operations
-			`rate({app="foo"}[3m]) / rate({app="foo"}[2m])`,
+			`rate({app="foo"}[3m]) + rate({app="bar"}[2m])`,
 			`(
 				sum(
 					downstream<rate({app="foo"}[1m] offset 2m0s), shard=<nil>>
 					++ downstream<rate({app="foo"}[1m] offset 1m0s), shard=<nil>>
 					++ downstream<rate({app="foo"}[1m]), shard=<nil>>
 				)
+				+
+				sum(
+					downstream<rate({app="bar"}[1m] offset 1m0s), shard=<nil>>
+					++ downstream<rate({app="bar"}[1m]), shard=<nil>>
+				)
+			)`,
+			false,
+		},
+		{
+			`min(rate({app="foo"}[5m])) / count(rate({app="bar"}[10m]))`,
+			`(
+				min(
+					downstream<min(rate({app="foo"}[1m] offset 4m0s)), shard=<nil>>
+					++ downstream<min(rate({app="foo"}[1m] offset 3m0s)), shard=<nil>>
+					++ downstream<min(rate({app="foo"}[1m] offset 2m0s)), shard=<nil>>
+					++ downstream<min(rate({app="foo"}[1m] offset 1m0s)), shard=<nil>>
+					++ downstream<min(rate({app="foo"}[1m])), shard=<nil>>
+				)
 				/
 				sum(
-					downstream<rate({app="foo"}[1m] offset 1m0s), shard=<nil>>
-					++ downstream<rate({app="foo"}[1m]), shard=<nil>>
+					downstream<count(rate({app="bar"}[1m] offset 9m0s)), shard=<nil>>
+					++ downstream<count(rate({app="bar"}[1m] offset 8m0s)), shard=<nil>>
+					++ downstream<count(rate({app="bar"}[1m] offset 7m0s)), shard=<nil>>
+					++ downstream<count(rate({app="bar"}[1m] offset 6m0s)), shard=<nil>>
+					++ downstream<count(rate({app="bar"}[1m] offset 5m0s)), shard=<nil>>
+					++ downstream<count(rate({app="bar"}[1m] offset 4m0s)), shard=<nil>>
+					++ downstream<count(rate({app="bar"}[1m] offset 3m0s)), shard=<nil>>
+					++ downstream<count(rate({app="bar"}[1m] offset 2m0s)), shard=<nil>>
+					++ downstream<count(rate({app="bar"}[1m] offset 1m0s)), shard=<nil>>
+					++ downstream<count(rate({app="bar"}[1m])), shard=<nil>>
 				)
 			)`,
 			false,
