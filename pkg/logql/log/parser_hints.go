@@ -25,6 +25,8 @@ type ParserHint interface {
 	//		 sum(rate({app="foo"} | json [5m]))
 	// We don't need to extract any labels from the log line.
 	NoLabels() bool
+
+	RequiredLabels() []string
 }
 
 type parserHint struct {
@@ -59,6 +61,10 @@ func (p *parserHint) ShouldExtractPrefix(prefix string) bool {
 
 func (p *parserHint) NoLabels() bool {
 	return p.noLabels
+}
+
+func (p *parserHint) RequiredLabels() []string {
+	return p.requiredLabels
 }
 
 // newParserHint creates a new parser hint using the list of labels that are seen and required in a query.

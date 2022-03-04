@@ -5,17 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/buger/jsonparser"
+	"github.com/grafana/regexp"
+	jsoniter "github.com/json-iterator/go"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/pkg/logql/log/pattern"
 	"github.com/grafana/loki/pkg/logqlmodel"
-
-	"github.com/grafana/regexp"
-	jsoniter "github.com/json-iterator/go"
-	"github.com/prometheus/common/model"
 )
 
 const (
@@ -38,14 +40,16 @@ type JSONParser struct {
 	buf []byte // buffer used to build json keys
 	lbs *LabelsBuilder
 
-	keys internedStringSet
+	keys                  internedStringSet
+	bugerJsonParserEnable bool
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
 func NewJSONParser() *JSONParser {
 	return &JSONParser{
-		buf:  make([]byte, 0, 1024),
-		keys: internedStringSet{},
+		buf:                   make([]byte, 0, 1024),
+		keys:                  internedStringSet{},
+		bugerJsonParserEnable: false,
 	}
 }
 
@@ -53,18 +57,40 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
+	j.lbs = lbs
+	if j.bugerJsonParserEnable {
+		requiredLabels := j.lbs.ParserLabelHints().RequiredLabels()
+		if len(requiredLabels) > 0 {
+			err := j.parseJsonVal(line, requiredLabels)
+			if err != nil {
+				lbs.SetErr(errJSON)
+			}
+			return line, true
+		}
+	}
 	it := jsoniter.ConfigFastest.BorrowIterator(line)
 	defer jsoniter.ConfigFastest.ReturnIterator(it)
 
 	// reset the state.
 	j.buf = j.buf[:0]
-	j.lbs = lbs
 
 	if err := j.readObject(it); err != nil {
 		lbs.SetErr(errJSON)
 		return line, true
 	}
 	return line, true
+}
+
+func (j *JSONParser) ParseJsonVal(line []byte, field string, keys []string) error {
+	val, err := jsonparser.GetString(line, keys...)
+	if err != nil {
+		return nil
+	}
+	if j.lbs.BaseHas(field) {
+		field = field + duplicateSuffix
+	}
+	j.lbs.Set(field, val)
+	return nil
 }
 
 func (j *JSONParser) readObject(it *jsoniter.Iterator) error {
@@ -163,6 +189,95 @@ func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field stri
 }
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
+
+func (j *JSONParser) parseJsonVal(line []byte, requiredLabels []string) error {
+	for _, field := range requiredLabels {
+		field = sanitizeLabelKey(field, true)
+		keys := make([]string, 0)
+		keys = append(keys, field)
+		//if strings.ContainsRune(field, jsonSpacer) {
+		//	keys = strings.Split(field, "_")
+		//} else {
+		//	keys = append(keys, field)
+		//}
+		keyArray := make([]string, 0)
+		jsonSpacerIndex := 0
+		for {
+			v, t, _, e := jsonparser.Get(line, keys...)
+			if e != nil {
+				if !strings.ContainsRune(field, jsonSpacer) {
+					break
+				}
+				if jsonSpacerIndex == 0 {
+					keyArray = strings.Split(field, "_")
+				}
+				if jsonSpacerIndex > len(keyArray) {
+					break
+				}
+				keys = keys[0:0]
+				subKey := ""
+				for idx, key := range keyArray {
+					if idx <= jsonSpacerIndex {
+						keys = append(keys, key)
+						continue
+					}
+					if idx > 1 {
+						subKey += "_" + key
+					} else {
+						subKey += key
+					}
+				}
+				keys = append(keys, subKey)
+				jsonSpacerIndex++
+				continue
+			}
+			val, err := parseStringVal(v, t)
+			if err != nil {
+				return err
+			}
+			if j.lbs.BaseHas(field) {
+				field = field + duplicateSuffix
+			}
+			j.lbs.Set(field, val)
+			break
+		}
+	}
+	return nil
+}
+
+func parseStringVal(v []byte, t jsonparser.ValueType) (string, error) {
+	var val string
+	var err error
+	if t == jsonparser.String {
+		if bytes.IndexByte(v, '\\') == -1 {
+			val = string(v)
+		} else {
+			val, err = jsonparser.ParseString(v)
+			if err != nil {
+				return val, err
+			}
+		}
+	} else if t == jsonparser.Number {
+		intVal, err := jsonparser.ParseInt(v)
+		if err != nil {
+			return val, err
+		}
+		val = strconv.FormatInt(intVal, 10)
+	} else if t == jsonparser.Boolean {
+		boolVal, err := jsonparser.ParseBoolean(v)
+		if err != nil {
+			return val, err
+		}
+		if boolVal {
+			val = trueString
+		} else {
+			val = falseString
+		}
+	} else {
+		return val, errors.New("unsupported type")
+	}
+	return val, nil
+}
 
 func readValue(iter *jsoniter.Iterator) string {
 	switch iter.WhatIsNext() {
