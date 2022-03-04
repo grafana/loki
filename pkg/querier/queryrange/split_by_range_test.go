@@ -17,13 +17,12 @@ import (
 )
 
 func Test_RangeVectorSplit(t *testing.T) {
-	srm, err := SplitByRangeMiddleware(log.NewNopLogger(), fakeLimits{
+	srm := SplitByRangeMiddleware(log.NewNopLogger(), fakeLimits{
 		maxSeries: 10000,
 		splits: map[string]time.Duration{
 			"tenant": time.Minute,
 		},
 	}, nilShardingMetrics)
-	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.TODO(), "tenant")
 
