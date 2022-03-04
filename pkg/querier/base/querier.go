@@ -194,7 +194,7 @@ func (q *sampleAndChunkQueryable) ChunkQuerier(ctx context.Context, mint, maxt i
 	return nil, errors.New("ChunkQuerier not implemented")
 }
 
-func createActiveQueryTracker(cfg Config, logger log.Logger) *promql.ActiveQueryTracker {
+func createActiveQueryTracker(cfg Config, logger log.Logger) promql.QueryTracker {
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
