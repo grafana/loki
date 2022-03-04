@@ -103,7 +103,7 @@ require (
 
 require (
 	github.com/google/renameio/v2 v2.0.0
-	github.com/google/uuid v1.2.0
+	github.com/google/uuid v1.3.0
 	github.com/grafana/regexp v0.0.0-20220304100321-149c8afcd6cb
 	github.com/mattn/go-ieproxy v0.0.1
 	github.com/xdg-go/scram v1.0.2
