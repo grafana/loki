@@ -32,6 +32,9 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
+
+	ui "github.com/gizak/termui/v3"
+	"github.com/gizak/termui/v3/widgets"
 )
 
 type streamEntryPair struct {
@@ -56,6 +59,8 @@ type Query struct {
 	FixedLabelsLen  int
 	ColoredOutput   bool
 	LocalConfig     string
+
+	Pretty bool
 }
 
 // DoQuery executes the query and prints out the results
@@ -366,6 +371,11 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 }
 
 func (q *Query) printMatrix(matrix loghttp.Matrix) {
+	if q.Pretty {
+		q.printMatrixPretty(matrix)
+		return
+	}
+
 	// yes we are effectively unmarshalling and then immediately marshalling this object back to json.  we are doing this b/c
 	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
 	// we might add output options such as render to an image file on disk
@@ -375,6 +385,43 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 	}
 
 	fmt.Print(string(bytes))
+}
+
+func (q *Query) printMatrixPretty(matrix loghttp.Matrix) {
+	data := make([][]float64, 0)
+
+	for _, stream := range matrix {
+		fv := make([]float64, 0)
+		for _, v := range stream.Values {
+			fv = append(fv, float64(v.Value))
+		}
+		data = append(data, fv)
+	}
+
+	// fmt.Println("data", data)
+
+	if err := ui.Init(); err != nil {
+		log.Fatalf("failed to initialize termui: %v", err)
+	}
+	defer ui.Close()
+
+	p0 := widgets.NewPlot()
+	p0.Title = "Fancy LogCLI"
+	p0.Data = data
+	p0.SetRect(0, 0, 130, 40)
+	p0.AxesColor = ui.ColorWhite
+	p0.LineColors[0] = ui.ColorGreen
+
+	ui.Render(p0)
+
+	uiEvents := ui.PollEvents()
+	for {
+		e := <-uiEvents
+		switch e.ID {
+		case "q", "<C-c>":
+			return
+		}
+	}
 }
 
 func (q *Query) printVector(vector loghttp.Vector) {

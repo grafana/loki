@@ -357,6 +357,11 @@ github.com/fsnotify/fsnotify
 ## explicit
 github.com/fsouza/fake-gcs-server/fakestorage
 github.com/fsouza/fake-gcs-server/internal/backend
+# github.com/gizak/termui/v3 v3.1.0
+## explicit
+github.com/gizak/termui/v3
+github.com/gizak/termui/v3/drawille
+github.com/gizak/termui/v3/widgets
 # github.com/go-kit/kit v0.12.0
 ## explicit; go 1.17
 github.com/go-kit/kit/log
@@ -724,6 +729,9 @@ github.com/mattn/go-ieproxy
 # github.com/mattn/go-isatty v0.0.14
 ## explicit; go 1.12
 github.com/mattn/go-isatty
+# github.com/mattn/go-runewidth v0.0.9
+## explicit; go 1.9
+github.com/mattn/go-runewidth
 # github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369
 ## explicit; go 1.9
 github.com/matttproud/golang_protobuf_extensions/pbutil
@@ -755,6 +763,9 @@ github.com/mitchellh/copystructure
 # github.com/mitchellh/go-homedir v1.1.0
 ## explicit
 github.com/mitchellh/go-homedir
+# github.com/mitchellh/go-wordwrap v1.0.0
+## explicit
+github.com/mitchellh/go-wordwrap
 # github.com/mitchellh/mapstructure v1.4.3
 ## explicit; go 1.14
 github.com/mitchellh/mapstructure
@@ -780,6 +791,9 @@ github.com/mwitkow/go-conntrack
 # github.com/ncw/swift v1.0.52
 ## explicit
 github.com/ncw/swift
+# github.com/nsf/termbox-go v0.0.0-20190121233118-02980233997d
+## explicit
+github.com/nsf/termbox-go
 # github.com/oklog/run v1.1.0
 ## explicit; go 1.13
 github.com/oklog/run
