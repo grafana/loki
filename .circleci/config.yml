@@ -40,7 +40,7 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.13.0
+    - image: grafana/loki-build-image:0.19.0
   working_directory: /src/loki
 
 jobs:
@@ -55,9 +55,6 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
-      - run:
-          name: touch-protos
-          command: make touch-protos
       - run:
           name: build
           command: make GOOS=windows GOGC=10 promtail

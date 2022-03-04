@@ -6,7 +6,7 @@ weight: 900
 # Grafana Loki HTTP API
 
 Grafana Loki exposes an HTTP API for pushing, querying, and tailing log data.
-Note that [authenticating](../operations/authentication/) against the API is
+Note that authenticating against the API is
 out of scope for Loki.
 
 ## Microservices mode
@@ -21,43 +21,28 @@ These endpoints are exposed by all components:
 - [`GET /config`](#get-config)
 - [`GET /loki/api/v1/status/buildinfo`](#get-lokiapiv1statusbuildinfo)
 
-These endpoints are exposed by the querier and the frontend:
+These endpoints are exposed by the querier and the query frontend:
 
-- [Loki's HTTP API](#lokis-http-api)
-  - [Microservices Mode](#microservices-mode)
-  - [Matrix, Vector, And Streams](#matrix-vector-and-streams)
-  - [`GET /loki/api/v1/query`](#get-lokiapiv1query)
-    - [Examples](#examples)
-  - [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
-        - [Step vs Interval](#step-vs-interval)
-    - [Examples](#examples-1)
-  - [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
-    - [Examples](#examples-2)
-  - [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
-    - [Examples](#examples-3)
-  - [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
-  - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
-    - [Examples](#examples-4)
-  - [`GET /api/prom/tail`](#get-apipromtail)
-  - [`GET /api/prom/query`](#get-apipromquery)
-    - [Examples](#examples-5)
-  - [`GET /api/prom/label`](#get-apipromlabel)
-    - [Examples](#examples-6)
-  - [`GET /api/prom/label/<name>/values`](#get-apipromlabelnamevalues)
-    - [Examples](#examples-7)
-  - [`POST /api/prom/push`](#post-apiprompush)
-    - [Examples](#examples-8)
-  - [`GET /ready`](#get-ready)
-  - [`GET /metrics`](#get-metrics)
-  - [Series](#series)
-    - [Examples](#examples-9)
-  - [Statistics](#statistics)
+- [`GET /loki/api/v1/query`](#get-lokiapiv1query)
+- [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
+- [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
+- [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
+- [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
+- [`POST /loki/api/v1/push`](#post-lokiapiv1push)
+- [`GET /ready`](#get-ready)
+- [`GET /metrics`](#get-metrics)
+- **Deprecated** [`GET /api/prom/tail`](#get-apipromtail)
+- **Deprecated** [`GET /api/prom/query`](#get-apipromquery)
+- **Deprecated** [`GET /api/prom/label`](#get-apipromlabel)
+- **Deprecated** [`GET /api/prom/label/<name>/values`](#get-apipromlabelnamevalues)
+- **Deprecated** [`POST /api/prom/push`](#post-apiprompush)
 
-While these endpoints are exposed by just the distributor:
+These endpoints are exposed by the distributor:
 
 - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
+- [`GET /distributor/ring`](#get-distributorring)
 
-And these endpoints are exposed by just the ingester:
+These endpoints are exposed by the ingester:
 
 - [`POST /flush`](#post-flush)
 - [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
@@ -82,6 +67,9 @@ These endpoints are exposed by the ruler:
 - [`GET /prometheus/api/v1/rules`](#list-rules)
 - [`GET /prometheus/api/v1/alerts`](#list-alerts)
 
+These endpoints are exposed by the compactor:
+- [`GET /compactor/ring`](#get-compactorring)
+
 A [list of clients](../clients) can be found in the clients documentation.
 
 ## Matrix, vector, and streams
@@ -101,14 +89,20 @@ Some Loki API endpoints return a result of a matrix, a vector, or a stream:
   queried time range. Streams are the only type that will result in log lines
   being returned.
 
+## Timestamp formats
+
+The API accepts several formats for timestamps. An integer with ten or fewer digits is interpreted as a Unix timestamp in seconds. More than ten digits are interpreted as a Unix timestamp in nanoseconds. A floating point number is a Unix timestamp with fractions of a second.
+
+The timestamps can also be written in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
+
 ## `GET /loki/api/v1/query`
 
 `/loki/api/v1/query` allows for doing queries against a single point in time. The URL
 query parameters support the following values:
 
 - `query`: The [LogQL](../logql/) query to perform
-- `limit`: The max number of entries to return
-- `time`: The evaluation time for the query as a nanosecond Unix epoch. Defaults to now.
+- `limit`: The max number of entries to return. It defaults to `100`.
+- `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
 In microservices mode, `/loki/api/v1/query` is exposed by the querier and the frontend.
@@ -157,7 +151,7 @@ And `<stream value>` is:
 }
 ```
 
-See [statistics](#Statistics) for information about the statistics returned by Loki.
+See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
 
@@ -239,16 +233,16 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
 accepts the following query parameters in the URL:
 
 - `query`: The [LogQL](../logql/) query to perform
-- `limit`: The max number of entries to return
-- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
-- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
+- `limit`: The max number of entries to return. It defaults to `100`.
+- `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago.
+- `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.  Only applies to query types which produce a matrix response.
-- `interval`: <span style="background-color:#f3f973;">This parameter is experimental; see the explanation under Step versus Interval.</span> Only return entries at (or greater than) the specified interval, can be a `duration` format or float number of seconds. Only applies to queries which produce a stream response.
+- `interval`: <span style="background-color:#f3f973;">This parameter is experimental; see the explanation under Step versus interval.</span> Only return entries at (or greater than) the specified interval, can be a `duration` format or float number of seconds. Only applies to queries which produce a stream response.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
 In microservices mode, `/loki/api/v1/query_range` is exposed by the querier and the frontend.
 
-##### Step versus Interval
+### Step versus interval
 
 Use the `step` parameter when making metric queries to Loki, or queries which return a matrix response.  It is evaluated in exactly the same way Prometheus evaluates `step`.  First the query will be evaluated at `start` and then evaluated again at `start + step` and again at `start + step + step` until `end` is reached.  The result will be a matrix of the query result evaluated at each step.
 
@@ -302,7 +296,7 @@ And `<stream value>` is:
 }
 ```
 
-See [statistics](#Statistics) for information about the statistics returned by Loki.
+See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
 
@@ -472,7 +466,7 @@ a query. It accepts the following query parameters in the URL:
 - `query`: The [LogQL](../logql/) query to perform
 - `delay_for`: The number of seconds to delay retrieving logs to let slow
     loggers catch up. Defaults to 0 and cannot be larger than 5.
-- `limit`: The max number of entries to return
+- `limit`: The max number of entries to return. It defaults to `100`.
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 
 In microservices mode, `/loki/api/v1/tail` is exposed by the querier.
@@ -635,7 +629,7 @@ Response:
 }
 ```
 
-See [statistics](#Statistics) for information about the statistics returned by Loki.
+See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
 
@@ -799,6 +793,14 @@ but instead flushed to our chunk backend.
 
 In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
 
+### `GET /distributor/ring`
+
+Displays a web page with the distributor hash ring status, including the state, healthy and last heartbeat time of each distributor.
+
+### `GET /compactor/ring`
+
+Displays a web page with the compactor hash ring status, including the state, healthy and last heartbeat time of each compactor.
+
 ## `GET /metrics`
 
 `/metrics` exposes Prometheus metrics. See
@@ -929,6 +931,7 @@ The example belows show all possible statistics returned with their respective d
         "bytesProcessedPerSecond": 0, // Total of bytes processed per second
         "execTime": 0, // Total execution time in seconds (float)
         "linesProcessedPerSecond": 0, // Total lines processed per second
+        "queueTime": 0, // Total queue time in seconds (float)
         "totalBytesProcessed":0, // Total amount of bytes processed overall for this request
         "totalLinesProcessed":0 // Total amount of lines processed overall for this request
       }
@@ -951,7 +954,6 @@ Displays a web page with the ruler hash ring status, including the state, health
 
 ### List rule groups
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 GET /loki/api/v1/rules
@@ -999,8 +1001,6 @@ List all rules configured for the authenticated tenant. This endpoint returns a 
 
 ### Get rule groups by namespace
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
-
 ```
 GET /loki/api/v1/rules/{namespace}
 ```
@@ -1024,8 +1024,6 @@ rules:
 
 ### Get rule group
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
-
 ```
 GET /loki/api/v1/rules/{namespace}/{groupName}
 ```
@@ -1033,8 +1031,6 @@ GET /loki/api/v1/rules/{namespace}/{groupName}
 Returns the rule group matching the request namespace and group name.
 
 ### Set rule group
-
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 POST /loki/api/v1/rules/{namespace}
@@ -1073,8 +1069,6 @@ Deletes a rule group by namespace and group name. This endpoints returns `202` o
 
 ### Delete namespace
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
-
 ```
 DELETE /loki/api/v1/rules/{namespace}
 ```
@@ -1082,8 +1076,6 @@ DELETE /loki/api/v1/rules/{namespace}
 Deletes all the rule groups in a namespace (including the namespace itself). This endpoint returns `202` on success.
 
 ### List rules
-
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 GET /prometheus/api/v1/rules
@@ -1094,8 +1086,6 @@ Prometheus-compatible rules endpoint to list alerting and recording rules that a
 For more information, refer to the [Prometheus rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) documentation.
 
 ### List alerts
-
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 GET /prometheus/api/v1/alerts

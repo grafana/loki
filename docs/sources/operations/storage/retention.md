@@ -3,12 +3,11 @@ title: Retention
 ---
 # Grafana Loki Storage Retention
 
-Retention in Grafana Loki is achieved either through the [Table Manager](#table-manager) or the [Compactor](#Compactor).
+Retention in Grafana Loki is achieved either through the [Table Manager](#table-manager) or the [Compactor](#compactor).
 
 
 Retention through the [Table Manager](../table-manager/) is achieved by relying on the object store TTL feature, and will work for both [boltdb-shipper](../boltdb-shipper) store and chunk/index store. However retention through the [Compactor](../boltdb-shipper#compactor) is supported only with the [boltdb-shipper](../boltdb-shipper) store.
 
-<span style="background-color:#f3f973;">Retention through the [Compactor](#Compactor) is experimental.</span>
 The Compactor retention will become the default and have long term support. It supports more granular retention policies on per tenant and per stream use cases.
 
 ## Compactor
@@ -161,7 +160,7 @@ The example configurations will set these rules:
 
 In order to enable the retention support, the Table Manager needs to be
 configured to enable deletions and a retention period. Please refer to the
-[`table_manager_config`](../../../configuration#table_manager_config)
+[`table_manager`](../../../configuration#table_manager)
 section of the Loki configuration reference for all available options.
 Alternatively, the `table-manager.retention-period` and
 `table-manager.retention-deletes-enabled` command line flags can be used. The

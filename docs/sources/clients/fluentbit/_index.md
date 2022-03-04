@@ -102,7 +102,7 @@ If set to true, it will add all Kubernetes labels to Loki labels automatically a
 ### LabelMapPath
 
 When using the `Parser` and `Filter` plugins Fluent Bit can extract and add data to the current record/log data. While Loki labels are key value pair, record data can be nested structures.
-You can pass a json file that defines how to extract [labels](../../getting-started/labels/) from each record. Each json key from the file will be matched with the log record to find label values. Values from the configuration are used as label names.
+You can pass a JSON file that defines how to extract labels from each record. Each json key from the file will be matched with the log record to find label values. Values from the configuration are used as label names.
 
 Considering the record below :
 

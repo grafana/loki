@@ -24,10 +24,9 @@ If you want to modify the lambda-promtail code you will also need:
 
 ### Building and Packaging
 
-The provided Makefile has targets `build`, `docker`, `all`, and `clean`.
+The provided Makefile has targets `build`, and `clean`.
 
-`build`, `docker`, and `all` build the lambda-promtail as a Go static binary and use the AWS Lambda Go runtime base image to generate an image that you
-can upload to your AWS ECR and use via Lambda. `clean` will remove the built Go binary.
+`build` builds the lambda-promtail as a Go static binary. To build the container image properly you should run `docker build . -f tools/lambda-promtail/Dockerfile` from the root of the Loki repository,you can upload this image to your AWS ECR and use via Lambda. `clean` will remove the built Go binary.
 
 ### Packaging and deployment
 
@@ -51,13 +50,13 @@ Also, if your deployment requires a [VPC configuration](https://registry.terrafo
 Then use Terraform to deploy:
 
 ```bash
-terraform apply -var "<ecr-repo>:<tag>" -var "write_address=https://your-loki-url/loki/api/v1/push" -var "password=<basic-auth-pw>" -var "username=<basic-auth-username>" -var 'log_group_names=["log-group-01", "log-group-02"]'
+terraform apply -var "<ecr-repo>:<tag>" -var "write_address=https://your-loki-url/loki/api/v1/push" -var "password=<basic-auth-pw>" -var "username=<basic-auth-username>" -var 'log_group_names=["log-group-01", "log-group-02"]' -var 'extra_labels="name1,value1,name2,value2"'
 ```
 
 or CloudFormation:
 
 ```bash
-aws cloudformation create-stack --stack-name lambda-promtail-stack --template-body file://template.yaml --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region us-east-2 --parameters ParameterKey=WriteAddress,ParameterValue=https://your-loki-url/loki/api/v1/push ParameterKey=Username,ParameterValue=<basic-auth-username> ParameterKey=Password,ParameterValue=<basic-auth-pw> ParameterKey=LambdaPromtailImage,ParameterValue=<ecr-repo>:<tag>
+aws cloudformation create-stack --stack-name lambda-promtail-stack --template-body file://template.yaml --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region us-east-2 --parameters ParameterKey=WriteAddress,ParameterValue=https://your-loki-url/loki/api/v1/push ParameterKey=Username,ParameterValue=<basic-auth-username> ParameterKey=Password,ParameterValue=<basic-auth-pw> ParameterKey=LambdaPromtailImage,ParameterValue=<ecr-repo>:<tag> ParameterKey=ExtraLabels,ParameterValue="name1,value1,name2,value2"
 ```
 
 # Appendix

@@ -13,10 +13,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
+	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // FSConfig is the config for a FSObjectClient.
@@ -32,6 +32,12 @@ func (cfg *FSConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlags registers flags with prefix.
 func (cfg *FSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, prefix+"local.chunk-directory", "", "Directory to store chunks in.")
+}
+
+func (cfg *FSConfig) ToCortexLocalConfig() local.Config {
+	return local.Config{
+		Directory: cfg.Directory,
+	}
 }
 
 // FSObjectClient holds config for filesystem as object store
@@ -60,13 +66,16 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 func (FSObjectClient) Stop() {}
 
 // GetObject from the store
-func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, error) {
+func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	fl, err := os.Open(filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey)))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-
-	return fl, nil
+	stats, err := fl.Stat()
+	if err != nil {
+		return nil, 0, err
+	}
+	return fl, stats.Size(), nil
 }
 
 // PutObject into the store

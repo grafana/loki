@@ -6,15 +6,15 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const bufferSizeForTailResponse = 5
@@ -39,14 +39,15 @@ type tailer struct {
 	closeChan chan struct{}
 	closeOnce sync.Once
 
-	blockedAt      *time.Time
-	blockedMtx     sync.RWMutex
-	droppedStreams []*logproto.DroppedStream
+	blockedAt         *time.Time
+	blockedMtx        sync.RWMutex
+	droppedStreams    []*logproto.DroppedStream
+	maxDroppedStreams int
 
 	conn TailServer
 }
 
-func newTailer(orgID, query string, conn TailServer) (*tailer, error) {
+func newTailer(orgID, query string, conn TailServer, maxDroppedStreams int) (*tailer, error) {
 	expr, err := logql.ParseLogSelector(query, true)
 	if err != nil {
 		return nil, err
@@ -58,15 +59,16 @@ func newTailer(orgID, query string, conn TailServer) (*tailer, error) {
 	matchers := expr.Matchers()
 
 	return &tailer{
-		orgID:          orgID,
-		matchers:       matchers,
-		pipeline:       pipeline,
-		sendChan:       make(chan *logproto.Stream, bufferSizeForTailResponse),
-		conn:           conn,
-		droppedStreams: []*logproto.DroppedStream{},
-		id:             generateUniqueID(orgID, query),
-		closeChan:      make(chan struct{}),
-		expr:           expr,
+		orgID:             orgID,
+		matchers:          matchers,
+		pipeline:          pipeline,
+		sendChan:          make(chan *logproto.Stream, bufferSizeForTailResponse),
+		conn:              conn,
+		droppedStreams:    make([]*logproto.DroppedStream, 0, maxDroppedStreams),
+		maxDroppedStreams: maxDroppedStreams,
+		id:                generateUniqueID(orgID, query),
+		closeChan:         make(chan struct{}),
+		expr:              expr,
 	}, nil
 }
 
@@ -75,17 +77,11 @@ func (t *tailer) loop() {
 	var err error
 	var ok bool
 
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
-
 	for {
 		select {
-		case <-ticker.C:
-			err := t.conn.Context().Err()
-			if err != nil {
-				t.close()
-				return
-			}
+		case <-t.conn.Context().Done():
+			t.close()
+			return
 		case <-t.closeChan:
 			return
 		case stream, ok = <-t.sendChan:
@@ -223,6 +219,11 @@ func (t *tailer) dropStream(stream logproto.Stream) {
 	if t.blockedAt == nil {
 		blockedAt := time.Now()
 		t.blockedAt = &blockedAt
+	}
+
+	if len(t.droppedStreams) >= t.maxDroppedStreams {
+		level.Info(util_log.Logger).Log("msg", "tailer dropped streams is reset", "length", len(t.droppedStreams))
+		t.droppedStreams = nil
 	}
 
 	t.droppedStreams = append(t.droppedStreams, &logproto.DroppedStream{

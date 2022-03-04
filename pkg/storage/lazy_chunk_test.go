@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -24,7 +24,8 @@ func TestLazyChunkIterator(t *testing.T) {
 	}{
 		{
 			newLazyChunk(logproto.Stream{
-				Labels: fooLabelsWithName,
+				Labels: fooLabelsWithName.String(),
+				Hash:   fooLabelsWithName.Hash(),
 				Entries: []logproto.Entry{
 					{
 						Timestamp: from,
@@ -34,7 +35,8 @@ func TestLazyChunkIterator(t *testing.T) {
 			}),
 			[]logproto.Stream{
 				{
-					Labels: fooLabels,
+					Labels: fooLabels.String(),
+					Hash:   fooLabels.Hash(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,

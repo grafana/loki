@@ -70,8 +70,8 @@ Where default_value is the value to use if the environment variable is undefined
 - `<filename>`: a valid path relative to current working directory or an
     absolute path.
 - `<host>`: a valid string consisting of a hostname or IP followed by an optional port number
-- `<string>`: a regular string
-- `<secret>`: a regular string that is a secret, such as a password
+- `<string>`: a string
+- `<secret>`: a string that represents a secret, such as a password
 
 ### Supported contents and default values of `config.yaml`:
 
@@ -273,6 +273,12 @@ external_labels:
 
 # Maximum time to wait for a server to respond to a request
 [timeout: <duration> | default = 10s]
+
+# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
+# The default value is "filename". A "host" label is always included.
+# The stream lag metric indicates which streams are falling behind on writes to Loki;
+# be mindful about using too many labels, as it can increase cardinality.
+[stream_lag_labels: <string> | default = "filename"]
 ```
 
 ## positions
@@ -313,6 +319,18 @@ job_name: <string>
 # Describes how to receive logs via the Loki push API, (e.g. from other Promtails or the Docker Logging Driver)
 [loki_push_api: <loki_push_api_config>]
 
+# Describes how to scrape logs from the Windows event logs.
+[windows_events: <windows_events_config>]
+
+# Describes how to fetch logs from Kafka via a Consumer group.
+[kafka: <kafka_config>]
+
+# Describes how to receive logs from gelf client.
+[gelf: <gelf_config>]
+
+# Configuration describing how to pull logs from Cloudflare.
+[cloudflare: <cloudflare>]
+
 # Describes how to relabel targets to determine if they should
 # be processed.
 relabel_configs:
@@ -330,16 +348,21 @@ file_sd_configs:
 # same host.
 kubernetes_sd_configs:
   - [<kubernetes_sd_config>]
-  
-# Describes how to use the Consul Catalog API to discover services registered with the 
+
+# Describes how to use the Consul Catalog API to discover services registered with the
 # consul cluster.
 consul_sd_configs:
   [ - <consul_sd_config> ... ]
-  
+
 # Describes how to use the Consul Agent API to discover services registered with the consul agent
 # running on the same host as Promtail.
 consulagent_sd_configs:
   [ - <consulagent_sd_config> ... ]
+
+# Describes how to use the Docker daemon API to discover containers running on
+# the same host as Promtail.
+docker_sd_configs:
+  [ - <docker_sd_config> ... ]
 ```
 
 ### pipeline_stages
@@ -360,7 +383,8 @@ In most cases, you extract data from logs with `regex` or `json` stages. The ext
     <output> |
     <labels> |
     <metrics> |
-    <tenant>
+    <tenant> |
+    <replace>
   ]
 ```
 
@@ -417,7 +441,7 @@ The CRI stage is just a convenience wrapper for this definition:
 
 ```yaml
 - regex:
-    expression: "^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$",
+    expression: "^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$"
 - labels:
     stream:
 - timestamp:
@@ -687,6 +711,28 @@ tenant:
   [ value: <string> ]
 ```
 
+#### replace
+
+The replace stage is a parsing stage that parses a log line using
+a regular expression and replaces the log line.
+
+```yaml
+replace:
+  # The RE2 regular expression. Each named capture group will be added to extracted.
+  # Each capture group and named capture group will be replaced with the value given in
+  # `replace`
+  expression: <string>
+
+  # Name from extracted data to parse. If empty, uses the log message.
+  # The replaced value will be assigned back to soure key
+  [source: <string>]
+
+  # Value to which the captured group will be replaced. The captured group or the named
+  # captured group will be replaced with this value and the log line will be replaced with
+  # new replaced values. An empty value will remove the captured group from the log line.
+  [replace: <string>]
+```
+
 ### journal
 
 The `journal` block configures reading from the systemd journal from
@@ -862,9 +908,9 @@ You can add additional labels with the `labels` property.
 [exclude_event_data: <bool> | default = false]
 
 # Allows to exclude the user data of each windows event.
-[exclude_event_data: <bool> | default = false]
+[exclude_user_data: <bool> | default = false]
 
-# Label map to add to every log line sent to the push API
+# Label map to add to every log line read from the windows event log
 labels:
   [ <labelname>: <labelvalue> ... ]
 
@@ -872,6 +918,273 @@ labels:
 # When false Promtail will assign the current timestamp to the log when it was processed
 [use_incoming_timestamp: <bool> | default = false]
 ```
+
+### kafka
+
+The `kafka` block configures Promtail to scrape logs from [Kafka](https://kafka.apache.org/) using a group consumer.
+
+The `brokers` should list available brokers to communicate with the Kafka cluster. Use multiple brokers when you want to increase availability.
+
+The `topics` is the list of topics Promtail will subscribe to. If a topic starts with `^` then a regular expression ([RE2](https://github.com/google/re2/wiki/Syntax)) is used to match topics.
+For instance `^promtail-.*` will match the topic `promtail-dev` and `promtail-prod`. Topics are refreshed every 30 seconds, so if a new topic matches, it will be automatically added without requiring a Promtail restart.
+
+The `group_id` defined the unique consumer group id to use for consuming logs. Each log record published to a topic is delivered to one consumer instance within each subscribing consumer group.
+
+- If all promtail instances have the same consumer group, then the records will effectively be load balanced over the promtail instances.
+- If all promtail instances have different consumer groups, then each record will be broadcast to all promtail instances.
+
+The `group_id` is useful if you want to effectively send the data to multiple loki instances and/or other sinks.
+
+The `assignor` configuration allow you to select the rebalancing strategy to use for the consumer group.
+Rebalancing is the process where a group of consumer instances (belonging to the same group) co-ordinate to own a mutually exclusive set of partitions of topics that the group is subscribed to.
+
+- `range` the default, assigns partitions as ranges to consumer group members.
+- `sticky` assigns partitions to members with an attempt to preserve earlier assignments
+- `roundrobin` assigns partitions to members in alternating order.
+
+The `version` allows to select the kafka version required to connect to the cluster.(default to `2.2.1`)
+
+By default, timestamps are assigned by Promtail when the message is read, if you want to keep the actual message timestamp from Kafka you can set the `use_incoming_timestamp` to true.
+
+```yaml
+# The list of brokers to connect to kafka (Required).
+[brokers: <strings> | default = [""]]
+
+# The list of Kafka topics to consume (Required).
+[topics: <strings> | default = [""]]
+
+# The Kafka consumer group id.
+[group_id: <string> | default = "promtail"]
+
+# The consumer group rebalancing strategy to use. (e.g `sticky`, `roundrobin` or `range`)
+[assignor: <string> | default = "range"]
+
+# Kafka version to connect to.
+[version: <string> | default = "2.2.1"]
+
+# Optional authentication configuration with Kafka brokers
+authentication:
+  # Type is authentication type. Supported values [none, ssl, sasl]
+  [type: <string> | default = "none"]
+
+  # TLS configuration for authentication and encryption. It is used only when authentication type is ssl.
+  tls_config:
+    [ <tls_config> ]
+
+  # SASL configuration for authentication. It is used only when authentication type is sasl.
+  sasl_config:
+    # SASL mechanism. Supported values [PLAIN, SCRAM-SHA-256, SCRAM-SHA-512]
+    [mechanism: <string> | default = "PLAIN"]
+
+    # The user name to use for SASL authentication
+    [user: <string>]
+
+    # The password to use for SASL authentication
+    [password: <secret>]
+
+    # If true, SASL authentication is executed over TLS
+    [use_tls: <boolean> | default = false]
+
+    # The CA file to use to verify the server
+    [ca_file: <string>]
+
+    # Validates that the server name in the server's certificate
+    # is this value.
+    [server_name: <string>]
+
+    # If true, ignores the server certificate being signed by an
+    # unknown CA.
+    [insecure_skip_verify: <boolean> | default = false]
+
+
+# Label map to add to every log line read from kafka
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+# If Promtail should pass on the timestamp from the incoming log or not.
+# When false Promtail will assign the current timestamp to the log when it was processed
+[use_incoming_timestamp: <bool> | default = false]
+```
+
+**Available Labels:**
+
+The list of labels below are discovered when consuming kafka:
+
+- `__meta_kafka_topic`: The current topic for where the message has been read.
+- `__meta_kafka_partition`: The partition id where the message has been read.
+- `__meta_kafka_member_id`: The consumer group member id.
+- `__meta_kafka_group_id`: The consumer group id.
+- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'. 
+
+To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
+
+### GELF
+
+The `gelf` block configures a GELF UDP listener allowing users to push
+logs to Promtail with the [GELF](https://docs.graylog.org/docs/gelf) protocol.
+Currently only UDP is supported, please submit a feature request if you're interested into TCP support.
+
+> GELF messages can be sent uncompressed or compressed with either GZIP or ZLIB.
+
+Each GELF message received will be encoded in JSON as the log line. For example:
+
+```json
+{"version":"1.1","host":"example.org","short_message":"A short message","timestamp":1231231123,"level":5,"_some_extra":"extra"}
+```
+
+You can leverage [pipeline stages](pipeline_stages) with the GELF target,
+if for example, you want to parse the log line and extract more labels or change the log line format.
+
+```yaml
+# UDP address to listen on. Has the format of "host:port". Default to 0.0.0.0:12201
+listen_address: <string>
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+# Whether Promtail should pass on the timestamp from the incoming gelf message.
+# When false, or if no timestamp is present on the gelf message, Promtail will assign the current timestamp to the log when it was processed.
+# Default is false
+use_incoming_timestamp: <bool>
+
+```
+
+**Available Labels:**
+
+- `__gelf_message_level`: The GELF level as string.
+- `__gelf_message_host`: The host sending the GELF message.
+- `__gelf_message_version`: The GELF level message version set by the client.
+- `__gelf_message_facility`: The GELF facility.
+
+To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
+
+### Cloudflare
+
+The `cloudflare` block configures Promtail to pull logs from the Cloudflare
+[Logpull API](https://developers.cloudflare.com/logs/logpull).
+
+These logs contain data related to the connecting client, the request path through the Cloudflare network, and the response from the origin web server. This data is useful for enriching existing logs on an origin server.
+
+```yaml
+# The Cloudflare API token to use. (Required)
+# You can create a new token by visiting your [Cloudflare profile](https://dash.cloudflare.com/profile/api-tokens).
+api_token: <string>
+
+# The Cloudflare zone id to pull logs for. (Required)
+zone_id: <string>
+
+# The time range to pull logs for.
+[pull_range: <duration> | default = 1m]
+
+# The quantity of workers that will pull logs.
+[workers: <int> | default = 3]
+
+# The type list of fields to fetch for logs. 
+# Supported values: default, minimal, extended, all.
+[fields_type: <string> | default = default]
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+```
+
+By default Promtail fetches logs with the default set of fields.
+Here are the different set of fields type available and the fields they include :
+
+- `default` includes `"ClientIP", "ClientRequestHost", "ClientRequestMethod", "ClientRequestURI", "EdgeEndTimestamp", "EdgeResponseBytes",
+"EdgeRequestHost", "EdgeResponseStatus", "EdgeStartTimestamp", "RayID"`
+
+- `minimal` includes all `default` fields and adds `"ZoneID", "ClientSSLProtocol", "ClientRequestProtocol", "ClientRequestPath", "ClientRequestUserAgent", "ClientRequestReferer",
+"EdgeColoCode", "ClientCountry", "CacheCacheStatus", "CacheResponseStatus", "EdgeResponseContentType`
+
+- `extended` includes all `minimal`fields and adds `"ClientSSLCipher", "ClientASN", "ClientIPClass", "CacheResponseBytes", "EdgePathingOp", "EdgePathingSrc", "EdgePathingStatus", "ParentRayID",
+"WorkerCPUTime", "WorkerStatus", "WorkerSubrequest", "WorkerSubrequestCount", "OriginIP", "OriginResponseStatus", "OriginSSLProtocol",
+"OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
+
+- `all` includes all `extended` fields and adds `"ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
+"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID"`
+
+To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
+
+Promtail saves the last successfully-fetched timestamp in the position file.
+If a position is found in the file for a given zone ID, Promtail will restart pulling logs
+from that position. When no position is found, Promtail will start pulling logs from the current time.
+
+Promtail fetches logs using multiple workers (configurable via `workers`) which request the last available pull range
+(configured via `pull_range`) repeatedly. Verify the last timestamp fetched by Promtail using the `cloudflare_target_last_requested_end_timestamp` metric.
+It is possible for Promtail to fall behind due to having too many log lines to process for each pull.
+Adding more workers, decreasing the pull range, or decreasing the quantity of fields fetched can mitigate this performance issue.
+
+All Cloudflare logs are in JSON. Here is an example:
+
+```json
+{
+	"CacheCacheStatus": "miss",
+	"CacheResponseBytes": 8377,
+	"CacheResponseStatus": 200,
+	"CacheTieredFill": false,
+	"ClientASN": 786,
+	"ClientCountry": "gb",
+	"ClientDeviceType": "desktop",
+	"ClientIP": "100.100.5.5",
+	"ClientIPClass": "noRecord",
+	"ClientRequestBytes": 2691,
+	"ClientRequestHost": "www.foo.com",
+	"ClientRequestMethod": "GET",
+	"ClientRequestPath": "/comments/foo/",
+	"ClientRequestProtocol": "HTTP/1.0",
+	"ClientRequestReferer": "https://www.foo.com/foo/168855/?offset=8625",
+	"ClientRequestURI": "/foo/15248108/",
+	"ClientRequestUserAgent": "some bot",
+	"ClientSSLCipher": "ECDHE-ECDSA-AES128-GCM-SHA256",
+	"ClientSSLProtocol": "TLSv1.2",
+	"ClientSrcPort": 39816,
+	"ClientXRequestedWith": "",
+	"EdgeColoCode": "MAN",
+	"EdgeColoID": 341,
+	"EdgeEndTimestamp": 1637336610671000000,
+	"EdgePathingOp": "wl",
+	"EdgePathingSrc": "macro",
+	"EdgePathingStatus": "nr",
+	"EdgeRateLimitAction": "",
+	"EdgeRateLimitID": 0,
+	"EdgeRequestHost": "www.foo.com",
+	"EdgeResponseBytes": 14878,
+	"EdgeResponseCompressionRatio": 1,
+	"EdgeResponseContentType": "text/html",
+	"EdgeResponseStatus": 200,
+	"EdgeServerIP": "8.8.8.8",
+	"EdgeStartTimestamp": 1637336610517000000,
+	"FirewallMatchesActions": [],
+	"FirewallMatchesRuleIDs": [],
+	"FirewallMatchesSources": [],
+	"OriginIP": "8.8.8.8",
+	"OriginResponseBytes": 0,
+	"OriginResponseHTTPExpires": "",
+	"OriginResponseHTTPLastModified": "",
+	"OriginResponseStatus": 200,
+	"OriginResponseTime": 123000000,
+	"OriginSSLProtocol": "TLSv1.2",
+	"ParentRayID": "00",
+	"RayID": "6b0a...",
+	"SecurityLevel": "med",
+	"WAFAction": "unknown",
+	"WAFFlags": "0",
+	"WAFMatchedVar": "",
+	"WAFProfile": "unknown",
+	"WAFRuleID": "",
+	"WAFRuleMessage": "",
+	"WorkerCPUTime": 0,
+	"WorkerStatus": "unknown",
+	"WorkerSubrequest": false,
+	"WorkerSubrequestCount": 0,
+	"ZoneID": 1234
+}
+```
+
+You can leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
 
 ### relabel_configs
 
@@ -1268,7 +1581,7 @@ way to filter services or nodes for a service based on arbitrary labels. For
 users with thousands of services it can be more efficient to use the Consul API
 directly which has basic support for filtering nodes (currently by node
 metadata and a single tag).
-  
+
 ### consulagent_sd_config
 
 Consul Agent SD configurations allow retrieving scrape targets from [Consul's](https://www.consul.io)
@@ -1336,6 +1649,116 @@ way to filter services or nodes for a service based on arbitrary labels. For
 users with thousands of services it can be more efficient to use the Consul API
 directly which has basic support for filtering nodes (currently by node
 metadata and a single tag).
+
+### docker_sd_config
+
+Docker service discovery allows retrieving targets from a Docker daemon.
+It will only watch containers of the Docker daemon referenced with the host parameter. Docker
+service discovery should run on each node in a distributed setup. The containers must run with
+either the [json-file](https://docs.docker.com/config/containers/logging/json-file/)
+or [journald](https://docs.docker.com/config/containers/logging/journald/) logging driver.
+
+Please note that the discovery will not pick up finished containers. That means
+Promtail will not scrape the remaining logs from finished containers after a restart.
+
+The configuration is inherited from [Prometheus' Docker service discovery](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#docker_sd_config).
+
+```yaml
+# Address of the Docker daemon.  Use unix:///var/run/docker.sock for a local setup.
+host: <string>
+
+# Optional proxy URL.
+[ proxy_url: <string> ]
+
+# TLS configuration.
+tls_config:
+  [ <tls_config> ]
+
+# The port to scrape metrics from, when `role` is nodes, and for discovered
+# tasks and services that don't have published ports.
+[ port: <int> | default = 80 ]
+
+# The host to use if the container is in host networking mode.
+[ host_networking_host: <string> | default = "localhost" ]
+
+# Optional filters to limit the discovery process to a subset of available
+# resources.
+# The available filters are listed in the Docker documentation:
+# Containers: https://docs.docker.com/engine/api/v1.41/#operation/ContainerList
+[ filters:
+  [ - name: <string>
+      values: <string>, [...] ]
+]
+
+# The time after which the containers are refreshed.
+[ refresh_interval: <duration> | default = 60s ]
+
+# Authentication information used by Promtail to authenticate itself to the
+# Docker daemon.
+# Note that `basic_auth` and `authorization` options are mutually exclusive.
+# `password` and `password_file` are mutually exclusive.
+
+# Optional HTTP basic authentication information.
+basic_auth:
+  [ username: <string> ]
+  [ password: <secret> ]
+  [ password_file: <string> ]
+
+# Optional `Authorization` header configuration.
+authorization:
+  # Sets the authentication type.
+  [ type: <string> | default: Bearer ]
+  # Sets the credentials. It is mutually exclusive with
+  # `credentials_file`.
+  [ credentials: <secret> ]
+  # Sets the credentials to the credentials read from the configured file.
+  # It is mutually exclusive with `credentials`.
+  [ credentials_file: <filename> ]
+
+# Optional OAuth 2.0 configuration.
+# Cannot be used at the same time as basic_auth or authorization.
+oauth2:
+  [ <oauth2> ]
+
+# Configure whether HTTP requests follow HTTP 3xx redirects.
+[ follow_redirects: <bool> | default = true ]
+```
+
+Available meta labels:
+
+  * `__meta_docker_container_id`: the ID of the container
+  * `__meta_docker_container_name`: the name of the container
+  * `__meta_docker_container_network_mode`: the network mode of the container
+  * `__meta_docker_container_label_<labelname>`: each label of the container
+  * `__meta_docker_container_log_stream`: the log stream type `stdout` or `stderr`
+  * `__meta_docker_network_id`: the ID of the network
+  * `__meta_docker_network_name`: the name of the network
+  * `__meta_docker_network_ingress`: whether the network is ingress
+  * `__meta_docker_network_internal`: whether the network is internal
+  * `__meta_docker_network_label_<labelname>`: each label of the network
+  * `__meta_docker_network_scope`: the scope of the network
+  * `__meta_docker_network_ip`: the IP of the container in this network
+  * `__meta_docker_port_private`: the port on the container
+  * `__meta_docker_port_public`: the external port if a port-mapping exists
+  * `__meta_docker_port_public_ip`: the public IP if a port-mapping exists
+
+These labels can be used during relabeling. For instance, the following configuration scrapes the container named `flog` and removes the leading slash (`/`) from the container name.
+
+```yaml
+scrape_configs:
+  - job_name: flog_scrape 
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: name
+            values: [flog] 
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+```
+
 
 ## target_config
 

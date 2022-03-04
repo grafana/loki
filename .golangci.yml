@@ -46,7 +46,7 @@ output:
 
 linters-settings:
   goimports:
-    local-prefixes: github.com/grafana/loki/pkg
+    local-prefixes: github.com/grafana/loki/pkg,github.com/grafana/loki/tools
 
   depguard:
     list-type: blacklist

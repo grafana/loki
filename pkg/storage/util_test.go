@@ -6,26 +6,25 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	loki_util "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
-	fooLabelsWithName = "{foo=\"bar\", __name__=\"logs\"}"
-	fooLabels         = "{foo=\"bar\"}"
+	fooLabelsWithName = labels.Labels{{Name: "foo", Value: "bar"}, {Name: "__name__", Value: "logs"}}
+	fooLabels         = labels.Labels{{Name: "foo", Value: "bar"}}
 )
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
@@ -145,8 +144,9 @@ func newSampleQuery(query string, start, end time.Time) *logproto.SampleQueryReq
 }
 
 type mockChunkStore struct {
-	chunks []chunk.Chunk
-	client *mockChunkStoreClient
+	schemas chunk.SchemaConfig
+	chunks  []chunk.Chunk
+	client  *mockChunkStoreClient
 }
 
 // mockChunkStore cannot implement both chunk.Store and chunk.Client,
@@ -161,7 +161,7 @@ func newMockChunkStore(streams []*logproto.Stream) *mockChunkStore {
 	for _, s := range streams {
 		chunks = append(chunks, newChunk(*s))
 	}
-	return &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}}
+	return &mockChunkStore{schemas: chunk.SchemaConfig{}, chunks: chunks, client: &mockChunkStoreClient{chunks: chunks, scfg: chunk.SchemaConfig{}}}
 }
 
 func (m *mockChunkStore) Put(ctx context.Context, chunks []chunk.Chunk) error { return nil }
@@ -169,7 +169,7 @@ func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, c
 	return nil
 }
 
-func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
+func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
@@ -197,7 +197,7 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 	refs := make([]chunk.Chunk, 0, len(m.chunks))
 	// transform real chunks into ref chunks.
 	for _, c := range m.chunks {
-		r, err := chunk.ParseExternalKey("fake", c.ExternalKey())
+		r, err := chunk.ParseExternalKey("fake", m.schemas.ExternalKey(c))
 		if err != nil {
 			panic(err)
 		}
@@ -209,7 +209,7 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		panic(err)
 	}
 
-	f, err := chunk.NewChunkFetcher(cache, false, m.client)
+	f, err := chunk.NewChunkFetcher(cache, false, m.schemas, m.client, 10, 100)
 	if err != nil {
 		panic(err)
 	}
@@ -218,6 +218,7 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 
 type mockChunkStoreClient struct {
 	chunks []chunk.Chunk
+	scfg   chunk.SchemaConfig
 }
 
 func (m mockChunkStoreClient) Stop() {
@@ -233,7 +234,7 @@ func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chun
 	for _, c := range chunks {
 		for _, sc := range m.chunks {
 			// only returns chunks requested using the external key
-			if c.ExternalKey() == sc.ExternalKey() {
+			if m.scfg.ExternalKey(c) == m.scfg.ExternalKey((sc)) {
 				res = append(res, sc)
 			}
 		}

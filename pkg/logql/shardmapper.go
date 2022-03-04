@@ -3,12 +3,13 @@ package logql
 import (
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/querier/astmapper"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // keys used in metrics
@@ -110,8 +111,8 @@ func (m ShardMapper) Parse(query string) (noop bool, expr Expr, err error) {
 		return false, nil, err
 	}
 
-	mappedStr := mapped.String()
 	originalStr := parsed.String()
+	mappedStr := mapped.String()
 	noop = originalStr == mappedStr
 	if noop {
 		m.metrics.parsed.WithLabelValues(NoopKey).Inc()
@@ -125,6 +126,12 @@ func (m ShardMapper) Parse(query string) (noop bool, expr Expr, err error) {
 }
 
 func (m ShardMapper) Map(expr Expr, r *shardRecorder) (Expr, error) {
+	// immediately clone the passed expr to avoid mutating the original
+	expr, err := Clone(expr)
+	if err != nil {
+		return nil, err
+	}
+
 	switch e := expr.(type) {
 	case *LiteralExpr:
 		return e, nil

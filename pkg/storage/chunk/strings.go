@@ -67,6 +67,11 @@ type UniqueStrings struct {
 	result []string
 }
 
+// NewUniqueStrings returns a UniqueStrings instance with a pre-allocated result buffer.
+func NewUniqueStrings(sizeHint int) UniqueStrings {
+	return UniqueStrings{result: make([]string, 0, sizeHint)}
+}
+
 // Add adds a new string, dropping duplicates.
 func (us *UniqueStrings) Add(strings ...string) {
 	for _, s := range strings {

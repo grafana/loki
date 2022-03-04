@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/querier/astmapper"
 )
 
 func TestShardedStringer(t *testing.T) {
@@ -157,6 +158,14 @@ func TestMappingStrings(t *testing.T) {
 		{
 			in:  `rate({foo="bar"} | json | label_format foo=bar [5m])`,
 			out: `rate({foo="bar"} | json | label_format foo=bar [5m])`,
+		},
+		{
+			in:  `count(rate({foo="bar"} | json [5m]))`,
+			out: `count(downstream<rate({foo="bar"} | json [5m]), shard=0_of_2> ++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>)`,
+		},
+		{
+			in:  `avg(rate({foo="bar"} | json [5m]))`,
+			out: `avg(downstream<rate({foo="bar"} | json [5m]), shard=0_of_2> ++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>)`,
 		},
 		{
 			in:  `{foo="bar"} |= "id=123"`,
@@ -686,7 +695,7 @@ func TestMapping(t *testing.T) {
 				Op: OpTypeAdd,
 				Opts: &BinOpOptions{
 					ReturnBool:     false,
-					VectorMatching: nil,
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				SampleExpr: &LiteralExpr{value: 1},
 				RHS: &VectorAggregationExpr{
@@ -864,7 +873,7 @@ func TestMapping(t *testing.T) {
 				Op: OpTypeDiv,
 				Opts: &BinOpOptions{
 					ReturnBool:     false,
-					VectorMatching: nil,
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				SampleExpr: &VectorAggregationExpr{
 					Operation: OpTypeMax,
@@ -987,8 +996,8 @@ func TestMapping(t *testing.T) {
 				Opts: &BinOpOptions{
 					ReturnBool: false,
 					VectorMatching: &VectorMatching{
-						On:      false,
-						Include: []string{"cluster"},
+						On:             false,
+						MatchingLabels: []string{"cluster"},
 					},
 				},
 				SampleExpr: &VectorAggregationExpr{

@@ -10,10 +10,9 @@ import (
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/tools/querytee"
-
 	"github.com/grafana/loki/pkg/loghttp"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/tools/querytee"
 )
 
 type Config struct {
@@ -32,7 +31,7 @@ func main() {
 
 	util_log.InitLogger(&server.Config{
 		LogLevel: cfg.LogLevel,
-	})
+	}, prometheus.DefaultRegisterer)
 
 	// Run the instrumentation server.
 	registry := prometheus.NewRegistry()
@@ -60,7 +59,11 @@ func main() {
 }
 
 func lokiReadRoutes(cfg Config) []querytee.Route {
-	samplesComparator := querytee.NewSamplesComparator(cfg.ProxyConfig.ValueComparisonTolerance)
+	samplesComparator := querytee.NewSamplesComparator(querytee.SampleComparisonOptions{
+		Tolerance:         cfg.ProxyConfig.ValueComparisonTolerance,
+		UseRelativeError:  cfg.ProxyConfig.UseRelativeError,
+		SkipRecentSamples: cfg.ProxyConfig.SkipRecentSamples,
+	})
 	samplesComparator.RegisterSamplesType(loghttp.ResultTypeStream, compareStreams)
 
 	return []querytee.Route{

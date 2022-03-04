@@ -9,7 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
@@ -19,10 +19,19 @@ import (
 )
 
 const (
-	// Local ingestion rate strategy
+	// LocalRateLimitStrat represents a ingestion rate limiting strategy that enforces the limit
+	// on a per distributor basis.
+	//
+	// The actual effective rate limit will be N times higher, where N is the number of distributor replicas.
 	LocalIngestionRateStrategy = "local"
 
-	// Global ingestion rate strategy
+	// GlobalRateLimitStrat represents a ingestion rate limiting strategy that enforces the rate
+	// limiting globally, configuring a per-distributor local rate limiter as "ingestion_rate / N",
+	// where N is the number of distributor replicas (it's automatically adjusted if the
+	// number of replicas change).
+	//
+	// The global strategy requires the distributors to form their own ring, which
+	// is used to keep track of the current number of healthy distributor replicas.
 	GlobalIngestionRateStrategy = "global"
 
 	bytesInMB = 1048576
@@ -69,6 +78,7 @@ type Limits struct {
 	MaxEntriesLimitPerQuery    int            `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
 	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
 	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	QueryReadyIndexNumDays     int            `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
@@ -126,7 +136,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", true, "Reject old samples.")
 
-	_ = l.RejectOldSamplesMaxAge.Set("14d")
+	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
 	_ = l.CreationGracePeriod.Set("10m")
 	f.Var(&l.CreationGracePeriod, "validation.create-grace-period", "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
@@ -135,7 +145,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 0, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 5000, "Maximum number of active streams per user, across the cluster. 0 to disable.")
-	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", false, "(Experimental) Allow out of order writes.")
+	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", true, "Allow out of order writes.")
 
 	_ = l.PerStreamRateLimit.Set(strconv.Itoa(defaultPerStreamRateLimit))
 	f.Var(&l.PerStreamRateLimit, "ingester.per-stream-rate-limit", "Maximum byte rate per second per stream, also expressible in human readable forms (1MB, 256KB, etc).")
@@ -162,6 +172,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 
 	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
+	f.IntVar(&l.QueryReadyIndexNumDays, "store.query-ready-index-num-days", 0, "Number of days of index to be kept always downloaded for queries. Applies only to per user index in boltdb-shipper index store. 0 to disable.")
 
 	_ = l.RulerEvaluationDelay.Set("0s")
 	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
@@ -175,6 +186,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.PerTenantOverridePeriod.Set("10s")
 	f.Var(&l.PerTenantOverridePeriod, "limits.per-user-override-period", "Period with this to reload the overrides.")
+
+	_ = l.QuerySplitDuration.Set("30m")
+	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by an interval and execute in parallel, 0 disables it. This also determines how cache keys are chosen when result caching is enabled")
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -199,6 +213,7 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Validate validates that this limits config is valid.
 func (l *Limits) Validate() error {
+
 	if l.StreamRetention != nil {
 		for i, rule := range l.StreamRetention {
 			matchers, err := logql.ParseMatchers(rule.Selector)
@@ -209,13 +224,7 @@ func (l *Limits) Validate() error {
 				return fmt.Errorf("retention period must be >= 24h was %s", rule.Period)
 			}
 			// populate matchers during validation
-			l.StreamRetention[i] = StreamRetention{
-				Period:   rule.Period,
-				Priority: rule.Priority,
-				Selector: rule.Selector,
-				Matchers: matchers,
-			}
-
+			l.StreamRetention[i].Matchers = matchers
 		}
 	}
 	return nil
@@ -234,13 +243,12 @@ func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
 	defaultLimits = &defaults
 }
 
-type ForEachTenantLimitCallback func(userID string, limit *Limits)
-
 type TenantLimits interface {
 	// TenantLimits is a function that returns limits for given tenant, or
 	// nil, if there are no tenant-specific limits.
 	TenantLimits(userID string) *Limits
-	ForEachTenantLimit(ForEachTenantLimitCallback)
+	// AllByUserID gets a mapping of all tenant IDs and limits for that user
+	AllByUserID() map[string]*Limits
 }
 
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
@@ -256,6 +264,13 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 		tenantLimits:  tenantLimits,
 		defaultLimits: &defaults,
 	}, nil
+}
+
+func (o *Overrides) AllByUserID() map[string]*Limits {
+	if o.tenantLimits != nil {
+		return o.tenantLimits.AllByUserID()
+	}
+	return nil
 }
 
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
@@ -343,6 +358,11 @@ func (o *Overrides) MaxQuerySeries(userID string) int {
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
 func (o *Overrides) MaxQueriersPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueriersPerTenant
+}
+
+// QueryReadyIndexNumDays returns the number of days for which we have to be query ready for a user.
+func (o *Overrides) QueryReadyIndexNumDays(userID string) int {
+	return o.getOverridesForUser(userID).QueryReadyIndexNumDays
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
@@ -503,10 +523,6 @@ func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 
 func (o *Overrides) UnorderedWrites(userID string) bool {
 	return o.getOverridesForUser(userID).UnorderedWrites
-}
-
-func (o *Overrides) ForEachTenantLimit(callback ForEachTenantLimitCallback) {
-	o.tenantLimits.ForEachTenantLimit(callback)
 }
 
 func (o *Overrides) DefaultLimits() *Limits {

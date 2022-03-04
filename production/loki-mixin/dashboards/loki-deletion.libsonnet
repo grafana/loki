@@ -6,7 +6,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
     {
       'loki-deletion.json':
         ($.dashboard('Loki / Deletion', uid='deletion'))
-        .addClusterSelectorTemplates(false)
+        .addCluster()
+        .addNamespace()
+        .addTag()
         .addRow(
           ($.row('Headlines') +
            {

@@ -3,7 +3,7 @@ package logql
 
 import (
   "time"
-  "github.com/prometheus/prometheus/pkg/labels"
+  "github.com/prometheus/prometheus/model/labels"
   "github.com/grafana/loki/pkg/logql/log"
 
 )
@@ -12,7 +12,7 @@ import (
 %union{
   Expr                    Expr
   Filter                  labels.MatchType
-  Grouping                *grouping
+  Grouping                *Grouping
   Labels                  []string
   LogExpr                 LogSelectorExpr
   LogRangeExpr            *LogRange
@@ -35,6 +35,7 @@ import (
   LiteralExpr             *LiteralExpr
   BinOpModifier           *BinOpOptions
   BoolModifier            *BinOpOptions
+  OnOrIgnoringModifier    *BinOpOptions
   LabelParser             *LabelParserExpr
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
@@ -80,6 +81,7 @@ import (
 %type <LabelReplaceExpr>      labelReplaceExpr
 %type <BinOpModifier>         binOpModifier
 %type <BoolModifier>          boolModifier
+%type <OnOrIgnoringModifier>  onOrIgnoringModifier
 %type <LabelParser>           labelParser
 %type <PipelineExpr>          pipelineExpr
 %type <PipelineStage>         pipelineStage
@@ -108,7 +110,7 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
-                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING
+                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -363,34 +365,75 @@ binOpExpr:
          | expr LTE binOpModifier expr       { $$ = mustNewBinOpExpr("<=", $3, $1, $4) }
          ;
 
-binOpModifier:
-	boolModifier	{ $$ = $1 }
-	| boolModifier ON OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
+boolModifier:
+		{
+		 $$ = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}}
+        	}
+        | BOOL
+        	{
+        	 $$ = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}, ReturnBool:true}
+        	}
+        ;
+
+onOrIgnoringModifier:
+    	boolModifier ON OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
 		{
 		$$ = $1
-		$$.VectorMatching = &VectorMatching{On: true, Include: $4}
+    		$$.VectorMatching.On=true
+    		$$.VectorMatching.MatchingLabels=$4
 		}
 	| boolModifier ON OPEN_PARENTHESIS CLOSE_PARENTHESIS
 		{
 		$$ = $1
-		$$.VectorMatching = &VectorMatching{On: true, Include: nil}
+		$$.VectorMatching.On=true
 		}
 	| boolModifier IGNORING OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
 		{
 		$$ = $1
-		$$.VectorMatching = &VectorMatching{On: false, Include: $4}
+    		$$.VectorMatching.MatchingLabels=$4
 		}
 	| boolModifier IGNORING OPEN_PARENTHESIS CLOSE_PARENTHESIS
 		{
 		$$ = $1
-		$$.VectorMatching = &VectorMatching{On: false, Include: nil}
 		}
 	;
 
-boolModifier:
-	{ $$ = &BinOpOptions{} }
-	| BOOL { $$ = &BinOpOptions{ ReturnBool: true } }
-	;
+binOpModifier:
+	boolModifier {$$ = $1 }
+ 	| onOrIgnoringModifier {$$ = $1 }
+ 	| onOrIgnoringModifier GROUP_LEFT
+                	{
+                        $$ = $1
+                        $$.VectorMatching.Card = CardManyToOne
+                        }
+ 	| onOrIgnoringModifier GROUP_LEFT OPEN_PARENTHESIS CLOSE_PARENTHESIS
+        	{
+                $$ = $1
+                $$.VectorMatching.Card = CardManyToOne
+                }
+ 	| onOrIgnoringModifier GROUP_LEFT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
+                {
+                $$ = $1
+                $$.VectorMatching.Card = CardManyToOne
+                $$.VectorMatching.Include = $4
+                }
+        | onOrIgnoringModifier GROUP_RIGHT
+        	{
+                $$ = $1
+                $$.VectorMatching.Card = CardOneToMany
+                }
+ 	| onOrIgnoringModifier GROUP_RIGHT OPEN_PARENTHESIS CLOSE_PARENTHESIS
+                {
+                $$ = $1
+                $$.VectorMatching.Card = CardOneToMany
+                }
+ 	| onOrIgnoringModifier GROUP_RIGHT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
+                {
+                $$ = $1
+                $$.VectorMatching.Card = CardOneToMany
+                $$.VectorMatching.Include = $4
+                }
+        ;
 
 literalExpr:
            NUMBER         { $$ = mustNewLiteralExpr( $1, false ) }
@@ -436,9 +479,9 @@ labels:
     ;
 
 grouping:
-      BY OPEN_PARENTHESIS labels CLOSE_PARENTHESIS        { $$ = &grouping{ without: false , groups: $3 } }
-    | WITHOUT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS   { $$ = &grouping{ without: true , groups: $3 } }
-    | BY OPEN_PARENTHESIS CLOSE_PARENTHESIS               { $$ = &grouping{ without: false , groups: nil } }
-    | WITHOUT OPEN_PARENTHESIS CLOSE_PARENTHESIS          { $$ = &grouping{ without: true , groups: nil } }
+      BY OPEN_PARENTHESIS labels CLOSE_PARENTHESIS        { $$ = &Grouping{ Without: false , Groups: $3 } }
+    | WITHOUT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS   { $$ = &Grouping{ Without: true , Groups: $3 } }
+    | BY OPEN_PARENTHESIS CLOSE_PARENTHESIS               { $$ = &Grouping{ Without: false , Groups: nil } }
+    | WITHOUT OPEN_PARENTHESIS CLOSE_PARENTHESIS          { $$ = &Grouping{ Without: true , Groups: nil } }
     ;
 %%

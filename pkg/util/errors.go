@@ -6,10 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/grafana/loki/pkg/util/log"
 )
 
 // LogError logs any error returned by f; useful when deferring Close etc.
@@ -70,10 +71,31 @@ func (es MultiError) Err() error {
 
 // Is tells if all errors are the same as the target error.
 func (es MultiError) Is(target error) bool {
+	if len(es) == 0 {
+		return false
+	}
 	for _, err := range es {
 		if !errors.Is(err, target) {
 			return false
 		}
+	}
+	return true
+}
+
+// IsDeadlineExceeded tells if all errors are either context.DeadlineExceeded or grpc codes.DeadlineExceeded.
+func (es MultiError) IsDeadlineExceeded() bool {
+	if len(es) == 0 {
+		return false
+	}
+	for _, err := range es {
+		if errors.Is(err, context.DeadlineExceeded) {
+			continue
+		}
+		s, ok := status.FromError(err)
+		if ok && s.Code() == codes.DeadlineExceeded {
+			continue
+		}
+		return false
 	}
 	return true
 }

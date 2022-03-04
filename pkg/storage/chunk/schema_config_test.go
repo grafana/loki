@@ -665,7 +665,16 @@ func TestPeriodConfig_Validate(t *testing.T) {
 				IndexTables: PeriodicTableConfig{Period: 0},
 				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
-			err: "Must have row_shards > 0 (current: 0) for schema (v10)",
+			err: "must have row_shards > 0 (current: 0) for schema (v10)",
+		},
+		{
+			desc: "v12",
+			in: PeriodConfig{
+				Schema:      "v12",
+				RowShards:   16,
+				IndexTables: PeriodicTableConfig{Period: 0},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -711,4 +720,130 @@ tags:
 	require.NoError(t, err)
 
 	require.Equal(t, yamlFile, string(yamlGenerated))
+}
+
+func TestSchemaForTime(t *testing.T) {
+	schemaCfg := SchemaConfig{Configs: []PeriodConfig{
+		{
+			From:       DayTime{Time: 1564358400000},
+			IndexType:  "grpc-store",
+			ObjectType: "grpc-store",
+			Schema:     "v10",
+			IndexTables: PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 604800000000000,
+				Tags:   nil,
+			},
+			RowShards: 16,
+		},
+		{
+			From:       DayTime{Time: 1564444800000},
+			IndexType:  "grpc-store",
+			ObjectType: "grpc-store",
+			Schema:     "v10",
+			IndexTables: PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 604800000000000,
+				Tags:   nil,
+			},
+			RowShards: 32,
+		},
+	}}
+
+	first, err := schemaCfg.SchemaForTime(model.TimeFromUnix(1564444800 + 100))
+	require.NoError(t, err)
+	require.Equal(t, schemaCfg.Configs[1], first)
+
+	second, err := schemaCfg.SchemaForTime(model.TimeFromUnix(1564358400 + 100))
+	require.NoError(t, err)
+	require.Equal(t, schemaCfg.Configs[0], second)
+}
+
+func TestVersionAsInt(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		schemaCfg SchemaConfig
+		expected  int
+		err       bool
+	}{
+		{
+			name: "v9",
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:   DayTime{Time: 0},
+						Schema: "v9",
+					},
+				},
+			},
+			expected: int(9),
+		},
+		{
+			name: "malformed",
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:   DayTime{Time: 0},
+						Schema: "v",
+					},
+				},
+			},
+			expected: int(0),
+			err:      true,
+		},
+		{
+			name: "v12",
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v12",
+						RowShards: 16,
+					},
+				},
+			},
+			expected: int(12),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			version, err := tc.schemaCfg.Configs[0].VersionAsInt()
+			require.Equal(t, tc.expected, version)
+			if tc.err {
+				require.NotNil(t, err)
+			} else {
+
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestUnmarshalPeriodConfig(t *testing.T) {
+	input := `
+from: "2020-07-31"
+index:
+  period: 24h
+  prefix: loki_index_
+object_store: gcs
+schema: v11
+store: boltdb-shipper
+`
+
+	var cfg PeriodConfig
+	require.Nil(t, yaml.Unmarshal([]byte(input), &cfg))
+	var n = 11
+
+	expected := PeriodConfig{
+		From:       DayTime{model.Time(1596153600000)},
+		IndexType:  "boltdb-shipper",
+		ObjectType: "gcs",
+		Schema:     "v11",
+		IndexTables: PeriodicTableConfig{
+			Prefix: "loki_index_",
+			Period: 24 * time.Hour,
+		},
+		schemaInt: &n,
+	}
+
+	require.Equal(t, expected, cfg)
 }

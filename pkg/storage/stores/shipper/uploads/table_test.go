@@ -14,6 +14,7 @@ import (
 
 	"github.com/klauspost/compress/gzip"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
@@ -24,6 +25,7 @@ import (
 const (
 	indexDirName          = "index"
 	objectsStorageDirName = "objects"
+	userID                = "user-id"
 )
 
 func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, StorageClient) {
@@ -41,11 +43,11 @@ func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, Storag
 
 type stopFunc func()
 
-func buildTestTable(t *testing.T, path string) (*Table, *local.BoltIndexClient, stopFunc) {
+func buildTestTable(t *testing.T, path string, makePerTenantBuckets bool) (*Table, *local.BoltIndexClient, stopFunc) {
 	boltDBIndexClient, fsObjectClient := buildTestClients(t, path)
 	indexPath := filepath.Join(path, indexDirName)
 
-	table, err := NewTable(indexPath, "test", fsObjectClient, boltDBIndexClient)
+	table, err := NewTable(indexPath, "test", fsObjectClient, boltDBIndexClient, makePerTenantBuckets)
 	require.NoError(t, err)
 
 	return table, boltDBIndexClient, func() {
@@ -55,12 +57,7 @@ func buildTestTable(t *testing.T, path string) (*Table, *local.BoltIndexClient, 
 }
 
 func TestLoadTable(t *testing.T) {
-	indexPath, err := ioutil.TempDir("", "table-load")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(indexPath))
-	}()
+	indexPath := t.TempDir()
 
 	boltDBIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: indexPath})
 	require.NoError(t, err)
@@ -69,17 +66,36 @@ func TestLoadTable(t *testing.T) {
 		boltDBIndexClient.Stop()
 	}()
 
-	// setup some dbs for a table at a path.
-	tablePath := testutil.SetupDBTablesAtPath(t, "test-table", indexPath, map[string]testutil.DBRecords{
+	// setup some dbs with default bucket and per tenant bucket for a table at a path.
+	tablePath := filepath.Join(indexPath, "test-table")
+	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBConfig{
 		"db1": {
-			Start:      0,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
-	}, false)
+	}, nil)
+	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBConfig{
+		"db3": {
+			DBRecords: testutil.DBRecords{
+				Start:      20,
+				NumRecords: 10,
+			},
+		},
+		"db4": {
+			DBRecords: testutil.DBRecords{
+				Start:      30,
+				NumRecords: 10,
+			},
+		},
+	}, []byte(userID))
 
 	// change a boltdb file to text file which would fail to open.
 	invalidFilePath := filepath.Join(tablePath, "invalid")
@@ -90,7 +106,7 @@ func TestLoadTable(t *testing.T) {
 	require.Error(t, err)
 
 	// try loading the table.
-	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient, newMetrics(nil))
+	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient, false, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -98,129 +114,125 @@ func TestLoadTable(t *testing.T) {
 		table.Stop()
 	}()
 
-	// verify that we still have 3 files(2 valid, 1 invalid)
+	// verify that we still have 5 files(4 valid, 1 invalid)
 	filesInfo, err := ioutil.ReadDir(tablePath)
 	require.NoError(t, err)
-	require.Len(t, filesInfo, 3)
+	require.Len(t, filesInfo, 5)
 
 	require.NoError(t, table.Snapshot())
 
 	// query the loaded table to see if it has right data.
-	testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 0, 20)
+	testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, table, 0, 40)
 }
 
 func TestTable_Write(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-writes")
-	require.NoError(t, err)
+	for _, withPerTenantBucket := range []bool{false, true} {
+		t.Run(fmt.Sprintf("withPerTenantBucket=%v", withPerTenantBucket), func(t *testing.T) {
+			tempDir := t.TempDir()
 
-	table, boltIndexClient, stopFunc := buildTestTable(t, tempDir)
+			table, boltIndexClient, stopFunc := buildTestTable(t, tempDir, withPerTenantBucket)
+			defer stopFunc()
 
-	defer func() {
-		stopFunc()
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+			now := time.Now()
 
-	now := time.Now()
+			// allow modifying last 5 shards
+			table.modifyShardsSince = now.Add(-5 * ShardDBsByDuration).Unix()
 
-	// allow modifying last 5 shards
-	table.modifyShardsSince = now.Add(-5 * ShardDBsByDuration).Unix()
-
-	// a couple of times for which we want to do writes to make the table create different shards
-	testCases := []struct {
-		writeTime time.Time
-		dbName    string // set only when it is supposed to be written to a different name than usual
-	}{
-		{
-			writeTime: now,
-		},
-		{
-			writeTime: now.Add(-(ShardDBsByDuration + 5*time.Minute)),
-		},
-		{
-			writeTime: now.Add(-(ShardDBsByDuration*3 + 3*time.Minute)),
-		},
-		{
-			writeTime: now.Add(-6 * ShardDBsByDuration), // write with time older than table.modifyShardsSince
-			dbName:    fmt.Sprint(table.modifyShardsSince),
-		},
-	}
-
-	numFiles := 0
-
-	// performing writes and checking whether the index gets written to right shard
-	for i, tc := range testCases {
-		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			batch := boltIndexClient.NewWriteBatch()
-			testutil.AddRecordsToBatch(batch, "test", i*10, 10)
-			require.NoError(t, table.write(context.Background(), tc.writeTime, batch.(*local.BoltWriteBatch).Writes["test"]))
-
-			numFiles++
-			require.Equal(t, numFiles, len(table.dbs))
-
-			expectedDBName := tc.dbName
-			if expectedDBName == "" {
-				expectedDBName = fmt.Sprint(tc.writeTime.Truncate(ShardDBsByDuration).Unix())
+			// a couple of times for which we want to do writes to make the table create different shards
+			testCases := []struct {
+				writeTime time.Time
+				dbName    string // set only when it is supposed to be written to a different name than usual
+			}{
+				{
+					writeTime: now,
+				},
+				{
+					writeTime: now.Add(-(ShardDBsByDuration + 5*time.Minute)),
+				},
+				{
+					writeTime: now.Add(-(ShardDBsByDuration*3 + 3*time.Minute)),
+				},
+				{
+					writeTime: now.Add(-6 * ShardDBsByDuration), // write with time older than table.modifyShardsSince
+					dbName:    fmt.Sprint(table.modifyShardsSince),
+				},
 			}
-			db, ok := table.dbs[expectedDBName]
-			require.True(t, ok)
 
-			require.NoError(t, table.Snapshot())
+			numFiles := 0
 
-			// test that the table has current + previous records
-			testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 0, (i+1)*10)
-			testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, db, boltIndexClient, i*10, 10)
+			// performing writes and checking whether the index gets written to right shard
+			for i, tc := range testCases {
+				t.Run(fmt.Sprint(i), func(t *testing.T) {
+					batch := boltIndexClient.NewWriteBatch()
+					testutil.AddRecordsToBatch(batch, "test", i*10, 10)
+					require.NoError(t, table.write(user.InjectOrgID(context.Background(), userID), tc.writeTime, batch.(*local.BoltWriteBatch).Writes["test"]))
+
+					numFiles++
+					require.Equal(t, numFiles, len(table.dbs))
+
+					expectedDBName := tc.dbName
+					if expectedDBName == "" {
+						expectedDBName = fmt.Sprint(tc.writeTime.Truncate(ShardDBsByDuration).Unix())
+					}
+					db, ok := table.dbs[expectedDBName]
+					require.True(t, ok)
+
+					require.NoError(t, table.Snapshot())
+
+					// test that the table has current + previous records
+					testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, table, 0, (i+1)*10)
+					bucketToQuery := local.IndexBucketName
+					if withPerTenantBucket {
+						bucketToQuery = []byte(userID)
+					}
+					testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, db, bucketToQuery, boltIndexClient, i*10, 10)
+				})
+			}
 		})
 	}
 }
 
 func TestTable_Upload(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "upload")
-	require.NoError(t, err)
+	for _, withPerTenantBucket := range []bool{false, true} {
+		t.Run(fmt.Sprintf("withPerTenantBucket=%v", withPerTenantBucket), func(t *testing.T) {
+			tempDir := t.TempDir()
 
-	table, boltIndexClient, stopFunc := buildTestTable(t, tempDir)
-	require.NoError(t, err)
+			table, boltIndexClient, stopFunc := buildTestTable(t, tempDir, withPerTenantBucket)
+			defer stopFunc()
 
-	defer func() {
-		stopFunc()
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+			now := time.Now()
 
-	now := time.Now()
+			// write a batch for now
+			batch := boltIndexClient.NewWriteBatch()
+			testutil.AddRecordsToBatch(batch, "test", 0, 10)
+			require.NoError(t, table.write(user.InjectOrgID(context.Background(), userID), now, batch.(*local.BoltWriteBatch).Writes["test"]))
 
-	// write a batch for now
-	batch := boltIndexClient.NewWriteBatch()
-	testutil.AddRecordsToBatch(batch, "test", 0, 10)
-	require.NoError(t, table.write(context.Background(), now, batch.(*local.BoltWriteBatch).Writes["test"]))
+			// upload the table
+			require.NoError(t, table.Upload(context.Background(), true))
+			require.Len(t, table.dbs, 1)
 
-	// upload the table
-	require.NoError(t, table.Upload(context.Background(), true))
-	require.Len(t, table.dbs, 1)
+			// compare the local dbs for the table with the dbs in remote storage after upload to ensure they have same data
+			objectStorageDir := filepath.Join(tempDir, objectsStorageDirName)
+			compareTableWithStorage(t, table, objectStorageDir)
 
-	// compare the local dbs for the table with the dbs in remote storage after upload to ensure they have same data
-	objectStorageDir := filepath.Join(tempDir, objectsStorageDirName)
-	compareTableWithStorage(t, table, objectStorageDir)
+			// write a batch to another shard
+			batch = boltIndexClient.NewWriteBatch()
+			testutil.AddRecordsToBatch(batch, "test", 20, 10)
+			require.NoError(t, table.write(user.InjectOrgID(context.Background(), userID), now.Add(ShardDBsByDuration), batch.(*local.BoltWriteBatch).Writes["test"]))
 
-	// write a batch to another shard
-	batch = boltIndexClient.NewWriteBatch()
-	testutil.AddRecordsToBatch(batch, "test", 20, 10)
-	require.NoError(t, table.write(context.Background(), now.Add(ShardDBsByDuration), batch.(*local.BoltWriteBatch).Writes["test"]))
+			// upload the dbs to storage
+			require.NoError(t, table.Upload(context.Background(), true))
+			require.Len(t, table.dbs, 2)
 
-	// upload the dbs to storage
-	require.NoError(t, table.Upload(context.Background(), true))
-	require.Len(t, table.dbs, 2)
-
-	// check local dbs with remote dbs to ensure they have same data
-	compareTableWithStorage(t, table, objectStorageDir)
+			// check local dbs with remote dbs to ensure they have same data
+			compareTableWithStorage(t, table, objectStorageDir)
+		})
+	}
 }
 
 func compareTableWithStorage(t *testing.T, table *Table, storageDir string) {
 	// use a temp dir for decompressing the files before comparison.
-	tempDir, err := ioutil.TempDir("", "compare-table")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	for name, db := range table.dbs {
 		fileName := table.buildFileName(name)
@@ -256,12 +268,7 @@ func compareTableWithStorage(t *testing.T, table *Table, storageDir string) {
 }
 
 func TestTable_Cleanup(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "cleanup")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(testDir))
-	}()
+	testDir := t.TempDir()
 
 	boltDBIndexClient, storageClient := buildTestClients(t, testDir)
 	indexPath := filepath.Join(testDir, indexDirName)
@@ -278,12 +285,12 @@ func TestTable_Cleanup(t *testing.T) {
 	notUploaded := filepath.Join(indexPath, "not-uploaded")
 
 	// build all the test dbs except for notUploaded
-	testutil.AddRecordsToDB(t, outsideRetention, boltDBIndexClient, 0, 10)
-	testutil.AddRecordsToDB(t, inRetention, boltDBIndexClient, 10, 10)
-	testutil.AddRecordsToDB(t, notUploaded, boltDBIndexClient, 20, 10)
+	testutil.AddRecordsToDB(t, outsideRetention, boltDBIndexClient, 0, 10, nil)
+	testutil.AddRecordsToDB(t, inRetention, boltDBIndexClient, 10, 10, nil)
+	testutil.AddRecordsToDB(t, notUploaded, boltDBIndexClient, 20, 10, nil)
 
 	// load existing dbs
-	table, err := LoadTable(indexPath, "test", storageClient, boltDBIndexClient, newMetrics(nil))
+	table, err := LoadTable(indexPath, "test", storageClient, boltDBIndexClient, false, newMetrics(nil))
 	require.NoError(t, err)
 	require.Len(t, table.dbs, 3)
 
@@ -338,28 +345,29 @@ func TestTable_Cleanup(t *testing.T) {
 }
 
 func Test_LoadBoltDBsFromDir(t *testing.T) {
-	indexPath, err := ioutil.TempDir("", "load-dbs-from-dir")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(indexPath))
-	}()
+	indexPath := t.TempDir()
 
 	// setup some dbs with a snapshot file.
-	tablePath := testutil.SetupDBTablesAtPath(t, "test-table", indexPath, map[string]testutil.DBRecords{
+	tablePath := testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "test-table"), map[string]testutil.DBConfig{
 		"db1": {
-			Start:      0,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		"db1" + tempFileSuffix: { // a snapshot file which should be ignored.
-			Start:      0,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      0,
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
-	}, false)
+	}, nil)
 
 	// create a boltdb file without bucket which should get removed
 	db, err := local.OpenBoltdbFile(filepath.Join(tablePath, "no-bucket"))
@@ -386,12 +394,7 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 }
 
 func TestTable_ImmutableUploads(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "immutable-uploads")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	boltDBIndexClient, storageClient := buildTestClients(t, tempDir)
 	indexPath := filepath.Join(tempDir, indexDirName)
@@ -410,18 +413,20 @@ func TestTable_ImmutableUploads(t *testing.T) {
 		time.Now().Truncate(ShardDBsByDuration).Unix(), // active shard, should not upload
 	}
 
-	dbs := map[string]testutil.DBRecords{}
+	dbs := map[string]testutil.DBConfig{}
 	for _, dbName := range dbNames {
-		dbs[fmt.Sprint(dbName)] = testutil.DBRecords{
-			NumRecords: 10,
+		dbs[fmt.Sprint(dbName)] = testutil.DBConfig{
+			DBRecords: testutil.DBRecords{
+				NumRecords: 10,
+			},
 		}
 	}
 
 	// setup some dbs for a table at a path.
 	tableName := "test-table"
-	tablePath := testutil.SetupDBTablesAtPath(t, tableName, indexPath, dbs, false)
+	tablePath := testutil.SetupDBsAtPath(t, filepath.Join(indexPath, tableName), dbs, nil)
 
-	table, err := LoadTable(tablePath, "test", storageClient, boltDBIndexClient, newMetrics(nil))
+	table, err := LoadTable(tablePath, "test", storageClient, boltDBIndexClient, false, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -475,12 +480,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 }
 
 func TestTable_MultiQueries(t *testing.T) {
-	indexPath, err := ioutil.TempDir("", "table-multi-queries")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(indexPath))
-	}()
+	indexPath := t.TempDir()
 
 	boltDBIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: indexPath})
 	require.NoError(t, err)
@@ -489,20 +489,40 @@ func TestTable_MultiQueries(t *testing.T) {
 		boltDBIndexClient.Stop()
 	}()
 
-	// setup some dbs for a table at a path.
-	tablePath := testutil.SetupDBTablesAtPath(t, "test-table", indexPath, map[string]testutil.DBRecords{
+	user1, user2 := "user1", "user2"
+
+	// setup some dbs with default bucket and per tenant bucket for a table at a path.
+	tablePath := filepath.Join(indexPath, "test-table")
+	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBConfig{
 		"db1": {
-			Start:      0,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				NumRecords: 10,
+			},
 		},
 		"db2": {
-			Start:      10,
-			NumRecords: 10,
+			DBRecords: testutil.DBRecords{
+				Start:      10,
+				NumRecords: 10,
+			},
 		},
-	}, false)
+	}, nil)
+	testutil.SetupDBsAtPath(t, tablePath, map[string]testutil.DBConfig{
+		"db3": {
+			DBRecords: testutil.DBRecords{
+				Start:      20,
+				NumRecords: 10,
+			},
+		},
+		"db4": {
+			DBRecords: testutil.DBRecords{
+				Start:      30,
+				NumRecords: 10,
+			},
+		},
+	}, []byte(user1))
 
 	// try loading the table.
-	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient, newMetrics(nil))
+	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient, false, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -514,10 +534,13 @@ func TestTable_MultiQueries(t *testing.T) {
 
 	// build queries each looking for specific value from all the dbs
 	var queries []chunk.IndexQuery
-	for i := 5; i < 15; i++ {
+	for i := 5; i < 35; i++ {
 		queries = append(queries, chunk.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
 	}
 
-	// query the loaded table to see if it has right data.
-	testutil.TestSingleTableQuery(t, queries, table, 5, 10)
+	// querying data for user1 should return both data from common index and user1's index
+	testutil.TestSingleTableQuery(t, user1, queries, table, 5, 30)
+
+	// querying data for user2 should return only common index
+	testutil.TestSingleTableQuery(t, user2, queries, table, 5, 15)
 }

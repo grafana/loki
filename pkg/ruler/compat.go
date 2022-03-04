@@ -3,20 +3,19 @@ package ruler
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/rulefmt"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
-	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
@@ -26,6 +25,8 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	ruler "github.com/grafana/loki/pkg/ruler/base"
+	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/util"
 )
 
@@ -227,7 +228,7 @@ func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 		set[g.Name] = struct{}{}
 
 		for _, r := range g.Rules {
-			if err := validateRuleNode(&r); err != nil {
+			if err := validateRuleNode(&r, g.Name); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -236,7 +237,7 @@ func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 	return errs
 }
 
-func validateRuleNode(r *rulefmt.RuleNode) error {
+func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 	if r.Record.Value != "" && r.Alert.Value != "" {
 		return errors.Errorf("only one of 'record' and 'alert' must be set")
 	}
@@ -245,14 +246,10 @@ func validateRuleNode(r *rulefmt.RuleNode) error {
 		return errors.Errorf("one of 'record' or 'alert' must be set")
 	}
 
-	if r.Record.Value != "" && r.Alert.Value != "" {
-		return errors.Errorf("only one of 'record' or 'alert' must be set")
-	}
-
 	if r.Expr.Value == "" {
 		return errors.Errorf("field 'expr' must be set in rule")
 	} else if _, err := logql.ParseExpr(r.Expr.Value); err != nil {
-		return errors.Wrapf(err, "could not parse expression")
+		return errors.Wrapf(err, fmt.Sprintf("could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName))
 	}
 
 	if r.Record.Value != "" {

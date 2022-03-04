@@ -10,9 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -195,24 +194,23 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 	}
 }
 
-func (d *DeleteRequestsManager) IntervalHasExpiredChunks(interval model.Interval) bool {
+func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval, userID string) bool {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
-	if len(d.deleteRequestsToProcess) == 0 {
+	if userID != "" {
+		for _, deleteRequest := range d.deleteRequestsToProcess {
+			if deleteRequest.UserID == userID {
+				return true
+			}
+		}
+
 		return false
 	}
 
-	for _, deleteRequest := range d.deleteRequestsToProcess {
-		if intervalsOverlap(interval, model.Interval{
-			Start: deleteRequest.StartTime,
-			End:   deleteRequest.EndTime,
-		}) {
-			return true
-		}
-	}
-
-	return false
+	// If your request includes just today and there are chunks spanning today and yesterday then
+	// with previous check it won’t process yesterday’s index.
+	return len(d.deleteRequestsToProcess) != 0
 }
 
 func (d *DeleteRequestsManager) DropFromIndex(_ retention.ChunkEntry, _ model.Time, _ model.Time) bool {

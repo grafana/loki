@@ -5,18 +5,26 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
+
+	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 )
 
 func Test_InitQuerierService(t *testing.T) {
 	var mockQueryHandlers = map[string]http.Handler{
 		"/loki/api/v1/query": http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 			_, err := res.Write([]byte("test handler"))
+			require.NoError(t, err)
+		}),
+	}
+
+	var alwaysExternalHandlers = map[string]http.Handler{
+		"/loki/api/v1/tail": http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+			_, err := res.Write([]byte("test tail handler"))
 			require.NoError(t, err)
 		}),
 	}
@@ -30,7 +38,9 @@ func Test_InitQuerierService(t *testing.T) {
 
 		querierWorkerService, err := InitWorkerService(
 			config,
+			nil,
 			mockQueryHandlers,
+			alwaysExternalHandlers,
 			externalRouter,
 			http.HandlerFunc(externalRouter.ServeHTTP),
 			authMiddleware,
@@ -56,6 +66,13 @@ func Test_InitQuerierService(t *testing.T) {
 			externalRouter.ServeHTTP(recorder, request)
 			assert.Equal(t, 200, recorder.Code)
 			assert.Equal(t, "test handler", recorder.Body.String())
+
+			// Tail endpoints always external
+			recorder = httptest.NewRecorder()
+			request = httptest.NewRequest("GET", "/loki/api/v1/tail", nil)
+			externalRouter.ServeHTTP(recorder, request)
+			assert.Equal(t, 200, recorder.Code)
+			assert.Equal(t, "test tail handler", recorder.Body.String())
 		})
 
 		t.Run("wrap external handler with auth middleware", func(t *testing.T) {
@@ -81,6 +98,10 @@ func Test_InitQuerierService(t *testing.T) {
 		})
 
 		t.Run("wrap external handler with response json middleware", func(t *testing.T) {
+			// note: this test only assures that the content type of the response is
+			// set if the handler function does not override it, which happens in the
+			// actual implementation, see
+			// https://github.com/grafana/loki/blob/34a012adcfade43291de3a7670f53679ea06aefe/pkg/lokifrontend/frontend/transport/handler.go#L136-L139
 			config := WorkerServiceConfig{
 				QueryFrontendEnabled:  false,
 				QuerySchedulerEnabled: false,
@@ -186,6 +207,13 @@ func Test_InitQuerierService(t *testing.T) {
 				request := httptest.NewRequest("GET", "/loki/api/v1/query", nil)
 				externalRouter.ServeHTTP(recorder, request)
 				assert.Equal(t, 404, recorder.Code)
+
+				// Tail endpoints always external
+				recorder = httptest.NewRecorder()
+				request = httptest.NewRequest("GET", "/loki/api/v1/tail", nil)
+				externalRouter.ServeHTTP(recorder, request)
+				assert.Equal(t, 200, recorder.Code)
+				assert.Equal(t, "test tail handler", recorder.Body.String())
 			}
 		})
 
@@ -198,18 +226,6 @@ func Test_InitQuerierService(t *testing.T) {
 				testContext(config, nil)
 
 				assert.Equal(t, "127.0.0.1:1234", workerConfig.FrontendAddress)
-			}
-		})
-
-		t.Run("set the worker's max concurrent request to the same as the max concurrent setting for the querier", func(t *testing.T) {
-			for _, config := range nonStandaloneTargetPermutations {
-				workerConfig := querier_worker.Config{}
-				config.QuerierWorkerConfig = &workerConfig
-				config.QuerierMaxConcurrent = 42
-
-				testContext(config, nil)
-
-				assert.Equal(t, 42, workerConfig.MaxConcurrentRequests)
 			}
 		})
 

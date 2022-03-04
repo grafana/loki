@@ -6,27 +6,16 @@ import (
 	"time"
 
 	"cloud.google.com/go/pubsub"
-	"github.com/gofrs/uuid"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
-
-var instanceID uuid.UUID
-
-func init() {
-	id, err := uuid.NewV4()
-	if err != nil {
-		panic(err)
-	}
-	instanceID = id
-}
 
 // LogEntry that will be written to the pubsub topic.
 // According to the following spec.
@@ -64,19 +53,12 @@ func format(
 
 	// mandatory label for gcplog
 	lbs := labels.NewBuilder(nil)
-	lbs.Set("resource_type", ge.Resource.Type)
-
-	// `promtail_instance` uniquely identifies each promtail instance trying
-	// to scrape gcplog(from single subscription_id).
-	//
-	// We need this unique identifier to avoid out-of-order errors from Loki servers.
-	// Because say two promtail instances rewrite timestamp of log entries(with same labelset)
-	// at the same time may reach Loki servers at different times can cause Loki servers to reject it.
-	lbs.Set("promtail_instance", instanceID.String())
+	lbs.Set("__gcp_logname", ge.LogName)
+	lbs.Set("__gcp_resource_type", ge.Resource.Type)
 
 	// labels from gcp log entry. Add it as internal labels
 	for k, v := range ge.Resource.Labels {
-		lbs.Set("__"+util.SnakeCase(k), v)
+		lbs.Set("__gcp_resource_labels_"+util.SnakeCase(k), v)
 	}
 
 	var processed labels.Labels

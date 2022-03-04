@@ -5,12 +5,13 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/util"
 )
 
 func Test_GetShards(t *testing.T) {
@@ -49,7 +50,7 @@ func Test_ValidateShards(t *testing.T) {
 
 var (
 	result uint32
-	lbs    = []cortexpb.LabelAdapter{
+	lbs    = []logproto.LabelAdapter{
 		{Name: "foo", Value: "bar"},
 	}
 	buf = make([]byte, 0, 1024)
@@ -58,13 +59,13 @@ var (
 func BenchmarkHash(b *testing.B) {
 	b.Run("sha256", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			result = labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(lbs)) % 16
+			result = labelsSeriesIDHash(logproto.FromLabelAdaptersToLabels(lbs)) % 16
 		}
 	})
 	b.Run("xxash", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			var fp uint64
-			fp, buf = cortexpb.FromLabelAdaptersToLabels(lbs).HashWithoutLabels(buf, []string(nil)...)
+			fp, buf = logproto.FromLabelAdaptersToLabels(lbs).HashWithoutLabels(buf, []string(nil)...)
 			result = util.HashFP(model.Fingerprint(fp)) % 16
 		}
 	})
@@ -72,18 +73,18 @@ func BenchmarkHash(b *testing.B) {
 
 func TestDeleteAddLoopkup(t *testing.T) {
 	index := NewWithShards(DefaultIndexShards)
-	lbs := []cortexpb.LabelAdapter{
+	lbs := []logproto.LabelAdapter{
 		{Name: "foo", Value: "foo"},
 		{Name: "bar", Value: "bar"},
 		{Name: "buzz", Value: "buzz"},
 	}
-	sort.Sort(cortexpb.FromLabelAdaptersToLabels(lbs))
+	sort.Sort(logproto.FromLabelAdaptersToLabels(lbs))
 
-	require.Equal(t, uint32(26), labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(lbs))%32)
+	require.Equal(t, uint32(26), labelsSeriesIDHash(logproto.FromLabelAdaptersToLabels(lbs))%32)
 	// make sure we consistent
-	require.Equal(t, uint32(26), labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(lbs))%32)
-	index.Add(lbs, model.Fingerprint((cortexpb.FromLabelAdaptersToLabels(lbs).Hash())))
-	index.Delete(cortexpb.FromLabelAdaptersToLabels(lbs), model.Fingerprint(cortexpb.FromLabelAdaptersToLabels(lbs).Hash()))
+	require.Equal(t, uint32(26), labelsSeriesIDHash(logproto.FromLabelAdaptersToLabels(lbs))%32)
+	index.Add(lbs, model.Fingerprint((logproto.FromLabelAdaptersToLabels(lbs).Hash())))
+	index.Delete(logproto.FromLabelAdaptersToLabels(lbs), model.Fingerprint(logproto.FromLabelAdaptersToLabels(lbs).Hash()))
 	ids, err := index.Lookup([]*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
 	}, nil)
@@ -104,7 +105,7 @@ func Test_hash_mapping(t *testing.T) {
 	for _, shard := range []uint32{16, 32, 64, 128} {
 		t.Run(fmt.Sprintf("%d", shard), func(t *testing.T) {
 			ii := NewWithShards(shard)
-			ii.Add(cortexpb.FromLabelsToLabelAdapters(lbs), 1)
+			ii.Add(logproto.FromLabelsToLabelAdapters(lbs), 1)
 
 			res, err := ii.Lookup([]*labels.Matcher{{Type: labels.MatchEqual, Name: "compose_project", Value: "loki-boltdb-storage-s3"}}, &astmapper.ShardAnnotation{Shard: int(labelsSeriesIDHash(lbs) % 16), Of: 16})
 			require.NoError(t, err)
@@ -112,6 +113,26 @@ func Test_hash_mapping(t *testing.T) {
 			require.Equal(t, model.Fingerprint(1), res[0])
 		})
 	}
+}
+
+func Test_NoMatcherLookup(t *testing.T) {
+	lbs := labels.Labels{
+		labels.Label{Name: "foo", Value: "bar"},
+		labels.Label{Name: "hi", Value: "hello"},
+	}
+	// with no shard param
+	ii := NewWithShards(16)
+	ii.Add(logproto.FromLabelsToLabelAdapters(lbs), 1)
+	ids, err := ii.Lookup(nil, nil)
+	require.Nil(t, err)
+	require.Equal(t, model.Fingerprint(1), ids[0])
+
+	// with shard param
+	ii = NewWithShards(16)
+	ii.Add(logproto.FromLabelsToLabelAdapters(lbs), 1)
+	ids, err = ii.Lookup(nil, &astmapper.ShardAnnotation{Shard: int(labelsSeriesIDHash(lbs) % 16), Of: 16})
+	require.Nil(t, err)
+	require.Equal(t, model.Fingerprint(1), ids[0])
 }
 
 func Test_ConsistentMapping(t *testing.T) {
@@ -123,8 +144,8 @@ func Test_ConsistentMapping(t *testing.T) {
 			labels.Label{Name: "foo", Value: "bar"},
 			labels.Label{Name: "hi", Value: fmt.Sprint(i)},
 		}
-		a.Add(cortexpb.FromLabelsToLabelAdapters(lbs), model.Fingerprint(i))
-		b.Add(cortexpb.FromLabelsToLabelAdapters(lbs), model.Fingerprint(i))
+		a.Add(logproto.FromLabelsToLabelAdapters(lbs), model.Fingerprint(i))
+		b.Add(logproto.FromLabelsToLabelAdapters(lbs), model.Fingerprint(i))
 	}
 
 	shardMax := 8

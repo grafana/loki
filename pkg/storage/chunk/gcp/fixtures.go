@@ -7,11 +7,13 @@ import (
 
 	"cloud.google.com/go/bigtable"
 	"cloud.google.com/go/bigtable/bttest"
+	"cloud.google.com/go/storage"
 	"github.com/fsouza/fake-gcs-server/fakestorage"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/testutils"
 )
@@ -78,7 +80,14 @@ func (f *fixture) Clients() (
 	}
 
 	if f.gcsObjectClient {
-		cClient = objectclient.NewClient(newGCSObjectClient(GCSConfig{BucketName: "chunks"}, f.gcssrv.Client()), nil)
+		var c *GCSObjectClient
+		c, err = newGCSObjectClient(ctx, GCSConfig{BucketName: "chunks"}, hedging.Config{}, func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error) {
+			return f.gcssrv.Client(), nil
+		})
+		if err != nil {
+			return
+		}
+		cClient = objectclient.NewClient(c, nil, chunk.SchemaConfig{})
 	} else {
 		cClient = newBigtableObjectClient(Config{}, schemaConfig, client)
 	}

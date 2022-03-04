@@ -1,0 +1,41 @@
+apiVersion: loki.grafana.com/v1beta1
+kind: LokiStack
+metadata:
+  name: lokistack-dev
+spec:
+  size: 1x.extra-small
+  replicationFactor: 1
+  storage:
+    secret:
+      name: test
+      type: s3
+  storageClassName: gp2
+  tenants:
+    mode: static
+    authentication:
+      - tenantName: tenant-a
+        tenantId: test
+        oidc:
+          secret:
+            name: test1
+          issuerURL: https://127.0.0.1:5556/dex
+          redirectURL: https://localhost:8443/oidc/tenant-a/callback
+          usernameClaim: test
+          groupClaim: test
+    authorization:
+      roleBindings:
+      - name: tenant-a
+        roles:
+          - read-write
+        subjects:
+          - kind: user
+            name: admin@example.com
+      roles:
+      - name: read-write
+        permissions:
+          - read
+          - write
+        resources:
+          - metrics
+        tenants:
+          - tenant-a

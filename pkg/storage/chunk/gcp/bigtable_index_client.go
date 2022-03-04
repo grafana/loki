@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/bigtable"
-	"github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/grpcclient"
 	ot "github.com/opentracing/opentracing-go"
@@ -20,6 +18,8 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
@@ -215,7 +215,7 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 	return nil
 }
 
-func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages")
 	defer sp.Finish()
 
@@ -323,11 +323,11 @@ func (c *columnKeyIterator) Value() []byte {
 	return c.items[c.i].Value
 }
 
-func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	return chunk_util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	const null = string('\xff')
 
 	log, ctx := spanlogger.New(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})

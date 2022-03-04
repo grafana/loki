@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 /*
@@ -31,6 +32,7 @@ which can then take advantage of our sharded execution model.
 // ShardedEngine is an Engine implementation that can split queries into more parallelizable forms via
 // querying the underlying backend shards individually and reaggregating them.
 type ShardedEngine struct {
+	logger         log.Logger
 	timeout        time.Duration
 	downstreamable Downstreamable
 	limits         Limits
@@ -38,9 +40,10 @@ type ShardedEngine struct {
 }
 
 // NewShardedEngine constructs a *ShardedEngine
-func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics, limits Limits) *ShardedEngine {
+func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics, limits Limits, logger log.Logger) *ShardedEngine {
 	opts.applyDefault()
 	return &ShardedEngine{
+		logger:         logger,
 		timeout:        opts.Timeout,
 		downstreamable: downstreamable,
 		metrics:        metrics,
@@ -51,6 +54,7 @@ func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *S
 // Query constructs a Query
 func (ng *ShardedEngine) Query(p Params, mapped Expr) Query {
 	return &query{
+		logger:    ng.logger,
 		timeout:   ng.timeout,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer()),
@@ -175,9 +179,7 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	for _, res := range results {
-		if err := stats.JoinResults(ctx, res.Statistics); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "unable to merge downstream results", "err", err)
-		}
+		stats.JoinResults(ctx, res.Statistics)
 	}
 
 	return results, nil
@@ -322,7 +324,7 @@ func (ev *DownstreamEvaluator) Iterator(
 			xs = append(xs, iter)
 		}
 
-		return iter.NewHeapIterator(ctx, xs, params.Direction()), nil
+		return iter.NewSortEntryIterator(xs, params.Direction()), nil
 
 	default:
 		return nil, EvaluatorUnsupportedType(expr, ev)
@@ -399,5 +401,5 @@ func ResultIterator(res logqlmodel.Result, params Params) (iter.EntryIterator, e
 	if !ok {
 		return nil, fmt.Errorf("unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), logqlmodel.ValueTypeStreams)
 	}
-	return iter.NewStreamsIterator(context.Background(), streams, params.Direction()), nil
+	return iter.NewStreamsIterator(streams, params.Direction()), nil
 }

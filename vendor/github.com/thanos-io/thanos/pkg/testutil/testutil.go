@@ -14,16 +14,16 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/prometheus/prometheus/tsdb/chunks"
-	"github.com/prometheus/prometheus/tsdb/index"
-
 	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/index"
 	"go.uber.org/goleak"
 )
 
@@ -259,14 +259,14 @@ func PutOutOfOrderIndex(blockDir string, minTime int64, maxTime int64) error {
 		chk1 := chunks.Meta{
 			MinTime: maxTime - 2,
 			MaxTime: maxTime - 1,
-			Ref:     rand.Uint64(),
+			Ref:     chunks.ChunkRef(rand.Uint64()),
 			Chunk:   chunkenc.NewXORChunk(),
 		}
 		metas = append(metas, chk1)
 		chk2 := chunks.Meta{
 			MinTime: minTime + 1,
 			MaxTime: minTime + 2,
-			Ref:     rand.Uint64(),
+			Ref:     chunks.ChunkRef(rand.Uint64()),
 			Chunk:   chunkenc.NewXORChunk(),
 		}
 		metas = append(metas, chk2)
@@ -300,7 +300,7 @@ func PutOutOfOrderIndex(blockDir string, minTime int64, maxTime int64) error {
 	)
 
 	for i, s := range input {
-		if err := iw.AddSeries(uint64(i), s.labels, s.chunks...); err != nil {
+		if err := iw.AddSeries(storage.SeriesRef(i), s.labels, s.chunks...); err != nil {
 			return err
 		}
 
@@ -312,7 +312,7 @@ func PutOutOfOrderIndex(blockDir string, minTime int64, maxTime int64) error {
 			}
 			valset[l.Value] = struct{}{}
 		}
-		postings.Add(uint64(i), s.labels)
+		postings.Add(storage.SeriesRef(i), s.labels)
 	}
 
 	return iw.Close()

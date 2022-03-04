@@ -5,15 +5,12 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -22,7 +19,9 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type ChunkMetrics struct {
@@ -79,6 +78,7 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 // chunks with the next chunk from the next batch and added it to the next iteration. In this case the boundaries of the batch
 // is reduced to non-overlapping chunks boundaries.
 type batchChunkIterator struct {
+	schemas         chunk.SchemaConfig
 	chunks          lazyChunks
 	batchSize       int
 	lastOverlapping []*LazyChunk
@@ -96,6 +96,7 @@ type batchChunkIterator struct {
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
 func newBatchChunkIterator(
 	ctx context.Context,
+	s chunk.SchemaConfig,
 	chunks []*LazyChunk,
 	batchSize int,
 	direction logproto.Direction,
@@ -110,6 +111,7 @@ func newBatchChunkIterator(
 	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
 	res := &batchChunkIterator{
 		batchSize:     batchSize,
+		schemas:       s,
 		metrics:       metrics,
 		matchers:      matchers,
 		start:         start,
@@ -235,11 +237,20 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 				through = through.Add(time.Nanosecond)
 			}
 		} else {
+
 			from = time.Unix(0, headChunk.Chunk.From.UnixNano())
 
-			// when clipping the from it should never be before the start or equal to the end.
+			// if the start of the batch is equal to the end of the query, since the end is not inclusive we can discard that batch.
+			if from.Equal(it.end) {
+				if it.end != it.start {
+					return nil
+				}
+				// unless end and start are equal in which case start and end are both inclusive.
+				from = it.end
+			}
+			// when clipping the from it should never be before the start.
 			// Doing so would include entries not requested.
-			if from.Before(it.start) || from.Equal(it.end) {
+			if from.Before(it.start) {
 				from = it.start
 			}
 		}
@@ -271,7 +282,7 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 		}
 	}
 	// download chunk for this batch.
-	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, batch, it.matchers, it.chunkFilterer)
+	chksBySeries, err := fetchChunkBySeries(it.ctx, it.schemas, it.metrics, batch, it.matchers, it.chunkFilterer)
 	if err != nil {
 		return &chunkBatch{err: err}
 	}
@@ -304,6 +315,7 @@ type logBatchIterator struct {
 
 func newLogBatchIterator(
 	ctx context.Context,
+	schemas chunk.SchemaConfig,
 	metrics *ChunkMetrics,
 	chunks []*LazyChunk,
 	batchSize int,
@@ -318,12 +330,16 @@ func newLogBatchIterator(
 		pipeline:           pipeline,
 		ctx:                ctx,
 		cancel:             cancel,
-		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, direction, start, end, metrics, matchers, chunkFilterer),
+		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, direction, start, end, metrics, matchers, chunkFilterer),
 	}, nil
 }
 
 func (it *logBatchIterator) Labels() string {
 	return it.curr.Labels()
+}
+
+func (it *logBatchIterator) StreamHash() uint64 {
+	return it.curr.StreamHash()
 }
 
 func (it *logBatchIterator) Error() error {
@@ -384,8 +400,10 @@ func (it *logBatchIterator) newChunksIterator(b *chunkBatch) (iter.EntryIterator
 	if err != nil {
 		return nil, err
 	}
-
-	return iter.NewHeapIterator(it.ctx, iters, it.direction), nil
+	if len(iters) == 1 {
+		return iters[0], nil
+	}
+	return iter.NewSortEntryIterator(iters, it.direction), nil
 }
 
 func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.EntryIterator, error) {
@@ -425,10 +443,10 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
 		}
-		result = append(result, iter.NewNonOverlappingIterator(iterators, ""))
+		result = append(result, iter.NewNonOverlappingIterator(iterators))
 	}
 
-	return iter.NewHeapIterator(it.ctx, result, it.direction), nil
+	return iter.NewMergeEntryIterator(it.ctx, result, it.direction), nil
 }
 
 type sampleBatchIterator struct {
@@ -443,6 +461,7 @@ type sampleBatchIterator struct {
 
 func newSampleBatchIterator(
 	ctx context.Context,
+	schemas chunk.SchemaConfig,
 	metrics *ChunkMetrics,
 	chunks []*LazyChunk,
 	batchSize int,
@@ -456,12 +475,16 @@ func newSampleBatchIterator(
 		extractor:          extractor,
 		ctx:                ctx,
 		cancel:             cancel,
-		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers, chunkFilterer),
+		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers, chunkFilterer),
 	}, nil
 }
 
 func (it *sampleBatchIterator) Labels() string {
 	return it.curr.Labels()
+}
+
+func (it *sampleBatchIterator) StreamHash() uint64 {
+	return it.curr.StreamHash()
 }
 
 func (it *sampleBatchIterator) Error() error {
@@ -491,7 +514,7 @@ func (it *sampleBatchIterator) Sample() logproto.Sample {
 
 func (it *sampleBatchIterator) Next() bool {
 	// for loop to avoid recursion
-	for {
+	for it.ctx.Err() == nil {
 		if it.curr != nil && it.curr.Next() {
 			return true
 		}
@@ -514,6 +537,7 @@ func (it *sampleBatchIterator) Next() bool {
 			return false
 		}
 	}
+	return false
 }
 
 // newChunksIterator creates an iterator over a set of lazychunks.
@@ -523,7 +547,7 @@ func (it *sampleBatchIterator) newChunksIterator(b *chunkBatch) (iter.SampleIter
 		return nil, err
 	}
 
-	return iter.NewHeapSampleIterator(it.ctx, iters), nil
+	return iter.NewSortSampleIterator(iters), nil
 }
 
 func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.SampleIterator, error) {
@@ -557,10 +581,10 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 			}
 			iterators = append(iterators, iterator)
 		}
-		result = append(result, iter.NewNonOverlappingSampleIterator(iterators, ""))
+		result = append(result, iter.NewNonOverlappingSampleIterator(iterators))
 	}
 
-	return iter.NewHeapSampleIterator(it.ctx, result), nil
+	return iter.NewMergeSampleIterator(it.ctx, result), nil
 }
 
 func removeMatchersByName(matchers []*labels.Matcher, names ...string) []*labels.Matcher {
@@ -577,6 +601,7 @@ func removeMatchersByName(matchers []*labels.Matcher, names ...string) []*labels
 
 func fetchChunkBySeries(
 	ctx context.Context,
+	s chunk.SchemaConfig,
 	metrics *ChunkMetrics,
 	chunks []*LazyChunk,
 	matchers []*labels.Matcher,
@@ -586,7 +611,7 @@ func fetchChunkBySeries(
 
 	// Make sure the initial chunks are loaded. This is not one chunk
 	// per series, but rather a chunk per non-overlapping iterator.
-	if err := loadFirstChunks(ctx, chksBySeries); err != nil {
+	if err := loadFirstChunks(ctx, s, chksBySeries); err != nil {
 		return nil, err
 	}
 
@@ -602,7 +627,7 @@ func fetchChunkBySeries(
 	}
 
 	// Finally we load all chunks not already loaded
-	if err := fetchLazyChunks(ctx, allChunks); err != nil {
+	if err := fetchLazyChunks(ctx, s, allChunks); err != nil {
 		return nil, err
 	}
 	metrics.chunks.WithLabelValues(statusMatched).Add(float64(len(allChunks)))
@@ -647,15 +672,16 @@ outer:
 	return chks
 }
 
-func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
-	log, ctx := spanlogger.New(ctx, "LokiStore.fetchLazyChunks")
-	defer log.Finish()
-	start := time.Now()
-	storeStats := stats.GetStoreData(ctx)
-	var totalChunks int64
+func fetchLazyChunks(ctx context.Context, s chunk.SchemaConfig, chunks []*LazyChunk) error {
+	var (
+		totalChunks int64
+		start       = time.Now()
+		stats       = stats.FromContext(ctx)
+		logger      = util_log.WithContext(ctx, util_log.Logger)
+	)
 	defer func() {
-		storeStats.ChunksDownloadTime += time.Since(start)
-		storeStats.TotalChunksDownloaded += totalChunks
+		stats.AddChunksDownloadTime(time.Since(start))
+		stats.AddChunksDownloaded(totalChunks)
 	}()
 
 	chksByFetcher := map[*chunk.Fetcher][]*LazyChunk{}
@@ -668,7 +694,7 @@ func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 	if len(chksByFetcher) == 0 {
 		return nil
 	}
-	level.Debug(log).Log("msg", "loading lazy chunks", "chunks", totalChunks)
+	level.Debug(logger).Log("msg", "loading lazy chunks", "chunks", totalChunks)
 
 	errChan := make(chan error)
 	for fetcher, chunks := range chksByFetcher {
@@ -678,18 +704,18 @@ func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 			index := make(map[string]*LazyChunk, len(chunks))
 
 			// FetchChunks requires chunks to be ordered by external key.
-			sort.Slice(chunks, func(i, j int) bool { return chunks[i].Chunk.ExternalKey() < chunks[j].Chunk.ExternalKey() })
+			sort.Slice(chunks, func(i, j int) bool { return s.ExternalKey(chunks[i].Chunk) < s.ExternalKey(chunks[j].Chunk) })
 			for _, chk := range chunks {
-				key := chk.Chunk.ExternalKey()
+				key := s.ExternalKey(chk.Chunk)
 				keys = append(keys, key)
 				chks = append(chks, chk.Chunk)
 				index[key] = chk
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks, keys)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error fetching chunks", "err", err)
+				level.Error(logger).Log("msg", "error fetching chunks", "err", err)
 				if isInvalidChunkError(err) {
-					level.Error(util_log.Logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
+					level.Error(logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
 					errChan <- nil
 					return
 				}
@@ -699,7 +725,7 @@ func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 			}
 			// assign fetched chunk by key as FetchChunks doesn't guarantee the order.
 			for _, chk := range chks {
-				index[chk.ExternalKey()].Chunk = chk
+				index[s.ExternalKey(chk)].Chunk = chk
 			}
 
 			errChan <- nil
@@ -733,7 +759,7 @@ func isInvalidChunkError(err error) bool {
 	return false
 }
 
-func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]*LazyChunk) error {
+func loadFirstChunks(ctx context.Context, s chunk.SchemaConfig, chks map[model.Fingerprint][][]*LazyChunk) error {
 	var toLoad []*LazyChunk
 	for _, lchks := range chks {
 		for _, lchk := range lchks {
@@ -743,7 +769,7 @@ func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]*LazyCh
 			toLoad = append(toLoad, lchk[0])
 		}
 	}
-	return fetchLazyChunks(ctx, toLoad)
+	return fetchLazyChunks(ctx, s, toLoad)
 }
 
 func partitionBySeriesChunks(chunks []*LazyChunk) map[model.Fingerprint][][]*LazyChunk {

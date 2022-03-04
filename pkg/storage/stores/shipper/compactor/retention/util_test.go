@@ -8,10 +8,9 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
@@ -25,11 +24,12 @@ import (
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 func dayFromTime(t model.Time) chunk.DayTime {
-	parsed, err := time.Parse("2006-01-02", t.Time().Format("2006-01-02"))
+	parsed, err := time.Parse("2006-01-02", t.Time().In(time.UTC).Format("2006-01-02"))
 	if err != nil {
 		panic(err)
 	}
@@ -77,6 +77,17 @@ var (
 					},
 					RowShards: 16,
 				},
+				{
+					From:       dayFromTime(start.Add(100 * time.Hour)),
+					IndexType:  "boltdb",
+					ObjectType: "filesystem",
+					Schema:     "v12",
+					IndexTables: chunk.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					},
+					RowShards: 16,
+				},
 			},
 		},
 	}
@@ -88,6 +99,7 @@ var (
 		{"v9", schemaCfg.Configs[0].From.Time, schemaCfg.Configs[0]},
 		{"v10", schemaCfg.Configs[1].From.Time, schemaCfg.Configs[1]},
 		{"v11", schemaCfg.Configs[2].From.Time, schemaCfg.Configs[2]},
+		{"v12", schemaCfg.Configs[3].From.Time, schemaCfg.Configs[3]},
 	}
 
 	sweepMetrics = newSweeperMetrics(prometheus.DefaultRegisterer)
@@ -117,6 +129,7 @@ type testStore struct {
 	schemaCfg          storage.SchemaConfig
 	t                  testing.TB
 	limits             chunk_storage.StoreLimits
+	clientMetrics      chunk_storage.ClientMetrics
 }
 
 // testObjectClient is a testing object client
@@ -125,12 +138,12 @@ type testObjectClient struct {
 	path string
 }
 
-func newTestObjectClient(path string) chunk.ObjectClient {
+func newTestObjectClient(path string, clientMetrics chunk_storage.ClientMetrics) chunk.ObjectClient {
 	c, err := chunk_storage.NewObjectClient("filesystem", chunk_storage.Config{
 		FSConfig: local.FSConfig{
 			Directory: path,
 		},
-	})
+	}, clientMetrics)
 	if err != nil {
 		panic(err)
 	}
@@ -163,9 +176,9 @@ func (t *testStore) HasChunk(c chunk.Chunk) bool {
 
 	chunkIDs := make(map[string]struct{})
 	for _, chk := range chunks {
-		chunkIDs[chk.ExternalKey()] = struct{}{}
+		chunkIDs[t.schemaCfg.ExternalKey(chk)] = struct{}{}
 	}
-	return len(chunkIDs) == 1 && c.ExternalKey() == chunks[0].ExternalKey()
+	return len(chunkIDs) == 1 && t.schemaCfg.ExternalKey(c) == t.schemaCfg.ExternalKey(chunks[0])
 }
 
 func (t *testStore) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
@@ -187,6 +200,7 @@ func (t *testStore) open() {
 		chunk.StoreConfig{},
 		schemaCfg.SchemaConfig,
 		t.limits,
+		t.clientMetrics,
 		nil,
 		nil,
 		util_log.Logger,
@@ -198,11 +212,11 @@ func (t *testStore) open() {
 	t.Store = store
 }
 
-func newTestStore(t testing.TB) *testStore {
+func newTestStore(t testing.TB, clientMetrics chunk_storage.ClientMetrics) *testStore {
 	t.Helper()
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg)
+	util_log.InitLogger(cfg, nil)
 	workdir := t.TempDir()
 	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")
@@ -229,6 +243,7 @@ func newTestStore(t testing.TB) *testStore {
 			FSConfig: local.FSConfig{
 				Directory: chunkDir,
 			},
+			MaxParallelGetChunk: 150,
 		},
 		BoltDBShipperConfig: shipper.Config{
 			ActiveIndexDirectory: indexDir,
@@ -244,6 +259,7 @@ func newTestStore(t testing.TB) *testStore {
 		chunk.StoreConfig{},
 		schemaCfg.SchemaConfig,
 		limits,
+		clientMetrics,
 		nil,
 		nil,
 		util_log.Logger,
@@ -253,14 +269,15 @@ func newTestStore(t testing.TB) *testStore {
 	store, err := storage.NewStore(config, schemaCfg, chunkStore, nil)
 	require.NoError(t, err)
 	return &testStore{
-		indexDir:     indexDir,
-		chunkDir:     chunkDir,
-		t:            t,
-		Store:        store,
-		schemaCfg:    schemaCfg,
-		objectClient: newTestObjectClient(workdir),
-		cfg:          config,
-		limits:       limits,
+		indexDir:      indexDir,
+		chunkDir:      chunkDir,
+		t:             t,
+		Store:         store,
+		schemaCfg:     schemaCfg,
+		objectClient:  newTestObjectClient(workdir, clientMetrics),
+		cfg:           config,
+		limits:        limits,
+		clientMetrics: clientMetrics,
 	}
 }
 
@@ -274,7 +291,7 @@ func TestExtractIntervalFromTableName(t *testing.T) {
 
 	calculateInterval := func(tm model.Time) (m model.Interval) {
 		m.Start = tm - tm%millisecondsInDay
-		m.End = m.Start + millisecondsInDay
+		m.End = m.Start + millisecondsInDay - 1
 		return
 	}
 

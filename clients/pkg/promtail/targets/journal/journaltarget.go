@@ -17,8 +17,8 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
@@ -127,7 +127,7 @@ func NewJournalTarget(
 func journalTargetWithReader(
 	logger log.Logger,
 	handler api.EntryHandler,
-	positions positions.Positions,
+	pos positions.Positions,
 	jobName string,
 	relabelConfig []*relabel.Config,
 	targetConfig *scrapeconfig.JournalTargetConfig,
@@ -135,8 +135,8 @@ func journalTargetWithReader(
 	entryFunc journalEntryFunc,
 ) (*JournalTarget, error) {
 
-	positionPath := fmt.Sprintf("journal-%s", jobName)
-	position := positions.GetString(positionPath)
+	positionPath := positions.CursorKey(jobName)
+	position := pos.GetString(positionPath)
 
 	if readerFunc == nil {
 		readerFunc = defaultJournalReaderFunc
@@ -149,7 +149,7 @@ func journalTargetWithReader(
 	t := &JournalTarget{
 		logger:        logger,
 		handler:       handler,
-		positions:     positions,
+		positions:     pos,
 		positionPath:  positionPath,
 		relabelConfig: relabelConfig,
 		labels:        targetConfig.Labels,

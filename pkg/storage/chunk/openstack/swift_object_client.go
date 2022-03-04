@@ -7,24 +7,35 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
+	"time"
 
 	"github.com/ncw/swift"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
-	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
-	"github.com/cortexproject/cortex/pkg/util/log"
-
+	bucket_swift "github.com/grafana/loki/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
+	"github.com/grafana/loki/pkg/util/log"
 )
 
+var defaultTransport http.RoundTripper = &http.Transport{
+	Proxy:                 http.ProxyFromEnvironment,
+	MaxIdleConnsPerHost:   200,
+	MaxIdleConns:          200,
+	ExpectContinueTimeout: 5 * time.Second,
+}
+
 type SwiftObjectClient struct {
-	conn *swift.Connection
-	cfg  SwiftConfig
+	conn        *swift.Connection
+	hedgingConn *swift.Connection
+	cfg         SwiftConfig
 }
 
 // SwiftConfig is config for the Swift Chunk Client.
 type SwiftConfig struct {
-	cortex_swift.Config `yaml:",inline"`
+	bucket_swift.Config `yaml:",inline"`
 }
 
 // RegisterFlags registers flags.
@@ -43,9 +54,29 @@ func (cfg *SwiftConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 }
 
 // NewSwiftObjectClient makes a new chunk.Client that writes chunks to OpenStack Swift.
-func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
-	log.WarnExperimentalUse("OpenStack Swift Storage")
+func NewSwiftObjectClient(cfg SwiftConfig, hedgingCfg hedging.Config) (*SwiftObjectClient, error) {
+	log.WarnExperimentalUse("OpenStack Swift Storage", log.Logger)
 
+	c, err := createConnection(cfg, hedgingCfg, false)
+	if err != nil {
+		return nil, err
+	}
+	// Ensure the container is created, no error is returned if it already exists.
+	if err := c.ContainerCreate(cfg.ContainerName, nil); err != nil {
+		return nil, err
+	}
+	hedging, err := createConnection(cfg, hedgingCfg, true)
+	if err != nil {
+		return nil, err
+	}
+	return &SwiftObjectClient{
+		conn:        c,
+		hedgingConn: hedging,
+		cfg:         cfg,
+	}, nil
+}
+
+func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) (*swift.Connection, error) {
 	// Create a connection
 	c := &swift.Connection{
 		AuthVersion:    cfg.AuthVersion,
@@ -63,6 +94,7 @@ func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
 		Domain:         cfg.DomainName,
 		DomainId:       cfg.DomainID,
 		Region:         cfg.RegionName,
+		Transport:      defaultTransport,
 	}
 
 	switch {
@@ -71,37 +103,36 @@ func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
 	case cfg.UserDomainID != "":
 		c.DomainId = cfg.UserDomainID
 	}
+	if hedging {
+		var err error
+		c.Transport, err = hedgingCfg.RoundTripperWithRegisterer(c.Transport, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+		if err != nil {
+			return nil, err
+		}
+	}
 
-	// Authenticate
 	err := c.Authenticate()
 	if err != nil {
 		return nil, err
 	}
 
-	// Ensure the container is created, no error is returned if it already exists.
-	if err := c.ContainerCreate(cfg.ContainerName, nil); err != nil {
-		return nil, err
-	}
-
-	return &SwiftObjectClient{
-		conn: c,
-		cfg:  cfg,
-	}, nil
+	return c, nil
 }
 
 func (s *SwiftObjectClient) Stop() {
 	s.conn.UnAuthenticate()
+	s.hedgingConn.UnAuthenticate()
 }
 
-// GetObject returns a reader for the specified object key from the configured swift container.
-func (s *SwiftObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+// GetObject returns a reader and the size for the specified object key from the configured swift container.
+func (s *SwiftObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var buf bytes.Buffer
-	_, err := s.conn.ObjectGet(s.cfg.ContainerName, objectKey, &buf, false, nil)
+	_, err := s.hedgingConn.ObjectGet(s.cfg.ContainerName, objectKey, &buf, false, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return ioutil.NopCloser(&buf), nil
+	return ioutil.NopCloser(&buf), int64(buf.Len()), nil
 }
 
 // PutObject puts the specified bytes into the configured Swift container at the provided key

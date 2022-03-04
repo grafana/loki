@@ -18,16 +18,16 @@ import (
 
 // Config for a gRPC client.
 type Config struct {
-	MaxRecvMsgSize  int     `yaml:"max_recv_msg_size"`
-	MaxSendMsgSize  int     `yaml:"max_send_msg_size"`
-	GRPCCompression string  `yaml:"grpc_compression"`
-	RateLimit       float64 `yaml:"rate_limit"`
-	RateLimitBurst  int     `yaml:"rate_limit_burst"`
+	MaxRecvMsgSize  int     `yaml:"max_recv_msg_size" category:"advanced"`
+	MaxSendMsgSize  int     `yaml:"max_send_msg_size" category:"advanced"`
+	GRPCCompression string  `yaml:"grpc_compression" category:"advanced"`
+	RateLimit       float64 `yaml:"rate_limit" category:"advanced"`
+	RateLimitBurst  int     `yaml:"rate_limit_burst" category:"advanced"`
 
-	BackoffOnRatelimits bool           `yaml:"backoff_on_ratelimits"`
+	BackoffOnRatelimits bool           `yaml:"backoff_on_ratelimits" category:"advanced"`
 	BackoffConfig       backoff.Config `yaml:"backoff_config"`
 
-	TLSEnabled bool             `yaml:"tls_enabled"`
+	TLSEnabled bool             `yaml:"tls_enabled" category:"advanced"`
 	TLS        tls.ClientConfig `yaml:",inline"`
 }
 
@@ -39,7 +39,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRecvMsgSize, prefix+".grpc-max-recv-msg-size", 100<<20, "gRPC client max receive message size (bytes).")
-	f.IntVar(&cfg.MaxSendMsgSize, prefix+".grpc-max-send-msg-size", 16<<20, "gRPC client max send message size (bytes).")
+	f.IntVar(&cfg.MaxSendMsgSize, prefix+".grpc-max-send-msg-size", 100<<20, "gRPC client max send message size (bytes).")
 	f.StringVar(&cfg.GRPCCompression, prefix+".grpc-compression", "", "Use compression when sending messages. Supported values are: 'gzip', 'snappy' and '' (disable compression)")
 	f.Float64Var(&cfg.RateLimit, prefix+".grpc-client-rate-limit", 0., "Rate limit for gRPC client; 0 means disabled.")
 	f.IntVar(&cfg.RateLimitBurst, prefix+".grpc-client-rate-limit-burst", 0, "Rate limit burst for gRPC client.")

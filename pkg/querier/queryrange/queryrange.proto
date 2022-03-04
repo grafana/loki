@@ -5,7 +5,7 @@ package queryrange;
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "pkg/logproto/logproto.proto";
 import "pkg/logqlmodel/stats/stats.proto";
-import "github.com/cortexproject/cortex/pkg/querier/queryrange/queryrange.proto";
+import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
 import "google/protobuf/timestamp.proto";
 
 option (gogoproto.marshaler_all) = true;
@@ -40,7 +40,7 @@ message LokiResponse {
   uint32 limit = 6;
   uint32 version = 7;
   stats.Result statistics = 8 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "statistics"];
-  repeated queryrange.PrometheusResponseHeader Headers = 9 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/querier/queryrange.PrometheusResponseHeader"];
+  repeated queryrangebase.PrometheusResponseHeader Headers = 9 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase.PrometheusResponseHeader"];
 }
 
 message LokiSeriesRequest {
@@ -56,7 +56,7 @@ message LokiSeriesResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
   repeated logproto.SeriesIdentifier Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
   uint32 version = 3;
-  repeated queryrange.PrometheusResponseHeader Headers = 4 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/querier/queryrange.PrometheusResponseHeader"];
+  repeated queryrangebase.PrometheusResponseHeader Headers = 4 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase.PrometheusResponseHeader"];
 }
 
 message LokiLabelNamesRequest {
@@ -69,7 +69,7 @@ message LokiLabelNamesResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
   repeated string Data = 2 [(gogoproto.jsontag) = "data,omitempty"];
   uint32 version = 3;
-  repeated queryrange.PrometheusResponseHeader Headers = 4 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/querier/queryrange.PrometheusResponseHeader"];
+  repeated queryrangebase.PrometheusResponseHeader Headers = 4 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase.PrometheusResponseHeader"];
 }
 
 message LokiData {
@@ -80,6 +80,6 @@ message LokiData {
 
 // LokiPromResponse wraps a Prometheus response with statistics.
 message LokiPromResponse {
-  queryrange.PrometheusResponse response = 1 [(gogoproto.nullable) = true];
+  queryrangebase.PrometheusResponse response = 1 [(gogoproto.nullable) = true];
   stats.Result statistics = 2 [(gogoproto.nullable) = false];
 }

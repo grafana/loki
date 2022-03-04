@@ -5,43 +5,56 @@ import (
 	"io"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
 var emptyStats = `"stats": {
+	"ingester" : {
+		"store": {
+			"chunksDownloadTime": 0,
+			"totalChunksRef": 0,
+			"totalChunksDownloaded": 0,
+			"chunk" :{
+				"compressedBytes": 0,
+				"decompressedBytes": 0,
+				"decompressedLines": 0,
+				"headChunkBytes": 0,
+				"headChunkLines": 0,
+				"totalDuplicates": 0
+			}
+		},
+		"totalBatches": 0,
+		"totalChunksMatched": 0,
+		"totalLinesSent": 0,
+		"totalReached": 0
+	},
+	"querier": {
+		"store": {
+			"chunksDownloadTime": 0,
+			"totalChunksRef": 0,
+			"totalChunksDownloaded": 0,
+			"chunk" :{
+				"compressedBytes": 0,
+				"decompressedBytes": 0,
+				"decompressedLines": 0,
+				"headChunkBytes": 0,
+				"headChunkLines": 0,
+				"totalDuplicates": 0
+			}
+		}
+	},
 	"summary": {
 		"bytesProcessedPerSecond": 0,
+		"execTime": 0,
 		"linesProcessedPerSecond": 0,
-		"totalBytesProcessed": 0,
-		"totalLinesProcessed": 0,
-		"execTime": 0.0
-	},
-	"store": {
-		"totalChunksRef": 0,
-		"totalChunksDownloaded": 0,
-		"chunksDownloadTime": 0,
-		"headChunkBytes": 0,
-		"headChunkLines": 0,
-		"decompressedBytes": 0,
-		"decompressedLines": 0,
-		"compressedBytes": 0,
-		"totalDuplicates": 0
-	},
-	"ingester": {
-		"totalReached": 0,
-		"totalChunksMatched": 0,
-		"totalBatches": 0,
-		"totalLinesSent": 0,
-		"headChunkBytes": 0,
-		"headChunkLines": 0,
-		"decompressedBytes": 0,
-		"decompressedLines": 0,
-		"compressedBytes": 0,
-		"totalDuplicates": 0
+		"queueTime": 0,
+		"subqueries": 0,
+		"totalBytesProcessed":0,
+		"totalLinesProcessed":0
 	}
 }`
 
@@ -54,25 +67,25 @@ func Test_encodePromResponse(t *testing.T) {
 		{
 			"matrix",
 			&LokiPromResponse{
-				Response: &queryrange.PrometheusResponse{
-					Status: string(queryrange.StatusSuccess),
-					Data: queryrange.PrometheusData{
+				Response: &queryrangebase.PrometheusResponse{
+					Status: string(queryrangebase.StatusSuccess),
+					Data: queryrangebase.PrometheusData{
 						ResultType: loghttp.ResultTypeMatrix,
-						Result: []queryrange.SampleStream{
+						Result: []queryrangebase.SampleStream{
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "bar"},
 								},
-								Samples: []cortexpb.Sample{
+								Samples: []logproto.LegacySample{
 									{Value: 1, TimestampMs: 1000},
 									{Value: 1, TimestampMs: 2000},
 								},
 							},
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "buzz"},
 								},
-								Samples: []cortexpb.Sample{
+								Samples: []logproto.LegacySample{
 									{Value: 4, TimestampMs: 1000},
 									{Value: 5, TimestampMs: 2000},
 								},
@@ -102,24 +115,24 @@ func Test_encodePromResponse(t *testing.T) {
 		{
 			"vector",
 			&LokiPromResponse{
-				Response: &queryrange.PrometheusResponse{
-					Status: string(queryrange.StatusSuccess),
-					Data: queryrange.PrometheusData{
+				Response: &queryrangebase.PrometheusResponse{
+					Status: string(queryrangebase.StatusSuccess),
+					Data: queryrangebase.PrometheusData{
 						ResultType: loghttp.ResultTypeVector,
-						Result: []queryrange.SampleStream{
+						Result: []queryrangebase.SampleStream{
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "bar"},
 								},
-								Samples: []cortexpb.Sample{
+								Samples: []logproto.LegacySample{
 									{Value: 1, TimestampMs: 1000},
 								},
 							},
 							{
-								Labels: []cortexpb.LabelAdapter{
+								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "buzz"},
 								},
-								Samples: []cortexpb.Sample{
+								Samples: []logproto.LegacySample{
 									{Value: 4, TimestampMs: 1000},
 								},
 							},

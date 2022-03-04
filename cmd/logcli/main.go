@@ -2,9 +2,11 @@ package main
 
 import (
 	"log"
+	"math"
 	"net/url"
 	"os"
 	"runtime/pprof"
+	"strings"
 	"time"
 
 	"github.com/prometheus/common/config"
@@ -27,6 +29,7 @@ var (
 	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
 	cpuProfile = app.Flag("cpuprofile", "Specify the location for writing a CPU profile.").Default("").String()
 	memProfile = app.Flag("memprofile", "Specify the location for writing a memory profile.").Default("").String()
+	stdin      = app.Flag("stdin", "Take input logs from stdin").Bool()
 
 	queryClient = newQueryClient(app)
 
@@ -138,6 +141,33 @@ func main() {
 		}()
 	}
 
+	if *stdin {
+		queryClient = client.NewFileClient(os.Stdin)
+		if rangeQuery.Step.Seconds() == 0 {
+			// Set default value for `step` based on `start` and `end`.
+			// In non-stdin case, this is set on Loki server side.
+			// If this is not set, then `step` will have default value of 1 nanosecond and `STepEvaluator` will go through every nanosecond when applying aggregation during metric queries.
+			rangeQuery.Step = defaultQueryRangeStep(rangeQuery.Start, rangeQuery.End)
+		}
+
+		// When `--stdin` flag is set, stream selector is optional in the query.
+		// But logQL package throw parser error if stream selector is not provided.
+		// So we inject "dummy" stream selector if not provided by user already.
+		// Which brings down to two ways of using LogQL query under `--stdin`.
+		// 1. Query with stream selector(e.g: `{foo="bar"}|="error"`)
+		// 2. Query without stream selector (e.g: `|="error"`)
+
+		qs := rangeQuery.QueryString
+		if strings.HasPrefix(strings.TrimSpace(qs), "|") {
+			// inject the dummy stream selector
+			qs = `{source="logcli"}` + qs
+			rangeQuery.QueryString = qs
+		}
+
+		// `--limit` doesn't make sense when using `--stdin` flag.
+		rangeQuery.Limit = math.MaxInt // TODO(kavi): is it a good idea?
+	}
+
 	switch cmd {
 	case queryCmd.FullCommand():
 		location, err := time.LoadLocation(*timezone)
@@ -210,6 +240,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("cert", "Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.").Default("").Envar("LOKI_CLIENT_CERT_PATH").StringVar(&client.TLSConfig.CertFile)
 	app.Flag("key", "Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.").Default("").Envar("LOKI_CLIENT_KEY_PATH").StringVar(&client.TLSConfig.KeyFile)
 	app.Flag("org-id", "adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway.").Default("").Envar("LOKI_ORG_ID").StringVar(&client.OrgID)
+	app.Flag("query-tags", "adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics. Useful for tracking the query.").Default("").Envar("LOKI_QUERY_TAGS").StringVar(&client.QueryTags)
 	app.Flag("bearer-token", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.").Default("").Envar("LOKI_BEARER_TOKEN").StringVar(&client.BearerToken)
 	app.Flag("bearer-token-file", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.").Default("").Envar("LOKI_BEARER_TOKEN_FILE").StringVar(&client.BearerTokenFile)
 	app.Flag("retries", "How many times to retry each query when getting an error response from Loki. Can also be set using LOKI_CLIENT_RETRIES").Default("0").Envar("LOKI_CLIENT_RETRIES").IntVar(&client.Retries)
@@ -307,6 +338,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").DurationVar(&q.Step)
 		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
 		cmd.Flag("batch", "Query batch size to use until 'limit' is reached").Default("1000").IntVar(&q.BatchSize)
+
 	}
 
 	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&q.Forward)
@@ -332,4 +364,12 @@ func mustParse(t string, defaultTime time.Time) time.Time {
 	}
 
 	return ret
+}
+
+// This method is to duplicate the same logic of `step` value from `start` and `end`
+// done on the loki server side.
+// https://github.com/grafana/loki/blob/main/pkg/loghttp/params.go
+func defaultQueryRangeStep(start, end time.Time) time.Duration {
+	step := int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
+	return time.Duration(step) * time.Second
 }

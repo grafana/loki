@@ -37,7 +37,7 @@ timestamp:
 
 ### Reference Time
 
-The `format` field can be how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`, would be interpreted in the format or can alternatviely be one of the following common forms:
+The `format` field can be how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`, would be interpreted in the format or can alternatively be one of the following common forms:
 
 - `ANSIC`: `Mon Jan _2 15:04:05 2006`
 - `UnixDate`: `Mon Jan _2 15:04:05 MST 2006`

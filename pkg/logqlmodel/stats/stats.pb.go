@@ -29,7 +29,7 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 // Result contains LogQL query statistics.
 type Result struct {
 	Summary  Summary  `protobuf:"bytes,1,opt,name=summary,proto3" json:"summary"`
-	Store    Store    `protobuf:"bytes,2,opt,name=store,proto3" json:"store"`
+	Querier  Querier  `protobuf:"bytes,2,opt,name=querier,proto3" json:"querier"`
 	Ingester Ingester `protobuf:"bytes,3,opt,name=ingester,proto3" json:"ingester"`
 }
 
@@ -72,11 +72,11 @@ func (m *Result) GetSummary() Summary {
 	return Summary{}
 }
 
-func (m *Result) GetStore() Store {
+func (m *Result) GetQuerier() Querier {
 	if m != nil {
-		return m.Store
+		return m.Querier
 	}
-	return Store{}
+	return Querier{}
 }
 
 func (m *Result) GetIngester() Ingester {
@@ -97,7 +97,15 @@ type Summary struct {
 	// Total lines processed.
 	TotalLinesProcessed int64 `protobuf:"varint,4,opt,name=totalLinesProcessed,proto3" json:"totalLinesProcessed"`
 	// Execution time in seconds.
+	// In addition to internal calculations this is also returned by the HTTP API.
+	// Grafana expects time values to be returned in seconds as float.
 	ExecTime float64 `protobuf:"fixed64,5,opt,name=execTime,proto3" json:"execTime"`
+	// Queue time in seconds.
+	// In addition to internal calculations this is also returned by the HTTP API.
+	// Grafana expects time values to be returned in seconds as float.
+	QueueTime float64 `protobuf:"fixed64,6,opt,name=queueTime,proto3" json:"queueTime"`
+	// Total of subqueries created to fulfill this query.
+	Subqueries int64 `protobuf:"varint,7,opt,name=subqueries,proto3" json:"subqueries"`
 }
 
 func (m *Summary) Reset()      { *m = Summary{} }
@@ -167,38 +175,35 @@ func (m *Summary) GetExecTime() float64 {
 	return 0
 }
 
-type Store struct {
-	// The total of chunk reference fetched from index.
-	TotalChunksRef int64 `protobuf:"varint,1,opt,name=totalChunksRef,proto3" json:"totalChunksRef"`
-	// Total number of chunks fetched.
-	TotalChunksDownloaded int64 `protobuf:"varint,2,opt,name=totalChunksDownloaded,proto3" json:"totalChunksDownloaded"`
-	// Time spent fetching chunks in nanoseconds.
-	ChunksDownloadTime float64 `protobuf:"fixed64,3,opt,name=chunksDownloadTime,proto3" json:"chunksDownloadTime"`
-	// Total bytes processed but was already in memory. (found in the headchunk)
-	HeadChunkBytes int64 `protobuf:"varint,4,opt,name=headChunkBytes,proto3" json:"headChunkBytes"`
-	// Total lines processed but was already in memory. (found in the headchunk)
-	HeadChunkLines int64 `protobuf:"varint,5,opt,name=headChunkLines,proto3" json:"headChunkLines"`
-	// Total bytes decompressed and processed from chunks.
-	DecompressedBytes int64 `protobuf:"varint,6,opt,name=decompressedBytes,proto3" json:"decompressedBytes"`
-	// Total lines decompressed and processed from chunks.
-	DecompressedLines int64 `protobuf:"varint,7,opt,name=decompressedLines,proto3" json:"decompressedLines"`
-	// Total bytes of compressed chunks (blocks) processed.
-	CompressedBytes int64 `protobuf:"varint,8,opt,name=compressedBytes,proto3" json:"compressedBytes"`
-	// Total duplicates found while processing.
-	TotalDuplicates int64 `protobuf:"varint,9,opt,name=totalDuplicates,proto3" json:"totalDuplicates"`
+func (m *Summary) GetQueueTime() float64 {
+	if m != nil {
+		return m.QueueTime
+	}
+	return 0
 }
 
-func (m *Store) Reset()      { *m = Store{} }
-func (*Store) ProtoMessage() {}
-func (*Store) Descriptor() ([]byte, []int) {
+func (m *Summary) GetSubqueries() int64 {
+	if m != nil {
+		return m.Subqueries
+	}
+	return 0
+}
+
+type Querier struct {
+	Store Store `protobuf:"bytes,1,opt,name=store,proto3" json:"store"`
+}
+
+func (m *Querier) Reset()      { *m = Querier{} }
+func (*Querier) ProtoMessage() {}
+func (*Querier) Descriptor() ([]byte, []int) {
 	return fileDescriptor_6cdfe5d2aea33ebb, []int{2}
 }
-func (m *Store) XXX_Unmarshal(b []byte) error {
+func (m *Querier) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *Store) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *Querier) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_Store.Marshal(b, m, deterministic)
+		return xxx_messageInfo_Querier.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -208,79 +213,23 @@ func (m *Store) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *Store) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Store.Merge(m, src)
+func (m *Querier) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Querier.Merge(m, src)
 }
-func (m *Store) XXX_Size() int {
+func (m *Querier) XXX_Size() int {
 	return m.Size()
 }
-func (m *Store) XXX_DiscardUnknown() {
-	xxx_messageInfo_Store.DiscardUnknown(m)
+func (m *Querier) XXX_DiscardUnknown() {
+	xxx_messageInfo_Querier.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_Store proto.InternalMessageInfo
+var xxx_messageInfo_Querier proto.InternalMessageInfo
 
-func (m *Store) GetTotalChunksRef() int64 {
+func (m *Querier) GetStore() Store {
 	if m != nil {
-		return m.TotalChunksRef
+		return m.Store
 	}
-	return 0
-}
-
-func (m *Store) GetTotalChunksDownloaded() int64 {
-	if m != nil {
-		return m.TotalChunksDownloaded
-	}
-	return 0
-}
-
-func (m *Store) GetChunksDownloadTime() float64 {
-	if m != nil {
-		return m.ChunksDownloadTime
-	}
-	return 0
-}
-
-func (m *Store) GetHeadChunkBytes() int64 {
-	if m != nil {
-		return m.HeadChunkBytes
-	}
-	return 0
-}
-
-func (m *Store) GetHeadChunkLines() int64 {
-	if m != nil {
-		return m.HeadChunkLines
-	}
-	return 0
-}
-
-func (m *Store) GetDecompressedBytes() int64 {
-	if m != nil {
-		return m.DecompressedBytes
-	}
-	return 0
-}
-
-func (m *Store) GetDecompressedLines() int64 {
-	if m != nil {
-		return m.DecompressedLines
-	}
-	return 0
-}
-
-func (m *Store) GetCompressedBytes() int64 {
-	if m != nil {
-		return m.CompressedBytes
-	}
-	return 0
-}
-
-func (m *Store) GetTotalDuplicates() int64 {
-	if m != nil {
-		return m.TotalDuplicates
-	}
-	return 0
+	return Store{}
 }
 
 type Ingester struct {
@@ -292,18 +241,7 @@ type Ingester struct {
 	TotalBatches int64 `protobuf:"varint,3,opt,name=totalBatches,proto3" json:"totalBatches"`
 	// Total lines sent by ingesters.
 	TotalLinesSent int64 `protobuf:"varint,4,opt,name=totalLinesSent,proto3" json:"totalLinesSent"`
-	// Total bytes processed but was already in memory. (found in the headchunk)
-	HeadChunkBytes int64 `protobuf:"varint,5,opt,name=headChunkBytes,proto3" json:"headChunkBytes"`
-	// Total lines processed but was already in memory. (found in the headchunk)
-	HeadChunkLines int64 `protobuf:"varint,6,opt,name=headChunkLines,proto3" json:"headChunkLines"`
-	// Total bytes decompressed and processed from chunks.
-	DecompressedBytes int64 `protobuf:"varint,7,opt,name=decompressedBytes,proto3" json:"decompressedBytes"`
-	// Total lines decompressed and processed from chunks.
-	DecompressedLines int64 `protobuf:"varint,8,opt,name=decompressedLines,proto3" json:"decompressedLines"`
-	// Total bytes of compressed chunks (blocks) processed.
-	CompressedBytes int64 `protobuf:"varint,9,opt,name=compressedBytes,proto3" json:"compressedBytes"`
-	// Total duplicates found while processing.
-	TotalDuplicates int64 `protobuf:"varint,10,opt,name=totalDuplicates,proto3" json:"totalDuplicates"`
+	Store          Store `protobuf:"bytes,5,opt,name=store,proto3" json:"store"`
 }
 
 func (m *Ingester) Reset()      { *m = Ingester{} }
@@ -366,42 +304,166 @@ func (m *Ingester) GetTotalLinesSent() int64 {
 	return 0
 }
 
-func (m *Ingester) GetHeadChunkBytes() int64 {
+func (m *Ingester) GetStore() Store {
+	if m != nil {
+		return m.Store
+	}
+	return Store{}
+}
+
+type Store struct {
+	// The total of chunk reference fetched from index.
+	TotalChunksRef int64 `protobuf:"varint,1,opt,name=totalChunksRef,proto3" json:"totalChunksRef"`
+	// Total number of chunks fetched.
+	TotalChunksDownloaded int64 `protobuf:"varint,2,opt,name=totalChunksDownloaded,proto3" json:"totalChunksDownloaded"`
+	// Time spent fetching chunks in nanoseconds.
+	ChunksDownloadTime int64 `protobuf:"varint,3,opt,name=chunksDownloadTime,proto3" json:"chunksDownloadTime"`
+	Chunk              Chunk `protobuf:"bytes,4,opt,name=chunk,proto3" json:"chunk"`
+}
+
+func (m *Store) Reset()      { *m = Store{} }
+func (*Store) ProtoMessage() {}
+func (*Store) Descriptor() ([]byte, []int) {
+	return fileDescriptor_6cdfe5d2aea33ebb, []int{4}
+}
+func (m *Store) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Store) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Store.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Store) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Store.Merge(m, src)
+}
+func (m *Store) XXX_Size() int {
+	return m.Size()
+}
+func (m *Store) XXX_DiscardUnknown() {
+	xxx_messageInfo_Store.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Store proto.InternalMessageInfo
+
+func (m *Store) GetTotalChunksRef() int64 {
+	if m != nil {
+		return m.TotalChunksRef
+	}
+	return 0
+}
+
+func (m *Store) GetTotalChunksDownloaded() int64 {
+	if m != nil {
+		return m.TotalChunksDownloaded
+	}
+	return 0
+}
+
+func (m *Store) GetChunksDownloadTime() int64 {
+	if m != nil {
+		return m.ChunksDownloadTime
+	}
+	return 0
+}
+
+func (m *Store) GetChunk() Chunk {
+	if m != nil {
+		return m.Chunk
+	}
+	return Chunk{}
+}
+
+type Chunk struct {
+	// Total bytes processed but was already in memory. (found in the headchunk)
+	HeadChunkBytes int64 `protobuf:"varint,4,opt,name=headChunkBytes,proto3" json:"headChunkBytes"`
+	// Total lines processed but was already in memory. (found in the headchunk)
+	HeadChunkLines int64 `protobuf:"varint,5,opt,name=headChunkLines,proto3" json:"headChunkLines"`
+	// Total bytes decompressed and processed from chunks.
+	DecompressedBytes int64 `protobuf:"varint,6,opt,name=decompressedBytes,proto3" json:"decompressedBytes"`
+	// Total lines decompressed and processed from chunks.
+	DecompressedLines int64 `protobuf:"varint,7,opt,name=decompressedLines,proto3" json:"decompressedLines"`
+	// Total bytes of compressed chunks (blocks) processed.
+	CompressedBytes int64 `protobuf:"varint,8,opt,name=compressedBytes,proto3" json:"compressedBytes"`
+	// Total duplicates found while processing.
+	TotalDuplicates int64 `protobuf:"varint,9,opt,name=totalDuplicates,proto3" json:"totalDuplicates"`
+}
+
+func (m *Chunk) Reset()      { *m = Chunk{} }
+func (*Chunk) ProtoMessage() {}
+func (*Chunk) Descriptor() ([]byte, []int) {
+	return fileDescriptor_6cdfe5d2aea33ebb, []int{5}
+}
+func (m *Chunk) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Chunk) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Chunk.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Chunk) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Chunk.Merge(m, src)
+}
+func (m *Chunk) XXX_Size() int {
+	return m.Size()
+}
+func (m *Chunk) XXX_DiscardUnknown() {
+	xxx_messageInfo_Chunk.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Chunk proto.InternalMessageInfo
+
+func (m *Chunk) GetHeadChunkBytes() int64 {
 	if m != nil {
 		return m.HeadChunkBytes
 	}
 	return 0
 }
 
-func (m *Ingester) GetHeadChunkLines() int64 {
+func (m *Chunk) GetHeadChunkLines() int64 {
 	if m != nil {
 		return m.HeadChunkLines
 	}
 	return 0
 }
 
-func (m *Ingester) GetDecompressedBytes() int64 {
+func (m *Chunk) GetDecompressedBytes() int64 {
 	if m != nil {
 		return m.DecompressedBytes
 	}
 	return 0
 }
 
-func (m *Ingester) GetDecompressedLines() int64 {
+func (m *Chunk) GetDecompressedLines() int64 {
 	if m != nil {
 		return m.DecompressedLines
 	}
 	return 0
 }
 
-func (m *Ingester) GetCompressedBytes() int64 {
+func (m *Chunk) GetCompressedBytes() int64 {
 	if m != nil {
 		return m.CompressedBytes
 	}
 	return 0
 }
 
-func (m *Ingester) GetTotalDuplicates() int64 {
+func (m *Chunk) GetTotalDuplicates() int64 {
 	if m != nil {
 		return m.TotalDuplicates
 	}
@@ -411,57 +473,62 @@ func (m *Ingester) GetTotalDuplicates() int64 {
 func init() {
 	proto.RegisterType((*Result)(nil), "stats.Result")
 	proto.RegisterType((*Summary)(nil), "stats.Summary")
-	proto.RegisterType((*Store)(nil), "stats.Store")
+	proto.RegisterType((*Querier)(nil), "stats.Querier")
 	proto.RegisterType((*Ingester)(nil), "stats.Ingester")
+	proto.RegisterType((*Store)(nil), "stats.Store")
+	proto.RegisterType((*Chunk)(nil), "stats.Chunk")
 }
 
 func init() { proto.RegisterFile("pkg/logqlmodel/stats/stats.proto", fileDescriptor_6cdfe5d2aea33ebb) }
 
 var fileDescriptor_6cdfe5d2aea33ebb = []byte{
-	// 677 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x55, 0xcd, 0x6e, 0x13, 0x3d,
-	0x14, 0x1d, 0x37, 0xcd, 0x4f, 0xfd, 0xf5, 0x6b, 0x8b, 0xab, 0xd2, 0x00, 0x92, 0xa7, 0xca, 0xaa,
-	0x0b, 0x68, 0xc4, 0xcf, 0x06, 0xa4, 0x6e, 0xa6, 0x15, 0x52, 0x25, 0x10, 0x95, 0x0b, 0x1b, 0x76,
-	0x93, 0x89, 0x9b, 0x44, 0x9d, 0x8c, 0xc3, 0x8c, 0x23, 0xe8, 0x8e, 0x47, 0xe0, 0x31, 0x78, 0x01,
-	0xde, 0xa1, 0xcb, 0x2e, 0xbb, 0x40, 0x23, 0x3a, 0xdd, 0xa0, 0x59, 0x75, 0x87, 0xc4, 0x0a, 0xcd,
-	0x9d, 0x9f, 0x64, 0x1c, 0x47, 0x42, 0x0a, 0x9b, 0xc4, 0xf7, 0x9c, 0x7b, 0xae, 0xed, 0xeb, 0xe3,
-	0x31, 0xde, 0x19, 0x9d, 0xf5, 0xda, 0xae, 0xe8, 0x7d, 0x70, 0x87, 0xa2, 0xcb, 0xdd, 0x76, 0x20,
-	0x6d, 0x19, 0xa4, 0xbf, 0x7b, 0x23, 0x5f, 0x48, 0x41, 0xaa, 0x10, 0xdc, 0x7f, 0xd4, 0x1b, 0xc8,
-	0xfe, 0xb8, 0xb3, 0xe7, 0x88, 0x61, 0xbb, 0x27, 0x7a, 0xa2, 0x0d, 0x6c, 0x67, 0x7c, 0x0a, 0x11,
-	0x04, 0x30, 0x4a, 0x55, 0xad, 0x6f, 0x08, 0xd7, 0x18, 0x0f, 0xc6, 0xae, 0x24, 0xcf, 0x71, 0x3d,
-	0x18, 0x0f, 0x87, 0xb6, 0x7f, 0xde, 0x44, 0x3b, 0x68, 0xf7, 0xbf, 0x27, 0x6b, 0x7b, 0x69, 0xfd,
-	0x93, 0x14, 0xb5, 0xd6, 0x2f, 0x42, 0xd3, 0x88, 0x43, 0x33, 0x4f, 0x63, 0xf9, 0x80, 0x3c, 0xc6,
-	0xd5, 0x40, 0x0a, 0x9f, 0x37, 0x97, 0x40, 0xb8, 0x9a, 0x0b, 0x13, 0xcc, 0xfa, 0x3f, 0x93, 0xa5,
-	0x29, 0x2c, 0xfd, 0x23, 0xfb, 0xb8, 0x31, 0xf0, 0x7a, 0x3c, 0x90, 0xdc, 0x6f, 0x56, 0x40, 0xb5,
-	0x9e, 0xa9, 0x8e, 0x32, 0xd8, 0xda, 0xc8, 0x84, 0x45, 0x22, 0x2b, 0x46, 0xad, 0x5f, 0x4b, 0xb8,
-	0x9e, 0xad, 0x8b, 0xbc, 0xc3, 0xdb, 0x9d, 0x73, 0xc9, 0x83, 0x63, 0x5f, 0x38, 0x3c, 0x08, 0x78,
-	0xf7, 0x98, 0xfb, 0x27, 0xdc, 0x11, 0x5e, 0x17, 0x36, 0x52, 0xb1, 0x1e, 0xc4, 0xa1, 0x39, 0x2f,
-	0x85, 0xcd, 0x23, 0x92, 0xb2, 0xee, 0xc0, 0xd3, 0x96, 0x5d, 0x9a, 0x94, 0x9d, 0x93, 0xc2, 0xe6,
-	0x11, 0xe4, 0x08, 0x6f, 0x4a, 0x21, 0x6d, 0xd7, 0x2a, 0x4d, 0x0b, 0x3d, 0xa8, 0x58, 0xdb, 0x71,
-	0x68, 0xea, 0x68, 0xa6, 0x03, 0x8b, 0x52, 0xaf, 0x4a, 0x53, 0x35, 0x97, 0x95, 0x52, 0x65, 0x9a,
-	0xe9, 0x40, 0xb2, 0x8b, 0x1b, 0xfc, 0x13, 0x77, 0xde, 0x0e, 0x86, 0xbc, 0x59, 0xdd, 0x41, 0xbb,
-	0xc8, 0x5a, 0x4d, 0x3a, 0x9f, 0x63, 0xac, 0x18, 0xb5, 0xbe, 0x2f, 0xe3, 0x2a, 0x1c, 0x2c, 0x79,
-	0x81, 0xd7, 0xa0, 0xd4, 0x41, 0x7f, 0xec, 0x9d, 0x05, 0x8c, 0x9f, 0x66, 0xed, 0x26, 0x71, 0x68,
-	0x2a, 0x0c, 0x53, 0x62, 0xf2, 0x06, 0x6f, 0x4d, 0x21, 0x87, 0xe2, 0xa3, 0xe7, 0x0a, 0xbb, 0xcb,
-	0xf3, 0xd6, 0xde, 0x8b, 0x43, 0x53, 0x9f, 0xc0, 0xf4, 0x30, 0x79, 0x89, 0x89, 0x53, 0xc2, 0x60,
-	0x2b, 0x15, 0xd8, 0xca, 0xdd, 0x38, 0x34, 0x35, 0x2c, 0xd3, 0x60, 0xc9, 0xa6, 0xfa, 0xdc, 0xee,
-	0x42, 0x7d, 0x68, 0x77, 0xd6, 0x4e, 0xd8, 0x54, 0x99, 0x61, 0x4a, 0x5c, 0xd2, 0x42, 0x7f, 0xa1,
-	0x95, 0xaa, 0x16, 0x18, 0xa6, 0xc4, 0xe4, 0x00, 0xdf, 0xe9, 0x72, 0x47, 0x0c, 0x47, 0x3e, 0x1c,
-	0x48, 0x3a, 0x75, 0x0d, 0xe4, 0x5b, 0x71, 0x68, 0xce, 0x92, 0x6c, 0x16, 0x52, 0x8b, 0xa4, 0x6b,
-	0xa8, 0xeb, 0x8b, 0xa4, 0xcb, 0x98, 0x85, 0xc8, 0x3e, 0x5e, 0x57, 0xd7, 0xd1, 0x80, 0x12, 0x9b,
-	0x71, 0x68, 0xaa, 0x14, 0x53, 0x81, 0x44, 0x0e, 0x27, 0x74, 0x38, 0x1e, 0xb9, 0x03, 0xc7, 0x4e,
-	0xe4, 0x2b, 0x13, 0xb9, 0x42, 0x31, 0x15, 0x68, 0xfd, 0x5e, 0xc6, 0x8d, 0xfc, 0x0b, 0x40, 0x9e,
-	0xe1, 0x55, 0xe0, 0x19, 0xb7, 0x9d, 0x3e, 0x4f, 0xaf, 0x73, 0xd5, 0xda, 0x88, 0x43, 0xb3, 0x84,
-	0xb3, 0x52, 0x94, 0x58, 0x61, 0xca, 0x23, 0xaf, 0x6d, 0x09, 0xda, 0xd4, 0x58, 0x60, 0x85, 0x59,
-	0x96, 0x69, 0xb0, 0x62, 0x76, 0x0b, 0xe2, 0x20, 0xbb, 0xa2, 0x93, 0xd9, 0x33, 0x9c, 0x95, 0xa2,
-	0xe2, 0x56, 0x40, 0x33, 0x4f, 0xb8, 0x27, 0xa7, 0x0d, 0x54, 0x66, 0x98, 0x12, 0x6b, 0xcc, 0x57,
-	0x5d, 0xc0, 0x7c, 0xb5, 0xc5, 0xcc, 0x57, 0xff, 0x17, 0xe6, 0x6b, 0x2c, 0x6e, 0xbe, 0x95, 0xc5,
-	0xcc, 0x87, 0xff, 0xde, 0x7c, 0x56, 0xe7, 0xf2, 0x9a, 0x1a, 0x57, 0xd7, 0xd4, 0xb8, 0xbd, 0xa6,
-	0xe8, 0x73, 0x44, 0xd1, 0xd7, 0x88, 0xa2, 0x8b, 0x88, 0xa2, 0xcb, 0x88, 0xa2, 0x1f, 0x11, 0x45,
-	0x3f, 0x23, 0x6a, 0xdc, 0x46, 0x14, 0x7d, 0xb9, 0xa1, 0xc6, 0xe5, 0x0d, 0x35, 0xae, 0x6e, 0xa8,
-	0xf1, 0xfe, 0xe1, 0xf4, 0x93, 0xeb, 0xdb, 0xa7, 0xb6, 0x67, 0xb7, 0x5d, 0x71, 0x36, 0x68, 0xeb,
-	0xde, 0xec, 0x4e, 0x0d, 0x1e, 0xde, 0xa7, 0x7f, 0x02, 0x00, 0x00, 0xff, 0xff, 0x4f, 0x1f, 0x09,
-	0x6a, 0xd2, 0x07, 0x00, 0x00,
+	// 734 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x55, 0x4d, 0x6f, 0xd3, 0x4c,
+	0x10, 0xb6, 0x93, 0xd7, 0x49, 0xba, 0x6f, 0xbf, 0xd8, 0xaa, 0x34, 0x80, 0x64, 0x57, 0x39, 0x55,
+	0x02, 0x12, 0xf1, 0x71, 0x01, 0xd1, 0x8b, 0x5b, 0x21, 0x55, 0x02, 0x51, 0xa6, 0x70, 0xe1, 0xe6,
+	0x38, 0xdb, 0xc4, 0xaa, 0xe3, 0x4d, 0xfd, 0x21, 0xe8, 0x8d, 0x1b, 0x47, 0xf8, 0x19, 0x5c, 0xf8,
+	0x09, 0xdc, 0x7b, 0xec, 0x81, 0x43, 0x4f, 0x16, 0x75, 0x2f, 0xc8, 0xa7, 0xfe, 0x04, 0xe4, 0x59,
+	0xc7, 0x8e, 0x1d, 0x47, 0xe2, 0x92, 0xcc, 0x3c, 0xcf, 0x3c, 0x33, 0xeb, 0x99, 0x59, 0x2d, 0xd9,
+	0x9e, 0x9c, 0x0c, 0x7b, 0x36, 0x1f, 0x9e, 0xda, 0x63, 0x3e, 0x60, 0x76, 0xcf, 0xf3, 0x0d, 0xdf,
+	0x13, 0xbf, 0xdd, 0x89, 0xcb, 0x7d, 0x4e, 0x15, 0x74, 0xee, 0x3e, 0x1c, 0x5a, 0xfe, 0x28, 0xe8,
+	0x77, 0x4d, 0x3e, 0xee, 0x0d, 0xf9, 0x90, 0xf7, 0x90, 0xed, 0x07, 0xc7, 0xe8, 0xa1, 0x83, 0x96,
+	0x50, 0x75, 0x7e, 0xca, 0xa4, 0x01, 0xcc, 0x0b, 0x6c, 0x9f, 0x3e, 0x23, 0x4d, 0x2f, 0x18, 0x8f,
+	0x0d, 0xf7, 0xac, 0x2d, 0x6f, 0xcb, 0x3b, 0xff, 0x3f, 0x5e, 0xed, 0x8a, 0xfc, 0x47, 0x02, 0xd5,
+	0xd7, 0xce, 0x43, 0x4d, 0x8a, 0x43, 0x6d, 0x1a, 0x06, 0x53, 0x23, 0x91, 0x9e, 0x06, 0xcc, 0xb5,
+	0x98, 0xdb, 0xae, 0x15, 0xa4, 0x6f, 0x05, 0x9a, 0x4b, 0xd3, 0x30, 0x98, 0x1a, 0x74, 0x97, 0xb4,
+	0x2c, 0x67, 0xc8, 0x3c, 0x9f, 0xb9, 0xed, 0x3a, 0x6a, 0xd7, 0x52, 0xed, 0x41, 0x0a, 0xeb, 0xeb,
+	0xa9, 0x38, 0x0b, 0x84, 0xcc, 0xea, 0xfc, 0xaa, 0x93, 0x66, 0x7a, 0x3e, 0xfa, 0x9e, 0x6c, 0xf5,
+	0xcf, 0x7c, 0xe6, 0x1d, 0xba, 0xdc, 0x64, 0x9e, 0xc7, 0x06, 0x87, 0xcc, 0x3d, 0x62, 0x26, 0x77,
+	0x06, 0xf8, 0x41, 0x75, 0xfd, 0x5e, 0x1c, 0x6a, 0x8b, 0x42, 0x60, 0x11, 0x91, 0xa4, 0xb5, 0x2d,
+	0xa7, 0x32, 0x6d, 0x2d, 0x4f, 0xbb, 0x20, 0x04, 0x16, 0x11, 0xf4, 0x80, 0x6c, 0xf8, 0xdc, 0x37,
+	0x6c, 0xbd, 0x50, 0x16, 0x7b, 0x50, 0xd7, 0xb7, 0xe2, 0x50, 0xab, 0xa2, 0xa1, 0x0a, 0xcc, 0x52,
+	0xbd, 0x2a, 0x94, 0x6a, 0xff, 0x57, 0x4a, 0x55, 0xa4, 0xa1, 0x0a, 0xa4, 0x3b, 0xa4, 0xc5, 0x3e,
+	0x31, 0xf3, 0x9d, 0x35, 0x66, 0x6d, 0x65, 0x5b, 0xde, 0x91, 0xf5, 0xe5, 0xa4, 0xf3, 0x53, 0x0c,
+	0x32, 0x8b, 0xde, 0x27, 0x4b, 0xa7, 0x01, 0x0b, 0x18, 0x86, 0x36, 0x30, 0x74, 0x25, 0x0e, 0xb5,
+	0x1c, 0x84, 0xdc, 0xa4, 0x5d, 0x42, 0xbc, 0xa0, 0x2f, 0x66, 0xee, 0xb5, 0x9b, 0x78, 0xb0, 0xd5,
+	0x38, 0xd4, 0x66, 0x50, 0x98, 0xb1, 0x3b, 0x2f, 0x48, 0x33, 0x5d, 0x1d, 0xfa, 0x88, 0x28, 0x9e,
+	0xcf, 0x5d, 0x96, 0x2e, 0xe5, 0xf2, 0x74, 0x29, 0x13, 0x4c, 0x5f, 0x49, 0x57, 0x43, 0x84, 0x80,
+	0xf8, 0xeb, 0xfc, 0xa8, 0x91, 0xd6, 0x74, 0x7b, 0xe8, 0x53, 0xb2, 0x8c, 0x1f, 0x0a, 0xcc, 0x30,
+	0x47, 0x4c, 0xac, 0x82, 0xa2, 0xaf, 0xc7, 0xa1, 0x56, 0xc0, 0xa1, 0xe0, 0xd1, 0x97, 0x84, 0xa2,
+	0xbf, 0x37, 0x0a, 0x9c, 0x13, 0xef, 0xb5, 0xe1, 0xa3, 0x56, 0xcc, 0xfb, 0x76, 0x1c, 0x6a, 0x15,
+	0x2c, 0x54, 0x60, 0x59, 0x75, 0x1d, 0x7d, 0x2f, 0x1d, 0x6f, 0x5e, 0x3d, 0xc5, 0xa1, 0xe0, 0xd1,
+	0xe7, 0x64, 0x35, 0x1f, 0xce, 0x11, 0x73, 0xfc, 0x74, 0x96, 0x34, 0x0e, 0xb5, 0x12, 0x03, 0x25,
+	0x3f, 0xef, 0x97, 0xf2, 0xcf, 0xfd, 0xfa, 0x5a, 0x23, 0x0a, 0xf2, 0x59, 0x61, 0xf1, 0x11, 0xc0,
+	0x8e, 0xd3, 0x9b, 0x93, 0x17, 0xce, 0x18, 0x28, 0xf9, 0xf4, 0x0d, 0xd9, 0x9c, 0x41, 0xf6, 0xf9,
+	0x47, 0xc7, 0xe6, 0xc6, 0x20, 0xeb, 0xda, 0x9d, 0x38, 0xd4, 0xaa, 0x03, 0xa0, 0x1a, 0x4e, 0x66,
+	0x60, 0x16, 0x30, 0x5c, 0xb5, 0x7a, 0x3e, 0x83, 0x79, 0x16, 0x2a, 0xb0, 0xa4, 0x23, 0x88, 0x62,
+	0x13, 0xf3, 0x8e, 0x60, 0xbd, 0xbc, 0x23, 0x18, 0x02, 0xe2, 0xaf, 0xf3, 0xa5, 0x4e, 0x14, 0xe4,
+	0x93, 0x8e, 0x8c, 0x98, 0x31, 0x10, 0xc1, 0xc9, 0xb5, 0x9b, 0x1d, 0x45, 0x91, 0x81, 0x92, 0x5f,
+	0xd0, 0xe2, 0x80, 0x70, 0x26, 0x65, 0x2d, 0x32, 0x50, 0xf2, 0xe9, 0x1e, 0xb9, 0x35, 0x60, 0x26,
+	0x1f, 0x4f, 0x5c, 0xbc, 0x98, 0xa2, 0x74, 0x03, 0xe5, 0x9b, 0x71, 0xa8, 0xcd, 0x93, 0x30, 0x0f,
+	0x95, 0x93, 0x88, 0x33, 0x34, 0xab, 0x93, 0x88, 0x63, 0xcc, 0x43, 0x74, 0x97, 0xac, 0x95, 0xcf,
+	0xd1, 0xc2, 0x14, 0x1b, 0x71, 0xa8, 0x95, 0x29, 0x28, 0x03, 0x89, 0x1c, 0xc7, 0xbb, 0x1f, 0x4c,
+	0x6c, 0xcb, 0x34, 0x12, 0xf9, 0x52, 0x2e, 0x2f, 0x51, 0x50, 0x06, 0xf4, 0xfe, 0xc5, 0x95, 0x2a,
+	0x5d, 0x5e, 0xa9, 0xd2, 0xcd, 0x95, 0x2a, 0x7f, 0x8e, 0x54, 0xf9, 0x7b, 0xa4, 0xca, 0xe7, 0x91,
+	0x2a, 0x5f, 0x44, 0xaa, 0xfc, 0x3b, 0x52, 0xe5, 0x3f, 0x91, 0x2a, 0xdd, 0x44, 0xaa, 0xfc, 0xed,
+	0x5a, 0x95, 0x2e, 0xae, 0x55, 0xe9, 0xf2, 0x5a, 0x95, 0x3e, 0x3c, 0x98, 0x7d, 0x05, 0x5d, 0xe3,
+	0xd8, 0x70, 0x8c, 0x9e, 0xcd, 0x4f, 0xac, 0x5e, 0xd5, 0x33, 0xda, 0x6f, 0xe0, 0x5b, 0xf8, 0xe4,
+	0x6f, 0x00, 0x00, 0x00, 0xff, 0xff, 0x4e, 0x99, 0x9a, 0xa3, 0x65, 0x07, 0x00, 0x00,
 }
 
 func (this *Result) Equal(that interface{}) bool {
@@ -486,7 +553,7 @@ func (this *Result) Equal(that interface{}) bool {
 	if !this.Summary.Equal(&that1.Summary) {
 		return false
 	}
-	if !this.Store.Equal(&that1.Store) {
+	if !this.Querier.Equal(&that1.Querier) {
 		return false
 	}
 	if !this.Ingester.Equal(&that1.Ingester) {
@@ -528,16 +595,22 @@ func (this *Summary) Equal(that interface{}) bool {
 	if this.ExecTime != that1.ExecTime {
 		return false
 	}
+	if this.QueueTime != that1.QueueTime {
+		return false
+	}
+	if this.Subqueries != that1.Subqueries {
+		return false
+	}
 	return true
 }
-func (this *Store) Equal(that interface{}) bool {
+func (this *Querier) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*Store)
+	that1, ok := that.(*Querier)
 	if !ok {
-		that2, ok := that.(Store)
+		that2, ok := that.(Querier)
 		if ok {
 			that1 = &that2
 		} else {
@@ -549,31 +622,7 @@ func (this *Store) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if this.TotalChunksRef != that1.TotalChunksRef {
-		return false
-	}
-	if this.TotalChunksDownloaded != that1.TotalChunksDownloaded {
-		return false
-	}
-	if this.ChunksDownloadTime != that1.ChunksDownloadTime {
-		return false
-	}
-	if this.HeadChunkBytes != that1.HeadChunkBytes {
-		return false
-	}
-	if this.HeadChunkLines != that1.HeadChunkLines {
-		return false
-	}
-	if this.DecompressedBytes != that1.DecompressedBytes {
-		return false
-	}
-	if this.DecompressedLines != that1.DecompressedLines {
-		return false
-	}
-	if this.CompressedBytes != that1.CompressedBytes {
-		return false
-	}
-	if this.TotalDuplicates != that1.TotalDuplicates {
+	if !this.Store.Equal(&that1.Store) {
 		return false
 	}
 	return true
@@ -609,6 +658,63 @@ func (this *Ingester) Equal(that interface{}) bool {
 	if this.TotalLinesSent != that1.TotalLinesSent {
 		return false
 	}
+	if !this.Store.Equal(&that1.Store) {
+		return false
+	}
+	return true
+}
+func (this *Store) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Store)
+	if !ok {
+		that2, ok := that.(Store)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TotalChunksRef != that1.TotalChunksRef {
+		return false
+	}
+	if this.TotalChunksDownloaded != that1.TotalChunksDownloaded {
+		return false
+	}
+	if this.ChunksDownloadTime != that1.ChunksDownloadTime {
+		return false
+	}
+	if !this.Chunk.Equal(&that1.Chunk) {
+		return false
+	}
+	return true
+}
+func (this *Chunk) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Chunk)
+	if !ok {
+		that2, ok := that.(Chunk)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
 	if this.HeadChunkBytes != that1.HeadChunkBytes {
 		return false
 	}
@@ -636,7 +742,7 @@ func (this *Result) GoString() string {
 	s := make([]string, 0, 7)
 	s = append(s, "&stats.Result{")
 	s = append(s, "Summary: "+strings.Replace(this.Summary.GoString(), `&`, ``, 1)+",\n")
-	s = append(s, "Store: "+strings.Replace(this.Store.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "Querier: "+strings.Replace(this.Querier.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "Ingester: "+strings.Replace(this.Ingester.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -645,31 +751,25 @@ func (this *Summary) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 9)
+	s := make([]string, 0, 11)
 	s = append(s, "&stats.Summary{")
 	s = append(s, "BytesProcessedPerSecond: "+fmt.Sprintf("%#v", this.BytesProcessedPerSecond)+",\n")
 	s = append(s, "LinesProcessedPerSecond: "+fmt.Sprintf("%#v", this.LinesProcessedPerSecond)+",\n")
 	s = append(s, "TotalBytesProcessed: "+fmt.Sprintf("%#v", this.TotalBytesProcessed)+",\n")
 	s = append(s, "TotalLinesProcessed: "+fmt.Sprintf("%#v", this.TotalLinesProcessed)+",\n")
 	s = append(s, "ExecTime: "+fmt.Sprintf("%#v", this.ExecTime)+",\n")
+	s = append(s, "QueueTime: "+fmt.Sprintf("%#v", this.QueueTime)+",\n")
+	s = append(s, "Subqueries: "+fmt.Sprintf("%#v", this.Subqueries)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *Store) GoString() string {
+func (this *Querier) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 13)
-	s = append(s, "&stats.Store{")
-	s = append(s, "TotalChunksRef: "+fmt.Sprintf("%#v", this.TotalChunksRef)+",\n")
-	s = append(s, "TotalChunksDownloaded: "+fmt.Sprintf("%#v", this.TotalChunksDownloaded)+",\n")
-	s = append(s, "ChunksDownloadTime: "+fmt.Sprintf("%#v", this.ChunksDownloadTime)+",\n")
-	s = append(s, "HeadChunkBytes: "+fmt.Sprintf("%#v", this.HeadChunkBytes)+",\n")
-	s = append(s, "HeadChunkLines: "+fmt.Sprintf("%#v", this.HeadChunkLines)+",\n")
-	s = append(s, "DecompressedBytes: "+fmt.Sprintf("%#v", this.DecompressedBytes)+",\n")
-	s = append(s, "DecompressedLines: "+fmt.Sprintf("%#v", this.DecompressedLines)+",\n")
-	s = append(s, "CompressedBytes: "+fmt.Sprintf("%#v", this.CompressedBytes)+",\n")
-	s = append(s, "TotalDuplicates: "+fmt.Sprintf("%#v", this.TotalDuplicates)+",\n")
+	s := make([]string, 0, 5)
+	s = append(s, "&stats.Querier{")
+	s = append(s, "Store: "+strings.Replace(this.Store.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -677,12 +777,35 @@ func (this *Ingester) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 14)
+	s := make([]string, 0, 9)
 	s = append(s, "&stats.Ingester{")
 	s = append(s, "TotalReached: "+fmt.Sprintf("%#v", this.TotalReached)+",\n")
 	s = append(s, "TotalChunksMatched: "+fmt.Sprintf("%#v", this.TotalChunksMatched)+",\n")
 	s = append(s, "TotalBatches: "+fmt.Sprintf("%#v", this.TotalBatches)+",\n")
 	s = append(s, "TotalLinesSent: "+fmt.Sprintf("%#v", this.TotalLinesSent)+",\n")
+	s = append(s, "Store: "+strings.Replace(this.Store.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *Store) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
+	s = append(s, "&stats.Store{")
+	s = append(s, "TotalChunksRef: "+fmt.Sprintf("%#v", this.TotalChunksRef)+",\n")
+	s = append(s, "TotalChunksDownloaded: "+fmt.Sprintf("%#v", this.TotalChunksDownloaded)+",\n")
+	s = append(s, "ChunksDownloadTime: "+fmt.Sprintf("%#v", this.ChunksDownloadTime)+",\n")
+	s = append(s, "Chunk: "+strings.Replace(this.Chunk.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *Chunk) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 10)
+	s = append(s, "&stats.Chunk{")
 	s = append(s, "HeadChunkBytes: "+fmt.Sprintf("%#v", this.HeadChunkBytes)+",\n")
 	s = append(s, "HeadChunkLines: "+fmt.Sprintf("%#v", this.HeadChunkLines)+",\n")
 	s = append(s, "DecompressedBytes: "+fmt.Sprintf("%#v", this.DecompressedBytes)+",\n")
@@ -731,7 +854,7 @@ func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i--
 	dAtA[i] = 0x1a
 	{
-		size, err := m.Store.MarshalToSizedBuffer(dAtA[:i])
+		size, err := m.Querier.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -773,6 +896,17 @@ func (m *Summary) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.Subqueries != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.Subqueries))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.QueueTime != 0 {
+		i -= 8
+		encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.QueueTime))))
+		i--
+		dAtA[i] = 0x31
+	}
 	if m.ExecTime != 0 {
 		i -= 8
 		encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.ExecTime))))
@@ -802,7 +936,7 @@ func (m *Summary) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *Store) Marshal() (dAtA []byte, err error) {
+func (m *Querier) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -812,62 +946,26 @@ func (m *Store) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *Store) MarshalTo(dAtA []byte) (int, error) {
+func (m *Querier) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *Store) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Querier) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if m.TotalDuplicates != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalDuplicates))
-		i--
-		dAtA[i] = 0x48
+	{
+		size, err := m.Store.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintStats(dAtA, i, uint64(size))
 	}
-	if m.CompressedBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.CompressedBytes))
-		i--
-		dAtA[i] = 0x40
-	}
-	if m.DecompressedLines != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedLines))
-		i--
-		dAtA[i] = 0x38
-	}
-	if m.DecompressedBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedBytes))
-		i--
-		dAtA[i] = 0x30
-	}
-	if m.HeadChunkLines != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkLines))
-		i--
-		dAtA[i] = 0x28
-	}
-	if m.HeadChunkBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkBytes))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.ChunksDownloadTime != 0 {
-		i -= 8
-		encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.ChunksDownloadTime))))
-		i--
-		dAtA[i] = 0x19
-	}
-	if m.TotalChunksDownloaded != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalChunksDownloaded))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.TotalChunksRef != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalChunksRef))
-		i--
-		dAtA[i] = 0x8
-	}
+	i--
+	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
 }
 
@@ -891,36 +989,16 @@ func (m *Ingester) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.TotalDuplicates != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalDuplicates))
-		i--
-		dAtA[i] = 0x50
+	{
+		size, err := m.Store.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintStats(dAtA, i, uint64(size))
 	}
-	if m.CompressedBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.CompressedBytes))
-		i--
-		dAtA[i] = 0x48
-	}
-	if m.DecompressedLines != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedLines))
-		i--
-		dAtA[i] = 0x40
-	}
-	if m.DecompressedBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedBytes))
-		i--
-		dAtA[i] = 0x38
-	}
-	if m.HeadChunkLines != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkLines))
-		i--
-		dAtA[i] = 0x30
-	}
-	if m.HeadChunkBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkBytes))
-		i--
-		dAtA[i] = 0x28
-	}
+	i--
+	dAtA[i] = 0x2a
 	if m.TotalLinesSent != 0 {
 		i = encodeVarintStats(dAtA, i, uint64(m.TotalLinesSent))
 		i--
@@ -944,6 +1022,107 @@ func (m *Ingester) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *Store) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Store) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Store) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	{
+		size, err := m.Chunk.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintStats(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x22
+	if m.ChunksDownloadTime != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.ChunksDownloadTime))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.TotalChunksDownloaded != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalChunksDownloaded))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.TotalChunksRef != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalChunksRef))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Chunk) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Chunk) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Chunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.TotalDuplicates != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalDuplicates))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.CompressedBytes != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.CompressedBytes))
+		i--
+		dAtA[i] = 0x40
+	}
+	if m.DecompressedLines != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedLines))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.DecompressedBytes != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedBytes))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.HeadChunkLines != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkLines))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.HeadChunkBytes != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkBytes))
+		i--
+		dAtA[i] = 0x20
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintStats(dAtA []byte, offset int, v uint64) int {
 	offset -= sovStats(v)
 	base := offset
@@ -963,7 +1142,7 @@ func (m *Result) Size() (n int) {
 	_ = l
 	l = m.Summary.Size()
 	n += 1 + l + sovStats(uint64(l))
-	l = m.Store.Size()
+	l = m.Querier.Size()
 	n += 1 + l + sovStats(uint64(l))
 	l = m.Ingester.Size()
 	n += 1 + l + sovStats(uint64(l))
@@ -991,42 +1170,23 @@ func (m *Summary) Size() (n int) {
 	if m.ExecTime != 0 {
 		n += 9
 	}
+	if m.QueueTime != 0 {
+		n += 9
+	}
+	if m.Subqueries != 0 {
+		n += 1 + sovStats(uint64(m.Subqueries))
+	}
 	return n
 }
 
-func (m *Store) Size() (n int) {
+func (m *Querier) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.TotalChunksRef != 0 {
-		n += 1 + sovStats(uint64(m.TotalChunksRef))
-	}
-	if m.TotalChunksDownloaded != 0 {
-		n += 1 + sovStats(uint64(m.TotalChunksDownloaded))
-	}
-	if m.ChunksDownloadTime != 0 {
-		n += 9
-	}
-	if m.HeadChunkBytes != 0 {
-		n += 1 + sovStats(uint64(m.HeadChunkBytes))
-	}
-	if m.HeadChunkLines != 0 {
-		n += 1 + sovStats(uint64(m.HeadChunkLines))
-	}
-	if m.DecompressedBytes != 0 {
-		n += 1 + sovStats(uint64(m.DecompressedBytes))
-	}
-	if m.DecompressedLines != 0 {
-		n += 1 + sovStats(uint64(m.DecompressedLines))
-	}
-	if m.CompressedBytes != 0 {
-		n += 1 + sovStats(uint64(m.CompressedBytes))
-	}
-	if m.TotalDuplicates != 0 {
-		n += 1 + sovStats(uint64(m.TotalDuplicates))
-	}
+	l = m.Store.Size()
+	n += 1 + l + sovStats(uint64(l))
 	return n
 }
 
@@ -1048,6 +1208,37 @@ func (m *Ingester) Size() (n int) {
 	if m.TotalLinesSent != 0 {
 		n += 1 + sovStats(uint64(m.TotalLinesSent))
 	}
+	l = m.Store.Size()
+	n += 1 + l + sovStats(uint64(l))
+	return n
+}
+
+func (m *Store) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.TotalChunksRef != 0 {
+		n += 1 + sovStats(uint64(m.TotalChunksRef))
+	}
+	if m.TotalChunksDownloaded != 0 {
+		n += 1 + sovStats(uint64(m.TotalChunksDownloaded))
+	}
+	if m.ChunksDownloadTime != 0 {
+		n += 1 + sovStats(uint64(m.ChunksDownloadTime))
+	}
+	l = m.Chunk.Size()
+	n += 1 + l + sovStats(uint64(l))
+	return n
+}
+
+func (m *Chunk) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	if m.HeadChunkBytes != 0 {
 		n += 1 + sovStats(uint64(m.HeadChunkBytes))
 	}
@@ -1081,7 +1272,7 @@ func (this *Result) String() string {
 	}
 	s := strings.Join([]string{`&Result{`,
 		`Summary:` + strings.Replace(strings.Replace(this.Summary.String(), "Summary", "Summary", 1), `&`, ``, 1) + `,`,
-		`Store:` + strings.Replace(strings.Replace(this.Store.String(), "Store", "Store", 1), `&`, ``, 1) + `,`,
+		`Querier:` + strings.Replace(strings.Replace(this.Querier.String(), "Querier", "Querier", 1), `&`, ``, 1) + `,`,
 		`Ingester:` + strings.Replace(strings.Replace(this.Ingester.String(), "Ingester", "Ingester", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
@@ -1097,24 +1288,18 @@ func (this *Summary) String() string {
 		`TotalBytesProcessed:` + fmt.Sprintf("%v", this.TotalBytesProcessed) + `,`,
 		`TotalLinesProcessed:` + fmt.Sprintf("%v", this.TotalLinesProcessed) + `,`,
 		`ExecTime:` + fmt.Sprintf("%v", this.ExecTime) + `,`,
+		`QueueTime:` + fmt.Sprintf("%v", this.QueueTime) + `,`,
+		`Subqueries:` + fmt.Sprintf("%v", this.Subqueries) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *Store) String() string {
+func (this *Querier) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&Store{`,
-		`TotalChunksRef:` + fmt.Sprintf("%v", this.TotalChunksRef) + `,`,
-		`TotalChunksDownloaded:` + fmt.Sprintf("%v", this.TotalChunksDownloaded) + `,`,
-		`ChunksDownloadTime:` + fmt.Sprintf("%v", this.ChunksDownloadTime) + `,`,
-		`HeadChunkBytes:` + fmt.Sprintf("%v", this.HeadChunkBytes) + `,`,
-		`HeadChunkLines:` + fmt.Sprintf("%v", this.HeadChunkLines) + `,`,
-		`DecompressedBytes:` + fmt.Sprintf("%v", this.DecompressedBytes) + `,`,
-		`DecompressedLines:` + fmt.Sprintf("%v", this.DecompressedLines) + `,`,
-		`CompressedBytes:` + fmt.Sprintf("%v", this.CompressedBytes) + `,`,
-		`TotalDuplicates:` + fmt.Sprintf("%v", this.TotalDuplicates) + `,`,
+	s := strings.Join([]string{`&Querier{`,
+		`Store:` + strings.Replace(strings.Replace(this.Store.String(), "Store", "Store", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1128,6 +1313,29 @@ func (this *Ingester) String() string {
 		`TotalChunksMatched:` + fmt.Sprintf("%v", this.TotalChunksMatched) + `,`,
 		`TotalBatches:` + fmt.Sprintf("%v", this.TotalBatches) + `,`,
 		`TotalLinesSent:` + fmt.Sprintf("%v", this.TotalLinesSent) + `,`,
+		`Store:` + strings.Replace(strings.Replace(this.Store.String(), "Store", "Store", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Store) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Store{`,
+		`TotalChunksRef:` + fmt.Sprintf("%v", this.TotalChunksRef) + `,`,
+		`TotalChunksDownloaded:` + fmt.Sprintf("%v", this.TotalChunksDownloaded) + `,`,
+		`ChunksDownloadTime:` + fmt.Sprintf("%v", this.ChunksDownloadTime) + `,`,
+		`Chunk:` + strings.Replace(strings.Replace(this.Chunk.String(), "Chunk", "Chunk", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Chunk) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Chunk{`,
 		`HeadChunkBytes:` + fmt.Sprintf("%v", this.HeadChunkBytes) + `,`,
 		`HeadChunkLines:` + fmt.Sprintf("%v", this.HeadChunkLines) + `,`,
 		`DecompressedBytes:` + fmt.Sprintf("%v", this.DecompressedBytes) + `,`,
@@ -1210,7 +1418,7 @@ func (m *Result) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Store", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Querier", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -1237,7 +1445,7 @@ func (m *Result) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.Store.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Querier.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -1414,6 +1622,36 @@ func (m *Summary) Unmarshal(dAtA []byte) error {
 			v = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 			m.ExecTime = float64(math.Float64frombits(v))
+		case 6:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field QueueTime", wireType)
+			}
+			var v uint64
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+			m.QueueTime = float64(math.Float64frombits(v))
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Subqueries", wireType)
+			}
+			m.Subqueries = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Subqueries |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipStats(dAtA[iNdEx:])
@@ -1438,7 +1676,7 @@ func (m *Summary) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *Store) Unmarshal(dAtA []byte) error {
+func (m *Querier) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1461,17 +1699,17 @@ func (m *Store) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Store: wiretype end group for non-group")
+			return fmt.Errorf("proto: Querier: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Store: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Querier: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TotalChunksRef", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Store", wireType)
 			}
-			m.TotalChunksRef = 0
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowStats
@@ -1481,155 +1719,25 @@ func (m *Store) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.TotalChunksRef |= int64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TotalChunksDownloaded", wireType)
+			if msglen < 0 {
+				return ErrInvalidLengthStats
 			}
-			m.TotalChunksDownloaded = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowStats
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.TotalChunksDownloaded |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStats
 			}
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ChunksDownloadTime", wireType)
-			}
-			var v uint64
-			if (iNdEx + 8) > l {
+			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			v = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-			m.ChunksDownloadTime = float64(math.Float64frombits(v))
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HeadChunkBytes", wireType)
+			if err := m.Store.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
 			}
-			m.HeadChunkBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowStats
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.HeadChunkBytes |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HeadChunkLines", wireType)
-			}
-			m.HeadChunkLines = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowStats
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.HeadChunkLines |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DecompressedBytes", wireType)
-			}
-			m.DecompressedBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowStats
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DecompressedBytes |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 7:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DecompressedLines", wireType)
-			}
-			m.DecompressedLines = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowStats
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DecompressedLines |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 8:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CompressedBytes", wireType)
-			}
-			m.CompressedBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowStats
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.CompressedBytes |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 9:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TotalDuplicates", wireType)
-			}
-			m.TotalDuplicates = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowStats
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.TotalDuplicates |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipStats(dAtA[iNdEx:])
@@ -1760,6 +1868,235 @@ func (m *Ingester) Unmarshal(dAtA []byte) error {
 				}
 			}
 		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Store", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStats
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStats
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Store.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipStats(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthStats
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthStats
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Store) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowStats
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Store: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Store: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalChunksRef", wireType)
+			}
+			m.TotalChunksRef = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TotalChunksRef |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalChunksDownloaded", wireType)
+			}
+			m.TotalChunksDownloaded = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TotalChunksDownloaded |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ChunksDownloadTime", wireType)
+			}
+			m.ChunksDownloadTime = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ChunksDownloadTime |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Chunk", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStats
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStats
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Chunk.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipStats(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthStats
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthStats
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Chunk) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowStats
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Chunk: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Chunk: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field HeadChunkBytes", wireType)
 			}
@@ -1778,7 +2115,7 @@ func (m *Ingester) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 6:
+		case 5:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field HeadChunkLines", wireType)
 			}
@@ -1797,7 +2134,7 @@ func (m *Ingester) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 7:
+		case 6:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DecompressedBytes", wireType)
 			}
@@ -1816,7 +2153,7 @@ func (m *Ingester) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 8:
+		case 7:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DecompressedLines", wireType)
 			}
@@ -1835,7 +2172,7 @@ func (m *Ingester) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 9:
+		case 8:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CompressedBytes", wireType)
 			}
@@ -1854,7 +2191,7 @@ func (m *Ingester) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 10:
+		case 9:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TotalDuplicates", wireType)
 			}

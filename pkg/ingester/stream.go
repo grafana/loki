@@ -8,12 +8,11 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -21,7 +20,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util/flagext"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -47,11 +48,11 @@ var (
 
 		Buckets: prometheus.ExponentialBuckets(5, 2, 6),
 	})
+
+	chunkCreatedStats = usagestats.NewCounter("ingester_chunk_created")
 )
 
-var (
-	ErrEntriesExist = errors.New("duplicate push - entries already exist")
-)
+var ErrEntriesExist = errors.New("duplicate push - entries already exist")
 
 func init() {
 	prometheus.MustRegister(chunksCreatedTotal)
@@ -131,6 +132,7 @@ func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.
 
 // consumeChunk manually adds a chunk to the stream that was received during
 // ingester chunk transfer.
+// Must hold chunkMtx
 // DEPRECATED: chunk transfers are no longer suggested and remain for compatibility.
 func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
@@ -138,8 +140,6 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 		return err
 	}
 
-	s.chunkMtx.Lock()
-	defer s.chunkMtx.Unlock()
 	s.chunks = append(s.chunks, chunkDesc{
 		chunk: c,
 	})
@@ -178,11 +178,17 @@ func (s *stream) Push(
 	// with a counter value less than or equal to it's own.
 	// It is set to zero and thus bypassed outside of WAL replays.
 	counter int64,
+	// Lock chunkMtx while pushing.
+	// If this is false, chunkMtx must be held outside Push.
+	lockChunk bool,
 ) (int, error) {
-	s.chunkMtx.Lock()
-	defer s.chunkMtx.Unlock()
+	if lockChunk {
+		s.chunkMtx.Lock()
+		defer s.chunkMtx.Unlock()
+	}
 
-	if counter > 0 && counter <= s.entryCt {
+	isReplay := counter > 0
+	if isReplay && counter <= s.entryCt {
 		var byteCt int
 		for _, e := range entries {
 			byteCt += len(e.Line)
@@ -200,6 +206,7 @@ func (s *stream) Push(
 			chunk: s.NewChunk(),
 		})
 		chunksCreatedTotal.Inc()
+		chunkCreatedStats.Inc(1)
 	}
 
 	var storedEntries []logproto.Entry
@@ -209,8 +216,12 @@ func (s *stream) Push(
 	var rateLimitedSamples, rateLimitedBytes int
 	defer func() {
 		if outOfOrderSamples > 0 {
-			validation.DiscardedSamples.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderSamples))
-			validation.DiscardedBytes.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderBytes))
+			name := validation.OutOfOrder
+			if s.unorderedWrites {
+				name = validation.TooFarBehind
+			}
+			validation.DiscardedSamples.WithLabelValues(name, s.tenant).Add(float64(outOfOrderSamples))
+			validation.DiscardedBytes.WithLabelValues(name, s.tenant).Add(float64(outOfOrderBytes))
 		}
 		if rateLimitedSamples > 0 {
 			validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedSamples))
@@ -252,13 +263,13 @@ func (s *stream) Push(
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		if s.unorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrOutOfOrder})
+		if !isReplay && s.unorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind})
 			outOfOrderSamples++
 			outOfOrderBytes += len(entries[i].Line)
 		} else if err := chunk.chunk.Append(&entries[i]); err != nil {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
-			if err == chunkenc.ErrOutOfOrder {
+			if chunkenc.IsOutOfOrderErr(err) {
 				outOfOrderSamples++
 				outOfOrderBytes += len(entries[i].Line)
 			}
@@ -324,11 +335,12 @@ func (s *stream) Push(
 	if len(failedEntriesWithError) > 0 {
 		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
 		_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
-		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && !ok {
+		outOfOrder := chunkenc.IsOutOfOrderErr(lastEntryWithErr.e)
+		if !outOfOrder && !ok {
 			return bytesAdded, lastEntryWithErr.e
 		}
 		var statusCode int
-		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
+		if outOfOrder {
 			statusCode = http.StatusBadRequest
 		}
 		if ok {
@@ -371,6 +383,7 @@ func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
 	samplesPerChunk.Observe(float64(chunk.chunk.Size()))
 	blocksPerChunk.Observe(float64(chunk.chunk.BlockCount()))
 	chunksCreatedTotal.Inc()
+	chunkCreatedStats.Inc(1)
 
 	s.chunks = append(s.chunks, chunkDesc{
 		chunk: s.NewChunk(),
@@ -419,7 +432,7 @@ func (s *stream) Bounds() (from, to time.Time) {
 }
 
 // Returns an iterator.
-func (s *stream) Iterator(ctx context.Context, ingStats *stats.IngesterData, from, through time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
+func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
@@ -455,18 +468,18 @@ func (s *stream) Iterator(ctx context.Context, ingStats *stats.IngesterData, fro
 		}
 	}
 
-	if ingStats != nil {
-		ingStats.TotalChunksMatched += int64(len(iterators))
+	if statsCtx != nil {
+		statsCtx.AddIngesterTotalChunkMatched(int64(len(iterators)))
 	}
 
 	if ordered {
-		return iter.NewNonOverlappingIterator(iterators, ""), nil
+		return iter.NewNonOverlappingIterator(iterators), nil
 	}
-	return iter.NewHeapIterator(ctx, iterators, direction), nil
+	return iter.NewSortEntryIterator(iterators, direction), nil
 }
 
 // Returns an SampleIterator.
-func (s *stream) SampleIterator(ctx context.Context, ingStats *stats.IngesterData, from, through time.Time, extractor log.StreamSampleExtractor) (iter.SampleIterator, error) {
+func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, extractor log.StreamSampleExtractor) (iter.SampleIterator, error) {
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
@@ -492,14 +505,14 @@ func (s *stream) SampleIterator(ctx context.Context, ingStats *stats.IngesterDat
 		}
 	}
 
-	if ingStats != nil {
-		ingStats.TotalChunksMatched += int64(len(iterators))
+	if statsCtx != nil {
+		statsCtx.AddIngesterTotalChunkMatched(int64(len(iterators)))
 	}
 
 	if ordered {
-		return iter.NewNonOverlappingSampleIterator(iterators, ""), nil
+		return iter.NewNonOverlappingSampleIterator(iterators), nil
 	}
-	return iter.NewHeapSampleIterator(ctx, iterators), nil
+	return iter.NewSortSampleIterator(iterators), nil
 }
 
 func (s *stream) addTailer(t *tailer) {

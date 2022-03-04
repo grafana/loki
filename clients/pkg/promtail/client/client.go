@@ -18,13 +18,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/clients/pkg/logentry/metric"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	lokiutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/build"
 )
 
 const (
@@ -39,7 +39,7 @@ const (
 	HostLabel    = "host"
 )
 
-var UserAgent = fmt.Sprintf("promtail/%s", version.Version)
+var UserAgent = fmt.Sprintf("promtail/%s", build.Version)
 
 type metrics struct {
 	encodedBytes     *prometheus.CounterVec
@@ -320,14 +320,21 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 				}
 				var lblSet model.LabelSet
 				for i := range lbls {
-					if lbls[i].Name == LatencyLabel {
-						lblSet = model.LabelSet{
-							model.LabelName(HostLabel):    model.LabelValue(c.cfg.URL.Host),
-							model.LabelName(LatencyLabel): model.LabelValue(lbls[i].Value),
+					for _, lbl := range c.cfg.StreamLagLabels {
+						if lbls[i].Name == lbl {
+							if lblSet == nil {
+								lblSet = model.LabelSet{}
+							}
+
+							lblSet = lblSet.Merge(model.LabelSet{
+								model.LabelName(lbl): model.LabelValue(lbls[i].Value),
+							})
 						}
 					}
 				}
 				if lblSet != nil {
+					// always set host
+					lblSet = lblSet.Merge(model.LabelSet{model.LabelName(HostLabel): model.LabelValue(c.cfg.URL.Host)})
 					c.metrics.streamLag.With(lblSet).Set(time.Since(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
 				}
 			}

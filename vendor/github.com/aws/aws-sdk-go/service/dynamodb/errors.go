@@ -129,11 +129,11 @@ const (
 	// ErrCodeProvisionedThroughputExceededException for service response error code
 	// "ProvisionedThroughputExceededException".
 	//
-	// Your request rate is too high. The AWS SDKs for DynamoDB automatically retry
-	// requests that receive this exception. Your request is eventually successful,
-	// unless your retry queue is too large to finish. Reduce the frequency of requests
-	// and use exponential backoff. For more information, go to Error Retries and
-	// Exponential Backoff (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Programming.Errors.html#Programming.Errors.RetryAndBackoff)
+	// Your request rate is too high. The Amazon Web Services SDKs for DynamoDB
+	// automatically retry requests that receive this exception. Your request is
+	// eventually successful, unless your retry queue is too large to finish. Reduce
+	// the frequency of requests and use exponential backoff. For more information,
+	// go to Error Retries and Exponential Backoff (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Programming.Errors.html#Programming.Errors.RetryAndBackoff)
 	// in the Amazon DynamoDB Developer Guide.
 	ErrCodeProvisionedThroughputExceededException = "ProvisionedThroughputExceededException"
 
@@ -153,7 +153,7 @@ const (
 	// "RequestLimitExceeded".
 	//
 	// Throughput exceeds the current throughput quota for your account. Please
-	// contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
+	// contact Amazon Web Services Support (https://aws.amazon.com/support) to request
 	// a quota increase.
 	ErrCodeRequestLimitExceeded = "RequestLimitExceeded"
 

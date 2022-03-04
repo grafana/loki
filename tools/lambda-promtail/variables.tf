@@ -4,10 +4,16 @@ variable "write_address" {
   default     = "http://localhost:8080/loki/api/v1/push"
 }
 
+variable "bucket_names" {
+  type        = list(string)
+  description = "List of S3 bucket names to create Event Notifications for."
+  default     = []
+}
+
 variable "log_group_names" {
   type        = list(string)
   description = "List of CloudWatch Log Group names to create Subscription Filters for."
-  default     = [""]
+  default     = []
 }
 
 variable "lambda_promtail_image" {
@@ -26,6 +32,24 @@ variable "password" {
   type        = string
   description = "The basic auth password, necessarry if writing directly to Grafana Cloud Loki."
   sensitive   = true
+  default     = ""
+}
+
+variable "keep_stream" {
+  type        = string
+  description = "Determines whether to keep the CloudWatch Log Stream value as a Loki label when writing logs from lambda-promtail."
+  default     = "false"
+}
+
+variable "extra_labels"{
+  type = string
+  description = "Comma seperated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by Lambda-Promtail."
+  default = ""
+}
+
+variable "batch_size" {
+  type        = string
+  description = "Determines when to flush the batch of logs (bytes)."
   default     = ""
 }
 

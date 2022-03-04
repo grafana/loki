@@ -15,6 +15,8 @@ Grafana Loki supports the following official clients for sending logs:
 
 There are also a number of third-party clients, see [Unofficial clients](#unofficial-clients).
 
+The [xk6-loki extension](https://github.com/grafana/xk6-loki) permits [load testing Loki](k6/).
+
 ## Picking a client
 
 While all clients can be used simultaneously to cover multiple use cases, which
@@ -70,4 +72,5 @@ when using or writing a third-party client.
 - [Serilog-Sinks-Loki](https://github.com/JosephWoodward/Serilog-Sinks-Loki) (C#)
 - [loki-logback-appender](https://github.com/loki4j/loki-logback-appender) (Java)
 - [Log4j2 appender for Loki](https://github.com/tkowalcz/tjahzi) (Java)
-- [LokiLogger.jl](https://github.com/fredrikekre/LokiLogger.jl) (Julia)
+- [LokiLogger.jl](https://github.com/JuliaLogging/LokiLogger.jl) (Julia)
+- [winston-loki](https://github.com/JaniAnttonen/winston-loki) (JS)

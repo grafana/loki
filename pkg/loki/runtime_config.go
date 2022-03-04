@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"io"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/runtimeconfig"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/runtime"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -56,30 +56,26 @@ type tenantLimitsFromRuntimeConfig struct {
 	c *runtimeconfig.Manager
 }
 
-func (t *tenantLimitsFromRuntimeConfig) TenantLimits(userID string) *validation.Limits {
+func (t *tenantLimitsFromRuntimeConfig) AllByUserID() map[string]*validation.Limits {
 	if t.c == nil {
 		return nil
 	}
+
 	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
-	if !ok || cfg == nil {
-		return nil
+	if cfg != nil && ok {
+		return cfg.TenantLimits
 	}
 
-	return cfg.TenantLimits[userID]
+	return nil
 }
 
-func (t *tenantLimitsFromRuntimeConfig) ForEachTenantLimit(callback validation.ForEachTenantLimitCallback) {
-	if t.c == nil {
-		return
-	}
-	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
-	if !ok || cfg == nil {
-		return
+func (t *tenantLimitsFromRuntimeConfig) TenantLimits(userID string) *validation.Limits {
+	allByUserID := t.AllByUserID()
+	if allByUserID == nil {
+		return nil
 	}
 
-	for userID, tenantLimit := range cfg.TenantLimits {
-		callback(userID, tenantLimit)
-	}
+	return allByUserID[userID]
 }
 
 func newtenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {

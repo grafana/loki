@@ -48,11 +48,11 @@ func (s *StorageClient) BatchWrite(c context.Context, batch chunk.WriteBatch) er
 	return nil
 }
 
-func (s *StorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *StorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	return util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callback util.Callback) error {
+func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	indexQuery := &QueryIndexRequest{
 		TableName:        query.TableName,
 		HashValue:        query.HashValue,

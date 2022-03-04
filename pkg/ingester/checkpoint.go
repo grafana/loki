@@ -11,19 +11,19 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
-	prompool "github.com/prometheus/prometheus/pkg/pool"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	prompool "github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/pool"
 )
 
@@ -208,9 +208,7 @@ func newStreamsIterator(ing ingesterInstances) *streamIterator {
 	instances := ing.getInstances()
 	streamInstances := make([]streamInstance, len(instances))
 	for i, inst := range ing.getInstances() {
-		inst.streamsMtx.RLock()
-		streams := make([]*stream, 0, len(inst.streams))
-		inst.streamsMtx.RUnlock()
+		streams := make([]*stream, 0, inst.streams.Len())
 		_ = inst.forAllStreams(context.Background(), func(s *stream) error {
 			streams = append(streams, s)
 			return nil
@@ -272,7 +270,7 @@ func (s *streamIterator) Next() bool {
 
 	s.current.UserID = currentInstance.id
 	s.current.Fingerprint = uint64(stream.fp)
-	s.current.Labels = cortexpb.FromLabelsToLabelAdapters(stream.labels)
+	s.current.Labels = logproto.FromLabelsToLabelAdapters(stream.labels)
 
 	s.current.To = stream.lastLine.ts
 	s.current.LastLine = stream.lastLine.content

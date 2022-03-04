@@ -19,7 +19,7 @@ const (
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
 	RateLimited         = "rate_limited"
-	RateLimitedErrorMsg = "Ingestion rate limit exceeded (limit: %d bytes/sec) while attempting to ingest '%d' lines totaling '%d' bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased"
+	RateLimitedErrorMsg = "Ingestion rate limit exceeded for user %s (limit: %d bytes/sec) while attempting to ingest '%d' lines totaling '%d' bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased"
 	// LineTooLong is a reason for discarding too long log lines.
 	LineTooLong         = "line_too_long"
 	LineTooLongErrorMsg = "Max entry size '%d' bytes exceeded for stream '%s' while adding an entry with length '%d' bytes"
@@ -31,9 +31,10 @@ const (
 	// rather than the overall ingestion rate limit.
 	StreamRateLimit = "per_stream_rate_limit"
 	OutOfOrder      = "out_of_order"
+	TooFarBehind    = "too_far_behind"
 	// GreaterThanMaxSampleAge is a reason for discarding log lines which are older than the current time - `reject_old_samples_max_age`
 	GreaterThanMaxSampleAge         = "greater_than_max_sample_age"
-	GreaterThanMaxSampleAgeErrorMsg = "entry for stream '%s' has timestamp too old: %v"
+	GreaterThanMaxSampleAgeErrorMsg = "entry for stream '%s' has timestamp too old: %v, oldest acceptable timestamp is: %v"
 	// TooFarInFuture is a reason for discarding log lines which are newer than the current time + `creation_grace_period`
 	TooFarInFuture         = "too_far_in_future"
 	TooFarInFutureErrorMsg = "entry for stream '%s' has timestamp too new: %v"

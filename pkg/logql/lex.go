@@ -38,6 +38,8 @@ var tokens = map[string]int{
 	OpOffset:       OFFSET,
 	OpOn:           ON,
 	OpIgnoring:     IGNORING,
+	OpGroupLeft:    GROUP_LEFT,
+	OpGroupRight:   GROUP_RIGHT,
 
 	// binops
 	OpTypeOr:     OR,
@@ -105,6 +107,9 @@ var functionTokens = map[string]int{
 	OpConvBytes:           BYTES_CONV,
 	OpConvDuration:        DURATION_CONV,
 	OpConvDurationSeconds: DURATION_SECONDS_CONV,
+
+	// filterOp
+	OpFilterIP: IP,
 }
 
 type lexer struct {
@@ -191,7 +196,11 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		}
 	}
 
-	if tok, ok := functionTokens[tokenText]; ok && isFunction(l.Scanner) {
+	if tok, ok := functionTokens[tokenText]; ok {
+		if !isFunction(l.Scanner) {
+			lval.str = tokenText
+			return IDENTIFIER
+		}
 		return tok
 	}
 
@@ -231,21 +240,43 @@ func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
 		return 0, false
 	}
 	// we've found more characters before a whitespace or the end
-	d, err := time.ParseDuration(sb.String())
+	durationString := sb.String()
+	duration, err := parseDuration(durationString)
 	if err != nil {
 		return 0, false
 	}
+
 	// we need to consume the scanner, now that we know this is a duration.
 	for i := 0; i < consumed; i++ {
 		_ = l.Next()
 	}
-	return d, true
+
+	return duration, true
+}
+
+func parseDuration(d string) (time.Duration, error) {
+	var duration time.Duration
+	// Try to parse promql style durations first, to ensure that we support the same duration
+	// units as promql
+	prometheusDuration, err := model.ParseDuration(d)
+	if err != nil {
+		// Fall back to standard library's time.ParseDuration if a promql style
+		// duration couldn't be parsed.
+		duration, err = time.ParseDuration(d)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		duration = time.Duration(prometheusDuration)
+	}
+
+	return duration, nil
 }
 
 func isDurationRune(r rune) bool {
-	// "ns", "us" (or "µs"), "ms", "s", "m", "h".
+	// "ns", "us" (or "µs"), "ms", "s", "m", "h", "d", "w", "y".
 	switch r {
-	case 'n', 's', 'u', 'm', 'h', 'µ':
+	case 'n', 'u', 'µ', 'm', 's', 'h', 'd', 'w', 'y':
 		return true
 	default:
 		return false

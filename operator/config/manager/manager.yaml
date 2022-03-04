@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+spec:
+  selector:
+    matchLabels:
+      name: loki-operator-controller-manager
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: loki-operator-controller-manager
+    spec:
+      containers:
+      - command:
+        - /manager
+        image: controller:latest
+        imagePullPolicy: IfNotPresent
+        name: manager
+        ports:
+        - containerPort: 8080
+          name: metrics
+        securityContext:
+          allowPrivilegeEscalation: false
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      nodeSelector:
+        kubernetes.io/os: linux
+      terminationGracePeriodSeconds: 10

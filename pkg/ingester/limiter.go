@@ -60,6 +60,7 @@ func NewLimiter(limits *validation.Overrides, metrics *ingesterMetrics, ring Rin
 func (l *Limiter) UnorderedWrites(userID string) bool {
 	// WAL replay should not discard previously ack'd writes,
 	// so allow out of order writes while the limiter is disabled.
+	// This allows replaying unordered WALs into ordered configurations.
 	if l.disabled {
 		return true
 	}

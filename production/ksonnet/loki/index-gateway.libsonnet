@@ -30,8 +30,7 @@
     pvc.mixin.spec.withStorageClassName($._config.index_gateway_pvc_class)
   else {},
 
-  index_gateway_args:: if $._config.use_index_gateway then {
-    'config.file': '/etc/loki/config/config.yaml',
+  index_gateway_args:: if $._config.use_index_gateway then $._config.commonArgs {
     target: 'index-gateway',
   } else {},
 
@@ -57,6 +56,7 @@
     statefulSet.mixin.spec.withServiceName('index-gateway') +
     $.config_hash_mixin +
     k.util.configVolumeMount('loki', '/etc/loki/config') +
+    k.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001)  // 10001 is the group ID assigned to Loki in the Dockerfile
   else {},

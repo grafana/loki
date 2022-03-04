@@ -1,4 +1,76 @@
-## 0.21.0 (Unreleased)
+## 0.24.0 (December 13, 2021)
+
+UPGRADE NOTES
+
+* Set Go minimum version to 1.14 [GH-2294](https://github.com/gophercloud/gophercloud/pull/2294)
+
+IMPROVEMENTS
+
+* Added `blockstorage/v3/qos.Get` [GH-2283](https://github.com/gophercloud/gophercloud/pull/2283)
+* Added `blockstorage/v3/qos.Update` [GH-2283](https://github.com/gophercloud/gophercloud/pull/2283)
+* Added `blockstorage/v3/qos.DeleteKeys` [GH-2283](https://github.com/gophercloud/gophercloud/pull/2283)
+* Added `blockstorage/v3/qos.Associate` [GH-2284](https://github.com/gophercloud/gophercloud/pull/2284)
+* Added `blockstorage/v3/qos.Disassociate` [GH-2284](https://github.com/gophercloud/gophercloud/pull/2284)
+* Added `blockstorage/v3/qos.DisassociateAll` [GH-2284](https://github.com/gophercloud/gophercloud/pull/2284)
+* Added `blockstorage/v3/qos.ListAssociations` [GH-2284](https://github.com/gophercloud/gophercloud/pull/2284)
+
+## 0.23.0 (November 12, 2021)
+
+IMPROVEMENTS
+
+* Added `networking/v2/extensions/agents.ListBGPSpeakers` [GH-2229](https://github.com/gophercloud/gophercloud/pull/2229)
+* Added `networking/v2/extensions/bgp/speakers.BGPSpeaker` [GH-2229](https://github.com/gophercloud/gophercloud/pull/2229)
+* Added `identity/v3/roles.Project.Domain` [GH-2235](https://github.com/gophercloud/gophercloud/pull/2235)
+* Added `identity/v3/roles.User.Domain` [GH-2235](https://github.com/gophercloud/gophercloud/pull/2235)
+* Added `identity/v3/roles.Group.Domain` [GH-2235](https://github.com/gophercloud/gophercloud/pull/2235)
+* Added `loadbalancer/v2/pools.CreateOpts.Tags` [GH-2237](https://github.com/gophercloud/gophercloud/pull/2237)
+* Added `loadbalancer/v2/pools.UpdateOpts.Tags` [GH-2237](https://github.com/gophercloud/gophercloud/pull/2237)
+* Added `loadbalancer/v2/pools.Pool.Tags` [GH-2237](https://github.com/gophercloud/gophercloud/pull/2237)
+* Added `networking/v2/extensions/bgp/speakers.List` [GH-2238](https://github.com/gophercloud/gophercloud/pull/2238)
+* Added `networking/v2/extensions/bgp/speakers.Get` [GH-2238](https://github.com/gophercloud/gophercloud/pull/2238)
+* Added `compute/v2/extensions/keypairs.CreateOpts.Type` [GH-2231](https://github.com/gophercloud/gophercloud/pull/2231)
+* When doing Keystone re-authentification, keep the error if it failed [GH-2259](https://github.com/gophercloud/gophercloud/pull/2259)
+* Added new loadbalancer pool monitor types (TLS-HELLO, UDP-CONNECT and SCTP) [GH-2237](https://github.com/gophercloud/gophercloud/pull/2261)
+
+## 0.22.0 (October 7, 2021)
+
+BREAKING CHANGES
+
+* The types of several Object Storage Update fields have been changed to pointers in order to allow the value to be unset via the HTTP headers:
+  * `objectstorage/v1/accounts.UpdateOpts.ContentType`
+  * `objectstorage/v1/accounts.UpdateOpts.DetectContentType`
+  * `objectstorage/v1/containers.UpdateOpts.ContainerRead`
+  * `objectstorage/v1/containers.UpdateOpts.ContainerSyncTo`
+  * `objectstorage/v1/containers.UpdateOpts.ContainerSyncKey`
+  * `objectstorage/v1/containers.UpdateOpts.ContainerWrite`
+  * `objectstorage/v1/containers.UpdateOpts.ContentType`
+  * `objectstorage/v1/containers.UpdateOpts.DetectContentType`
+  * `objectstorage/v1/objects.UpdateOpts.ContentDisposition`
+  * `objectstorage/v1/objects.UpdateOpts.ContentEncoding`
+  * `objectstorage/v1/objects.UpdateOpts.ContentType`
+  * `objectstorage/v1/objects.UpdateOpts.DeleteAfter`
+  * `objectstorage/v1/objects.UpdateOpts.DeleteAt`
+  * `objectstorage/v1/objects.UpdateOpts.DetectContentType`
+
+BUG FIXES
+
+* Fixed issue with not being able to unset Object Storage values via HTTP headers [GH-2218](https://github.com/gophercloud/gophercloud/pull/2218)
+
+IMPROVEMENTS
+
+* Added `compute/v2/servers.Server.ServerGroups` [GH-2217](https://github.com/gophercloud/gophercloud/pull/2217)
+* Added `imageservice/v2/images.ReplaceImageProtected` to allow the `protected` field to be updated [GH-2221](https://github.com/gophercloud/gophercloud/pull/2221)
+* More details added to the 404/Not Found error message [GH-2223](https://github.com/gophercloud/gophercloud/pull/2223)
+* Added `openstack/baremetal/v1/nodes.CreateSubscriptionOpts.HttpHeaders` [GH-2224](https://github.com/gophercloud/gophercloud/pull/2224)
+
+## 0.21.0 (September 14, 2021)
+
+IMPROVEMENTS
+
+* Added `blockstorage/extensions/volumehost` [GH-2212](https://github.com/gophercloud/gophercloud/pull/2212)
+* Added `loadbalancer/v2/listeners.CreateOpts.Tags` [GH-2214](https://github.com/gophercloud/gophercloud/pull/2214)
+* Added `loadbalancer/v2/listeners.UpdateOpts.Tags` [GH-2214](https://github.com/gophercloud/gophercloud/pull/2214)
+* Added `loadbalancer/v2/listeners.Listener.Tags` [GH-2214](https://github.com/gophercloud/gophercloud/pull/2214)
 
 ## 0.20.0 (August 10, 2021)
 

@@ -6,11 +6,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/validation"
+)
+
+const (
+	timeFormat = time.RFC3339
 )
 
 type Validator struct {
@@ -39,8 +43,7 @@ type validationContext struct {
 	userID string
 }
 
-func (v Validator) getValidationContextFor(userID string) validationContext {
-	now := time.Now()
+func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {
 	return validationContext{
 		userID:                 userID,
 		rejectOldSample:        v.RejectOldSamples(userID),
@@ -57,16 +60,21 @@ func (v Validator) getValidationContextFor(userID string) validationContext {
 // ValidateEntry returns an error if the entry is invalid
 func (v Validator) ValidateEntry(ctx validationContext, labels string, entry logproto.Entry) error {
 	ts := entry.Timestamp.UnixNano()
+
+	// Makes time string on the error message formatted consistently.
+	formatedEntryTime := entry.Timestamp.Format(timeFormat)
+	formatedRejectMaxAgeTime := time.Unix(0, ctx.rejectOldSampleMaxAge).Format(timeFormat)
+
 	if ctx.rejectOldSample && ts < ctx.rejectOldSampleMaxAge {
 		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Add(float64(len(entry.Line)))
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, labels, entry.Timestamp)
+		return httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, labels, formatedEntryTime, formatedRejectMaxAgeTime)
 	}
 
 	if ts > ctx.creationGracePeriod {
 		validation.DiscardedSamples.WithLabelValues(validation.TooFarInFuture, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.TooFarInFuture, ctx.userID).Add(float64(len(entry.Line)))
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, labels, entry.Timestamp)
+		return httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, labels, formatedEntryTime)
 	}
 
 	if maxSize := ctx.maxLineSize; maxSize != 0 && len(entry.Line) > maxSize {

@@ -8,9 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -18,7 +16,9 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
 
@@ -27,15 +27,12 @@ func TestLimits(t *testing.T) {
 		splits: map[string]time.Duration{"a": time.Minute},
 	}
 
-	require.Equal(t, l.QuerySplitDuration("a"), time.Minute)
-	require.Equal(t, l.QuerySplitDuration("b"), time.Duration(0))
+	wrapped := WithSplitByLimits(l, time.Hour)
 
-	wrapped := WithDefaultLimits(l, queryrange.Config{
-		SplitQueriesByInterval: time.Hour,
-	})
-
-	require.Equal(t, wrapped.QuerySplitDuration("a"), time.Minute)
+	// Test default
 	require.Equal(t, wrapped.QuerySplitDuration("b"), time.Hour)
+	// Ensure we override the underlying implementation
+	require.Equal(t, wrapped.QuerySplitDuration("a"), time.Hour)
 
 	r := &LokiRequest{
 		Query:   "qry",
@@ -45,17 +42,17 @@ func TestLimits(t *testing.T) {
 
 	require.Equal(
 		t,
-		fmt.Sprintf("%s:%s:%d:%d:%d", "a", r.GetQuery(), r.GetStep(), r.GetStart()/int64(time.Minute/time.Millisecond), int64(time.Minute)),
+		fmt.Sprintf("%s:%s:%d:%d:%d", "a", r.GetQuery(), r.GetStep(), r.GetStart()/int64(time.Hour/time.Millisecond), int64(time.Hour)),
 		cacheKeyLimits{wrapped}.GenerateCacheKey("a", r),
 	)
 }
 
 func Test_seriesLimiter(t *testing.T) {
 	cfg := testConfig
-	cfg.SplitQueriesByInterval = time.Hour
 	cfg.CacheResults = false
 	// split in 7 with 2 in // max.
-	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, chunk.SchemaConfig{}, 0, nil)
+	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
+	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, l, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -160,8 +157,8 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	require.Nil(t, err)
 
 	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
-		queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-			return queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				var wg sync.WaitGroup
 				for i := 0; i < 10; i++ {
 					wg.Add(1)
@@ -194,8 +191,8 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	require.Nil(t, err)
 
 	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
-		queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-			return queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				for i := 0; i < 10; i++ {
 					go func() {
 						_, _ = next.Do(c, &LokiRequest{})
@@ -205,4 +202,84 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 			})
 		}),
 	).RoundTrip(r)
+}
+
+func Test_MaxQueryParallelismDisable(t *testing.T) {
+	maxQueryParallelism := 0
+	f, err := newfakeRoundTripper()
+	require.Nil(t, err)
+
+	f.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		// simulate some work
+		time.Sleep(20 * time.Millisecond)
+	}))
+	ctx := user.InjectOrgID(context.Background(), "foo")
+
+	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
+	require.Nil(t, err)
+
+	_, err = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+				for i := 0; i < 10; i++ {
+					go func() {
+						_, _ = next.Do(c, &LokiRequest{})
+					}()
+				}
+				return nil, nil
+			})
+		}),
+	).RoundTrip(r)
+	require.Error(t, err)
+}
+
+func Test_MaxQueryLookBack(t *testing.T) {
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{
+		maxQueryLookback:    1 * time.Hour,
+		maxQueryParallelism: 1,
+	}, chunk.SchemaConfig{}, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &LokiRequest{
+		Query:     `{app="foo"} |= "foo"`,
+		Limit:     10000,
+		StartTs:   testTime.Add(-6 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query_range",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	_, err = tpw(rt).RoundTrip(req)
+	require.NoError(t, err)
+}
+
+func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
+	l := cacheKeyLimits{WithSplitByLimits(nil, 0)}
+	start := time.Now()
+	r := &LokiRequest{
+		Query:   "qry",
+		StartTs: start,
+		Step:    int64(time.Minute / time.Millisecond),
+	}
+
+	require.Equal(
+		t,
+		fmt.Sprintf("foo:qry:%d:0:0", r.GetStep()),
+		l.GenerateCacheKey("foo", r),
+	)
+
 }

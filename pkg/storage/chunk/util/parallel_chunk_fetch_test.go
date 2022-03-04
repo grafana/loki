@@ -12,7 +12,7 @@ func BenchmarkGetParallelChunks(b *testing.B) {
 	in := make([]chunk.Chunk, 1024)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		res, err := GetParallelChunks(ctx, in,
+		res, err := GetParallelChunks(ctx, 150, in,
 			func(_ context.Context, d *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 				return c, nil
 			})

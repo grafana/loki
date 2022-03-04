@@ -5,7 +5,6 @@ weight: 30
 
 # Template functions
 
-
 The [text template](https://golang.org/pkg/text/template) format used in `| line_format` and `| label_format` support the usage of functions.
 
 All labels are added as variables in the template engine. They can be referenced using they label name prefixed by a `.`(e.g `.label_name`). For example the following template will output the value of the path label:
@@ -13,6 +12,8 @@ All labels are added as variables in the template engine. They can be referenced
 ```template
 {{ .path }}
 ```
+
+Additionally you can also access the log line using the [`__line__`](#__line__) function.
 
 You can take advantage of [pipeline](https://golang.org/pkg/text/template/#hdr-Pipelines) to join together multiple functions.
 In a chained pipeline, the result of each command is passed as the last argument of the following command.
@@ -22,6 +23,22 @@ Example:
 ```template
 {{ .path | replace " " "_" | trunc 5 | upper }}
 ```
+
+## __line__
+
+This function returns the current log line.
+
+Signature:
+
+`line() string`
+
+Examples:
+
+```template
+"{{ __line__ | lower }}"
+`{{ __line__ }}`
+```
+
 
 ## ToLower and ToUpper
 
@@ -611,4 +628,41 @@ Example of a query to print a newline per queries stored as a json array in the 
 
 ```logql
 {job="cortex/querier"} |= "finish in prometheus" | logfmt | line_format "{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}"
+```
+
+## now
+
+`now` returns the current local time.
+
+```template
+{{ now }}
+```
+
+## toDate
+
+`toDate` parses a formatted string and returns the time value it represents.
+
+```template
+{{ toDate "2006-01-02" "2021-11-02" }}
+```
+
+## date
+
+`date` returns a textual representation of the time value formatted according to the provided [golang datetime layout](https://pkg.go.dev/time#pkg-constants).
+
+```template
+{ date "2006-01-02" now }}
+```
+
+## unixEpoch
+
+`unixEpoch` returns the number of seconds elapsed since January 1, 1970 UTC.
+
+```template
+{ unixEpoch now }}
+```
+
+Example of a query to filter cortex querier jobs which create time is 1 day before:
+```logql
+{job="cortex/querier"} | label_format nowEpoch=`{{(unixEpoch now)}}`,createDateEpoch=`{{unixEpoch (toDate "2006-01-02" .createDate)}}` | label_format dateTimeDiff="{{sub .nowEpoch .createDateEpoch}}" | dateTimeDiff > 86400
 ```

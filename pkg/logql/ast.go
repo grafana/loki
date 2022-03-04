@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -24,6 +24,10 @@ type Expr interface {
 	Shardable() bool // A recursive check on the AST to see if it's shardable.
 	Walkable
 	fmt.Stringer
+}
+
+func Clone(e Expr) (Expr, error) {
+	return ParseExpr(e.String())
 }
 
 type QueryParams interface {
@@ -335,34 +339,36 @@ func (e *LineFilterExpr) String() string {
 }
 
 func (e *LineFilterExpr) Filter() (log.Filterer, error) {
-	var f log.Filterer
-
-	switch e.Op {
-	case OpFilterIP:
-		var err error
-		f, err = log.NewIPLineFilter(e.Match, e.Ty)
-		if err != nil {
-			return nil, err
-		}
-	default:
-		var err error // to avoid `f` being shadowed.
-		f, err = log.NewFilter(e.Match, e.Ty)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if e.Left != nil {
-		nextFilter, err := e.Left.Filter()
-		if err != nil {
-			return nil, err
-		}
-		if nextFilter != nil {
-			f = log.NewAndFilter(nextFilter, f)
+	acc := make([]log.Filterer, 0)
+	for curr := e; curr != nil; curr = curr.Left {
+		switch curr.Op {
+		case OpFilterIP:
+			var err error
+			next, err := log.NewIPLineFilter(curr.Match, curr.Ty)
+			if err != nil {
+				return nil, err
+			}
+			acc = append(acc, next)
+		default:
+			next, err := log.NewFilter(curr.Match, curr.Ty)
+			if err != nil {
+				return nil, err
+			}
+			acc = append(acc, next)
 		}
 	}
 
-	return f, nil
+	if len(acc) == 1 {
+		return acc[0], nil
+	}
+
+	// The accumulation is right to left so it needs to be reversed.
+	for i := len(acc)/2 - 1; i >= 0; i-- {
+		opp := len(acc) - 1 - i
+		acc[i], acc[opp] = acc[opp], acc[i]
+	}
+
+	return log.NewAndFilters(acc), nil
 }
 
 func (e *LineFilterExpr) Stage() (log.Stage, error) {
@@ -717,6 +723,9 @@ const (
 	OpOn       = "on"
 	OpIgnoring = "ignoring"
 
+	OpGroupLeft  = "group_left"
+	OpGroupRight = "group_right"
+
 	// conversion Op
 	OpConvBytes           = "bytes"
 	OpConvDuration        = "duration"
@@ -953,6 +962,18 @@ func (e *VectorAggregationExpr) String() string {
 
 // impl SampleExpr
 func (e *VectorAggregationExpr) Shardable() bool {
+	if e.Operation == OpTypeCount || e.Operation == OpTypeAvg {
+		// count is shardable is labels are not mutated
+		// otherwise distinct values can be counted twice per shard
+		shardable := true
+		e.Walk(func(e interface{}) {
+			switch e.(type) {
+			case *LabelParserExpr, LabelFmtExpr:
+				shardable = false
+			}
+		})
+		return shardable
+	}
 	return shardableOps[e.Operation] && e.Left.Shardable()
 }
 
@@ -964,8 +985,41 @@ func (e *VectorAggregationExpr) Walk(f WalkFn) {
 	e.Left.Walk(f)
 }
 
+// VectorMatchCardinality describes the cardinality relationship
+// of two Vectors in a binary operation.
+type VectorMatchCardinality int
+
+const (
+	CardOneToOne VectorMatchCardinality = iota
+	CardManyToOne
+	CardOneToMany
+)
+
+func (vmc VectorMatchCardinality) String() string {
+	switch vmc {
+	case CardOneToOne:
+		return "one-to-one"
+	case CardManyToOne:
+		return "many-to-one"
+	case CardOneToMany:
+		return "one-to-many"
+	}
+	panic("promql.VectorMatchCardinality.String: unknown match cardinality")
+}
+
+// VectorMatching describes how elements from two Vectors in a binary
+// operation are supposed to be matched.
 type VectorMatching struct {
-	On      bool
+	// The cardinality of the two Vectors.
+	Card VectorMatchCardinality
+	// MatchingLabels contains the labels which define equality of a pair of
+	// elements from the Vectors.
+	MatchingLabels []string
+	// On includes the given label names from matching,
+	// rather than excluding them.
+	On bool
+	// Include contains additional labels that should be included in
+	// the result from the side with the lower cardinality.
 	Include []string
 }
 
@@ -988,10 +1042,22 @@ func (e *BinOpExpr) String() string {
 			op = fmt.Sprintf("%s bool", op)
 		}
 		if e.Opts.VectorMatching != nil {
-			if e.Opts.VectorMatching.On {
-				op = fmt.Sprintf("%s %s (%s)", op, OpOn, strings.Join(e.Opts.VectorMatching.Include, ","))
-			} else {
-				op = fmt.Sprintf("%s %s (%s)", op, OpIgnoring, strings.Join(e.Opts.VectorMatching.Include, ","))
+			group := ""
+			if e.Opts.VectorMatching.Card == CardManyToOne {
+				group = OpGroupLeft
+			} else if e.Opts.VectorMatching.Card == CardOneToMany {
+				group = OpGroupRight
+			}
+			if e.Opts.VectorMatching.Include != nil {
+				group = fmt.Sprintf("%s (%s)", group, strings.Join(e.Opts.VectorMatching.Include, ","))
+			}
+
+			if e.Opts.VectorMatching.On || e.Opts.VectorMatching.MatchingLabels != nil {
+				on := OpOn
+				if !e.Opts.VectorMatching.On {
+					on = OpIgnoring
+				}
+				op = fmt.Sprintf("%s %s (%s) %s", op, on, strings.Join(e.Opts.VectorMatching.MatchingLabels, ","), group)
 			}
 		}
 	}

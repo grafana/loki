@@ -2,36 +2,33 @@ package storage
 
 import (
 	"context"
-	"io/ioutil"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
-	"os"
 	"path"
 	"runtime"
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -40,7 +37,8 @@ var (
 	start      = model.Time(1523750400000)
 	m          runtime.MemStats
 	ctx        = user.InjectOrgID(context.Background(), "fake")
-	chunkStore = getLocalStore()
+	cm         = storage.NewClientMetrics()
+	chunkStore = getLocalStore(cm)
 )
 
 // go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
@@ -182,7 +180,7 @@ func printHeap(b *testing.B, show bool) {
 	}
 }
 
-func getLocalStore() Store {
+func getLocalStore(cm storage.ClientMetrics) Store {
 	limits, err := validation.NewOverrides(validation.Limits{
 		MaxQueryLength: model.Duration(6000 * time.Hour),
 	}, nil)
@@ -218,7 +216,7 @@ func getLocalStore() Store {
 	chunkStore, err := storage.NewStore(
 		storeConfig.Config,
 		chunk.StoreConfig{},
-		schemaConfig.SchemaConfig, limits, nil, nil, util_log.Logger)
+		schemaConfig.SchemaConfig, limits, cm, nil, nil, util_log.Logger)
 	if err != nil {
 		panic(err)
 	}
@@ -752,7 +750,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 			},
 		},
 		{
-			"unsharded",
+			"sharded",
 			newQuery(
 				"{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond),
 				[]astmapper.ShardAnnotation{
@@ -787,12 +785,7 @@ type timeRange struct {
 }
 
 func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "multiple-boltdb-shippers")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
@@ -843,13 +836,14 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		},
 	}
 
-	RegisterCustomIndexClients(&config, nil)
+	RegisterCustomIndexClients(&config, cm, nil)
 
 	chunkStore, err := storage.NewStore(
 		config.Config,
 		chunk.StoreConfig{},
 		schemaConfig.SchemaConfig,
 		limits,
+		cm,
 		nil,
 		nil,
 		util_log.Logger,
@@ -885,7 +879,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		err := store.PutOne(ctx, chk.From, chk.Through, chk)
 		require.NoError(t, err)
 
-		addedChunkIDs[chk.ExternalKey()] = struct{}{}
+		addedChunkIDs[schemaConfig.ExternalKey(chk)] = struct{}{}
 	}
 
 	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
@@ -896,6 +890,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		chunk.StoreConfig{},
 		schemaConfig.SchemaConfig,
 		limits,
+		cm,
 		nil,
 		nil,
 		util_log.Logger,
@@ -908,7 +903,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	defer store.Stop()
 
 	// get all the chunks from both the stores
-	chunks, err := store.Get(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName)...)
+	chunks, err := store.Get(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
 	require.NoError(t, err)
 
 	// we get common chunk twice because it is indexed in both the stores
@@ -916,7 +911,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 
 	// check whether we got back all the chunks which were added
 	for i := range chunks {
-		_, ok := addedChunkIDs[chunks[i].ExternalKey()]
+		_, ok := addedChunkIDs[schemaConfig.ExternalKey(chunks[i])]
 		require.True(t, ok)
 	}
 }
@@ -938,9 +933,10 @@ func parseDate(in string) time.Time {
 	return t
 }
 
-func buildTestStreams(labels string, tr timeRange) logproto.Stream {
+func buildTestStreams(labels labels.Labels, tr timeRange) logproto.Stream {
 	stream := logproto.Stream{
-		Labels:  labels,
+		Labels:  labels.String(),
+		Hash:    labels.Hash(),
 		Entries: []logproto.Entry{},
 	}
 
@@ -1168,4 +1164,126 @@ func Test_OverlappingChunks(t *testing.T) {
 	require.True(t, it.Next())
 	require.Equal(t, "1", it.Entry().Line)
 	require.False(t, it.Next())
+}
+
+func Test_GetSeries(t *testing.T) {
+	var (
+		store = &store{
+			Store: newMockChunkStore([]*logproto.Stream{
+				{
+					Labels: `{foo="bar",buzz="boo"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1), Line: "1"},
+					},
+				},
+				{
+					Labels: `{foo="buzz"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1), Line: "1"},
+					},
+				},
+				{
+					Labels: `{bar="foo"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1), Line: "1"},
+					},
+				},
+			}),
+			cfg: Config{
+				MaxChunkBatchSize: 10,
+			},
+			chunkMetrics: NilMetrics,
+		}
+		ctx            = user.InjectOrgID(context.Background(), "test-user")
+		expectedSeries = []logproto.SeriesIdentifier{
+			{
+				Labels: map[string]string{"bar": "foo"},
+			},
+			{
+				Labels: map[string]string{"foo": "bar", "buzz": "boo"},
+			},
+			{
+				Labels: map[string]string{"foo": "buzz"},
+			},
+		}
+	)
+
+	for _, tt := range []struct {
+		name           string
+		req            logql.SelectLogParams
+		expectedSeries []logproto.SeriesIdentifier
+	}{
+		{
+			"all series",
+			logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector: ``,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 10),
+				},
+			},
+			expectedSeries,
+		},
+		{
+			"all series with sharding",
+			logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector: ``,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 10),
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 1, Of: 16}.String()},
+				},
+			},
+			expectedSeries,
+		},
+		{
+			"selected series",
+			logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector: `{buzz=~".oo"}`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 10),
+				},
+			},
+			[]logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"foo": "bar", "buzz": "boo"},
+				},
+			},
+		},
+		{
+			"selected series with sharding",
+			logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector: `{buzz=~".oo"}`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 10),
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 1, Of: 16}.String()},
+				},
+			},
+			[]logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"foo": "bar", "buzz": "boo"},
+				},
+			},
+		},
+		{
+			"no match",
+			logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector: `{buzz=~"foo"}`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 10),
+				},
+			},
+			[]logproto.SeriesIdentifier{},
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			series, err := store.GetSeries(ctx, tt.req)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedSeries, series)
+		})
+	}
 }

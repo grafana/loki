@@ -37,7 +37,7 @@ Between a vector and a literal, the operator is applied to the value of every da
 Between two vectors, a binary arithmetic operator is applied to each entry in the left-hand side vector and its matching element in the right-hand vector.
 The result is propagated into the result vector with the grouping labels becoming the output label set. Entries for which no matching entry in the right-hand vector can be found are not part of the result.
 
-Pay special attention to [operator order](#operator-order) when chaining arithmetic operators.
+Pay special attention to [operator order](#order-of-operations) when chaining arithmetic operators.
 
 #### Arithmetic Examples
 
@@ -50,7 +50,7 @@ Implement a health check with a simple query:
 Double the rate of a a log stream's entries:
 
 ```logql
-sum(rate({app="foo"})) * 2
+sum(rate({app="foo"}[1m])) * 2
 ```
 
 Get proportion of warning logs to error logs for the `foo` app
@@ -163,6 +163,70 @@ This example will return every machine total count within the last minutes ratio
 sum by(machine) (count_over_time({app="foo"}[1m])) / on() sum(count_over_time({app="foo"}[1m]))
 ```
 
+### Many-to-one and one-to-many vector matches
+Many-to-one and one-to-many matchings occur when each vector element on the "one"-side can match with multiple elements on the "many"-side. You must explicitly request matching by using the group_left or group_right modifier, where left or right determines which vector has the higher cardinality.
+The syntax:
+```logql
+<vector expr> <bin-op> ignoring(<labels>) group_left(<labels>) <vector expr>
+<vector expr> <bin-op> ignoring(<labels>) group_right(<labels>) <vector expr>
+<vector expr> <bin-op> on(<labels>) group_left(<labels>) <vector expr>
+<vector expr> <bin-op> on(<labels>) group_right(<labels>) <vector expr>
+```
+The label list provided with the group modifier contains additional labels from the "one"-side that are included in the result metrics. And a label should only appear in one of the lists specified by `on` and `group_x`. Every time series of the result vector must be uniquely identifiable.
+Grouping modifiers can only be used for comparison and arithmetic. By default, the system matches `and`, `unless`, and `or` operations with all entries in the right vector.
+
+The following example returns the rates requests partitioned by `app` and `status` as a percentage of total requests.
+```logql
+sum by (app, status) (
+  rate(
+    {job="http-server"}
+      | json
+      [5m]
+  )
+)
+/ on (app) group_left
+sum by (app) (
+  rate(
+    {job="http-server"}
+      | json
+      [5m]
+  )
+)
+
+=>
+[
+  {app="foo", status="200"} => 0.8
+  {app="foo", status="400"} => 0.1
+  {app="foo", status="500"} => 0.1
+]
+```
+This version uses `group_left(<labels>)` to include `<labels>` from the right hand side in the result and returns the cost of discarded events per user, organization, and namespace:
+```logql
+sum by (user, namespace) (
+  rate(
+    {job="events"}
+      | logfmt
+      | discarded="true"
+      [5m]
+  )
+)
+* on (user) group_left(organization)
+max_over_time(
+  {job="cost-calculator"}
+    | logfmt
+    | unwrap cost
+    [5m]
+) by (user, organization)
+
+=>
+[
+  {user="foo", namespace="dev", organization="little-org"} => 10
+  {user="foo", namespace="prod", organization="little-org"} => 50
+  {user="bar", namespace="dev", organization="big-org"} => 70
+  {user="bar", namespace="prod", organization="big-org"} => 200
+]
+```
+
 ## Comments
 
 LogQL queries can be commented using the `#` character:
@@ -213,7 +277,7 @@ quantile_over_time(
 	) by (cluster)
 ```
 
->Metric queries cannot contains errors, in case errors are found during execution, Loki will return an error and appropriate status code.
+>Metric queries cannot contain errors, in case errors are found during execution, Loki will return an error and appropriate status code.
 
 ## Functions
 

@@ -7,9 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -18,13 +16,14 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
-func testSampleStreams() []queryrange.SampleStream {
-	return []queryrange.SampleStream{
+func testSampleStreams() []queryrangebase.SampleStream {
+	return []queryrangebase.SampleStream{
 		{
-			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-			Samples: []cortexpb.Sample{
+			Labels: []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+			Samples: []logproto.LegacySample{
 				{
 					Value:       0,
 					TimestampMs: 0,
@@ -40,8 +39,8 @@ func testSampleStreams() []queryrange.SampleStream {
 			},
 		},
 		{
-			Labels: []cortexpb.LabelAdapter{{Name: "bazz", Value: "buzz"}},
-			Samples: []cortexpb.Sample{
+			Labels: []logproto.LabelAdapter{{Name: "bazz", Value: "buzz"}},
+			Samples: []logproto.LegacySample{
 				{
 					Value:       4,
 					TimestampMs: 4,
@@ -107,7 +106,7 @@ func TestSampleStreamToMatrix(t *testing.T) {
 func TestResponseToResult(t *testing.T) {
 	for _, tc := range []struct {
 		desc     string
-		input    queryrange.Response
+		input    queryrangebase.Response
 		err      bool
 		expected logqlmodel.Result
 	}{
@@ -120,12 +119,12 @@ func TestResponseToResult(t *testing.T) {
 					}},
 				},
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 			},
 			expected: logqlmodel.Result{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 				Data: logqlmodel.Streams{{
 					Labels: `{foo="bar"}`,
@@ -144,17 +143,17 @@ func TestResponseToResult(t *testing.T) {
 			desc: "LokiPromResponse",
 			input: &LokiPromResponse{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
-				Response: &queryrange.PrometheusResponse{
-					Data: queryrange.PrometheusData{
+				Response: &queryrangebase.PrometheusResponse{
+					Data: queryrangebase.PrometheusData{
 						Result: testSampleStreams(),
 					},
 				},
 			},
 			expected: logqlmodel.Result{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 				Data: sampleStreamToMatrix(testSampleStreams()),
 			},
@@ -162,7 +161,7 @@ func TestResponseToResult(t *testing.T) {
 		{
 			desc: "LokiPromResponseError",
 			input: &LokiPromResponse{
-				Response: &queryrange.PrometheusResponse{
+				Response: &queryrangebase.PrometheusResponse{
 					Error:     "foo",
 					ErrorType: "bar",
 				},
@@ -310,7 +309,7 @@ func TestInstanceDownstream(t *testing.T) {
 				}},
 			},
 			Statistics: stats.Result{
-				Summary: stats.Summary{ExecTime: 1},
+				Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 			},
 		}
 	}
@@ -323,10 +322,10 @@ func TestInstanceDownstream(t *testing.T) {
 		},
 	}
 
-	var got queryrange.Request
-	var want queryrange.Request
-	handler := queryrange.HandlerFunc(
-		func(_ context.Context, req queryrange.Request) (queryrange.Response, error) {
+	var got queryrangebase.Request
+	var want queryrangebase.Request
+	handler := queryrangebase.HandlerFunc(
+		func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req

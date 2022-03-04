@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"text/scanner"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -52,6 +53,12 @@ func TestLex(t *testing.T) {
 		{`{foo="bar"} #|~ "\\w+"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
 		{`#{foo="bar"} |~ "\\w+"`, []int{}},
 		{`{foo="#"}`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
+		{`{foo="bar"}|logfmt|ip="b"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, STRING}},
+		{`{foo="bar"}|logfmt|rate="b"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, STRING}},
+		{`{foo="bar"}|logfmt|b=ip("b")`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, IP, OPEN_PARENTHESIS, STRING, CLOSE_PARENTHESIS}},
+		{`{foo="bar"}|logfmt|=ip("b")`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE_EXACT, IP, OPEN_PARENTHESIS, STRING, CLOSE_PARENTHESIS}},
+		{`ip`, []int{IDENTIFIER}},
+		{`rate`, []int{IDENTIFIER}},
 		{`{foo="bar"} | json | baz="#"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, JSON, PIPE, IDENTIFIER, EQ, STRING}},
 		{`{foo="bar"}
 					# |~ "\\w+"
@@ -118,5 +125,33 @@ func Test_isFunction(t *testing.T) {
 				t.Errorf("isFunction() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func Test_parseDuration(t *testing.T) {
+	const MICROSECOND = 1000 * time.Nanosecond
+	const DAY = 24 * time.Hour
+	const WEEK = 7 * DAY
+	const YEAR = 365 * DAY
+
+	for _, tc := range []struct {
+		input    string
+		expected time.Duration
+	}{
+		{"1ns", time.Nanosecond},
+		{"1s", time.Second},
+		{"1us", MICROSECOND},
+		{"1m", time.Minute},
+		{"1h", time.Hour},
+		{"1µs", MICROSECOND},
+		{"1y", YEAR},
+		{"1w", WEEK},
+		{"1d", DAY},
+		{"1h15m30.918273645s", time.Hour + 15*time.Minute + 30*time.Second + 918273645*time.Nanosecond},
+	} {
+		actual, err := parseDuration(tc.input)
+
+		require.Equal(t, err, nil)
+		require.Equal(t, tc.expected, actual)
 	}
 }

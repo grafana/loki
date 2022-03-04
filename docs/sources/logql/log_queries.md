@@ -34,7 +34,7 @@ A more granular log stream selector then reduces the number of searched streams 
 This means that the labels passed to the log stream selector will affect the relative performance of the query's execution.
 
 The log stream selector is specified by one or more comma-separated key-value pairs. Each key is a log label and each value is that label's value.
-Curly braces (`{` and `}`) delimit the stream selector. 
+Curly braces (`{` and `}`) delimit the stream selector.
 
 Consider this stream selector:
 
@@ -142,7 +142,7 @@ Line filter expression examples:
 and is followed by 1 or more word characters. A complete query with a regular expression:
 
     ```
-    {name="cassandra"} |~  `error=\w+` 
+    {name="cassandra"} |~  `error=\w+`
     ```
 
 Filter operators can be chained.
@@ -181,7 +181,7 @@ will always run faster than
 Line filter expressions are the fastest way to filter logs once the
 log stream selectors have been applied.
 
-Line filter expressions have support matching IP addresses. See [Matching IP addresses](ip/) for details.
+Line filter expressions have support matching IP addresses. See [Matching IP addresses](../ip/) for details.
 
 ### Label filter expression
 
@@ -211,7 +211,7 @@ Using Duration, Number and Bytes will convert the label value prior to comparisi
 
 For instance, `logfmt | duration > 1m and bytes_consumed > 20MB`
 
-If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](#pipeline-errors) section.
+If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](../#pipeline-errors) section.
 
 You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
 
@@ -240,13 +240,13 @@ It will evaluate first `duration >= 20ms or method="GET"`. To evaluate first `me
 | duration >= 20ms or (method="GET" and size <= 20KB)
 ```
 
-> Label filter expressions are the only expression allowed after the [unwrap expression](#unwrapped-range-aggregations). This is mainly to allow filtering errors from the metric extraction (see [errors](#pipeline-errors)).
+> Label filter expressions are the only expression allowed after the unwrap expression. This is mainly to allow filtering errors from the metric extraction.
 
 Label filter expressions have support matching IP addresses. See [Matching IP addresses](ip/) for details.
 
 ### Parser expression
 
-Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations](#metric-queries).
+Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations](../metric_queries).
 
 Extracted label keys are automatically sanitized by all parsers, to follow Prometheus metric name convention.(They can only contain ASCII letters and digits, as well as underscores and colons. They cannot start with a digit.)
 
@@ -263,7 +263,7 @@ In case of errors, for instance if the line is not in the expected format, the l
 
 If an extracted label key name already exists in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#labels-format-expression). However if an extracted key appears twice, only the latest label value will be kept.
 
-Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regexp) and [unpack](#unpack) parsers.
+Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regular-expression) and [unpack](#unpack) parsers.
 
 It's easier to use the predefined parsers `json` and `logfmt` when you can. If you can't, the `pattern` and `regexp` parsers can be used for log lines with an unusual structure. The `pattern` parser is easier and faster to write; it also outperforms the `regexp` parser.
 Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers](#multiple-parsers).
@@ -358,7 +358,7 @@ The **json** parser operates in two modes:
 
    If an array or an object returned by an expression, it will be assigned to the label in json format.
 
-   For example, `| json server_list="servers", headers="request.headers` will extract:
+   For example, `| json server_list="servers", headers="request.headers"` will extract:
 
    ```kv
    "server_list" => `["129.0.1.1","10.2.1.3"]`
@@ -388,8 +388,6 @@ will get those labels extracted:
 ```
 
 #### Pattern
-
-<span style="background-color:#f3f973;">The pattern parser is a beta feature.</span>
 
 The pattern parser allows the explicit extraction of fields from log lines by defining a pattern expression (`| pattern "<pattern-expression>"`). The expression matches the structure of a log line.
 
@@ -508,7 +506,7 @@ If we have the following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(m
 
 The above query will give us the `line` as `1.1.1.1 200 3`
 
-See [template functions](template_functions/) to learn about available functions in the template format.
+See [template functions](../template_functions/) to learn about available functions in the template format.
 
 ### Labels format expression
 
@@ -516,7 +514,7 @@ The `| label_format` expression can rename, modify or add labels. It takes as pa
 
 When both side are label identifiers, for example `dst=src`, the operation will rename the `src` label into `dst`.
 
-The left side can alternatively be a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value is replaced by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, which means labels are available as variables and you can use the same list of [functions](functions/).
+The left side can alternatively be a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value is replaced by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, which means labels are available as variables and you can use the same list of functions.
 
 In both cases, if the destination label doesn't exist, then a new one is created.
 
@@ -578,4 +576,3 @@ The result would be:
 2020-10-23T20:32:18.094668233Z	650.22401ms	    traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
 2020-10-23T20:32:18.068866235Z	624.008132ms	traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
 ```
-

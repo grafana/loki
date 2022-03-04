@@ -5,15 +5,15 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type WALReader interface {
@@ -112,12 +112,12 @@ func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 func (r *ingesterRecoverer) Series(series *Series) error {
 	return r.ing.replayController.WithBackPressure(func() error {
 
-		inst := r.ing.getOrCreateInstance(series.UserID)
+		inst := r.ing.GetOrCreateInstance(series.UserID)
 
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(logproto.Stream{
-			Labels: cortexpb.FromLabelAdaptersToLabels(series.Labels).String(),
-		}, true, nil)
+			Labels: logproto.FromLabelAdaptersToLabels(series.Labels).String(),
+		}, nil)
 
 		if err != nil {
 			return err
@@ -128,9 +128,6 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		stream.lastLine.content = series.LastLine
 		stream.entryCt = series.EntryCt
 		stream.highestTs = series.HighestTs
-		// Always set during replay, then reset to desired value afterward.
-		// This allows replaying unordered WALs into ordered configurations.
-		stream.unorderedWrites = true
 
 		if err != nil {
 			return err
@@ -145,7 +142,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		// will use this original reference.
 		got, _ := r.users.LoadOrStore(series.UserID, &sync.Map{})
 		streamsMap := got.(*sync.Map)
-		streamsMap.Store(series.Fingerprint, stream)
+		streamsMap.Store(chunks.HeadSeriesRef(series.Fingerprint), stream)
 
 		return nil
 	})
@@ -163,13 +160,12 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 // the fingerprint reported in the WAL record, not the potentially differing one assigned during
 // stream creation.
 func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) error {
-	inst := r.ing.getOrCreateInstance(userID)
+	inst := r.ing.GetOrCreateInstance(userID)
 
 	stream, err := inst.getOrCreateStream(
 		logproto.Stream{
 			Labels: series.Labels.String(),
 		},
-		true,
 		nil,
 	)
 	if err != nil {
@@ -197,7 +193,7 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true)
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
@@ -243,7 +239,12 @@ func (r *ingesterRecoverer) Close() {
 			if !isAllowed && old {
 				err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(isAllowed))
 				if err != nil {
-					return err
+					level.Warn(util_log.Logger).Log(
+						"msg", "error converting headblock",
+						"err", err.Error(),
+						"stream", s.labels.String(),
+						"component", "ingesterRecoverer",
+					)
 				}
 			}
 
@@ -275,7 +276,7 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 		}
 
 		for _, entries := range rec.RefEntries {
-			worker := int(entries.Ref % uint64(len(inputs)))
+			worker := int(uint64(entries.Ref) % uint64(len(inputs)))
 			inputs[worker] <- recoveryInput{
 				userID: rec.UserID,
 				data:   entries,

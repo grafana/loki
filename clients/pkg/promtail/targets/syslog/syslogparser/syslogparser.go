@@ -24,9 +24,9 @@ func ParseStream(r io.Reader, callback func(res *syslog.Result), maxMessageLengt
 
 	b := firstByte[0]
 	if b == '<' {
-		nontransparent.NewParser(syslog.WithListener(callback), syslog.WithMaxMessageLength(maxMessageLength)).Parse(buf)
+		nontransparent.NewParser(syslog.WithListener(callback), syslog.WithMaxMessageLength(maxMessageLength), syslog.WithBestEffort()).Parse(buf)
 	} else if b >= '0' && b <= '9' {
-		octetcounting.NewParser(syslog.WithListener(callback), syslog.WithMaxMessageLength(maxMessageLength)).Parse(buf)
+		octetcounting.NewParser(syslog.WithListener(callback), syslog.WithMaxMessageLength(maxMessageLength), syslog.WithBestEffort()).Parse(buf)
 	} else {
 		return fmt.Errorf("invalid or unsupported framing. first byte: '%s'", firstByte)
 	}

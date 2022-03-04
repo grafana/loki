@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sort"
 	"sync"
@@ -10,14 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
@@ -31,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -131,9 +130,7 @@ func buildChunkDecs(t testing.TB) []*chunkDesc {
 func TestWALFullFlush(t *testing.T) {
 	// technically replaced with a fake wal, but the ingester New() function creates a regular wal first,
 	// so we enable creation/cleanup even though it remains unused.
-	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-	require.Nil(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	store, ing := newTestStore(t, defaultIngesterTestConfigWithWAL(t, walDir), fullWAL{})
 	testData := pushTestSamples(t, ing)
@@ -290,6 +287,7 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 	cfg.LifecyclerConfig.MinReadyDuration = 0
 	cfg.BlockSize = 256 * 1024
 	cfg.TargetChunkSize = 1500 * 1024
+	cfg.WAL.Enabled = false
 	return cfg
 }
 

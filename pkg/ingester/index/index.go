@@ -15,11 +15,10 @@ import (
 	"unsafe"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
@@ -77,8 +76,8 @@ func validateShard(totalShards uint32, shard *astmapper.ShardAnnotation) error {
 // Add a fingerprint under the specified labels.
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (ii *InvertedIndex) Add(labels []cortexpb.LabelAdapter, fp model.Fingerprint) labels.Labels {
-	shardIndex := labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(labels))
+func (ii *InvertedIndex) Add(labels []logproto.LabelAdapter, fp model.Fingerprint) labels.Labels {
+	shardIndex := labelsSeriesIDHash(logproto.FromLabelAdaptersToLabels(labels))
 	shard := ii.shards[shardIndex%ii.totalShards]
 	return shard.add(labels, fp) // add() returns 'interned' values so the original labels are not retained
 }
@@ -144,21 +143,26 @@ func labelsString(b *bytes.Buffer, ls labels.Labels) {
 
 // Lookup all fingerprints for the provided matchers.
 func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
-	if len(matchers) == 0 {
-		return nil, nil
-	}
-
 	if err := validateShard(ii.totalShards, shard); err != nil {
 		return nil, err
 	}
 
-	result := []model.Fingerprint{}
+	var result []model.Fingerprint
 	shards := ii.getShards(shard)
+
+	// if no matcher is specified, all fingerprints would be returned
+	if len(matchers) == 0 {
+		for i := range shards {
+			fps := shards[i].allFPs()
+			result = append(result, fps...)
+		}
+		return result, nil
+	}
+
 	for i := range shards {
 		fps := shards[i].lookup(matchers)
 		result = append(result, fps...)
 	}
-
 	return result, nil
 }
 
@@ -230,7 +234,7 @@ func copyString(s string) string {
 // add metric to the index; return all the name/value pairs as a fresh
 // sorted slice, referencing 'interned' strings from the index so that
 // no references are retained to the memory of `metric`.
-func (shard *indexShard) add(metric []cortexpb.LabelAdapter, fp model.Fingerprint) labels.Labels {
+func (shard *indexShard) add(metric []logproto.LabelAdapter, fp model.Fingerprint) labels.Labels {
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
@@ -307,6 +311,31 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 		}
 	}
 
+	return result
+}
+
+func (shard *indexShard) allFPs() model.Fingerprints {
+	shard.mtx.RLock()
+	defer shard.mtx.RUnlock()
+
+	var fps model.Fingerprints
+	for _, ie := range shard.idx {
+		for _, ive := range ie.fps {
+			fps = append(fps, ive.fps...)
+		}
+	}
+	if len(fps) == 0 {
+		return nil
+	}
+
+	var result model.Fingerprints
+	var m = map[model.Fingerprint]struct{}{}
+	for _, fp := range fps {
+		if _, ok := m[fp]; !ok {
+			m[fp] = struct{}{}
+			result = append(result, fp)
+		}
+	}
 	return result
 }
 

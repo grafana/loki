@@ -16,7 +16,11 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-const positionFileMode = 0600
+const (
+	positionFileMode = 0600
+	cursorKeyPrefix  = "cursor-"
+	journalKeyPrefix = "journal-"
+)
 
 // Config describes where to get position information from.
 type Config struct {
@@ -176,14 +180,20 @@ func (p *positions) save() {
 	}
 }
 
+// CursorKey returns a key that can be saved as a cursor that is never deleted.
+func CursorKey(key string) string {
+	return fmt.Sprintf("%s%s", cursorKeyPrefix, key)
+}
+
 func (p *positions) cleanup() {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	toRemove := []string{}
 	for k := range p.positions {
-		// If the position file is prefixed with journal, it's a
-		// JournalTarget cursor and not a file on disk.
-		if strings.HasPrefix(k, "journal-") {
+		// If the position file is prefixed with cursor, it's a
+		// cursor and not a file on disk.
+		// We still have to support journal files, so we keep the previous check to avoid breaking change.
+		if strings.HasPrefix(k, cursorKeyPrefix) || strings.HasPrefix(k, journalKeyPrefix) {
 			continue
 		}
 
@@ -204,7 +214,6 @@ func (p *positions) cleanup() {
 }
 
 func readPositionsFile(cfg Config, logger log.Logger) (map[string]string, error) {
-
 	cleanfn := filepath.Clean(cfg.PositionsFile)
 	buf, err := ioutil.ReadFile(cleanfn)
 	if err != nil {
@@ -232,23 +241,4 @@ func readPositionsFile(cfg Config, logger log.Logger) (map[string]string, error)
 	}
 
 	return p.Positions, nil
-}
-
-func writePositionFile(filename string, positions map[string]string) error {
-	buf, err := yaml.Marshal(File{
-		Positions: positions,
-	})
-	if err != nil {
-		return err
-	}
-
-	target := filepath.Clean(filename)
-	temp := target + "-new"
-
-	err = ioutil.WriteFile(temp, buf, os.FileMode(positionFileMode))
-	if err != nil {
-		return err
-	}
-
-	return os.Rename(temp, target)
 }

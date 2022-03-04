@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/config"
 	"gopkg.in/yaml.v2"
 
+	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
 )
@@ -31,7 +31,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.WALCleaner.RegisterFlags(f)
 
 	// TODO(owen-d, 3.0.0): remove deprecated experimental prefix in Cortex if they'll accept it.
-	f.BoolVar(&c.Config.EnableAPI, "ruler.enable-api", false, "Enable the ruler api")
+	f.BoolVar(&c.Config.EnableAPI, "ruler.enable-api", true, "Enable the ruler api")
 }
 
 // Validate overrides the embedded cortex variant which expects a cortex limits struct. Instead copy the relevant bits over.
@@ -73,11 +73,17 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 		return nil, err
 	}
 
+	// BasicAuth.Password has a type of Secret (github.com/prometheus/common/config/config.go),
+	// so when its value is marshaled it is obfuscated as "<secret>".
+	// Here we copy the original password into the cloned config.
+	if n.Client.HTTPClientConfig.BasicAuth != nil {
+		n.Client.HTTPClientConfig.BasicAuth.Password = c.Client.HTTPClientConfig.BasicAuth.Password
+	}
 	return n, nil
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (c *RemoteWriteConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.Enabled, "ruler.remote-write.enabled", false, "Remote-write recording rule samples to Prometheus-compatible remote-write receiver.")
-	f.DurationVar(&c.ConfigRefreshPeriod, "ruler.remote-write.config-refresh-period", 10*time.Second, "Minimum period to wait between remote-write reconfigurations. This should be greater than or equivalent to -limits.per-user-override-period.")
+	f.DurationVar(&c.ConfigRefreshPeriod, "ruler.remote-write.config-refresh-period", 10*time.Second, "Minimum period to wait between refreshing remote-write reconfigurations. This should be greater than or equivalent to -limits.per-user-override-period.")
 }

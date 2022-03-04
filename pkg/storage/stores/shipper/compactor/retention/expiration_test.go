@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/validation"
@@ -36,14 +36,16 @@ func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention 
 	return f.perTenant[userID].streamRetention
 }
 
-func (f fakeLimits) ForEachTenantLimit(callback validation.ForEachTenantLimitCallback) {
-	for userID, limit := range f.perTenant {
-		callback(userID, limit.convertToValidationLimit())
-	}
-}
-
 func (f fakeLimits) DefaultLimits() *validation.Limits {
 	return f.defaultLimit.convertToValidationLimit()
+}
+
+func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+	res := make(map[string]*validation.Limits)
+	for userID, ret := range f.perTenant {
+		res[userID] = ret.convertToValidationLimit()
+	}
+	return res
 }
 
 func Test_expirationChecker_Expired(t *testing.T) {
@@ -71,7 +73,7 @@ func Test_expirationChecker_Expired(t *testing.T) {
 		want bool
 	}{
 		{"expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-2*time.Hour)), true},
-		{"just expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-1*time.Hour+(10*time.Microsecond))), false},
+		{"just expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-1*time.Hour+(10*time.Millisecond))), false},
 		{"not expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-30*time.Minute)), false},
 		{"not expired tenant by far", newChunkEntry("2", `{foo="buzz"}`, model.Now().Add(-72*time.Hour), model.Now().Add(-3*time.Hour)), false},
 		{"expired stream override", newChunkEntry("2", `{foo="bar"}`, model.Now().Add(-12*time.Hour), model.Now().Add(-10*time.Hour)), true},
@@ -88,10 +90,11 @@ func Test_expirationChecker_Expired(t *testing.T) {
 
 func TestFindLatestRetentionStartTime(t *testing.T) {
 	const dayDuration = 24 * time.Hour
+	now := model.Now()
 	for _, tc := range []struct {
-		name                               string
-		limit                              fakeLimits
-		expectedEarliestRetentionStartTime time.Duration
+		name                             string
+		limit                            fakeLimits
+		expectedLatestRetentionStartTime latestRetentionStartTime
 	}{
 		{
 			name: "only default retention set",
@@ -100,7 +103,11 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					retentionPeriod: 7 * dayDuration,
 				},
 			},
-			expectedEarliestRetentionStartTime: 7 * dayDuration,
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-7 * dayDuration),
+				defaults: now.Add(-7 * dayDuration),
+				byUser:   map[string]model.Time{},
+			},
 		},
 		{
 			name: "default retention period smallest",
@@ -118,7 +125,14 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					"1": {retentionPeriod: 15 * dayDuration},
 				},
 			},
-			expectedEarliestRetentionStartTime: 7 * dayDuration,
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-7 * dayDuration),
+				defaults: now.Add(-7 * dayDuration),
+				byUser: map[string]model.Time{
+					"0": now.Add(-12 * dayDuration),
+					"1": now.Add(-15 * dayDuration),
+				},
+			},
 		},
 		{
 			name: "default stream retention period smallest",
@@ -136,7 +150,14 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					"1": {retentionPeriod: 5 * dayDuration},
 				},
 			},
-			expectedEarliestRetentionStartTime: 3 * dayDuration,
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-3 * dayDuration),
+				defaults: now.Add(-3 * dayDuration),
+				byUser: map[string]model.Time{
+					"0": now.Add(-7 * dayDuration),
+					"1": now.Add(-5 * dayDuration),
+				},
+			},
 		},
 		{
 			name: "user retention retention period smallest",
@@ -168,7 +189,14 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					},
 				},
 			},
-			expectedEarliestRetentionStartTime: 5 * dayDuration,
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-5 * dayDuration),
+				defaults: now.Add(-7 * dayDuration),
+				byUser: map[string]model.Time{
+					"0": now.Add(-10 * dayDuration),
+					"1": now.Add(-5 * dayDuration),
+				},
+			},
 		},
 		{
 			name: "user stream retention period smallest",
@@ -200,57 +228,125 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					},
 				},
 			},
-			expectedEarliestRetentionStartTime: 2 * dayDuration,
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-2 * dayDuration),
+				defaults: now.Add(-7 * dayDuration),
+				byUser: map[string]model.Time{
+					"0": now.Add(-10 * dayDuration),
+					"1": now.Add(-2 * dayDuration),
+				},
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expectedEarliestRetentionStartTime, findSmallestRetentionPeriod(tc.limit))
+			latestRetentionStartTime := findLatestRetentionStartTime(now, tc.limit)
+			require.Equal(t, tc.expectedLatestRetentionStartTime, latestRetentionStartTime)
 		})
 	}
 }
 
-func TestExpirationChecker_IntervalHasExpiredChunks(t *testing.T) {
-	for _, tc := range []struct {
-		name              string
-		expirationChecker expirationChecker
-		interval          model.Interval
-		hasExpiredChunks  bool
-	}{
-		{
-			name: "not expired",
-			expirationChecker: expirationChecker{
-				latestRetentionStartTime: model.Now().Add(-24 * time.Hour),
+func TestExpirationChecker_IntervalMayHaveExpiredChunks(t *testing.T) {
+	now := model.Now()
+	expirationChecker := expirationChecker{
+		latestRetentionStartTime: latestRetentionStartTime{
+			overall:  now.Add(-24 * time.Hour),
+			defaults: now.Add(-48 * time.Hour),
+			byUser: map[string]model.Time{
+				"user0": now.Add(-72 * time.Hour),
+				"user1": now.Add(-24 * time.Hour),
 			},
+		},
+	}
+
+	for _, tc := range []struct {
+		name             string
+		userID           string
+		interval         model.Interval
+		hasExpiredChunks bool
+	}{
+		// common index using overallLatestRetentionStartTime
+		{
+			name: "common index - not expired",
 			interval: model.Interval{
-				Start: model.Now().Add(-time.Hour),
-				End:   model.Now(),
+				Start: now.Add(-23 * time.Hour),
+				End:   now,
 			},
 		},
 		{
-			name: "partially expired",
-			expirationChecker: expirationChecker{
-				latestRetentionStartTime: model.Now().Add(-24 * time.Hour),
-			},
+			name: "common index - partially expired",
 			interval: model.Interval{
-				Start: model.Now().Add(-25 * time.Hour),
-				End:   model.Now().Add(-22 * time.Hour),
+				Start: now.Add(-25 * time.Hour),
+				End:   now.Add(-22 * time.Hour),
 			},
 			hasExpiredChunks: true,
 		},
 		{
-			name: "fully expired",
-			expirationChecker: expirationChecker{
-				latestRetentionStartTime: model.Now().Add(-24 * time.Hour),
-			},
+			name: "common index - fully expired",
 			interval: model.Interval{
-				Start: model.Now().Add(-26 * time.Hour),
-				End:   model.Now().Add(-25 * time.Hour),
+				Start: now.Add(-26 * time.Hour),
+				End:   now.Add(-25 * time.Hour),
+			},
+			hasExpiredChunks: true,
+		},
+
+		// user0 having custom retention
+		{
+			name:   "user0 index - not expired",
+			userID: "user0",
+			interval: model.Interval{
+				Start: now.Add(-71 + time.Hour),
+				End:   now,
+			},
+		},
+		{
+			name:   "user0 index - partially expired",
+			userID: "user0",
+			interval: model.Interval{
+				Start: now.Add(-73 * time.Hour),
+				End:   now.Add(-71 * time.Hour),
+			},
+			hasExpiredChunks: true,
+		},
+		{
+			name:   "user0 index - fully expired",
+			userID: "user0",
+			interval: model.Interval{
+				Start: now.Add(-74 * time.Hour),
+				End:   now.Add(-73 * time.Hour),
+			},
+			hasExpiredChunks: true,
+		},
+
+		// user3 not having custom retention so using defaultLatestRetentionStartTime
+		{
+			name:   "user3 index - not expired",
+			userID: "user3",
+			interval: model.Interval{
+				Start: now.Add(-47 * time.Hour),
+				End:   now,
+			},
+		},
+		{
+			name:   "user3 index - partially expired",
+			userID: "user3",
+			interval: model.Interval{
+				Start: now.Add(-49 * time.Hour),
+				End:   now.Add(-47 * time.Hour),
+			},
+			hasExpiredChunks: true,
+		},
+		{
+			name:   "user3 index - fully expired",
+			userID: "user3",
+			interval: model.Interval{
+				Start: now.Add(-50 * time.Hour),
+				End:   now.Add(-49 * time.Hour),
 			},
 			hasExpiredChunks: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.hasExpiredChunks, tc.expirationChecker.IntervalHasExpiredChunks(tc.interval))
+			require.Equal(t, tc.hasExpiredChunks, expirationChecker.IntervalMayHaveExpiredChunks(tc.interval, tc.userID))
 		})
 	}
 }

@@ -4,14 +4,12 @@ import (
 	"context"
 	fmt "fmt"
 	"io/ioutil"
-	"os"
 	"sort"
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/grafana/dskit/services"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -26,7 +24,7 @@ import (
 )
 
 // small util for ensuring data exists as we expect
-func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time, i *Ingester) {
+func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time, i Interface) {
 	result := mockQuerierServer{
 		ctx: ctx,
 	}
@@ -56,9 +54,7 @@ func defaultIngesterTestConfigWithWAL(t *testing.T, walDir string) Config {
 }
 
 func TestIngesterWAL(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-	require.Nil(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 
@@ -138,9 +134,7 @@ func TestIngesterWAL(t *testing.T) {
 }
 
 func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-	require.Nil(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 
@@ -242,9 +236,7 @@ func TestUnflushedChunks(t *testing.T) {
 }
 
 func TestIngesterWALBackpressureSegments(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-	require.Nil(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 	ingesterConfig.WAL.ReplayMemoryCeiling = 1000
@@ -286,9 +278,7 @@ func TestIngesterWALBackpressureSegments(t *testing.T) {
 }
 
 func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-	require.Nil(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 	ingesterConfig.WAL.ReplayMemoryCeiling = 1000
@@ -479,7 +469,7 @@ func Test_SeriesIterator(t *testing.T) {
 			it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
 			require.NoError(t, err)
 			stream := logproto.Stream{
-				Labels: cortexpb.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),
+				Labels: logproto.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),
 			}
 			for it.Next() {
 				stream.Entries = append(stream.Entries, it.Entry())
@@ -500,16 +490,12 @@ func Benchmark_SeriesIterator(b *testing.B) {
 	streams := buildStreams()
 	instances := make([]*instance, 10)
 
-	limits, err := validation.NewOverrides(validation.Limits{
-		MaxLocalStreamsPerUser: 1000,
-		IngestionRateMB:        1e4,
-		IngestionBurstSizeMB:   1e4,
-	}, nil)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	for i := range instances {
-		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, nil, noopWAL{}, NilMetrics, nil, nil)
+		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
 
 		require.NoError(b,
 			inst.Push(context.Background(), &logproto.PushRequest{
@@ -555,7 +541,7 @@ func Benchmark_CheckpointWrite(b *testing.B) {
 		require.NoError(b, writer.Write(&Series{
 			UserID:      "foo",
 			Fingerprint: lbs.Hash(),
-			Labels:      cortexpb.FromLabelsToLabelAdapters(lbs),
+			Labels:      logproto.FromLabelsToLabelAdapters(lbs),
 			Chunks:      chunks,
 		}))
 	}
@@ -585,9 +571,7 @@ func buildChunks(t testing.TB, size int) []Chunk {
 func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
 	for _, waitForCheckpoint := range []bool{false, true} {
 		t.Run(fmt.Sprintf("checkpoint-%v", waitForCheckpoint), func(t *testing.T) {
-			walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-			require.Nil(t, err)
-			defer os.RemoveAll(walDir)
+			walDir := t.TempDir()
 
 			ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 

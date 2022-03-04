@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -14,15 +13,16 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
-
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+
+	"github.com/grafana/loki/pkg/logproto"
+	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func TestNewMulti(t *testing.T) {
-	_, err := NewMulti(nil, util_log.Logger, lokiflag.LabelSet{}, []Config{}...)
+	_, err := NewMulti(nil, util_log.Logger, []Config{}...)
 	if err == nil {
 		t.Fatal("expected err but got nil")
 	}
@@ -41,7 +41,7 @@ func TestNewMulti(t *testing.T) {
 		ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"hi": "there"}},
 	}
 
-	clients, err := NewMulti(prometheus.DefaultRegisterer, util_log.Logger, lokiflag.LabelSet{LabelSet: model.LabelSet{"order": "command"}}, cc1, cc2)
+	clients, err := NewMulti(prometheus.DefaultRegisterer, util_log.Logger, cc1, cc2)
 	if err != nil {
 		t.Fatalf("expected err: nil got:%v", err)
 	}
@@ -50,7 +50,7 @@ func TestNewMulti(t *testing.T) {
 		t.Fatalf("expected client: 2 got:%d", len(multi.clients))
 	}
 	actualCfg1 := clients.(*MultiClient).clients[0].(*client).cfg
-	// Yaml should overried the command line so 'order: yaml' should be expected
+	// Yaml should overridden the command line so 'order: yaml' should be expected
 	expectedCfg1 := Config{
 		BatchSize:      20,
 		BatchWait:      1 * time.Second,
@@ -60,24 +60,6 @@ func TestNewMulti(t *testing.T) {
 
 	if !reflect.DeepEqual(actualCfg1, expectedCfg1) {
 		t.Fatalf("expected cfg: %v got:%v", expectedCfg1, actualCfg1)
-	}
-
-	actualCfg2 := clients.(*MultiClient).clients[1].(*client).cfg
-	// No overlapping label keys so both should be in the output
-	expectedCfg2 := Config{
-		BatchSize: 10,
-		BatchWait: 1 * time.Second,
-		URL:       flagext.URLValue{URL: host2},
-		ExternalLabels: lokiflag.LabelSet{
-			LabelSet: model.LabelSet{
-				"order": "command",
-				"hi":    "there",
-			},
-		},
-	}
-
-	if !reflect.DeepEqual(actualCfg2, expectedCfg2) {
-		t.Fatalf("expected cfg: %v got:%v", expectedCfg2, actualCfg2)
 	}
 }
 

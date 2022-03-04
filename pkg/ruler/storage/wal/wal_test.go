@@ -5,20 +5,19 @@ package wal
 
 import (
 	"context"
-	"io/ioutil"
 	"math"
-	"os"
 	"sort"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/pkg/exemplar"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/value"
+	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 )
@@ -29,9 +28,7 @@ func newTestStorage(walDir string) (*Storage, error) {
 }
 
 func TestStorage_InvalidSeries(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -71,9 +68,7 @@ func TestStorage_InvalidSeries(t *testing.T) {
 }
 
 func TestStorage(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -113,9 +108,7 @@ func TestStorage(t *testing.T) {
 }
 
 func TestStorage_ExistingWAL(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -178,9 +171,7 @@ func TestStorage_ExistingWAL(t *testing.T) {
 }
 
 func TestStorage_ExistingWAL_RefID(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -211,9 +202,7 @@ func TestStorage_Truncate(t *testing.T) {
 	// after writing all the data, forcefully create 4 more segments,
 	// then do a truncate of a timestamp for _some_ of the data.
 	// then read data back in. Expect to only get the latter half of data.
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -272,9 +261,7 @@ func TestStorage_Truncate(t *testing.T) {
 }
 
 func TestStorage_WriteStalenessMarkers(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -310,7 +297,7 @@ func TestStorage_WriteStalenessMarkers(t *testing.T) {
 	actual := collector.samples
 	sort.Sort(byRefSample(actual))
 
-	staleMap := map[uint64]bool{}
+	staleMap := map[chunks.HeadSeriesRef]bool{}
 	for _, sample := range actual {
 		if _, ok := staleMap[sample.Ref]; !ok {
 			staleMap[sample.Ref] = false
@@ -326,9 +313,7 @@ func TestStorage_WriteStalenessMarkers(t *testing.T) {
 }
 
 func TestStorage_TruncateAfterClose(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
@@ -347,7 +332,7 @@ type series struct {
 	samples   []sample
 	exemplars []exemplar.Exemplar
 
-	ref *uint64
+	ref *storage.SeriesRef
 }
 
 func (s *series) Write(t *testing.T, app storage.Appender) {
@@ -431,7 +416,7 @@ func (s seriesList) ExpectedSamples() []record.RefSample {
 	for _, series := range s {
 		for _, sample := range series.samples {
 			expect = append(expect, record.RefSample{
-				Ref: *series.ref,
+				Ref: chunks.HeadSeriesRef(*series.ref),
 				T:   sample.ts,
 				V:   sample.val,
 			})
@@ -447,7 +432,7 @@ func (s seriesList) ExpectedExemplars() []record.RefExemplar {
 	for _, series := range s {
 		for _, exemplar := range series.exemplars {
 			expect = append(expect, record.RefExemplar{
-				Ref:    *series.ref,
+				Ref:    chunks.HeadSeriesRef(*series.ref),
 				T:      exemplar.Ts,
 				V:      exemplar.Value,
 				Labels: exemplar.Labels,

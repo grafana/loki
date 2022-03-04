@@ -5,15 +5,14 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/testutils"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 type fixture struct {
@@ -31,7 +30,7 @@ func (f fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, 
 	logger := log.NewNopLogger()
 	indexClient = newCachingIndexClient(indexClient, cache.NewFifoCache("index-fifo", cache.FifoCacheConfig{
 		MaxSizeItems: 500,
-		Validity:     5 * time.Minute,
+		TTL:          5 * time.Minute,
 	}, reg, logger), 5*time.Minute, limits, logger, false)
 	return indexClient, chunkClient, tableClient, schemaConfig, closer, err
 }

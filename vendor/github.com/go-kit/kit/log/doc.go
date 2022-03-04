@@ -1,5 +1,7 @@
 // Package log provides a structured logger.
 //
+// Deprecated: Use github.com/go-kit/log instead.
+//
 // Structured logging produces logs easily consumed later by humans or
 // machines. Humans might be interested in debugging errors, or tracing
 // specific requests. Machines might be interested in counting interesting

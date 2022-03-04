@@ -3,14 +3,14 @@ package log
 import (
 	"sort"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 const MaxInternedStrings = 1024
 
-var emptyLabelsResult = NewLabelsResult(labels.Labels{}, labels.Labels{}.Hash())
+var EmptyLabelsResult = NewLabelsResult(labels.Labels{}, labels.Labels{}.Hash())
 
 // LabelsResult is a computed labels result that contains the labels set with associated string and hash.
 // The is mainly used for caching and returning labels computations out of pipelines and stages.
@@ -274,7 +274,7 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 		return b.LabelsResult()
 	}
 	if b.noLabels {
-		return emptyLabelsResult
+		return EmptyLabelsResult
 	}
 	// unchanged path.
 	if len(b.del) == 0 && len(b.add) == 0 {

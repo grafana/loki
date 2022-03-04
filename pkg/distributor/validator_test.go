@@ -7,7 +7,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -29,7 +29,10 @@ func (f fakeLimits) TenantLimits(userID string) *validation.Limits {
 	return f.limits
 }
 
-func (f fakeLimits) ForEachTenantLimit(validation.ForEachTenantLimitCallback) {}
+// unused, but satisfies interface
+func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+	return nil
+}
 
 func TestValidator_ValidateEntry(t *testing.T) {
 	tests := []struct {
@@ -56,14 +59,20 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime.Add(-time.Hour * 5), Line: "test"},
-			httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, testStreamLabels, testTime.Add(-time.Hour*5)),
+			httpgrpc.Errorf(
+				http.StatusBadRequest,
+				validation.GreaterThanMaxSampleAgeErrorMsg,
+				testStreamLabels,
+				testTime.Add(-time.Hour*5).Format(timeFormat),
+				testTime.Add(-1*time.Hour).Format(timeFormat), // same as RejectOldSamplesMaxAge
+			),
 		},
 		{
 			"test too new",
 			"test",
 			nil,
 			logproto.Entry{Timestamp: testTime.Add(time.Hour * 5), Line: "test"},
-			httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, testStreamLabels, testTime.Add(time.Hour*5)),
+			httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, testStreamLabels, testTime.Add(time.Hour*5).Format(timeFormat)),
 		},
 		{
 			"line too long",
@@ -86,7 +95,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			v, err := NewValidator(o)
 			assert.NoError(t, err)
 
-			err = v.ValidateEntry(v.getValidationContextFor(tt.userID), testStreamLabels, tt.entry)
+			err = v.ValidateEntry(v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry)
 			assert.Equal(t, tt.expected, err)
 		})
 	}
@@ -187,7 +196,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			v, err := NewValidator(o)
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(v.getValidationContextFor(tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels})
+			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels})
 			assert.Equal(t, tt.expected, err)
 		})
 	}

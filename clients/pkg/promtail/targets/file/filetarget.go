@@ -17,8 +17,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-
-	"github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -43,6 +41,18 @@ func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", flags)
 }
 
+type fileTargetEventType string
+
+const (
+	fileTargetEventWatchStart fileTargetEventType = "WATCH_START"
+	fileTargetEventWatchStop  fileTargetEventType = "WATCH_STOP"
+)
+
+type fileTargetEvent struct {
+	path      string
+	eventType fileTargetEventType
+}
+
 // FileTarget describes a particular set of logs.
 // nolint:revive
 type FileTarget struct {
@@ -54,11 +64,12 @@ type FileTarget struct {
 	labels           model.LabelSet
 	discoveredLabels model.LabelSet
 
-	watcher *fsnotify.Watcher
-	watches map[string]struct{}
-	path    string
-	quit    chan struct{}
-	done    chan struct{}
+	fileEventWatcher   chan fsnotify.Event
+	targetEventHandler chan fileTargetEvent
+	watches            map[string]struct{}
+	path               string
+	quit               chan struct{}
+	done               chan struct{}
 
 	tails map[string]*tailer
 
@@ -75,31 +86,23 @@ func NewFileTarget(
 	labels model.LabelSet,
 	discoveredLabels model.LabelSet,
 	targetConfig *Config,
+	fileEventWatcher chan fsnotify.Event,
+	targetEventHandler chan fileTargetEvent,
 ) (*FileTarget, error) {
-
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, errors.Wrap(err, "filetarget.fsnotify.NewWatcher")
-	}
-
 	t := &FileTarget{
-		logger:           logger,
-		metrics:          metrics,
-		watcher:          watcher,
-		path:             path,
-		labels:           labels,
-		discoveredLabels: discoveredLabels,
-		handler:          api.AddLabelsMiddleware(labels).Wrap(handler),
-		positions:        positions,
-		quit:             make(chan struct{}),
-		done:             make(chan struct{}),
-		tails:            map[string]*tailer{},
-		targetConfig:     targetConfig,
-	}
-
-	err = t.sync()
-	if err != nil {
-		return nil, errors.Wrap(err, "filetarget.sync")
+		logger:             logger,
+		metrics:            metrics,
+		path:               path,
+		labels:             labels,
+		discoveredLabels:   discoveredLabels,
+		handler:            api.AddLabelsMiddleware(labels).Wrap(handler),
+		positions:          positions,
+		quit:               make(chan struct{}),
+		done:               make(chan struct{}),
+		tails:              map[string]*tailer{},
+		targetConfig:       targetConfig,
+		fileEventWatcher:   fileEventWatcher,
+		targetEventHandler: targetEventHandler,
 	}
 
 	go t.run()
@@ -144,7 +147,6 @@ func (t *FileTarget) Details() interface{} {
 
 func (t *FileTarget) run() {
 	defer func() {
-		util.LogError("closing watcher", t.watcher.Close)
 		for _, v := range t.tails {
 			v.stop()
 		}
@@ -152,28 +154,23 @@ func (t *FileTarget) run() {
 		close(t.done)
 	}()
 
+	err := t.sync()
+	if err != nil {
+		level.Error(t.logger).Log("msg", "error running sync function", "error", err)
+	}
+
 	ticker := time.NewTicker(t.targetConfig.SyncPeriod)
+	defer ticker.Stop()
 
 	for {
 		select {
-		case event := <-t.watcher.Events:
+		case event := <-t.fileEventWatcher:
 			switch event.Op {
 			case fsnotify.Create:
-				matched, err := doublestar.Match(t.path, event.Name)
-				if err != nil {
-					level.Error(t.logger).Log("msg", "failed to match file", "error", err, "filename", event.Name)
-					continue
-				}
-				if !matched {
-					level.Debug(t.logger).Log("msg", "new file does not match glob", "filename", event.Name)
-					continue
-				}
 				t.startTailing([]string{event.Name})
 			default:
 				// No-op we only care about Create events
 			}
-		case err := <-t.watcher.Errors:
-			level.Error(t.logger).Log("msg", "error from fswatch", "error", err)
 		case <-ticker.C:
 			err := t.sync()
 			if err != nil {
@@ -186,11 +183,16 @@ func (t *FileTarget) run() {
 }
 
 func (t *FileTarget) sync() error {
-
-	// Gets current list of files to tail.
-	matches, err := doublestar.Glob(t.path)
-	if err != nil {
-		return errors.Wrap(err, "filetarget.sync.filepath.Glob")
+	var matches []string
+	if fi, err := os.Stat(t.path); err == nil && !fi.IsDir() {
+		// if the path points to a file that exists, then it we can skip the Glob search
+		matches = []string{t.path}
+	} else {
+		// Gets current list of files to tail.
+		matches, err = doublestar.Glob(t.path)
+		if err != nil {
+			return errors.Wrap(err, "filetarget.sync.filepath.Glob")
+		}
 	}
 
 	if len(matches) == 0 {
@@ -247,9 +249,10 @@ func (t *FileTarget) startWatching(dirs map[string]struct{}) {
 		if _, ok := t.watches[dir]; ok {
 			continue
 		}
-		level.Debug(t.logger).Log("msg", "watching new directory", "directory", dir)
-		if err := t.watcher.Add(dir); err != nil {
-			level.Error(t.logger).Log("msg", "error adding directory to watcher", "error", err)
+		level.Info(t.logger).Log("msg", "watching new directory", "directory", dir)
+		t.targetEventHandler <- fileTargetEvent{
+			path:      dir,
+			eventType: fileTargetEventWatchStart,
 		}
 	}
 }
@@ -259,10 +262,10 @@ func (t *FileTarget) stopWatching(dirs map[string]struct{}) {
 		if _, ok := t.watches[dir]; !ok {
 			continue
 		}
-		level.Debug(t.logger).Log("msg", "removing directory from watcher", "directory", dir)
-		err := t.watcher.Remove(dir)
-		if err != nil {
-			level.Error(t.logger).Log("msg", " failed to remove directory from watcher", "error", err)
+		level.Info(t.logger).Log("msg", "removing directory from watcher", "directory", dir)
+		t.targetEventHandler <- fileTargetEvent{
+			path:      dir,
+			eventType: fileTargetEventWatchStop,
 		}
 	}
 }
@@ -272,15 +275,20 @@ func (t *FileTarget) startTailing(ps []string) {
 		if _, ok := t.tails[p]; ok {
 			continue
 		}
+
 		fi, err := os.Stat(p)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to tail file, stat failed", "error", err, "filename", p)
+			t.metrics.totalBytes.DeleteLabelValues(p)
 			continue
 		}
+
 		if fi.IsDir() {
-			level.Error(t.logger).Log("msg", "failed to tail file", "error", "file is a directory", "filename", p)
+			level.Info(t.logger).Log("msg", "failed to tail file", "error", "file is a directory", "filename", p)
+			t.metrics.totalBytes.DeleteLabelValues(p)
 			continue
 		}
+
 		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
 		tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p)
 		if err != nil {
