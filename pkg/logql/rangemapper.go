@@ -60,11 +60,11 @@ func (m RangeVectorMapper) Map(expr Expr) (Expr, error) {
 		}
 		lhsSampleExpr, ok := lhsMapped.(SampleExpr)
 		if !ok {
-			return nil, badASTMapping("SampleExpr", lhsMapped)
+			return nil, badASTMapping(lhsMapped)
 		}
 		rhsSampleExpr, ok := rhsMapped.(SampleExpr)
 		if !ok {
-			return nil, badASTMapping("SampleExpr", rhsMapped)
+			return nil, badASTMapping(rhsMapped)
 		}
 		e.SampleExpr = lhsSampleExpr
 		e.RHS = rhsSampleExpr
@@ -133,7 +133,7 @@ func (m RangeVectorMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr)
 		}
 		sampleExpr, ok := subMapped.(SampleExpr)
 		if !ok {
-			return nil, badASTMapping("SampleExpr", subMapped)
+			return nil, badASTMapping(subMapped)
 		}
 
 		return &VectorAggregationExpr{
