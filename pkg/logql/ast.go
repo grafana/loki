@@ -339,10 +339,8 @@ func (e *LineFilterExpr) String() string {
 }
 
 func (e *LineFilterExpr) Filter() (log.Filterer, error) {
-
 	acc := make([]log.Filterer, 0)
 	for curr := e; curr != nil; curr = curr.Left {
-
 		switch curr.Op {
 		case OpFilterIP:
 			var err error
@@ -964,6 +962,18 @@ func (e *VectorAggregationExpr) String() string {
 
 // impl SampleExpr
 func (e *VectorAggregationExpr) Shardable() bool {
+	if e.Operation == OpTypeCount || e.Operation == OpTypeAvg {
+		// count is shardable is labels are not mutated
+		// otherwise distinct values can be counted twice per shard
+		shardable := true
+		e.Walk(func(e interface{}) {
+			switch e.(type) {
+			case *LabelParserExpr, LabelFmtExpr:
+				shardable = false
+			}
+		})
+		return shardable
+	}
 	return shardableOps[e.Operation] && e.Left.Shardable()
 }
 

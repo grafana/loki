@@ -215,13 +215,12 @@ func (hb *unorderedHeadBlock) Iterator(
 	maxt int64,
 	pipeline log.StreamPipeline,
 ) iter.EntryIterator {
-
 	// We are doing a copy everytime, this is because b.entries could change completely,
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
 	// but the tradeoff is that queries to near-realtime data would be much lower than
 	// cutting of blocks.
-	streams := map[uint64]*logproto.Stream{}
-
+	streams := map[string]*logproto.Stream{}
+	baseHash := pipeline.BaseLabels().Hash()
 	_ = hb.forEntries(
 		ctx,
 		direction,
@@ -234,12 +233,13 @@ func (hb *unorderedHeadBlock) Iterator(
 			}
 
 			var stream *logproto.Stream
-			lhash := parsedLbs.Hash()
-			if stream, ok = streams[lhash]; !ok {
+			labels := parsedLbs.String()
+			if stream, ok = streams[labels]; !ok {
 				stream = &logproto.Stream{
-					Labels: parsedLbs.String(),
+					Labels: labels,
+					Hash:   baseHash,
 				}
-				streams[lhash] = stream
+				streams[labels] = stream
 			}
 
 			stream.Entries = append(stream.Entries, logproto.Entry{
@@ -267,9 +267,8 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	maxt int64,
 	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
-
-	series := map[uint64]*logproto.Series{}
-
+	series := map[string]*logproto.Series{}
+	baseHash := extractor.BaseLabels().Hash()
 	_ = hb.forEntries(
 		ctx,
 		logproto.FORWARD,
@@ -280,22 +279,24 @@ func (hb *unorderedHeadBlock) SampleIterator(
 			if !ok {
 				return nil
 			}
-			var found bool
-			var s *logproto.Series
-			lhash := parsedLabels.Hash()
-			if s, found = series[lhash]; !found {
+			var (
+				found bool
+				s     *logproto.Series
+			)
+			lbs := parsedLabels.String()
+			s, found = series[lbs]
+			if !found {
 				s = &logproto.Series{
-					Labels:  parsedLabels.String(),
-					Samples: SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
+					Labels:     lbs,
+					Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
+					StreamHash: baseHash,
 				}
-				series[lhash] = s
+				series[lbs] = s
 			}
-
-			h := xxhash.Sum64(unsafeGetBytes(line))
 			s.Samples = append(s.Samples, logproto.Sample{
 				Timestamp: ts,
 				Value:     value,
-				Hash:      h,
+				Hash:      xxhash.Sum64(unsafeGetBytes(line)),
 			})
 			return nil
 		},

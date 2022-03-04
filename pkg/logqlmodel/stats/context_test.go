@@ -67,6 +67,7 @@ func TestResult(t *testing.T) {
 			LinesProcessedPerSecond: int64(50),
 			TotalBytesProcessed:     int64(84),
 			TotalLinesProcessed:     int64(100),
+			Subqueries:              1,
 		},
 	}
 	require.Equal(t, expected, res)
@@ -113,6 +114,7 @@ func TestSnapshot_JoinResults(t *testing.T) {
 			LinesProcessedPerSecond: int64(50),
 			TotalBytesProcessed:     int64(84),
 			TotalLinesProcessed:     int64(100),
+			Subqueries:              2,
 		},
 	}
 
@@ -189,6 +191,7 @@ func TestResult_Merge(t *testing.T) {
 	}
 
 	res.Merge(toMerge)
+	toMerge.Summary.Subqueries = 2
 	require.Equal(t, toMerge, res)
 
 	// merge again
@@ -232,6 +235,7 @@ func TestResult_Merge(t *testing.T) {
 			LinesProcessedPerSecond: int64(50),
 			TotalBytesProcessed:     2 * int64(84),
 			TotalLinesProcessed:     2 * int64(100),
+			Subqueries:              3,
 		},
 	}, res)
 }
@@ -243,6 +247,7 @@ func TestReset(t *testing.T) {
 	require.NotEmpty(t, res)
 	statsCtx.Reset()
 	res = statsCtx.Result(0, 0)
+	res.Summary.Subqueries = 0
 	require.Empty(t, res)
 }
 

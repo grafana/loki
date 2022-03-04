@@ -163,6 +163,7 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
 				},
 			},
 			Tenants: &lokiv1beta1.TenantsSpec{
@@ -238,6 +239,7 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
 				},
 			},
 			Tenants: &lokiv1beta1.TenantsSpec{
@@ -338,6 +340,7 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
 				},
 			},
 		},
@@ -383,6 +386,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
 				},
 			},
 		},
@@ -479,6 +483,7 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
 				},
 			},
 		},
@@ -532,6 +537,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
 				},
 			},
 		},
@@ -631,6 +637,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
 				},
 			},
 		},
@@ -682,6 +689,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: invalidSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
 				},
 			},
 		},
@@ -741,6 +749,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
 				},
 			},
 			Tenants: &lokiv1beta1.TenantsSpec{
@@ -815,6 +824,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
 				},
 			},
 			Tenants: &lokiv1beta1.TenantsSpec{
@@ -894,6 +904,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
 				},
 			},
 			Tenants: &lokiv1beta1.TenantsSpec{
@@ -943,6 +954,68 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
+
+	// make sure status and status-update calls
+	require.NotZero(t, k.StatusCallCount())
+	require.NotZero(t, sw.UpdateCallCount())
+}
+
+func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	ff := manifests.FeatureFlags{
+		EnableGateway: true,
+	}
+
+	stack := &lokiv1beta1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
+				},
+			},
+			Tenants: nil,
+		},
+	}
+
+	// GetStub looks up the CR first, so we need to return our fake stack
+	// return NotFound for everything else to trigger create.
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		o, ok := object.(*lokiv1beta1.LokiStack)
+		if r.Name == name.Name && r.Namespace == name.Namespace && ok {
+			k.SetClientObject(o, stack)
+			return nil
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
+
+	// make sure no error is returned
+	require.NoError(t, err)
 
 	// make sure status and status-update calls
 	require.NotZero(t, k.StatusCallCount())

@@ -23,6 +23,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
@@ -71,6 +72,8 @@ const (
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
+	// Labels to add to all alerts
+	ExternalLabels labels.Labels `yaml:"external_labels,omitempty"`
 	// GRPC Client configuration.
 	ClientTLSConfig grpcclient.Config `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
@@ -427,7 +430,7 @@ func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if r.cfg.EnableSharding {
 		r.ring.ServeHTTP(w, req)
 	} else {
-		var unshardedPage = `
+		unshardedPage := `
 			<!DOCTYPE html>
 			<html>
 				<head>
@@ -769,9 +772,9 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 
 	// Concurrently fetch rules from all rulers. Since rules are not replicated,
 	// we need all requests to succeed.
-	jobs := concurrency.CreateJobsFromStrings(rulers.GetAddresses())
-	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
-		addr := job.(string)
+	addresses := rulers.GetAddresses()
+	err = concurrency.ForEachJob(ctx, len(addresses), len(addresses), func(ctx context.Context, idx int) error {
+		addr := addresses[idx]
 
 		rulerClient, err := r.clientsPool.GetClientFor(addr)
 		if err != nil {

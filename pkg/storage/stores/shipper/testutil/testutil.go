@@ -20,7 +20,7 @@ import (
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
-func AddRecordsToDB(t *testing.T, path string, dbClient *local.BoltIndexClient, start, numRecords int, bucketName []byte) {
+func AddRecordsToDB(t testing.TB, path string, dbClient *local.BoltIndexClient, start, numRecords int, bucketName []byte) {
 	t.Helper()
 	db, err := local.OpenBoltdbFile(path)
 	require.NoError(t, err)
@@ -46,7 +46,7 @@ func AddRecordsToBatch(batch chunk.WriteBatch, tableName string, start, numRecor
 }
 
 type SingleTableQuerier interface {
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
+	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
 }
 
 func TestSingleTableQuery(t *testing.T, userID string, queries []chunk.IndexQuery, querier SingleTableQuerier, start, numRecords int) {
@@ -62,7 +62,7 @@ func TestSingleTableQuery(t *testing.T, userID string, queries []chunk.IndexQuer
 }
 
 type SingleDBQuerier interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error
 }
 
 func TestSingleDBQuery(t *testing.T, query chunk.IndexQuery, db *bbolt.DB, bucketName []byte, querier SingleDBQuerier, start, numRecords int) {
@@ -78,7 +78,7 @@ func TestSingleDBQuery(t *testing.T, query chunk.IndexQuery, db *bbolt.DB, bucke
 }
 
 type MultiTableQuerier interface {
-	QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
+	QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
 }
 
 func TestMultiTableQuery(t *testing.T, userID string, queries []chunk.IndexQuery, querier MultiTableQuerier, start, numRecords int) {
@@ -93,7 +93,7 @@ func TestMultiTableQuery(t *testing.T, userID string, queries []chunk.IndexQuery
 	require.Len(t, fetchedRecords, numRecords)
 }
 
-func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) chunk.QueryPagesCallback {
 	t.Helper()
 	recordsMtx := sync.Mutex{}
 	return func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {

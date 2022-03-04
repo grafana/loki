@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -268,7 +269,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 	// unordered, unordered
 
 	// current default block size of 256kb with 75b avg log lines =~ 5.2k lines/block
-	var nWrites = (256 << 10) / 50
+	nWrites := (256 << 10) / 50
 
 	headBlockFn := func() func(int64, string) {
 		hb := &headBlock{}
@@ -449,7 +450,6 @@ func BenchmarkUnorderedRead(b *testing.B) {
 			})
 		}
 	})
-
 }
 
 func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
@@ -563,7 +563,6 @@ func TestReorder(t *testing.T) {
 
 			require.Equal(t, exp, b)
 		})
-
 	}
 }
 
@@ -609,4 +608,31 @@ func TestReorderAcrossBlocks(t *testing.T) {
 		},
 	}
 	iterEq(t, exp, itr)
+}
+
+func Test_HeadIteratorHash(t *testing.T) {
+	lbs := labels.Labels{labels.Label{Name: "foo", Value: "bar"}}
+	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+	if err != nil {
+		panic(err)
+	}
+
+	for name, b := range map[string]HeadBlock{
+		"unordered": newUnorderedHeadBlock(),
+		"ordered":   &headBlock{},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.NoError(t, b.Append(1, "foo"))
+			eit := b.Iterator(context.Background(), logproto.BACKWARD, 0, 2, log.NewNoopPipeline().ForStream(lbs))
+
+			for eit.Next() {
+				require.Equal(t, lbs.Hash(), eit.StreamHash())
+			}
+
+			sit := b.SampleIterator(context.TODO(), 0, 2, ex.ForStream(lbs))
+			for sit.Next() {
+				require.Equal(t, lbs.Hash(), sit.StreamHash())
+			}
+		})
+	}
 }

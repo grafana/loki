@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -31,6 +32,9 @@ var (
 	errCurrentBoltdbShipperNon24Hours  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
 	errUpcomingBoltdbShipperNon24Hours = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
 	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
+	indexTypeStats                     = usagestats.NewString("store_index_type")
+	objectTypeStats                    = usagestats.NewString("store_object_type")
+	schemaStats                        = usagestats.NewString("store_schema")
 )
 
 // Config is the loki storage configuration
@@ -125,6 +129,14 @@ type store struct {
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, registerer prometheus.Registerer) (Store, error) {
+	if len(schemaCfg.Configs) != 0 {
+		if index := ActivePeriodConfig(schemaCfg.Configs); index != -1 && index < len(schemaCfg.Configs) {
+			indexTypeStats.Set(schemaCfg.Configs[index].IndexType)
+			objectTypeStats.Set(schemaCfg.Configs[index].ObjectType)
+			schemaStats.Set(schemaCfg.Configs[index].Schema)
+		}
+	}
+
 	return &store{
 		Store:        chunkStore,
 		cfg:          cfg,
@@ -413,7 +425,7 @@ func RegisterCustomIndexClients(cfg *Config, cm storage.ClientMetrics, registere
 	// in tests for creating multiple instances of it at a time.
 	var boltDBIndexClientWithShipper chunk.IndexClient
 
-	storage.RegisterIndexStore(shipper.BoltDBShipperType, func() (chunk.IndexClient, error) {
+	storage.RegisterIndexStore(shipper.BoltDBShipperType, func(limits storage.StoreLimits) (chunk.IndexClient, error) {
 		if boltDBIndexClientWithShipper != nil {
 			return boltDBIndexClientWithShipper, nil
 		}
@@ -433,7 +445,7 @@ func RegisterCustomIndexClients(cfg *Config, cm storage.ClientMetrics, registere
 			return nil, err
 		}
 
-		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, registerer)
+		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, registerer)
 
 		return boltDBIndexClientWithShipper, err
 	}, func() (client chunk.TableClient, e error) {

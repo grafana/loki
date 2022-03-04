@@ -3,7 +3,6 @@ package downloads
 import (
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"path/filepath"
 	"sync"
@@ -29,20 +28,20 @@ const (
 )
 
 type BoltDBIndexClient interface {
-	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error
 }
 
-type StorageClient interface {
-	ListTables(ctx context.Context) ([]string, error)
-	ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, error)
-	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
-	GetUserFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error)
-	IsFileNotFoundErr(err error) bool
+type Table interface {
+	Close()
+	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error)
+	Sync(ctx context.Context) error
+	EnsureQueryReadiness(ctx context.Context, userIDs []string) error
 }
 
-// Table is a collection of multiple files created for a same table by various ingesters.
+// table is a collection of multiple files created for a same table by various ingesters.
 // All the public methods are concurrency safe and take care of mutexes to avoid any data race.
-type Table struct {
+type table struct {
 	name              string
 	cacheLocation     string
 	metrics           *metrics
@@ -56,10 +55,10 @@ type Table struct {
 	indexSetsMtx sync.RWMutex
 }
 
-// NewTable just creates an instance of Table without trying to load files from local storage or object store.
+// NewTable just creates an instance of table without trying to load files from local storage or object store.
 // It is used for initializing table at query time.
-func NewTable(name, cacheLocation string, storageClient storage.Client, boltDBIndexClient BoltDBIndexClient, metrics *metrics) *Table {
-	table := Table{
+func NewTable(name, cacheLocation string, storageClient storage.Client, boltDBIndexClient BoltDBIndexClient, metrics *metrics) Table {
+	table := table{
 		name:               name,
 		cacheLocation:      cacheLocation,
 		metrics:            metrics,
@@ -76,7 +75,7 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, boltDBIn
 
 // LoadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
 // It is used for loading and initializing table at startup. It would initialize index sets which already had files locally.
-func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBIndexClient BoltDBIndexClient, metrics *metrics) (*Table, error) {
+func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBIndexClient BoltDBIndexClient, metrics *metrics) (Table, error) {
 	err := chunk_util.EnsureDirectory(cacheLocation)
 	if err != nil {
 		return nil, err
@@ -87,7 +86,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 		return nil, err
 	}
 
-	table := Table{
+	table := table{
 		name:               name,
 		cacheLocation:      cacheLocation,
 		metrics:            metrics,
@@ -101,13 +100,15 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 
 	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(filesInfo))
 
+	// common index files are outside the directories and user index files are in the directories
 	for _, fileInfo := range filesInfo {
 		if !fileInfo.IsDir() {
 			continue
 		}
 
-		userIndexSet, err := NewIndexSet(name, fileInfo.Name(), filepath.Join(cacheLocation, fileInfo.Name()),
-			table.baseUserIndexSet, boltDBIndexClient, table.logger, metrics)
+		userID := fileInfo.Name()
+		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
+			table.baseUserIndexSet, boltDBIndexClient, loggerWithUserID(table.logger, userID), metrics)
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +118,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 			return nil, err
 		}
 
-		table.indexSets[fileInfo.Name()] = userIndexSet
+		table.indexSets[userID] = userIndexSet
 	}
 
 	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet,
@@ -137,7 +138,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 }
 
 // Close Closes references to all the dbs.
-func (t *Table) Close() {
+func (t *table) Close() {
 	t.indexSetsMtx.Lock()
 	defer t.indexSetsMtx.Unlock()
 
@@ -149,14 +150,15 @@ func (t *Table) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (t *table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}
 
+	// query both user and common index
 	for _, uid := range []string{userID, ""} {
-		indexSet, err := t.getOrCreateIndexSet(uid)
+		indexSet, err := t.getOrCreateIndexSet(uid, true)
 		if err != nil {
 			return err
 		}
@@ -183,24 +185,43 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 	return nil
 }
 
-// DropUnusedIndex drops the index set if it has not been queried for at least ttl duration.
-// It returns true if the whole table gets dropped.
-func (t *Table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) {
-	var cleanedUpIndexSets []string
-
+func (t *table) findExpiredIndexSets(ttl time.Duration, now time.Time) []string {
 	t.indexSetsMtx.RLock()
+	defer t.indexSetsMtx.RUnlock()
+
+	var expiredIndexSets []string
+	commonIndexSetExpired := false
+
 	for userID, userIndexSet := range t.indexSets {
 		lastUsedAt := userIndexSet.LastUsedAt()
 		if lastUsedAt.Add(ttl).Before(now) {
-			cleanedUpIndexSets = append(cleanedUpIndexSets, userID)
+			if userID == "" {
+				// add the userID for common index set at the end of the list to make sure it is the last one cleaned up
+				// because we remove directories containing the index sets which in case of common index is
+				// the parent directory of all the user index sets.
+				commonIndexSetExpired = true
+			} else {
+				expiredIndexSets = append(expiredIndexSets, userID)
+			}
 		}
 	}
-	t.indexSetsMtx.RUnlock()
 
-	if len(cleanedUpIndexSets) > 0 {
+	if commonIndexSetExpired {
+		expiredIndexSets = append(expiredIndexSets, "")
+	}
+
+	return expiredIndexSets
+}
+
+// DropUnusedIndex drops the index set if it has not been queried for at least ttl duration.
+// It returns true if the whole table gets dropped.
+func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) {
+	indexSetsToCleanup := t.findExpiredIndexSets(ttl, now)
+
+	if len(indexSetsToCleanup) > 0 {
 		t.indexSetsMtx.Lock()
 		defer t.indexSetsMtx.Unlock()
-		for _, userID := range cleanedUpIndexSets {
+		for _, userID := range indexSetsToCleanup {
 			level.Info(t.logger).Log("msg", fmt.Sprintf("cleaning up expired index set %s", userID))
 			err := t.indexSets[userID].DropAllDBs()
 			if err != nil {
@@ -217,7 +238,7 @@ func (t *Table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 }
 
 // Sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
-func (t *Table) Sync(ctx context.Context) error {
+func (t *table) Sync(ctx context.Context) error {
 	level.Debug(t.logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
 
 	t.indexSetsMtx.RLock()
@@ -235,7 +256,9 @@ func (t *Table) Sync(ctx context.Context) error {
 // getOrCreateIndexSet gets or creates the index set for the userID.
 // If it does not exist, it creates a new one and initializes it in a goroutine.
 // Caller can use IndexSet.AwaitReady() to wait until the IndexSet gets ready, if required.
-func (t *Table) getOrCreateIndexSet(id string) (IndexSet, error) {
+// forQuerying must be set to true only getting the index for querying since
+// it captures the amount of time it takes to download the index at query time.
+func (t *table) getOrCreateIndexSet(id string, forQuerying bool) (IndexSet, error) {
 	t.indexSetsMtx.RLock()
 	indexSet, ok := t.indexSets[id]
 	t.indexSetsMtx.RUnlock()
@@ -258,7 +281,8 @@ func (t *Table) getOrCreateIndexSet(id string) (IndexSet, error) {
 	}
 
 	// instantiate the index set, add it to the map
-	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient, t.logger, t.metrics)
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient,
+		loggerWithUserID(t.logger, id), t.metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -266,6 +290,15 @@ func (t *Table) getOrCreateIndexSet(id string) (IndexSet, error) {
 
 	// initialize the index set in async mode, it would be upto the caller to wait for its readiness using IndexSet.AwaitReady()
 	go func() {
+		if forQuerying {
+			start := time.Now()
+			defer func() {
+				duration := time.Since(start).Seconds()
+				t.metrics.queryTimeTableDownloadDurationSeconds.WithLabelValues(t.name).Add(duration)
+				level.Info(loggerWithUserID(t.logger, id)).Log("msg", "downloaded index set at query time", "duration", duration)
+			}()
+		}
+
 		err := indexSet.Init()
 		if err != nil {
 			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
@@ -275,13 +308,10 @@ func (t *Table) getOrCreateIndexSet(id string) (IndexSet, error) {
 	return indexSet, nil
 }
 
-func (t *Table) EnsureQueryReadiness(ctx context.Context) error {
-	_, userIDs, err := t.storageClient.ListFiles(ctx, t.name)
-	if err != nil {
-		return err
-	}
-
-	commonIndexSet, err := t.getOrCreateIndexSet("")
+// EnsureQueryReadiness ensures that we have downloaded the common index as well as user index for the provided userIDs.
+// When ensuring query readiness for a table, we will always download common index set because it can include index for one of the provided user ids.
+func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) error {
+	commonIndexSet, err := t.getOrCreateIndexSet("", false)
 	if err != nil {
 		return err
 	}
@@ -307,13 +337,21 @@ func (t *Table) EnsureQueryReadiness(ctx context.Context) error {
 }
 
 // downloadUserIndexes downloads user specific index files concurrently.
-func (t *Table) downloadUserIndexes(ctx context.Context, userIDs []string) error {
-	return concurrency.ForEach(ctx, concurrency.CreateJobsFromStrings(userIDs), maxDownloadConcurrency, func(ctx context.Context, userID interface{}) error {
-		indexSet, err := t.getOrCreateIndexSet(userID.(string))
+func (t *table) downloadUserIndexes(ctx context.Context, userIDs []string) error {
+	return concurrency.ForEachJob(ctx, len(userIDs), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
+		indexSet, err := t.getOrCreateIndexSet(userIDs[idx], false)
 		if err != nil {
 			return err
 		}
 
 		return indexSet.AwaitReady(ctx)
 	})
+}
+
+func loggerWithUserID(logger log.Logger, userID string) log.Logger {
+	if userID == "" {
+		return logger
+	}
+
+	return log.With(logger, "user-id", userID)
 }

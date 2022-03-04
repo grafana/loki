@@ -37,7 +37,7 @@ const (
 )
 
 type BoltDBIndexClient interface {
-	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error
 	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 }
 
@@ -188,7 +188,7 @@ func (lt *Table) Snapshot() error {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	lt.dbSnapshotsMtx.RLock()
 	defer lt.dbSnapshotsMtx.RUnlock()
 

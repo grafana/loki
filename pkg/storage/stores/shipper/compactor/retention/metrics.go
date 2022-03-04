@@ -59,8 +59,8 @@ func newMarkerMetrics(r prometheus.Registerer) *markerMetrics {
 		tableProcessedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "retention_marker_table_processed_total",
-			Help:      "Total amount of table processed per action.",
-		}, []string{"table", "action"}),
+			Help:      "Total amount of table processed for each user per action. Empty string for user_id is for common index",
+		}, []string{"table", "user_id", "action"}),
 		tableMarksCreatedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "retention_marker_count_total",

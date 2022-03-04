@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	loki_util "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -90,6 +91,12 @@ var (
 		// 1h -> 8hr
 		Buckets: prometheus.LinearBuckets(1, 1, 8),
 	})
+	flushedChunksStats            = usagestats.NewCounter("ingester_flushed_chunks")
+	flushedChunksBytesStats       = usagestats.NewStatistics("ingester_flushed_chunks_bytes")
+	flushedChunksLinesStats       = usagestats.NewStatistics("ingester_flushed_chunks_lines")
+	flushedChunksAgeStats         = usagestats.NewStatistics("ingester_flushed_chunks_age_seconds")
+	flushedChunksLifespanStats    = usagestats.NewStatistics("ingester_flushed_chunks_lifespan_seconds")
+	flushedChunksUtilizationStats = usagestats.NewStatistics("ingester_flushed_chunks_utilization")
 )
 
 const (
@@ -382,6 +389,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	if err := i.store.Put(ctx, wireChunks); err != nil {
 		return err
 	}
+	flushedChunksStats.Inc(int64(len(wireChunks)))
 
 	// Record statistics only when actual put request did not return error.
 	sizePerTenant := chunkSizePerTenant.WithLabelValues(userID)
@@ -408,7 +416,8 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			chunkCompressionRatio.Observe(float64(uncompressedSize) / compressedSize)
 		}
 
-		chunkUtilization.Observe(wc.Data.Utilization())
+		utilization := wc.Data.Utilization()
+		chunkUtilization.Observe(utilization)
 		chunkEntries.Observe(float64(numEntries))
 		chunkSize.Observe(compressedSize)
 		sizePerTenant.Add(compressedSize)
@@ -416,6 +425,12 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		firstTime, lastTime := cs[i].chunk.Bounds()
 		chunkAge.Observe(time.Since(firstTime).Seconds())
 		chunkLifespan.Observe(lastTime.Sub(firstTime).Hours())
+
+		flushedChunksBytesStats.Record(compressedSize)
+		flushedChunksLinesStats.Record(float64(numEntries))
+		flushedChunksUtilizationStats.Record(utilization)
+		flushedChunksAgeStats.Record(time.Since(firstTime).Seconds())
+		flushedChunksLifespanStats.Record(lastTime.Sub(firstTime).Hours())
 	}
 
 	return nil

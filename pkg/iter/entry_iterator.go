@@ -75,16 +75,12 @@ func (h *iteratorHeap) Pop() interface{} {
 
 type iteratorSortHeap struct {
 	iteratorHeap
-	byAlphabetical  bool
 	byAscendingTime bool
 }
 
 func (h iteratorSortHeap) Less(i, j int) bool {
 	t1, t2 := h.iteratorHeap[i].Entry().Timestamp.UnixNano(), h.iteratorHeap[j].Entry().Timestamp.UnixNano()
 	if t1 == t2 {
-		if h.byAlphabetical {
-			return h.iteratorHeap[i].Labels() < h.iteratorHeap[j].Labels()
-		}
 		return h.iteratorHeap[i].StreamHash() < h.iteratorHeap[j].StreamHash()
 	}
 	if h.byAscendingTime {
@@ -329,7 +325,13 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 func (i *entrySortIterator) lessByIndex(k, j int) bool {
 	t1, t2 := i.is[k].Entry().Timestamp.UnixNano(), i.is[j].Entry().Timestamp.UnixNano()
 	if t1 == t2 {
-		return i.is[k].Labels() < i.is[j].Labels()
+		// The underlying stream hash may not be available, such as when merging LokiResponses in the
+		// frontend which were sharded. Prefer to use the underlying stream hash when available,
+		// which is needed in deduping code, but defer to label sorting when it's not present.
+		if i.is[k].StreamHash() == 0 {
+			return i.is[k].Labels() < i.is[j].Labels()
+		}
+		return i.is[k].StreamHash() < i.is[j].StreamHash()
 	}
 	if i.byAscendingTime {
 		return t1 < t2
@@ -337,10 +339,13 @@ func (i *entrySortIterator) lessByIndex(k, j int) bool {
 	return t1 > t2
 }
 
-func (i *entrySortIterator) lessByValue(t1 int64, l1 string, index int) bool {
+func (i *entrySortIterator) lessByValue(t1 int64, l1 uint64, lb string, index int) bool {
 	t2 := i.is[index].Entry().Timestamp.UnixNano()
 	if t1 == t2 {
-		return l1 < i.is[index].Labels()
+		if l1 == 0 {
+			return lb < i.is[index].Labels()
+		}
+		return l1 < i.is[index].StreamHash()
 	}
 	if i.byAscendingTime {
 		return t1 < t2
@@ -374,16 +379,17 @@ func (i *entrySortIterator) init() {
 func (i *entrySortIterator) fix() {
 	head := i.is[0]
 	t1 := head.Entry().Timestamp.UnixNano()
-	l1 := head.Labels()
+	l1 := head.StreamHash()
+	lb := head.Labels()
 
 	// shortcut
-	if len(i.is) <= 1 || i.lessByValue(t1, l1, 1) {
+	if len(i.is) <= 1 || i.lessByValue(t1, l1, lb, 1) {
 		return
 	}
 
 	// First element is out of place. So we reposition it.
 	i.is = i.is[1:] // drop head
-	index := sort.Search(len(i.is), func(in int) bool { return i.lessByValue(t1, l1, in) })
+	index := sort.Search(len(i.is), func(in int) bool { return i.lessByValue(t1, l1, lb, in) })
 
 	if index == len(i.is) {
 		i.is = append(i.is, head)
@@ -792,26 +798,37 @@ func (i *reverseEntryIterator) Close() error {
 
 // ReadBatch reads a set of entries off an iterator.
 func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, error) {
-	streams := map[string]*logproto.Stream{}
-	respSize := uint32(0)
+	var (
+		streams      = map[uint64]map[string]*logproto.Stream{}
+		respSize     uint32
+		streamsCount int
+	)
 	for ; respSize < size && i.Next(); respSize++ {
 		labels, hash, entry := i.Labels(), i.StreamHash(), i.Entry()
-		stream, ok := streams[labels]
+		mutatedStreams, ok := streams[hash]
 		if !ok {
-			stream = &logproto.Stream{
+			mutatedStreams = map[string]*logproto.Stream{}
+			streams[hash] = mutatedStreams
+		}
+		mutatedStream, ok := mutatedStreams[labels]
+		if !ok {
+			streamsCount++
+			mutatedStream = &logproto.Stream{
 				Labels: labels,
 				Hash:   hash,
 			}
-			streams[labels] = stream
+			mutatedStreams[labels] = mutatedStream
 		}
-		stream.Entries = append(stream.Entries, entry)
+		mutatedStream.Entries = append(mutatedStream.Entries, entry)
 	}
 
 	result := logproto.QueryResponse{
-		Streams: make([]logproto.Stream, 0, len(streams)),
+		Streams: make([]logproto.Stream, 0, streamsCount),
 	}
-	for _, stream := range streams {
-		result.Streams = append(result.Streams, *stream)
+	for _, mutatedStreams := range streams {
+		for _, s := range mutatedStreams {
+			result.Streams = append(result.Streams, *s)
+		}
 	}
 	return &result, respSize, i.Error()
 }

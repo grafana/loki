@@ -280,7 +280,7 @@ module Fluent
             record.each do |k, v|
               # Remove non UTF-8 characters by force-encoding the string
               if v.is_a?(String)
-                v = v.encode('utf-8', invalid: :replace)
+                v = v.encode('utf-8', invalid: :replace, undef: :replace, replace: '?')
               end
               # Escape double quotes and backslashes by prefixing them with a backslash
               v = v.to_s.gsub(%r{(["\\])}, '\\\\\1')

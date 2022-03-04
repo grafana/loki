@@ -14,6 +14,11 @@ local condition(verb) = {
         ],
     },
   },
+  path(path): {
+    paths: {
+      [verb]: [path],
+    },
+  },
 };
 
 local pipeline(name) = {
@@ -39,7 +44,7 @@ local pull_secret = secret('dockerconfigjson', 'secret/data/common/gcr', '.docke
 local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 'pat');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
-local deploy_configuration = secret('deploy_config', 'infra/data/ci/loki/deploy', 'config.json');
+local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
 
 
 local run(name, commands) = {
@@ -310,12 +315,35 @@ local manifest(apps) = pipeline('manifest') {
 };
 
 [
+  pipeline('loki-build-image') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    steps: [
+      {
+        name: 'push-image',
+        image: 'plugins/docker',
+        when: condition('include').tagMain + condition('include').path('loki-build-image/**'),
+        settings: {
+          repo: 'grafana/loki-build-image',
+          context: 'loki-build-image',
+          dockerfile: 'loki-build-image/Dockerfile',
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
+          tags: ['0.20.0'],
+          dry_run: false,
+        },
+      },
+    ],
+  },
   pipeline('check') {
     workspace: {
       base: '/src',
       path: 'loki',
     },
     steps: [
+      make('check-drone-drift', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
       make('test', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
@@ -325,7 +353,7 @@ local manifest(apps) = pipeline('manifest') {
         image: 'koalaman/shellcheck-alpine:stable',
         commands: ['apk add make bash && make lint-scripts'],
       },
-      make('loki', container=false) { depends_on: ['clone'] },
+      make('loki', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
     ],
