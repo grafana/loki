@@ -61,7 +61,7 @@ func TestMappingEquivalence(t *testing.T) {
 
 		opts := EngineOpts{}
 		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-		sharded := NewShardedEngine(opts, MockDownstreamer{regular}, nilMetrics, NoLimits, log.NewNopLogger())
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, nilMetrics, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
 			params := NewLiteralParams(
