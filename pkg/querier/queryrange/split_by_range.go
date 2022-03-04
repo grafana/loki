@@ -39,7 +39,7 @@ func SplitByRangeMiddleware(logger log.Logger, limits Limits, metrics *logql.Sha
 	}), nil
 }
 
-func (s *splitByRange) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, s.logger)
 
 	tenants, err := tenant.TenantIDs(ctx)
@@ -50,7 +50,7 @@ func (s *splitByRange) Do(ctx context.Context, r queryrangebase.Request) (queryr
 	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, s.limits.QuerySplitDuration)
 	// if no interval configured, continue to the next middleware
 	if interval == 0 {
-		return s.next.Do(ctx, r)
+		return s.next.Do(ctx, request)
 	}
 
 	mapper, err := logql.NewRangeVectorMapper(interval)
@@ -58,29 +58,27 @@ func (s *splitByRange) Do(ctx context.Context, r queryrangebase.Request) (queryr
 		return nil, err
 	}
 
-	noop, parsed, err := mapper.Parse(r.GetQuery())
+	noop, parsed, err := mapper.Parse(request.GetQuery())
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
+		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", request.GetQuery())
 		return nil, err
 	}
 	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
 
 	if noop {
 		// the query cannot be sharded, so continue
-		return s.next.Do(ctx, r)
+		return s.next.Do(ctx, request)
 	}
 
-	params, err := paramsFromRequest(r)
+	params, err := paramsFromRequest(request)
 	if err != nil {
 		return nil, err
 	}
 
-	// todo change to an if statement
-	switch r := r.(type) {
-	case *LokiInstantRequest:
-	default:
-		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
+	if _, ok := request.(*LokiInstantRequest); !ok {
+		return nil, fmt.Errorf("expected *LokiInstantRequest")
 	}
+
 	query := s.ng.Query(params, parsed)
 
 	res, err := query.Exec(ctx)
