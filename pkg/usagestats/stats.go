@@ -194,27 +194,11 @@ func NewString(name string) *expvar.String {
 
 // Target sets the target name. This can be set multiple times.
 func Target(target string) {
-	existing := expvar.Get(statsPrefix + targetKey)
-	if existing != nil {
-		if s, ok := existing.(*expvar.String); ok {
-			s.Set(target)
-			return
-		}
-		panic("target is set to a non-string value")
-	}
 	NewString(targetKey).Set(target)
 }
 
 // Edition sets the edition name. This can be set multiple times.
 func Edition(edition string) {
-	existing := expvar.Get(statsPrefix + editionKey)
-	if existing != nil {
-		if s, ok := existing.(*expvar.String); ok {
-			s.Set(edition)
-			return
-		}
-		panic("edition is set to a non-string value")
-	}
 	NewString(editionKey).Set(edition)
 }
 
