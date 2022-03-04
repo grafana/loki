@@ -1,4 +1,4 @@
-package logql
+package syntax
 
 type WalkFn = func(e interface{})
 

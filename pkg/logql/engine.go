@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/tenant"
@@ -35,6 +38,59 @@ var (
 	}, []string{"query_type"})
 	lastEntryMinTime = time.Unix(-100, 0)
 )
+
+type QueryParams interface {
+	LogSelector() (syntax.LogSelectorExpr, error)
+	GetStart() time.Time
+	GetEnd() time.Time
+	GetShards() []string
+}
+
+// SelectParams specifies parameters passed to data selections.
+type SelectLogParams struct {
+	*logproto.QueryRequest
+}
+
+func (s SelectLogParams) String() string {
+	if s.QueryRequest != nil {
+		return fmt.Sprintf("selector=%s, direction=%s, start=%s, end=%s, limit=%d, shards=%s",
+			s.Selector, logproto.Direction_name[int32(s.Direction)], s.Start, s.End, s.Limit, strings.Join(s.Shards, ","))
+	}
+	return ""
+}
+
+// LogSelector returns the LogSelectorExpr from the SelectParams.
+// The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
+func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
+	return syntax.ParseLogSelector(s.Selector, true)
+}
+
+type SelectSampleParams struct {
+	*logproto.SampleQueryRequest
+}
+
+// Expr returns the SampleExpr from the SelectSampleParams.
+// The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
+func (s SelectSampleParams) Expr() (syntax.SampleExpr, error) {
+	return syntax.ParseSampleExpr(s.Selector)
+}
+
+// LogSelector returns the LogSelectorExpr from the SelectParams.
+// The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
+func (s SelectSampleParams) LogSelector() (syntax.LogSelectorExpr, error) {
+	expr, err := syntax.ParseSampleExpr(s.Selector)
+	if err != nil {
+		return nil, err
+	}
+	return expr.Selector(), nil
+}
+
+// Querier allows a LogQL expression to fetch an EntryIterator for a
+// set of matchers and filters
+type Querier interface {
+	SelectLogs(context.Context, SelectLogParams) (iter.EntryIterator, error)
+	SelectSamples(context.Context, SelectSampleParams) (iter.SampleIterator, error)
+}
 
 // EngineOpts is the list of options to use with the LogQL query engine.
 type EngineOpts struct {
@@ -88,8 +144,8 @@ func (ng *Engine) Query(params Params) Query {
 		timeout:   ng.timeout,
 		params:    params,
 		evaluator: ng.evaluator,
-		parse: func(_ context.Context, query string) (Expr, error) {
-			return ParseExpr(query)
+		parse: func(_ context.Context, query string) (syntax.Expr, error) {
+			return syntax.ParseExpr(query)
 		},
 		record: true,
 		limits: ng.limits,
@@ -106,7 +162,7 @@ type query struct {
 	logger    log.Logger
 	timeout   time.Duration
 	params    Params
-	parse     func(context.Context, string) (Expr, error)
+	parse     func(context.Context, string) (syntax.Expr, error)
 	limits    Limits
 	evaluator Evaluator
 	record    bool
@@ -163,11 +219,11 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	}
 
 	switch e := expr.(type) {
-	case SampleExpr:
+	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
 		return value, err
 
-	case LogSelectorExpr:
+	case syntax.LogSelectorExpr:
 		iter, err := q.evaluator.Iterator(ctx, e, q.params)
 		if err != nil {
 			return nil, err
@@ -182,8 +238,8 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 }
 
 // evalSample evaluate a sampleExpr
-func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.Value, error) {
-	if lit, ok := expr.(*LiteralExpr); ok {
+func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_parser.Value, error) {
+	if lit, ok := expr.(*syntax.LiteralExpr); ok {
 		return q.evalLiteral(ctx, lit)
 	}
 
@@ -267,10 +323,10 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.
 	return result, stepEvaluator.Error()
 }
 
-func (q *query) evalLiteral(_ context.Context, expr *LiteralExpr) (promql_parser.Value, error) {
+func (q *query) evalLiteral(_ context.Context, expr *syntax.LiteralExpr) (promql_parser.Value, error) {
 	s := promql.Scalar{
 		T: q.params.Start().UnixNano() / int64(time.Millisecond),
-		V: expr.value,
+		V: expr.Value(),
 	}
 
 	if GetRangeType(q.params) == InstantType {

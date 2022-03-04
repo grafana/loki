@@ -1,4 +1,4 @@
-package logql
+package syntax
 
 import (
 	"errors"
@@ -34,7 +34,7 @@ func TestParse(t *testing.T) {
 							newLineFilterExpr(labels.MatchRegexp, "", "error\\"),
 						},
 						Left: &MatchersExpr{
-							matchers: []*labels.Matcher{
+							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchRegexp, "foo", "bar\\w+"),
 							},
 						},
@@ -75,26 +75,26 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in:  `{foo="bar"}`,
-			exp: &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+			exp: &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 		},
 		{
 			in:  `{ foo = "bar" }`,
-			exp: &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+			exp: &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 		},
 		{
 			in: `{ namespace="buzz", foo != "bar" }`,
-			exp: &MatchersExpr{matchers: []*labels.Matcher{
+			exp: &MatchersExpr{Mts: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "namespace", "buzz"),
 				mustNewMatcher(labels.MatchNotEqual, "foo", "bar"),
 			}},
 		},
 		{
 			in:  `{ foo =~ "bar" }`,
-			exp: &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "foo", "bar")}},
+			exp: &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "foo", "bar")}},
 		},
 		{
 			in: `{ namespace="buzz", foo !~ "bar" }`,
-			exp: &MatchersExpr{matchers: []*labels.Matcher{
+			exp: &MatchersExpr{Mts: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "namespace", "buzz"),
 				mustNewMatcher(labels.MatchNotRegexp, "foo", "bar"),
 			}},
@@ -103,7 +103,7 @@ func TestParse(t *testing.T) {
 			in: `count_over_time({ foo = "bar" }[12m])`,
 			exp: &RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 12 * time.Minute,
 				},
 				Operation: "count_over_time",
@@ -113,7 +113,7 @@ func TestParse(t *testing.T) {
 			in: `bytes_over_time({ foo = "bar" }[12m])`,
 			exp: &RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 12 * time.Minute,
 				},
 				Operation: OpRangeTypeBytes,
@@ -123,7 +123,7 @@ func TestParse(t *testing.T) {
 			in: `bytes_rate({ foo = "bar" }[12m])`,
 			exp: &RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 12 * time.Minute,
 				},
 				Operation: OpRangeTypeBytesRate,
@@ -133,7 +133,7 @@ func TestParse(t *testing.T) {
 			in: `rate({ foo = "bar" }[5h])`,
 			exp: &RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 5 * time.Hour,
 				},
 				Operation: "rate",
@@ -153,7 +153,7 @@ func TestParse(t *testing.T) {
 			in: `rate({ foo = "bar" }[5d])`,
 			exp: &RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 5 * 24 * time.Hour,
 				},
 				Operation: "rate",
@@ -163,7 +163,7 @@ func TestParse(t *testing.T) {
 			in: `count_over_time({ foo = "bar" }[1w])`,
 			exp: &RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 7 * 24 * time.Hour,
 				},
 				Operation: "count_over_time",
@@ -173,7 +173,7 @@ func TestParse(t *testing.T) {
 			in: `absent_over_time({ foo = "bar" }[1w])`,
 			exp: &RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 7 * 24 * time.Hour,
 				},
 				Operation: OpRangeTypeAbsent,
@@ -183,7 +183,7 @@ func TestParse(t *testing.T) {
 			in: `sum(rate({ foo = "bar" }[5h]))`,
 			exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 5 * time.Hour,
 				},
 				Operation: "rate",
@@ -193,7 +193,7 @@ func TestParse(t *testing.T) {
 			in: `sum(rate({ foo ="bar" }[1y]))`,
 			exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 365 * 24 * time.Hour,
 				},
 				Operation: "rate",
@@ -203,7 +203,7 @@ func TestParse(t *testing.T) {
 			in: `avg(count_over_time({ foo = "bar" }[5h])) by (bar,foo)`,
 			exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 5 * time.Hour,
 				},
 				Operation: "count_over_time",
@@ -226,7 +226,7 @@ func TestParse(t *testing.T) {
 				mustNewLabelReplaceExpr(
 					&RangeAggregationExpr{
 						Left: &LogRange{
-							Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+							Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 							Interval: 5 * time.Hour,
 						},
 						Operation: "count_over_time",
@@ -242,7 +242,7 @@ func TestParse(t *testing.T) {
 			in: `avg(count_over_time({ foo = "bar" }[5h])) by ()`,
 			exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 5 * time.Hour,
 				},
 				Operation: "count_over_time",
@@ -255,7 +255,7 @@ func TestParse(t *testing.T) {
 			in: `max without (bar) (count_over_time({ foo = "bar" }[5h]))`,
 			exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 5 * time.Hour,
 				},
 				Operation: "count_over_time",
@@ -268,7 +268,7 @@ func TestParse(t *testing.T) {
 			in: `max without () (count_over_time({ foo = "bar" }[5h]))`,
 			exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 5 * time.Hour,
 				},
 				Operation: "count_over_time",
@@ -281,7 +281,7 @@ func TestParse(t *testing.T) {
 			in: `topk(10,count_over_time({ foo = "bar" }[5h])) without (bar)`,
 			exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 5 * time.Hour,
 				},
 				Operation: "count_over_time",
@@ -294,7 +294,7 @@ func TestParse(t *testing.T) {
 			in: `bottomk(30 ,sum(rate({ foo = "bar" }[5h])) by (foo))`,
 			exp: mustNewVectorAggregationExpr(mustNewVectorAggregationExpr(&RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 5 * time.Hour,
 				},
 				Operation: "rate",
@@ -308,7 +308,7 @@ func TestParse(t *testing.T) {
 			in: `max( sum(count_over_time({ foo = "bar" }[5h])) without (foo,bar) ) by (foo)`,
 			exp: mustNewVectorAggregationExpr(mustNewVectorAggregationExpr(&RangeAggregationExpr{
 				Left: &LogRange{
-					Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 5 * time.Hour,
 				},
 				Operation: "count_over_time",
@@ -616,7 +616,7 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in: `{ foo = "bar", bar != "baz" }`,
-			exp: &MatchersExpr{matchers: []*labels.Matcher{
+			exp: &MatchersExpr{Mts: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 				mustNewMatcher(labels.MatchNotEqual, "bar", "baz"),
 			}},
@@ -1019,7 +1019,7 @@ func TestParse(t *testing.T) {
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
-								matchers: []*labels.Matcher{
+								Mts: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 								},
 							},
@@ -1035,7 +1035,7 @@ func TestParse(t *testing.T) {
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
-								matchers: []*labels.Matcher{
+								Mts: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 								},
 							},
@@ -1052,7 +1052,7 @@ func TestParse(t *testing.T) {
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
 					&LogRange{
 						Left: &MatchersExpr{
-							matchers: []*labels.Matcher{
+							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 							},
 						},
@@ -1086,7 +1086,7 @@ func TestParse(t *testing.T) {
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
-								matchers: []*labels.Matcher{
+								Mts: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 								},
 							},
@@ -1102,7 +1102,7 @@ func TestParse(t *testing.T) {
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
-								matchers: []*labels.Matcher{
+								Mts: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 								},
 							},
@@ -1119,7 +1119,7 @@ func TestParse(t *testing.T) {
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
 					&LogRange{
 						Left: &MatchersExpr{
-							matchers: []*labels.Matcher{
+							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 							},
 						},
@@ -1149,7 +1149,7 @@ func TestParse(t *testing.T) {
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
 					&LogRange{
 						Left: &MatchersExpr{
-							matchers: []*labels.Matcher{
+							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 							},
 						},
@@ -1170,7 +1170,7 @@ func TestParse(t *testing.T) {
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
-								matchers: []*labels.Matcher{
+								Mts: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 								},
 							},
@@ -1186,7 +1186,7 @@ func TestParse(t *testing.T) {
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
-								matchers: []*labels.Matcher{
+								Mts: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 								},
 							},
@@ -1227,7 +1227,7 @@ func TestParse(t *testing.T) {
 					newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
-								matchers: []*labels.Matcher{
+								Mts: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
 								},
 							},
@@ -1261,7 +1261,7 @@ func TestParse(t *testing.T) {
 					newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
-								matchers: []*labels.Matcher{
+								Mts: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
 								},
 							},
@@ -1282,7 +1282,7 @@ func TestParse(t *testing.T) {
 					newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
-								matchers: []*labels.Matcher{
+								Mts: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 								},
 							},
@@ -1295,7 +1295,7 @@ func TestParse(t *testing.T) {
 					},
 					nil,
 				),
-				&LiteralExpr{value: 0.5},
+				&LiteralExpr{Val: 0.5},
 			),
 		},
 		{
@@ -1306,10 +1306,10 @@ func TestParse(t *testing.T) {
 				&BinOpOptions{
 					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
-				&LiteralExpr{value: 1},
+				&LiteralExpr{Val: 1},
 				mustNewBinOpExpr(OpTypeDiv, &BinOpOptions{
 					VectorMatching: &VectorMatching{Card: CardOneToOne},
-				}, &LiteralExpr{value: -2}, &LiteralExpr{value: 1}),
+				}, &LiteralExpr{Val: -2}, &LiteralExpr{Val: 1}),
 			),
 		},
 		{
@@ -1322,8 +1322,8 @@ func TestParse(t *testing.T) {
 				},
 				mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{
 					VectorMatching: &VectorMatching{Card: CardOneToOne},
-				}, &LiteralExpr{value: 1}, &LiteralExpr{value: 1}),
-				&LiteralExpr{value: -1},
+				}, &LiteralExpr{Val: 1}, &LiteralExpr{Val: 1}),
+				&LiteralExpr{Val: -1},
 			),
 		},
 		{
@@ -2208,7 +2208,8 @@ func TestParse(t *testing.T) {
 							) by (foo,bar)
 					`,
 			exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{
-				VectorMatching: &VectorMatching{Card: CardOneToOne}, ReturnBool: false},
+				VectorMatching: &VectorMatching{Card: CardOneToOne}, ReturnBool: false,
+			},
 				mustNewVectorAggregationExpr(
 					newRangeAggregationExpr(
 						newLogRange(&PipelineExpr{
@@ -2672,54 +2673,54 @@ func TestParse(t *testing.T) {
 		{
 			// ensure binary ops with two literals are reduced recursively
 			in:  `1 + 1 + 1`,
-			exp: &LiteralExpr{value: 3},
+			exp: &LiteralExpr{Val: 3},
 		},
 		{
 			// ensure binary ops with two literals are reduced when comparisons are used
 			in:  `1 == 1`,
-			exp: &LiteralExpr{value: 1},
+			exp: &LiteralExpr{Val: 1},
 		},
 		{
 			// ensure binary ops with two literals are reduced when comparisons are used
 			in:  `1 != 1`,
-			exp: &LiteralExpr{value: 0},
+			exp: &LiteralExpr{Val: 0},
 		},
 		{
 			// ensure binary ops with two literals are reduced when comparisons are used
 			in:  `1 > 1`,
-			exp: &LiteralExpr{value: 0},
+			exp: &LiteralExpr{Val: 0},
 		},
 		{
 			// ensure binary ops with two literals are reduced when comparisons are used
 			in:  `1 >= 1`,
-			exp: &LiteralExpr{value: 1},
+			exp: &LiteralExpr{Val: 1},
 		},
 		{
 			// ensure binary ops with two literals are reduced when comparisons are used
 			in:  `1 < 1`,
-			exp: &LiteralExpr{value: 0},
+			exp: &LiteralExpr{Val: 0},
 		},
 		{
 			// ensure binary ops with two literals are reduced when comparisons are used
 			in:  `1 <= 1`,
-			exp: &LiteralExpr{value: 1},
+			exp: &LiteralExpr{Val: 1},
 		},
 		{
 			// ensure binary ops with two literals are reduced recursively when comparisons are used
 			in:  `1 >= 1 > 1`,
-			exp: &LiteralExpr{value: 0},
+			exp: &LiteralExpr{Val: 0},
 		},
 		{
 			in:  `{foo="bar"} + {foo="bar"}`,
-			err: logqlmodel.NewParseError(`unexpected type for left leg of binary operation (+): *logql.MatchersExpr`, 0, 0),
+			err: logqlmodel.NewParseError(`unexpected type for left leg of binary operation (+): *syntax.MatchersExpr`, 0, 0),
 		},
 		{
 			in:  `sum(count_over_time({foo="bar"}[5m])) by (foo) - {foo="bar"}`,
-			err: logqlmodel.NewParseError(`unexpected type for right leg of binary operation (-): *logql.MatchersExpr`, 0, 0),
+			err: logqlmodel.NewParseError(`unexpected type for right leg of binary operation (-): *syntax.MatchersExpr`, 0, 0),
 		},
 		{
 			in:  `{foo="bar"} / sum(count_over_time({foo="bar"}[5m])) by (foo)`,
-			err: logqlmodel.NewParseError(`unexpected type for left leg of binary operation (/): *logql.MatchersExpr`, 0, 0),
+			err: logqlmodel.NewParseError(`unexpected type for left leg of binary operation (/): *syntax.MatchersExpr`, 0, 0),
 		},
 		{
 			in:  `sum(count_over_time({foo="bar"}[5m])) by (foo) or 1`,
@@ -2743,14 +2744,14 @@ func TestParse(t *testing.T) {
 				},
 				SampleExpr: &RangeAggregationExpr{
 					Left: &LogRange{
-						Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+						Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 						Interval: 12 * time.Minute,
 					},
 					Operation: "count_over_time",
 				},
 				RHS: &RangeAggregationExpr{
 					Left: &LogRange{
-						Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+						Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 						Interval: 12 * time.Minute,
 					},
 					Operation: "count_over_time",
@@ -2767,18 +2768,18 @@ func TestParse(t *testing.T) {
 				},
 				SampleExpr: &RangeAggregationExpr{
 					Left: &LogRange{
-						Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+						Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 						Interval: 12 * time.Minute,
 					},
 					Operation: "count_over_time",
 				},
-				RHS: &LiteralExpr{value: 1},
+				RHS: &LiteralExpr{Val: 1},
 			},
 		},
 		{
 			// cannot compare metric & log queries
 			in:  `count_over_time({ foo = "bar" }[12m]) > { foo = "bar" }`,
-			err: logqlmodel.NewParseError("unexpected type for right leg of binary operation (>): *logql.MatchersExpr", 0, 0),
+			err: logqlmodel.NewParseError("unexpected type for right leg of binary operation (>): *syntax.MatchersExpr", 0, 0),
 		},
 		{
 			in: `count_over_time({ foo = "bar" }[12m]) or count_over_time({ foo = "bar" }[12m]) > 1`,
@@ -2790,7 +2791,7 @@ func TestParse(t *testing.T) {
 				},
 				SampleExpr: &RangeAggregationExpr{
 					Left: &LogRange{
-						Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+						Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 						Interval: 12 * time.Minute,
 					},
 					Operation: "count_over_time",
@@ -2803,24 +2804,24 @@ func TestParse(t *testing.T) {
 					},
 					SampleExpr: &RangeAggregationExpr{
 						Left: &LogRange{
-							Left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+							Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 							Interval: 12 * time.Minute,
 						},
 						Operation: "count_over_time",
 					},
-					RHS: &LiteralExpr{value: 1},
+					RHS: &LiteralExpr{Val: 1},
 				},
 			},
 		},
 		{
 			// test associativity
 			in:  `1 > 1 < 1`,
-			exp: &LiteralExpr{value: 1},
+			exp: &LiteralExpr{Val: 1},
 		},
 		{
 			// bool modifiers are reduced-away between two literal legs
 			in:  `1 > 1 > bool 1`,
-			exp: &LiteralExpr{value: 0},
+			exp: &LiteralExpr{Val: 0},
 		},
 		{
 			// cannot lead with bool modifier
@@ -3169,62 +3170,4 @@ func TestParseLogSelectorExpr_equalityMatcher(t *testing.T) {
 			require.Equal(t, tc.err, err)
 		})
 	}
-}
-
-func Test_match(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   []string
-		want    [][]*labels.Matcher
-		wantErr bool
-	}{
-		{"malformed", []string{`{a="1`}, nil, true},
-		{"empty on nil input", nil, [][]*labels.Matcher{}, false},
-		{"empty on empty input", []string{}, [][]*labels.Matcher{}, false},
-		{
-			"single",
-			[]string{`{a="1"}`},
-			[][]*labels.Matcher{
-				{mustMatcher(labels.MatchEqual, "a", "1")},
-			},
-			false,
-		},
-		{
-			"multiple groups",
-			[]string{`{a="1"}`, `{b="2", c=~"3", d!="4"}`},
-			[][]*labels.Matcher{
-				{mustMatcher(labels.MatchEqual, "a", "1")},
-				{
-					mustMatcher(labels.MatchEqual, "b", "2"),
-					mustMatcher(labels.MatchRegexp, "c", "3"),
-					mustMatcher(labels.MatchNotEqual, "d", "4"),
-				},
-			},
-			false,
-		},
-		{
-			"errors on empty group",
-			[]string{`{}`},
-			nil,
-			true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Match(tt.input)
-			if tt.wantErr {
-				require.Error(t, err)
-			} else {
-				require.Equal(t, tt.want, got)
-			}
-		})
-	}
-}
-
-func mustMatcher(t labels.MatchType, n string, v string) *labels.Matcher {
-	m, err := labels.NewMatcher(t, n, v)
-	if err != nil {
-		panic(err)
-	}
-	return m
 }
