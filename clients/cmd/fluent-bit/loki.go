@@ -36,8 +36,8 @@ type loki struct {
 	logger log.Logger
 }
 
-func newPlugin(cfg *config, logger log.Logger) (*loki, error) {
-	client, err := NewClient(cfg, logger)
+func newPlugin(cfg *config, logger log.Logger, metrics *client.Metrics) (*loki, error) {
+	client, err := NewClient(cfg, logger, metrics, nil)
 	if err != nil {
 		return nil, err
 	}
