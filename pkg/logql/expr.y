@@ -12,7 +12,7 @@ import (
 %union{
   Expr                    Expr
   Filter                  labels.MatchType
-  Grouping                *grouping
+  Grouping                *Grouping
   Labels                  []string
   LogExpr                 LogSelectorExpr
   LogRangeExpr            *LogRange
@@ -479,9 +479,9 @@ labels:
     ;
 
 grouping:
-      BY OPEN_PARENTHESIS labels CLOSE_PARENTHESIS        { $$ = &grouping{ without: false , groups: $3 } }
-    | WITHOUT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS   { $$ = &grouping{ without: true , groups: $3 } }
-    | BY OPEN_PARENTHESIS CLOSE_PARENTHESIS               { $$ = &grouping{ without: false , groups: nil } }
-    | WITHOUT OPEN_PARENTHESIS CLOSE_PARENTHESIS          { $$ = &grouping{ without: true , groups: nil } }
+      BY OPEN_PARENTHESIS labels CLOSE_PARENTHESIS        { $$ = &Grouping{ Without: false , Groups: $3 } }
+    | WITHOUT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS   { $$ = &Grouping{ Without: true , Groups: $3 } }
+    | BY OPEN_PARENTHESIS CLOSE_PARENTHESIS               { $$ = &Grouping{ Without: false , Groups: nil } }
+    | WITHOUT OPEN_PARENTHESIS CLOSE_PARENTHESIS          { $$ = &Grouping{ Without: true , Groups: nil } }
     ;
 %%

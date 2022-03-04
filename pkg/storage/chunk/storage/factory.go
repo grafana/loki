@@ -12,8 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
@@ -25,6 +23,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // Supported storage engines
@@ -58,7 +58,7 @@ type indexStoreFactories struct {
 }
 
 // IndexClientFactoryFunc defines signature of function which creates chunk.IndexClient for managing index in index store
-type IndexClientFactoryFunc func() (chunk.IndexClient, error)
+type IndexClientFactoryFunc func(limits StoreLimits) (chunk.IndexClient, error)
 
 // TableClientFactoryFunc defines signature of function which creates chunk.TableClient for managing tables in index store
 type TableClientFactoryFunc func() (chunk.TableClient, error)
@@ -73,6 +73,7 @@ func RegisterIndexStore(name string, indexClientFactory IndexClientFactoryFunc, 
 
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
+	downloads.Limits
 	CardinalityLimit(userID string) int
 	MaxChunksPerQueryFromStore(userID string) int
 	MaxQueryLength(userID string) time.Duration
@@ -99,6 +100,20 @@ type Config struct {
 	GrpcConfig grpc.Config `yaml:"grpc_store"`
 
 	Hedging hedging.Config `yaml:"hedging"`
+}
+
+type ClientMetrics struct {
+	AzureMetrics azure.BlobStorageMetrics
+}
+
+func NewClientMetrics() ClientMetrics {
+	return ClientMetrics{
+		AzureMetrics: azure.NewBlobStorageMetrics(),
+	}
+}
+
+func (c *ClientMetrics) Unregister() {
+	c.AzureMetrics.Unregister()
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -153,6 +168,7 @@ func NewStore(
 	storeCfg chunk.StoreConfig,
 	schemaCfg chunk.SchemaConfig,
 	limits StoreLimits,
+	clientMetrics ClientMetrics,
 	reg prometheus.Registerer,
 	cacheGenNumLoader chunk.CacheGenNumLoader,
 	logger log.Logger,
@@ -198,7 +214,7 @@ func NewStore(
 		indexClientReg := prometheus.WrapRegistererWith(
 			prometheus.Labels{"component": "index-store-" + s.From.String()}, reg)
 
-		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, indexClientReg)
+		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, limits, indexClientReg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
@@ -212,7 +228,7 @@ func NewStore(
 		chunkClientReg := prometheus.WrapRegistererWith(
 			prometheus.Labels{"component": "chunk-store-" + s.From.String()}, reg)
 
-		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg, chunkClientReg)
+		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg, clientMetrics, chunkClientReg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating object client")
 		}
@@ -229,10 +245,10 @@ func NewStore(
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (chunk.IndexClient, error) {
+func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, limits StoreLimits, registerer prometheus.Registerer) (chunk.IndexClient, error) {
 	if indexClientFactory, ok := customIndexStores[name]; ok {
 		if indexClientFactory.indexClientFactoryFunc != nil {
-			return indexClientFactory.indexClientFactoryFunc()
+			return indexClientFactory.indexClientFactoryFunc(limits)
 		}
 	}
 
@@ -268,7 +284,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (chunk.Client, error) {
+func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, clientMetrics ClientMetrics, registerer prometheus.Registerer) (chunk.Client, error) {
 	switch name {
 	case StorageTypeInMemory:
 		return chunk.NewMockStorage(), nil
@@ -277,7 +293,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeAWSDynamo:
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -288,11 +304,11 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		}
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case StorageTypeAzure:
-		c, err := azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
+		c, err := azure.NewBlobStorage(&cfg.AzureStorageConfig, clientMetrics.AzureMetrics, cfg.Hedging)
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeGCP:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case StorageTypeGCPColumnKey, StorageTypeBigTable, StorageTypeBigTableHashed:
@@ -302,13 +318,13 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeSwift:
 		c, err := openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeCassandra:
 		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
 	case StorageTypeFileSystem:
@@ -316,7 +332,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(store, objectclient.Base64Encoder, cfg.MaxParallelGetChunk), nil
+		return objectclient.NewClientWithMaxParallel(store, objectclient.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
@@ -367,14 +383,14 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 }
 
 // NewObjectClient makes a new StorageClient of the desired types.
-func NewObjectClient(name string, cfg Config) (chunk.ObjectClient, error) {
+func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (chunk.ObjectClient, error) {
 	switch name {
 	case StorageTypeAWS, StorageTypeS3:
 		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
 	case StorageTypeGCS:
 		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging)
 	case StorageTypeAzure:
-		return azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
+		return azure.NewBlobStorage(&cfg.AzureStorageConfig, clientMetrics.AzureMetrics, cfg.Hedging)
 	case StorageTypeSwift:
 		return openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
 	case StorageTypeInMemory:

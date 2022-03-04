@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -15,16 +16,14 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
-	"github.com/grafana/loki/pkg/tenant"
-
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 var (
@@ -62,15 +61,20 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine is the LogQL engine.
 type Engine struct {
+	logger    log.Logger
 	timeout   time.Duration
 	evaluator Evaluator
 	limits    Limits
 }
 
 // NewEngine creates a new LogQL Engine.
-func NewEngine(opts EngineOpts, q Querier, l Limits) *Engine {
+func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine {
 	opts.applyDefault()
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
 	return &Engine{
+		logger:    logger,
 		timeout:   opts.Timeout,
 		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
 		limits:    l,
@@ -80,6 +84,7 @@ func NewEngine(opts EngineOpts, q Querier, l Limits) *Engine {
 // Query creates a new LogQL query. Instant/Range type is derived from the parameters.
 func (ng *Engine) Query(params Params) Query {
 	return &query{
+		logger:    ng.logger,
 		timeout:   ng.timeout,
 		params:    params,
 		evaluator: ng.evaluator,
@@ -98,6 +103,7 @@ type Query interface {
 }
 
 type query struct {
+	logger    log.Logger
 	timeout   time.Duration
 	params    Params
 	parse     func(context.Context, string) (Expr, error)
@@ -138,7 +144,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	}
 
 	if q.record {
-		RecordMetrics(ctx, q.params, status, statResult, data)
+		RecordMetrics(ctx, q.logger, q.params, status, statResult, data)
 	}
 
 	return logqlmodel.Result{

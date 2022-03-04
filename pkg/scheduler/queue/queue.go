@@ -52,7 +52,7 @@ type RequestQueue struct {
 	connectedQuerierWorkers *atomic.Int32
 
 	mtx     sync.Mutex
-	cond    *sync.Cond // Notified when request is enqueued or dequeued, or querier is disconnected.
+	cond    contextCond // Notified when request is enqueued or dequeued, or querier is disconnected.
 	queues  *queues
 	stopped bool
 
@@ -68,7 +68,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, que
 		discardedRequests:       discardedRequests,
 	}
 
-	q.cond = sync.NewCond(&q.mtx)
+	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
 	q.Service = services.NewTimerService(forgetCheckPeriod, nil, q.forgetDisconnectedQueriers, q.stopping).WithName("request queue")
 
 	return q
@@ -121,7 +121,7 @@ FindQueue:
 	// We need to wait if there are no users, or no pending requests for given querier.
 	for (q.queues.len() == 0 || querierWait) && ctx.Err() == nil && !q.stopped {
 		querierWait = false
-		q.cond.Wait()
+		q.cond.Wait(ctx)
 	}
 
 	if q.stopped {
@@ -179,7 +179,7 @@ func (q *RequestQueue) stopping(_ error) error {
 	defer q.mtx.Unlock()
 
 	for q.queues.len() > 0 && q.connectedQuerierWorkers.Load() > 0 {
-		q.cond.Wait()
+		q.cond.Wait(context.Background())
 	}
 
 	// Only stop after dispatching enqueued requests.
@@ -213,11 +213,65 @@ func (q *RequestQueue) NotifyQuerierShutdown(querierID string) {
 	q.queues.notifyQuerierShutdown(querierID)
 }
 
-// When querier is waiting for next request, this unblocks the method.
-func (q *RequestQueue) QuerierDisconnecting() {
-	q.cond.Broadcast()
-}
-
 func (q *RequestQueue) GetConnectedQuerierWorkersMetric() float64 {
 	return float64(q.connectedQuerierWorkers.Load())
+}
+
+// contextCond is a *sync.Cond with Wait() method overridden to support context-based waiting.
+type contextCond struct {
+	*sync.Cond
+
+	// testHookBeforeWaiting is called before calling Cond.Wait() if it's not nil.
+	// Yes, it's ugly, but the http package settled jurisprudence:
+	// https://github.com/golang/go/blob/6178d25fc0b28724b1b5aec2b1b74fc06d9294c7/src/net/http/client.go#L596-L601
+	testHookBeforeWaiting func()
+}
+
+// Wait does c.cond.Wait() but will also return if the context provided is done.
+// All the documentation of sync.Cond.Wait() applies, but it's especially important to remember that the mutex of
+// the cond should be held while Wait() is called (and mutex will be held once it returns)
+func (c contextCond) Wait(ctx context.Context) {
+	// "condWait" goroutine does q.cond.Wait() and signals through condWait channel.
+	condWait := make(chan struct{})
+	go func() {
+		if c.testHookBeforeWaiting != nil {
+			c.testHookBeforeWaiting()
+		}
+		c.Cond.Wait()
+		close(condWait)
+	}()
+
+	// "waiting" goroutine: signals that the condWait goroutine has started waiting.
+	// Notice that a closed waiting channel implies that the goroutine above has started waiting
+	// (because it has unlocked the mutex), but the other way is not true:
+	// - condWait it may have unlocked and is waiting, but someone else locked the mutex faster than us:
+	//   in this case that caller will eventually unlock, and we'll be able to enter here.
+	// - condWait called Wait(), unlocked, received a broadcast and locked again faster than we were able to lock here:
+	//   in this case condWait channel will be closed, and this goroutine will be waiting until we unlock.
+	waiting := make(chan struct{})
+	go func() {
+		c.L.Lock()
+		close(waiting)
+		c.L.Unlock()
+	}()
+
+	select {
+	case <-condWait:
+		// We don't know whether the waiting goroutine is done or not, but we don't care:
+		// it will be done once nobody is fighting for the mutex anymore.
+	case <-ctx.Done():
+		// In order to avoid leaking the condWait goroutine, we can send a broadcast.
+		// Before sending the broadcast we need to make sure that condWait goroutine is already waiting (or has already waited).
+		select {
+		case <-condWait:
+			// No need to broadcast as q.cond.Wait() has returned already.
+			return
+		case <-waiting:
+			// q.cond.Wait() might be still waiting (or maybe not!), so we'll poke it just in case.
+			c.Broadcast()
+		}
+
+		// Make sure we are not waiting anymore, we need to do that before returning as the caller will need to unlock the mutex.
+		<-condWait
+	}
 }

@@ -102,7 +102,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             ).addTargets(
                               [
                                 grafana.prometheus.target(
-                                  'sum by (le) (rate(loki_ingester_chunk_utilization_bucket{cluster="$cluster", job="$namespace/ingester"}[$__rate_interval]))',
+                                  'sum by (le) (rate(loki_ingester_chunk_utilization_bucket{%s}[$__rate_interval]))' % labelsSelector,
                                   legendFormat='{{le}}',
                                   format='heatmap',
                                 ),

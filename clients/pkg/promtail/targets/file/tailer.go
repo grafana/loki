@@ -150,7 +150,6 @@ func (t *tailer) readLines() {
 		}
 
 		t.metrics.readLines.WithLabelValues(t.path).Inc()
-		t.metrics.logLengthHistogram.WithLabelValues(t.path).Observe(float64(len(line.Text)))
 		entries <- api.Entry{
 			Labels: model.LabelSet{},
 			Entry: logproto.Entry{
@@ -225,5 +224,4 @@ func (t *tailer) cleanupMetrics() {
 	t.metrics.readLines.DeleteLabelValues(t.path)
 	t.metrics.readBytes.DeleteLabelValues(t.path)
 	t.metrics.totalBytes.DeleteLabelValues(t.path)
-	t.metrics.logLengthHistogram.DeleteLabelValues(t.path)
 }

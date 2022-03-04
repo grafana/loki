@@ -20,8 +20,9 @@ type ReplicationSet struct {
 	MaxUnavailableZones int
 }
 
-// Do function f in parallel for all replicas in the set, erroring is we exceed
+// Do function f in parallel for all replicas in the set, erroring if we exceed
 // MaxErrors and returning early otherwise.
+// Return a slice of all results from f, or nil if an error occurred.
 func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
 	type instanceResult struct {
 		res      interface{}
@@ -130,6 +131,24 @@ func (r ReplicationSet) GetAddressesWithout(exclude string) []string {
 // HasReplicationSetChanged returns true if two replications sets are the same (with possibly different timestamps),
 // false if they differ in any way (number of instances, instance states, tokens, zones, ...).
 func HasReplicationSetChanged(before, after ReplicationSet) bool {
+	return hasReplicationSetChangedExcluding(before, after, func(i *InstanceDesc) {
+		i.Timestamp = 0
+	})
+}
+
+// HasReplicationSetChangedWithoutState returns true if two replications sets
+// are the same (with possibly different timestamps and instance states),
+// false if they differ in any other way (number of instances, tokens, zones, ...).
+func HasReplicationSetChangedWithoutState(before, after ReplicationSet) bool {
+	return hasReplicationSetChangedExcluding(before, after, func(i *InstanceDesc) {
+		i.Timestamp = 0
+		i.State = PENDING
+	})
+}
+
+// Do comparison of replicasets, but apply a function first
+// to be able to exclude (reset) some values
+func hasReplicationSetChangedExcluding(before, after ReplicationSet, exclude func(*InstanceDesc)) bool {
 	beforeInstances := before.Instances
 	afterInstances := after.Instances
 
@@ -144,9 +163,8 @@ func HasReplicationSetChanged(before, after ReplicationSet) bool {
 		b := beforeInstances[i]
 		a := afterInstances[i]
 
-		// Exclude the heartbeat timestamp from the comparison.
-		b.Timestamp = 0
-		a.Timestamp = 0
+		exclude(&a)
+		exclude(&b)
 
 		if !b.Equal(a) {
 			return true

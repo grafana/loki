@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/pkg/util"
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
@@ -90,12 +90,13 @@ func (f *frontendSchedulerWorkers) AddressAdded(address string) {
 	f.mu.Lock()
 	ws := f.workers
 	w := f.workers[address]
-	f.mu.Unlock()
 
 	// Already stopped or we already have worker for this address.
 	if ws == nil || w != nil {
+		f.mu.Unlock()
 		return
 	}
+	f.mu.Unlock()
 
 	level.Info(f.logger).Log("msg", "adding connection to scheduler", "addr", address)
 	conn, err := f.connectToScheduler(context.Background(), address)
@@ -111,10 +112,16 @@ func (f *frontendSchedulerWorkers) AddressAdded(address string) {
 	defer f.mu.Unlock()
 
 	// Can be nil if stopping has been called already.
-	if f.workers != nil {
-		f.workers[address] = w
-		w.start()
+	if f.workers == nil {
+		return
 	}
+	// We have to recheck for presence in case we got called again while we were
+	// connecting and that one finished first.
+	if f.workers[address] != nil {
+		return
+	}
+	f.workers[address] = w
+	w.start()
 }
 
 func (f *frontendSchedulerWorkers) AddressRemoved(address string) {
@@ -184,7 +191,8 @@ func newFrontendSchedulerWorker(conn *grpc.ClientConn, schedulerAddr string, fro
 		schedulerAddr: schedulerAddr,
 		frontendAddr:  frontendAddr,
 		requestCh:     requestCh,
-		cancelCh:      make(chan uint64),
+		// Allow to enqueue enough cancellation requests. ~ 8MB memory size.
+		cancelCh: make(chan uint64, 1000000),
 	}
 	w.ctx, w.cancel = context.WithCancel(context.Background())
 
@@ -277,7 +285,6 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				FrontendAddress: w.frontendAddr,
 				StatsEnabled:    req.statsEnabled,
 			})
-
 			if err != nil {
 				req.enqueue <- enqueueResult{status: failed}
 				return err
@@ -304,7 +311,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				req.response <- &frontendv2pb.QueryResultRequest{
 					HttpResponse: &httpgrpc.HTTPResponse{
 						Code: http.StatusInternalServerError,
-						Body: []byte(err.Error()),
+						Body: []byte(resp.Error),
 					},
 				}
 
@@ -316,6 +323,9 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 						Body: []byte("too many outstanding requests"),
 					},
 				}
+			default:
+				level.Error(w.log).Log("msg", "unknown response status from the scheduler", "status", resp.Status, "queryID", req.queryID)
+				req.enqueue <- enqueueResult{status: failed}
 			}
 
 		case reqID := <-w.cancelCh:
@@ -323,7 +333,6 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				Type:    schedulerpb.CANCEL,
 				QueryID: reqID,
 			})
-
 			if err != nil {
 				return err
 			}

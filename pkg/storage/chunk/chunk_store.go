@@ -16,15 +16,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/extract"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/validation"
-
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/extract"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (
@@ -88,6 +86,9 @@ func (cfg *StoreConfig) Validate(logger log.Logger) error {
 
 type baseStore struct {
 	cfg StoreConfig
+	// todo (callum) it looks like baseStore is created off a specific schema struct implementation, so perhaps we can store something else here
+	// other than the entire set of schema period configs
+	schemaCfg SchemaConfig
 
 	index   IndexClient
 	chunks  Client
@@ -96,19 +97,20 @@ type baseStore struct {
 	fetcher *Fetcher
 }
 
-func newBaseStore(cfg StoreConfig, schema BaseSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (baseStore, error) {
-	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, chunks)
+func newBaseStore(cfg StoreConfig, scfg SchemaConfig, schema BaseSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (baseStore, error) {
+	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, scfg, chunks, cfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, cfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize)
 	if err != nil {
 		return baseStore{}, err
 	}
 
 	return baseStore{
-		cfg:     cfg,
-		index:   index,
-		chunks:  chunks,
-		schema:  schema,
-		limits:  limits,
-		fetcher: fetcher,
+		cfg:       cfg,
+		schemaCfg: scfg,
+		index:     index,
+		chunks:    chunks,
+		schema:    schema,
+		limits:    limits,
+		fetcher:   fetcher,
 	}, nil
 }
 
@@ -125,8 +127,8 @@ type store struct {
 	schema StoreSchema
 }
 
-func newStore(cfg StoreConfig, schema StoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (Store, error) {
-	rs, err := newBaseStore(cfg, schema, index, chunks, limits, chunksCache)
+func newStore(cfg StoreConfig, scfg SchemaConfig, schema StoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (Store, error) {
+	rs, err := newBaseStore(cfg, scfg, schema, index, chunks, limits, chunksCache)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +181,7 @@ func (c *store) calculateIndexEntries(userID string, from, through model.Time, c
 		return nil, ErrMetricNameLabelMissing
 	}
 
-	entries, err := c.schema.GetWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
+	entries, err := c.schema.GetWriteEntries(from, through, userID, metricName, chunk.Metric, c.baseStore.schemaCfg.ExternalKey(chunk))
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +281,7 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
 	filtered := filterChunksByTime(from, through, chunks)
-	filtered, keys := filterChunksByUniqueFingerprint(filtered)
+	filtered, keys := filterChunksByUniqueFingerprint(c.baseStore.schemaCfg, filtered)
 	level.Debug(log).Log("msg", "Chunks post filtering", "chunks", len(chunks))
 
 	// Now fetch the actual chunk data from Memcache / S3
@@ -362,7 +364,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	keys := keysFromChunks(filtered)
+	keys := keysFromChunks(c.baseStore.schemaCfg, filtered)
 	allChunks, err := c.fetcher.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		return nil, err

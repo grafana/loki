@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
 func TestStatsCollectorMiddleware(t *testing.T) {
@@ -23,7 +23,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 		now  = time.Now()
 	)
 	ctx := context.WithValue(context.Background(), ctxKey, data)
-	_, _ = StatsCollectorMiddleware().Wrap(queryrange.HandlerFunc(func(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return nil, nil
 	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
@@ -36,7 +36,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 
 	// no context.
 	data = &queryData{}
-	_, _ = StatsCollectorMiddleware().Wrap(queryrange.HandlerFunc(func(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return nil, nil
 	})).Do(context.Background(), &LokiRequest{
 		Query:   "foo",
@@ -47,7 +47,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 	// stats
 	data = &queryData{}
 	ctx = context.WithValue(context.Background(), ctxKey, data)
-	_, _ = StatsCollectorMiddleware().Wrap(queryrange.HandlerFunc(func(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiPromResponse{
 			Statistics: stats.Result{
 				Ingester: stats.Ingester{
@@ -155,7 +155,7 @@ func Test_StatsHTTP(t *testing.T) {
 }
 
 func Test_StatsUpdateResult(t *testing.T) {
-	resp, err := StatsCollectorMiddleware().Wrap(queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+	resp, err := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		time.Sleep(20 * time.Millisecond)
 		return &LokiResponse{}, nil
 	})).Do(context.Background(), &LokiRequest{

@@ -7,7 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"os"
 	"sync"
 	"time"
 
@@ -26,7 +26,7 @@ type Loader func(r io.Reader) (interface{}, error)
 // Config holds the config for an Manager instance.
 // It holds config related to loading per-tenant config.
 type Config struct {
-	ReloadPeriod time.Duration `yaml:"period"`
+	ReloadPeriod time.Duration `yaml:"period" category:"advanced"`
 	// LoadPath contains the path to the runtime config file, requires an
 	// non-empty value
 	LoadPath string `yaml:"file"`
@@ -145,7 +145,7 @@ func (om *Manager) loop(ctx context.Context) error {
 // loadConfig loads configuration using the loader function, and if successful,
 // stores it as current configuration and notifies listeners.
 func (om *Manager) loadConfig() error {
-	buf, err := ioutil.ReadFile(om.cfg.LoadPath)
+	buf, err := os.ReadFile(om.cfg.LoadPath)
 	if err != nil {
 		om.configLoadSuccess.Set(0)
 		return errors.Wrap(err, "read file")

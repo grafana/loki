@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -15,12 +14,7 @@ import (
 )
 
 func TestIndexStorageClient(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "test-index-storage-client")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	storageKeyPrefix := "prefix/"
 	tablesToSetup := map[string][]string{
@@ -49,7 +43,7 @@ func TestIndexStorageClient(t *testing.T) {
 			expectedFiles, ok := tablesToSetup[table]
 			require.True(t, ok)
 
-			filesInStorage, err := indexStorageClient.ListFiles(context.Background(), table)
+			filesInStorage, _, err := indexStorageClient.ListFiles(context.Background(), table)
 			require.NoError(t, err)
 			require.Len(t, filesInStorage, len(expectedFiles))
 

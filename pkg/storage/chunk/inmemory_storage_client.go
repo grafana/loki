@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/log"
 )
 
 type MockStorageMode int
@@ -31,9 +31,10 @@ const (
 
 // MockStorage is a fake in-memory StorageClient.
 type MockStorage struct {
-	mtx     sync.RWMutex
-	tables  map[string]*mockTable
-	objects map[string][]byte
+	mtx       sync.RWMutex
+	tables    map[string]*mockTable
+	objects   map[string][]byte
+	schemaCfg SchemaConfig
 
 	numIndexWrites int
 	numChunkWrites int
@@ -53,6 +54,15 @@ type mockItem struct {
 // NewMockStorage creates a new MockStorage.
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
+		schemaCfg: SchemaConfig{
+			Configs: []PeriodConfig{
+				{
+					From:      DayTime{Time: 0},
+					Schema:    "v11",
+					RowShards: 16,
+				},
+			},
+		},
 		tables:  map[string]*mockTable{},
 		objects: map[string][]byte{},
 	}
@@ -248,7 +258,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 }
 
 // QueryPages implements StorageClient.
-func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error {
+func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, callback QueryPagesCallback) error {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -360,7 +370,7 @@ func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
 		if err != nil {
 			return err
 		}
-		m.objects[chunks[i].ExternalKey()] = buf
+		m.objects[m.schemaCfg.ExternalKey(chunks[i])] = buf
 	}
 	return nil
 }
@@ -377,7 +387,7 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	decodeContext := NewDecodeContext()
 	result := []Chunk{}
 	for _, chunk := range chunkSet {
-		key := chunk.ExternalKey()
+		key := m.schemaCfg.ExternalKey(chunk)
 		buf, ok := m.objects[key]
 		if !ok {
 			return nil, errStorageObjectNotFound

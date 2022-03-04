@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
-	"io/ioutil"
+	"os"
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -13,11 +13,11 @@ import (
 
 // ClientConfig is the config for client TLS.
 type ClientConfig struct {
-	CertPath           string `yaml:"tls_cert_path"`
-	KeyPath            string `yaml:"tls_key_path"`
-	CAPath             string `yaml:"tls_ca_path"`
-	ServerName         string `yaml:"tls_server_name"`
-	InsecureSkipVerify bool   `yaml:"tls_insecure_skip_verify"`
+	CertPath           string `yaml:"tls_cert_path" category:"advanced"`
+	KeyPath            string `yaml:"tls_key_path" category:"advanced"`
+	CAPath             string `yaml:"tls_ca_path" category:"advanced"`
+	ServerName         string `yaml:"tls_server_name" category:"advanced"`
+	InsecureSkipVerify bool   `yaml:"tls_insecure_skip_verify" category:"advanced"`
 }
 
 var (
@@ -44,7 +44,7 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 	// read ca certificates
 	if cfg.CAPath != "" {
 		var caCertPool *x509.CertPool
-		caCert, err := ioutil.ReadFile(cfg.CAPath)
+		caCert, err := os.ReadFile(cfg.CAPath)
 		if err != nil {
 			return nil, errors.Wrapf(err, "error loading ca cert: %s", cfg.CAPath)
 		}

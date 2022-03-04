@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -62,7 +63,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits)
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
 				start:     test.ts,
@@ -827,7 +828,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits)
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
 				start:     test.ts,
@@ -1339,7 +1340,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Series{
 				{
-					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(15, identity), `{app="fuzz"}`),
+					newSeries(testSize, factor(10, identity), `{app="foo"}`),
 					newSeries(testSize, factor(5, identity), `{app="fuzz"}`), newSeries(testSize, identity, `{app="buzz"}`),
 				},
 			},
@@ -2026,7 +2027,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits)
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
@@ -2061,7 +2062,7 @@ func (statsQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (it
 }
 
 func TestEngine_Stats(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits)
+	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
 
 	queueTime := 2 * time.Nanosecond
 	q := eng.Query(LiteralParams{
@@ -2075,7 +2076,7 @@ func TestEngine_Stats(t *testing.T) {
 	r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
 	require.NoError(t, err)
 	require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
-	require.Equal(t, queueTime.Nanoseconds(), r.Statistics.Summary.QueueTime)
+	require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
 }
 
 type errorIteratorQuerier struct {
@@ -2084,11 +2085,11 @@ type errorIteratorQuerier struct {
 }
 
 func (e errorIteratorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
-	return iter.NewHeapIterator(ctx, e.entries, p.Direction), nil
+	return iter.NewSortEntryIterator(e.entries, p.Direction), nil
 }
 
 func (e errorIteratorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NewHeapSampleIterator(ctx, e.samples), nil
+	return iter.NewSortSampleIterator(e.samples), nil
 }
 
 func TestStepEvaluator_Error(t *testing.T) {
@@ -2137,7 +2138,7 @@ func TestStepEvaluator_Error(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			tc := tc
-			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits)
+			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
 			q := eng.Query(LiteralParams{
 				qs:    tc.qs,
 				start: time.Unix(0, 0),
@@ -2151,7 +2152,7 @@ func TestStepEvaluator_Error(t *testing.T) {
 }
 
 func TestEngine_MaxSeries(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{maxSeries: 1})
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{maxSeries: 1}, log.NewNopLogger())
 
 	for _, test := range []struct {
 		qs             string
@@ -2205,7 +2206,7 @@ var result promql_parser.Value
 
 func benchmarkRangeQuery(testsize int64, b *testing.B) {
 	b.ReportAllocs()
-	eng := NewEngine(EngineOpts{}, getLocalQuerier(testsize), NoLimits)
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(testsize), NoLimits, log.NewNopLogger())
 	start := time.Unix(0, 0)
 	end := time.Unix(testsize, 0)
 	b.ResetTimer()
@@ -2268,11 +2269,6 @@ func getLocalQuerier(size int64) Querier {
 				newSeries(size, identity, `{app="bar",bar="foo"}`),
 				newSeries(size, identity, `{app="bar",bar="bazz"}`),
 				newSeries(size, identity, `{app="bar",bar="fuzz"}`),
-				// some duplicates
-				newSeries(size, identity, `{app="foo"}`),
-				newSeries(size, identity, `{app="bar"}`),
-				newSeries(size, identity, `{app="bar",bar="bazz"}`),
-				newSeries(size, identity, `{app="bar"}`),
 			},
 		},
 		streams: map[string][]logproto.Stream{
@@ -2285,11 +2281,6 @@ func getLocalQuerier(size int64) Querier {
 				newStream(size, identity, `{app="bar",bar="foo"}`),
 				newStream(size, identity, `{app="bar",bar="bazz"}`),
 				newStream(size, identity, `{app="bar",bar="fuzz"}`),
-				// some duplicates
-				newStream(size, identity, `{app="foo"}`),
-				newStream(size, identity, `{app="bar"}`),
-				newStream(size, identity, `{app="bar",bar="bazz"}`),
-				newStream(size, identity, `{app="bar"}`),
 			},
 		},
 	}
@@ -2330,7 +2321,7 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 func (q *querierRecorder) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	if !q.match {
 		for _, s := range q.streams {
-			return iter.NewStreamsIterator(ctx, s, p.Direction), nil
+			return iter.NewStreamsIterator(s, p.Direction), nil
 		}
 	}
 	recordID := paramsID(p)
@@ -2338,17 +2329,13 @@ func (q *querierRecorder) SelectLogs(ctx context.Context, p SelectLogParams) (it
 	if !ok {
 		return nil, fmt.Errorf("no streams found for id: %s has: %+v", recordID, q.streams)
 	}
-	iters := make([]iter.EntryIterator, 0, len(streams))
-	for _, s := range streams {
-		iters = append(iters, iter.NewStreamIterator(s))
-	}
-	return iter.NewHeapIterator(ctx, iters, p.Direction), nil
+	return iter.NewStreamsIterator(streams, p.Direction), nil
 }
 
 func (q *querierRecorder) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
 	if !q.match {
 		for _, s := range q.series {
-			return iter.NewMultiSeriesIterator(ctx, s), nil
+			return iter.NewMultiSeriesIterator(s), nil
 		}
 	}
 	recordID := paramsID(p)
@@ -2359,11 +2346,7 @@ func (q *querierRecorder) SelectSamples(ctx context.Context, p SelectSampleParam
 	if !ok {
 		return nil, fmt.Errorf("no series found for id: %s has: %+v", recordID, q.series)
 	}
-	iters := make([]iter.SampleIterator, 0, len(series))
-	for _, s := range series {
-		iters = append(iters, iter.NewSeriesIterator(s))
-	}
-	return iter.NewHeapSampleIterator(ctx, iters), nil
+	return iter.NewMultiSeriesIterator(series), nil
 }
 
 func paramsID(p interface{}) string {
@@ -2382,25 +2365,33 @@ type logData struct {
 
 type generator func(i int64) logData
 
-func newStream(n int64, f generator, labels string) logproto.Stream {
+func newStream(n int64, f generator, lbsString string) logproto.Stream {
+	labels, err := ParseLabels(lbsString)
+	if err != nil {
+		panic(err)
+	}
 	entries := []logproto.Entry{}
 	for i := int64(0); i < n; i++ {
 		entries = append(entries, f(i).Entry)
 	}
 	return logproto.Stream{
 		Entries: entries,
-		Labels:  labels,
+		Labels:  labels.String(),
 	}
 }
 
-func newSeries(n int64, f generator, labels string) logproto.Series {
+func newSeries(n int64, f generator, lbsString string) logproto.Series {
+	labels, err := ParseLabels(lbsString)
+	if err != nil {
+		panic(err)
+	}
 	samples := []logproto.Sample{}
 	for i := int64(0); i < n; i++ {
 		samples = append(samples, f(i).Sample)
 	}
 	return logproto.Series{
 		Samples: samples,
-		Labels:  labels,
+		Labels:  labels.String(),
 	}
 }
 
@@ -2549,6 +2540,8 @@ func (errorIterator) Next() bool { return false }
 func (errorIterator) Error() error { return ErrMock }
 
 func (errorIterator) Labels() string { return "" }
+
+func (errorIterator) StreamHash() uint64 { return 0 }
 
 func (errorIterator) Entry() logproto.Entry { return logproto.Entry{} }
 

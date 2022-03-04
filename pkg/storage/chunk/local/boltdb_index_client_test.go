@@ -3,7 +3,6 @@ package local
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,7 +23,7 @@ func setupDB(t *testing.T, boltdbIndexClient *BoltIndexClient, dbname string) {
 	require.NoError(t, err)
 
 	err = db.Update(func(tx *bbolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(bucketName)
+		b, err := tx.CreateBucketIfNotExists(IndexBucketName)
 		if err != nil {
 			return err
 		}
@@ -35,10 +34,7 @@ func setupDB(t *testing.T, boltdbIndexClient *BoltIndexClient, dbname string) {
 }
 
 func TestBoltDBReload(t *testing.T) {
-	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	require.NoError(t, err)
-
-	defer require.NoError(t, os.RemoveAll(dirname))
+	dirname := t.TempDir()
 
 	boltdbIndexClient, err := NewBoltDBIndexClient(BoltDBConfig{
 		Directory: dirname,
@@ -63,7 +59,7 @@ func TestBoltDBReload(t *testing.T) {
 
 	valueFromDb := []byte{}
 	_ = droppedDb.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket(bucketName)
+		b := tx.Bucket(IndexBucketName)
 		valueFromDb = b.Get(testKey)
 		return nil
 	})
@@ -78,10 +74,7 @@ func TestBoltDBReload(t *testing.T) {
 }
 
 func TestBoltDB_GetDB(t *testing.T) {
-	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	require.NoError(t, err)
-
-	defer require.NoError(t, os.RemoveAll(dirname))
+	dirname := t.TempDir()
 
 	boltdbIndexClient, err := NewBoltDBIndexClient(BoltDBConfig{
 		Directory: dirname,
@@ -121,8 +114,7 @@ func TestBoltDB_GetDB(t *testing.T) {
 
 func Test_CreateTable_BoltdbRW(t *testing.T) {
 	tableName := "test"
-	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	require.NoError(t, err)
+	dirname := t.TempDir()
 
 	indexClient, err := NewBoltDBIndexClient(BoltDBConfig{
 		Directory: dirname,
@@ -171,12 +163,7 @@ func Test_CreateTable_BoltdbRW(t *testing.T) {
 }
 
 func TestBoltDB_Writes(t *testing.T) {
-	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(dirname))
-	}()
+	dirname := t.TempDir()
 
 	for i, tc := range []struct {
 		name              string
@@ -207,7 +194,7 @@ func TestBoltDB_Writes(t *testing.T) {
 		{
 			name:        "deletes without initial writes",
 			testDeletes: []string{"1", "2"},
-			err:         fmt.Errorf("bucket %s not found in table 3", bucketName),
+			err:         fmt.Errorf("bucket %s not found in table 3", IndexBucketName),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

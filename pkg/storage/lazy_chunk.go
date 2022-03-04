@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -13,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // LazyChunk loads the chunk when it is accessed.
@@ -85,7 +85,7 @@ func (c *LazyChunk) Iterator(
 
 	if direction == logproto.FORWARD {
 		return iter.NewTimeRangedIterator(
-			iter.NewNonOverlappingIterator(its, ""),
+			iter.NewNonOverlappingIterator(its),
 			from,
 			through,
 		), nil
@@ -106,7 +106,7 @@ func (c *LazyChunk) Iterator(
 		its[i], its[j] = its[j], its[i]
 	}
 
-	return iter.NewNonOverlappingIterator(its, ""), nil
+	return iter.NewNonOverlappingIterator(its), nil
 }
 
 // SampleIterator returns an sample iterator.
@@ -166,7 +166,7 @@ func (c *LazyChunk) SampleIterator(
 
 	// build the final iterator bound to the requested time range.
 	return iter.NewTimeRangedSampleIterator(
-		iter.NewNonOverlappingSampleIterator(its, ""),
+		iter.NewNonOverlappingSampleIterator(its),
 		from.UnixNano(),
 		through.UnixNano(),
 	), nil

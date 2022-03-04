@@ -29,7 +29,9 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       $._config.overrides_configmap_mount_name,
       $._config.overrides_configmap_mount_path,
     ) +
-    k.util.antiAffinity,
+    k.util.antiAffinity +
+    deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(5) +
+    deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1),
 
   distributor_service:
     k.util.serviceFor($.distributor_deployment),

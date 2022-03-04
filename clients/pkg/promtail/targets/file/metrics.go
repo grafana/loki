@@ -8,11 +8,10 @@ type Metrics struct {
 	reg prometheus.Registerer
 
 	// File-specific metrics
-	readBytes          *prometheus.GaugeVec
-	totalBytes         *prometheus.GaugeVec
-	readLines          *prometheus.CounterVec
-	filesActive        prometheus.Gauge
-	logLengthHistogram *prometheus.HistogramVec
+	readBytes   *prometheus.GaugeVec
+	totalBytes  *prometheus.GaugeVec
+	readLines   *prometheus.CounterVec
+	filesActive prometheus.Gauge
 
 	// Manager metrics
 	failedTargets *prometheus.CounterVec
@@ -45,12 +44,6 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		Name:      "files_active_total",
 		Help:      "Number of active files.",
 	})
-	m.logLengthHistogram = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "promtail",
-		Name:      "log_entries_bytes",
-		Help:      "the total count of bytes",
-		Buckets:   prometheus.ExponentialBuckets(16, 2, 8),
-	}, []string{"path"})
 
 	m.failedTargets = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
@@ -69,7 +62,6 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			m.totalBytes,
 			m.readLines,
 			m.filesActive,
-			m.logLengthHistogram,
 			m.failedTargets,
 			m.targetsActive,
 		)

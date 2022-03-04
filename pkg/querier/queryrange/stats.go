@@ -9,16 +9,17 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/middleware"
 
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 type ctxKeyType string
@@ -27,7 +28,7 @@ const ctxKey ctxKeyType = "stats"
 
 var (
 	defaultMetricRecorder = metricRecorderFn(func(data *queryData) {
-		logql.RecordMetrics(data.ctx, data.params, data.status, *data.statistics, data.result)
+		logql.RecordMetrics(data.ctx, log.With(util_log.Logger, "component", "frontend"), data.params, data.status, *data.statistics, data.result)
 	})
 	// StatsHTTPMiddleware is an http middleware to record stats for query_range filter.
 	StatsHTTPMiddleware = statsHTTPMiddleware(defaultMetricRecorder)
@@ -78,9 +79,9 @@ func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
 }
 
 // StatsCollectorMiddleware compute the stats summary based on the actual duration of the request and inject it in the request context.
-func StatsCollectorMiddleware() queryrange.Middleware {
-	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-		return queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
+func StatsCollectorMiddleware() queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			logger := spanlogger.FromContext(ctx)
 			start := time.Now()
 

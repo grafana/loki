@@ -66,7 +66,7 @@ func Test_SampleExpr_String(t *testing.T) {
 	for _, tc := range []string{
 		`rate( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
-		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] offset 10m )`,
+		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] offset 10d )`,
 		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum(count_over_time({job="mysql"}[5m]))`,
@@ -78,7 +78,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum(count_over_time({job="mysql"} | pattern "<foo> bar <buzz>" | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | unpack | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
-		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m] offset 10m))`,
+		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m] offset 10y))`,
 		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,
 		`topk by (name)(10,sum(rate({region="us-east1"}[5m])))`,
 		`avg( rate( ( {job="nginx"} |= "GET" ) [10s] ) ) by (region)`,
@@ -394,7 +394,6 @@ func BenchmarkContainsFilter(b *testing.B) {
 			}
 		})
 	}
-
 }
 
 func Test_parserExpr_Parser(t *testing.T) {

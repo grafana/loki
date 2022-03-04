@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sort"
 	"sync"
@@ -21,8 +20,6 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 
-	"github.com/grafana/loki/pkg/tenant"
-
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
@@ -32,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -132,9 +130,7 @@ func buildChunkDecs(t testing.TB) []*chunkDesc {
 func TestWALFullFlush(t *testing.T) {
 	// technically replaced with a fake wal, but the ingester New() function creates a regular wal first,
 	// so we enable creation/cleanup even though it remains unused.
-	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-	require.Nil(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	store, ing := newTestStore(t, defaultIngesterTestConfigWithWAL(t, walDir), fullWAL{})
 	testData := pushTestSamples(t, ing)

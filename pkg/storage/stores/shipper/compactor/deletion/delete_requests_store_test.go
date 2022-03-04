@@ -3,8 +3,6 @@ package deletion
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -46,11 +44,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 	}
 
 	// build the store
-	tempDir, err := ioutil.TempDir("", "test-delete-requests-store")
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	workingDir := filepath.Join(tempDir, "working-dir")
 	objectStorePath := filepath.Join(tempDir, "object-store")

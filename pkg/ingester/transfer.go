@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	lokiutil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -107,7 +107,7 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 			lbls = append(lbls, labels.Label{Name: lbl.Name, Value: lbl.Value})
 		}
 
-		instance := i.getOrCreateInstance(chunkSet.UserId)
+		instance := i.GetOrCreateInstance(chunkSet.UserId)
 		for _, chunk := range chunkSet.Chunks {
 			if err := instance.consumeChunk(userCtx, lbls, chunk); err != nil {
 				return err
@@ -149,7 +149,7 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 // transfer, as claiming tokens would possibly end up with this ingester owning no tokens, due to conflict
 // resolution in ring merge function. Hopefully the leaving ingester will retry transfer again.
 func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIngesterID string) error {
-	v, err := i.lifecycler.KVStore.Get(ctx, ring.IngesterRingKey)
+	v, err := i.lifecycler.KVStore.Get(ctx, RingKey)
 	if err != nil {
 		return errors.Wrap(err, "get ring")
 	}
@@ -223,13 +223,13 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 	ic := c.(logproto.IngesterClient)
 
 	ctx = user.InjectOrgID(ctx, "-1")
-	stream, err := ic.TransferChunks(ctx)
+	s, err := ic.TransferChunks(ctx)
 	if err != nil {
 		return errors.Wrap(err, "TransferChunks")
 	}
 
 	for instanceID, inst := range i.instances {
-		for _, istream := range inst.streams {
+		err := inst.streams.ForEach(func(istream *stream) (bool, error) {
 			err = func() error {
 				istream.chunkMtx.Lock()
 				defer istream.chunkMtx.Unlock()
@@ -259,7 +259,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 						Data: bb,
 					}
 
-					err = stream.Send(&logproto.TimeSeriesChunk{
+					err = s.Send(&logproto.TimeSeriesChunk{
 						Chunks:         chunks,
 						UserId:         instanceID,
 						Labels:         lbls,
@@ -275,12 +275,16 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 				return nil
 			}()
 			if err != nil {
-				return err
+				return false, err
 			}
+			return true, nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 
-	_, err = stream.CloseAndRecv()
+	_, err = s.CloseAndRecv()
 	if err != nil {
 		return errors.Wrap(err, "CloseAndRecv")
 	}
@@ -297,7 +301,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 // findTransferTarget finds an ingester in a PENDING state to use for transferring
 // chunks to.
 func (i *Ingester) findTransferTarget(ctx context.Context) (*ring.InstanceDesc, error) {
-	ringDesc, err := i.lifecycler.KVStore.Get(ctx, ring.IngesterRingKey)
+	ringDesc, err := i.lifecycler.KVStore.Get(ctx, RingKey)
 	if err != nil {
 		return nil, err
 	}

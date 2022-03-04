@@ -3,18 +3,19 @@ package logql
 import (
 	"context"
 	"strings"
-	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -65,11 +66,16 @@ var (
 		Name:      "logql_querystats_ingester_sent_lines_total",
 		Help:      "Total count of lines sent from ingesters while executing LogQL queries.",
 	})
+
+	bytePerSecondMetricUsage = usagestats.NewStatistics("query_metric_bytes_per_second")
+	bytePerSecondLogUsage    = usagestats.NewStatistics("query_log_bytes_per_second")
+	linePerSecondMetricUsage = usagestats.NewStatistics("query_metric_lines_per_second")
+	linePerSecondLogUsage    = usagestats.NewStatistics("query_log_lines_per_second")
 )
 
-func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Result, result promql_parser.Value) {
+func RecordMetrics(ctx context.Context, log log.Logger, p Params, status string, stats logql_stats.Result, result promql_parser.Value) {
 	var (
-		logger        = util_log.WithContext(ctx, util_log.Logger)
+		logger        = util_log.WithContext(ctx, log)
 		rt            = string(GetRangeType(p))
 		latencyType   = latencyTypeFast
 		returnedLines = 0
@@ -100,13 +106,14 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
 		"step", p.Step(),
-		"duration", time.Duration(int64(stats.Summary.ExecTime * float64(time.Second))),
+		"duration", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.ExecTime),
 		"status", status,
 		"limit", p.Limit(),
 		"returned_lines", returnedLines,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
-		"queue_time", time.Duration(stats.Summary.QueueTime),
+		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
+		"subqueries", stats.Summary.Subqueries,
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
@@ -126,6 +133,18 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 	chunkDownloadedTotal.WithLabelValues(status, queryType, rt).
 		Add(float64(stats.TotalChunksDownloaded()))
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
+
+	recordUsageStats(queryType, stats)
+}
+
+func recordUsageStats(queryType string, stats logql_stats.Result) {
+	if queryType == QueryTypeMetric {
+		bytePerSecondMetricUsage.Record(float64(stats.Summary.BytesProcessedPerSecond))
+		linePerSecondMetricUsage.Record(float64(stats.Summary.LinesProcessedPerSecond))
+	} else {
+		bytePerSecondLogUsage.Record(float64(stats.Summary.BytesProcessedPerSecond))
+		linePerSecondLogUsage.Record(float64(stats.Summary.LinesProcessedPerSecond))
+	}
 }
 
 func QueryType(query string) (string, error) {

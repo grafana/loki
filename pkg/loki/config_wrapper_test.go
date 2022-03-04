@@ -10,19 +10,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/netutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	cortex_aws "github.com/cortexproject/cortex/pkg/chunk/aws"
-	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
-	cortex_gcp "github.com/cortexproject/cortex/pkg/chunk/gcp"
-	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
-
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/loki/common"
+	"github.com/grafana/loki/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/pkg/storage/chunk/aws"
+	"github.com/grafana/loki/pkg/storage/chunk/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
@@ -255,9 +256,9 @@ memberlist:
 
 			assert.Equal(t, "s3", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []cortex_aws.S3Config{
+			for _, actual := range []aws.S3Config{
 				config.Ruler.StoreConfig.S3,
-				config.StorageConfig.AWSStorageConfig.S3Config.ToCortexS3Config(),
+				config.StorageConfig.AWSStorageConfig.S3Config,
 			} {
 				require.NotNil(t, actual.S3.URL)
 				assert.Equal(t, *expected, *actual.S3.URL)
@@ -272,7 +273,7 @@ memberlist:
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
-				assert.Equal(t, cortex_aws.SignatureVersionV4, actual.SignatureVersion,
+				assert.Equal(t, aws.SignatureVersionV4, actual.SignatureVersion,
 					"signature version should equal default value")
 				assert.Equal(t, 90*time.Second, actual.HTTPConfig.IdleConnTimeout,
 					"idle connection timeout should equal default value")
@@ -303,9 +304,9 @@ memberlist:
 
 			assert.Equal(t, "gcs", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []cortex_gcp.GCSConfig{
+			for _, actual := range []gcp.GCSConfig{
 				config.Ruler.StoreConfig.GCS,
-				config.StorageConfig.GCSConfig.ToCortexGCSConfig(),
+				config.StorageConfig.GCSConfig,
 			} {
 				assert.Equal(t, "foobar", actual.BucketName)
 				assert.Equal(t, 27, actual.ChunkBufferSize)
@@ -344,9 +345,9 @@ memberlist:
 
 			assert.Equal(t, "azure", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []cortex_azure.BlobStorageConfig{
+			for _, actual := range []azure.BlobStorageConfig{
 				config.Ruler.StoreConfig.Azure,
-				config.StorageConfig.AzureStorageConfig.ToCortexAzureConfig(),
+				config.StorageConfig.AzureStorageConfig,
 			} {
 				assert.Equal(t, "AzureGlobal", actual.Environment,
 					"should equal default environment since unspecified in config")
@@ -401,7 +402,7 @@ memberlist:
 
 			assert.Equal(t, "swift", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []cortex_swift.Config{
+			for _, actual := range []swift.Config{
 				config.Ruler.StoreConfig.Swift.Config,
 				config.StorageConfig.Swift.Config,
 			} {
@@ -1102,7 +1103,9 @@ query_scheduler:
 		assert.Equal(t, config.Distributor.DistributorRing.InstanceInterfaceNames, []string{"distributoriface"})
 		assert.Equal(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, []string{"scheduleriface"})
 		assert.Equal(t, config.Ruler.Ring.InstanceInterfaceNames, []string{"ruleriface"})
-		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, []string{"eth0", "en0", defaultIface})
+		expectedInterfaces := netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
+		expectedInterfaces = append(expectedInterfaces, defaultIface)
+		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, expectedInterfaces)
 	})
 }
 
@@ -1114,9 +1117,11 @@ func TestLoopbackAppendingToFrontendV2(t *testing.T) {
 	t.Run("when using common or ingester ring configs, loopback should be added to interface names", func(t *testing.T) {
 		config, _, err := configWrapperFromYAML(t, minimalConfig, []string{})
 		assert.NoError(t, err)
-		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Frontend.FrontendV2.InfNames)
-		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Ingester.LifecyclerConfig.InfNames)
-		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Common.Ring.InstanceInterfaceNames)
+		expectedInterfaces := netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
+		expectedInterfaces = append(expectedInterfaces, defaultIface)
+		assert.Equal(t, expectedInterfaces, config.Frontend.FrontendV2.InfNames)
+		assert.Equal(t, expectedInterfaces, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, expectedInterfaces, config.Common.Ring.InstanceInterfaceNames)
 	})
 
 	t.Run("loopback shouldn't be in FrontendV2 interface names if set by user", func(t *testing.T) {

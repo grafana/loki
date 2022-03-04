@@ -9,10 +9,6 @@ import (
 	"os"
 	rt "runtime"
 
-	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
-	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -37,25 +33,32 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	basetripper "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
+	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/usagestats"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 // Config is the root config for Loki.
 type Config struct {
-	Target      flagext.StringSliceCSV `yaml:"target,omitempty"`
-	AuthEnabled bool                   `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix  string                 `yaml:"http_prefix"`
+	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
+	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
+	HTTPPrefix   string                 `yaml:"http_prefix"`
+	BallastBytes int                    `yaml:"ballast_bytes"`
 
 	Common           common.Config            `yaml:"common,omitempty"`
 	Server           server.Config            `yaml:"server,omitempty"`
@@ -77,6 +80,7 @@ type Config struct {
 	Tracing          tracing.Config           `yaml:"tracing"`
 	CompactorConfig  compactor.Config         `yaml:"compactor,omitempty"`
 	QueryScheduler   scheduler.Config         `yaml:"query_scheduler"`
+	UsageReport      usagestats.Config        `yaml:"analytics"`
 }
 
 // RegisterFlags registers flag.
@@ -90,6 +94,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
 		"The aliases 'read' and 'write' can be used to only run components related to the read path or write path, respectively.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
+	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
+		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
@@ -111,6 +117,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
+	c.UsageReport.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -154,6 +161,9 @@ func (c *Config) Validate() error {
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid queryrange config")
 	}
+	if err := c.Querier.Validate(); err != nil {
+		return errors.Wrap(err, "invalid querier config")
+	}
 	if err := c.TableManager.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tablemanager config")
 	}
@@ -193,6 +203,9 @@ func (c *Config) Validate() error {
 			)
 		}
 	}
+	if err := c.QueryRange.Validate(); err != nil {
+		return errors.Wrap(err, "invalid query_range config")
+	}
 	return nil
 }
 
@@ -220,21 +233,25 @@ type Loki struct {
 	tenantConfigs            *runtime.TenantConfigs
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
-	Ingester                 *ingester.Ingester
-	Querier                  *querier.Querier
+	Ingester                 ingester.Interface
+	Querier                  querier.Querier
+	querierAPI               *querier.QuerierAPI
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
 	tableManager             *chunk.TableManager
 	frontend                 Frontend
-	ruler                    *cortex_ruler.Ruler
+	ruler                    *base_ruler.Ruler
 	RulerStorage             rulestore.RuleStore
-	rulerAPI                 *cortex_ruler.API
+	rulerAPI                 *base_ruler.API
 	stopper                  queryrange.Stopper
 	runtimeConfig            *runtimeconfig.Manager
 	MemberlistKV             *memberlist.KVInitService
 	compactor                *compactor.Compactor
-	QueryFrontEndTripperware cortex_tripper.Tripperware
+	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
+	usageReport              *usagestats.Reporter
+
+	clientMetrics chunk_storage.ClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
 }
@@ -242,15 +259,16 @@ type Loki struct {
 // New makes a new Loki.
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
-		Cfg: cfg,
+		Cfg:           cfg,
+		clientMetrics: chunk_storage.NewClientMetrics(),
 	}
-
+	usagestats.Edition("oss")
 	loki.setupAuthMiddleware()
 	loki.setupGRPCRecoveryMiddleware()
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
-	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, prometheus.DefaultRegisterer)
+	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, loki.clientMetrics, prometheus.DefaultRegisterer)
 
 	return loki, nil
 }
@@ -468,6 +486,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
+	mm.RegisterModule(UsageReport, t.initUsageReport)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -476,20 +495,21 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
+		UsageReport:              {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
 		Store:                    {Overrides},
-		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs},
+		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware},
-		QueryScheduler:           {Server, Overrides, MemberlistKV},
-		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
-		TableManager:             {Server},
-		Compactor:                {Server, Overrides, MemberlistKV},
-		IndexGateway:             {Server},
+		QueryFrontend:            {QueryFrontendTripperware, UsageReport},
+		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
+		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
+		TableManager:             {Server, UsageReport},
+		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
+		IndexGateway:             {Server, Overrides, UsageReport},
 		IngesterQuerier:          {Ring},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},
@@ -521,6 +541,12 @@ func (t *Loki) setupModuleManager() error {
 
 	t.deps = deps
 	t.ModuleManager = mm
+
+	if t.isModuleActive(Ingester) {
+		if err := mm.AddDependency(UsageReport, Ring); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

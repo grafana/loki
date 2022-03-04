@@ -43,7 +43,7 @@ func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 			return errors.WithStack(err)
 		}
 
-		key := chunks[i].ExternalKey()
+		key := s.schemaCfg.ExternalKey(chunks[i])
 		tableName, err := s.schemaCfg.ChunkTableFor(chunks[i].From)
 		if err != nil {
 			return errors.WithStack(err)
@@ -89,7 +89,7 @@ func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		chunkInfo.Key = inputInfo.ExternalKey()
+		chunkInfo.Key = s.schemaCfg.ExternalKey(inputInfo)
 		req.Chunks = append(req.Chunks, chunkInfo)
 	}
 	streamer, err := s.client.GetChunks(ctx, req)

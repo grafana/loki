@@ -467,6 +467,15 @@
     "release_level": "ga",
     "library_type": ""
   },
+  "cloud.google.com/go/deploy/apiv1": {
+    "distribution_name": "cloud.google.com/go/deploy/apiv1",
+    "description": "Google Cloud Deploy API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/deploy/latest/apiv1",
+    "release_level": "beta",
+    "library_type": ""
+  },
   "cloud.google.com/go/dialogflow/apiv2": {
     "distribution_name": "cloud.google.com/go/dialogflow/apiv2",
     "description": "Dialogflow API",
@@ -564,6 +573,15 @@
     "client_library_type": "generated",
     "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/eventarc/latest/apiv1",
     "release_level": "ga",
+    "library_type": ""
+  },
+  "cloud.google.com/go/filestore/apiv1": {
+    "distribution_name": "cloud.google.com/go/filestore/apiv1",
+    "description": "Cloud Filestore API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/filestore/latest/apiv1",
+    "release_level": "beta",
     "library_type": ""
   },
   "cloud.google.com/go/firestore": {
@@ -681,6 +699,15 @@
     "client_library_type": "generated",
     "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/iap/latest/apiv1",
     "release_level": "ga",
+    "library_type": ""
+  },
+  "cloud.google.com/go/ids/apiv1": {
+    "distribution_name": "cloud.google.com/go/ids/apiv1",
+    "description": "Cloud IDS API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/ids/latest/apiv1",
+    "release_level": "beta",
     "library_type": ""
   },
   "cloud.google.com/go/iot/apiv1": {
@@ -842,7 +869,7 @@
     "language": "Go",
     "client_library_type": "generated",
     "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/monitoring/latest/metricsscope/apiv1",
-    "release_level": "beta",
+    "release_level": "ga",
     "library_type": ""
   },
   "cloud.google.com/go/networkconnectivity/apiv1": {
@@ -1490,6 +1517,15 @@
     "language": "Go",
     "client_library_type": "generated",
     "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/vision/latest/apiv1p1beta1",
+    "release_level": "beta",
+    "library_type": ""
+  },
+  "cloud.google.com/go/vmmigration/apiv1": {
+    "distribution_name": "cloud.google.com/go/vmmigration/apiv1",
+    "description": "VM Migration API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/vmmigration/latest/apiv1",
     "release_level": "beta",
     "library_type": ""
   },

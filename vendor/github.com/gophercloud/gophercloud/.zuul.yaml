@@ -76,8 +76,10 @@
         - acceptance/openstack/networking/v2/extensions/subnetpools
         - acceptance/openstack/networking/v2/extensions/trunks
         - acceptance/openstack/networking/v2/extensions/vlantransparent
+      devstack_projects: 'openstack/neutron-dynamic-routing'
       devstack_services:
         - designate
+        - neutron-dynamic-routing
         - neutron-ext
         - octavia
 

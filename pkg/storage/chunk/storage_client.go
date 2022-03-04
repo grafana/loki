@@ -7,8 +7,15 @@ import (
 	"time"
 )
 
-// ErrMethodNotImplemented when any of the storage clients do not implement a method
-var ErrMethodNotImplemented = errors.New("method is not implemented")
+var (
+	// ErrMethodNotImplemented when any of the storage clients do not implement a method
+	ErrMethodNotImplemented = errors.New("method is not implemented")
+	// ErrStorageObjectNotFound when object storage does not have requested object
+	ErrStorageObjectNotFound = errors.New("object not found in storage")
+)
+
+// QueryPagesCallback from an IndexQuery.
+type QueryPagesCallback func(IndexQuery, ReadBatch) bool
 
 // IndexClient is a client for the storage of the index (e.g. DynamoDB or Bigtable).
 type IndexClient interface {
@@ -19,7 +26,7 @@ type IndexClient interface {
 	BatchWrite(context.Context, WriteBatch) error
 
 	// For the read path.
-	QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error
+	QueryPages(ctx context.Context, queries []IndexQuery, callback QueryPagesCallback) error
 }
 
 // Client is for storing and retrieving chunks.

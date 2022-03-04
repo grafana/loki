@@ -19,17 +19,12 @@ import (
 func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
 	deleteFilesOlderThan := 10 * time.Minute
 
-	fsChunksDir, err := ioutil.TempDir(os.TempDir(), "fs-chunks")
-	require.NoError(t, err)
+	fsChunksDir := t.TempDir()
 
 	bucketClient, err := NewFSObjectClient(FSConfig{
 		Directory: fsChunksDir,
 	})
 	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(fsChunksDir))
-	}()
 
 	file1 := "file1"
 	file2 := "file2"
@@ -64,17 +59,12 @@ func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
 }
 
 func TestFSObjectClient_List(t *testing.T) {
-	fsObjectsDir, err := ioutil.TempDir(os.TempDir(), "fs-objects")
-	require.NoError(t, err)
+	fsObjectsDir := t.TempDir()
 
 	bucketClient, err := NewFSObjectClient(FSConfig{
 		Directory: fsObjectsDir,
 	})
 	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(fsObjectsDir))
-	}()
 
 	allFiles := []string{
 		"outer-file1",
@@ -166,17 +156,12 @@ func TestFSObjectClient_List(t *testing.T) {
 }
 
 func TestFSObjectClient_DeleteObject(t *testing.T) {
-	fsObjectsDir, err := ioutil.TempDir(os.TempDir(), "fs-delete-object")
-	require.NoError(t, err)
+	fsObjectsDir := t.TempDir()
 
 	bucketClient, err := NewFSObjectClient(FSConfig{
 		Directory: fsObjectsDir,
 	})
 	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(fsObjectsDir))
-	}()
 
 	foldersWithFiles := make(map[string][]string)
 	foldersWithFiles["folder1"] = []string{"file1", "file2"}

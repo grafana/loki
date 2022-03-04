@@ -13,9 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -26,23 +23,25 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
 
 var (
 	testTime   = time.Date(2019, 12, 02, 11, 10, 10, 10, time.UTC)
-	testConfig = Config{queryrange.Config{
-		SplitQueriesByInterval: 4 * time.Hour,
-		AlignQueriesWithStep:   true,
-		MaxRetries:             3,
-		CacheResults:           true,
-		ResultsCacheConfig: queryrange.ResultsCacheConfig{
+	testConfig = Config{queryrangebase.Config{
+		AlignQueriesWithStep: true,
+		MaxRetries:           3,
+		CacheResults:         true,
+		ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 			CacheConfig: cache.Config{
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{
 					MaxSizeItems: 1024,
-					Validity:     24 * time.Hour,
+					TTL:          24 * time.Hour,
 				},
 			},
 		},
@@ -109,7 +108,8 @@ var (
 
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxSeries: math.MaxInt32}, chunk.SchemaConfig{}, nil)
+	l := WithSplitByLimits(fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1}, 4*time.Hour)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, l, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -172,7 +172,7 @@ func TestMetricsTripperware(t *testing.T) {
 }
 
 func TestLogFilterTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -221,7 +221,7 @@ func TestLogFilterTripperware(t *testing.T) {
 func TestInstantQueryTripperware(t *testing.T) {
 	testShardingConfig := testConfig
 	testShardingConfig.ShardedQueries = true
-	tpw, stopper, err := NewTripperware(testShardingConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, nil)
+	tpw, stopper, err := NewTripperware(testShardingConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -257,7 +257,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 }
 
 func TestSeriesTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour}, chunk.SchemaConfig{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -298,7 +298,7 @@ func TestSeriesTripperware(t *testing.T) {
 }
 
 func TestLabelsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour}, chunk.SchemaConfig{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -402,7 +402,8 @@ func TestUnhandledPath(t *testing.T) {
 }
 
 func TestRegexpParamsSupport(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, nil)
+	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, 4*time.Hour)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, l, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -456,26 +457,26 @@ func TestPostQueries(t *testing.T) {
 	req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
 	require.NoError(t, err)
 	_, err = newRoundTripper(
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected default roundtripper called")
 			return nil, nil
 		}),
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, nil
 		}),
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected metric roundtripper called")
 			return nil, nil
 		}),
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected series roundtripper called")
 			return nil, nil
 		}),
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected labels roundtripper called")
 			return nil, nil
 		}),
-		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected instant roundtripper called")
 			return nil, nil
 		}),
@@ -571,9 +572,6 @@ func (f fakeLimits) MaxQueryLength(string) time.Duration {
 }
 
 func (f fakeLimits) MaxQueryParallelism(string) int {
-	if f.maxQueryParallelism == 0 {
-		return 1
-	}
 	return f.maxQueryParallelism
 }
 

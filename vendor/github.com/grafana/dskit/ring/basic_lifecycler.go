@@ -3,6 +3,7 @@ package ring
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
-	dstime "github.com/grafana/dskit/time"
 )
 
 type BasicLifecyclerDelegate interface {
@@ -51,6 +51,10 @@ type BasicLifecyclerConfig struct {
 	HeartbeatPeriod     time.Duration
 	TokensObservePeriod time.Duration
 	NumTokens           int
+
+	// If true lifecycler doesn't unregister instance from the ring when it's stopping. Default value is false,
+	// which means unregistering.
+	KeepInstanceInTheRingOnShutdown bool
 }
 
 // BasicLifecycler is a basic ring lifecycler which allows to hook custom
@@ -182,7 +186,7 @@ func (l *BasicLifecycler) starting(ctx context.Context) error {
 }
 
 func (l *BasicLifecycler) running(ctx context.Context) error {
-	heartbeatTickerStop, heartbeatTickerChan := dstime.NewDisableableTicker(l.cfg.HeartbeatPeriod)
+	heartbeatTickerStop, heartbeatTickerChan := newDisableableTicker(l.cfg.HeartbeatPeriod)
 	defer heartbeatTickerStop()
 
 	for {
@@ -214,7 +218,7 @@ func (l *BasicLifecycler) stopping(runningError error) error {
 	}()
 
 	// Heartbeat while the stopping delegate function is running.
-	heartbeatTickerStop, heartbeatTickerChan := dstime.NewDisableableTicker(l.cfg.HeartbeatPeriod)
+	heartbeatTickerStop, heartbeatTickerChan := newDisableableTicker(l.cfg.HeartbeatPeriod)
 	defer heartbeatTickerStop()
 
 heartbeatLoop:
@@ -227,11 +231,15 @@ heartbeatLoop:
 		}
 	}
 
-	// Remove the instance from the ring.
-	if err := l.unregisterInstance(context.Background()); err != nil {
-		return errors.Wrapf(err, "failed to unregister instance from the ring (ring: %s)", l.ringName)
+	if l.cfg.KeepInstanceInTheRingOnShutdown {
+		level.Info(l.logger).Log("msg", "keeping instance the ring", "ring", l.ringName)
+	} else {
+		// Remove the instance from the ring.
+		if err := l.unregisterInstance(context.Background()); err != nil {
+			return errors.Wrapf(err, "failed to unregister instance from the ring (ring: %s)", l.ringName)
+		}
+		level.Info(l.logger).Log("msg", "instance removed from the ring", "ring", l.ringName)
 	}
-	level.Info(l.logger).Log("msg", "instance removed from the ring", "ring", l.ringName)
 
 	return nil
 }
@@ -292,7 +300,7 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 }
 
 func (l *BasicLifecycler) waitStableTokens(ctx context.Context, period time.Duration) error {
-	heartbeatTickerStop, heartbeatTickerChan := dstime.NewDisableableTicker(l.cfg.HeartbeatPeriod)
+	heartbeatTickerStop, heartbeatTickerChan := newDisableableTicker(l.cfg.HeartbeatPeriod)
 	defer heartbeatTickerStop()
 
 	// The first observation will occur after the specified period.
@@ -483,4 +491,21 @@ func (l *BasicLifecycler) run(fn func() error) error {
 	case l.actorChan <- wrappedFn:
 		return <-errCh
 	}
+}
+
+func (l *BasicLifecycler) casRing(ctx context.Context, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+	return l.store.CAS(ctx, l.ringKey, f)
+}
+
+func (l *BasicLifecycler) getRing(ctx context.Context) (*Desc, error) {
+	obj, err := l.store.Get(ctx, l.ringKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetOrCreateRingDesc(obj), nil
+}
+
+func (l *BasicLifecycler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	newRingPageHandler(l, l.cfg.HeartbeatPeriod).handle(w, req)
 }

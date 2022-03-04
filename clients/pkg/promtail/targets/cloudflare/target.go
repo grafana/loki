@@ -109,11 +109,11 @@ func (t *Target) start() {
 				end = maxEnd
 			}
 			start := end.Add(-time.Duration(t.config.PullRange))
-
+			requests := splitRequests(start, end, t.config.Workers)
 			// Use background context for workers as we don't want to cancel half way through.
 			// In case of errors we stop the target, each worker has it's own retry logic.
-			if err := concurrency.ForEach(context.Background(), splitRequests(start, end, t.config.Workers), t.config.Workers, func(ctx context.Context, job interface{}) error {
-				request := job.(pullRequest)
+			if err := concurrency.ForEachJob(context.Background(), len(requests), t.config.Workers, func(ctx context.Context, idx int) error {
+				request := requests[idx]
 				return t.pull(ctx, request.start, request.end)
 			}); err != nil {
 				level.Error(t.logger).Log("msg", "failed to pull logs", "err", err, "start", start, "end", end)
@@ -156,26 +156,37 @@ func (t *Target) pull(ctx context.Context, start, end time.Time) error {
 			backoff.Wait()
 			continue
 		}
-		defer it.Close()
-		for it.Next() {
+		if err := func() error {
+			defer it.Close()
+			var lineRead int64
+			for it.Next() {
+				line := it.Line()
+				ts, err := jsonparser.GetInt(line, "EdgeStartTimestamp")
+				if err != nil {
+					ts = time.Now().UnixNano()
+				}
+				t.handler.Chan() <- api.Entry{
+					Labels: t.config.Labels.Clone(),
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(0, ts),
+						Line:      string(line),
+					},
+				}
+				lineRead++
+				t.metrics.Entries.Inc()
+			}
 			if it.Err() != nil {
+				level.Warn(t.logger).Log("msg", "failed iterating over logs", "err", it.Err(), "start", start, "end", end, "retries", backoff.NumRetries(), "lineRead", lineRead)
 				return it.Err()
 			}
-			line := it.Line()
-			ts, err := jsonparser.GetInt(line, "EdgeStartTimestamp")
-			if err != nil {
-				ts = time.Now().UnixNano()
-			}
-			t.handler.Chan() <- api.Entry{
-				Labels: t.config.Labels.Clone(),
-				Entry: logproto.Entry{
-					Timestamp: time.Unix(0, ts),
-					Line:      string(line),
-				},
-			}
-			t.metrics.Entries.Inc()
+			return nil
+		}(); err != nil {
+			errs.Add(err)
+			backoff.Wait()
+			continue
 		}
 		return nil
+
 	}
 	return errs.Err()
 }
@@ -218,9 +229,9 @@ type pullRequest struct {
 	end   time.Time
 }
 
-func splitRequests(start, end time.Time, workers int) []interface{} {
+func splitRequests(start, end time.Time, workers int) []pullRequest {
 	perWorker := end.Sub(start) / time.Duration(workers)
-	var requests []interface{}
+	var requests []pullRequest
 	for i := 0; i < workers; i++ {
 		r := pullRequest{
 			start: start.Add(time.Duration(i) * perWorker),

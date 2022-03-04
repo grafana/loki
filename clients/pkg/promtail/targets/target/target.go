@@ -38,6 +38,9 @@ const (
 
 	// CloudflareTargetType is a Cloudflare target
 	CloudflareTargetType = TargetType("Cloudflare")
+
+	// DockerTargetType is a Docker target
+	DockerTargetType = TargetType("Docker")
 )
 
 // Target is a promtail scrape target

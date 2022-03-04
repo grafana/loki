@@ -3,17 +3,15 @@ package util
 import (
 	"context"
 	"sync"
-	"unsafe"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
 
 const maxQueriesPerGoroutine = 100
 
 type TableQuerier interface {
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
+	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
 }
 
 // QueriesByTable groups and returns queries by tables.
@@ -30,11 +28,10 @@ func QueriesByTable(queries []chunk.IndexQuery) map[string][]chunk.IndexQuery {
 	return queriesByTable
 }
 
-func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	errs := make(chan error)
 
 	id := NewIndexDeduper(callback)
-
 	if len(queries) <= maxQueriesPerGoroutine {
 		return tableQuerier.MultiQueries(ctx, queries, id.Callback)
 	}
@@ -60,12 +57,12 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 // IndexDeduper should always be used on table level not the whole query level because it just looks at range values which can be repeated across tables
 // Cortex anyways dedupes entries across tables
 type IndexDeduper struct {
-	callback        chunk_util.Callback
+	callback        chunk.QueryPagesCallback
 	seenRangeValues map[string]map[string]struct{}
 	mtx             sync.RWMutex
 }
 
-func NewIndexDeduper(callback chunk_util.Callback) *IndexDeduper {
+func NewIndexDeduper(callback chunk.QueryPagesCallback) *IndexDeduper {
 	return &IndexDeduper{
 		callback:        callback,
 		seenRangeValues: map[string]map[string]struct{}{},
@@ -84,7 +81,7 @@ func (i *IndexDeduper) isSeen(hashValue string, rangeValue []byte) bool {
 	i.mtx.RLock()
 
 	// index entries are never modified during query processing so it should be safe to reference a byte slice as a string.
-	rangeValueStr := yoloString(rangeValue)
+	rangeValueStr := GetUnsafeString(rangeValue)
 
 	if _, ok := i.seenRangeValues[hashValue][rangeValueStr]; ok {
 		i.mtx.RUnlock()
@@ -143,8 +140,4 @@ func (f *filteringBatchIter) Next() bool {
 	}
 
 	return false
-}
-
-func yoloString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
 }

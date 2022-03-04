@@ -154,6 +154,22 @@ func (bb BlockBlobURL) CopyFromURL(ctx context.Context, source url.URL, metadata
 		nil, // Blob ifTags
 		dstLeaseID, nil, srcContentMD5,
 		blobTagsString, // Blob tags
-		nil,            // seal Blob
 	)
+}
+
+// PutBlobFromURL synchronously creates a new Block Blob with data from the source URL up to a max length of 256MB.
+// For more information, see https://docs.microsoft.com/en-us/rest/api/storageservices/put-blob-from-url.
+func (bb BlockBlobURL) PutBlobFromURL(ctx context.Context, h BlobHTTPHeaders, source url.URL, metadata Metadata, srcac ModifiedAccessConditions, dstac BlobAccessConditions, srcContentMD5 []byte, dstContentMD5 []byte, tier AccessTierType, blobTagsMap BlobTagsMap, cpk ClientProvidedKeyOptions) (*BlockBlobPutBlobFromURLResponse, error) {
+
+	srcIfModifiedSince, srcIfUnmodifiedSince, srcIfMatchETag, srcIfNoneMatchETag := srcac.pointers()
+	dstIfModifiedSince, dstIfUnmodifiedSince, dstIfMatchETag, dstIfNoneMatchETag := dstac.ModifiedAccessConditions.pointers()
+	dstLeaseID := dstac.LeaseAccessConditions.pointers()
+	blobTagsString := SerializeBlobTagsHeader(blobTagsMap)
+
+	return bb.bbClient.PutBlobFromURL(ctx, 0, source.String(), nil, nil,
+		&h.ContentType, &h.ContentEncoding, &h.ContentLanguage, dstContentMD5, &h.CacheControl,
+		metadata, dstLeaseID, &h.ContentDisposition, cpk.EncryptionKey, cpk.EncryptionKeySha256,
+		cpk.EncryptionAlgorithm, cpk.EncryptionScope, tier, dstIfModifiedSince, dstIfUnmodifiedSince,
+		dstIfMatchETag, dstIfNoneMatchETag, nil, srcIfModifiedSince, srcIfUnmodifiedSince,
+		srcIfMatchETag, srcIfNoneMatchETag, nil, nil, srcContentMD5, blobTagsString, nil)
 }

@@ -14,16 +14,15 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	lstore "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -35,14 +34,16 @@ var (
 
 // fill up the local filesystem store with 1gib of data to run benchmark
 func main() {
+	cm := storage.NewClientMetrics()
+	defer cm.Unregister()
 	if _, err := os.Stat("/tmp/benchmark/chunks"); os.IsNotExist(err) {
-		if err := fillStore(); err != nil {
+		if err := fillStore(cm); err != nil {
 			log.Fatal("error filling up storage:", err)
 		}
 	}
 }
 
-func getStore() (lstore.Store, error) {
+func getStore(cm storage.ClientMetrics) (lstore.Store, error) {
 	storeConfig := lstore.Config{
 		Config: storage.Config{
 			BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
@@ -72,6 +73,7 @@ func getStore() (lstore.Store, error) {
 		chunk.StoreConfig{},
 		schemaCfg.SchemaConfig,
 		&validation.Overrides{},
+		cm,
 		prometheus.DefaultRegisterer,
 		nil,
 		util_log.Logger,
@@ -83,8 +85,8 @@ func getStore() (lstore.Store, error) {
 	return lstore.NewStore(storeConfig, schemaCfg, chunkStore, prometheus.DefaultRegisterer)
 }
 
-func fillStore() error {
-	store, err := getStore()
+func fillStore(cm storage.ClientMetrics) error {
+	store, err := getStore(cm)
 	if err != nil {
 		return err
 	}

@@ -9,10 +9,6 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/grpcclient"
@@ -30,20 +26,19 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/scheduler/queue"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
-
 	"github.com/grafana/loki/pkg/tenant"
-
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/util"
 	lokiutil "github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
-var (
-	errSchedulerIsNotRunning = errors.New("scheduler is not running")
-)
+var errSchedulerIsNotRunning = errors.New("scheduler is not running")
 
 const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
@@ -444,14 +439,6 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 	s.requestQueue.RegisterQuerierConnection(querierID)
 	defer s.requestQueue.UnregisterQuerierConnection(querierID)
 
-	// If the downstream connection to querier is cancelled,
-	// we need to ping the condition variable to unblock getNextRequestForQuerier.
-	// Ideally we'd have ctx aware condition variables...
-	go func() {
-		<-querier.Context().Done()
-		s.requestQueue.QuerierDisconnecting()
-	}()
-
 	lastUserIndex := queue.FirstUser()
 
 	// In stopping state scheduler is not accepting new queries, but still dispatching queries in the queues.
@@ -554,7 +541,8 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRequest, requestErr error) {
 	opts, err := s.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-		middleware.ClientUserHeaderInterceptor},
+		middleware.ClientUserHeaderInterceptor,
+	},
 		nil)
 	if err != nil {
 		level.Warn(s.log).Log("msg", "failed to create gRPC options for the connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)
@@ -667,7 +655,6 @@ func (s *Scheduler) running(ctx context.Context) error {
 }
 
 func (s *Scheduler) setRunState(isInSet bool) {
-
 	if isInSet {
 		if s.shouldRun.CAS(false, true) {
 			// Value was swapped, meaning this was a state change from stopped to running.
@@ -728,7 +715,6 @@ func SafeReadRing(s *Scheduler) ring.ReadRing {
 	}
 
 	return s.ring
-
 }
 
 func (s *Scheduler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {

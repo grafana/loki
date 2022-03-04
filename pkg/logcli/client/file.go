@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	logqllog "github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -31,9 +32,7 @@ const (
 	defaultMaxFileSize       = 20 * (1 << 20) // 20MB
 )
 
-var (
-	ErrNotSupported = errors.New("not supported")
-)
+var ErrNotSupported = errors.New("not supported")
 
 // FileClient is a type of LogCLI client that do LogQL on log lines from
 // the given file directly, instead get log lines from Loki servers.
@@ -54,7 +53,7 @@ func NewFileClient(r io.ReadCloser) *FileClient {
 		},
 	}
 
-	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r, labels: lbs}, &limiter{n: defaultMetricSeriesLimit})
+	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r, labels: lbs}, &limiter{n: defaultMetricSeriesLimit}, log.Logger)
 	return &FileClient{
 		r:           r,
 		orgID:       defaultOrgID,
@@ -62,7 +61,6 @@ func NewFileClient(r io.ReadCloser) *FileClient {
 		labels:      []string{defaultLabelKey},
 		labelValues: []string{defaultLabelValue},
 	}
-
 }
 
 func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
@@ -197,7 +195,7 @@ type querier struct {
 	labels labels.Labels
 }
 
-func (q *querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+func (q *querier) SelectLogs(_ context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := params.LogSelector()
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract selector for logs: %w", err)
@@ -206,7 +204,7 @@ func (q *querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract pipeline for logs: %w", err)
 	}
-	return newFileIterator(ctx, q.r, params, pipeline.ForStream(q.labels))
+	return newFileIterator(q.r, params, pipeline.ForStream(q.labels))
 }
 
 func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -214,7 +212,6 @@ func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 }
 
 func newFileIterator(
-	ctx context.Context,
 	r io.Reader,
 	params logql.SelectLogParams,
 	pipeline logqllog.StreamPipeline,
@@ -277,7 +274,6 @@ func newFileIterator(
 	}
 
 	return iter.NewStreamsIterator(
-		ctx,
 		streamResult,
 		params.Direction,
 	), nil

@@ -6,14 +6,12 @@ package instance
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -23,6 +21,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/util/test"
 )
 
 func TestConfig_Unmarshal_Defaults(t *testing.T) {
@@ -164,9 +164,7 @@ func TestRemoteWriteMetricInterceptor_AllValues(t *testing.T) {
 // instance of the WAL storage and testing that samples get written to it.
 // This test touches most of Instance and is enough for a basic integration test.
 func TestInstance(t *testing.T) {
-	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
-	require.NoError(t, err)
-	defer os.RemoveAll(walDir)
+	walDir := t.TempDir()
 
 	mockStorage := mockWalStorage{
 		series:    make(map[storage.SeriesRef]int),

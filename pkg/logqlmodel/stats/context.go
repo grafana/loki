@@ -132,15 +132,13 @@ func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration)
 		r.Ingester.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.HeadChunkLines
 	r.Summary.ExecTime = execTime.Seconds()
 	if execTime != 0 {
-		r.Summary.BytesProcessedPerSecond =
-			int64(float64(r.Summary.TotalBytesProcessed) /
-				execTime.Seconds())
-		r.Summary.LinesProcessedPerSecond =
-			int64(float64(r.Summary.TotalLinesProcessed) /
-				execTime.Seconds())
+		r.Summary.BytesProcessedPerSecond = int64(float64(r.Summary.TotalBytesProcessed) /
+			execTime.Seconds())
+		r.Summary.LinesProcessedPerSecond = int64(float64(r.Summary.TotalLinesProcessed) /
+			execTime.Seconds())
 	}
 	if queueTime != 0 {
-		r.Summary.QueueTime = int64(queueTime)
+		r.Summary.QueueTime = queueTime.Seconds()
 	}
 }
 
@@ -168,11 +166,20 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalReached += m.TotalReached
 }
 
+// Merge merges two results of statistics.
+// This will increase the total number of Subqueries.
 func (r *Result) Merge(m Result) {
+	r.Summary.Subqueries++
 	r.Querier.Merge(m.Querier)
 	r.Ingester.Merge(m.Ingester)
-	r.ComputeSummary(time.Duration(int64((r.Summary.ExecTime+m.Summary.ExecTime)*float64(time.Second))),
-		time.Duration(r.Summary.QueueTime+m.Summary.QueueTime))
+	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
+		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime))
+}
+
+// ConvertSecondsToNanoseconds converts time.Duration representation of seconds (float64)
+// into time.Duration representation of nanoseconds (int64)
+func ConvertSecondsToNanoseconds(seconds float64) time.Duration {
+	return time.Duration(int64(seconds * float64(time.Second)))
 }
 
 func (r Result) ChunksDownloadTime() time.Duration {
@@ -284,7 +291,7 @@ func (s Summary) Log(log log.Logger) {
 		"Summary.LinesProcessedPerSecond", s.LinesProcessedPerSecond,
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
 		"Summary.TotalLinesProcessed", s.TotalLinesProcessed,
-		"Summary.ExecTime", time.Duration(int64(s.ExecTime*float64(time.Second))),
-		"Summary.QueueTime", time.Duration(s.QueueTime),
+		"Summary.ExecTime", ConvertSecondsToNanoseconds(s.ExecTime),
+		"Summary.QueueTime", ConvertSecondsToNanoseconds(s.QueueTime),
 	)
 }

@@ -8,14 +8,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 type ExpirationChecker interface {
 	Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval)
-	IntervalMayHaveExpiredChunks(interval model.Interval) bool
+	IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool
 	MarkPhaseStarted()
 	MarkPhaseFailed()
 	MarkPhaseFinished()
@@ -24,7 +23,7 @@ type ExpirationChecker interface {
 
 type expirationChecker struct {
 	tenantsRetention         *TenantsRetention
-	latestRetentionStartTime model.Time
+	latestRetentionStartTime latestRetentionStartTime
 }
 
 type Limits interface {
@@ -57,16 +56,29 @@ func (e *expirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Tim
 }
 
 func (e *expirationChecker) MarkPhaseStarted() {
-	smallestRetentionPeriod := findSmallestRetentionPeriod(e.tenantsRetention.limits)
-	e.latestRetentionStartTime = model.Now().Add(-smallestRetentionPeriod)
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("smallest retention period %v", smallestRetentionPeriod))
+	e.latestRetentionStartTime = findLatestRetentionStartTime(model.Now(), e.tenantsRetention.limits)
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("overall smallest retention period %v, default smallest retention period %v",
+		e.latestRetentionStartTime.overall, e.latestRetentionStartTime.defaults))
 }
 
 func (e *expirationChecker) MarkPhaseFailed()   {}
 func (e *expirationChecker) MarkPhaseFinished() {}
 
-func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval) bool {
-	return interval.Start.Before(e.latestRetentionStartTime)
+func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
+	// when userID is empty, it means we are checking for common index table. In this case we use e.overallLatestRetentionStartTime.
+	latestRetentionStartTime := e.latestRetentionStartTime.overall
+	if userID != "" {
+		// when userID is not empty, it means we are checking for user index table.
+		latestRetentionStartTimeForUser, ok := e.latestRetentionStartTime.byUser[userID]
+		if ok {
+			// user has custom retention config, let us use user specific latest retention start time.
+			latestRetentionStartTime = latestRetentionStartTimeForUser
+		} else {
+			// user does not have custom retention config, let us use default latest retention start time.
+			latestRetentionStartTime = e.latestRetentionStartTime.defaults
+		}
+	}
+	return interval.Start.Before(latestRetentionStartTime)
 }
 
 type TenantsRetention struct {
@@ -113,27 +125,52 @@ Outer:
 	return globalRetention
 }
 
-func findSmallestRetentionPeriod(limits Limits) time.Duration {
-	defaultLimits := limits.DefaultLimits()
+type latestRetentionStartTime struct {
+	// defaults holds latest retention start time considering only default retention config.
+	// It is used to determine if user index table may have any expired chunks when the user does not have any custom retention config set.
+	defaults model.Time
+	// overall holds latest retention start time for all users considering both default and per user retention config.
+	// It is used to determine if common index table may have any expired chunks.
+	overall model.Time
+	// byUser holds latest retention start time considering only per user retention config.
+	// It is used to determine if user index table may have any expired chunks.
+	byUser map[string]model.Time
+}
 
-	smallestRetentionPeriod := defaultLimits.RetentionPeriod
+// findLatestRetentionStartTime returns the latest retention start time overall, just default config and by each user.
+func findLatestRetentionStartTime(now model.Time, limits Limits) latestRetentionStartTime {
+	// find the smallest retention period from default limits
+	defaultLimits := limits.DefaultLimits()
+	smallestDefaultRetentionPeriod := defaultLimits.RetentionPeriod
 	for _, streamRetention := range defaultLimits.StreamRetention {
-		if streamRetention.Period < smallestRetentionPeriod {
-			smallestRetentionPeriod = streamRetention.Period
+		if streamRetention.Period < smallestDefaultRetentionPeriod {
+			smallestDefaultRetentionPeriod = streamRetention.Period
 		}
 	}
 
-	for _, limit := range limits.AllByUserID() {
-		if limit.RetentionPeriod < smallestRetentionPeriod {
-			smallestRetentionPeriod = limit.RetentionPeriod
-		}
+	overallSmallestRetentionPeriod := smallestDefaultRetentionPeriod
+
+	// find the smallest retention period by user
+	limitsByUserID := limits.AllByUserID()
+	smallestRetentionPeriodByUser := make(map[string]model.Time, len(limitsByUserID))
+	for userID, limit := range limitsByUserID {
+		smallestRetentionPeriodForUser := limit.RetentionPeriod
 		for _, streamRetention := range limit.StreamRetention {
-			if streamRetention.Period < smallestRetentionPeriod {
-				smallestRetentionPeriod = streamRetention.Period
+			if streamRetention.Period < smallestRetentionPeriodForUser {
+				smallestRetentionPeriodForUser = streamRetention.Period
 			}
 		}
 
+		// update the overallSmallestRetentionPeriod if this user has smaller value
+		smallestRetentionPeriodByUser[userID] = now.Add(time.Duration(-smallestRetentionPeriodForUser))
+		if smallestRetentionPeriodForUser < overallSmallestRetentionPeriod {
+			overallSmallestRetentionPeriod = smallestRetentionPeriodForUser
+		}
 	}
 
-	return time.Duration(smallestRetentionPeriod)
+	return latestRetentionStartTime{
+		defaults: now.Add(time.Duration(-smallestDefaultRetentionPeriod)),
+		overall:  now.Add(time.Duration(-overallSmallestRetentionPeriod)),
+		byUser:   smallestRetentionPeriodByUser,
+	}
 }

@@ -10,8 +10,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/go-kit/log/level"
 )
 
 const pageContent = `
@@ -90,24 +88,51 @@ func init() {
 	pageTemplate = template.Must(t.Parse(pageContent))
 }
 
-func (r *Ring) forget(ctx context.Context, id string) error {
-	unregister := func(in interface{}) (out interface{}, retry bool, err error) {
-		if in == nil {
-			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
-		}
-
-		ringDesc := in.(*Desc)
-		ringDesc.RemoveIngester(id)
-		return ringDesc, true, nil
-	}
-	return r.KVClient.CAS(ctx, r.key, unregister)
+type ingesterDesc struct {
+	ID                  string   `json:"id"`
+	State               string   `json:"state"`
+	Address             string   `json:"address"`
+	HeartbeatTimestamp  string   `json:"timestamp"`
+	RegisteredTimestamp string   `json:"registered_timestamp"`
+	Zone                string   `json:"zone"`
+	Tokens              []uint32 `json:"tokens"`
+	NumTokens           int      `json:"-"`
+	Ownership           float64  `json:"-"`
 }
 
-func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+type httpResponse struct {
+	Ingesters  []ingesterDesc `json:"shards"`
+	Now        time.Time      `json:"now"`
+	ShowTokens bool           `json:"-"`
+}
+
+type ringAccess interface {
+	casRing(ctx context.Context, f func(in interface{}) (out interface{}, retry bool, err error)) error
+	getRing(context.Context) (*Desc, error)
+}
+
+type ringPageHandler struct {
+	r               ringAccess
+	heartbeatPeriod time.Duration
+}
+
+func newRingPageHandler(r ringAccess, heartbeatPeriod time.Duration) *ringPageHandler {
+	return &ringPageHandler{
+		r:               r,
+		heartbeatPeriod: heartbeatPeriod,
+	}
+}
+
+func (h *ringPageHandler) handle(w http.ResponseWriter, req *http.Request) {
 	if req.Method == http.MethodPost {
 		ingesterID := req.FormValue("forget")
-		if err := r.forget(req.Context(), ingesterID); err != nil {
-			level.Error(r.logger).Log("msg", "error forgetting instance", "err", err)
+		if err := h.forget(req.Context(), ingesterID); err != nil {
+			http.Error(
+				w,
+				fmt.Errorf("error forgetting instance '%s': %w", ingesterID, err).Error(),
+				http.StatusInternalServerError,
+			)
+			return
 		}
 
 		// Implement PRG pattern to prevent double-POST and work with CSRF middleware.
@@ -122,23 +147,26 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
+	ringDesc, err := h.r.getRing(req.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, ownedTokens := ringDesc.countTokens()
 
 	ingesterIDs := []string{}
-	for id := range r.ringDesc.Ingesters {
+	for id := range ringDesc.Ingesters {
 		ingesterIDs = append(ingesterIDs, id)
 	}
 	sort.Strings(ingesterIDs)
 
 	now := time.Now()
-	ingesters := []interface{}{}
-	_, owned := r.countTokens()
+	var ingesters []ingesterDesc
 	for _, id := range ingesterIDs {
-		ing := r.ringDesc.Ingesters[id]
+		ing := ringDesc.Ingesters[id]
 		heartbeatTimestamp := time.Unix(ing.Timestamp, 0)
 		state := ing.State.String()
-		if !r.IsHealthy(&ing, Reporting, now) {
+		if !ing.IsHealthy(Reporting, h.heartbeatPeriod, now) {
 			state = unhealthy
 		}
 
@@ -148,17 +176,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			registeredTimestamp = ing.GetRegisteredAt().String()
 		}
 
-		ingesters = append(ingesters, struct {
-			ID                  string   `json:"id"`
-			State               string   `json:"state"`
-			Address             string   `json:"address"`
-			HeartbeatTimestamp  string   `json:"timestamp"`
-			RegisteredTimestamp string   `json:"registered_timestamp"`
-			Zone                string   `json:"zone"`
-			Tokens              []uint32 `json:"tokens"`
-			NumTokens           int      `json:"-"`
-			Ownership           float64  `json:"-"`
-		}{
+		ingesters = append(ingesters, ingesterDesc{
 			ID:                  id,
 			State:               state,
 			Address:             ing.Addr,
@@ -167,17 +185,13 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			Tokens:              ing.Tokens,
 			Zone:                ing.Zone,
 			NumTokens:           len(ing.Tokens),
-			Ownership:           (float64(owned[id]) / float64(math.MaxUint32)) * 100,
+			Ownership:           (float64(ownedTokens[id]) / float64(math.MaxUint32)) * 100,
 		})
 	}
 
 	tokensParam := req.URL.Query().Get("tokens")
 
-	renderHTTPResponse(w, struct {
-		Ingesters  []interface{} `json:"shards"`
-		Now        time.Time     `json:"now"`
-		ShowTokens bool          `json:"-"`
-	}{
+	renderHTTPResponse(w, httpResponse{
 		Ingesters:  ingesters,
 		Now:        now,
 		ShowTokens: tokensParam == "true",
@@ -186,7 +200,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 // RenderHTTPResponse either responds with json or a rendered html page using the passed in template
 // by checking the Accepts header
-func renderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Template, r *http.Request) {
+func renderHTTPResponse(w http.ResponseWriter, v httpResponse, t *template.Template, r *http.Request) {
 	accept := r.Header.Get("Accept")
 	if strings.Contains(accept, "application/json") {
 		writeJSONResponse(w, v)
@@ -199,8 +213,21 @@ func renderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Templa
 	}
 }
 
+func (h *ringPageHandler) forget(ctx context.Context, id string) error {
+	unregister := func(in interface{}) (out interface{}, retry bool, err error) {
+		if in == nil {
+			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
+		}
+
+		ringDesc := in.(*Desc)
+		ringDesc.RemoveIngester(id)
+		return ringDesc, true, nil
+	}
+	return h.r.casRing(ctx, unregister)
+}
+
 // WriteJSONResponse writes some JSON as a HTTP response.
-func writeJSONResponse(w http.ResponseWriter, v interface{}) {
+func writeJSONResponse(w http.ResponseWriter, v httpResponse) {
 	w.Header().Set("Content-Type", "application/json")
 
 	data, err := json.Marshal(v)

@@ -9,12 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/prometheus/prometheus/config"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql"
+	ruler "github.com/grafana/loki/pkg/ruler/base"
+	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -304,7 +305,7 @@ func TestNonMetricQuery(t *testing.T) {
 	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.Nil(t, err)
 
-	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides)
+	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides, log.Logger)
 	queryFunc := engineQueryFunc(engine, overrides, fakeChecker{}, "fake")
 
 	_, err = queryFunc(context.TODO(), `{job="nginx"}`, time.Now())

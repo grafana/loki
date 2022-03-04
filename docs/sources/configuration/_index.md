@@ -72,8 +72,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 - `<labelvalue>` : a string of unicode characters
 - `<filename>` : a valid path relative to current working directory or an absolute path.
 - `<host>` : a valid string consisting of a hostname or IP followed by an optional port number
-- `<string>` : a regular string
-- `<secret>` : a regular string that is a secret, such as a password
+- `<string>` : a string
+- `<secret>` : a string that represents a secret, such as a password
 
 ### Supported contents and default values of `loki.yaml`
 
@@ -92,6 +92,12 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Enables authentication through the X-Scope-OrgID header, which must be present
 # if true. If false, the OrgID will always be set to "fake".
 [auth_enabled: <boolean> | default = true]
+
+# The amount of virtual memory in bytes to reserve as ballast in order to optimize
+# garbage collection. Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at
+# the cost of heap size. The ballast will not consume physical memory, because it is never read from.
+# It will, however, distort metrics, because it is counted as live memory.
+[ballast_bytes: <int> | default = 0]
 
 # Configures the server of the launched module(s).
 [server: <server>]
@@ -158,6 +164,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # If a more specific configuration is given in other sections,
 # the related configuration within this section will be ignored.
 [common: <common>]
+
+# Configuration for usage report
+[analytics: <analytics>]
 ```
 
 ## server
@@ -276,16 +285,20 @@ The `querier` block configures the Loki Querier.
 # Maximum lookback beyond which queries are not sent to ingester.
 # 0 means all queries are sent to ingester.
 # CLI flag: -querier.query-ingesters-within
-[query_ingesters_within: <duration> | default = 0s]
+[query_ingesters_within: <duration> | default = 3h]
 
 # The maximum number of concurrent queries allowed.
 # CLI flag: -querier.max-concurrent
-[max_concurrent: <int> | default = 20]
+[max_concurrent: <int> | default = 10]
 
 # Only query the store, do not attempt to query any ingesters,
 # useful for running a standalone querier pool opearting only against stored data.
 # CLI flag: -querier.query-store-only
 [query_store_only: <boolean> | default = false]
+
+# Allow queries for multiple tenants.
+# CLI flag: -querier.multi-tenant-queries-enabled
+[multi_tenant_queries_enabled: <boolean> | default = false]
 
 # Configuration options for the LogQL engine.
 engine:
@@ -332,7 +345,17 @@ The `frontend` block configures the Loki query-frontend.
 # Maximum number of outstanding requests per tenant per frontend; requests
 # beyond this error with HTTP 429.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
-[max_outstanding_per_tenant: <int> | default = 100]
+[max_outstanding_per_tenant: <int> | default = 2048]
+
+# In the event a tenant is repeatedly sending queries that lead the querier to crash
+# or be killed due to an out-of-memory error, the crashed querier will be disconnected
+# from the query frontend and a new querier will be immediately assigned to the tenant’s shard.
+# This invalidates the assumption that shuffle sharding can be used to reduce the
+# impact on tenants. This option mitigates the impact by configuring a delay between when
+# a querier disconnects because of a crash and when the crashed querier is actually removed
+# from the tenant's shard.
+# CLI flag: -query-frontend.querier-forget-delay
+[querier_forget_delay: <duration> | default = 0s]
 
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
@@ -359,7 +382,7 @@ The `frontend` block configures the Loki query-frontend.
 # query-scheduler instances.
 # Also used to determine how often to poll the scheduler-ring for addresses if configured.
 # CLI flag: -frontend.scheduler-dns-lookup-period
-[scheduler_dns_lookup_period: <duration> | default = 3s]
+[scheduler_dns_lookup_period: <duration> | default = 10s]
 
 # Number of concurrent workers forwarding queries to single query-scheduler.
 # CLI flag: -frontend.scheduler-worker-concurrency
@@ -396,7 +419,7 @@ results_cache:
 # Perform query parallelisations based on storage sharding configuration and
 # query ASTs. This feature is supported only by the chunks storage engine.
 # CLI flag: -querier.parallelise-shardable-queries
-[parallelise_shardable_queries: <boolean> | default = false]
+[parallelise_shardable_queries: <boolean> | default = true]
 ```
 
 ## ruler
@@ -407,6 +430,10 @@ The `ruler` block configures the Loki ruler.
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
 [external_url: <url> | default = ]
+
+# Labels to add to all alerts
+external_labels:
+  [<labelname>: <labelvalue> ...]
 
 ruler_client:
   # Path to the client certificate file, which will be used for authenticating
@@ -456,8 +483,8 @@ storage:
   # Configures backend rule storage for a local file system directory.
   [local: <local_storage_config>]
 
-  # The `hedging_config` configures how to hedge requests for the storage.
-  [hedging: <hedging_config>]
+  # The `hedging` block configures how to hedge storage requests.
+  [hedging: <hedging>]
 
 # Remote-write configuration to send rule samples to a Prometheus remote-write endpoint.
 remote_write:
@@ -545,7 +572,7 @@ remote_write:
     [proxy_url: <string>]
 
     # Configure whether HTTP requests follow HTTP 3xx redirects.
-    [follow_redirects: <bool> | default = true]
+    [follow_redirects: <boolean> | default = true]
 
     # Configures the queue used to write to remote storage.
     queue_config:
@@ -640,7 +667,57 @@ wal_cleaner:
 
 # Ring used by Loki ruler.
 # The CLI flags prefix for this block config is ruler.ring
-[ring: <ring_config>]
+ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -<prefix>.store
+    [store: <string> | default = "memberlist"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -<prefix>.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # The consul_config configures the consul client.
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -<prefix>.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -<prefix>.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -<prefix>.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -<prefix>.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Interval between heartbeats sent to the ring. 0 = disabled.
+  # CLI flag: -<prefix>.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which ruler ring members are considered unhealthy
+  # within the ring. 0 = never (timeout disabled).
+  # CLI flag: -<prefix>.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # Name of network interface to read addresses from.
+  # CLI flag: -<prefix>.instance-interface-names
+  [instance_interface_names: <list of string> | default = [<private network interfaces>]]
+
+  # The number of tokens the lifecycler will generate and put into the ring if
+  # it joined without transferring tokens from another lifecycler.
+  # CLI flag: -<prefix>.num-tokens
+  [num_tokens: <int> | default = 128]
 ```
 
 ## azure_storage_config
@@ -717,9 +794,9 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 # CLI flag: -<prefix>.gcs.request-timeout
 [request_timeout: <duration> | default = 0s]
 
-# Enable HTTP/2 when connecting to GCS.
+# Enable HTTP/2 when connecting to GCS. This configuration only applies to GET operations.
 # CLI flag: -<prefix>.gcs.enable-http2
-[enable_http2: <bool> | default = true]
+[enable_http2: <boolean> | default = true]
 ```
 
 ## s3_storage_config
@@ -851,28 +928,30 @@ The `swift_storage_config` configures Swift as a general storage for different d
 [container_name: <string> | default = "cortex"]
 ```
 
-## hedging_config
+## hedging
 
-The `hedging_config` configures how to hedge requests for the storage.
+The `hedging` block configures how to hedge storage requests.
 
-Hedged requests is sending a secondary request until the first request has been outstanding for more than a configure expected latency
-for this class of requests.
-You should configure the latency based on your p99 of object store requests.
+The hedging implementation sends a second storage request once a first request has
+been outstanding for more than a configured expected latency for this class of requests.
+Calculate your latency to be the 99th percentile of object storage response times.
 
 ```yaml
-# Optional. Default is 0 (disabled)
+# An optional duration that sets the quantity of time after a first storage request
+# is sent and before a second request is sent, when no response is received for the first
+# storage request. The recommended duration is the measured 99th percentile of object
+# storage response times, to reduce long tail latency. This option is most impactful
+# when used with queriers, and has minimal to no impact on other components.
+# The default value of 0 disables the hedging of storage requests.
 # Example: "at: 500ms"
-# If set to a non-zero value another request will be issued at the provided duration. Recommended to
-# be set to p99 of object store requests to reduce long tail latency. This setting is most impactful when
-# used with queriers and has minimal to no impact on other pieces.
 [at: <duration> | default = 0]
-# Optional. Default is 2
-# The maximum amount of hedge requests to be issued for a given request.
-[up_to: <int> | default = 2]
-# Optional. Default is 5
-# The maximum amount of hedged requests to be issued per seconds.
-[max_per_second: <int> | default = 5]
 
+# An optional maximum quantity of hedged requests to be issued for a given request.
+[up_to: <int> | default = 2]
+
+# Caps the rate of hedged requests by optionally defining the maximum quantity of
+# hedged requests issued per second.
+[max_per_second: <int> | default = 5]
 ```
 
 ## local_storage_config
@@ -897,6 +976,10 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # Number of simultaneous queries to process.
 # CLI flag: -querier.worker-parallelism
 [parallelism: <int> | default = 10]
+
+# Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.
+# CLI flag: -querier.worker-match-max-concurrent
+[match_max_concurrent: <boolean> | default = true]
 
 # How often to query the frontend_address DNS to resolve frontend addresses.
 # Also used to determine how often to poll the scheduler-ring for addresses if configured.
@@ -931,10 +1014,11 @@ pool_config:
   # How quickly a dead client will be removed after it has been detected
   # to disappear. Set this to a value to allow time for a secondary
   # health check to recover the missing client.
-  [remotetimeout: <duration>]
+  # CLI flag: -ingester.client.healthcheck-timeout
+  [remote_timeout: <duration> | default = 1s]
 
 # The remote request timeout on the client side.
-# CLI flag: -ingester.client.healthcheck-timeout
+# CLI flag: -ingester.client.timeout
 [remote_timeout: <duration> | default = 5s]
 
 # Configures how the gRPC connection to ingesters work as a client
@@ -991,29 +1075,33 @@ lifecycler:
   # CLI flag: -ingester.join-after
   [join_after: <duration> | default = 0s]
 
+  # Observe tokens after generating to resolve collisions. Useful when using a gossip ring.
+  # CLI flag: -ingester.observe-period
+  [observe_period: <duration> | default = 0s]
+
   # Minimum duration to wait before becoming ready. This is to work around race
   # conditions with ingesters exiting and updating the ring.
   # CLI flag: -ingester.min-ready-duration
-  [min_ready_duration: <duration> | default = 1m]
+  [min_ready_duration: <duration> | default = 15s]
 
   # Name of network interfaces to read addresses from.
   # CLI flag: -ingester.lifecycler.interface
   interface_names:
 
-    - [<string> ... | default = ["eth0", "en0"]]
+    - [<string> ... | default = [<private network interfaces>]]
 
   # Duration to sleep before exiting to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
-  [final_sleep: <duration> | default = 0s]
+  [final_sleep: <duration> | default = 30s]
 
 # Number of times to try and transfer chunks when leaving before
 # falling back to flushing to the store. Zero = no transfers are done.
 # CLI flag: -ingester.max-transfer-retries
-[max_transfer_retries: <int> | default = 10]
+[max_transfer_retries: <int> | default = 0]
 
 # How many flushes can happen concurrently from each stream.
 # CLI flag: -ingester.concurrent-flushes
-[concurrent_flushes: <int> | default = 16]
+[concurrent_flushes: <int> | default = 32]
 
 # How often should the ingester see if there are any blocks to flush
 # CLI flag: -ingester.flush-check-period
@@ -1025,7 +1113,7 @@ lifecycler:
 
 # How long chunks should be retained in-memory after they've been flushed.
 # CLI flag: -ingester.chunks-retain-period
-[chunk_retain_period: <duration> | default = 15m]
+[chunk_retain_period: <duration> | default = 0s]
 
 # How long chunks should sit in-memory with no updates before
 # being flushed if they don't hit the max block size. This means
@@ -1042,10 +1130,10 @@ lifecycler:
 # A target _compressed_ size in bytes for chunks.
 # This is a desired size not an exact size, chunks may be slightly bigger
 # or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period)
-# The default value of 0 for this will create chunks with a fixed 10 blocks,
+# A value of 0 creates chunks with a fixed 10 blocks,
 # A non zero value will create chunks with a variable number of blocks to meet the target size.
 # CLI flag: -ingester.chunk-target-size
-[chunk_target_size: <int> | default = 0]
+[chunk_target_size: <int> | default = 1572864]
 
 # The compression algorithm to use for chunks. (supported: gzip, lz4, snappy)
 # You should choose your algorithm depending on your need:
@@ -1073,7 +1161,7 @@ lifecycler:
 # The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this,
 # the current chunk will be flushed to the store and a new chunk created.
 # CLI flag: -ingester.max-chunk-age
-[max_chunk_age: <duration> | default = 1h]
+[max_chunk_age: <duration> | default = 2h]
 
 # How far in the past an ingester is allowed to query the store for data.
 # This is only useful for running multiple Loki binaries with a shared ring
@@ -1482,7 +1570,7 @@ cassandra:
   # Instruct the Cassandra driver to not attempt to get host
   # info from the system.peers table.
   # CLI flag: -cassandra.disable-initial-host-lookup
-  [disable_initial_host_lookup: <bool> | default = false]
+  [disable_initial_host_lookup: <boolean> | default = false]
 
   # Use SSL when connecting to Cassandra instances.
   # CLI flag: -cassandra.ssl
@@ -1490,7 +1578,7 @@ cassandra:
 
   # Require SSL certificate validation when SSL is enabled.
   # CLI flag: -cassandra.host-verification
-  [host_verification: <bool> | default = true]
+  [host_verification: <boolean> | default = true]
 
   # Path to certificate file to verify the peer when SSL is enabled.
   # CLI flag: -cassandra.ca-path
@@ -1498,7 +1586,7 @@ cassandra:
 
   # Enable password authentication when connecting to Cassandra.
   # CLI flag: -cassandra.auth
-  [auth: <bool> | default = false]
+  [auth: <boolean> | default = false]
 
   # Username for password authentication when auth is true.
   # CLI flag: -cassandra.username
@@ -1708,7 +1796,7 @@ memcached:
 
   # Configures how many keys to fetch in each batch request.
   # CLI flag: -<prefix>.memcached.batchsize
-  batch_size: <int>
+  batch_size: <int> | default = 1024
 
   # Maximum active requests to memcached.
   # CLI flag: -<prefix>.memcached.parallelism
@@ -1744,7 +1832,27 @@ memcached_client:
 
   # Whether or not to use a consistent hash to discover multiple memcached servers.
   # CLI flag: -<prefix>.memcached.consistent-hash
-  [consistent_hash: <bool>]
+  [consistent_hash: <boolean> | default = true]
+
+  # Trip the circuit breaker after this number of consecutive dial failures.
+  # A value of 0 disables the circuit breaker.
+  # CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
+  [circuit_breaker_consecutive_failures: <int> | default = 10]
+
+  # Duration the circuit breaker remains open after tripping.
+  # If set to 0, the duration is 60 seconds.
+  # CLI flag: -<prefix>.memcached.circuit-breaker-timeout
+  [circuit_breaker_timeout: <duration> | default = 10s]
+
+  # Reset the circuit breaker counts after this duration.
+  # A value of 0 never resets the circuit breaker.
+  # CLI flag: -<prefix>.memcached.circuit-breaker-interval
+  [circuit_breaker_interval: <duration> | default = 10s]
+
+  # The maximum size of an item stored in memcached.
+  # Bigger items are not stored. If set to 0, no maximum size is enforced.
+  # CLI flag: -<prefix>.memcached.max-item-size
+  [max_item_size: <int> | default = 0]
 
 redis:
   # Redis Server or Cluster configuration endpoint to use for caching. A comma-separated list of endpoints
@@ -1758,7 +1866,7 @@ redis:
 
   # Maximum time to wait before giving up on redis requests.
   # CLI flag: -<prefix>.redis.timeout
-  [timeout: <duration> | default = 100ms]
+  [timeout: <duration> | default = 500ms]
 
   # How long keys stay in the redis.
   # CLI flag: -<prefix>.redis.expiration
@@ -1766,7 +1874,7 @@ redis:
 
   # Database index.
   # CLI flag: -<prefix>.redis.db
-  [db: <int>]
+  [db: <int> | default = 0]
 
   # Maximum number of connections in the pool.
   # CLI flag: -<prefix>.redis.pool-size
@@ -1779,6 +1887,10 @@ redis:
   # Enables connecting to redis with TLS.
   # CLI flag: -<prefix>.redis.tls-enabled
   [tls_enabled: <boolean> | default = false]
+
+  # Skip validating server certificate.
+  # CLI flag: -<prefix>.redis.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 
   # Close connections after remaining idle for this duration.
   # If the value is zero, then idle connections are not closed.
@@ -1800,9 +1912,15 @@ fifocache:
   # CLI flag: -<prefix>.fifocache.max-size-items
   [max_size_items: <int> | default = 0]
 
-  # The expiry duration for the cache.
+  # Deprecated: The expiry duration for the cache. Use `-<prefix>.fifocache.ttl`.
+  # The default value of 0 disables expiration.
   # CLI flag: -<prefix>.fifocache.duration
-  [validity: <duration> | default = 1h]
+  [validity: <duration>]
+
+  # The time for items to live in the cache before those items are purged.
+  # The value of 0 disables auto-expiration.
+  # CLI flag: -<prefix>.fifocache.ttl
+  [ttl: <duration> | default = 1h]
 ```
 
 ## schema_config
@@ -1893,7 +2011,7 @@ compacts index shards to more performant forms.
 
 # (Experimental) Activate custom (per-stream,per-tenant) retention.
 # CLI flag: -boltdb.shipper.compactor.retention-enabled
-[retention_enabled: <bool> | default = false]
+[retention_enabled: <boolean> | default = false]
 
 # Delay after which chunks will be fully deleted during retention.
 # CLI flag: -boltdb.shipper.compactor.retention-delete-delay
@@ -1965,7 +2083,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 
 # Whether or not old samples will be rejected.
 # CLI flag: -validation.reject-old-samples
-[reject_old_samples: <bool> | default = true]
+[reject_old_samples: <boolean> | default = true]
 
 # Maximum accepted sample age before rejecting.
 # CLI flag: -validation.reject-old-samples.max-age
@@ -1980,14 +2098,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -validation.enforce-metric-name
 [enforce_metric_name: <boolean> | default = true]
 
-# Maximum number of active streams per user, per ingester. 0 to disable.
-# CLI flag: -ingester.max-streams-per-user
-[max_streams_per_user: <int> | default = 0]
-
 # Maximum line size on ingestion path. Example: 256kb.
-# There is no limit when unset.
+# There is no limit when unset or set to 0.
 # CLI flag: -distributor.max-line-size
-[max_line_size: <string> | default = none ]
+[max_line_size: <string> | default = 0 ]
 
 # Truncate log lines when they exceed max_line_size.
 # CLI flag: -distributor.max-line-size-truncate
@@ -1996,6 +2110,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit
 [max_entries_limit_per_query: <int> | default = 5000 ]
+
+# Maximum number of active streams per user, per ingester. 0 to make it unlimited.
+# CLI flag: -ingester.max-streams-per-user
+[max_streams_per_user: <int> | default 0]
 
 # Maximum number of active streams per user, across the cluster. 0 to disable.
 # When the global limit is enabled, each ingester is configured with a dynamic
@@ -2006,7 +2124,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 
 # When true, out-of-order writes are accepted.
 # CLI flag: -ingester.unordered-writes
-[unordered_writes: <bool> | default = true]
+[unordered_writes: <boolean> | default = true]
 
 # Maximum number of chunks that can be fetched by a single query.
 # CLI flag: -store.query-chunk-limit
@@ -2113,7 +2231,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 [max_query_lookback: <duration> | default = 0]
 
 # Disable recording rules remote-write.
-[ruler_remote_write_disabled: <bool> | default = false]
+[ruler_remote_write_disabled: <boolean> | default = false]
 
 # The URL of the endpoint to send samples to.
 [ruler_remote_write_url: <string>]
@@ -2153,7 +2271,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 [ruler_remote_write_queue_max_backoff: <duration>]
 # Retry upon receiving a 429 status code from the remote-write storage.
 # This is experimental and might change in the future.
-[ruler_remote_write_queue_retry_on_ratelimit: <bool>]
+[ruler_remote_write_queue_retry_on_ratelimit: <boolean>]
 
 # Limit queries that can be sharded.
 # Queries within the time range of now and now minus this sharding lookback
@@ -2162,12 +2280,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.min-sharding-lookback
 [min_sharding_lookback: <duration> | default = 0s]
 
-# Split queries by an interval and execute in parallel, 0 disables it. You
-# should use in multiple of 24 hours (same as the storage bucketing scheme),
-# to avoid queriers downloading and processing the same chunks. This also
-# determines how cache keys are chosen when result caching is enabled
+# Split queries by an interval and execute in parallel, any value less than zero disables it.
+# This also determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
-[split_queries_by_interval: <duration> | default = 0s]
+[split_queries_by_interval: <duration> | default = 30m]
 ```
 
 ### grpc_client_config
@@ -2198,7 +2314,7 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 
 # Enable backoff and retry when a rate limit is hit.
 # CLI flag: -<prefix>.backoff-on-ratelimits
-[backoff_on_ratelimits: <bool> | default = false]
+[backoff_on_ratelimits: <boolean> | default = false]
 
 # Configures backoff when enabled.
 backoff_config:
@@ -2376,7 +2492,7 @@ This way, one doesn't have to replicate configuration in multiple places.
 # If "instance_interface_names" under the common ring section is configured,
 # this common "instance_interface_names" is only applied to the frontend, but not for
 # ring related components (ex: distributor, ruler, etc).
-[instance_interface_names: <list of string>]
+[instance_interface_names: <list of string> | default = [<private network interfaces>]]
 
 # A common address used by Loki components to advertise their address.
 # If a more specific "instance_addr" is set, this is ignored.
@@ -2390,6 +2506,16 @@ This way, one doesn't have to replicate configuration in multiple places.
 # to be used by the distributor's ring, but only if the distributor's ring itself
 # doesn't have a `heartbeat_period` set.
 [ring: <ring>]
+```
+
+## analytics
+
+The `analytics` block configures the reporting of Loki analytics to grafana.com
+
+```yaml
+# When true, enables usage reporting.
+# CLI flag: -reporting.enabled
+[reporting_enabled: <boolean>: default = true]
 ```
 
 ### storage
@@ -2492,7 +2618,7 @@ kvstore:
 
 # Name of network interface to read addresses from.
 # CLI flag: -<prefix>.instance-interface-names
-[instance_interface_names: <list of string> | default = [eth0 en0]]
+[instance_interface_names: <list of string> | default = [<private network interfaces>]]
 
 # IP address to advertise in the ring.
 # CLI flag: -<prefix>.instance-addr

@@ -5,28 +5,27 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
-	DefaultDownstreamConcurrency = 32
+	DefaultDownstreamConcurrency = 128
 )
 
 type DownstreamHandler struct {
-	next queryrange.Handler
+	next queryrangebase.Handler
 }
 
-func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrange.Request {
+func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebase.Request {
 	if params.Start() == params.End() {
 		return &LokiInstantRequest{
 			Query:     params.Query(),
@@ -49,6 +48,12 @@ func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrange.Re
 	}
 }
 
+// Note: After the introduction of the LimitedRoundTripper,
+// bounding concurrency in the downstreamer is mostly redundant
+// The reason we don't remove it is to prevent malicious queries
+// from creating an unreasonably large number of goroutines, such as
+// the case of a query like `a / a / a / a / a ..etc`, which could try
+// to shard each leg, quickly dispatching an unreasonable number of goroutines.
 func (h DownstreamHandler) Downstreamer() logql.Downstreamer {
 	p := DefaultDownstreamConcurrency
 	locks := make(chan struct{}, p)
@@ -66,7 +71,7 @@ func (h DownstreamHandler) Downstreamer() logql.Downstreamer {
 type instance struct {
 	parallelism int
 	locks       chan struct{}
-	handler     queryrange.Handler
+	handler     queryrangebase.Handler
 }
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
@@ -146,7 +151,7 @@ func (in instance) For(
 }
 
 // convert to matrix
-func sampleStreamToMatrix(streams []queryrange.SampleStream) parser.Value {
+func sampleStreamToMatrix(streams []queryrangebase.SampleStream) parser.Value {
 	xs := make(promql.Matrix, 0, len(streams))
 	for _, stream := range streams {
 		x := promql.Series{}
@@ -168,7 +173,7 @@ func sampleStreamToMatrix(streams []queryrange.SampleStream) parser.Value {
 	return xs
 }
 
-func sampleStreamToVector(streams []queryrange.SampleStream) parser.Value {
+func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 	xs := make(promql.Vector, 0, len(streams))
 	for _, stream := range streams {
 		x := promql.Sample{}
@@ -187,7 +192,7 @@ func sampleStreamToVector(streams []queryrange.SampleStream) parser.Value {
 	return xs
 }
 
-func ResponseToResult(resp queryrange.Response) (logqlmodel.Result, error) {
+func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 	switch r := resp.(type) {
 	case *LokiResponse:
 		if r.Error != "" {

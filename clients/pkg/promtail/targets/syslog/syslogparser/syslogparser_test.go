@@ -34,6 +34,23 @@ func TestParseStream_OctetCounting(t *testing.T) {
 	require.Equal(t, "Second", *results[1].Message.(*rfc5424.SyslogMessage).Message)
 }
 
+func TestParseStream_ValidParseError(t *testing.T) {
+	// This message can not parse fully but is valid when using the BestEffort Parser Option.
+	r := strings.NewReader("17 <13>1       First")
+
+	results := make([]*syslog.Result, 0)
+	cb := func(res *syslog.Result) {
+		results = append(results, res)
+	}
+
+	err := syslogparser.ParseStream(r, cb, defaultMaxMessageLength)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, len(results))
+	require.EqualError(t, results[0].Error, "expecting a RFC3339MICRO timestamp or a nil value [col 6]")
+	require.True(t, results[0].Message.(*rfc5424.SyslogMessage).Valid())
+}
+
 func TestParseStream_OctetCounting_LongMessage(t *testing.T) {
 	r := strings.NewReader("8198 <13>1 - - - - - - First")
 

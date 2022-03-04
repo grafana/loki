@@ -2,17 +2,13 @@ package storage
 
 import (
 	"context"
-	"io/ioutil"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
-	"os"
 	"path"
 	"runtime"
 	"testing"
 	"time"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/stretchr/testify/assert"
 
@@ -32,6 +28,7 @@ import (
 	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -40,7 +37,8 @@ var (
 	start      = model.Time(1523750400000)
 	m          runtime.MemStats
 	ctx        = user.InjectOrgID(context.Background(), "fake")
-	chunkStore = getLocalStore()
+	cm         = storage.NewClientMetrics()
+	chunkStore = getLocalStore(cm)
 )
 
 // go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
@@ -182,7 +180,7 @@ func printHeap(b *testing.B, show bool) {
 	}
 }
 
-func getLocalStore() Store {
+func getLocalStore(cm storage.ClientMetrics) Store {
 	limits, err := validation.NewOverrides(validation.Limits{
 		MaxQueryLength: model.Duration(6000 * time.Hour),
 	}, nil)
@@ -218,7 +216,7 @@ func getLocalStore() Store {
 	chunkStore, err := storage.NewStore(
 		storeConfig.Config,
 		chunk.StoreConfig{},
-		schemaConfig.SchemaConfig, limits, nil, nil, util_log.Logger)
+		schemaConfig.SchemaConfig, limits, cm, nil, nil, util_log.Logger)
 	if err != nil {
 		panic(err)
 	}
@@ -787,12 +785,7 @@ type timeRange struct {
 }
 
 func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "multiple-boltdb-shippers")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+	tempDir := t.TempDir()
 
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
@@ -843,13 +836,14 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		},
 	}
 
-	RegisterCustomIndexClients(&config, nil)
+	RegisterCustomIndexClients(&config, cm, nil)
 
 	chunkStore, err := storage.NewStore(
 		config.Config,
 		chunk.StoreConfig{},
 		schemaConfig.SchemaConfig,
 		limits,
+		cm,
 		nil,
 		nil,
 		util_log.Logger,
@@ -885,7 +879,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		err := store.PutOne(ctx, chk.From, chk.Through, chk)
 		require.NoError(t, err)
 
-		addedChunkIDs[chk.ExternalKey()] = struct{}{}
+		addedChunkIDs[schemaConfig.ExternalKey(chk)] = struct{}{}
 	}
 
 	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
@@ -896,6 +890,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		chunk.StoreConfig{},
 		schemaConfig.SchemaConfig,
 		limits,
+		cm,
 		nil,
 		nil,
 		util_log.Logger,
@@ -908,7 +903,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	defer store.Stop()
 
 	// get all the chunks from both the stores
-	chunks, err := store.Get(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName)...)
+	chunks, err := store.Get(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
 	require.NoError(t, err)
 
 	// we get common chunk twice because it is indexed in both the stores
@@ -916,7 +911,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 
 	// check whether we got back all the chunks which were added
 	for i := range chunks {
-		_, ok := addedChunkIDs[chunks[i].ExternalKey()]
+		_, ok := addedChunkIDs[schemaConfig.ExternalKey(chunks[i])]
 		require.True(t, ok)
 	}
 }
@@ -938,9 +933,10 @@ func parseDate(in string) time.Time {
 	return t
 }
 
-func buildTestStreams(labels string, tr timeRange) logproto.Stream {
+func buildTestStreams(labels labels.Labels, tr timeRange) logproto.Stream {
 	stream := logproto.Stream{
-		Labels:  labels,
+		Labels:  labels.String(),
+		Hash:    labels.Hash(),
 		Entries: []logproto.Entry{},
 	}
 

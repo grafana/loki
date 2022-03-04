@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,10 +13,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
-
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const userID = "userID"
@@ -114,7 +114,17 @@ func TestChunkCodec(t *testing.T) {
 			encoded, err := c.chunk.Encoded()
 			require.NoError(t, err)
 
-			have, err := ParseExternalKey(userID, c.chunk.ExternalKey())
+			s := SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v11",
+						RowShards: 16,
+					},
+				},
+			}
+
+			have, err := ParseExternalKey(userID, s.ExternalKey(c.chunk))
 			require.NoError(t, err)
 
 			buf := make([]byte, len(encoded))
@@ -167,7 +177,17 @@ func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
 	haveEncoded, _ := have.Encoded()
 	wantEncoded, _ := want.Encoded()
 	require.Equal(t, haveEncoded, wantEncoded)
-	require.Equal(t, have.ExternalKey(), want.ExternalKey())
+
+	s := SchemaConfig{
+		Configs: []PeriodConfig{
+			{
+				From:      DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+	require.Equal(t, s.ExternalKey(have), s.ExternalKey(want))
 }
 
 func TestParseExternalKey(t *testing.T) {
@@ -184,6 +204,15 @@ func TestParseExternalKey(t *testing.T) {
 		}},
 
 		{key: userID + "/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{
+			UserID:      userID,
+			Fingerprint: model.Fingerprint(2),
+			From:        model.Time(655200000),
+			Through:     model.Time(655200000),
+			ChecksumSet: true,
+			Checksum:    4165752645,
+		}},
+
+		{key: userID + "/2/270d8f00:270d8f00:f84c5745", chunk: Chunk{
 			UserID:      userID,
 			Fingerprint: model.Fingerprint(2),
 			From:        model.Time(655200000),
@@ -379,9 +408,136 @@ func TestChunk_Slice(t *testing.T) {
 	}
 }
 
-func Benchmark_ParseExternalKey(b *testing.B) {
+func TestChunkKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		chunk     Chunk
+		schemaCfg SchemaConfig
+	}{
+		{
+			name: "Legacy key (pre-checksum)",
+			chunk: Chunk{
+				Fingerprint: 100,
+				UserID:      "fake",
+				From:        model.TimeFromUnix(1000),
+				Through:     model.TimeFromUnix(5000),
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:   DayTime{Time: 0},
+						Schema: "v9",
+					},
+				},
+			},
+		},
+		{
+			name: "New key (post-checksum)",
+			chunk: Chunk{
+				Fingerprint: 100,
+				UserID:      "fake",
+				From:        model.TimeFromUnix(1000),
+				Through:     model.TimeFromUnix(5000),
+				ChecksumSet: true,
+				Checksum:    12345,
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v11",
+						RowShards: 16,
+					},
+				},
+			},
+		},
+		{
+			name: "Newer key (post-v12)",
+			chunk: Chunk{
+				Fingerprint: 100,
+				UserID:      "fake",
+				From:        model.TimeFromUnix(1000),
+				Through:     model.TimeFromUnix(5000),
+				ChecksumSet: true,
+				Checksum:    12345,
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v12",
+						RowShards: 16,
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			key := tc.schemaCfg.ExternalKey(tc.chunk)
+			newChunk, err := ParseExternalKey("fake", key)
+			require.NoError(t, err)
+			require.Equal(t, tc.chunk, newChunk)
+			require.Equal(t, key, tc.schemaCfg.ExternalKey(newChunk))
+		})
+	}
+}
+
+func BenchmarkParseNewerExternalKey(b *testing.B) {
+	benchmarkParseExternalKey(b, "fake/57f628c7f6d57aad/162c699f000:162c69a07eb:eb242d99")
+}
+func BenchmarkParseNewExternalKey(b *testing.B) {
+	benchmarkParseExternalKey(b, "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
+}
+func BenchmarkParseLegacyExternalKey(b *testing.B) {
+	benchmarkParseExternalKey(b, "2:1484661279394:1484664879394")
+}
+
+func BenchmarkParseOldLegacyExternalKey(b *testing.B) {
+	benchmarkOldParseExternalKey(b, "2:1484661279394:1484664879394")
+}
+
+func BenchmarkParseOldNewExternalKey(b *testing.B) {
+	benchmarkOldParseExternalKey(b, "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
+}
+
+func BenchmarkRootParseLegacyExternalKey(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_, err := ParseExternalKey("fake", "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
+		_, err := parseLegacyChunkID("fake", "2:1484661279394:1484664879394")
 		require.NoError(b, err)
 	}
+}
+
+func BenchmarkRootParseNewExternalKey(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := parseNewExternalKey("fake", "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
+		require.NoError(b, err)
+	}
+}
+
+func BenchmarkRootParseNewerExternalKey(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := parseNewerExternalKey("fake", "fake/57f628c7f6d57aad/162c699f000:162c69a07eb:eb242d99")
+		require.NoError(b, err)
+	}
+}
+
+func benchmarkParseExternalKey(b *testing.B, key string) {
+	for i := 0; i < b.N; i++ {
+		_, err := ParseExternalKey("fake", key)
+		require.NoError(b, err)
+	}
+}
+
+func benchmarkOldParseExternalKey(b *testing.B, key string) {
+	for i := 0; i < b.N; i++ {
+		_, err := OldParseExternalKey("fake", key)
+		require.NoError(b, err)
+	}
+}
+
+func OldParseExternalKey(userID, externalKey string) (Chunk, error) {
+	if !strings.Contains(externalKey, "/") { // pre-checksum
+		return parseLegacyChunkID(userID, externalKey)
+	}
+	return parseNewExternalKey(userID, externalKey)
 }

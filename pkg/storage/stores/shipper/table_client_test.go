@@ -3,8 +3,6 @@ package shipper
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
-	"os"
 	"path"
 	"testing"
 
@@ -16,14 +14,10 @@ import (
 )
 
 func TestBoltDBShipperTableClient(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "boltdb-shipper")
-	require.NoError(t, err)
+	tempDir := t.TempDir()
 
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
-
-	objectClient, err := storage.NewObjectClient("filesystem", storage.Config{FSConfig: local.FSConfig{Directory: tempDir}})
+	cm := storage.NewClientMetrics()
+	objectClient, err := storage.NewObjectClient("filesystem", storage.Config{FSConfig: local.FSConfig{Directory: tempDir}}, cm)
 	require.NoError(t, err)
 
 	// create a couple of folders with files

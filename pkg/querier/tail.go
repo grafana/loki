@@ -2,16 +2,17 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/iter"
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -172,7 +173,7 @@ func (t *Tailer) checkIngesterConnections() error {
 
 	newConnections, err := t.tailDisconnectedIngesters(connectedIngestersAddr)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect with one or more ingester(s) during tailing: %w", err)
 	}
 
 	if len(newConnections) != 0 {
@@ -272,7 +273,7 @@ func newTailer(
 	waitEntryThrottle time.Duration,
 ) *Tailer {
 	t := Tailer{
-		openStreamIterator:        iter.NewHeapIterator(context.Background(), []iter.EntryIterator{historicEntries}, logproto.FORWARD),
+		openStreamIterator:        iter.NewMergeEntryIterator(context.Background(), []iter.EntryIterator{historicEntries}, logproto.FORWARD),
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
 		responseChan:              make(chan *loghttp.TailResponse, maxBufferedTailResponses),

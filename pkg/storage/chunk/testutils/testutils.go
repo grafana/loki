@@ -6,15 +6,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const (
@@ -68,7 +68,7 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.Client, 
 }
 
 // CreateChunks creates some chunks for testing
-func CreateChunks(startIndex, batchSize int, from model.Time, through model.Time) ([]string, []chunk.Chunk, error) {
+func CreateChunks(scfg chunk.SchemaConfig, startIndex, batchSize int, from model.Time, through model.Time) ([]string, []chunk.Chunk, error) {
 	keys := []string{}
 	chunks := []chunk.Chunk{}
 	for j := 0; j < batchSize; j++ {
@@ -77,7 +77,7 @@ func CreateChunks(startIndex, batchSize int, from model.Time, through model.Time
 			{Name: "index", Value: strconv.Itoa(startIndex*batchSize + j)},
 		})
 		chunks = append(chunks, chunk)
-		keys = append(keys, chunk.ExternalKey())
+		keys = append(keys, scfg.ExternalKey(chunk))
 	}
 	return keys, chunks, nil
 }

@@ -17,6 +17,12 @@ Storage Size Calculator is used to have an idea on how to properly size a Loki c
 
 * Deploy the [Loki Operator](https://github.com/grafana/loki/blob/master/operator/docs/hack_loki_operator.md#hacking-on-loki-operator-on-openshift) to the cluster.
 
+* Create the `openshift-logging` namespace in the cluster:
+
+  ```console
+  kubectl create ns openshift-logging
+  ```
+
 * Deploy the storage size calculator by executing following command in the terminal:
 
   ```console

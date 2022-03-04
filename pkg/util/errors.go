@@ -6,10 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/grafana/loki/pkg/util/log"
 )
 
 // LogError logs any error returned by f; useful when deferring Close etc.
@@ -70,27 +71,13 @@ func (es MultiError) Err() error {
 
 // Is tells if all errors are the same as the target error.
 func (es MultiError) Is(target error) bool {
-	for _, err := range es {
-		if !errors.Is(err, target) {
-			return false
-		}
-	}
-	return true
-}
-
-// IsCancel tells if all errors are either context.Canceled or grpc codes.Canceled.
-func (es MultiError) IsCancel() bool {
 	if len(es) == 0 {
 		return false
 	}
 	for _, err := range es {
-		if errors.Is(err, context.Canceled) {
-			continue
+		if !errors.Is(err, target) {
+			return false
 		}
-		if IsConnCanceled(err) {
-			continue
-		}
-		return false
 	}
 	return true
 }
