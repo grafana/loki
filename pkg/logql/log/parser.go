@@ -41,7 +41,7 @@ type JSONParser struct {
 	lbs *LabelsBuilder
 
 	keys                  internedStringSet
-	bugerJsonParserEnable bool
+	bugerJSONParserEnable bool
 	jsonKeyCache          map[string][][]string
 }
 
@@ -50,7 +50,7 @@ func NewJSONParser() *JSONParser {
 	return &JSONParser{
 		buf:                   make([]byte, 0, 1024),
 		keys:                  internedStringSet{},
-		bugerJsonParserEnable: true,
+		bugerJSONParserEnable: true,
 		jsonKeyCache:          make(map[string][][]string),
 	}
 }
@@ -60,7 +60,7 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		return line, true
 	}
 	j.lbs = lbs
-	if j.bugerJsonParserEnable {
+	if j.bugerJSONParserEnable {
 		requiredLabels := j.lbs.ParserLabelHints().RequiredLabels()
 		if len(requiredLabels) > 0 {
 			err := j.parseJSONKeyVal(line, requiredLabels)
@@ -189,11 +189,6 @@ func (j *JSONParser) parseJSONKeyVal(line []byte, requiredLabels []string) error
 		field = sanitizeLabelKey(field, true)
 		keys := make([]string, 0)
 		keys = append(keys, field)
-		//if strings.ContainsRune(field, jsonSpacer) {
-		//	keys = strings.Split(field, "_")
-		//} else {
-		//	keys = append(keys, field)
-		//}
 
 		cacheKeys, ok := j.jsonKeyCache[field]
 		if ok {
@@ -203,7 +198,7 @@ func (j *JSONParser) parseJSONKeyVal(line []byte, requiredLabels []string) error
 				if e != nil {
 					continue
 				}
-				err := j.SetJsonVal(field, v, t)
+				err := j.setJSONVal(field, v, t)
 				if err != nil {
 					return err
 				}
@@ -249,24 +244,26 @@ func (j *JSONParser) parseJSONKeyVal(line []byte, requiredLabels []string) error
 				jsonSpacerIndex++
 				continue
 			}
-			err := j.SetJsonVal(field, v, t)
+			err := j.setJSONVal(field, v, t)
 			if err != nil {
 				return err
 			}
-			cacheKeys, ok := j.jsonKeyCache[field]
-			if !ok {
-				j.jsonKeyCache[field] = make([][]string, 0)
-				cacheKeys = j.jsonKeyCache[field]
+			if len(keys) > 1 { //just cache key >1
+				cacheKeys, ok := j.jsonKeyCache[field]
+				if !ok {
+					j.jsonKeyCache[field] = make([][]string, 0)
+					cacheKeys = j.jsonKeyCache[field]
+				}
+				cacheKeys = append(cacheKeys, keys)
+				j.jsonKeyCache[field] = cacheKeys
 			}
-			cacheKeys = append(cacheKeys, keys)
-			j.jsonKeyCache[field] = cacheKeys
 			break
 		}
 	}
 	return nil
 }
 
-func (j *JSONParser) SetJsonVal(field string, v []byte, t jsonparser.ValueType) error {
+func (j *JSONParser) setJSONVal(field string, v []byte, t jsonparser.ValueType) error {
 	val, err := parseStringVal(v, t)
 	if err != nil {
 		return err
