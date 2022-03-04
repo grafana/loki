@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
