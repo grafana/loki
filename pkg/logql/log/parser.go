@@ -42,6 +42,7 @@ type JSONParser struct {
 
 	keys                  internedStringSet
 	bugerJsonParserEnable bool
+	jsonKeyCache          map[string][][]string
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
@@ -49,7 +50,8 @@ func NewJSONParser() *JSONParser {
 	return &JSONParser{
 		buf:                   make([]byte, 0, 1024),
 		keys:                  internedStringSet{},
-		bugerJsonParserEnable: false,
+		bugerJsonParserEnable: true,
+		jsonKeyCache:          make(map[string][][]string),
 	}
 }
 
@@ -61,7 +63,7 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if j.bugerJsonParserEnable {
 		requiredLabels := j.lbs.ParserLabelHints().RequiredLabels()
 		if len(requiredLabels) > 0 {
-			err := j.parseJsonVal(line, requiredLabels)
+			err := j.parseJsonKeyVal(line, requiredLabels)
 			if err != nil {
 				lbs.SetErr(errJSON)
 			}
@@ -190,7 +192,11 @@ func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field stri
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
-func (j *JSONParser) parseJsonVal(line []byte, requiredLabels []string) error {
+func (j *JSONParser) parseJsonKeyVal(line []byte, requiredLabels []string) error {
+	//check for "jsonParser-not json line" benchmark
+	if strings.Index(string(line), "{") != 0 {
+		return errors.New("illegal format")
+	}
 	for _, field := range requiredLabels {
 		field = sanitizeLabelKey(field, true)
 		keys := make([]string, 0)
@@ -200,11 +206,35 @@ func (j *JSONParser) parseJsonVal(line []byte, requiredLabels []string) error {
 		//} else {
 		//	keys = append(keys, field)
 		//}
+
+		cacheKeys, ok := j.jsonKeyCache[field]
+		if ok {
+			isMatchKey := false
+			for _, key := range cacheKeys {
+				v, t, _, e := jsonparser.Get(line, key...)
+				if e != nil {
+					continue
+				}
+				err := j.SetJsonVal(field, v, t)
+				if err != nil {
+					return err
+				}
+				isMatchKey = true
+				break
+			}
+			if isMatchKey {
+				continue
+			}
+		}
+
 		keyArray := make([]string, 0)
 		jsonSpacerIndex := 0
 		for {
 			v, t, _, e := jsonparser.Get(line, keys...)
 			if e != nil {
+				if e != jsonparser.KeyPathNotFoundError {
+					return e
+				}
 				if !strings.ContainsRune(field, jsonSpacer) {
 					break
 				}
@@ -231,17 +261,32 @@ func (j *JSONParser) parseJsonVal(line []byte, requiredLabels []string) error {
 				jsonSpacerIndex++
 				continue
 			}
-			val, err := parseStringVal(v, t)
+			err := j.SetJsonVal(field, v, t)
 			if err != nil {
 				return err
 			}
-			if j.lbs.BaseHas(field) {
-				field = field + duplicateSuffix
+			cacheKeys, ok := j.jsonKeyCache[field]
+			if !ok {
+				j.jsonKeyCache[field] = make([][]string, 0)
+				cacheKeys = j.jsonKeyCache[field]
 			}
-			j.lbs.Set(field, val)
+			cacheKeys = append(cacheKeys, keys)
+			j.jsonKeyCache[field] = cacheKeys
 			break
 		}
 	}
+	return nil
+}
+
+func (j *JSONParser) SetJsonVal(field string, v []byte, t jsonparser.ValueType) error {
+	val, err := parseStringVal(v, t)
+	if err != nil {
+		return err
+	}
+	if j.lbs.BaseHas(field) {
+		field = field + duplicateSuffix
+	}
+	j.lbs.Set(field, val)
 	return nil
 }
 
