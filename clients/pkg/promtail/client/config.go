@@ -22,7 +22,7 @@ const (
 	Timeout        = 10 * time.Second
 )
 
-type ClientConfigs struct {
+type Configs struct {
 	StreamLagLabels dskit_flagext.StringSliceCSV `yaml:"stream_lag_labels"`
 	Configs         []Config                     `yaml:"clients,omitempty"`
 }
