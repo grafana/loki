@@ -82,6 +82,8 @@ jobs:
       matrix:
         go: ['1.16']
     steps:
+    - name: Install make
+      run: sudo apt-get install make
     - name: Set up Go 1.x
       uses: actions/setup-go@v2
       with:
@@ -91,6 +93,9 @@ jobs:
     - name: Run tests
       working-directory: ./operator
       run: go test -coverprofile=profile.cov ./...
+    - name: Run prometheus rule tests
+      working-directory: ./operator
+      run: make test-unit-prometheus
     - name: Send coverage
       uses: shogo82148/actions-goveralls@v1
       with:
