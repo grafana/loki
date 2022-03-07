@@ -192,10 +192,12 @@ func main() {
 			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
 		} else {
 			if rangeQuery.Pretty {
-				if err := ui.Init(); err != nil {
+				rangeQuery.UiCtrl = query.NewUiController(*statistics)
+
+				if err := rangeQuery.UiCtrl.Init(); err != nil {
 					log.Fatalf("failed to initialize termui: %v", err)
 				}
-				defer ui.Close()
+				defer rangeQuery.UiCtrl.Close()
 			}
 
 			delay := time.Second * 3
@@ -217,6 +219,8 @@ func main() {
 
 					rangeQuery.Start = rangeQuery.Start.Add(delay)
 					rangeQuery.End = rangeQuery.End.Add(delay)
+
+					rangeQuery.UiCtrl.Render()
 				}
 			}
 		}

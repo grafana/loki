@@ -63,6 +63,7 @@ type Query struct {
 
 	Pretty bool
 	Live   bool
+	UiCtrl UiController
 }
 
 // DoQuery executes the query and prints out the results
@@ -375,7 +376,7 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 
 func (q *Query) printMatrix(matrix loghttp.Matrix) {
 	if q.Pretty {
-		q.printMatrixPretty(matrix)
+		q.UiCtrl.UpdateGraph(matrix)
 		return
 	}
 
@@ -390,7 +391,58 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 	fmt.Print(string(bytes))
 }
 
-func (q *Query) printMatrixPretty(matrix loghttp.Matrix) {
+type UiController struct {
+	graphPanel  *widgets.Plot
+	legendPanel *widgets.Paragraph
+
+	showStats  bool
+	statsPanel *widgets.Paragraph
+}
+
+func NewUiController(showStats bool) UiController {
+	graphPanel := widgets.NewPlot()
+	graphPanel.Title = "Graph"
+	graphPanel.SetRect(0, 0, 130, 40)
+	graphPanel.AxesColor = ui.ColorWhite
+
+	legendPanel := widgets.NewParagraph()
+	legendPanel.Title = "Legend"
+	legendPanel.SetRect(0, 40, 130, 45)
+
+	statsPanel := widgets.NewParagraph()
+	statsPanel.Title = "Statistics"
+	statsPanel.SetRect(130, 0, 180, 45)
+
+	return UiController{
+		graphPanel:  graphPanel,
+		legendPanel: legendPanel,
+		statsPanel:  statsPanel,
+		showStats:   showStats,
+	}
+}
+
+func (u *UiController) Init() error {
+	return ui.Init()
+}
+
+func (u *UiController) Close() {
+	ui.Close()
+}
+
+func (u *UiController) Render() {
+	panels := []ui.Drawable{
+		u.graphPanel,
+		u.legendPanel,
+	}
+
+	if u.showStats {
+		panels = append(panels, u.statsPanel)
+	}
+
+	ui.Render(panels...)
+}
+
+func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 	data := make([][]float64, 0)
 	colors := make([]ui.Color, 0)
 	labels := make([]string, 0)
@@ -405,31 +457,31 @@ func (q *Query) printMatrixPretty(matrix loghttp.Matrix) {
 		labels = append(labels, stream.Metric.String())
 	}
 
-	// fmt.Println("data", data)
+	u.graphPanel.Data = data
+	u.graphPanel.LineColors = colors
 
-	graphPanel := widgets.NewPlot()
-	graphPanel.Title = "Graph"
-	graphPanel.Data = data
-	graphPanel.SetRect(0, 0, 130, 40)
-	graphPanel.AxesColor = ui.ColorWhite
-	graphPanel.LineColors = colors
+	u.legendPanel.Text = GetLegend(labels, colors)
+}
 
-	legendPanel := widgets.NewParagraph()
-	legendPanel.Title = "Legend"
-	legendPanel.Text = GetLegend(labels, colors)
-	legendPanel.SetRect(0, 40, 130, 45)
+type uiStatsLogger struct {
+	*tabwriter.Writer
+}
 
-	ui.Render(graphPanel, legendPanel)
+func (k uiStatsLogger) Log(keyvals ...interface{}) error {
+	for i := 0; i < len(keyvals); i += 2 {
+		fmt.Fprintln(k.Writer, fmt.Sprintf("[%s](fg:red)", keyvals[i]), "\t", fmt.Sprintf("%v", keyvals[i+1]))
+	}
+	k.Flush()
+	return nil
+}
 
-	// uiEvents := ui.PollEvents()
-	// for {
-	// 	e := <-uiEvents
-	// 	switch e.ID {
-	// 	case "q", "<C-c>":
-	// 		return
-	// 	}
-	// }
-	// time.Sleep(3 * time.Second)
+func (u *UiController) UpdateStats(result stats.Result) {
+	logLine := new(strings.Builder)
+
+	writer := tabwriter.NewWriter(logLine, 0, 8, 0, '\t', 0)
+	result.Log(uiStatsLogger{Writer: writer})
+
+	u.statsPanel.Text = logLine.String()
 }
 
 func GetColorForLabels(labels model.Metric) ui.Color {
@@ -471,19 +523,32 @@ func (q *Query) printScalar(scalar loghttp.Scalar) {
 
 type kvLogger struct {
 	*tabwriter.Writer
+	useColors bool
 }
 
 func (k kvLogger) Log(keyvals ...interface{}) error {
 	for i := 0; i < len(keyvals); i += 2 {
-		fmt.Fprintln(k.Writer, color.BlueString("%s", keyvals[i]), "\t", fmt.Sprintf("%v", keyvals[i+1]))
+		var key string
+		if k.useColors {
+			key = color.BlueString("%s", keyvals[i])
+		} else {
+			key = fmt.Sprintf("%s", keyvals[i])
+		}
+		value := fmt.Sprintf("%v", keyvals[i+1])
+
+		fmt.Fprintln(k.Writer, key, "\t", value)
 	}
 	k.Flush()
 	return nil
 }
 
 func (q *Query) printStats(stats stats.Result) {
-	writer := tabwriter.NewWriter(os.Stderr, 0, 8, 0, '\t', 0)
-	stats.Log(kvLogger{Writer: writer})
+	if q.Pretty {
+		q.UiCtrl.UpdateStats(stats)
+	} else {
+		writer := tabwriter.NewWriter(os.Stderr, 0, 8, 0, '\t', 0)
+		stats.Log(kvLogger{Writer: writer, useColors: true})
+	}
 }
 
 func (q *Query) resultsDirection() logproto.Direction {
