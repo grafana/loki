@@ -469,7 +469,7 @@ type uiStatsLogger struct {
 
 func (k uiStatsLogger) Log(keyvals ...interface{}) error {
 	for i := 0; i < len(keyvals); i += 2 {
-		fmt.Fprintln(k.Writer, fmt.Sprintf("[%s](fg:red)", keyvals[i]), "\t", fmt.Sprintf("%v", keyvals[i+1]))
+		fmt.Fprintln(k.Writer, fmt.Sprintf("[%s](fg:bold)", keyvals[i]), "\t", fmt.Sprintf("%v", keyvals[i+1]))
 	}
 	k.Flush()
 	return nil
