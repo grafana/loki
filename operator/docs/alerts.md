@@ -12,11 +12,11 @@
 
 ### Impact
 
-One or multiple components are unavailable due to some server error.
+A service(s) is unable to perform its duties for a number of requests, resulting in potential loss of data.
 
 ### Summary
 
-One or multiple components are unable to process incoming requests and are serving 5XX responses as a result.
+A service(s) is failing to process at least 10% of all incoming requests.
 
 ### Severity
 
@@ -32,22 +32,23 @@ One or multiple components are unable to process incoming requests and are servi
 
 ### Steps
 
-- Identify which service is returning the 5XX error
-  - Check the logs of the `distributor`, `query-frontend`, and `ingester`
-- Ensure that the `ingester` and `index-gateway` can communicate with the backend storage
-- Check the `ingester` metrics for signs of WAL complications
-  - `loki_ingester_wal_disk_full_failures_total`
-  - `loki_ingester_wal_corruptions_total`
+- Check the logs of the service that is emitting the server error (5XX)
+- Ensure that store services (`ingester`, `querier`, `index-gateway`, `compactor`) can communicate with backend storage
+- Examine metrics for signs of failure
+  - WAL Complications
+    - `loki_ingester_wal_disk_full_failures_total`
+    - `loki_ingester_wal_corruptions_total`
+
 
 ## Loki Request Panics
 
 ### Impact
 
-One or multiple components are unavailable due to panics.
+A service(s) is unavailable to unavailable, resulting in potential loss of data.
 
 ### Summary
 
-One or multiple components are unable to process incoming requests because the component(s) are panicking.
+A service(s) has crashed.
 
 ### Severity
 
@@ -63,6 +64,5 @@ One or multiple components are unable to process incoming requests because the c
 
 ### Steps
 
-- Identify which component is panicking
-  - Examining pods for numerous restarts
-  - Check the logs of the all components
+- Check the logs of the service that is panicking
+- Examine metrics for signs of failure

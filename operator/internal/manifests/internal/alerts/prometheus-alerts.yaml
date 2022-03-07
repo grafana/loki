@@ -7,7 +7,7 @@ groups:
       message: |-
         {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
       summary: "At least 10% of requests are responded by 5xx server errors."
-      runbook_url: "TBD"
+      runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
     expr: |
       sum(
           rate(
@@ -30,7 +30,7 @@ groups:
       message: |-
         {{ $labels.job }} is experiencing an increase of {{ $value }} panics.
       summary: "A panic was triggered."
-      runbook_url: "TBD"
+      runbook_url: "[[ .RunbookURL ]]#Loki-Request-Panics"
     expr: |
       sum(
           increase(

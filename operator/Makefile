@@ -132,7 +132,7 @@ lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 
 .PHONY: lint-prometheus
 lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and alerts.
-	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus_alerts.yaml
+	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus-alerts.yaml
 
 fmt: $(GOFUMPT) ## Run gofumpt on source code.
 	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
