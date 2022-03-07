@@ -2,9 +2,7 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"flag"
-	"fmt"
 	"sort"
 	"time"
 
@@ -12,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/ring"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -436,7 +435,7 @@ func RegisterCustomIndexClients(cfg *Config, cm storage.ClientMetrics, registere
 		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly {
 			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexGatewayRing, registerer, util_log.Logger)
 			if err != nil {
-				return nil, fmt.Errorf("shipper new gateway client: %w", err)
+				return nil, errors.Wrap(err, "shipper new gateway client")
 			}
 
 			boltDBIndexClientWithShipper = gateway
