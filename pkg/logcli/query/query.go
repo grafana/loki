@@ -423,7 +423,7 @@ func NewUiController(showStats bool) UiController {
 	legendPanel.Title = "Legend"
 	legendPanel.WrapText = true
 	legendPanel.SelectedRowStyle = ui.NewStyle(ui.ColorBlack, ui.ColorGreen)
-	legendPanel.SetRect(0, 40, 130, 50)
+	//legendPanel.SetRect(0, 40, 130, 50)
 
 	legendPanelMeta := UiPanelMeta{
 		widget: legendPanel,
@@ -443,25 +443,35 @@ func NewUiController(showStats bool) UiController {
 
 	statsPanel := widgets.NewParagraph()
 	statsPanel.Title = "Statistics"
-	statsPanel.SetRect(130, 0, 180, 45)
+	//statsPanel.SetRect(130, 0, 180, 45)
 
 	grid := ui.NewGrid()
 	grid.Set(
 		ui.NewRow(2.0/3, ui.NewCol(1.0, graphPanel)),
 		ui.NewRow(1.0/3, ui.NewCol(1.0, legendPanel)),
 	)
+	grid.SetRect(0, 0, 100, 100)
 
-	return UiController{
+	uiController := UiController{
 		grid:        grid,
 		graphPanel:  &graphPanelMeta,
 		legendPanel: &legendPanelMeta,
 		statsPanel:  statsPanel,
 		showStats:   showStats,
 	}
+
+	return uiController
 }
 
 func (u *UiController) Init() error {
-	return ui.Init()
+	err := ui.Init()
+	if err != nil {
+		return err
+	}
+
+	u.fitPanelsToTerminal()
+
+	return nil
 }
 
 func (u *UiController) Close() {
@@ -469,16 +479,8 @@ func (u *UiController) Close() {
 }
 
 func (u *UiController) Render() {
-	panels := []ui.Drawable{
-		u.graphPanel.widget,
-		u.legendPanel.widget,
-	}
-
-	if u.showStats {
-		panels = append(panels, u.statsPanel)
-	}
-
-	ui.Render(panels...)
+	ui.Clear()
+	ui.Render(u.grid)
 }
 
 func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
@@ -604,7 +606,7 @@ func (q *Query) HandleUiEvent(e ui.Event) {
 
 	switch {
 	case e.Type == ui.ResizeEvent:
-		q.fitPanelsToTerminal()
+		q.UiCtrl.fitPanelsToTerminal()
 		needsUpdate = true
 	case e.ID == "j" || e.ID == "<Down>":
 		q.UiCtrl.legendPanel.widget.(*widgets.List).ScrollDown()
@@ -619,7 +621,7 @@ func (q *Query) HandleUiEvent(e ui.Event) {
 	}
 }
 
-func (q *Query) fitPanelsToTerminal() {
+func (u *UiController) fitPanelsToTerminal() {
 	w, h := ui.TerminalDimensions()
-	q.UiCtrl.grid.SetRect(0, 0, w, h)
+	u.grid.SetRect(0, 0, w, h)
 }
