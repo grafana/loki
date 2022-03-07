@@ -27,10 +27,10 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
-	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
+	chunk "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/cfg"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	utillog "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
 
@@ -198,10 +198,10 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if err != nil {
 		return err
 	}
-	cm := chunk_storage.NewClientMetrics()
+	cm := chunk.NewClientMetrics()
 	storage.RegisterCustomIndexClients(&conf.StorageConfig, cm, prometheus.DefaultRegisterer)
 	conf.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
-	chunkStore, err := chunk_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig.StoreConfig, conf.SchemaConfig.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	chunkStore, err := chunk.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig.StoreConfig, conf.SchemaConfig.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, nil, utillog.Logger)
 	if err != nil {
 		return err
 	}
@@ -211,7 +211,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	eng := logql.NewEngine(conf.Querier.Engine, querier, limits, util_log.Logger)
+	eng := logql.NewEngine(conf.Querier.Engine, querier, limits, utillog.Logger)
 	var query logql.Query
 
 	if q.isInstant() {
@@ -308,9 +308,9 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 		streams[i].Labels = ls
 
 		// Update max labels length
-		len := len(ls.String())
-		if maxLabelsLen < len {
-			maxLabelsLen = len
+		l := len(ls.String())
+		if maxLabelsLen < l {
+			maxLabelsLen = l
 		}
 	}
 
@@ -393,8 +393,8 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 
 type UiController struct {
 	grid        *ui.Grid
-	graphPanel  *UiPanelMeta
-	legendPanel *UiPanelMeta
+	graphPanel  *widgets.Plot
+	legendPanel *widgets.List
 
 	showStats  bool
 	statsPanel *widgets.Paragraph
@@ -411,35 +411,11 @@ func NewUiController(showStats bool) UiController {
 	graphPanel.SetRect(0, 0, 130, 40)
 	graphPanel.AxesColor = ui.ColorWhite
 
-	graphPanelMeta := UiPanelMeta{
-		widget: graphPanel,
-		uiEventHandler: func(ui.Event) bool {
-			// TODO
-			return false
-		},
-	}
-
 	legendPanel := widgets.NewList()
 	legendPanel.Title = "Legend"
 	legendPanel.WrapText = true
 	legendPanel.SelectedRowStyle = ui.NewStyle(ui.ColorBlack, ui.ColorGreen)
 	//legendPanel.SetRect(0, 40, 130, 50)
-
-	legendPanelMeta := UiPanelMeta{
-		widget: legendPanel,
-		uiEventHandler: func(e ui.Event) bool {
-			switch {
-			case e.ID == "j" || e.ID == "<Down>":
-				legendPanel.ScrollDown()
-				return true
-			case e.ID == "k" || e.ID == "<Up>":
-				legendPanel.ScrollUp()
-				return true
-			}
-
-			return false
-		},
-	}
 
 	statsPanel := widgets.NewParagraph()
 	statsPanel.Title = "Statistics"
@@ -454,8 +430,8 @@ func NewUiController(showStats bool) UiController {
 
 	uiController := UiController{
 		grid:        grid,
-		graphPanel:  &graphPanelMeta,
-		legendPanel: &legendPanelMeta,
+		graphPanel:  graphPanel,
+		legendPanel: legendPanel,
 		statsPanel:  statsPanel,
 		showStats:   showStats,
 	}
@@ -498,10 +474,10 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 		labels = append(labels, stream.Metric.String())
 	}
 
-	u.graphPanel.widget.(*widgets.Plot).Data = data
-	u.graphPanel.widget.(*widgets.Plot).LineColors = colors
+	u.graphPanel.Data = data
+	u.graphPanel.LineColors = colors
 
-	u.legendPanel.widget.(*widgets.List).Rows = GetLegend(labels, colors)
+	u.legendPanel.Rows = GetLegend(labels, colors)
 }
 
 type uiStatsLogger struct {
@@ -609,10 +585,10 @@ func (q *Query) HandleUiEvent(e ui.Event) {
 		q.UiCtrl.fitPanelsToTerminal()
 		needsUpdate = true
 	case e.ID == "j" || e.ID == "<Down>":
-		q.UiCtrl.legendPanel.widget.(*widgets.List).ScrollDown()
+		q.UiCtrl.legendPanel.ScrollDown()
 		needsUpdate = true
 	case e.ID == "k" || e.ID == "<Up>":
-		q.UiCtrl.legendPanel.widget.(*widgets.List).ScrollUp()
+		q.UiCtrl.legendPanel.ScrollUp()
 		needsUpdate = true
 	}
 
