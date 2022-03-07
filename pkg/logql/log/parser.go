@@ -37,18 +37,16 @@ type JSONParser struct {
 	buf []byte // buffer used to build json keys
 	lbs *LabelsBuilder
 
-	keys                  internedStringSet
-	bugerJSONParserEnable bool
-	jsonKeyCache          map[string][][]string
+	keys         internedStringSet
+	jsonKeyCache map[string][][]string
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
 func NewJSONParser() *JSONParser {
 	return &JSONParser{
-		buf:                   make([]byte, 0, 1024),
-		keys:                  internedStringSet{},
-		bugerJSONParserEnable: true,
-		jsonKeyCache:          make(map[string][][]string),
+		buf:          make([]byte, 0, 1024),
+		keys:         internedStringSet{},
+		jsonKeyCache: make(map[string][][]string),
 	}
 }
 
@@ -57,15 +55,13 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		return line, true
 	}
 	j.lbs = lbs
-	if j.bugerJSONParserEnable {
-		requiredLabels := j.lbs.ParserLabelHints().RequiredLabels()
-		if len(requiredLabels) > 0 {
-			err := j.parseJSONKeyVal(line, requiredLabels)
-			if err != nil {
-				lbs.SetErr(errJSON)
-			}
-			return line, true
+	requiredLabels := j.lbs.ParserLabelHints().RequiredLabels()
+	if len(requiredLabels) > 0 {
+		err := j.parseJSONKeyVal(line, requiredLabels)
+		if err != nil {
+			lbs.SetErr(errJSON)
 		}
+		return line, true
 	}
 
 	err := j.handleJson("", line)
@@ -77,12 +73,9 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
 
-func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
-
 func (j *JSONParser) handleJson(preKey string, line []byte) error {
 	err := jsonparser.ObjectEach(line, func(key []byte, val []byte, valueType jsonparser.ValueType, offset int) error {
 		jsonKey := preKey + sanitizeLabelKey(string(key), true)
-
 		if valueType == jsonparser.Array {
 			return nil
 		}
@@ -191,6 +184,8 @@ func (j *JSONParser) setJSONVal(field string, v []byte) error {
 	j.lbs.Set(field, string(v))
 	return nil
 }
+
+func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
 type RegexpParser struct {
 	regex     *regexp.Regexp
