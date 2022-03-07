@@ -211,16 +211,20 @@ func main() {
 					if e.ID == "q" || e.ID == "<C-c>" {
 						return
 					}
+
+					rangeQuery.HandleUiEvent(e)
 				case <-ticker.C:
-					rangeQuery.DoQuery(queryClient, out, *statistics)
-					if !rangeQuery.Live {
-						return
-					}
+					go func() {
+						rangeQuery.DoQuery(queryClient, out, *statistics)
+						if !rangeQuery.Live {
+							return
+						}
 
-					rangeQuery.Start = rangeQuery.Start.Add(delay)
-					rangeQuery.End = rangeQuery.End.Add(delay)
+						rangeQuery.Start = rangeQuery.Start.Add(delay)
+						rangeQuery.End = rangeQuery.End.Add(delay)
 
-					rangeQuery.UiCtrl.Render()
+						rangeQuery.UiCtrl.Render()
+					}()
 				}
 			}
 		}

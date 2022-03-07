@@ -392,11 +392,17 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 }
 
 type UiController struct {
-	graphPanel  *widgets.Plot
-	legendPanel *widgets.Paragraph
+	grid        *ui.Grid
+	graphPanel  *UiPanelMeta
+	legendPanel *UiPanelMeta
 
 	showStats  bool
 	statsPanel *widgets.Paragraph
+}
+
+type UiPanelMeta struct {
+	widget         ui.Drawable
+	uiEventHandler func(ui.Event) bool
 }
 
 func NewUiController(showStats bool) UiController {
@@ -405,17 +411,50 @@ func NewUiController(showStats bool) UiController {
 	graphPanel.SetRect(0, 0, 130, 40)
 	graphPanel.AxesColor = ui.ColorWhite
 
-	legendPanel := widgets.NewParagraph()
+	graphPanelMeta := UiPanelMeta{
+		widget: graphPanel,
+		uiEventHandler: func(ui.Event) bool {
+			// TODO
+			return false
+		},
+	}
+
+	legendPanel := widgets.NewList()
 	legendPanel.Title = "Legend"
-	legendPanel.SetRect(0, 40, 130, 45)
+	legendPanel.WrapText = true
+	legendPanel.SelectedRowStyle = ui.NewStyle(ui.ColorBlack, ui.ColorGreen)
+	legendPanel.SetRect(0, 40, 130, 50)
+
+	legendPanelMeta := UiPanelMeta{
+		widget: legendPanel,
+		uiEventHandler: func(e ui.Event) bool {
+			switch {
+			case e.ID == "j" || e.ID == "<Down>":
+				legendPanel.ScrollDown()
+				return true
+			case e.ID == "k" || e.ID == "<Up>":
+				legendPanel.ScrollUp()
+				return true
+			}
+
+			return false
+		},
+	}
 
 	statsPanel := widgets.NewParagraph()
 	statsPanel.Title = "Statistics"
 	statsPanel.SetRect(130, 0, 180, 45)
 
+	grid := ui.NewGrid()
+	grid.Set(
+		ui.NewRow(2.0/3, ui.NewCol(1.0, graphPanel)),
+		ui.NewRow(1.0/3, ui.NewCol(1.0, legendPanel)),
+	)
+
 	return UiController{
-		graphPanel:  graphPanel,
-		legendPanel: legendPanel,
+		grid:        grid,
+		graphPanel:  &graphPanelMeta,
+		legendPanel: &legendPanelMeta,
 		statsPanel:  statsPanel,
 		showStats:   showStats,
 	}
@@ -431,8 +470,8 @@ func (u *UiController) Close() {
 
 func (u *UiController) Render() {
 	panels := []ui.Drawable{
-		u.graphPanel,
-		u.legendPanel,
+		u.graphPanel.widget,
+		u.legendPanel.widget,
 	}
 
 	if u.showStats {
@@ -457,10 +496,10 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 		labels = append(labels, stream.Metric.String())
 	}
 
-	u.graphPanel.Data = data
-	u.graphPanel.LineColors = colors
+	u.graphPanel.widget.(*widgets.Plot).Data = data
+	u.graphPanel.widget.(*widgets.Plot).LineColors = colors
 
-	u.legendPanel.Text = GetLegend(labels, colors)
+	u.legendPanel.widget.(*widgets.List).Rows = GetLegend(labels, colors)
 }
 
 type uiStatsLogger struct {
@@ -487,19 +526,19 @@ func (u *UiController) UpdateStats(result stats.Result) {
 func GetColorForLabels(labels model.Metric) ui.Color {
 	// There are 8 colors, but the last one is white which is used for borders,
 	// so we use the first 7 colors. We also skip the first color, which is black.
-	return ui.Color(labels.FastFingerprint() % 7) + 1
+	return ui.Color(labels.FastFingerprint()%7) + 1
 }
 
-func GetLegend(labels []string, colors []ui.Color) string {
+func GetLegend(labels []string, colors []ui.Color) []string {
 	reverseStyleParserColorMap := make(map[ui.Color]string, len(ui.StyleParserColorMap))
 	for k, v := range ui.StyleParserColorMap {
 		reverseStyleParserColorMap[v] = k
 	}
 
-	legend := ""
+	var legend []string
 	for i, l := range labels {
 		labelColor := colors[i]
-		legend += fmt.Sprintf("[%s](fg:%s)\n", l, reverseStyleParserColorMap[labelColor])
+		legend = append(legend, fmt.Sprintf("[%s](fg:%s)\n", l, reverseStyleParserColorMap[labelColor]))
 	}
 
 	return legend
@@ -558,4 +597,29 @@ func (q *Query) resultsDirection() logproto.Direction {
 		return logproto.FORWARD
 	}
 	return logproto.BACKWARD
+}
+
+func (q *Query) HandleUiEvent(e ui.Event) {
+	needsUpdate := false
+
+	switch {
+	case e.Type == ui.ResizeEvent:
+		q.fitPanelsToTerminal()
+		needsUpdate = true
+	case e.ID == "j" || e.ID == "<Down>":
+		q.UiCtrl.legendPanel.widget.(*widgets.List).ScrollDown()
+		needsUpdate = true
+	case e.ID == "k" || e.ID == "<Up>":
+		q.UiCtrl.legendPanel.widget.(*widgets.List).ScrollUp()
+		needsUpdate = true
+	}
+
+	if needsUpdate {
+		q.UiCtrl.Render()
+	}
+}
+
+func (q *Query) fitPanelsToTerminal() {
+	w, h := ui.TerminalDimensions()
+	q.UiCtrl.grid.SetRect(0, 0, w, h)
 }
