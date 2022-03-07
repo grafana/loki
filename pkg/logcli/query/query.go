@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/prometheus/common/model"
 	"log"
 	"math/rand"
 	"os"
@@ -392,6 +393,7 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 
 func (q *Query) printMatrixPretty(matrix loghttp.Matrix) {
 	data := make([][]float64, 0)
+	colors := make([]ui.Color, 0)
 
 	for _, stream := range matrix {
 		fv := make([]float64, 0)
@@ -399,6 +401,7 @@ func (q *Query) printMatrixPretty(matrix loghttp.Matrix) {
 			fv = append(fv, float64(v.Value))
 		}
 		data = append(data, fv)
+		colors = append(colors, GetColorForLabels(stream.Metric))
 	}
 
 	// fmt.Println("data", data)
@@ -408,7 +411,7 @@ func (q *Query) printMatrixPretty(matrix loghttp.Matrix) {
 	p0.Data = data
 	p0.SetRect(0, 0, 130, 40)
 	p0.AxesColor = ui.ColorWhite
-	p0.LineColors[0] = randColor()
+	p0.LineColors = colors
 
 	ui.Render(p0)
 
@@ -421,6 +424,10 @@ func (q *Query) printMatrixPretty(matrix loghttp.Matrix) {
 	// 	}
 	// }
 	// time.Sleep(3 * time.Second)
+}
+
+func GetColorForLabels(labels model.Metric) ui.Color {
+	return ui.Color(labels.FastFingerprint() % 8)
 }
 
 func randColor() ui.Color {
