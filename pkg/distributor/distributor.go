@@ -77,7 +77,7 @@ var defaultReceivers = map[string]interface{}{
 type Config struct {
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring,omitempty"`
-	Otlp            OTLPConfig `yaml:otlp`
+	OTLP            OTLPConfig `yaml:"otlp"`
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 }
@@ -92,19 +92,19 @@ type OTLPConfig struct {
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
-	cfg.Otlp.RegisterFlags(fs)
+	cfg.OTLP.RegisterFlags(fs)
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *OTLPConfig) RegisterFlags(fs *flag.FlagSet) {
-	fs.BoolVar(&cfg.ReceiverEnable, "distributor.otlp.enable-receivers", false, "set to true to enable support receiving logs in Loki using OpenTelemetry Otlp")
+	fs.BoolVar(&cfg.ReceiverEnable, "distributor.otlp.enable-receivers", false, "set to true to enable support receiving logs in Loki using OpenTelemetry OTLP")
 	fs.StringVar(&cfg.ReceiverFormat, "distributor.otlp.receiver-format", "json", "json or logfmt")
 	fs.DurationVar(&cfg.ReceiverDrainTimeout, "distributor.otlp.receiver-drain-timeout", 2*time.Second, "distributor receiver should drain before terminating")
 }
 
 func (cfg *Config) Validate() error {
-	if cfg.Otlp.ReceiverFormat != receiver.LogFormatJSON && cfg.Otlp.ReceiverFormat != receiver.LogFormatLogfmt {
-		return fmt.Errorf("unsupported format type: %s", cfg.Otlp.ReceiverFormat)
+	if cfg.OTLP.ReceiverFormat != receiver.LogFormatJSON && cfg.OTLP.ReceiverFormat != receiver.LogFormatLogfmt {
+		return fmt.Errorf("unsupported format type: %s", cfg.OTLP.ReceiverFormat)
 	}
 	return nil
 }
@@ -227,12 +227,12 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
 
 	servs = append(servs, d.pool)
-	if cfg.Otlp.ReceiverEnable {
-		cfgReceivers := cfg.Otlp.Receivers
+	if cfg.OTLP.ReceiverEnable {
+		cfgReceivers := cfg.OTLP.Receivers
 		if len(cfgReceivers) == 0 {
 			cfgReceivers = defaultReceivers
 		}
-		receivers, err := receiver.New(cfgReceivers, d, cfg.Otlp.ReceiverFormat, cfg.Otlp.ReceiverDrainTimeout, middleware)
+		receivers, err := receiver.New(cfgReceivers, d, cfg.OTLP.ReceiverFormat, cfg.OTLP.ReceiverDrainTimeout, middleware)
 		if err != nil {
 			return nil, err
 		}
