@@ -19,6 +19,8 @@ import (
 	"github.com/grafana/loki/pkg/logcli/query"
 	"github.com/grafana/loki/pkg/logcli/seriesquery"
 	_ "github.com/grafana/loki/pkg/util/build"
+
+	ui "github.com/gizak/termui/v3"
 )
 
 var (
@@ -189,7 +191,34 @@ func main() {
 		if *tail || *follow {
 			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
 		} else {
-			rangeQuery.DoQuery(queryClient, out, *statistics)
+			if rangeQuery.Pretty {
+				if err := ui.Init(); err != nil {
+					log.Fatalf("failed to initialize termui: %v", err)
+				}
+				defer ui.Close()
+			}
+
+			delay := time.Second * 3
+			ticker := time.NewTicker(delay)
+			defer ticker.Stop()
+
+			uiEvents := ui.PollEvents()
+			for {
+				select {
+				case e := <-uiEvents:
+					if e.ID == "q" || e.ID == "<C-c>" {
+						return
+					}
+				case <-ticker.C:
+					rangeQuery.DoQuery(queryClient, out, *statistics)
+					if !rangeQuery.Live {
+						return
+					}
+
+					rangeQuery.Start = rangeQuery.Start.Add(delay)
+					rangeQuery.End = rangeQuery.End.Add(delay)
+				}
+			}
 		}
 	case instantQueryCmd.FullCommand():
 		location, err := time.LoadLocation(*timezone)
@@ -349,6 +378,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	cmd.Flag("store-config", "Execute the current query using a configured storage from a given Loki configuration file.").Default("").StringVar(&q.LocalConfig)
 	cmd.Flag("colored-output", "Show output with colored labels").Default("false").BoolVar(&q.ColoredOutput)
 	cmd.Flag("pretty", "visualize the timeseries as graph").BoolVar(&q.Pretty)
+	cmd.Flag("live", "visualize lively timeseries as graph").BoolVar(&q.Live)
 
 	return q
 }

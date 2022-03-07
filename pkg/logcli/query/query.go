@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"sort"
 	"strings"
@@ -61,6 +62,7 @@ type Query struct {
 	LocalConfig     string
 
 	Pretty bool
+	Live   bool
 }
 
 // DoQuery executes the query and prints out the results
@@ -115,6 +117,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 			}
 
 			resultLength, lastEntry = q.printResult(resp.Data.Result, out, lastEntry)
+
 			// Was not a log stream query, or no results, no more batching
 			if resultLength <= 0 {
 				break
@@ -400,28 +403,28 @@ func (q *Query) printMatrixPretty(matrix loghttp.Matrix) {
 
 	// fmt.Println("data", data)
 
-	if err := ui.Init(); err != nil {
-		log.Fatalf("failed to initialize termui: %v", err)
-	}
-	defer ui.Close()
-
 	p0 := widgets.NewPlot()
 	p0.Title = "Fancy LogCLI"
 	p0.Data = data
 	p0.SetRect(0, 0, 130, 40)
 	p0.AxesColor = ui.ColorWhite
-	p0.LineColors[0] = ui.ColorGreen
+	p0.LineColors[0] = randColor()
 
 	ui.Render(p0)
 
-	uiEvents := ui.PollEvents()
-	for {
-		e := <-uiEvents
-		switch e.ID {
-		case "q", "<C-c>":
-			return
-		}
-	}
+	// uiEvents := ui.PollEvents()
+	// for {
+	// 	e := <-uiEvents
+	// 	switch e.ID {
+	// 	case "q", "<C-c>":
+	// 		return
+	// 	}
+	// }
+	// time.Sleep(3 * time.Second)
+}
+
+func randColor() ui.Color {
+	return ui.Color(rand.Intn(8))
 }
 
 func (q *Query) printVector(vector loghttp.Vector) {
