@@ -1,7 +1,6 @@
 package logql
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -128,28 +127,44 @@ func TestMappingStrings(t *testing.T) {
 		out string
 	}{
 		{
-			in:  `{foo="bar"}`,
-			out: `downstream<{foo="bar"}, shard=0_of_2> ++ downstream<{foo="bar"}, shard=1_of_2>`,
+			in: `{foo="bar"}`,
+			out: `downstream<{foo="bar"}, shard=0_of_2> 
+					++ downstream<{foo="bar"}, shard=1_of_2>`,
 		},
 		{
-			in:  `{foo="bar"} |= "foo" |~ "bar" | json | latency >= 10s or foo<5 and bar="t" | line_format "b{{.blip}}"`,
-			out: `downstream<{foo="bar"} |="foo" |~"bar" | json | (latency>=10s or (foo<5,bar="t"))| line_format "b{{.blip}}",shard=0_of_2>++downstream<{foo="bar"} |="foo" |~"bar" | json | (latency>=10s or (foo<5, bar="t")) | line_format "b{{.blip}}",shard=1_of_2>`,
+			in: `{foo="bar"} |= "foo" |~ "bar" | json | latency >= 10s or foo<5 and bar="t" | line_format "b{{.blip}}"`,
+			out: `downstream<{foo="bar"} |="foo" |~"bar" | json | (latency>=10s or (foo<5,bar="t")) | line_format "b{{.blip}}", shard=0_of_2>
+					++downstream<{foo="bar"} |="foo" |~"bar" | json | (latency>=10s or (foo<5, bar="t")) | line_format "b{{.blip}}", shard=1_of_2>`,
 		},
 		{
-			in:  `sum(rate({foo="bar"}[1m]))`,
-			out: `sum(downstream<sum(rate({foo="bar"}[1m])), shard=0_of_2> ++ downstream<sum(rate({foo="bar"}[1m])), shard=1_of_2>)`,
+			in: `sum(rate({foo="bar"}[1m]))`,
+			out: `sum(
+				downstream<sum(rate({foo="bar"}[1m])), shard=0_of_2> 
+				++ downstream<sum(rate({foo="bar"}[1m])), shard=1_of_2>
+			)`,
 		},
 		{
-			in:  `max(count(rate({foo="bar"}[5m]))) / 2`,
-			out: `(max(sum(downstream<count(rate({foo="bar"}[5m])), shard=0_of_2> ++ downstream<count(rate({foo="bar"}[5m])), shard=1_of_2>)) / 2)`,
+			in: `max(count(rate({foo="bar"}[5m]))) / 2`,
+			out: `(max(
+				sum(
+					downstream<count(rate({foo="bar"}[5m])), shard=0_of_2> 
+					++ downstream<count(rate({foo="bar"}[5m])), shard=1_of_2>)
+				) / 2
+			)`,
 		},
 		{
-			in:  `topk(3, rate({foo="bar"}[5m]))`,
-			out: `topk(3,downstream<rate({foo="bar"}[5m]), shard=0_of_2> ++ downstream<rate({foo="bar"}[5m]), shard=1_of_2>)`,
+			in: `topk(3, rate({foo="bar"}[5m]))`,
+			out: `topk(3,
+				downstream<rate({foo="bar"}[5m]), shard=0_of_2> 
+				++ downstream<rate({foo="bar"}[5m]), shard=1_of_2>
+			)`,
 		},
 		{
-			in:  `sum(max(rate({foo="bar"}[5m])))`,
-			out: `sum(max(downstream<rate({foo="bar"}[5m]), shard=0_of_2> ++ downstream<rate({foo="bar"}[5m]), shard=1_of_2>))`,
+			in: `sum(max(rate({foo="bar"}[5m])))`,
+			out: `sum(max(
+				downstream<rate({foo="bar"}[5m]), shard=0_of_2> 
+				++ downstream<rate({foo="bar"}[5m]), shard=1_of_2>
+			))`,
 		},
 		{
 			in:  `sum(max(rate({foo="bar"} | json | label_format foo=bar [5m])))`,
@@ -160,41 +175,60 @@ func TestMappingStrings(t *testing.T) {
 			out: `rate({foo="bar"} | json | label_format foo=bar [5m])`,
 		},
 		{
-			in:  `count(rate({foo="bar"} | json [5m]))`,
-			out: `count(downstream<rate({foo="bar"} | json [5m]), shard=0_of_2> ++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>)`,
+			in: `count(rate({foo="bar"} | json [5m]))`,
+			out: `count(
+				downstream<rate({foo="bar"} | json [5m]), shard=0_of_2> 
+				++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>
+			)`,
 		},
 		{
-			in:  `avg(rate({foo="bar"} | json [5m]))`,
-			out: `avg(downstream<rate({foo="bar"} | json [5m]), shard=0_of_2> ++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>)`,
+			in: `avg(rate({foo="bar"} | json [5m]))`,
+			out: `avg(
+				downstream<rate({foo="bar"} | json [5m]), shard=0_of_2> 
+				++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>
+			)`,
 		},
 		{
-			in:  `{foo="bar"} |= "id=123"`,
-			out: `downstream<{foo="bar"}|="id=123", shard=0_of_2> ++ downstream<{foo="bar"}|="id=123", shard=1_of_2>`,
+			in: `{foo="bar"} |= "id=123"`,
+			out: `downstream<{foo="bar"}|="id=123", shard=0_of_2> 
+					++ downstream<{foo="bar"}|="id=123", shard=1_of_2>`,
 		},
 		{
-			in:  `sum by (cluster) (rate({foo="bar"} |= "id=123" [5m]))`,
-			out: `sum by(cluster)(downstream<sum by(cluster)(rate({foo="bar"}|="id=123"[5m])), shard=0_of_2> ++ downstream<sum by(cluster)(rate({foo="bar"}|="id=123"[5m])), shard=1_of_2>)`,
+			in: `sum by (cluster) (rate({foo="bar"} |= "id=123" [5m]))`,
+			out: `sum by (cluster) (
+				downstream<sum by(cluster)(rate({foo="bar"}|="id=123"[5m])), shard=0_of_2> 
+				++ downstream<sum by(cluster)(rate({foo="bar"}|="id=123"[5m])), shard=1_of_2>
+			)`,
 		},
 		{
-			in:  `sum by (cluster) (sum_over_time({foo="bar"} |= "id=123" | logfmt | unwrap latency [5m]))`,
-			out: `sum by(cluster)(downstream<sum by(cluster)(sum_over_time({foo="bar"}|="id=123"| logfmt | unwrap latency[5m])), shard=0_of_2> ++ downstream<sum by(cluster)(sum_over_time({foo="bar"}|="id=123"| logfmt | unwrap latency[5m])), shard=1_of_2>)`,
+			in: `sum by (cluster) (sum_over_time({foo="bar"} |= "id=123" | logfmt | unwrap latency [5m]))`,
+			out: `sum by (cluster) (
+				downstream<sum by(cluster)(sum_over_time({foo="bar"}|="id=123"| logfmt | unwrap latency[5m])), shard=0_of_2> 
+				++ downstream<sum by(cluster)(sum_over_time({foo="bar"}|="id=123"| logfmt | unwrap latency[5m])), shard=1_of_2>
+			)`,
 		},
 		{
 			in:  `sum by (cluster) (stddev_over_time({foo="bar"} |= "id=123" | logfmt | unwrap latency [5m]))`,
 			out: `sum by (cluster) (stddev_over_time({foo="bar"} |= "id=123" | logfmt | unwrap latency [5m]))`,
 		},
 		{
-			in: `
-		sum without (a) (
-		  label_replace(
-		    sum without (b) (
-		      rate({foo="bar"}[5m])
-		    ),
-		    "baz", "buz", "foo", "(.*)"
-		  )
-		)
-		`,
-			out: `sum without(a)(label_replace(sum without(b)(downstream<sum without(b)(rate({foo="bar"}[5m])),shard=0_of_2>++downstream<sum without(b)(rate({foo="bar"}[5m])),shard=1_of_2>),"baz","buz","foo","(.*)"))`,
+			in: `sum without (a) (
+		  			label_replace(
+		    			sum without (b) (
+		      				rate({foo="bar"}[5m])
+		    			),
+		    			"baz", "buz", "foo", "(.*)"
+		  			)
+				)`,
+			out: `sum without(a) (
+					label_replace(
+						sum without (b) (
+							downstream<sum without (b)(rate({foo="bar"}[5m])), shard=0_of_2>
+							++downstream<sum without(b)(rate({foo="bar"}[5m])), shard=1_of_2>
+						),
+						"baz", "buz", "foo", "(.*)"
+					)
+				)`,
 		},
 		{
 			// Ensure we don't try to shard expressions that include label reformatting.
@@ -202,12 +236,32 @@ func TestMappingStrings(t *testing.T) {
 			out: `sum(count_over_time({foo="bar"} | logfmt | label_format bar=baz | bar="buz" [5m]))`,
 		},
 		{
-			in:  `sum by (cluster) (rate({foo="bar"} [5m])) + ignoring(machine) sum by (cluster,machine) (rate({foo="bar"} [5m]))`,
-			out: `(sumby(cluster)(downstream<sumby(cluster)(rate({foo="bar"}[5m])),shard=0_of_2>++downstream<sumby(cluster)(rate({foo="bar"}[5m])),shard=1_of_2>)+ignoring(machine)sumby(cluster,machine)(downstream<sumby(cluster,machine)(rate({foo="bar"}[5m])),shard=0_of_2>++downstream<sumby(cluster,machine)(rate({foo="bar"}[5m])),shard=1_of_2>))`,
+			in: `sum by (cluster) (rate({foo="bar"} [5m])) + ignoring(machine) sum by (cluster,machine) (rate({foo="bar"} [5m]))`,
+			out: `(
+				sum by (cluster) (
+					downstream<sum by (cluster) (rate({foo="bar"}[5m])), shard=0_of_2> 
+					++ downstream<sum by (cluster) (rate({foo="bar"}[5m])), shard=1_of_2>
+				)
+				+ ignoring(machine) sum by (cluster, machine) (
+					downstream<sum by (cluster, machine) (rate({foo="bar"}[5m])), shard=0_of_2>
+					++ downstream<sum by (cluster, machine) (rate({foo="bar"}[5m])), shard=1_of_2>
+				)
+			)`,
 		},
 		{
-			in:  `sum by (cluster) (sum by (cluster) (rate({foo="bar"} [5m])) + ignoring(machine) sum by (cluster,machine) (rate({foo="bar"} [5m])))`,
-			out: `sumby(cluster)((sumby(cluster)(downstream<sumby(cluster)(rate({foo="bar"}[5m])),shard=0_of_2>++downstream<sumby(cluster)(rate({foo="bar"}[5m])),shard=1_of_2>)+ignoring(machine)sumby(cluster,machine)(downstream<sumby(cluster,machine)(rate({foo="bar"}[5m])),shard=0_of_2>++downstream<sumby(cluster,machine)(rate({foo="bar"}[5m])),shard=1_of_2>)))`,
+			in: `sum by (cluster) (sum by (cluster) (rate({foo="bar"} [5m])) + ignoring(machine) sum by (cluster,machine) (rate({foo="bar"} [5m])))`,
+			out: `sum by (cluster) (
+				(
+					sum by (cluster) (
+						downstream<sum by (cluster) (rate({foo="bar"}[5m])), shard=0_of_2>
+						++ downstream<sum by (cluster) (rate({foo="bar"}[5m])), shard=1_of_2>
+					)
+					+ ignoring(machine) sum by (cluster, machine)(
+						downstream<sum by (cluster, machine) (rate({foo="bar"}[5m])), shard=0_of_2>
+						++ downstream<sum by (cluster, machine) (rate({foo="bar"}[5m])), shard=1_of_2>
+					)
+				)
+			)`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
@@ -217,7 +271,7 @@ func TestMappingStrings(t *testing.T) {
 			mapped, err := m.Map(ast, nilMetrics.shardRecorder())
 			require.Nil(t, err)
 
-			require.Equal(t, strings.ReplaceAll(tc.out, " ", ""), strings.ReplaceAll(mapped.String(), " ", ""))
+			require.Equal(t, removeWhiteSpace(tc.out), removeWhiteSpace(mapped.String()))
 		})
 	}
 }

@@ -19,19 +19,28 @@ import (
 )
 
 /*
-This includes a bunch of tooling for parallelization improvements based on backend shard factors.
+The downstream engine is responsible for executing multiple downstream computations in parallel.
+Each downstream computation includes an Expr and an optional sharding representation based on backend shard factors.
+
 In schemas 10+ a shard factor (default 16) is introduced in the index store,
 calculated by hashing the label set of a log stream. This allows us to perform certain optimizations
 that fall under the umbrella of query remapping and querying shards individually.
-For instance, `{app="foo"} |= "bar"` can be executed on each shard independently, then reaggregated.
+For instance, `{app="foo"} |= "bar"` can be executed on each shard independently, then re-aggregated:
+	downstream<{app="foo"} |= "bar", shard=0_of_n>
+	...
+	++ downstream<{app="foo"} |= "bar", shard=n-1_of_n>
+
 There are also a class of optimizations that can be performed by altering a query into a functionally equivalent,
-but more parallelizable form. For instance, an average can be remapped into a sum/count,
-which can then take advantage of our sharded execution model.
+but more parallelizable form. For instance, an average can be remapped into a sum/count expression where each
+operand expression can take advantage of the parallel execution model:
+	downstream<SUM_EXPR, shard=<nil>>
+	/
+	downstream<COUNT_EXPR, shard=<nil>>
 */
 
-// ShardedEngine is an Engine implementation that can split queries into more parallelizable forms via
-// querying the underlying backend shards individually and reaggregating them.
-type ShardedEngine struct {
+// DownstreamEngine is an Engine implementation that can split queries into more parallelizable forms via
+// querying the underlying backend shards individually and re-aggregating them.
+type DownstreamEngine struct {
 	logger         log.Logger
 	timeout        time.Duration
 	downstreamable Downstreamable
@@ -39,10 +48,10 @@ type ShardedEngine struct {
 	metrics        *ShardingMetrics
 }
 
-// NewShardedEngine constructs a *ShardedEngine
-func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics, limits Limits, logger log.Logger) *ShardedEngine {
+// NewDownstreamEngine constructs a *DownstreamEngine
+func NewDownstreamEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics, limits Limits, logger log.Logger) *DownstreamEngine {
 	opts.applyDefault()
-	return &ShardedEngine{
+	return &DownstreamEngine{
 		logger:         logger,
 		timeout:        opts.Timeout,
 		downstreamable: downstreamable,
@@ -52,7 +61,7 @@ func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *S
 }
 
 // Query constructs a Query
-func (ng *ShardedEngine) Query(p Params, mapped Expr) Query {
+func (ng *DownstreamEngine) Query(p Params, mapped Expr) Query {
 	return &query{
 		logger:    ng.logger,
 		timeout:   ng.timeout,
@@ -188,11 +197,11 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 type errorQuerier struct{}
 
 func (errorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
-	return nil, errors.New("Unimplemented")
+	return nil, errors.New("unimplemented")
 }
 
 func (errorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
-	return nil, errors.New("Unimplemented")
+	return nil, errors.New("unimplemented")
 }
 
 func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
@@ -202,7 +211,7 @@ func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 	}
 }
 
-// Evaluator returns a StepEvaluator for a given SampleExpr
+// StepEvaluator returns a StepEvaluator for a given SampleExpr
 func (ev *DownstreamEvaluator) StepEvaluator(
 	ctx context.Context,
 	nextEv SampleEvaluator,

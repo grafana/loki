@@ -5,7 +5,9 @@ import (
 	"fmt"
 	logger "log"
 	"sort"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
@@ -277,4 +279,13 @@ func mustParseLabels(s string) labels.Labels {
 	}
 
 	return labels
+}
+
+func removeWhiteSpace(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == ' ' || unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
 }
