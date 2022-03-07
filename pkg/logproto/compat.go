@@ -214,3 +214,35 @@ func init() {
 	jsoniter.RegisterTypeEncoderFunc("logproto.LegacySample", SampleJsoniterEncode, func(unsafe.Pointer) bool { return false })
 	jsoniter.RegisterTypeDecoderFunc("logproto.LegacySample", SampleJsoniterDecode)
 }
+
+func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
+	if len(responses) == 0 {
+		return nil, fmt.Errorf("no label responses to merge")
+	}
+
+	result := &LabelResponse{
+		Values: make([]string, 0, len(responses)),
+	}
+
+	for _, r := range responses {
+		result.Values = append(result.Values, r.Values...)
+	}
+
+	return result, nil
+}
+
+func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) {
+	if len(responses) == 0 {
+		return nil, fmt.Errorf("no series responses to merge")
+	}
+
+	result := &SeriesResponse{
+		Series: make([]SeriesIdentifier, 0, len(responses)),
+	}
+
+	for _, r := range responses {
+		result.Series = append(result.Series, r.Series...)
+	}
+
+	return result, nil
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/tenant"
 )
@@ -81,6 +82,58 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 		iters[i] = NewTenantSampleIterator(iter, id)
 	}
 	return iter.NewSortSampleIterator(iters), nil
+}
+
+func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	tenantIDs, err := q.resolver.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		singleContext := user.InjectUserID(ctx, tenantIDs[0])
+		return q.Querier.Label(singleContext, req)
+	}
+
+	responses := make([]*logproto.LabelResponse, len(tenantIDs))
+	for i, id := range tenantIDs {
+		singleContext := user.InjectUserID(ctx, id)
+		resp, err := q.Querier.Label(singleContext, req)
+
+		if err != nil {
+			return nil, err
+		}
+
+		responses[i] = resp
+	}
+
+	return logproto.MergeLabelResponses(responses)
+}
+
+func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	tenantIDs, err := q.resolver.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		singleContext := user.InjectUserID(ctx, tenantIDs[0])
+		return q.Querier.Series(singleContext, req)
+	}
+
+	responses := make([]*logproto.SeriesResponse, len(tenantIDs))
+	for i, id := range tenantIDs {
+		singleContext := user.InjectUserID(ctx, id)
+		resp, err := q.Querier.Series(singleContext, req)
+
+		if err != nil {
+			return nil, err
+		}
+
+		responses[i] = resp
+	}
+
+	return logproto.MergeSeriesResponses(responses)
 }
 
 // TenantEntry Iterator wraps an entry iterator and adds the tenant label.
