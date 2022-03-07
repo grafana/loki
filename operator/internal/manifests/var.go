@@ -136,6 +136,11 @@ func GatewayName(stackName string) string {
 	return fmt.Sprintf("lokistack-gateway-%s", stackName)
 }
 
+// PrometheusRuleName is the name of the loki-prometheus-rule
+func PrometheusRuleName(stackName string) string {
+	return fmt.Sprintf("loki-prometheus-rule-%s", stackName)
+}
+
 func serviceNameQuerierHTTP(stackName string) string {
 	return fmt.Sprintf("loki-querier-http-%s", stackName)
 }

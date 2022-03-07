@@ -87,7 +87,7 @@ OCI_RUNTIME ?= $(shell which podman || which docker)
 # http://linuxcommand.org/lc3_adv_awk.php
 
 help: ## Display this help.
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 ##@ Development
 
@@ -116,15 +116,23 @@ generate: $(CONTROLLER_GEN) ## Generate controller and crd code
 manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
-test: deps generate go-generate lint manifests ## Run tests
+test: deps generate go-generate lint lint-prometheus manifests ## Run tests
 test: $(GO_FILES)
 	go test ./... -coverprofile cover.out
+
+.PHONY: test-unit-prometheus
+test-unit-prometheus: $(PROMTOOL) ## Run prometheus unit tests
+	@$(PROMTOOL) test rules ./internal/manifests/internal/alerts/testdata/test.yaml
 
 scorecard: generate go-generate bundle ## Run scorecard test
 	$(OPERATOR_SDK) scorecard bundle
 
 lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 	$(GOLANGCI_LINT) run ./...
+
+.PHONY: lint-prometheus
+lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and alerts.
+	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus_alerts.yaml
 
 fmt: $(GOFUMPT) ## Run gofumpt on source code.
 	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
