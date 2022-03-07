@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -92,7 +91,7 @@ func (j *JSONParser) handleJson(preKey string, line []byte) error {
 		if valueType == jsonparser.Object {
 			return j.handleJson(jsonKey+"_", val)
 		}
-		jsonErr := j.setJSONVal(jsonKey, val, valueType)
+		jsonErr := j.setJSONVal(jsonKey, val)
 		if jsonErr != nil {
 			return jsonErr
 		}
@@ -122,7 +121,7 @@ func (j *JSONParser) parseJSONKeyVal(line []byte, requiredLabels []string) error
 				if e != nil {
 					continue
 				}
-				err := j.setJSONVal(field, v, t)
+				err := j.setJSONVal(field, v)
 				if err != nil {
 					return err
 				}
@@ -168,7 +167,7 @@ func (j *JSONParser) parseJSONKeyVal(line []byte, requiredLabels []string) error
 				jsonSpacerIndex++
 				continue
 			}
-			err := j.setJSONVal(field, v, t)
+			err := j.setJSONVal(field, v)
 			if err != nil {
 				return err
 			}
@@ -187,53 +186,12 @@ func (j *JSONParser) parseJSONKeyVal(line []byte, requiredLabels []string) error
 	return nil
 }
 
-func (j *JSONParser) setJSONVal(field string, v []byte, t jsonparser.ValueType) error {
-	val, err := parseStringVal(v, t)
-	if err != nil {
-		return err
-	}
+func (j *JSONParser) setJSONVal(field string, v []byte) error {
 	if j.lbs.BaseHas(field) {
 		field = field + duplicateSuffix
 	}
-	j.lbs.Set(field, val)
+	j.lbs.Set(field, string(v))
 	return nil
-}
-
-func parseStringVal(v []byte, t jsonparser.ValueType) (string, error) {
-	if 1 == 1 {
-		return string(v), nil
-	}
-	var val string
-	var err error
-	if t == jsonparser.String {
-		if bytes.IndexByte(v, '\\') == -1 {
-			val = string(v)
-		} else {
-			val, err = jsonparser.ParseString(v)
-			if err != nil {
-				return val, err
-			}
-		}
-	} else if t == jsonparser.Number {
-		intVal, err := jsonparser.ParseInt(v)
-		if err != nil {
-			return val, err
-		}
-		val = strconv.FormatInt(intVal, 10)
-	} else if t == jsonparser.Boolean {
-		boolVal, err := jsonparser.ParseBoolean(v)
-		if err != nil {
-			return val, err
-		}
-		if boolVal {
-			val = trueString
-		} else {
-			val = falseString
-		}
-	} else {
-		return val, errors.New("unsupported type")
-	}
-	return val, nil
 }
 
 type RegexpParser struct {
