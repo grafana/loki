@@ -52,26 +52,10 @@ In order to enable communication between the client(s) and the gateway, follow t
           fluentd: {}
     ```
 
-* By default, the TLS communication is on for communication with the distributor. Therefore, you need to create a secret. The secret must exist in the openshift-logging namespace, and must have keys of: `tls.crt`, `tls.key`, and `ca-bundle.crt` that point to the respective certificates that they represent.
+* By default, the TLS communication is on for communication with the distributor. Therefore, you need to create a secret. The secret must exist in the openshift-logging namespace, and must have a key `ca-bundle.crt`.
 
-    These keys already exists when LokiStack instance got created but at different places. Hence, you need to fetch them and put into a single secret file.
+    This key already exists when LokiStack instance got created but as a Config Map. Hence, you need to fetch them and put into a secret file.
 
-    Fetch the `tls.crt` and `tls.key` using:
-
-    ```console
-    kubectl -n openshift-logging get secret loki-distributor-http-lokistack-dev-metrics -o jsonpath="{.data.tls\.crt}"
-    ```
-
-    ```console
-    kubectl -n openshift-logging get secret loki-distributor-http-lokistack-dev-metrics -o jsonpath="{.data.tls\.key}"
-    ```
-  
-    Copy the `annotations` as well:
-
-    ```console
-    kubectl -n openshift-logging get secret loki-distributor-http-lokistack-dev-metrics -o jsonpath="{.metadata.annotations}"
-    ```
-  
     Fetch the `ca-bundle.crt` using:
 
     ```console
@@ -86,16 +70,12 @@ In order to enable communication between the client(s) and the gateway, follow t
     metadata:
       name: loki-distributor-metrics
       namespace: openshift-logging
-      annotations:
-        <ANNOTATIONS>
     type: kubernetes.io/tls
     data:
-      tls.crt: <TLS_CRT>
-      tls.key: <TLS_KEY>
       ca-bundle.crt: <CA_BUNDLE>
     ```
     
-    where `<ANNOTATIONS>`, `<TLS_CRT>`, `<TLS_KEY>` and `<CA_BUNDLE>` are the copied values from previous step.
+    where `<CA_BUNDLE>` is the copied value from previous step.
 
 * Create the above secret file in the cluster:
 
