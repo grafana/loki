@@ -117,7 +117,7 @@ func (j *JSONParser) parseJSONKeyVal(line []byte, requiredLabels []string) error
 		if ok {
 			isMatchKey := false
 			for _, key := range cacheKeys {
-				v, t, _, e := jsonparser.Get(line, key...)
+				v, _, _, e := jsonparser.Get(line, key...)
 				if e != nil {
 					continue
 				}
@@ -136,7 +136,7 @@ func (j *JSONParser) parseJSONKeyVal(line []byte, requiredLabels []string) error
 		keyArray := make([]string, 0)
 		jsonSpacerIndex := 0
 		for {
-			v, t, _, e := jsonparser.Get(line, keys...)
+			v, _, _, e := jsonparser.Get(line, keys...)
 			if e != nil {
 				if e != jsonparser.KeyPathNotFoundError {
 					return e
