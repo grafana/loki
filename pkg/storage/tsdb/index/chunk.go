@@ -2,6 +2,8 @@ package index
 
 import (
 	"sort"
+
+	"github.com/prometheus/common/model"
 )
 
 // Meta holds information about a chunk of data.
@@ -15,6 +17,9 @@ type ChunkMeta struct {
 
 	Entries uint32
 }
+
+func (c ChunkMeta) From() model.Time    { return model.Time(c.MinTime) }
+func (c ChunkMeta) Through() model.Time { return model.Time(c.MaxTime) }
 
 type ChunkMetas []ChunkMeta
 
