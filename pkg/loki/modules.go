@@ -731,7 +731,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
-	t.Cfg.IndexGateway.IndexGatewayRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	objectClient, err := chunk_storage.NewObjectClient(t.Cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType, t.Cfg.StorageConfig.Config, t.clientMetrics)
 	if err != nil {
 		return nil, err
@@ -742,7 +742,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		return nil, err
 	}
 
-	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, shipperIndexClient.(*shipper.Shipper), shipperIndexClient)
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig, util_log.Logger, prometheus.DefaultRegisterer, shipperIndexClient.(*shipper.Shipper), shipperIndexClient)
 	if err != nil {
 		return nil, err
 	}
@@ -753,9 +753,9 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
-	t.Cfg.IndexGateway.IndexGatewayRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	t.Cfg.IndexGateway.IndexGatewayRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	ringCfg := t.Cfg.IndexGateway.IndexGatewayRing.ToRingConfig(indexgateway.RingReplicationFactor)
+	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
+	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	ringCfg := t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.ToRingConfig(indexgateway.RingReplicationFactor)
 	reg := prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer)
 	t.indexGatewayRing, err = ring.New(ringCfg, indexgateway.RingIdentifier, indexgateway.RingKey, util_log.Logger, reg)
 	if err != nil {
