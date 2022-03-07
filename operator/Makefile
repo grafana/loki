@@ -187,15 +187,12 @@ olm-deploy:  ## Deploy the operator bundle and the operator via OLM into an Kube
 	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
 else
 olm-deploy: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
-	kubectl create ns $(LOKI_OPERATOR_NS)
-	kubectl label ns/$(LOKI_OPERATOR_NS) openshift.io/cluster-monitoring=true --overwrite
-	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode OwnNamespace $(BUNDLE_IMG)
+	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode AllNamespaces $(BUNDLE_IMG)
 endif
 
 .PHONY: olm-undeploy
 olm-undeploy: $(OPERATOR_SDK) ## Cleanup deployments of the operator bundle and the operator via OLM on an OpenShift cluster selected via KUBECONFIG.
-	$(OPERATOR_SDK) cleanup loki-operator
-	kubectl delete ns $(LOKI_OPERATOR_NS)
+	$(OPERATOR_SDK) cleanup -n $(LOKI_OPERATOR_NS) loki-operator
 
 .PHONY: deploy-size-calculator
 ifeq ($(findstring openshift-logging,$(CALCULATOR_IMG)),openshift-logging)
