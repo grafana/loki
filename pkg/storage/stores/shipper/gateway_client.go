@@ -2,7 +2,6 @@ package shipper
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"strings"
@@ -21,10 +20,10 @@ import (
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/util"
-	loki_util "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
@@ -34,115 +33,15 @@ const (
 	maxConcurrentGrpcCalls = 10
 )
 
-// IndexGatewayClientMode represents in which mode an Index Gateway instance is running.
-//
-// Right now, two modes are supported: simple mode (default) and ring mode.
-type IndexGatewayClientMode string
-
-// Set implements a flag interface, and is necessary to use the IndexGatewayClientMode as a flag.
-func (i IndexGatewayClientMode) Set(v string) error {
-	switch v {
-	case string(SimpleMode):
-		i = SimpleMode
-	case string(RingMode):
-		i = RingMode
-	default:
-		return fmt.Errorf("mode %s not supported. list of supported modes: simple (default), ring", v)
-	}
-	return nil
-}
-
-// Stringg implements a flag interface, and is necessary to use the IndexGatewayClientMode as a flag.
-func (i IndexGatewayClientMode) String() string {
-	switch i {
-	case RingMode:
-		return string(RingMode)
-	default:
-		return string(SimpleMode)
-	}
-}
-
-const (
-	// SimpleMode is a mode where an Index Gateway instance solely handle all the work.
-	SimpleMode IndexGatewayClientMode = "simple"
-
-	// RingMode is a mode where different Index Gateway instances are assigned to handle different tenants.
-	//
-	// It is more horizontally scalable than the simple mode, but requires running a key-value store ring.
-	RingMode IndexGatewayClientMode = "ring"
-)
-
-// SimpleModeConfig configures an Index Gateway in the simple mode, where a single instance is assigned all tenants.
-//
-// If the Index Gateway is running in ring mode this configuration shall be ignored.
-type SimpleModeConfig struct {
-	// Address of the Index Gateway instance responsible for retaining the index for all tenants.
-	Address string `yaml:"server_address,omitempty"`
-}
-
-// RegisterFlagsWithPrefix register all SimpleModeConfig flags and all the flags of its subconfigs but with a prefix.
-func (cfg *SimpleModeConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode.")
-}
-
-// RingModeConfig configures an Index Gateway in the ring mode, where an instance is responsible for a subset of tenants.
-//
-// If the Index Gateway is running in simple mode this configuration shall be ignored.
-type RingModeConfig struct {
-	// Ring configures the ring key-value store used to save and retrieve the different Index Gateway instances.
-	//
-	// In case it isn't explicitly set, it follows the same behavior of the other rings (ex: using the common configuration
-	// section and the ingester configuration by default).
-	Ring loki_util.RingConfig `yaml:"index_gateway_ring,omitempty"` // TODO: maybe just `yaml:"ring"`?
-
-	// PoolConfig configures a pool of GRPC connections to the different Index Gateway instances.
-	PoolConfig clientpool.PoolConfig `yaml:"pool_config"`
-
-	// GRPCClientConfig configures GRPC parameters used in the connection between a component and the Index Gateway.
-	//
-	// It is used by both, simple and ring mode.
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
-}
-
-// RegisterFlagsWithPrefix register all RingModeConfig flags and all the flags of its subconfigs but with a prefix.
-func (cfg *RingModeConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.Ring.RegisterFlagsWithPrefix(prefix+".", "collectors/", f)
-}
-
-// IndexGatewayClientConfig configures an Index Gateway client used by the different components.
-//
-// If the mode is set to simple (default), only the SimpleModeConfig is relevant. Otherwise, for the ring mode,
-// only the RingModeConfig is relevant.
-type IndexGatewayClientConfig struct {
-	// Mode configures in which mode the client will be running when querying and communicating with an Index Gateway instance.
-	Mode IndexGatewayClientMode `yaml:"mode"` // TODO: ring, simple
-
-	// RingMode configures the client to communicate with Index Gateway instances in the ring mode.
-	RingModeConfig `yaml:",inline"`
-
-	// SimpleModeConfig configures the client to communicate with Index Gateway instances in the simple mode.
-	SimpleModeConfig `yaml:",inline"`
-}
-
-// RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
-func (cfg *IndexGatewayClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.Mode = SimpleMode // default mode.
-	cfg.RingModeConfig.RegisterFlagsWithPrefix(prefix, f)
-	cfg.SimpleModeConfig.RegisterFlagsWithPrefix(prefix, f)
-	cfg.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
-
-	f.Var(cfg.Mode, prefix+".mode", "Mode to run the index gateway client. Supported modes are simple (default) and ring.")
-}
-
 type GatewayClient struct {
-	cfg IndexGatewayClientConfig
+	cfg indexgateway.Config
 
 	storeGatewayClientRequestDuration *prometheus.HistogramVec
 
 	conn       *grpc.ClientConn
 	grpcClient indexgatewaypb.IndexGatewayClient
 
-	mode IndexGatewayClientMode
+	mode indexgateway.Mode
 
 	pool *ring_client.Pool
 
@@ -153,7 +52,7 @@ type GatewayClient struct {
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created.
 // Otherwise, it creates a single GRPC connection to an Index Gateway instance running in simple mode.
-func NewGatewayClient(cfg IndexGatewayClientConfig, indexGatewayRing ring.ReadRing, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
+func NewGatewayClient(cfg indexgateway.Config, indexGatewayRing ring.ReadRing, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
 	sgClient := &GatewayClient{
 		cfg: cfg,
 		storeGatewayClientRequestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
@@ -171,7 +70,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, indexGatewayRing ring.ReadRi
 		return nil, errors.Wrap(err, "index gateway grpc dial option")
 	}
 
-	if sgClient.mode == RingMode {
+	if sgClient.mode == indexgateway.RingMode {
 		factory := func(addr string) (ring_client.PoolClient, error) {
 			igPool, err := NewIndexGatewayGRPCPool(addr, dialOpts)
 			if err != nil {
@@ -184,6 +83,9 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, indexGatewayRing ring.ReadRi
 		sgClient.pool = clientpool.NewPool(cfg.PoolConfig, indexGatewayRing, factory, logger)
 	} else {
 		sgClient.conn, err = grpc.Dial(cfg.Address, dialOpts...)
+		if err != nil {
+			return nil, errors.Wrap(err, "index gateway grpc dial")
+		}
 
 		sgClient.grpcClient = indexgatewaypb.NewIndexGatewayClient(sgClient.conn)
 	}
@@ -195,7 +97,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, indexGatewayRing ring.ReadRi
 //
 // If it is in simple mode, the sinlge GRPC connection is closed. Otherwise, nothing happens.
 func (s *GatewayClient) Stop() {
-	if s.mode == SimpleMode {
+	if s.mode == indexgateway.SimpleMode {
 		s.conn.Close()
 	}
 }
@@ -230,11 +132,11 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuer
 		})
 	}
 
-	if s.mode == SimpleMode {
-		return s.clientDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback, s.grpcClient)
-	} else {
+	if s.mode == indexgateway.RingMode {
 		return s.ringModeDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback)
 	}
+
+	return s.clientDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback, s.grpcClient)
 }
 
 // clientDoQueries send a query request to an Index Gateway instance using the given gRPC client.

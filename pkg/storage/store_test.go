@@ -216,7 +216,7 @@ func getLocalStore(cm storage.ClientMetrics) Store {
 	chunkStore, err := storage.NewStore(
 		storeConfig.Config,
 		chunk.StoreConfig{},
-		schemaConfig.SchemaConfig, limits, cm, nil, nil, util_log.Logger)
+		schemaConfig.SchemaConfig, nil /* index gateway ring */, limits, cm, nil, nil, util_log.Logger)
 	if err != nil {
 		panic(err)
 	}
@@ -842,6 +842,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		config.Config,
 		chunk.StoreConfig{},
 		schemaConfig.SchemaConfig,
+		nil, /* index gateway ring */
 		limits,
 		cm,
 		nil,
@@ -889,6 +890,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		config.Config,
 		chunk.StoreConfig{},
 		schemaConfig.SchemaConfig,
+		nil, /* index gateway ring */
 		limits,
 		cm,
 		nil,

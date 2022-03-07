@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -54,18 +55,18 @@ type boltDBIndexClient interface {
 }
 
 type Config struct {
-	ActiveIndexDirectory     string                   `yaml:"active_index_directory"`
-	SharedStoreType          string                   `yaml:"shared_store"`
-	SharedStoreKeyPrefix     string                   `yaml:"shared_store_key_prefix"`
-	CacheLocation            string                   `yaml:"cache_location"`
-	CacheTTL                 time.Duration            `yaml:"cache_ttl"`
-	ResyncInterval           time.Duration            `yaml:"resync_interval"`
-	QueryReadyNumDays        int                      `yaml:"query_ready_num_days"`
-	IndexGatewayClientConfig IndexGatewayClientConfig `yaml:"index_gateway_client"`
-	BuildPerTenantIndex      bool                     `yaml:"build_per_tenant_index"`
-	IngesterName             string                   `yaml:"-"`
-	Mode                     int                      `yaml:"-"`
-	IngesterDBRetainPeriod   time.Duration            `yaml:"-"`
+	ActiveIndexDirectory     string              `yaml:"active_index_directory"`
+	SharedStoreType          string              `yaml:"shared_store"`
+	SharedStoreKeyPrefix     string              `yaml:"shared_store_key_prefix"`
+	CacheLocation            string              `yaml:"cache_location"`
+	CacheTTL                 time.Duration       `yaml:"cache_ttl"`
+	ResyncInterval           time.Duration       `yaml:"resync_interval"`
+	QueryReadyNumDays        int                 `yaml:"query_ready_num_days"`
+	IndexGatewayClientConfig indexgateway.Config `yaml:"index_gateway_client"`
+	BuildPerTenantIndex      bool                `yaml:"build_per_tenant_index"`
+	IngesterName             string              `yaml:"-"`
+	Mode                     int                 `yaml:"-"`
+	IngesterDBRetainPeriod   time.Duration       `yaml:"-"`
 }
 
 // RegisterFlags registers flags.

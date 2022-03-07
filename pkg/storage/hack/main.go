@@ -72,6 +72,7 @@ func getStore(cm storage.ClientMetrics) (lstore.Store, error) {
 		storeConfig.Config,
 		chunk.StoreConfig{},
 		schemaCfg.SchemaConfig,
+		nil, /* gateway ring */
 		&validation.Overrides{},
 		cm,
 		prometheus.DefaultRegisterer,

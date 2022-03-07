@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -52,7 +51,7 @@ type Gateway struct {
 	services.Service
 
 	indexQuerier IndexQuerier
-	cfg          shipper.IndexGatewayClientConfig
+	cfg          Config
 	log          log.Logger
 
 	shipper chunk.IndexClient
@@ -145,10 +144,10 @@ func (g *Gateway) stopping(_ error) error {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg shipper.IndexGatewayClientConfig, log log.Logger, registerer prometheus.Registerer, shipperIndexClient *shipper.Shipper, indexQuerier IndexQuerier) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexClient chunk.IndexClient, indexQuerier IndexQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
-		shipper:      shipperIndexClient,
+		shipper:      indexClient,
 		cfg:          cfg,
 		log:          log,
 	}
@@ -158,7 +157,7 @@ func NewIndexGateway(cfg shipper.IndexGatewayClientConfig, log log.Logger, regis
 		return nil
 	})
 
-	if cfg.Mode == shipper.RingMode {
+	if cfg.Mode == RingMode {
 		ringStore, err := kv.NewClient(
 			cfg.Ring.KVStore,
 			ring.GetCodec(),
@@ -285,7 +284,7 @@ func buildResponses(query chunk.IndexQuery, batch chunk.ReadBatch, callback func
 
 // ServeHTTP serves the HTTP route /indexgateway/ring.
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if g.cfg.Mode == shipper.RingMode {
+	if g.cfg.Mode == RingMode {
 		g.ring.ServeHTTP(w, req)
 	} else {
 		w.Write([]byte("IndexGateway running with 'useIndexGatewayRing' disabled."))
