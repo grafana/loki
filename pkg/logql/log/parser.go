@@ -22,8 +22,6 @@ import (
 const (
 	jsonSpacer      = '_'
 	duplicateSuffix = "_extracted"
-	trueString      = "true"
-	falseString     = "false"
 )
 
 var (
