@@ -1,10 +1,8 @@
 package logql
 
 import (
-	"strings"
 	"testing"
 	"time"
-	"unicode"
 
 	"github.com/stretchr/testify/require"
 )
@@ -224,13 +222,4 @@ func Test_FailQuery(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = rvm.Parse(`{app="foo"} |= "err"`)
 	require.Error(t, err)
-}
-
-func removeWhiteSpace(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r == ' ' || unicode.IsSpace(r) {
-			return -1
-		}
-		return r
-	}, s)
 }
