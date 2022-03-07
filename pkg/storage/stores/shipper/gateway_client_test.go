@@ -18,6 +18,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -183,7 +184,7 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 	}))
 	conn, _ := grpc.DialContext(context.Background(), "", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 		return listener.Dial()
-	}), grpc.WithInsecure())
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	defer func() {
 		s.Stop()
 		conn.Close()
