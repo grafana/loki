@@ -415,17 +415,22 @@ func NewUiController(showStats bool) UiController {
 	legendPanel.Title = "Legend"
 	legendPanel.WrapText = true
 	legendPanel.SelectedRowStyle = ui.NewStyle(ui.ColorBlack, ui.ColorGreen)
-	//legendPanel.SetRect(0, 40, 130, 50)
 
 	statsPanel := widgets.NewParagraph()
 	statsPanel.Title = "Statistics"
-	//statsPanel.SetRect(130, 0, 180, 45)
 
 	grid := ui.NewGrid()
-	grid.Set(
-		ui.NewRow(2.0/3, ui.NewCol(1.0, graphPanel)),
-		ui.NewRow(1.0/3, ui.NewCol(1.0, legendPanel)),
-	)
+	if showStats {
+		grid.Set(
+			ui.NewRow(2.0/3, ui.NewCol(3.0/4, graphPanel), ui.NewCol(1.0/4, statsPanel)),
+			ui.NewRow(1.0/3, ui.NewCol(1.0, legendPanel)),
+		)
+	} else {
+		grid.Set(
+			ui.NewRow(2.0/3, ui.NewCol(1.0, graphPanel)),
+			ui.NewRow(1.0/3, ui.NewCol(1.0, legendPanel)),
+		)
+	}
 	grid.SetRect(0, 0, 100, 100)
 
 	uiController := UiController{
