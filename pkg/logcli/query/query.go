@@ -485,7 +485,9 @@ func (u *UiController) UpdateStats(result stats.Result) {
 }
 
 func GetColorForLabels(labels model.Metric) ui.Color {
-	return ui.Color(labels.FastFingerprint() % 8)
+	// There are 8 colors, but the last one is white which is used for borders,
+	// so we use the first 7 colors. We also skip the first color, which is black.
+	return ui.Color(labels.FastFingerprint() % 7) + 1
 }
 
 func GetLegend(labels []string, colors []ui.Color) string {
