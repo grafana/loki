@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/prometheus/common/model"
 	"log"
-	"math/rand"
 	"os"
 	"sort"
 	"strings"
@@ -394,6 +393,7 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 func (q *Query) printMatrixPretty(matrix loghttp.Matrix) {
 	data := make([][]float64, 0)
 	colors := make([]ui.Color, 0)
+	labels := make([]string, 0)
 
 	for _, stream := range matrix {
 		fv := make([]float64, 0)
@@ -402,18 +402,24 @@ func (q *Query) printMatrixPretty(matrix loghttp.Matrix) {
 		}
 		data = append(data, fv)
 		colors = append(colors, GetColorForLabels(stream.Metric))
+		labels = append(labels, stream.Metric.String())
 	}
 
 	// fmt.Println("data", data)
 
-	p0 := widgets.NewPlot()
-	p0.Title = "Fancy LogCLI"
-	p0.Data = data
-	p0.SetRect(0, 0, 130, 40)
-	p0.AxesColor = ui.ColorWhite
-	p0.LineColors = colors
+	graphPanel := widgets.NewPlot()
+	graphPanel.Title = "Graph"
+	graphPanel.Data = data
+	graphPanel.SetRect(0, 0, 130, 40)
+	graphPanel.AxesColor = ui.ColorWhite
+	graphPanel.LineColors = colors
 
-	ui.Render(p0)
+	legendPanel := widgets.NewParagraph()
+	legendPanel.Title = "Legend"
+	legendPanel.Text = GetLegend(labels, colors)
+	legendPanel.SetRect(0, 40, 130, 45)
+
+	ui.Render(graphPanel, legendPanel)
 
 	// uiEvents := ui.PollEvents()
 	// for {
@@ -430,8 +436,19 @@ func GetColorForLabels(labels model.Metric) ui.Color {
 	return ui.Color(labels.FastFingerprint() % 8)
 }
 
-func randColor() ui.Color {
-	return ui.Color(rand.Intn(8))
+func GetLegend(labels []string, colors []ui.Color) string {
+	reverseStyleParserColorMap := make(map[ui.Color]string, len(ui.StyleParserColorMap))
+	for k, v := range ui.StyleParserColorMap {
+		reverseStyleParserColorMap[v] = k
+	}
+
+	legend := ""
+	for i, l := range labels {
+		labelColor := colors[i]
+		legend += fmt.Sprintf("[%s](fg:%s)\n", l, reverseStyleParserColorMap[labelColor])
+	}
+
+	return legend
 }
 
 func (q *Query) printVector(vector loghttp.Vector) {
