@@ -6,19 +6,25 @@ import (
 	_ "embed"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	k8sYAML "k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
-//go:embed prometheus_alerts.yaml
-var alertsBytes []byte
+var (
+	//go:embed prometheus_alerts.yaml
+	alertsBytes []byte
+
+	alertsRules monitoringv1.PrometheusRuleSpec
+)
+
+func init() {
+	r := bytes.NewReader(alertsBytes)
+	err := yaml.NewYAMLOrJSONDecoder(r, 1000).Decode(&alertsRules)
+	if err != nil {
+		panic(err)
+	}
+}
 
 // NewAlertsSpec decodes the prometheus alerts for loki stack
-func NewAlertsSpec() (*monitoringv1.PrometheusRuleSpec, error) {
-	var alertsSpec *monitoringv1.PrometheusRuleSpec
-	r := bytes.NewReader(alertsBytes)
-	err := k8sYAML.NewYAMLOrJSONDecoder(r, 1000).Decode(&alertsSpec)
-	if err != nil {
-		return nil, err
-	}
-	return alertsSpec, nil
+func NewAlertsSpec() monitoringv1.PrometheusRuleSpec {
+	return alertsRules
 }

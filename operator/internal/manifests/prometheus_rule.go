@@ -1,7 +1,6 @@
 package manifests
 
 import (
-	"github.com/ViaQ/logerr/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/alerts"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,11 +21,6 @@ func BuildPrometheusRule(opts Options) ([]client.Object, error) {
 
 // NewPrometheusRule creates a prometheus rule
 func NewPrometheusRule(opts Options) (*monitoringv1.PrometheusRule, error) {
-	alertsSpec, err := getRuleSpec(alerts.NewAlertsSpec)
-	if err != nil {
-		return nil, kverrors.Wrap(err, "Failed to get alerts spec")
-	}
-
 	return &monitoringv1.PrometheusRule{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       monitoringv1.PrometheusRuleKind,
@@ -36,26 +30,6 @@ func NewPrometheusRule(opts Options) (*monitoringv1.PrometheusRule, error) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: PrometheusRuleName(opts.Name),
 		},
-		Spec: *alertsSpec,
+		Spec: alerts.NewAlertsSpec(),
 	}, nil
-}
-
-type newAlertsSpecFunc func() (*monitoringv1.PrometheusRuleSpec, error)
-
-var cachedRuleSpec *monitoringv1.PrometheusRuleSpec
-
-// getRuleSpec returns a PrometheusRuleSpec of alerts. It calls `fn()` and caches its value to avoid subsequent calls.
-// Since the alerts are defined in a static yaml file, we can cache the decoded result rather than re-decoding it in
-// every reconcile loop.
-func getRuleSpec(fn newAlertsSpecFunc) (*monitoringv1.PrometheusRuleSpec, error) {
-	if cachedRuleSpec != nil {
-		return cachedRuleSpec, nil
-	}
-
-	alertsSpec, err := fn()
-	if err != nil {
-		return nil, err
-	}
-	cachedRuleSpec = alertsSpec
-	return alertsSpec, nil
 }
