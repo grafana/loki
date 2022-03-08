@@ -526,10 +526,11 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 }
 
 func (u *UiController) CreateTable(vector loghttp.Vector) {
-	row := make([]string, len(vector))
 	tableRows := make([][]string, len(vector))
 
 	for i, sample := range vector {
+		row := make([]string, 0)
+
 		row = append(row, sample.Timestamp.String())
 		row = append(row, sample.Metric.String())
 		row = append(row, sample.Value.String())
