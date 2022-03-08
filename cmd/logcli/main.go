@@ -192,7 +192,7 @@ func main() {
 			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
 		} else {
 			if rangeQuery.Pretty {
-				rangeQuery.UiCtrl = query.NewUiController(*statistics)
+				rangeQuery.UiCtrl = query.NewUiController(false, *statistics)
 
 				if err := rangeQuery.UiCtrl.Init(); err != nil {
 					log.Fatalf("failed to initialize termui: %v", err)
@@ -241,7 +241,38 @@ func main() {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
 
-		instantQuery.DoQuery(queryClient, out, *statistics)
+		if instantQuery.Pretty {
+			instantQuery.UiCtrl = query.NewUiController(true, *statistics)
+
+			if err := instantQuery.UiCtrl.Init(); err != nil {
+				log.Fatalf("failed to initialize termui: %v", err)
+			}
+			defer instantQuery.UiCtrl.Close()
+		}
+
+		delay := time.Second * 3
+		ticker := time.NewTicker(delay)
+		defer ticker.Stop()
+
+		uiEvents := ui.PollEvents()
+		for stop := false; !stop; {
+			select {
+			case e := <-uiEvents:
+				stop = instantQuery.UiCtrl.HandleUiEvent(e)
+			case <-ticker.C:
+				go func() {
+					instantQuery.DoQuery(queryClient, out, *statistics)
+					if !instantQuery.Live {
+						return
+					}
+
+					instantQuery.Start = instantQuery.Start.Add(delay)
+					instantQuery.End = instantQuery.End.Add(delay)
+
+					instantQuery.UiCtrl.Render()
+				}()
+			}
+		}
 	case labelsCmd.FullCommand():
 		labelsQuery.DoLabels(queryClient)
 	case seriesCmd.FullCommand():

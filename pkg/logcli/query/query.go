@@ -5,13 +5,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/prometheus/common/model"
 	"log"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
+
+	"github.com/prometheus/common/model"
 
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
@@ -376,6 +378,11 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 
 func (q *Query) printMatrix(matrix loghttp.Matrix) {
 	if q.Pretty {
+		if q.isInstant() {
+			q.UiCtrl.CreateTable(matrix)
+			return
+		}
+
 		q.UiCtrl.UpdateGraph(matrix)
 		return
 	}
@@ -400,6 +407,9 @@ type UiController struct {
 	showStats  bool
 	statsPanel *widgets.Paragraph
 
+	instantQuery bool
+	tablePanel   *widgets.Table
+
 	hiddenLabels []string
 
 	currentMatrix loghttp.Matrix
@@ -410,7 +420,7 @@ type UiPanelMeta struct {
 	uiEventHandler func(ui.Event) bool
 }
 
-func NewUiController(showStats bool) UiController {
+func NewUiController(instantQuery bool, showStats bool) UiController {
 	graphPanel := widgets.NewPlot()
 	graphPanel.Title = "Graph"
 	graphPanel.AxesColor = ui.ColorWhite
@@ -427,10 +437,17 @@ func NewUiController(showStats bool) UiController {
 	statsPanel := widgets.NewParagraph()
 	statsPanel.Title = "Statistics"
 
+	tablePanel := widgets.NewTable()
+	tablePanel.Title = "Table"
+
 	grid := ui.NewGrid()
 	grid.SetRect(0, 0, 0, 0) // Will be updated on Init()
 
-	if showStats {
+	if instantQuery {
+		grid.Set(
+			ui.NewRow(1.0, ui.NewCol(1.0, tablePanel)),
+		)
+	} else if showStats {
 		grid.Set(
 			ui.NewRow(2.5/4, ui.NewCol(3.0/4, graphPanel), ui.NewCol(1.0/4, statsPanel)),
 			ui.NewRow(1.0/4, ui.NewCol(1.0, legendPanel)),
@@ -450,6 +467,7 @@ func NewUiController(showStats bool) UiController {
 		legendPanel:  legendPanel,
 		legendDetail: legendDetail,
 		statsPanel:   statsPanel,
+		tablePanel:   tablePanel,
 		showStats:    showStats,
 	}
 
@@ -511,6 +529,36 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 	u.UpdateLegendDetail()
 
 	u.currentMatrix = matrix
+}
+
+func (u *UiController) CreateTable(matrix loghttp.Matrix) {
+	row := make([]string, len(matrix))
+	tableRows := make([][]string, len(matrix))
+	currentTime := time.Now()
+
+	// Sort series alphabetically. This is needed so the legend is always in the same order.
+	sort.Slice(matrix, func(i, j int) bool {
+		return matrix[i].Metric.FastFingerprint() < matrix[j].Metric.FastFingerprint()
+	})
+
+	for i, stream := range matrix {
+		row = append(row, currentTime.String())
+
+		for _, label := range stream.Metric {
+			row = append(row, string(label))
+		}
+
+		// Only the series not hidden will have other value than 0.
+		fv := make([]string, len(stream.Values))
+		for i, v := range stream.Values {
+			fv[i] = string(strconv.FormatFloat(float64(v.Value), 'f', 5, 64))
+		}
+		row = append(row, strings.Join(fv, ", "))
+
+		tableRows[i] = row
+	}
+
+	u.tablePanel.Rows = tableRows
 }
 
 type uiStatsLogger struct {
