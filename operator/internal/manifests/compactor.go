@@ -75,19 +75,7 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 					SuccessThreshold:    1,
 					FailureThreshold:    3,
 				},
-				LivenessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
-						HTTPGet: &corev1.HTTPGetAction{
-							Path:   lokiLivenessPath,
-							Port:   intstr.FromInt(httpPort),
-							Scheme: corev1.URISchemeHTTP,
-						},
-					},
-					TimeoutSeconds:   2,
-					PeriodSeconds:    30,
-					FailureThreshold: 10,
-					SuccessThreshold: 1,
-				},
+				LivenessProbe: lokiLivenessProbe(),
 				Ports: []corev1.ContainerPort{
 					{
 						Name:          lokiHTTPPortName,

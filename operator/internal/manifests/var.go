@@ -7,6 +7,7 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 const (
@@ -236,5 +237,21 @@ func serviceMonitorEndpoint(portName, serviceName, namespace string, enableTLS b
 		Port:   portName,
 		Path:   "/metrics",
 		Scheme: "http",
+	}
+}
+
+func lokiLivenessProbe() *corev1.Probe {
+	return &corev1.Probe{
+		Handler: corev1.Handler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path:   lokiLivenessPath,
+				Port:   intstr.FromInt(httpPort),
+				Scheme: corev1.URISchemeHTTP,
+			},
+		},
+		TimeoutSeconds:   2,
+		PeriodSeconds:    30,
+		FailureThreshold: 10,
+		SuccessThreshold: 1,
 	}
 }
