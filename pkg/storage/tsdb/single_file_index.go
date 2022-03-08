@@ -97,7 +97,7 @@ func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time
 }
 
 func (i *TSDBIndex) LabelNames(_ context.Context, _ string, _, _ model.Time) ([]string, error) {
-	return i.reader.LabelNames(nil)
+	return i.reader.LabelNames()
 }
 
 func (i *TSDBIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, name string) ([]string, error) {
