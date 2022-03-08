@@ -1,5 +1,5 @@
 rule_files:
-  - ../prometheus_alerts.yaml
+  - ../prometheus-alerts.yaml
 
 evaluation_interval: 1m
 
@@ -29,7 +29,7 @@ tests:
             exp_annotations:
               summary: "At least 10% of requests are responded by 5xx server errors."
               message: "ingester my-route is experiencing 25.00% errors."
-              runbook_url: "https://github.com/grafana/loki/tree/main/operator/docs/alerts.md#Loki-Request-Errors"
+              runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
 
       # --------- LokiRequestPanics ---------
       - eval_time: 10m
@@ -42,4 +42,4 @@ tests:
             exp_annotations:
               summary: "A panic was triggered."
               message: "ingester is experiencing an increase of 2 panics."
-              runbook_url: "https://github.com/grafana/loki/tree/main/operator/docs/alerts.md#Loki-Request-Panics"
+              runbook_url: "[[ .RunbookURL ]]#Loki-Request-Panics"
