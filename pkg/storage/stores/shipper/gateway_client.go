@@ -179,43 +179,36 @@ func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*i
 // 3. Iterating in parallel over all fetched Index Gateway instances, getting their gRPC connections
 //  from the pool and invoking clientDoQueries using their client.
 func (s *GatewayClient) ringModeDoQueries(ctx context.Context, gatewayQueries []*indexgatewaypb.IndexQuery, queryKeyQueryMap map[string]chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
-	// TODO: should we keep iterating if an error occur?
-	for _, q := range gatewayQueries {
-		bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return errors.Wrap(err, "index gateway client get tenant ID")
+	}
 
-		splittedHashed := strings.Split(q.HashValue, ":")
-		if len(splittedHashed) < 2 {
-			level.Error(util_log.Logger).Log("msg", "query hash value in incorrect format", "hash_value", q.HashValue)
-			continue
-		}
+	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
-		// tenant is the second parameter.
-		tenantID := splittedHashed[1]
-		key := util.TokenFor(tenantID, "" /* labels */)
-		rs, err := s.ring.Get(key, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
+	key := util.TokenFor(userID, "" /* labels */)
+	rs, err := s.ring.Get(key, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
+	if err != nil {
+		return errors.Wrap(err, "index gateway get ring")
+	}
+
+	_, err = rs.Do(ctx, 0 /* TODO(dylanguedes): what is this delay for? */, func(ctx context.Context, instanceDesc *ring.InstanceDesc) (interface{}, error) {
+		genericClient, err := s.pool.GetClientFor(instanceDesc.Addr)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to get index key", "error", err)
-			continue
+			return nil, errors.Wrap(err, fmt.Sprintf("get client for instance %s", instanceDesc.Addr))
 		}
 
-		_, err = rs.Do(ctx, 0 /* delay, TODO: what is it for? */, func(ctx context.Context, instanceDesc *ring.InstanceDesc) (interface{}, error) {
-			genericClient, err := s.pool.GetClientFor(instanceDesc.Addr)
-			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("get client for instance %s", instanceDesc.Addr))
-			}
-
-			client := (genericClient.(indexgatewaypb.IndexGatewayClient))
-			// TODO: does this works as a hedging request?
-			if err := s.clientDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback, client); err != nil {
-				return nil, err
-			}
-
-			return nil, nil
-		})
-
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "index gateway ring client query failed", "error", err)
+		client := (genericClient.(indexgatewaypb.IndexGatewayClient))
+		// TODO(dylanguedes): does this works as a hedging request?
+		if err := s.clientDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback, client); err != nil {
+			return nil, err
 		}
+
+		return nil, nil
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "index gateway replicationset do queries")
 	}
 	return nil
 }
