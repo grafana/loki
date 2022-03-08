@@ -438,21 +438,29 @@ func NewUiController(instantQuery bool, showStats bool) UiController {
 	grid.SetRect(0, 0, 0, 0) // Will be updated on Init()
 
 	if instantQuery {
-		grid.Set(
-			ui.NewRow(1.0, ui.NewCol(1.0, tablePanel)),
-		)
-	} else if showStats {
-		grid.Set(
-			ui.NewRow(2.5/4, ui.NewCol(3.0/4, graphPanel), ui.NewCol(1.0/4, statsPanel)),
-			ui.NewRow(1.0/4, ui.NewCol(1.0, legendPanel)),
-			ui.NewRow(0.5/4, ui.NewCol(1.0, legendDetail)),
-		)
+		if showStats {
+			grid.Set(
+				ui.NewRow(1.0, ui.NewCol(3.0/4, tablePanel), ui.NewCol(1.0/4, statsPanel)),
+			)
+		} else {
+			grid.Set(
+				ui.NewRow(1.0, ui.NewCol(1.0, tablePanel)),
+			)
+		}
 	} else {
-		grid.Set(
-			ui.NewRow(2.5/4, ui.NewCol(1.0, graphPanel)),
-			ui.NewRow(1.0/4, ui.NewCol(1.0, legendPanel)),
-			ui.NewRow(0.5/4, ui.NewCol(1.0, legendDetail)),
-		)
+		if showStats {
+			grid.Set(
+				ui.NewRow(2.5/4, ui.NewCol(3.0/4, graphPanel), ui.NewCol(1.0/4, statsPanel)),
+				ui.NewRow(1.0/4, ui.NewCol(1.0, legendPanel)),
+				ui.NewRow(0.5/4, ui.NewCol(1.0, legendDetail)),
+			)
+		} else {
+			grid.Set(
+				ui.NewRow(2.5/4, ui.NewCol(1.0, graphPanel)),
+				ui.NewRow(1.0/4, ui.NewCol(1.0, legendPanel)),
+				ui.NewRow(0.5/4, ui.NewCol(1.0, legendDetail)),
+			)
+		}
 	}
 
 	uiController := UiController{
@@ -528,32 +536,39 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 func (u *UiController) CreateTable(vector loghttp.Vector) {
 	tableRows := make([][]string, len(vector)+1)
 	keyRow := make([]string, 0)
+	masterKeys := make(map[model.LabelName]bool)
+	sortedMasterKeys := make([]model.LabelName, 0)
 
-	// Sort series alphabetically. This is needed so the legend is always in the same order.
-	sort.Slice(vector, func(i, j int) bool {
-		return vector[i].Metric.FastFingerprint() < vector[j].Metric.FastFingerprint()
-	})
-
-	keyRow = append(keyRow, "Timestamp")
-	for key, _ := range vector[0].Metric {
-		keyRow = append(keyRow, string(key))
+	for _, sample := range vector {
+		for key := range sample.Metric {
+			masterKeys[key] = true
+		}
 	}
-	keyRow = append(keyRow, "Value")
+
+	for key := range masterKeys {
+		sortedMasterKeys = append(sortedMasterKeys, key)
+	}
 
 	// Sort row of keys
-	//sort.Slice(keyRow, func(i, j int) bool {
-	//	return keyRow[i] < keyRow[j]
-	//})
+	sort.Slice(sortedMasterKeys, func(i, j int) bool {
+		return sortedMasterKeys[i] < sortedMasterKeys[j]
+	})
+
+	for _, val := range sortedMasterKeys {
+		keyRow = append(keyRow, string(val))
+	}
+	keyRow = append(keyRow, "timestamp")
+	keyRow = append(keyRow, "value")
 
 	tableRows[0] = keyRow
 
 	for i, sample := range vector {
 		row := make([]string, 0)
 
-		row = append(row, sample.Timestamp.String())
-		for _, v := range sample.Metric {
-			row = append(row, string(v))
+		for _, v := range sortedMasterKeys {
+			row = append(row, string(sample.Metric[v]))
 		}
+		row = append(row, sample.Timestamp.String())
 		row = append(row, sample.Value.String())
 
 		tableRows[i+1] = row
