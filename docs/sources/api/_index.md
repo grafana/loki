@@ -101,7 +101,7 @@ The timestamps can also be written in `RFC3339` and `RFC3339Nano` format, as sup
 query parameters support the following values:
 
 - `query`: The [LogQL](../logql/) query to perform
-- `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream response.
+- `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
