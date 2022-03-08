@@ -395,6 +395,7 @@ type UiController struct {
 	grid        *ui.Grid
 	graphPanel  *widgets.Plot
 	legendPanel *widgets.List
+	legendDetail *widgets.Paragraph
 
 	showStats  bool
 	statsPanel *widgets.Paragraph
@@ -416,8 +417,12 @@ func NewUiController(showStats bool) UiController {
 
 	legendPanel := widgets.NewList()
 	legendPanel.Title = "Legend"
-	legendPanel.WrapText = true
+	legendPanel.WrapText = false
 	legendPanel.SelectedRowStyle = ui.NewStyle(ui.ColorBlack, ui.ColorGreen)
+
+	legendDetail := widgets.NewParagraph()
+	legendDetail.Title = "Legend Detail"
+	legendDetail.WrapText = true
 
 	statsPanel := widgets.NewParagraph()
 	statsPanel.Title = "Statistics"
@@ -427,13 +432,15 @@ func NewUiController(showStats bool) UiController {
 
 	if showStats {
 		grid.Set(
-			ui.NewRow(2.0/3, ui.NewCol(3.0/4, graphPanel), ui.NewCol(1.0/4, statsPanel)),
-			ui.NewRow(1.0/3, ui.NewCol(1.0, legendPanel)),
+			ui.NewRow(2.5/4, ui.NewCol(3.0/4, graphPanel), ui.NewCol(1.0/4, statsPanel)),
+			ui.NewRow(1.0/4, ui.NewCol(1.0, legendPanel)),
+			ui.NewRow(0.5/4, ui.NewCol(1.0, legendDetail)),
 		)
 	} else {
 		grid.Set(
-			ui.NewRow(2.0/3, ui.NewCol(1.0, graphPanel)),
-			ui.NewRow(1.0/3, ui.NewCol(1.0, legendPanel)),
+			ui.NewRow(2.5/4, ui.NewCol(1.0, graphPanel)),
+			ui.NewRow(1.0/4, ui.NewCol(1.0, legendPanel)),
+			ui.NewRow(0.5/4, ui.NewCol(1.0, legendDetail)),
 		)
 	}
 
@@ -441,6 +448,7 @@ func NewUiController(showStats bool) UiController {
 		grid:        grid,
 		graphPanel:  graphPanel,
 		legendPanel: legendPanel,
+		legendDetail: legendDetail,
 		statsPanel:  statsPanel,
 		showStats:   showStats,
 	}
@@ -617,8 +625,10 @@ func (u *UiController) HandleUiEvent(e ui.Event) {
 		u.fitPanelsToTerminal(e.Payload.(ui.Resize))
 	case e.ID == "j" || e.ID == "<Down>":
 		u.legendPanel.ScrollDown()
+		u.UpdateLegendDetail()
 	case e.ID == "k" || e.ID == "<Up>":
 		u.legendPanel.ScrollUp()
+		u.UpdateLegendDetail()
 	case e.ID == "<Enter>":
 		if u.selectedLabel == "" {
 			u.selectedLabel = u.legendPanel.Rows[u.legendPanel.SelectedRow]
@@ -639,4 +649,8 @@ func (u *UiController) HandleUiEvent(e ui.Event) {
 
 func (u *UiController) fitPanelsToTerminal(resize ui.Resize) {
 	u.grid.SetRect(0, 0, resize.Width, resize.Height)
+}
+
+func (u *UiController) UpdateLegendDetail() {
+	u.legendDetail.Text = u.legendPanel.Rows[u.legendPanel.SelectedRow]
 }
