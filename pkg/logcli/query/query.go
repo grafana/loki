@@ -398,6 +398,8 @@ type UiController struct {
 
 	showStats  bool
 	statsPanel *widgets.Paragraph
+
+	selectedLabel string
 }
 
 type UiPanelMeta struct {
@@ -469,20 +471,38 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 	colors := make([]ui.Color, 0)
 	labels := make([]string, 0)
 
-	for _, stream := range matrix {
+	selectedIndex := -1
+
+	for i, stream := range matrix {
 		fv := make([]float64, 0)
 		for _, v := range stream.Values {
 			fv = append(fv, float64(v.Value))
 		}
+
+		rowLabel := stream.Metric.String()
+
 		data = append(data, fv)
-		colors = append(colors, GetColorForLabels(stream.Metric))
-		labels = append(labels, stream.Metric.String())
+		colors = append(colors, u.GetColorForLabels(stream.Metric))
+		labels = append(labels, rowLabel)
+
+		if u.selectedLabel != "" && strings.Contains(u.selectedLabel, rowLabel) {
+			selectedIndex = i
+		}
+	}
+
+	filteredColors := make([]ui.Color, 0)
+	for i, c := range colors {
+		if selectedIndex == -1 || selectedIndex == i {
+			filteredColors = append(filteredColors, c)
+		} else {
+			filteredColors = append(filteredColors, ui.ColorBlack)
+		}
 	}
 
 	u.graphPanel.Data = data
-	u.graphPanel.LineColors = colors
+	u.graphPanel.LineColors = filteredColors
 
-	u.legendPanel.Rows = GetLegend(labels, colors)
+	u.legendPanel.Rows = u.GetLegend(labels, colors)
 }
 
 type uiStatsLogger struct {
@@ -506,13 +526,13 @@ func (u *UiController) UpdateStats(result stats.Result) {
 	u.statsPanel.Text = logLine.String()
 }
 
-func GetColorForLabels(labels model.Metric) ui.Color {
+func (u *UiController) GetColorForLabels(labels model.Metric) ui.Color {
 	// There are 8 colors, but the last one is white which is used for borders,
 	// so we use the first 7 colors. We also skip the first color, which is black.
 	return ui.Color(labels.FastFingerprint()%7) + 1
 }
 
-func GetLegend(labels []string, colors []ui.Color) []string {
+func (u *UiController) GetLegend(labels []string, colors []ui.Color) []string {
 	reverseStyleParserColorMap := make(map[ui.Color]string, len(ui.StyleParserColorMap))
 	for k, v := range ui.StyleParserColorMap {
 		reverseStyleParserColorMap[v] = k
@@ -521,6 +541,10 @@ func GetLegend(labels []string, colors []ui.Color) []string {
 	var legend []string
 	for i, l := range labels {
 		labelColor := colors[i]
+		if u.selectedLabel != "" && strings.Contains(u.selectedLabel, l) {
+			labelColor = ui.ColorWhite
+		}
+
 		legend = append(legend, fmt.Sprintf("[%s](fg:%s)\n", l, reverseStyleParserColorMap[labelColor]))
 	}
 
@@ -594,6 +618,13 @@ func (q *Query) HandleUiEvent(e ui.Event) {
 		needsUpdate = true
 	case e.ID == "k" || e.ID == "<Up>":
 		q.UiCtrl.legendPanel.ScrollUp()
+		needsUpdate = true
+	case e.ID == "<Enter>":
+		if q.UiCtrl.selectedLabel == "" {
+			q.UiCtrl.selectedLabel = q.UiCtrl.legendPanel.Rows[q.UiCtrl.legendPanel.SelectedRow]
+		} else {
+			q.UiCtrl.selectedLabel = ""
+		}
 		needsUpdate = true
 	}
 
