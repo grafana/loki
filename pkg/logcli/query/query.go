@@ -392,9 +392,9 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 }
 
 type UiController struct {
-	grid        *ui.Grid
-	graphPanel  *widgets.Plot
-	legendPanel *widgets.List
+	grid         *ui.Grid
+	graphPanel   *widgets.Plot
+	legendPanel  *widgets.List
 	legendDetail *widgets.Paragraph
 
 	showStats  bool
@@ -445,12 +445,12 @@ func NewUiController(showStats bool) UiController {
 	}
 
 	uiController := UiController{
-		grid:        grid,
-		graphPanel:  graphPanel,
-		legendPanel: legendPanel,
+		grid:         grid,
+		graphPanel:   graphPanel,
+		legendPanel:  legendPanel,
 		legendDetail: legendDetail,
-		statsPanel:  statsPanel,
-		showStats:   showStats,
+		statsPanel:   statsPanel,
+		showStats:    showStats,
 	}
 
 	return uiController
@@ -478,28 +478,29 @@ func (u *UiController) Render() {
 }
 
 func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
-	data := make([][]float64, len(matrix))
-	colors := make([]ui.Color, len(matrix))
+	data := make([][]float64, 0)
+	colors := make([]ui.Color, 0)
 	labels := make([]string, len(matrix))
 
 	// Sort series alphabetically. This is needed so the legend is always in the same order.
 	sort.Slice(matrix, func(i, j int) bool {
 		return matrix[i].Metric.FastFingerprint() < matrix[j].Metric.FastFingerprint()
 	})
-	
+
 	for i, stream := range matrix {
 		rowLabel := stream.Metric.String()
-		fv := make([]float64, len(stream.Values))
 
 		// Only the series not hidden will have other value than 0.
 		if !u.IsLabelHidden(rowLabel) {
+			fv := make([]float64, len(stream.Values))
 			for i, v := range stream.Values {
 				fv[i] = float64(v.Value)
 			}
+
+			data = append(data, fv)
+			colors = append(colors, u.GetColorForLabels(stream.Metric))
 		}
 
-		colors[i] = u.GetColorForLabels(stream.Metric)
-		data[i] = fv
 		labels[i] = rowLabel
 	}
 
@@ -559,13 +560,16 @@ func (u *UiController) GetLegend(labels []string, colors []ui.Color) []string {
 	}
 
 	legend := make([]string, len(labels))
+	var colorIndex int
 	for i, l := range labels {
-		labelColor := colors[i]
-
 		if u.IsLabelHidden(l) {
 			legend[i] = u.GetHiddenLabel(l)
 		} else {
+			labelColor := colors[colorIndex]
 			legend[i] = fmt.Sprintf("[%s](fg:%s)", l, reverseStyleParserColorMap[labelColor])
+
+			// We have colors only for unhidden labels.
+			colorIndex++
 		}
 	}
 
