@@ -484,7 +484,7 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 
 	// Sort series alphabetically. This is needed so the legend is always in the same order.
 	sort.Slice(matrix, func(i, j int) bool {
-		return matrix[i].Metric.String() < matrix[j].Metric.String()
+		return matrix[i].Metric.FastFingerprint() < matrix[j].Metric.FastFingerprint()
 	})
 	
 	for i, stream := range matrix {
