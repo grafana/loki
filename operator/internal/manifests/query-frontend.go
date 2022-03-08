@@ -68,7 +68,11 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 				ReadinessProbe: &corev1.Probe{
 					Handler: corev1.Handler{
 						HTTPGet: &corev1.HTTPGetAction{
-							Path:   lokiReadinessPath,
+							// The frontend will only return ready once a querier has connected to it.
+							// Because the service used for connecting the querier to the frontend only lists ready
+							// instances there's sequencing issue. For now, we re-use the liveness-probe path
+							// for the readiness-probe as a workaround.
+							Path:   lokiLivenessPath,
 							Port:   intstr.FromInt(httpPort),
 							Scheme: corev1.URISchemeHTTP,
 						},
