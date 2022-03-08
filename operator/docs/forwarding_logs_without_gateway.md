@@ -4,6 +4,10 @@ This document will describe how to send application, infrastructure, and audit l
 
 __Please read the [hacking guide](./hack_loki_operator.md) before proceeding with the following instructions.__
 
+_Note:_ This document is meant to be used with OpenShift only.
+
+_Disclaimer:_ This document helps in connecting fluentd or vector to LokiStack without authentication/authorization.
+
 ## Openshift Logging
 
 [Openshift Logging](https://github.com/openshift/cluster-logging-operator) supports [forwarding logs to an external Loki instance](https://docs.openshift.com/container-platform/4.9/logging/cluster-logging-external.html#cluster-logging-collector-log-forward-loki_cluster-logging-external) using fluentd and vector as log forwarders.
