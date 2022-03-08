@@ -70,18 +70,15 @@ func Test_RangeVectorIterator(t *testing.T) {
 			0,
 			[]promql.Vector{
 				[]promql.Sample{
-					{Point: newPoint(time.Unix(10, 0), 2), Metric: labelBar},
-					{Point: newPoint(time.Unix(10, 0), 2), Metric: labelFoo},
+					{Point: newPoint(time.Unix(10, 0), 1), Metric: labelBar},
+					{Point: newPoint(time.Unix(10, 0), 1), Metric: labelFoo},
 				},
 				[]promql.Sample{
-					{Point: newPoint(time.Unix(40, 0), 2), Metric: labelBar},
-					{Point: newPoint(time.Unix(40, 0), 2), Metric: labelFoo},
+					{Point: newPoint(time.Unix(40, 0), 1), Metric: labelBar},
+					{Point: newPoint(time.Unix(40, 0), 1), Metric: labelFoo},
 				},
 				{},
-				[]promql.Sample{
-					{Point: newPoint(time.Unix(100, 0), 1), Metric: labelBar},
-					{Point: newPoint(time.Unix(100, 0), 1), Metric: labelFoo},
-				},
+				{},
 			},
 			[]time.Time{time.Unix(10, 0), time.Unix(40, 0), time.Unix(70, 0), time.Unix(100, 0)},
 			time.Unix(10, 0), time.Unix(100, 0),
@@ -92,21 +89,18 @@ func Test_RangeVectorIterator(t *testing.T) {
 			0,
 			[]promql.Vector{
 				[]promql.Sample{
-					{Point: newPoint(time.Unix(10, 0), 4), Metric: labelBar},
-					{Point: newPoint(time.Unix(10, 0), 4), Metric: labelFoo},
+					{Point: newPoint(time.Unix(10, 0), 3), Metric: labelBar},
+					{Point: newPoint(time.Unix(10, 0), 3), Metric: labelFoo},
 				},
 				[]promql.Sample{
-					{Point: newPoint(time.Unix(40, 0), 7), Metric: labelBar},
-					{Point: newPoint(time.Unix(40, 0), 7), Metric: labelFoo},
+					{Point: newPoint(time.Unix(40, 0), 6), Metric: labelBar},
+					{Point: newPoint(time.Unix(40, 0), 6), Metric: labelFoo},
 				},
 				[]promql.Sample{
 					{Point: newPoint(time.Unix(70, 0), 2), Metric: labelBar},
 					{Point: newPoint(time.Unix(70, 0), 2), Metric: labelFoo},
 				},
-				[]promql.Sample{
-					{Point: newPoint(time.Unix(100, 0), 1), Metric: labelBar},
-					{Point: newPoint(time.Unix(100, 0), 1), Metric: labelFoo},
-				},
+				{},
 			},
 			[]time.Time{time.Unix(10, 0), time.Unix(40, 0), time.Unix(70, 0), time.Unix(100, 0)},
 			time.Unix(10, 0), time.Unix(100, 0),
@@ -117,18 +111,15 @@ func Test_RangeVectorIterator(t *testing.T) {
 			0,
 			[]promql.Vector{
 				[]promql.Sample{
-					{Point: newPoint(time.Unix(10, 0), 4), Metric: labelBar},
-					{Point: newPoint(time.Unix(10, 0), 4), Metric: labelFoo},
+					{Point: newPoint(time.Unix(10, 0), 3), Metric: labelBar},
+					{Point: newPoint(time.Unix(10, 0), 3), Metric: labelFoo},
 				},
 				[]promql.Sample{
-					{Point: newPoint(time.Unix(40, 0), 5), Metric: labelBar},
-					{Point: newPoint(time.Unix(40, 0), 5), Metric: labelFoo},
+					{Point: newPoint(time.Unix(40, 0), 4), Metric: labelBar},
+					{Point: newPoint(time.Unix(40, 0), 4), Metric: labelFoo},
 				},
 				[]promql.Sample{},
-				[]promql.Sample{
-					{Point: newPoint(time.Unix(100, 0), 1), Metric: labelBar},
-					{Point: newPoint(time.Unix(100, 0), 1), Metric: labelFoo},
-				},
+				{},
 			},
 			[]time.Time{time.Unix(10, 0), time.Unix(40, 0), time.Unix(70, 0), time.Unix(100, 0)},
 			time.Unix(10, 0), time.Unix(100, 0),
@@ -156,18 +147,15 @@ func Test_RangeVectorIterator(t *testing.T) {
 			(10 * time.Second).Nanoseconds(),
 			[]promql.Vector{
 				[]promql.Sample{
-					{Point: newPoint(time.Unix(20, 0), 2), Metric: labelBar},
-					{Point: newPoint(time.Unix(20, 0), 2), Metric: labelFoo},
+					{Point: newPoint(time.Unix(20, 0), 1), Metric: labelBar},
+					{Point: newPoint(time.Unix(20, 0), 1), Metric: labelFoo},
 				},
 				[]promql.Sample{
-					{Point: newPoint(time.Unix(50, 0), 2), Metric: labelBar},
-					{Point: newPoint(time.Unix(50, 0), 2), Metric: labelFoo},
+					{Point: newPoint(time.Unix(50, 0), 1), Metric: labelBar},
+					{Point: newPoint(time.Unix(50, 0), 1), Metric: labelFoo},
 				},
 				{},
-				[]promql.Sample{
-					{Point: newPoint(time.Unix(110, 0), 1), Metric: labelBar},
-					{Point: newPoint(time.Unix(110, 0), 1), Metric: labelFoo},
-				},
+				{},
 			},
 			[]time.Time{time.Unix(20, 0), time.Unix(50, 0), time.Unix(80, 0), time.Unix(110, 0)},
 			time.Unix(20, 0), time.Unix(110, 0),
