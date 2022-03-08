@@ -41,6 +41,9 @@ func init() {
 
 // IndexReader provides reading access of serialized index data.
 type IndexReader interface {
+	// Bounds returns the earliest and latest samples in the index
+	Bounds() (int64, int64)
+
 	// Symbols return an iterator over sorted string symbols that may occur in
 	// series' labels and indices. It is not safe to use the returned strings
 	// beyond the lifetime of the index reader.
