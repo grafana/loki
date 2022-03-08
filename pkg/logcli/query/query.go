@@ -526,16 +526,37 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 }
 
 func (u *UiController) CreateTable(vector loghttp.Vector) {
-	tableRows := make([][]string, len(vector))
+	tableRows := make([][]string, len(vector)+1)
+	keyRow := make([]string, 0)
+
+	// Sort series alphabetically. This is needed so the legend is always in the same order.
+	sort.Slice(vector, func(i, j int) bool {
+		return vector[i].Metric.FastFingerprint() < vector[j].Metric.FastFingerprint()
+	})
+
+	keyRow = append(keyRow, "Timestamp")
+	for key, _ := range vector[0].Metric {
+		keyRow = append(keyRow, string(key))
+	}
+	keyRow = append(keyRow, "Value")
+
+	// Sort row of keys
+	//sort.Slice(keyRow, func(i, j int) bool {
+	//	return keyRow[i] < keyRow[j]
+	//})
+
+	tableRows[0] = keyRow
 
 	for i, sample := range vector {
 		row := make([]string, 0)
 
 		row = append(row, sample.Timestamp.String())
-		row = append(row, sample.Metric.String())
+		for _, v := range sample.Metric {
+			row = append(row, string(v))
+		}
 		row = append(row, sample.Value.String())
 
-		tableRows[i] = row
+		tableRows[i+1] = row
 	}
 
 	u.tablePanel.Rows = tableRows
