@@ -98,10 +98,17 @@ func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time
 	return res, p.Err()
 }
 
-func (i *TSDBIndex) LabelNames(_ context.Context, _ string, _, _ model.Time) ([]string, error) {
-	return i.reader.LabelNames()
+func (i *TSDBIndex) LabelNames(_ context.Context, _ string, _, _ model.Time, matchers ...*labels.Matcher) ([]string, error) {
+	if len(matchers) == 0 {
+		return i.reader.LabelNames()
+	}
+
+	return labelNamesWithMatchers(i.reader, matchers...)
 }
 
-func (i *TSDBIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, name string) ([]string, error) {
-	return i.reader.LabelValues(name)
+func (i *TSDBIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
+	if len(matchers) == 0 {
+		return i.reader.LabelValues(name)
+	}
+	return labelValuesWithMatchers(i.reader, name, matchers...)
 }

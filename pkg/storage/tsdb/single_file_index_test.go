@@ -44,7 +44,7 @@ func TestSingleIdx(t *testing.T) {
 			},
 		},
 		{
-			Labels: mustParseLabels(`{foo="bard", bazz="buzz", bonk="borb"}`),
+			Labels: mustParseLabels(`{foo="bard", bazz="bozz", bonk="borb"}`),
 			Chunks: []index.ChunkMeta{
 				{
 					MinTime:  1,
@@ -113,9 +113,22 @@ func TestSingleIdx(t *testing.T) {
 		require.Equal(t, []string{"bazz", "bonk", "foo"}, ls)
 	})
 
+	t.Run("LabelNamesWithMatchers", func(t *testing.T) {
+		// request data at the end of the tsdb range, but it should return all labels present
+		ls, err := idx.LabelNames(context.Background(), "fake", 9, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
+		require.Nil(t, err)
+		require.Equal(t, []string{"bazz", "foo"}, ls)
+	})
+
 	t.Run("LabelValues", func(t *testing.T) {
 		vs, err := idx.LabelValues(context.Background(), "fake", 9, 10, "foo")
 		require.Nil(t, err)
 		require.Equal(t, []string{"bar", "bard"}, vs)
+	})
+
+	t.Run("LabelValuesWithMatchers", func(t *testing.T) {
+		vs, err := idx.LabelValues(context.Background(), "fake", 9, 10, "foo", labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
+		require.Nil(t, err)
+		require.Equal(t, []string{"bar"}, vs)
 	})
 }

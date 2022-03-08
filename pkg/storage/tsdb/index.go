@@ -21,6 +21,6 @@ type ChunkRef struct {
 type Interface interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]ChunkRef, error)
 	Series(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]Series, error)
-	LabelNames(ctx context.Context, userID string, from, through model.Time) ([]string, error)
-	LabelValues(ctx context.Context, userID string, from, through model.Time, name string) ([]string, error)
+	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
+	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
 }
