@@ -400,6 +400,8 @@ type UiController struct {
 	statsPanel *widgets.Paragraph
 
 	selectedLabel string
+
+	currentMatrix loghttp.Matrix
 }
 
 type UiPanelMeta struct {
@@ -410,7 +412,6 @@ type UiPanelMeta struct {
 func NewUiController(showStats bool) UiController {
 	graphPanel := widgets.NewPlot()
 	graphPanel.Title = "Graph"
-	graphPanel.SetRect(0, 0, 130, 40)
 	graphPanel.AxesColor = ui.ColorWhite
 
 	legendPanel := widgets.NewList()
@@ -422,6 +423,8 @@ func NewUiController(showStats bool) UiController {
 	statsPanel.Title = "Statistics"
 
 	grid := ui.NewGrid()
+	grid.SetRect(0, 0, 0, 0) // Will be updated on Init()
+
 	if showStats {
 		grid.Set(
 			ui.NewRow(2.0/3, ui.NewCol(3.0/4, graphPanel), ui.NewCol(1.0/4, statsPanel)),
@@ -433,7 +436,6 @@ func NewUiController(showStats bool) UiController {
 			ui.NewRow(1.0/3, ui.NewCol(1.0, legendPanel)),
 		)
 	}
-	grid.SetRect(0, 0, 100, 100)
 
 	uiController := UiController{
 		grid:        grid,
@@ -452,7 +454,8 @@ func (u *UiController) Init() error {
 		return err
 	}
 
-	u.fitPanelsToTerminal()
+	width, height := ui.TerminalDimensions()
+	u.grid.SetRect(0, 0, width, height)
 
 	return nil
 }
@@ -606,34 +609,34 @@ func (q *Query) resultsDirection() logproto.Direction {
 	return logproto.BACKWARD
 }
 
-func (q *Query) HandleUiEvent(e ui.Event) {
-	needsUpdate := false
+func (u *UiController) HandleUiEvent(e ui.Event) {
+	needsUpdate := true
 
 	switch {
 	case e.Type == ui.ResizeEvent:
-		q.UiCtrl.fitPanelsToTerminal()
-		needsUpdate = true
+		u.fitPanelsToTerminal(e.Payload.(ui.Resize))
 	case e.ID == "j" || e.ID == "<Down>":
-		q.UiCtrl.legendPanel.ScrollDown()
-		needsUpdate = true
+		u.legendPanel.ScrollDown()
 	case e.ID == "k" || e.ID == "<Up>":
-		q.UiCtrl.legendPanel.ScrollUp()
-		needsUpdate = true
+		u.legendPanel.ScrollUp()
 	case e.ID == "<Enter>":
-		if q.UiCtrl.selectedLabel == "" {
-			q.UiCtrl.selectedLabel = q.UiCtrl.legendPanel.Rows[q.UiCtrl.legendPanel.SelectedRow]
+		if u.selectedLabel == "" {
+			u.selectedLabel = u.legendPanel.Rows[u.legendPanel.SelectedRow]
 		} else {
-			q.UiCtrl.selectedLabel = ""
+			u.selectedLabel = ""
 		}
-		needsUpdate = true
+
+		// The legend gets refreshed along with the graph
+		u.UpdateGraph(u.currentMatrix)
+	default:
+		needsUpdate = false
 	}
 
 	if needsUpdate {
-		q.UiCtrl.Render()
+		u.Render()
 	}
 }
 
-func (u *UiController) fitPanelsToTerminal() {
-	w, h := ui.TerminalDimensions()
-	u.grid.SetRect(0, 0, w, h)
+func (u *UiController) fitPanelsToTerminal(resize ui.Resize) {
+	u.grid.SetRect(0, 0, resize.Width, resize.Height)
 }

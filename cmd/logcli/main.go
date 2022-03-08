@@ -212,7 +212,7 @@ func main() {
 						return
 					}
 
-					rangeQuery.HandleUiEvent(e)
+					rangeQuery.UiCtrl.HandleUiEvent(e)
 				case <-ticker.C:
 					go func() {
 						rangeQuery.DoQuery(queryClient, out, *statistics)
