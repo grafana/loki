@@ -18,7 +18,7 @@ type ChunkRef struct {
 	Checksum    uint32
 }
 
-type Interface interface {
+type Index interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]ChunkRef, error)
 	Series(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]Series, error)
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
