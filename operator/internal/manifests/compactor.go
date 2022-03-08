@@ -64,7 +64,7 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 				ReadinessProbe: &corev1.Probe{
 					Handler: corev1.Handler{
 						HTTPGet: &corev1.HTTPGetAction{
-							Path:   "/ready",
+							Path:   lokiReadinessPath,
 							Port:   intstr.FromInt(httpPort),
 							Scheme: corev1.URISchemeHTTP,
 						},
@@ -78,7 +78,7 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 				LivenessProbe: &corev1.Probe{
 					Handler: corev1.Handler{
 						HTTPGet: &corev1.HTTPGetAction{
-							Path:   "/metrics",
+							Path:   lokiLivenessPath,
 							Port:   intstr.FromInt(httpPort),
 							Scheme: corev1.URISchemeHTTP,
 						},

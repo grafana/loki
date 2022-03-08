@@ -19,6 +19,9 @@ const (
 	lokiGRPCPortName   = "grpclb"
 	lokiGossipPortName = "gossip-ring"
 
+	lokiLivenessPath  = "/loki/api/v1/status/buildinfo"
+	lokiReadinessPath = "/ready"
+
 	gatewayContainerName    = "gateway"
 	gatewayHTTPPort         = 8080
 	gatewayInternalPort     = 8081

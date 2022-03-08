@@ -77,7 +77,7 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 				ReadinessProbe: &corev1.Probe{
 					Handler: corev1.Handler{
 						HTTPGet: &corev1.HTTPGetAction{
-							Path:   "/ready",
+							Path:   lokiReadinessPath,
 							Port:   intstr.FromInt(httpPort),
 							Scheme: corev1.URISchemeHTTP,
 						},
@@ -91,7 +91,7 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 				LivenessProbe: &corev1.Probe{
 					Handler: corev1.Handler{
 						HTTPGet: &corev1.HTTPGetAction{
-							Path:   "/metrics",
+							Path:   lokiLivenessPath,
 							Port:   intstr.FromInt(httpPort),
 							Scheme: corev1.URISchemeHTTP,
 						},
