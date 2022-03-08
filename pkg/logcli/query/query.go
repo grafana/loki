@@ -400,7 +400,7 @@ type UiController struct {
 	showStats  bool
 	statsPanel *widgets.Paragraph
 
-	selectedLabel string
+	hiddenLabels []string
 
 	currentMatrix loghttp.Matrix
 }
@@ -478,42 +478,38 @@ func (u *UiController) Render() {
 }
 
 func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
-	data := make([][]float64, 0)
-	colors := make([]ui.Color, 0)
-	labels := make([]string, 0)
+	data := make([][]float64, len(matrix))
+	colors := make([]ui.Color, len(matrix))
+	labels := make([]string, len(matrix))
 
-	selectedIndex := -1
-
+	// Sort series alphabetically. This is needed so the legend is always in the same order.
+	sort.Slice(matrix, func(i, j int) bool {
+		return matrix[i].Metric.String() < matrix[j].Metric.String()
+	})
+	
 	for i, stream := range matrix {
-		fv := make([]float64, 0)
-		for _, v := range stream.Values {
-			fv = append(fv, float64(v.Value))
-		}
-
 		rowLabel := stream.Metric.String()
+		fv := make([]float64, len(stream.Values))
 
-		data = append(data, fv)
-		colors = append(colors, u.GetColorForLabels(stream.Metric))
-		labels = append(labels, rowLabel)
-
-		if u.selectedLabel != "" && strings.Contains(u.selectedLabel, rowLabel) {
-			selectedIndex = i
+		// Only the series not hidden will have other value than 0.
+		if !u.IsLabelHidden(rowLabel) {
+			for i, v := range stream.Values {
+				fv[i] = float64(v.Value)
+			}
 		}
-	}
 
-	filteredColors := make([]ui.Color, 0)
-	for i, c := range colors {
-		if selectedIndex == -1 || selectedIndex == i {
-			filteredColors = append(filteredColors, c)
-		} else {
-			filteredColors = append(filteredColors, ui.ColorBlack)
-		}
+		colors[i] = u.GetColorForLabels(stream.Metric)
+		data[i] = fv
+		labels[i] = rowLabel
 	}
 
 	u.graphPanel.Data = data
-	u.graphPanel.LineColors = filteredColors
+	u.graphPanel.LineColors = colors
 
 	u.legendPanel.Rows = u.GetLegend(labels, colors)
+	u.UpdateLegendDetail()
+
+	u.currentMatrix = matrix
 }
 
 type uiStatsLogger struct {
@@ -543,20 +539,34 @@ func (u *UiController) GetColorForLabels(labels model.Metric) ui.Color {
 	return ui.Color(labels.FastFingerprint()%7) + 1
 }
 
+func (u *UiController) IsLabelHidden(label string) bool {
+	for _, hiddenLabel := range u.hiddenLabels {
+		if strings.Contains(hiddenLabel, label) {
+			return true
+		}
+
+		if strings.Contains(label, hiddenLabel) {
+			return true
+		}
+	}
+	return false
+}
+
 func (u *UiController) GetLegend(labels []string, colors []ui.Color) []string {
 	reverseStyleParserColorMap := make(map[ui.Color]string, len(ui.StyleParserColorMap))
 	for k, v := range ui.StyleParserColorMap {
 		reverseStyleParserColorMap[v] = k
 	}
 
-	var legend []string
+	legend := make([]string, len(labels))
 	for i, l := range labels {
 		labelColor := colors[i]
-		if u.selectedLabel != "" && strings.Contains(u.selectedLabel, l) {
-			labelColor = ui.ColorWhite
-		}
 
-		legend = append(legend, fmt.Sprintf("[%s](fg:%s)\n", l, reverseStyleParserColorMap[labelColor]))
+		if u.IsLabelHidden(l) {
+			legend[i] = u.GetHiddenLabel(l)
+		} else {
+			legend[i] = fmt.Sprintf("[%s](fg:%s)", l, reverseStyleParserColorMap[labelColor])
+		}
 	}
 
 	return legend
@@ -633,10 +643,11 @@ func (u *UiController) HandleUiEvent(e ui.Event) bool {
 		u.legendPanel.ScrollUp()
 		u.UpdateLegendDetail()
 	case e.ID == "<Enter>":
-		if u.selectedLabel == "" {
-			u.selectedLabel = u.legendPanel.Rows[u.legendPanel.SelectedRow]
+		selectedLabel := u.currentMatrix[u.legendPanel.SelectedRow].Metric.String()
+		if u.IsLabelHidden(selectedLabel) {
+			u.UnhideLabel(selectedLabel)
 		} else {
-			u.selectedLabel = ""
+			u.HideLabel(selectedLabel)
 		}
 
 		// The legend gets refreshed along with the graph
@@ -658,4 +669,22 @@ func (u *UiController) fitPanelsToTerminal(resize ui.Resize) {
 
 func (u *UiController) UpdateLegendDetail() {
 	u.legendDetail.Text = u.legendPanel.Rows[u.legendPanel.SelectedRow]
+}
+
+func (u *UiController) UnhideLabel(label string) {
+	for i, hiddenLabel := range u.hiddenLabels {
+		if strings.Contains(hiddenLabel, label) {
+			u.hiddenLabels = append(u.hiddenLabels[:i], u.hiddenLabels[i+1:]...)
+			break
+		}
+	}
+}
+
+func (u *UiController) HideLabel(label string) {
+	hiddenlabel := u.GetHiddenLabel(label)
+	u.hiddenLabels = append(u.hiddenLabels, hiddenlabel)
+}
+
+func (u *UiController) GetHiddenLabel(label string) string {
+	return fmt.Sprintf("[HIDDEN](fg:bold,fg:black) [%s](fg:black)", label)
 }
