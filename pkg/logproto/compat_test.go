@@ -286,3 +286,62 @@ func TestMergeSeriesResponses(t *testing.T) {
 		})
 	}
 }
+
+func benchmarkMergeLabelResponses(b *testing.B, responses []*LabelResponse) {
+	b.ReportAllocs()
+	for n := 0; n < b.N; n++ {
+		MergeLabelResponses(responses)
+	}
+}
+
+func benchmarkMergeSeriesResponses(b *testing.B, responses []*SeriesResponse) {
+	b.ReportAllocs()
+	for n := 0; n < b.N; n++ {
+		MergeSeriesResponses(responses)
+	}
+}
+
+func BenchmarkMergeALabelResponse(b *testing.B) {
+	response := []*LabelResponse{{Values: []string{"test"}}}
+	benchmarkMergeLabelResponses(b, response)
+}
+
+func BenchmarkMergeASeriesResponse(b *testing.B) {
+	response := []*SeriesResponse{{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}}}
+	benchmarkMergeSeriesResponses(b, response)
+}
+
+func BenchmarkMergeSomeLabelResponses(b *testing.B) {
+	responses := []*LabelResponse{
+		{Values: []string{"test"}},
+		{Values: []string{"test2"}},
+		{Values: []string{"test3"}},
+	}
+	benchmarkMergeLabelResponses(b, responses)
+}
+
+func BenchmarkMergeSomeSeriesResponses(b *testing.B) {
+	responses := []*SeriesResponse{
+		{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
+		{Series: []SeriesIdentifier{{Labels: map[string]string{"test2": "test2"}}}},
+		{Series: []SeriesIdentifier{{Labels: map[string]string{"test3": "test3"}}}},
+	}
+	benchmarkMergeSeriesResponses(b, responses)
+}
+
+func BenchmarkMergeManyLabelResponses(b *testing.B) {
+	responses := []*LabelResponse{}
+	for i := 0; i < 20; i++ {
+		responses = append(responses, &LabelResponse{Values: []string{fmt.Sprintf("test%d", i)}})
+	}
+	benchmarkMergeLabelResponses(b, responses)
+}
+
+func BenchmarkMergeManySeriesResponses(b *testing.B) {
+	responses := []*SeriesResponse{}
+	for i := 0; i < 20; i++ {
+		test := fmt.Sprintf("test%d", i)
+		responses = append(responses, &SeriesResponse{Series: []SeriesIdentifier{{Labels: map[string]string{test: test}}}})
+	}
+	benchmarkMergeSeriesResponses(b, responses)
+}
