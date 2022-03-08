@@ -617,10 +617,13 @@ func (q *Query) resultsDirection() logproto.Direction {
 	return logproto.BACKWARD
 }
 
-func (u *UiController) HandleUiEvent(e ui.Event) {
+func (u *UiController) HandleUiEvent(e ui.Event) bool {
 	needsUpdate := true
+	stop := false
 
 	switch {
+	case e.ID == "q" || e.ID == "<C-c>":
+		stop = true
 	case e.Type == ui.ResizeEvent:
 		u.fitPanelsToTerminal(e.Payload.(ui.Resize))
 	case e.ID == "j" || e.ID == "<Down>":
@@ -645,6 +648,8 @@ func (u *UiController) HandleUiEvent(e ui.Event) {
 	if needsUpdate {
 		u.Render()
 	}
+
+	return stop
 }
 
 func (u *UiController) fitPanelsToTerminal(resize ui.Resize) {

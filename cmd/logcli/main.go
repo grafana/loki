@@ -205,14 +205,10 @@ func main() {
 			defer ticker.Stop()
 
 			uiEvents := ui.PollEvents()
-			for {
+			for stop := false; !stop; {
 				select {
 				case e := <-uiEvents:
-					if e.ID == "q" || e.ID == "<C-c>" {
-						return
-					}
-
-					rangeQuery.UiCtrl.HandleUiEvent(e)
+					stop = rangeQuery.UiCtrl.HandleUiEvent(e)
 				case <-ticker.C:
 					go func() {
 						rangeQuery.DoQuery(queryClient, out, *statistics)
