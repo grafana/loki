@@ -255,3 +255,20 @@ func lokiLivenessProbe() *corev1.Probe {
 		SuccessThreshold: 1,
 	}
 }
+
+func lokiReadinessProbe() *corev1.Probe {
+	return &corev1.Probe{
+		Handler: corev1.Handler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path:   lokiReadinessPath,
+				Port:   intstr.FromInt(httpPort),
+				Scheme: corev1.URISchemeHTTP,
+			},
+		},
+		PeriodSeconds:       10,
+		InitialDelaySeconds: 15,
+		TimeoutSeconds:      1,
+		SuccessThreshold:    1,
+		FailureThreshold:    3,
+	}
+}

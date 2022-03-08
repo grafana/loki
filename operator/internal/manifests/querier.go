@@ -59,21 +59,8 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
 				},
-				ReadinessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
-						HTTPGet: &corev1.HTTPGetAction{
-							Path:   lokiReadinessPath,
-							Port:   intstr.FromInt(httpPort),
-							Scheme: corev1.URISchemeHTTP,
-						},
-					},
-					PeriodSeconds:       10,
-					InitialDelaySeconds: 15,
-					TimeoutSeconds:      1,
-					SuccessThreshold:    1,
-					FailureThreshold:    3,
-				},
-				LivenessProbe: lokiLivenessProbe(),
+				ReadinessProbe: lokiReadinessProbe(),
+				LivenessProbe:  lokiLivenessProbe(),
 				Ports: []corev1.ContainerPort{
 					{
 						Name:          lokiHTTPPortName,
