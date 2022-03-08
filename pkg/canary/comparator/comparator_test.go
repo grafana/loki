@@ -218,6 +218,45 @@ func TestEntryNeverReceived(t *testing.T) {
 
 }
 
+// Ensure that if confirmMissing calls pile up and run concurrently, this doesn't cause a panic
+func TestConcurrentConfirmMissing(t *testing.T) {
+	found := []time.Time{
+		time.Unix(0, 0),
+		time.UnixMilli(1),
+		time.UnixMilli(2),
+	}
+	mr := &mockReader{resp: found}
+
+	output := &bytes.Buffer{}
+
+	wait := 30 * time.Millisecond
+	maxWait := 30 * time.Millisecond
+
+	c := NewComparator(output, wait, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 0, 1, make(chan time.Time), make(chan time.Time), mr, false)
+
+	for _, t := range found {
+		c.missingEntries = append(c.missingEntries, &t)
+	}
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			assert.NotPanics(t, func() { c.confirmMissing(time.UnixMilli(3)) })
+		}()
+	}
+	assert.Eventually(
+		t,
+		func() bool {
+			wg.Wait()
+			return true
+		},
+		time.Second,
+		10*time.Millisecond,
+	)
+}
+
 func TestPruneAckdEntires(t *testing.T) {
 	actual := &bytes.Buffer{}
 	wait := 30 * time.Millisecond

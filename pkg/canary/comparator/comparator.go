@@ -431,15 +431,28 @@ func (c *Comparator) pruneEntries(currentTime time.Time) {
 func (c *Comparator) confirmMissing(currentTime time.Time) {
 	// Because we are querying loki timestamps vs the timestamp in the log,
 	// make the range +/- 10 seconds to allow for clock inaccuracies
+	c.missingMtx.Lock()
+	if len(c.missingEntries) == 0 {
+		c.missingMtx.Unlock()
+		return
+	}
 	start := *c.missingEntries[0]
 	start = start.Add(-10 * time.Second)
 	end := *c.missingEntries[len(c.missingEntries)-1]
 	end = end.Add(10 * time.Second)
+	c.missingMtx.Unlock()
+
 	recvd, err := c.rdr.Query(start, end)
 	if err != nil {
 		fmt.Fprintf(c.w, "error querying loki: %s\n", err)
 		return
 	}
+	// Now that query has returned, take out the lock on the missingEntries list so we can modify it
+	// It's possible more entries were added to this list but that's ok, if they match something in the
+	// query result we will remove them, if they don't they won't be old enough yet to remove.
+	c.missingMtx.Lock()
+	defer c.missingMtx.Unlock()
+
 	// This is to help debug some missing log entries when queried,
 	// let's print exactly what we are missing and what Loki sent back
 	for _, r := range c.missingEntries {
@@ -449,11 +462,6 @@ func (c *Comparator) confirmMissing(currentTime time.Time) {
 		fmt.Fprintf(c.w, DebugQueryResult, r.UnixNano())
 	}
 
-	// Now that query has returned, take out the lock on the missingEntries list so we can modify it
-	// It's possible more entries were added to this list but that's ok, if they match something in the
-	// query result we will remove them, if they don't they won't be old enough yet to remove.
-	c.missingMtx.Lock()
-	defer c.missingMtx.Unlock()
 	k := 0
 	for i, m := range c.missingEntries {
 		found := false
