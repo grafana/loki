@@ -258,16 +258,13 @@ func main() {
 		for stop := false; !stop; {
 			select {
 			case e := <-uiEvents:
-				stop = instantQuery.UiCtrl.HandleUiEvent(e)
+				stop = instantQuery.UiCtrl.HandleTableUIEvent(e)
 			case <-ticker.C:
 				go func() {
 					instantQuery.DoQuery(queryClient, out, *statistics)
 					if !instantQuery.Live {
 						return
 					}
-
-					instantQuery.Start = instantQuery.Start.Add(delay)
-					instantQuery.End = instantQuery.End.Add(delay)
 
 					instantQuery.UiCtrl.Render()
 				}()

@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -378,11 +377,6 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 
 func (q *Query) printMatrix(matrix loghttp.Matrix) {
 	if q.Pretty {
-		if q.isInstant() {
-			q.UiCtrl.CreateTable(matrix)
-			return
-		}
-
 		q.UiCtrl.UpdateGraph(matrix)
 		return
 	}
@@ -531,29 +525,14 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 	u.currentMatrix = matrix
 }
 
-func (u *UiController) CreateTable(matrix loghttp.Matrix) {
-	row := make([]string, len(matrix))
-	tableRows := make([][]string, len(matrix))
-	currentTime := time.Now()
+func (u *UiController) CreateTable(vector loghttp.Vector) {
+	row := make([]string, len(vector))
+	tableRows := make([][]string, len(vector))
 
-	// Sort series alphabetically. This is needed so the legend is always in the same order.
-	sort.Slice(matrix, func(i, j int) bool {
-		return matrix[i].Metric.FastFingerprint() < matrix[j].Metric.FastFingerprint()
-	})
-
-	for i, stream := range matrix {
-		row = append(row, currentTime.String())
-
-		for _, label := range stream.Metric {
-			row = append(row, string(label))
-		}
-
-		// Only the series not hidden will have other value than 0.
-		fv := make([]string, len(stream.Values))
-		for i, v := range stream.Values {
-			fv[i] = string(strconv.FormatFloat(float64(v.Value), 'f', 5, 64))
-		}
-		row = append(row, strings.Join(fv, ", "))
+	for i, sample := range vector {
+		row = append(row, sample.Timestamp.String())
+		row = append(row, sample.Metric.String())
+		row = append(row, sample.Value.String())
 
 		tableRows[i] = row
 	}
@@ -625,6 +604,11 @@ func (u *UiController) GetLegend(labels []string, colors []ui.Color) []string {
 }
 
 func (q *Query) printVector(vector loghttp.Vector) {
+	if q.Pretty {
+		q.UiCtrl.CreateTable(vector)
+		return
+	}
+
 	bytes, err := json.MarshalIndent(vector, "", "  ")
 	if err != nil {
 		log.Fatalf("Error marshalling vector: %v", err)
@@ -711,6 +695,35 @@ func (u *UiController) HandleUiEvent(e ui.Event) bool {
 	if needsUpdate {
 		u.Render()
 	}
+
+	return stop
+}
+
+func (u *UiController) HandleTableUIEvent(e ui.Event) bool {
+	stop := false
+
+	switch {
+	case e.ID == "q" || e.ID == "<C-c>":
+		stop = true
+	case e.Type == ui.ResizeEvent:
+		u.fitPanelsToTerminal(e.Payload.(ui.Resize))
+	case e.ID == "j" || e.ID == "<Down>":
+		u.legendPanel.ScrollDown()
+		u.UpdateLegendDetail()
+	case e.ID == "k" || e.ID == "<Up>":
+		u.legendPanel.ScrollUp()
+		u.UpdateLegendDetail()
+	case e.ID == "<Enter>":
+		selectedLabel := u.currentMatrix[u.legendPanel.SelectedRow].Metric.String()
+		if u.IsLabelHidden(selectedLabel) {
+			u.UnhideLabel(selectedLabel)
+		} else {
+			u.HideLabel(selectedLabel)
+		}
+
+	}
+
+	u.Render()
 
 	return stop
 }
