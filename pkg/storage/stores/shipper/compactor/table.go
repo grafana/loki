@@ -430,10 +430,9 @@ func readFile(logger log.Logger, path string, writeBatch func(userID string, bat
 		}
 	}()
 
-	batch := make([]indexEntry, 0, batchSize)
-
 	return db.View(func(tx *bbolt.Tx) error {
 		return tx.ForEach(func(name []byte, b *bbolt.Bucket) error {
+			batch := make([]indexEntry, 0, batchSize)
 			bucketNameStr := string(name)
 			err := b.ForEach(func(k, v []byte) error {
 				ie := indexEntry{
