@@ -14,4 +14,4 @@ spec:
       scrapeTimeout: 10s
       tlsConfig:
         caFile: /etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt
-        serverName: loki-operator-controller-manager-metrics-service.openshift-logging.svc
+        serverName: loki-operator-controller-manager-metrics-service.openshift-operators-redhat.svc

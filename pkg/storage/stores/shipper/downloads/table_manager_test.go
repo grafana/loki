@@ -293,10 +293,6 @@ func (m *mockLimits) DefaultLimits() *validation.Limits {
 	}
 }
 
-func (m *mockLimits) QueryReadyIndexNumDays(userID string) int {
-	return m.queryReadyIndexNumDaysByUser[userID]
-}
-
 type mockTable struct {
 	tableExpired               bool
 	queryReadinessDoneForUsers []string

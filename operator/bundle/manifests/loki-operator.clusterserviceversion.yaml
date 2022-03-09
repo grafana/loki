@@ -524,6 +524,7 @@ spec:
         - apiGroups:
           - monitoring.coreos.com
           resources:
+          - prometheusrules
           - servicemonitors
           verbs:
           - create
@@ -607,6 +608,7 @@ spec:
                 - --with-cert-signing-service
                 - --with-service-monitors
                 - --with-tls-service-monitors
+                - --with-prometheus-alerts
                 command:
                 - /manager
                 env:

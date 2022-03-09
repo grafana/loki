@@ -145,6 +145,23 @@ type TOC struct {
 	LabelIndicesTable uint64
 	Postings          uint64
 	PostingsTable     uint64
+	Metadata          Metadata
+}
+
+// Metadata is TSDB-level metadata
+type Metadata struct {
+	From, Through int64
+}
+
+func (m *Metadata) EnsureBounds(from, through int64) {
+	if m.From == 0 || from < m.From {
+		m.From = from
+	}
+
+	if m.Through == 0 || through > m.Through {
+		m.Through = through
+	}
+
 }
 
 // NewTOCFromByteSlice return parsed TOC from given index byte slice.
@@ -171,6 +188,10 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 		LabelIndicesTable: d.Be64(),
 		Postings:          d.Be64(),
 		PostingsTable:     d.Be64(),
+		Metadata: Metadata{
+			From:    d.Be64int64(),
+			Through: d.Be64int64(),
+		},
 	}, nil
 }
 
@@ -456,6 +477,8 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 
 	if len(chunks) > 0 {
 		c := chunks[0]
+		w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
+
 		w.buf2.PutVarint64(c.MinTime)
 		w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
 		w.buf2.PutUvarint32(c.KB)
@@ -464,6 +487,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		t0 := c.MaxTime
 
 		for _, c := range chunks[1:] {
+			w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
 			// Encode the diff against previous chunk as varint
 			// instead of uvarint because chunks may overlap
 			w.buf2.PutVarint64(c.MinTime - t0)
@@ -787,7 +811,7 @@ func (w *Writer) writePostingsOffsetTable() error {
 	return w.write(w.buf1.Get())
 }
 
-const indexTOCLen = 6*8 + crc32.Size
+const indexTOCLen = 8*8 + crc32.Size
 
 func (w *Writer) writeTOC() error {
 	w.buf1.Reset()
@@ -798,6 +822,10 @@ func (w *Writer) writeTOC() error {
 	w.buf1.PutBE64(w.toc.LabelIndicesTable)
 	w.buf1.PutBE64(w.toc.Postings)
 	w.buf1.PutBE64(w.toc.PostingsTable)
+
+	// metadata
+	w.buf1.PutBE64int64(w.toc.Metadata.From)
+	w.buf1.PutBE64int64(w.toc.Metadata.Through)
 
 	w.buf1.PutHash(w.crc32)
 
@@ -1441,6 +1469,10 @@ func (r *Reader) lookupSymbol(o uint32) (string, error) {
 		return s, nil
 	}
 	return r.symbols.Lookup(o)
+}
+
+func (r *Reader) Bounds() (int64, int64) {
+	return r.toc.Metadata.From, r.toc.Metadata.Through
 }
 
 // Symbols returns an iterator over the symbols that exist within the index.

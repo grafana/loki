@@ -541,7 +541,7 @@ github.com/grafana/dskit/ring/util
 github.com/grafana/dskit/runtimeconfig
 github.com/grafana/dskit/services
 github.com/grafana/dskit/spanlogger
-# github.com/grafana/regexp v0.0.0-20220202152315-e74e38789280
+# github.com/grafana/regexp v0.0.0-20220304100321-149c8afcd6cb
 ## explicit; go 1.17
 github.com/grafana/regexp
 github.com/grafana/regexp/syntax

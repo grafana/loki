@@ -101,7 +101,7 @@ The timestamps can also be written in `RFC3339` and `RFC3339Nano` format, as sup
 query parameters support the following values:
 
 - `query`: The [LogQL](../logql/) query to perform
-- `limit`: The max number of entries to return. It defaults to `100`.
+- `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
@@ -233,7 +233,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
 accepts the following query parameters in the URL:
 
 - `query`: The [LogQL](../logql/) query to perform
-- `limit`: The max number of entries to return. It defaults to `100`.
+- `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.  Only applies to query types which produce a matrix response.
