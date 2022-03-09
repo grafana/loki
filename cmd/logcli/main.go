@@ -189,7 +189,9 @@ func main() {
 		}
 
 		if *tail || *follow {
-			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
+			// TODO: make switch based on `expr` type (logql vs metric query)
+			// rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
+			rangeQuery.TailMetricQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
 		} else {
 			if rangeQuery.Pretty {
 				plotType, err := query.ParsePlotType(rangeQuery.PlotType)

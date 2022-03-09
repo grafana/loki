@@ -201,6 +201,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.
 	if err != nil {
 		return nil, err
 	}
+
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
 	seriesIndex := map[uint64]*promql.Series{}
