@@ -194,6 +194,8 @@ func main() {
 			if rangeQuery.Pretty {
 				rangeQuery.UiCtrl = query.NewUiController(false, *statistics)
 
+				rangeQuery.UiCtrl.UpdateQuery(rangeQuery.QueryString)
+
 				if err := rangeQuery.UiCtrl.Init(); err != nil {
 					log.Fatalf("failed to initialize termui: %v", err)
 				}
@@ -243,6 +245,8 @@ func main() {
 
 		if instantQuery.Pretty {
 			instantQuery.UiCtrl = query.NewUiController(true, *statistics)
+
+			instantQuery.UiCtrl.UpdateQuery(instantQuery.QueryString)
 
 			if err := instantQuery.UiCtrl.Init(); err != nil {
 				log.Fatalf("failed to initialize termui: %v", err)

@@ -394,6 +394,7 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 
 type UiController struct {
 	grid         *ui.Grid
+	queryPanel   *widgets.Paragraph
 	graphPanel   *widgets.Plot
 	legendPanel  *widgets.List
 	legendDetail *widgets.Paragraph
@@ -415,6 +416,10 @@ type UiPanelMeta struct {
 }
 
 func NewUiController(instantQuery bool, showStats bool) UiController {
+	queryPanel := widgets.NewParagraph()
+	queryPanel.Title = "Query"
+	queryPanel.WrapText = true
+
 	graphPanel := widgets.NewPlot()
 	graphPanel.Title = "Graph"
 	graphPanel.AxesColor = ui.ColorWhite
@@ -440,31 +445,36 @@ func NewUiController(instantQuery bool, showStats bool) UiController {
 	if instantQuery {
 		if showStats {
 			grid.Set(
-				ui.NewRow(1.0, ui.NewCol(3.0/4, tablePanel), ui.NewCol(1.0/4, statsPanel)),
+				ui.NewRow(0.5/5, ui.NewCol(1.0, queryPanel)),
+				ui.NewRow(4.5/5, ui.NewCol(3.0/4, tablePanel), ui.NewCol(1.0/4, statsPanel)),
 			)
 		} else {
 			grid.Set(
-				ui.NewRow(1.0, ui.NewCol(1.0, tablePanel)),
+				ui.NewRow(0.5/5, ui.NewCol(1.0, queryPanel)),
+				ui.NewRow(4.5/5, ui.NewCol(1.0, tablePanel)),
 			)
 		}
 	} else {
 		if showStats {
 			grid.Set(
-				ui.NewRow(2.5/4, ui.NewCol(3.0/4, graphPanel), ui.NewCol(1.0/4, statsPanel)),
-				ui.NewRow(1.0/4, ui.NewCol(1.0, legendPanel)),
-				ui.NewRow(0.5/4, ui.NewCol(1.0, legendDetail)),
+				ui.NewRow(0.5/5, ui.NewCol(1.0, queryPanel)),
+				ui.NewRow(3.0/5, ui.NewCol(3.0/4, graphPanel), ui.NewCol(1.0/4, statsPanel)),
+				ui.NewRow(1.0/5, ui.NewCol(1.0, legendPanel)),
+				ui.NewRow(0.5/5, ui.NewCol(1.0, legendDetail)),
 			)
 		} else {
 			grid.Set(
-				ui.NewRow(2.5/4, ui.NewCol(1.0, graphPanel)),
-				ui.NewRow(1.0/4, ui.NewCol(1.0, legendPanel)),
-				ui.NewRow(0.5/4, ui.NewCol(1.0, legendDetail)),
+				ui.NewRow(0.5/5, ui.NewCol(1.0, queryPanel)),
+				ui.NewRow(3.0/5, ui.NewCol(1.0, graphPanel)),
+				ui.NewRow(1.0/5, ui.NewCol(1.0, legendPanel)),
+				ui.NewRow(0.5/5, ui.NewCol(1.0, legendDetail)),
 			)
 		}
 	}
 
 	uiController := UiController{
 		grid:         grid,
+		queryPanel:   queryPanel,
 		graphPanel:   graphPanel,
 		legendPanel:  legendPanel,
 		legendDetail: legendDetail,
@@ -496,6 +506,11 @@ func (u *UiController) Render() {
 	ui.Clear()
 	ui.Render(u.grid)
 }
+
+func (u *UiController) UpdateQuery(query string) {
+	u.queryPanel.Text = query
+}
+
 
 func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 	data := make([][]float64, 0)
