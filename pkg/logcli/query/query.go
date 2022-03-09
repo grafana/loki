@@ -437,7 +437,8 @@ func NewUiController(instantQuery bool, showStats bool) UiController {
 	statsPanel.Title = "Statistics"
 
 	tablePanel := widgets.NewTable()
-	tablePanel.Title = "Table"
+	tablePanel.Title = "Results"
+	tablePanel.RowStyles[0] = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
 
 	grid := ui.NewGrid()
 	grid.SetRect(0, 0, 0, 0) // Will be updated on Init()
