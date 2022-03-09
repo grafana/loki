@@ -82,8 +82,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
 						LokiStackName:        "lokistack-ocp",
+						LokiStackNamespace:   "stack-ns",
 						GatewayName:          "lokistack-gateway-lokistack-ocp",
-						GatewayNamespace:     "stack-ns",
 						GatewaySvcName:       "lokistack-gateway-http-lokistack-ocp",
 						GatewaySvcTargetPort: "public",
 						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
