@@ -197,7 +197,7 @@ func TestIndexRW_Postings(t *testing.T) {
 	var c []ChunkMeta
 
 	for i := 0; p.Next(); i++ {
-		err := ir.Series(p.At(), &l, &c)
+		_, err := ir.Series(p.At(), &l, &c)
 
 		require.NoError(t, err)
 		require.Equal(t, 0, len(c))
@@ -312,7 +312,8 @@ func TestPostingsMany(t *testing.T) {
 		var lbls labels.Labels
 		var metas []ChunkMeta
 		for it.Next() {
-			require.NoError(t, ir.Series(it.At(), &lbls, &metas))
+			_, err := ir.Series(it.At(), &lbls, &metas)
+			require.NoError(t, err)
 			got = append(got, lbls.Get("i"))
 		}
 		require.NoError(t, it.Err())
@@ -419,7 +420,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 			ref := gotp.At()
 
-			err := ir.Series(ref, &lset, &chks)
+			_, err := ir.Series(ref, &lset, &chks)
 			require.NoError(t, err)
 
 			err = mi.Series(expp.At(), &explset, &expchks)

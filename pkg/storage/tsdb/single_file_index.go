@@ -34,13 +34,10 @@ func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through
 	)
 
 	for p.Next() {
-		if err := i.reader.Series(p.At(), &ls, &chks); err != nil {
+		fprint, err := i.reader.Series(p.At(), &ls, &chks)
+		if err != nil {
 			return nil, err
 		}
-
-		// cache hash calculation across chunks of the same series
-		// TODO(owen-d): Should we store this in the index? in an in-mem cache?
-		var hash uint64
 
 		// TODO(owen-d): use logarithmic approach
 		for _, chk := range chks {
@@ -50,13 +47,9 @@ func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through
 				continue
 			}
 
-			if hash == 0 {
-				hash = ls.Hash()
-			}
-
 			res = append(res, ChunkRef{
 				User:        userID, // assumed to be the same, will be enforced by caller.
-				Fingerprint: model.Fingerprint(hash),
+				Fingerprint: model.Fingerprint(fprint),
 				Start:       chk.From(),
 				End:         chk.Through(),
 				Checksum:    chk.Checksum,
@@ -79,7 +72,7 @@ func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time
 	)
 
 	for p.Next() {
-		if err := i.reader.Series(p.At(), &ls, &chks); err != nil {
+		if _, err := i.reader.Series(p.At(), &ls, &chks); err != nil {
 			return nil, err
 		}
 
