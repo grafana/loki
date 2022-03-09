@@ -223,9 +223,22 @@ func (t *table) done() error {
 		}
 	}
 
-	for _, is := range t.indexSets {
-		err := is.done()
-		if err != nil {
+	for userID, is := range t.indexSets {
+		// indexSet.done() uploads the compacted db and cleans up the source index files.
+		// For user index sets, the files from common index sets are also a source of index.
+		// if we cleanup common index sets first, and we fail to upload newly compacted dbs in user index sets, then we will lose data.
+		// To avoid any data loss, we should call done() on common index sets at the end.
+		if userID == "" {
+			continue
+		}
+
+		if err := is.done(); err != nil {
+			return err
+		}
+	}
+
+	if commonIndexSet, ok := t.indexSets[""]; ok {
+		if err := commonIndexSet.done(); err != nil {
 			return err
 		}
 	}
