@@ -434,7 +434,8 @@ type UiController struct {
 	showStats  bool
 	statsPanel *widgets.Paragraph
 
-	tablePanel *widgets.Table
+	tablePanel   *widgets.Table
+	tableDetails *widgets.Paragraph
 
 	hiddenLabels []string
 
@@ -464,6 +465,9 @@ func NewUiController(showStats bool, plotType PlotType) UiController {
 	if plotType == Table {
 		uiCtrl.tablePanel = widgets.NewTable()
 		uiCtrl.tablePanel.Title = "Results"
+		uiCtrl.tableDetails = widgets.NewParagraph()
+		uiCtrl.tableDetails.Title = "Table Details"
+		uiCtrl.tableDetails.WrapText = true
 		uiCtrl.tablePanel.RowStyles[0] = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
 
 		if showStats {
@@ -471,12 +475,14 @@ func NewUiController(showStats bool, plotType PlotType) UiController {
 
 			uiCtrl.grid.Set(
 				ui.NewRow(0.5/5, ui.NewCol(1.0, uiCtrl.queryPanel)),
-				ui.NewRow(4.5/5, ui.NewCol(3.0/4, uiCtrl.tablePanel), ui.NewCol(1.0/4, uiCtrl.statsPanel)),
+				ui.NewRow(3.0/5, ui.NewCol(3.0/4, uiCtrl.tablePanel), ui.NewCol(1.0/4, uiCtrl.statsPanel)),
+				ui.NewRow(0.5/5, ui.NewCol(1.0, uiCtrl.tableDetails)),
 			)
 		} else {
 			uiCtrl.grid.Set(
 				ui.NewRow(0.5/5, ui.NewCol(1.0, uiCtrl.queryPanel)),
-				ui.NewRow(4.5/5, ui.NewCol(1.0, uiCtrl.tablePanel)),
+				ui.NewRow(3.0/5, ui.NewCol(1.0, uiCtrl.tablePanel)),
+				ui.NewRow(0.5/5, ui.NewCol(1.0, uiCtrl.tableDetails)),
 			)
 		}
 	} else {
@@ -689,6 +695,8 @@ func (u *UiController) CreateTable(vector loghttp.Vector) {
 	}
 
 	u.tablePanel.Rows = tableRows
+	u.UpdateTableDetails()
+
 }
 
 type uiStatsLogger struct {
@@ -824,12 +832,22 @@ func (u *UiController) HandleUiEvent(e ui.Event) bool {
 		stop = true
 	case e.Type == ui.ResizeEvent:
 		u.fitPanelsToTerminal(e.Payload.(ui.Resize))
-	case (e.ID == "j" || e.ID == "<Down>") && u.legendPanel != nil:
-		u.legendPanel.ScrollDown()
-		u.UpdateLegendDetail()
-	case (e.ID == "k" || e.ID == "<Up>") && u.legendPanel != nil:
-		u.legendPanel.ScrollUp()
-		u.UpdateLegendDetail()
+	case (e.ID == "j" || e.ID == "<Down>"):
+		if u.legendPanel != nil {
+			u.legendPanel.ScrollDown()
+			u.UpdateLegendDetail()
+		} else if u.tablePanel != nil {
+			u.tablePanel.ScrollDown()
+			u.UpdateTableDetails()
+		}
+	case (e.ID == "k" || e.ID == "<Up>"):
+		if u.legendPanel != nil {
+			u.legendPanel.ScrollUp()
+			u.UpdateLegendDetail()
+		} else if u.tablePanel != nil {
+			u.tablePanel.ScrollUp()
+			u.UpdateTableDetails()
+		}
 	case e.ID == "<Enter>" && u.legendPanel != nil:
 		selectedLabel := u.currentMatrix[u.legendPanel.SelectedRow].Metric.String()
 		if u.IsLabelHidden(selectedLabel) {
@@ -872,6 +890,15 @@ func (u *UiController) UpdateLegendDetail() {
 	}
 
 	u.legendDetail.Text = u.legendPanel.Rows[u.legendPanel.SelectedRow]
+}
+
+func (u *UiController) UpdateTableDetails() {
+	if len(u.tablePanel.Rows) == 0 {
+		return
+	}
+
+	rows := u.tablePanel.Rows[u.tablePanel.SelectedRow]
+	u.tableDetails.Text = strings.Join(rows, ", ")
 }
 
 func (u *UiController) UnhideLabel(label string) {
