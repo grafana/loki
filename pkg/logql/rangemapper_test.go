@@ -74,9 +74,9 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 		},
 		{
 			`bytes_over_time({app="foo"}[3m])`,
-			`sum (downstream<bytes_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+			`downstream<bytes_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
 				++ downstream<bytes_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
-				++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>)`,
+				++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>`,
 			false,
 		},
 		{
@@ -88,9 +88,9 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 		},
 		{
 			`count_over_time({app="foo"}[3m])`,
-			`sum (downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+			`downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
 				++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
-				++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>)`,
+				++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>`,
 			false,
 		},
 		{
@@ -102,9 +102,9 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 		},
 		{
 			`sum_over_time({app="foo"} | unwrap bar [3m])`,
-			`sum (downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 2m0s), shard=<nil>>
+			`downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 2m0s), shard=<nil>>
 				++ downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 1m0s), shard=<nil>>
-				++ downstream<sum_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>)`,
+				++ downstream<sum_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>`,
 			false,
 		},
 		{
@@ -208,7 +208,7 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.expr, func(t *testing.T) {
-			t.Parallel()
+			//t.Parallel()
 			noop, mappedExpr, err := rvm.Parse(tc.expr)
 			require.NoError(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))

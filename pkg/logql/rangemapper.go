@@ -209,7 +209,10 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *RangeAggregationExpr) S
 
 	if isSplittableByRange(expr) {
 		switch expr.Operation {
-		case OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeCount, OpRangeTypeRate, OpRangeTypeSum:
+		case OpRangeTypeBytes, OpRangeTypeCount:
+			return m.mapSampleExpr(expr, rangeInterval)
+		case OpRangeTypeSum:
+			// sum_over_time does not support grouping
 			return &VectorAggregationExpr{
 				Left:      m.mapSampleExpr(expr, rangeInterval),
 				Grouping:  &Grouping{},
