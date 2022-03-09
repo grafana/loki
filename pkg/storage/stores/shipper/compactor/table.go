@@ -58,7 +58,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const (
-	uploaderName = "compactor"
+	uploaderName               = "compactor"
+	uploadIndexSetsConcurrency = 10
 
 	readDBsConcurrency = 50
 	batchSize          = 1000
@@ -223,7 +224,8 @@ func (t *table) done() error {
 		}
 	}
 
-	for userID, is := range t.indexSets {
+	userIDs := make([]string, 0, len(t.indexSets))
+	for userID := range t.indexSets {
 		// indexSet.done() uploads the compacted db and cleans up the source index files.
 		// For user index sets, the files from common index sets are also a source of index.
 		// if we cleanup common index sets first, and we fail to upload newly compacted dbs in user index sets, then we will lose data.
@@ -232,9 +234,14 @@ func (t *table) done() error {
 			continue
 		}
 
-		if err := is.done(); err != nil {
-			return err
-		}
+		userIDs = append(userIDs, userID)
+	}
+
+	err := concurrency.ForEachJob(t.ctx, len(userIDs), uploadIndexSetsConcurrency, func(ctx context.Context, idx int) error {
+		return t.indexSets[userIDs[idx]].done()
+	})
+	if err != nil {
+		return err
 	}
 
 	if commonIndexSet, ok := t.indexSets[""]; ok {
