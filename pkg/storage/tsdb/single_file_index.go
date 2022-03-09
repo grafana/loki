@@ -20,8 +20,13 @@ func NewTSDBIndex(reader IndexReader) *TSDBIndex {
 	}
 }
 
-func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
+	from, through := i.reader.Bounds()
+	return model.Time(from), model.Time(through)
+}
 
+func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+	queryBounds := newBounds(from, through)
 	p, err := PostingsForMatchers(i.reader, matchers...)
 	if err != nil {
 		return nil, err
@@ -46,7 +51,7 @@ func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through
 		for _, chk := range chks {
 
 			// current chunk is outside the range of this request
-			if chk.From() > through || chk.Through() < from {
+			if !Overlap(queryBounds, chk) {
 				continue
 			}
 
@@ -67,6 +72,7 @@ func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through
 }
 
 func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time, matchers ...*labels.Matcher) ([]Series, error) {
+	queryBounds := newBounds(from, through)
 	p, err := PostingsForMatchers(i.reader, matchers...)
 	if err != nil {
 		return nil, err
@@ -86,7 +92,7 @@ func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time
 		// TODO(owen-d): use logarithmic approach
 		for _, chk := range chks {
 
-			if chk.From() < through && chk.Through() >= from {
+			if Overlap(queryBounds, chk) {
 				// this series has at least one chunk in the desired range
 				res = append(res, Series{
 					Labels: ls.Copy(),
