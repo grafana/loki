@@ -402,7 +402,6 @@ type UiController struct {
 	showStats  bool
 	statsPanel *widgets.Paragraph
 
-	instantQuery bool
 	tablePanel   *widgets.Table
 
 	hiddenLabels []string
@@ -778,7 +777,7 @@ func (u *UiController) HandleTableUIEvent(e ui.Event) bool {
 	case e.ID == "k" || e.ID == "<Up>":
 		u.legendPanel.ScrollUp()
 		u.UpdateLegendDetail()
-	case e.ID == "<Enter>":
+	case e.ID == "<Enter>" && len(u.currentMatrix) > 0:
 		selectedLabel := u.currentMatrix[u.legendPanel.SelectedRow].Metric.String()
 		if u.IsLabelHidden(selectedLabel) {
 			u.UnhideLabel(selectedLabel)
@@ -797,6 +796,10 @@ func (u *UiController) fitPanelsToTerminal(resize ui.Resize) {
 }
 
 func (u *UiController) UpdateLegendDetail() {
+	if len(u.legendPanel.Rows) == 0 {
+		return
+	}
+
 	u.legendDetail.Text = u.legendPanel.Rows[u.legendPanel.SelectedRow]
 }
 
