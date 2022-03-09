@@ -443,6 +443,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 	}
 
 	w.buf2.Reset()
+	w.buf2.PutBE64(lset.Hash())
 	w.buf2.PutUvarint(len(lset))
 
 	for _, l := range lset {
@@ -904,6 +905,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 			l := d.Uvarint() // Length of this series in bytes.
 			startLen := d.Len()
 
+			_ = d.Be64() // skip fingerprint
 			// See if label names we want are in the series.
 			numLabels := d.Uvarint()
 			for i := 0; i < numLabels; i++ {
@@ -1817,6 +1819,7 @@ func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
 // They are returned in the same order they're stored, which should be sorted lexicographically.
 func (dec *Decoder) LabelNamesOffsetsFor(b []byte) ([]uint32, error) {
 	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
+	_ = d.Be64() // skip fingerprint
 	k := d.Uvarint()
 
 	offsets := make([]uint32, k)
@@ -1835,6 +1838,7 @@ func (dec *Decoder) LabelNamesOffsetsFor(b []byte) ([]uint32, error) {
 // LabelValueFor decodes a label for a given series.
 func (dec *Decoder) LabelValueFor(b []byte, label string) (string, error) {
 	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
+	_ = d.Be64() // skip fingerprint
 	k := d.Uvarint()
 
 	for i := 0; i < k; i++ {
@@ -1870,6 +1874,7 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) err
 
 	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 
+	_ = d.Be64()
 	k := d.Uvarint()
 
 	for i := 0; i < k; i++ {
