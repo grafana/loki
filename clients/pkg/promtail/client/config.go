@@ -23,8 +23,8 @@ const (
 )
 
 type Configs struct {
-	StreamLagLabels dskit_flagext.StringSliceCSV `yaml:"stream_lag_labels"`
-	Configs         []Config                     `yaml:"clients,omitempty"`
+	StreamLagLabels dskit_flagext.StringSliceCSV `yaml:"stream_lag_labels,omitempty"`
+	Configs         []Config                     `yaml:"configs"`
 }
 
 // Config describes configuration for a HTTP pusher client.
