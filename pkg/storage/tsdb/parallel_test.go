@@ -75,7 +75,7 @@ func TestParallelIndex(t *testing.T) {
 
 			// cancel after 150% of the delay duration in our index
 			// this should ensure we only finish one round of parallelism
-			ctx, _ := context.WithTimeout(context.Background(), duration*3/2)
+			ctx, _ := context.WithTimeout(context.Background(), duration*3/2) // nolint:govet
 
 			// try to run double the parallelism
 			for i := 0; i < 2*p; i++ {
