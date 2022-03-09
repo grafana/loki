@@ -42,11 +42,11 @@ func (i *TSDBIndex) forSeries(
 	)
 
 	for p.Next() {
-		if err := i.reader.Series(p.At(), &ls, &chks); err != nil {
+		hash, err := i.reader.Series(p.At(), &ls, &chks)
+		if err != nil {
 			return err
 		}
 
-		hash := ls.Hash()
 		// skip series that belong to different shards
 		if shard != nil && !shard.Match(model.Fingerprint(hash)) {
 			continue
