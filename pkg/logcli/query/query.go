@@ -35,8 +35,8 @@ import (
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
 
-	ui "github.com/gizak/termui/v3"
-	"github.com/gizak/termui/v3/widgets"
+	ui "github.com/grafana/termui/v3"
+	"github.com/grafana/termui/v3/widgets"
 )
 
 type streamEntryPair struct {

@@ -1,0 +1,4 @@
+.DS_Store
+.vscode/
+.mypy_cache/
+.idea

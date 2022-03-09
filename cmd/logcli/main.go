@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logcli/seriesquery"
 	_ "github.com/grafana/loki/pkg/util/build"
 
-	ui "github.com/gizak/termui/v3"
+	ui "github.com/grafana/termui/v3"
 )
 
 var (

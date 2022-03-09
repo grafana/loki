@@ -102,10 +102,10 @@ require (
 )
 
 require (
-	github.com/gizak/termui/v3 v3.1.0
 	github.com/google/renameio/v2 v2.0.0
 	github.com/google/uuid v1.2.0
 	github.com/grafana/regexp v0.0.0-20220304095617-2e8d9baf4ac2
+	github.com/grafana/termui/v3 v3.1.1-0.20220309174059-9ded7e240857
 	github.com/mattn/go-ieproxy v0.0.1
 	github.com/xdg-go/scram v1.0.2
 	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20191017102106-1550ee647df0
@@ -158,6 +158,7 @@ require (
 	github.com/edsrzf/mmap-go v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
+	github.com/gizak/termui/v3 v3.1.0 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-logr/logr v1.2.0 // indirect
 	github.com/go-openapi/analysis v0.20.0 // indirect
