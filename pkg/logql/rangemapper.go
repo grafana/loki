@@ -24,17 +24,17 @@ func NewRangeVectorMapper(interval time.Duration) (RangeVectorMapper, error) {
 }
 
 func (m RangeVectorMapper) Parse(query string) (bool, Expr, error) {
-	parsed, err := ParseExpr(query)
+	origExpr, err := ParseExpr(query)
 	if err != nil {
 		return false, nil, err
 	}
 
-	mapped, err := m.Map(parsed)
+	modExpr, err := m.Map(origExpr)
 	if err != nil {
 		return false, nil, err
 	}
 
-	return parsed.String() == mapped.String(), mapped, err
+	return origExpr.String() == modExpr.String(), modExpr, err
 }
 
 func (m RangeVectorMapper) Map(expr Expr) (Expr, error) {
@@ -268,11 +268,9 @@ var SplittableVectorOp = map[string]struct{}{
 }
 
 var SplittableRangeVectorOp = map[string]struct{}{
-	OpRangeTypeBytes:     {},
-	OpRangeTypeBytesRate: {},
-	OpRangeTypeCount:     {},
-	OpRangeTypeRate:      {},
-	OpRangeTypeSum:       {},
-	OpRangeTypeMin:       {},
-	OpRangeTypeMax:       {},
+	OpRangeTypeBytes: {},
+	OpRangeTypeCount: {},
+	OpRangeTypeSum:   {},
+	OpRangeTypeMin:   {},
+	OpRangeTypeMax:   {},
 }

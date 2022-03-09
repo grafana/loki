@@ -209,10 +209,10 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 		tc := tc
 		t.Run(tc.expr, func(t *testing.T) {
 			t.Parallel()
-			mapped, mappedExpr, err := rvm.Parse(tc.expr)
+			noop, mappedExpr, err := rvm.Parse(tc.expr)
 			require.NoError(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
-			require.Equal(t, tc.expectNoop, mapped)
+			require.Equal(t, tc.expectNoop, noop)
 		})
 	}
 }
