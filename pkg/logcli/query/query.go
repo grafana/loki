@@ -62,9 +62,38 @@ type Query struct {
 	ColoredOutput   bool
 	LocalConfig     string
 
-	Pretty bool
-	Live   bool
-	UiCtrl UiController
+	Pretty   bool
+	Live     bool
+	PlotType string
+	UiCtrl   UiController
+}
+
+type PlotType uint
+
+const (
+	Lines PlotType = iota
+	StackedLines
+	Bars
+	StackedBars
+	Points
+	Table
+)
+
+func ParsePlotType(s string) (PlotType, error) {
+	switch strings.ToLower(s) {
+	case "lines":
+		return Lines, nil
+	case "stacked-lines":
+		return StackedLines, nil
+	case "bars":
+		return Bars, nil
+	case "stacked-bars":
+		return StackedBars, nil
+	case "points":
+		return Points, nil
+	default:
+		return Lines, fmt.Errorf("unknown plot type: %s", s)
+	}
 }
 
 // DoQuery executes the query and prints out the results
@@ -393,16 +422,19 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 }
 
 type UiController struct {
-	grid         *ui.Grid
-	queryPanel   *widgets.Paragraph
-	graphPanel   *widgets.Plot
-	legendPanel  *widgets.List
-	legendDetail *widgets.Paragraph
+	grid       *ui.Grid
+	queryPanel *widgets.Paragraph
+
+	plotType        PlotType
+	graphPanel      *widgets.Plot
+	stackedBarPanel *widgets.StackedBarChart
+	legendPanel     *widgets.List
+	legendDetail    *widgets.Paragraph
 
 	showStats  bool
 	statsPanel *widgets.Paragraph
 
-	tablePanel   *widgets.Table
+	tablePanel *widgets.Table
 
 	hiddenLabels []string
 
@@ -414,76 +446,94 @@ type UiPanelMeta struct {
 	uiEventHandler func(ui.Event) bool
 }
 
-func NewUiController(instantQuery bool, showStats bool) UiController {
-	queryPanel := widgets.NewParagraph()
-	queryPanel.Title = "Query"
-	queryPanel.WrapText = true
+func NewUiController(showStats bool, plotType PlotType) UiController {
+	uiCtrl := UiController{
+		plotType: plotType,
+	}
 
-	graphPanel := widgets.NewPlot()
-	graphPanel.Title = "Graph"
-	graphPanel.AxesColor = ui.ColorWhite
+	uiCtrl.queryPanel = widgets.NewParagraph()
+	uiCtrl.queryPanel.Title = "Query"
+	uiCtrl.queryPanel.WrapText = true
 
-	legendPanel := widgets.NewList()
-	legendPanel.Title = "Legend"
-	legendPanel.WrapText = false
-	legendPanel.SelectedRowStyle = ui.NewStyle(ui.ColorBlack, ui.ColorGreen)
-
-	legendDetail := widgets.NewParagraph()
-	legendDetail.Title = "Legend Detail"
-	legendDetail.WrapText = true
+	uiCtrl.grid = ui.NewGrid()
+	uiCtrl.grid.SetRect(0, 0, 0, 0) // Will be updated on Init()
 
 	statsPanel := widgets.NewParagraph()
 	statsPanel.Title = "Statistics"
 
-	tablePanel := widgets.NewTable()
-	tablePanel.Title = "Results"
-	tablePanel.RowStyles[0] = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
+	if plotType == Table {
+		uiCtrl.tablePanel = widgets.NewTable()
+		uiCtrl.tablePanel.Title = "Results"
+		uiCtrl.tablePanel.RowStyles[0] = ui.NewStyle(ui.ColorWhite, ui.ColorClear, ui.ModifierBold)
 
-	grid := ui.NewGrid()
-	grid.SetRect(0, 0, 0, 0) // Will be updated on Init()
-
-	if instantQuery {
 		if showStats {
-			grid.Set(
-				ui.NewRow(0.5/5, ui.NewCol(1.0, queryPanel)),
-				ui.NewRow(4.5/5, ui.NewCol(3.0/4, tablePanel), ui.NewCol(1.0/4, statsPanel)),
+			uiCtrl.statsPanel = statsPanel
+
+			uiCtrl.grid.Set(
+				ui.NewRow(0.5/5, ui.NewCol(1.0, uiCtrl.queryPanel)),
+				ui.NewRow(4.5/5, ui.NewCol(3.0/4, uiCtrl.tablePanel), ui.NewCol(1.0/4, uiCtrl.statsPanel)),
 			)
 		} else {
-			grid.Set(
-				ui.NewRow(0.5/5, ui.NewCol(1.0, queryPanel)),
-				ui.NewRow(4.5/5, ui.NewCol(1.0, tablePanel)),
+			uiCtrl.grid.Set(
+				ui.NewRow(0.5/5, ui.NewCol(1.0, uiCtrl.queryPanel)),
+				ui.NewRow(4.5/5, ui.NewCol(1.0, uiCtrl.tablePanel)),
 			)
 		}
 	} else {
+		var graphPanel ui.Drawable
+
+		if plotType == Lines || plotType == Points {
+			uiCtrl.graphPanel = widgets.NewPlot()
+			uiCtrl.graphPanel.Title = "Graph"
+			uiCtrl.graphPanel.AxesColor = ui.ColorWhite
+
+			if plotType == Lines {
+				uiCtrl.graphPanel.PlotType = widgets.LineChart
+				uiCtrl.graphPanel.Marker = widgets.MarkerBraille
+			} else {
+				uiCtrl.graphPanel.PlotType = widgets.ScatterPlot
+				uiCtrl.graphPanel.Marker = widgets.MarkerDot
+			}
+
+			graphPanel = uiCtrl.graphPanel
+		} else if plotType == StackedBars {
+			uiCtrl.stackedBarPanel = widgets.NewStackedBarChart()
+			uiCtrl.stackedBarPanel.Title = "Graph"
+			uiCtrl.stackedBarPanel.BarWidth = 1
+			uiCtrl.stackedBarPanel.BarGap = 0
+
+			graphPanel = uiCtrl.stackedBarPanel
+		}
+
+		uiCtrl.legendPanel = widgets.NewList()
+		uiCtrl.legendPanel.Title = "Legend"
+		uiCtrl.legendPanel.WrapText = false
+		uiCtrl.legendPanel.SelectedRowStyle = ui.NewStyle(ui.ColorBlack, ui.ColorGreen)
+
+		uiCtrl.legendDetail = widgets.NewParagraph()
+		uiCtrl.legendDetail.Title = "Legend Detail"
+		uiCtrl.legendDetail.WrapText = true
+
 		if showStats {
-			grid.Set(
-				ui.NewRow(0.5/5, ui.NewCol(1.0, queryPanel)),
+			uiCtrl.statsPanel = statsPanel
+
+			uiCtrl.grid.Set(
+				ui.NewRow(0.5/5, ui.NewCol(1.0, uiCtrl.queryPanel)),
 				ui.NewRow(3.0/5, ui.NewCol(3.0/4, graphPanel), ui.NewCol(1.0/4, statsPanel)),
-				ui.NewRow(1.0/5, ui.NewCol(1.0, legendPanel)),
-				ui.NewRow(0.5/5, ui.NewCol(1.0, legendDetail)),
+				ui.NewRow(1.0/5, ui.NewCol(1.0, uiCtrl.legendPanel)),
+				ui.NewRow(0.5/5, ui.NewCol(1.0, uiCtrl.legendDetail)),
 			)
 		} else {
-			grid.Set(
-				ui.NewRow(0.5/5, ui.NewCol(1.0, queryPanel)),
+			uiCtrl.grid.Set(
+				ui.NewRow(0.5/5, ui.NewCol(1.0, uiCtrl.queryPanel)),
 				ui.NewRow(3.0/5, ui.NewCol(1.0, graphPanel)),
-				ui.NewRow(1.0/5, ui.NewCol(1.0, legendPanel)),
-				ui.NewRow(0.5/5, ui.NewCol(1.0, legendDetail)),
+				ui.NewRow(1.0/5, ui.NewCol(1.0, uiCtrl.legendPanel)),
+				ui.NewRow(0.5/5, ui.NewCol(1.0, uiCtrl.legendDetail)),
 			)
 		}
 	}
 
-	uiController := UiController{
-		grid:         grid,
-		queryPanel:   queryPanel,
-		graphPanel:   graphPanel,
-		legendPanel:  legendPanel,
-		legendDetail: legendDetail,
-		statsPanel:   statsPanel,
-		tablePanel:   tablePanel,
-		showStats:    showStats,
-	}
-
-	return uiController
+	return uiCtrl
 }
 
 func (u *UiController) Init() error {
@@ -511,7 +561,6 @@ func (u *UiController) UpdateQuery(query string) {
 	u.queryPanel.Text = query
 }
 
-
 func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 	data := make([][]float64, 0)
 	colors := make([]ui.Color, 0)
@@ -522,12 +571,20 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 		return matrix[i].Metric.FastFingerprint() < matrix[j].Metric.FastFingerprint()
 	})
 
+	largestStreamSize := -1
+	largestStreamIdx := 0
 	for i, stream := range matrix {
 		rowLabel := stream.Metric.String()
 
 		// Only the series not hidden will have other value than 0.
 		if !u.IsLabelHidden(rowLabel) {
-			fv := make([]float64, len(stream.Values))
+			streamSize := len(stream.Values)
+			if streamSize > largestStreamSize {
+				largestStreamSize = streamSize
+				largestStreamIdx = i
+			}
+
+			fv := make([]float64, streamSize)
 			for i, v := range stream.Values {
 				fv[i] = float64(v.Value)
 			}
@@ -539,13 +596,55 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 		labels[i] = rowLabel
 	}
 
-	u.graphPanel.Data = data
-	u.graphPanel.LineColors = colors
+	timestamps := make([]string, largestStreamSize)
+	for i, value := range matrix[largestStreamIdx].Values {
+		timestamps[i] = value.Timestamp.Time().String()
+	}
+
+	switch u.plotType {
+	case Lines, Points:
+		u.graphPanel.Data = data
+		u.graphPanel.DataLabels = timestamps
+		u.graphPanel.LineColors = colors
+	case StackedBars:
+		u.stackedBarPanel.Data = transpose(data)
+		u.stackedBarPanel.BarColors = colors
+	}
 
 	u.legendPanel.Rows = u.GetLegend(labels, colors)
 	u.UpdateLegendDetail()
 
 	u.currentMatrix = matrix
+}
+
+func transpose(slice [][]float64) [][]float64 {
+	maxSize := -1
+	for i := range slice {
+		size := len(slice[i])
+		if size > maxSize {
+			maxSize = size
+		}
+	}
+
+	witdh := maxSize
+	height := len(slice)
+
+	result := make([][]float64, witdh)
+	for i := range result {
+		result[i] = make([]float64, height)
+	}
+
+	for i := 0; i < witdh; i++ {
+		for j := 0; j < height; j++ {
+			if i < len(slice[j]) {
+				result[i][j] = slice[j][i]
+			} else {
+				result[i][j] = 0
+			}
+		}
+	}
+
+	return result
 }
 
 func (u *UiController) CreateTable(vector loghttp.Vector) {
@@ -725,13 +824,13 @@ func (u *UiController) HandleUiEvent(e ui.Event) bool {
 		stop = true
 	case e.Type == ui.ResizeEvent:
 		u.fitPanelsToTerminal(e.Payload.(ui.Resize))
-	case e.ID == "j" || e.ID == "<Down>":
+	case (e.ID == "j" || e.ID == "<Down>") && u.legendPanel != nil:
 		u.legendPanel.ScrollDown()
 		u.UpdateLegendDetail()
-	case e.ID == "k" || e.ID == "<Up>":
+	case (e.ID == "k" || e.ID == "<Up>") && u.legendPanel != nil:
 		u.legendPanel.ScrollUp()
 		u.UpdateLegendDetail()
-	case e.ID == "<Enter>":
+	case e.ID == "<Enter>" && u.legendPanel != nil:
 		selectedLabel := u.currentMatrix[u.legendPanel.SelectedRow].Metric.String()
 		if u.IsLabelHidden(selectedLabel) {
 			u.UnhideLabel(selectedLabel)
@@ -759,34 +858,6 @@ func (u *UiController) HandleUiEvent(e ui.Event) bool {
 		// The legend gets refreshed along with the graph
 		u.UpdateGraph(u.currentMatrix)
 	}
-
-	return stop
-}
-
-func (u *UiController) HandleTableUIEvent(e ui.Event) bool {
-	stop := false
-
-	switch {
-	case e.ID == "q" || e.ID == "<C-c>":
-		stop = true
-	case e.Type == ui.ResizeEvent:
-		u.fitPanelsToTerminal(e.Payload.(ui.Resize))
-	case e.ID == "j" || e.ID == "<Down>":
-		u.legendPanel.ScrollDown()
-		u.UpdateLegendDetail()
-	case e.ID == "k" || e.ID == "<Up>":
-		u.legendPanel.ScrollUp()
-		u.UpdateLegendDetail()
-	case e.ID == "<Enter>" && len(u.currentMatrix) > 0:
-		selectedLabel := u.currentMatrix[u.legendPanel.SelectedRow].Metric.String()
-		if u.IsLabelHidden(selectedLabel) {
-			u.UnhideLabel(selectedLabel)
-		} else {
-			u.HideLabel(selectedLabel)
-		}
-	}
-
-	u.Render()
 
 	return stop
 }

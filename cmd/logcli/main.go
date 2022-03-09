@@ -192,14 +192,19 @@ func main() {
 			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
 		} else {
 			if rangeQuery.Pretty {
-				rangeQuery.UiCtrl = query.NewUiController(false, *statistics)
+				plotType, err := query.ParsePlotType(rangeQuery.PlotType)
+				if err != nil {
+					log.Fatalf("Unable to parse plot type: %s", err)
+				}
 
-				rangeQuery.UiCtrl.UpdateQuery(rangeQuery.QueryString)
+				rangeQuery.UiCtrl = query.NewUiController(*statistics, plotType)
 
 				if err := rangeQuery.UiCtrl.Init(); err != nil {
 					log.Fatalf("failed to initialize termui: %v", err)
 				}
 				defer rangeQuery.UiCtrl.Close()
+
+				rangeQuery.UiCtrl.UpdateQuery(rangeQuery.QueryString)
 			}
 
 			delay := time.Second * 3
@@ -244,7 +249,7 @@ func main() {
 		}
 
 		if instantQuery.Pretty {
-			instantQuery.UiCtrl = query.NewUiController(true, *statistics)
+			instantQuery.UiCtrl = query.NewUiController(*statistics, query.Table)
 
 			instantQuery.UiCtrl.UpdateQuery(instantQuery.QueryString)
 
@@ -262,7 +267,7 @@ func main() {
 		for stop := false; !stop; {
 			select {
 			case e := <-uiEvents:
-				stop = instantQuery.UiCtrl.HandleTableUIEvent(e)
+				stop = instantQuery.UiCtrl.HandleUiEvent(e)
 			case <-ticker.C:
 				go func() {
 					instantQuery.DoQuery(queryClient, out, *statistics)
@@ -415,6 +420,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	cmd.Flag("colored-output", "Show output with colored labels").Default("false").BoolVar(&q.ColoredOutput)
 	cmd.Flag("pretty", "visualize the timeseries as graph").BoolVar(&q.Pretty)
 	cmd.Flag("live", "visualize lively timeseries as graph").BoolVar(&q.Live)
+	cmd.Flag("plot", "visualize the timeseries as graph of a given type").Default("lines").StringVar(&q.PlotType)
 
 	return q
 }
