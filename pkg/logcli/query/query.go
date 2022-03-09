@@ -701,7 +701,8 @@ func (q *Query) resultsDirection() logproto.Direction {
 }
 
 func (u *UiController) HandleUiEvent(e ui.Event) bool {
-	needsUpdate := true
+	needsRenderUpdate := true
+	needsGraphUpdate := false
 	stop := false
 
 	switch {
@@ -723,14 +724,25 @@ func (u *UiController) HandleUiEvent(e ui.Event) bool {
 			u.HideLabel(selectedLabel)
 		}
 
-		// The legend gets refreshed along with the graph
-		u.UpdateGraph(u.currentMatrix)
+		needsGraphUpdate = true
+	case e.ID == "a":
+		for _, sample := range u.currentMatrix {
+			u.HideLabel(sample.Metric.String())
+		}
+		needsGraphUpdate = true
+	case e.ID == "z":
+		u.hiddenLabels = make([]string, 0)
+		needsGraphUpdate = true
 	default:
-		needsUpdate = false
+		needsRenderUpdate = false
 	}
 
-	if needsUpdate {
+	if needsRenderUpdate {
 		u.Render()
+	}
+	if needsGraphUpdate {
+		// The legend gets refreshed along with the graph
+		u.UpdateGraph(u.currentMatrix)
 	}
 
 	return stop
@@ -757,7 +769,6 @@ func (u *UiController) HandleTableUIEvent(e ui.Event) bool {
 		} else {
 			u.HideLabel(selectedLabel)
 		}
-
 	}
 
 	u.Render()
