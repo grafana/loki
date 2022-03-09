@@ -1,6 +1,7 @@
 package logproto
 
 import (
+	"crypto/sha256"
 	stdjson "encoding/json"
 	"fmt"
 	"math"
@@ -218,30 +219,60 @@ func init() {
 func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
 	if len(responses) == 0 {
 		return nil, fmt.Errorf("no label responses to merge")
+	} else if len(responses) == 1 {
+		return responses[0], nil
 	}
 
 	result := &LabelResponse{
 		Values: make([]string, 0, len(responses)),
 	}
 
+	unique := make(map[string]bool)
+
 	for _, r := range responses {
-		result.Values = append(result.Values, r.Values...)
+		for _, v := range r.Values {
+			if _, ok := unique[v]; !ok {
+				unique[v] = true
+				result.Values = append(result.Values, r.Values...)
+			} else {
+				continue
+			}
+		}
 	}
 
 	return result, nil
 }
 
+// TODO(jordanrushing): Fix this / improve performance (it's so slow); is there a better way to return only the combination of unique SeriesIdentifier?
 func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) {
 	if len(responses) == 0 {
 		return nil, fmt.Errorf("no series responses to merge")
+	} else if len(responses) == 1 {
+		return responses[0], nil
+	}
+
+	// Hash the response struct and compare to avoid duplicates
+	hashString := func(r *SeriesResponse) string {
+		h := sha256.New()
+		h.Write([]byte(fmt.Sprintf("%v", r)))
+		return fmt.Sprintf("%x", h.Sum(nil))
 	}
 
 	result := &SeriesResponse{
 		Series: make([]SeriesIdentifier, 0, len(responses)),
 	}
 
+	unique := make(map[string]bool)
+
 	for _, r := range responses {
-		result.Series = append(result.Series, r.Series...)
+		responseHash := hashString(r)
+
+		if _, ok := unique[responseHash]; !ok {
+			unique[responseHash] = true
+			result.Series = append(result.Series, r.Series...)
+		} else {
+			continue
+		}
 	}
 
 	return result, nil

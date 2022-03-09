@@ -196,6 +196,18 @@ func TestMergeLabelResponses(t *testing.T) {
 			},
 		},
 		{
+			desc: "merge three label responses with one non-unique",
+			responses: []*LabelResponse{
+				{Values: []string{"test"}},
+				{Values: []string{"test"}},
+				{Values: []string{"test2"}},
+				{Values: []string{"test3"}},
+			},
+			expected: []*LabelResponse{
+				{Values: []string{"test", "test2", "test3"}},
+			},
+		},
+		{
 			desc: "merge one and expect one",
 			responses: []*LabelResponse{
 				{Values: []string{"test"}},
@@ -270,6 +282,18 @@ func TestMergeSeriesResponses(t *testing.T) {
 			},
 		},
 		{
+			desc: "merge three series responses including non-unique",
+			responses: []*SeriesResponse{
+				{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
+				{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
+				{Series: []SeriesIdentifier{{Labels: map[string]string{"test2": "test2"}}}},
+				{Series: []SeriesIdentifier{{Labels: map[string]string{"test3": "test3"}}}},
+			},
+			expected: []*SeriesResponse{
+				mockSeriesResponse([]map[string]string{{"test": "test"}, {"test2": "test2"}, {"test3": "test3"}}),
+			},
+		},
+		{
 			desc:      "merge none and expect an error",
 			responses: []*SeriesResponse{},
 			expected:  nil,
@@ -290,14 +314,14 @@ func TestMergeSeriesResponses(t *testing.T) {
 func benchmarkMergeLabelResponses(b *testing.B, responses []*LabelResponse) {
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
-		MergeLabelResponses(responses)
+		MergeLabelResponses(responses) //nolint:errcheck
 	}
 }
 
 func benchmarkMergeSeriesResponses(b *testing.B, responses []*SeriesResponse) {
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
-		MergeSeriesResponses(responses)
+		MergeSeriesResponses(responses) //nolint:errcheck
 	}
 }
 
