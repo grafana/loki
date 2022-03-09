@@ -58,7 +58,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const (
-	uploaderName = "compactor"
+	uploaderName               = "compactor"
+	uploadIndexSetsConcurrency = 10
 
 	readDBsConcurrency = 50
 	batchSize          = 1000
@@ -223,7 +224,8 @@ func (t *table) done() error {
 		}
 	}
 
-	for userID, is := range t.indexSets {
+	userIDs := make([]string, 0, len(t.indexSets))
+	for userID := range t.indexSets {
 		// indexSet.done() uploads the compacted db and cleans up the source index files.
 		// For user index sets, the files from common index sets are also a source of index.
 		// if we cleanup common index sets first, and we fail to upload newly compacted dbs in user index sets, then we will lose data.
@@ -232,9 +234,14 @@ func (t *table) done() error {
 			continue
 		}
 
-		if err := is.done(); err != nil {
-			return err
-		}
+		userIDs = append(userIDs, userID)
+	}
+
+	err := concurrency.ForEachJob(t.ctx, len(userIDs), uploadIndexSetsConcurrency, func(ctx context.Context, idx int) error {
+		return t.indexSets[userIDs[idx]].done()
+	})
+	if err != nil {
+		return err
 	}
 
 	if commonIndexSet, ok := t.indexSets[""]; ok {
@@ -443,9 +450,11 @@ func readFile(logger log.Logger, path string, writeBatch func(userID string, bat
 		}
 	}()
 
+	batch := make([]indexEntry, 0, batchSize)
+
 	return db.View(func(tx *bbolt.Tx) error {
 		return tx.ForEach(func(name []byte, b *bbolt.Bucket) error {
-			batch := make([]indexEntry, 0, batchSize)
+			batch = batch[:0]
 			bucketNameStr := string(name)
 			err := b.ForEach(func(k, v []byte) error {
 				ie := indexEntry{
@@ -466,8 +475,7 @@ func readFile(logger log.Logger, path string, writeBatch func(userID string, bat
 					if err != nil {
 						return err
 					}
-					// todo(cyriltovena) we should just re-slice to avoid allocations
-					batch = make([]indexEntry, 0, batchSize)
+					batch = batch[:0]
 				}
 
 				return nil
