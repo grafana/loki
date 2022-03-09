@@ -18,8 +18,9 @@ type ChunkMeta struct {
 	Entries uint32
 }
 
-func (c ChunkMeta) From() model.Time    { return model.Time(c.MinTime) }
-func (c ChunkMeta) Through() model.Time { return model.Time(c.MaxTime) }
+func (c ChunkMeta) From() model.Time                 { return model.Time(c.MinTime) }
+func (c ChunkMeta) Through() model.Time              { return model.Time(c.MaxTime) }
+func (c ChunkMeta) Bounds() (model.Time, model.Time) { return c.From(), c.Through() }
 
 type ChunkMetas []ChunkMeta
 
