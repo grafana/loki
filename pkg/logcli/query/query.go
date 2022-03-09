@@ -440,6 +440,8 @@ type UiController struct {
 	hiddenLabels []string
 
 	currentMatrix loghttp.Matrix
+
+	loadPanel *widgets.Paragraph
 }
 
 type UiPanelMeta struct {
@@ -461,6 +463,9 @@ func NewUiController(showStats bool, plotType PlotType) UiController {
 
 	statsPanel := widgets.NewParagraph()
 	statsPanel.Title = "Statistics"
+
+	uiCtrl.loadPanel = widgets.NewParagraph()
+	uiCtrl.loadPanel.Title = "Loading"
 
 	if plotType == Table {
 		uiCtrl.tablePanel = widgets.NewTable()
@@ -554,7 +559,65 @@ func (u *UiController) Init() error {
 	width, height := ui.TerminalDimensions()
 	u.grid.SetRect(0, 0, width, height)
 
+	u.loadPanel.SetRect(0, 0, 60, 10)
+	go u.updateLoadPanel()
+
 	return nil
+}
+
+func (u *UiController) updateLoadPanel() {
+	loadPanelFrames := [...]string{
+		`
+ _                      _ _
+| |                    | (_)
+| |      ___   ____  _ | |_ ____   ____
+| |     / _ \ / _  |/ || | |  _ \ / _  |
+| |____| |_| ( ( | ( (_| | | | | ( ( | |   _
+|_______)___/ \_||_|\____|_|_| |_|\_|| |  (_)
+                                 (_____|
+`,
+		`
+ _                      _ _
+| |                    | (_)
+| |      ___   ____  _ | |_ ____   ____
+| |     / _ \ / _  |/ || | |  _ \ / _  |
+| |____| |_| ( ( | ( (_| | | | | ( ( | |   _    _
+|_______)___/ \_||_|\____|_|_| |_|\_|| |  (_)  (_)
+                                 (_____|
+`,
+		`
+ _                      _ _
+| |                    | (_)
+| |      ___   ____  _ | |_ ____   ____
+| |     / _ \ / _  |/ || | |  _ \ / _  |
+| |____| |_| ( ( | ( (_| | | | | ( ( | |   _    _    _
+|_______)___/ \_||_|\____|_|_| |_|\_|| |  (_)  (_)  (_)
+                                 (_____|
+`,
+	}
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	frame := 0
+
+	for {
+		select {
+		case <-ticker.C:
+			if u.loadPanel == nil {
+				return
+			}
+
+			u.loadPanel.Text = loadPanelFrames[frame]
+
+			frame++
+			if frame > (len(loadPanelFrames) - 1) {
+				frame = 0
+			}
+
+			ui.Render(u.loadPanel)
+		}
+	}
 }
 
 func (u *UiController) Close() {
@@ -562,6 +625,8 @@ func (u *UiController) Close() {
 }
 
 func (u *UiController) Render() {
+	u.loadPanel = nil
+
 	ui.Clear()
 	ui.Render(u.grid)
 }
@@ -835,7 +900,7 @@ func (u *UiController) HandleUiEvent(e ui.Event) bool {
 		stop = true
 	case e.Type == ui.ResizeEvent:
 		u.fitPanelsToTerminal(e.Payload.(ui.Resize))
-	case (e.ID == "j" || e.ID == "<Down>"):
+	case e.ID == "j" || e.ID == "<Down>":
 		if u.legendPanel != nil {
 			u.legendPanel.ScrollDown()
 			u.UpdateLegendDetail()
@@ -843,7 +908,7 @@ func (u *UiController) HandleUiEvent(e ui.Event) bool {
 			u.tablePanel.ScrollDown()
 			u.UpdateTableDetails()
 		}
-	case (e.ID == "k" || e.ID == "<Up>"):
+	case e.ID == "k" || e.ID == "<Up>":
 		if u.legendPanel != nil {
 			u.legendPanel.ScrollUp()
 			u.UpdateLegendDetail()
