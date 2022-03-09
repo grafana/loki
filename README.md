@@ -138,7 +138,7 @@ $ CGO_ENABLED=0 go build ./clients/cmd/promtail
 ```
 ## Adopters
 Please see [ADOPTERS.md](ADOPTERS.md) for some of the organizations using Loki today.
-If you would like to add your organization to the list, please open PR to add to the list.
+If you would like to add your organization to the list, please open a PR to add it to the list.
 
 ## License
 
