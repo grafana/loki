@@ -105,7 +105,7 @@ require (
 	github.com/google/renameio/v2 v2.0.0
 	github.com/google/uuid v1.2.0
 	github.com/grafana/regexp v0.0.0-20220304095617-2e8d9baf4ac2
-	github.com/grafana/termui/v3 v3.1.1-0.20220309174059-9ded7e240857
+	github.com/grafana/termui/v3 v3.1.1-0.20220309194111-c1b2592ec34b
 	github.com/mattn/go-ieproxy v0.0.1
 	github.com/xdg-go/scram v1.0.2
 	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20191017102106-1550ee647df0

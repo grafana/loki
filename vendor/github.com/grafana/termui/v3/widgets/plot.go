@@ -31,6 +31,8 @@ type Plot struct {
 	PlotType        PlotType
 	HorizontalScale int
 	DrawDirection   DrawDirection // TODO
+	YAxisFmter      func(v float64) string
+	XAxisFmter      func(v int) string
 }
 
 const (
@@ -176,10 +178,12 @@ func (self *Plot) plotAxes(buf *Buffer, maxVal float64) {
 	)
 	// draw rest
 	for x := self.Inner.Min.X + yAxisLabelsWidth + (xAxisLabelsGap)*self.HorizontalScale + 1; x < self.Inner.Max.X-1; {
-		label := fmt.Sprintf(
-			"%d",
-			(x-(self.Inner.Min.X+yAxisLabelsWidth)-1)/(self.HorizontalScale)+1,
-		)
+		val := (x-(self.Inner.Min.X+yAxisLabelsWidth)-1)/(self.HorizontalScale) + 1
+		label := fmt.Sprintf("%d", val)
+		if self.XAxisFmter != nil {
+			label = self.XAxisFmter(val)
+		}
+		
 		buf.SetString(
 			label,
 			NewStyle(ColorWhite),
@@ -190,8 +194,13 @@ func (self *Plot) plotAxes(buf *Buffer, maxVal float64) {
 	// draw y axis labels
 	verticalScale := maxVal / float64(self.Inner.Dy()-xAxisLabelsHeight-1)
 	for i := 0; i*(yAxisLabelsGap+1) < self.Inner.Dy()-1; i++ {
+		val := float64(i) * verticalScale * (yAxisLabelsGap + 1)
+		label := fmt.Sprintf("%.2f", val)
+		if self.YAxisFmter != nil {
+			label = self.YAxisFmter(val)
+		}
 		buf.SetString(
-			fmt.Sprintf("%.2f", float64(i)*verticalScale*(yAxisLabelsGap+1)),
+			label,
 			NewStyle(ColorWhite),
 			image.Pt(self.Inner.Min.X, self.Inner.Max.Y-(i*(yAxisLabelsGap+1))-2),
 		)

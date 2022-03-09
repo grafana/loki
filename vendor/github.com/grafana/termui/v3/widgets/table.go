@@ -6,6 +6,7 @@ package widgets
 
 import (
 	"image"
+	"math"
 
 	. "github.com/grafana/termui/v3"
 )
@@ -21,13 +22,16 @@ import (
 */
 type Table struct {
 	Block
-	Rows          [][]string
-	ColumnWidths  []int
-	TextStyle     Style
-	RowSeparator  bool
-	TextAlignment Alignment
-	RowStyles     map[int]Style
-	FillRow       bool
+	Rows             [][]string
+	ColumnWidths     []int
+	TextStyle        Style
+	RowSeparator     bool
+	TextAlignment    Alignment
+	RowStyles        map[int]Style
+	FillRow          bool
+	SelectedRow      int
+	topRow           int
+	SelectedRowStyle Style
 
 	// ColumnResizer is called on each Draw. Can be used for custom column sizing.
 	ColumnResizer func()
@@ -35,11 +39,14 @@ type Table struct {
 
 func NewTable() *Table {
 	return &Table{
-		Block:         *NewBlock(),
-		TextStyle:     Theme.Table.Text,
-		RowSeparator:  true,
-		RowStyles:     make(map[int]Style),
-		ColumnResizer: func() {},
+		Block:            *NewBlock(),
+		TextStyle:        Theme.Table.Text,
+		RowSeparator:     true,
+		RowStyles:        make(map[int]Style),
+		SelectedRow:      1,
+		topRow:           1,
+		SelectedRowStyle: NewStyle(ColorBlack, ColorBlue),
+		ColumnResizer:    func() {},
 	}
 }
 
@@ -59,8 +66,33 @@ func (self *Table) Draw(buf *Buffer) {
 
 	yCoordinate := self.Inner.Min.Y
 
+	if self.RowSeparator {
+		viewHeight := int(math.Floor(float64(self.Inner.Dy() / 2)))
+
+		if self.Inner.Dy()%2 == 0 {
+			viewHeight -= 1
+		}
+
+		if self.SelectedRow >= viewHeight+self.topRow {
+			self.topRow = (self.SelectedRow - viewHeight) + 1
+		} else if self.SelectedRow < self.topRow {
+			self.topRow = self.SelectedRow
+		}
+	} else {
+		viewHeight := self.Inner.Dy()
+		if self.SelectedRow >= viewHeight+self.topRow-1 {
+			self.topRow = (self.SelectedRow - viewHeight) + 2
+		} else if self.SelectedRow < self.topRow {
+			self.topRow = self.SelectedRow
+		}
+	}
+
 	// draw rows
 	for i := 0; i < len(self.Rows) && yCoordinate < self.Inner.Max.Y; i++ {
+		if i != 0 && i < self.topRow {
+			continue
+		}
+
 		row := self.Rows[i]
 		colXCoordinate := self.Inner.Min.X
 
@@ -68,6 +100,10 @@ func (self *Table) Draw(buf *Buffer) {
 		// get the row style if one exists
 		if style, ok := self.RowStyles[i]; ok {
 			rowStyle = style
+		}
+
+		if i == self.SelectedRow {
+			rowStyle = self.SelectedRowStyle
 		}
 
 		if self.FillRow {
@@ -133,4 +169,50 @@ func (self *Table) Draw(buf *Buffer) {
 			yCoordinate++
 		}
 	}
+}
+
+func (self *Table) ScrollAmount(amount int) {
+	if len(self.Rows)-int(self.SelectedRow) <= amount {
+		self.SelectedRow = len(self.Rows) - 1
+	} else if int(self.SelectedRow)+amount < 1 {
+		self.SelectedRow = 1
+	} else {
+		self.SelectedRow += amount
+	}
+}
+
+func (self *Table) ScrollUp() {
+	self.ScrollAmount(-1)
+}
+
+func (self *Table) ScrollDown() {
+	self.ScrollAmount(1)
+}
+
+func (self *Table) ScrollTop() {
+	self.SelectedRow = 1
+}
+
+func (self *Table) ScrollBottom() {
+	self.SelectedRow = len(self.Rows) - 1
+}
+
+func (self *Table) ScrollPageUp() {
+	if self.SelectedRow > self.topRow {
+		self.SelectedRow = self.topRow
+	} else {
+		self.ScrollAmount(-self.Inner.Dy())
+	}
+}
+
+func (self *Table) ScrollPageDown() {
+	self.ScrollAmount(self.Inner.Dy())
+}
+
+func (self *Table) ScrollHalfPageUp() {
+	self.ScrollAmount(-int(FloorFloat64(float64(self.Inner.Dy()) / 2)))
+}
+
+func (self *Table) ScrollHalfPageDown() {
+	self.ScrollAmount(int(FloorFloat64(float64(self.Inner.Dy()) / 2)))
 }

@@ -492,6 +492,9 @@ func NewUiController(showStats bool, plotType PlotType) UiController {
 			uiCtrl.graphPanel = widgets.NewPlot()
 			uiCtrl.graphPanel.Title = "Graph"
 			uiCtrl.graphPanel.AxesColor = ui.ColorWhite
+			uiCtrl.graphPanel.XAxisFmter = func(v int) string {
+				return uiCtrl.graphPanel.DataLabels[v]
+			}
 
 			if plotType == Lines {
 				uiCtrl.graphPanel.PlotType = widgets.LineChart
@@ -584,13 +587,7 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 
 		// Only the series not hidden will have other value than 0.
 		if !u.IsLabelHidden(rowLabel) {
-			streamSize := len(stream.Values)
-			if streamSize > largestStreamSize {
-				largestStreamSize = streamSize
-				largestStreamIdx = i
-			}
-
-			fv := make([]float64, streamSize)
+			fv := make([]float64, len(stream.Values))
 			for i, v := range stream.Values {
 				fv[i] = float64(v.Value)
 			}
@@ -599,12 +596,18 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 			colors = append(colors, u.GetColorForLabels(stream.Metric))
 		}
 
+		streamSize := len(stream.Values)
+		if streamSize > largestStreamSize {
+			largestStreamSize = streamSize
+			largestStreamIdx = i
+		}
+
 		labels[i] = rowLabel
 	}
 
 	timestamps := make([]string, largestStreamSize)
 	for i, value := range matrix[largestStreamIdx].Values {
-		timestamps[i] = value.Timestamp.Time().String()
+		timestamps[i] = value.Timestamp.Time().UTC().Format("2006-01-02 15:04:05")
 	}
 
 	switch u.plotType {
