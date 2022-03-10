@@ -8,7 +8,8 @@ import (
 )
 
 type Series struct {
-	Labels labels.Labels
+	Labels      labels.Labels
+	Fingerprint model.Fingerprint
 }
 
 type ChunkRef struct {

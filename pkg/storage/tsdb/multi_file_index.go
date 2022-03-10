@@ -131,13 +131,111 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 }
 
 func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]Series, error) {
-	panic("unimplemented!")
+	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
+		return idx.Series(ctx, userID, from, through, matchers...)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	var maxLn int // maximum number of chunk refs, assuming no duplicates
+	xs := make([][]Series, 0, len(i.indices))
+	for _, group := range groups {
+		x := group.([]Series)
+		maxLn += len(x)
+		xs = append(xs, x)
+	}
+
+	// optimistically allocate the maximum length slice
+	// to avoid growing incrementally
+	results := make([]Series, 0, maxLn)
+	seen := make(map[model.Fingerprint]struct{})
+
+	for _, seriesSet := range xs {
+		for _, s := range seriesSet {
+			_, ok := seen[s.Fingerprint]
+			if ok {
+				continue
+			}
+			seen[s.Fingerprint] = struct{}{}
+			results = append(results, s)
+		}
+	}
+
+	return results, nil
 }
 
 func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	panic("unimplemented!")
+	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
+		return idx.LabelNames(ctx, userID, from, through, matchers...)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	var maxLn int // maximum number of chunk refs, assuming no duplicates
+	xs := make([][]string, 0, len(i.indices))
+	for _, group := range groups {
+		x := group.([]string)
+		maxLn += len(x)
+		xs = append(xs, x)
+	}
+
+	// optimistically allocate the maximum length slice
+	// to avoid growing incrementally
+	results := make([]string, 0, maxLn)
+	seen := make(map[string]struct{})
+
+	for _, ls := range xs {
+		for _, l := range ls {
+			_, ok := seen[l]
+			if ok {
+				continue
+			}
+			seen[l] = struct{}{}
+			results = append(results, l)
+		}
+	}
+
+	return results, nil
+
 }
 
 func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	panic("unimplemented!")
+	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
+		return idx.LabelValues(ctx, userID, from, through, name, matchers...)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	var maxLn int // maximum number of chunk refs, assuming no duplicates
+	xs := make([][]string, 0, len(i.indices))
+	for _, group := range groups {
+		x := group.([]string)
+		maxLn += len(x)
+		xs = append(xs, x)
+	}
+
+	// optimistically allocate the maximum length slice
+	// to avoid growing incrementally
+	results := make([]string, 0, maxLn)
+	seen := make(map[string]struct{})
+
+	for _, ls := range xs {
+		for _, l := range ls {
+			_, ok := seen[l]
+			if ok {
+				continue
+			}
+			seen[l] = struct{}{}
+			results = append(results, l)
+		}
+	}
+
+	return results, nil
+
 }

@@ -100,7 +100,8 @@ func TestSingleIdx(t *testing.T) {
 
 		expected := []Series{
 			{
-				Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+				Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
 			},
 		}
 		require.Equal(t, expected, xs)

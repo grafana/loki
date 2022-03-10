@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMultiIndex_GetChunkRefs(t *testing.T) {
+func TestMultiIndex(t *testing.T) {
 	cases := []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{foo="bar"}`),
@@ -44,7 +44,7 @@ func TestMultiIndex_GetChunkRefs(t *testing.T) {
 		},
 		{
 			// should be excluded due to bounds checking
-			Labels: mustParseLabels(`{foo="bar", bazz="bozz"}`),
+			Labels: mustParseLabels(`{foo="bar", bazz="bozz", bonk="borb"}`),
 			Chunks: []index.ChunkMeta{
 				{
 					MinTime:  8,
@@ -65,39 +65,93 @@ func TestMultiIndex_GetChunkRefs(t *testing.T) {
 	idx, err := NewMultiIndex(indices...)
 	require.Nil(t, err)
 
-	refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
-	require.Nil(t, err)
+	t.Run("GetChunkRefs", func(t *testing.T) {
+		refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		require.Nil(t, err)
 
-	expected := []ChunkRef{
-		{
-			User:        "fake",
-			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
-			Start:       1,
-			End:         10,
-			Checksum:    3,
-		},
-		{
-			User:        "fake",
-			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
-			Start:       0,
-			End:         3,
-			Checksum:    0,
-		},
-		{
-			User:        "fake",
-			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
-			Start:       1,
-			End:         4,
-			Checksum:    1,
-		},
-		{
-			User:        "fake",
-			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
-			Start:       2,
-			End:         5,
-			Checksum:    2,
-		},
-	}
-	require.Equal(t, expected, refs)
+		expected := []ChunkRef{
+			{
+				User:        "fake",
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+				Start:       1,
+				End:         10,
+				Checksum:    3,
+			},
+			{
+				User:        "fake",
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+				Start:       0,
+				End:         3,
+				Checksum:    0,
+			},
+			{
+				User:        "fake",
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+				Start:       1,
+				End:         4,
+				Checksum:    1,
+			},
+			{
+				User:        "fake",
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+				Start:       2,
+				End:         5,
+				Checksum:    2,
+			},
+		}
+		require.Equal(t, expected, refs)
+	})
 
+	t.Run("Series", func(t *testing.T) {
+		xs, err := idx.Series(context.Background(), "fake", 2, 5, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		require.Nil(t, err)
+		expected := []Series{
+			{
+				Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+			},
+			{
+				Labels:      mustParseLabels(`{foo="bar"}`),
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+			},
+		}
+
+		require.Equal(t, expected, xs)
+	})
+
+	t.Run("LabelNames", func(t *testing.T) {
+		// request data at the end of the tsdb range, but it should return all labels present
+		xs, err := idx.LabelNames(context.Background(), "fake", 8, 10)
+		require.Nil(t, err)
+		expected := []string{"bazz", "bonk", "foo"}
+
+		require.Equal(t, expected, xs)
+	})
+
+	t.Run("LabelNamesWithMatchers", func(t *testing.T) {
+		// request data at the end of the tsdb range, but it should return all labels present
+		xs, err := idx.LabelNames(context.Background(), "fake", 8, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
+		require.Nil(t, err)
+		expected := []string{"bazz", "foo"}
+
+		require.Equal(t, expected, xs)
+	})
+
+	t.Run("LabelValues", func(t *testing.T) {
+		xs, err := idx.LabelValues(context.Background(), "fake", 1, 2, "bazz")
+		require.Nil(t, err)
+		expected := []string{"bozz", "buzz"}
+
+		require.Equal(t, expected, xs)
+
+	})
+
+	t.Run("LabelValuesWithMatchers", func(t *testing.T) {
+		xs, err := idx.LabelValues(context.Background(), "fake", 1, 2, "bazz", labels.MustNewMatcher(labels.MatchEqual, "bonk", "borb"))
+		require.Nil(t, err)
+		expected := []string{"bozz"}
+
+		require.Equal(t, expected, xs)
+
+	})
 }

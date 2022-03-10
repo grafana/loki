@@ -95,7 +95,8 @@ func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time
 			if Overlap(queryBounds, chk) {
 				// this series has at least one chunk in the desired range
 				res = append(res, Series{
-					Labels: ls.Copy(),
+					Labels:      ls.Copy(),
+					Fingerprint: model.Fingerprint(ls.Hash()),
 				})
 				break
 			}
