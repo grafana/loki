@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -30,8 +31,8 @@ func (r ChunkRef) Less(x ChunkRef) bool {
 
 type Index interface {
 	Bounded
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]ChunkRef, error)
-	Series(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]Series, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, shard *astmapper.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error)
+	Series(ctx context.Context, userID string, from, through model.Time, shard *astmapper.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error)
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
 }
