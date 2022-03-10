@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
-func TestSingleIdx(t *testing.T) {
+func TestMultiIndex(t *testing.T) {
 	cases := []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{foo="bar"}`),
@@ -44,21 +44,30 @@ func TestSingleIdx(t *testing.T) {
 			},
 		},
 		{
-			Labels: mustParseLabels(`{foo="bard", bazz="bozz", bonk="borb"}`),
+			// should be excluded due to bounds checking
+			Labels: mustParseLabels(`{foo="bar", bazz="bozz", bonk="borb"}`),
 			Chunks: []index.ChunkMeta{
 				{
-					MinTime:  1,
-					MaxTime:  7,
+					MinTime:  8,
+					MaxTime:  9,
 					Checksum: 4,
 				},
 			},
 		},
 	}
 
-	idx := BuildIndex(t, cases)
+	// group 5 indices together, all with duplicate data
+	n := 5
+	var indices []Index
+	for i := 0; i < n; i++ {
+		indices = append(indices, BuildIndex(t, cases))
+	}
+
+	idx, err := NewMultiIndex(indices...)
+	require.Nil(t, err)
 
 	t.Run("GetChunkRefs", func(t *testing.T) {
-		refs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
 
 		expected := []ChunkRef{
@@ -95,41 +104,55 @@ func TestSingleIdx(t *testing.T) {
 	})
 
 	t.Run("Series", func(t *testing.T) {
-		xs, err := idx.Series(context.Background(), "fake", 8, 9, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		xs, err := idx.Series(context.Background(), "fake", 2, 5, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
-
 		expected := []Series{
 			{
 				Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
 				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
 			},
+			{
+				Labels:      mustParseLabels(`{foo="bar"}`),
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+			},
 		}
+
 		require.Equal(t, expected, xs)
 	})
 
 	t.Run("LabelNames", func(t *testing.T) {
 		// request data at the end of the tsdb range, but it should return all labels present
-		ls, err := idx.LabelNames(context.Background(), "fake", 9, 10)
+		xs, err := idx.LabelNames(context.Background(), "fake", 8, 10)
 		require.Nil(t, err)
-		require.Equal(t, []string{"bazz", "bonk", "foo"}, ls)
+		expected := []string{"bazz", "bonk", "foo"}
+
+		require.Equal(t, expected, xs)
 	})
 
 	t.Run("LabelNamesWithMatchers", func(t *testing.T) {
 		// request data at the end of the tsdb range, but it should return all labels present
-		ls, err := idx.LabelNames(context.Background(), "fake", 9, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
+		xs, err := idx.LabelNames(context.Background(), "fake", 8, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
 		require.Nil(t, err)
-		require.Equal(t, []string{"bazz", "foo"}, ls)
+		expected := []string{"bazz", "foo"}
+
+		require.Equal(t, expected, xs)
 	})
 
 	t.Run("LabelValues", func(t *testing.T) {
-		vs, err := idx.LabelValues(context.Background(), "fake", 9, 10, "foo")
+		xs, err := idx.LabelValues(context.Background(), "fake", 1, 2, "bazz")
 		require.Nil(t, err)
-		require.Equal(t, []string{"bar", "bard"}, vs)
+		expected := []string{"bozz", "buzz"}
+
+		require.Equal(t, expected, xs)
+
 	})
 
 	t.Run("LabelValuesWithMatchers", func(t *testing.T) {
-		vs, err := idx.LabelValues(context.Background(), "fake", 9, 10, "foo", labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
+		xs, err := idx.LabelValues(context.Background(), "fake", 1, 2, "bazz", labels.MustNewMatcher(labels.MatchEqual, "bonk", "borb"))
 		require.Nil(t, err)
-		require.Equal(t, []string{"bar"}, vs)
+		expected := []string{"bozz"}
+
+		require.Equal(t, expected, xs)
+
 	})
 }
