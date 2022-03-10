@@ -641,6 +641,24 @@ func (u *UiController) UpdateQuery(query string) {
 	u.queryPanel.Text = query
 }
 
+func (u *UiController) AppendToMatrix(matrix loghttp.Matrix) loghttp.Matrix {
+	for _, newStream := range matrix {
+		found := false
+		for i, stream := range u.currentMatrix {
+			if newStream.Metric.Equal(stream.Metric) {
+				u.currentMatrix[i].Values = append(stream.Values, newStream.Values...)
+				found = true
+			}
+		}
+
+		if !found {
+			u.currentMatrix = append(u.currentMatrix, newStream)
+		}
+	}
+
+	return u.currentMatrix
+}
+
 func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 	data := make([][]float64, 0)
 	colors := make([]ui.Color, 0)

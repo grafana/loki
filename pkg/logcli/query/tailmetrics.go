@@ -123,20 +123,19 @@ func (q *Query) TailMetricQuery(delayFor time.Duration, c client.Client, out out
 			return
 		}
 
-		uic.UpdateGraph(append(uic.currentMatrix, x...))
-		uic.Render()
+		xAppended := uic.AppendToMatrix(x)
 
-		// prettyPrint(result.Data.(promql.Matrix), data)
+		uic.UpdateGraph(xAppended)
+		uic.Render()
 	}
-	ticker := time.NewTicker(time.Millisecond * 1000)
+
+	ticker := time.NewTicker(time.Millisecond * 100)
 	uiEvents := ui.PollEvents()
 
-	for {
+	for stop := false; !stop; {
 		select {
 		case e := <-uiEvents:
-			if e.ID == "q" || e.ID == "<C-c>" {
-				return
-			}
+			stop = uic.HandleUiEvent(e)
 		case <-ticker.C:
 			do()
 		}
