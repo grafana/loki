@@ -452,7 +452,8 @@ type UiPanelMeta struct {
 
 func NewUiController(showStats bool, plotType PlotType) UiController {
 	uiCtrl := UiController{
-		plotType: plotType,
+		plotType:      plotType,
+		currentMatrix: make(loghttp.Matrix, 0),
 	}
 
 	uiCtrl.queryPanel = widgets.NewParagraph()
@@ -794,7 +795,7 @@ func (u *UiController) UpdateStats(result stats.Result) {
 }
 
 func (u *UiController) GetColorForLabels(labels model.Metric) ui.Color {
-	cIndex := (int(labels.FastFingerprint()) % ui.MaxColor+1) + 1
+	cIndex := (int(labels.FastFingerprint())%ui.MaxColor + 1) + 1
 
 	// NOTE(kavi): why Abs: because Fingerprint is uint64 and we need int for index operation.
 	// converting from uint64 -> int can overflow to negative int. (happened when I tested it with loki-ops with huge number of streams)

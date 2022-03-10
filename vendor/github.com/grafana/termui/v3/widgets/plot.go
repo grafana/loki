@@ -186,7 +186,7 @@ func (self *Plot) plotAxes(buf *Buffer, maxVal float64) {
 		if self.XAxisFmter != nil {
 			label = self.XAxisFmter(val)
 		}
-		
+
 		buf.SetString(
 			label,
 			NewStyle(ColorWhite),

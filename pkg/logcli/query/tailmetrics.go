@@ -14,8 +14,6 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/fatih/color"
-	ui "github.com/gizak/termui/v3"
-	"github.com/gizak/termui/v3/widgets"
 	kitlog "github.com/go-kit/log"
 	"github.com/gorilla/websocket"
 	"github.com/grafana/loki/pkg/iter"
@@ -26,6 +24,9 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	logqllog "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util/unmarshal"
+	ui "github.com/grafana/termui/v3"
+	"github.com/grafana/termui/v3/widgets"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -45,6 +46,8 @@ func (q *Query) TailMetricQuery(delayFor time.Duration, c client.Client, out out
 
 	sexpr := expr.(logql.SampleExpr) // We assume only metric query reach here.
 
+	// q.QueryString = rate({cluster="ops-us-east-0", namespace="loki-ops", container="querier"} |= "level=error" [1m])
+	// logQ: {cluster="ops-us-east-0", namespace="loki-ops", container="querier"} |= "level=error"
 	logQ := sexpr.Selector().String()
 
 	conn, err := c.LiveTailQueryConn(logQ, delayFor, q.Limit, q.Start, q.Quiet)
@@ -72,13 +75,12 @@ func (q *Query) TailMetricQuery(delayFor time.Duration, c client.Client, out out
 		log.Println("Print only labels key:", color.RedString(strings.Join(q.ShowLabelsKey, ",")))
 	}
 
-	if err := ui.Init(); err != nil {
-		log.Fatalf("failed to initialize termui: %v", err)
-	}
-	defer ui.Close()
+	uic := NewUiController(false, Lines)
+	uic.UpdateQuery(q.QueryString)
+	uic.Init()
+	defer uic.Close()
 
-	data := make([][]float64, 0)
-
+	// data := make([][]float64, 0)
 	do := func() {
 		err := unmarshal.ReadTailResponseJSON(tailResponse, conn)
 		if err != nil {
@@ -92,8 +94,13 @@ func (q *Query) TailMetricQuery(delayFor time.Duration, c client.Client, out out
 		}
 		// fmt.Println(series)
 
+		// now := time.Now()
+
+		start := time.Now()
+		end := start.Add(1 * time.Hour)
+
 		engine := logql.NewEngine(logql.EngineOpts{}, &tailQuerier{series: series}, logql.NoLimits, kitlog.NewNopLogger())
-		params := logql.NewLiteralParams(q.QueryString, q.Start, time.Now(), defaultQueryRangeStep(q.Start, time.Now()), q.Interval, q.resultsDirection(), uint32(q.Limit), nil)
+		params := logql.NewLiteralParams(q.QueryString, start, end, defaultQueryRangeStep(start, end), 1*time.Second, q.resultsDirection(), uint32(q.Limit), nil)
 
 		q := engine.Query(params)
 
@@ -110,7 +117,16 @@ func (q *Query) TailMetricQuery(delayFor time.Duration, c client.Client, out out
 		// 	panic(err)
 		// }
 
-		prettyPrint(result.Data.(promql.Matrix))
+		x := tohttpMatrix(result.Data.(promql.Matrix))
+
+		if len(x) <= 0 {
+			return
+		}
+
+		uic.UpdateGraph(append(uic.currentMatrix, x...))
+		uic.Render()
+
+		// prettyPrint(result.Data.(promql.Matrix), data)
 	}
 	ticker := time.NewTicker(time.Millisecond * 1000)
 	uiEvents := ui.PollEvents()
@@ -127,8 +143,8 @@ func (q *Query) TailMetricQuery(delayFor time.Duration, c client.Client, out out
 	}
 }
 
-func prettyPrint(matrix promql.Matrix) {
-	data := make([][]float64, 0)
+func prettyPrint(matrix promql.Matrix, data [][]float64) {
+	// data := make([][]float64, 0)
 
 	for _, s := range matrix {
 		if len(s.Points) <= 1 {
@@ -153,6 +169,11 @@ func prettyPrint(matrix promql.Matrix) {
 	panel.SetRect(0, 0, 130, 40)
 
 	ui.Render(panel)
+
+	// bounded buffer
+	if len(data) > 10000 {
+		data = data[5000:]
+	}
 }
 
 func streamsToSeries(streams []logproto.Stream, logQL string) ([]logproto.Series, error) {
@@ -236,4 +257,35 @@ func (t *tailQuerier) SelectSamples(ctx context.Context, params logql.SelectSamp
 func defaultQueryRangeStep(start, end time.Time) time.Duration {
 	step := int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
 	return time.Duration(step) * time.Second
+}
+
+func tohttpMatrix(pm promql.Matrix) loghttp.Matrix {
+	res := make(loghttp.Matrix, 0, len(pm))
+
+	for _, v := range pm {
+		values := make([]model.SamplePair, 0)
+		if len(v.Points) <= 1 {
+			continue
+		}
+		for _, v := range v.Points {
+			values = append(values, model.SamplePair{
+				Timestamp: model.Time(v.T),
+				Value:     model.SampleValue(v.V),
+			})
+		}
+
+		metric := make(map[model.LabelName]model.LabelValue)
+
+		for _, v := range v.Metric {
+			metric[model.LabelName(v.Name)] = model.LabelValue(v.Value)
+		}
+
+		val := model.SampleStream{
+			Metric: model.Metric(metric),
+			Values: values,
+		}
+		res = append(res, val)
+	}
+
+	return res
 }
