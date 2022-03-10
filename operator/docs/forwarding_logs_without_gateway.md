@@ -66,7 +66,7 @@ In order to enable communication between the client(s) and the gateway, follow t
     kubectl -n openshift-logging get cm lokistack-gateway-lokistack-dev-ca-bundle -o jsonpath="{.data.service-ca\.crt}" | base64 -w 0
     ```
   
-* Once all the secrets are fetched, create a new secret file:
+* Once secret is fetched, create a new secret file:
 
     ```yaml
     apiVersion: v1
@@ -74,7 +74,7 @@ In order to enable communication between the client(s) and the gateway, follow t
     metadata:
       name: loki-distributor-metrics
       namespace: openshift-logging
-    type: kubernetes.io/tls
+    type: Opaque
     data:
       ca-bundle.crt: <CA_BUNDLE>
     ```
