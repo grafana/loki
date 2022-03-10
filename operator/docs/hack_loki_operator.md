@@ -196,6 +196,16 @@ Each tenant Secret is required to match:
 * `metadata.name` with `TenantsSecretsSpec.Name`.
 * `metadata.namespace` with `LokiStack.metadata.namespace`.
 
+## Development Add-Ons
+
+To help with testing and development, a [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) and [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) deployment are available. The example file has been configured to work with the [lokistack-gateway](./forwarding_logs_to_gateway.md). In order to work without this component, change the url to `distributor` and `query-frontend` respectively.
+
+In order to deploy these resources, follow the above steps to deploy the operator and instance. Then, do the following command:
+
+```console
+kubectl apply -f ./hack/addons.yaml
+```
+
 ## Basic Troubleshooting on Hacking on Loki Operator
 
 ### New changes are not detected by Loki Operator

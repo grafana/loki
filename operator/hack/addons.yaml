@@ -2,76 +2,83 @@
 # within a cluster. logcli pod helps write queries, promtail writes logs, etc
 ---
 apiVersion: v1
-kind: Pod
+kind: ServiceAccount
 metadata:
-  name: logcli
-  namespace: loki
+  name: lokistack-dev-addons-logcli
   labels:
     app.kubernetes.io/name: logcli
+    app.kubernetes.io/instance: developer-addons
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lokistack-dev-addons-promtail
+  labels:
+    app.kubernetes.io/name: promtail
+    app.kubernetes.io/instance: developer-addons
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lokistack-dev-addons-logcli
+  labels:
+    app.kubernetes.io/name: logcli
+    app.kubernetes.io/instance: developer-addons
 spec:
-  containers:
-  - name: logcli
-    image: docker.io/grafana/logcli:2.2.0-amd64
-    env:
-      - name: LOKI_ADDR
-        value: http://loki-querier-http-lokistack-sample.loki.svc.cluster.local:3100
-    command: [ "/bin/sh", "-c", "--" ]
-    args: [ "while true; do sleep 30; done;" ]
-
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: logcli
+      app.kubernetes.io/instance: developer-addons
+  template:
+    metadata:
+      name: lokistack-dev-addons-logcli
+      labels:
+        app.kubernetes.io/name: logcli
+        app.kubernetes.io/instance: developer-addons
+    spec:
+      containers:
+        - name: logcli
+          image: docker.io/grafana/logcli:2.4.1-amd64
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+          env:
+            - name: LOKI_ORG_ID
+              value: application
+            - name: LOKI_ADDR
+              value: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application
+            - name: LOKI_BEARER_TOKEN_FILE
+              value: /var/run/secrets/kubernetes.io/serviceaccount/token
+          args:
+            - -c
+            - while true; do logcli query '{namespace="openshift-logging"}'; sleep 15; done
+      serviceAccountName: lokistack-dev-addons-logcli
 ---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: loki-promtail
-  namespace: loki
+  name: lokistack-dev-addons-promtail
   labels:
     app.kubernetes.io/name: promtail
+    app.kubernetes.io/instance: developer-addons
 spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: promtail
+      app.kubernetes.io/instance: developer-addons
   template:
     metadata:
+      name: lokistack-dev-addons-promtail
       labels:
         app.kubernetes.io/name: promtail
-      annotations:
-        prometheus.io/port: metrics
-        prometheus.io/scrape: "true"
+        app.kubernetes.io/instance: developer-addons
     spec:
       containers:
-        - args:
+        - name: promtail
+          image: docker.io/grafana/promtail:2.4.1
+          args:
             - -config.file=/etc/promtail/promtail.yaml
-            - -client.url=http://loki-distributor-http-lokistack-sample.loki.svc.cluster.local:3100/api/prom/push
             - -log.level=info
-          env:
-            - name: HOSTNAME
-              valueFrom:
-                fieldRef:
-                  apiVersion: v1
-                  fieldPath: spec.nodeName
-          image: docker.io/grafana/promtail:2.1.0
-          imagePullPolicy: IfNotPresent
-          name: promtail
-          ports:
-            - containerPort: 3101
-              name: metrics
-              protocol: TCP
-          readinessProbe:
-            failureThreshold: 5
-            httpGet:
-              path: /ready
-              port: metrics
-              scheme: HTTP
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            successThreshold: 1
-            timeoutSeconds: 1
-          resources: {}
-          securityContext:
-            procMount: Default
-            readOnlyRootFilesystem: true
-            runAsGroup: 0
-            runAsUser: 0
           terminationMessagePath: /dev/termination-log
           terminationMessagePolicy: File
           volumeMounts:
@@ -88,55 +95,53 @@ spec:
             - mountPath: /var/log/journal
               name: journal
               readOnly: true
-      serviceAccountName: loki-promtail
-      tolerations:
-        - effect: NoSchedule
-          key: node-role.kubernetes.io/master
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      serviceAccountName: lokistack-dev-addons-promtail
       volumes:
         - configMap:
             defaultMode: 420
-            name: loki-promtail
+            name: lokistack-dev-addons-promtail
           name: config
-        - hostPath:
-            path: /run/promtail
-            type: ""
+        - emptyDir: {}
           name: run
-        - hostPath:
-            path: /var/lib/docker/containers
-            type: ""
+        - emptyDir: {}
           name: docker
-        - hostPath:
-            path: /var/log/pods
-            type: ""
+        - emptyDir: {}
           name: pods
-        - hostPath:
-            path: /var/log/journal
-            type: ""
+        - emptyDir: {}
           name: journal
-
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: loki-promtail
-  namespace: loki
+  name: lokistack-dev-addons-promtail
   labels:
     app.kubernetes.io/name: promtail
+    app.kubernetes.io/instance: developer-addons
 data:
   promtail.yaml: |
-    client:
-      backoff_config:
-        min_period: 100ms
-        max_period: 5s
-        max_retries: 5
-      batchsize: 102400
-      batchwait: 1s
-      external_labels: {}
-      timeout: 10s
+    clients:
+      - url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application/loki/api/v1/push
+        tenant_id: application
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        backoff_config:
+          min_period: 100ms
+          max_period: 5s
+          max_retries: 5
+        batchsize: 100
+        batchwait: 1s
+        external_labels: {}
+        timeout: 10s
     positions:
       filename: /run/promtail/positions.yaml
     server:
-      http_listen_port: 3101
+      http_listen_port: 3100
+      grpc_listen_port: 9095
     target_config:
       sync_period: 10s
     scrape_configs:
@@ -400,23 +405,31 @@ data:
               - __meta_kubernetes_pod_annotation_kubernetes_io_config_mirror
               - __meta_kubernetes_pod_container_name
             target_label: __path__
-
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: loki-promtail
-  namespace: loki
-  labels:
-    app.kubernetes.io/name: promtail
-
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: loki-promtail-clusterrole
+  name: lokistack-dev-addons-reader
+  labels:
+    app.kubernetes.io/name: logcli
+    app.kubernetes.io/instance: developer-addons
+rules:
+- apiGroups:
+  - loki.grafana.com
+  resources:
+  - application
+  resourceNames:
+  - logs
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lokistack-dev-addons-writer
   labels:
     app.kubernetes.io/name: promtail
+    app.kubernetes.io/instance: developer-addons
 rules:
 - apiGroups:
   - ""
@@ -430,19 +443,43 @@ rules:
   - get
   - watch
   - list
-
+- apiGroups:
+  - loki.grafana.com
+  resources:
+  - application
+  resourceNames:
+  - logs
+  verbs:
+  - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: loki-promtail-clusterrolebinding
+  name: lokistack-dev-addons-reader-clusterrolebinding
   labels:
-    app.kubernetes.io/name: promtail
+    app.kubernetes.io/name: logcli
+    app.kubernetes.io/instance: developer-addons
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: loki-promtail-clusterrole
+  name: lokistack-dev-addons-reader
 subjects:
 - kind: ServiceAccount
-  name: loki-promtail
-  namespace: loki
+  name: lokistack-dev-addons-logcli
+  namespace: openshift-logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: lokistack-dev-addons-writer-clusterrolebinding
+  labels:
+    app.kubernetes.io/name: promtail
+    app.kubernetes.io/instance: developer-addons
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lokistack-dev-addons-writer
+subjects:
+- kind: ServiceAccount
+  name: lokistack-dev-addons-promtail
+  namespace: openshift-logging
