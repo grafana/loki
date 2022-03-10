@@ -235,7 +235,8 @@ func TestConcurrentConfirmMissing(t *testing.T) {
 	c := NewComparator(output, wait, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 4*time.Hour, 0, 1*time.Minute, 0, 0, 1, make(chan time.Time), make(chan time.Time), mr, false)
 
 	for _, t := range found {
-		c.missingEntries = append(c.missingEntries, &t)
+		tCopy := t
+		c.missingEntries = append(c.missingEntries, &tCopy)
 	}
 
 	wg := sync.WaitGroup{}
