@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
@@ -58,7 +59,7 @@ func TestSingleIdx(t *testing.T) {
 	idx := BuildIndex(t, cases)
 
 	t.Run("GetChunkRefs", func(t *testing.T) {
-		refs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		refs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
 
 		expected := []ChunkRef{
@@ -94,14 +95,50 @@ func TestSingleIdx(t *testing.T) {
 		require.Equal(t, expected, refs)
 	})
 
+	t.Run("GetChunkRefsSharded", func(t *testing.T) {
+		shard := astmapper.ShardAnnotation{
+			Shard: 1,
+			Of:    2,
+		}
+		shardedRefs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		require.Nil(t, err)
+
+		require.Equal(t, []ChunkRef{{
+			User:        "fake",
+			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+			Start:       1,
+			End:         10,
+			Checksum:    3,
+		}}, shardedRefs)
+
+	})
+
 	t.Run("Series", func(t *testing.T) {
-		xs, err := idx.Series(context.Background(), "fake", 8, 9, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		xs, err := idx.Series(context.Background(), "fake", 8, 9, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
 
 		expected := []Series{
 			{
 				Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
 				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+			},
+		}
+		require.Equal(t, expected, xs)
+	})
+
+	t.Run("SeriesSharded", func(t *testing.T) {
+		shard := astmapper.ShardAnnotation{
+			Shard: 0,
+			Of:    2,
+		}
+
+		xs, err := idx.Series(context.Background(), "fake", 0, 10, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		require.Nil(t, err)
+
+		expected := []Series{
+			{
+				Labels:      mustParseLabels(`{foo="bar"}`),
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
 			},
 		}
 		require.Equal(t, expected, xs)

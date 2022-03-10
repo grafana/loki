@@ -77,7 +77,7 @@ func BenchmarkQuery_GetChunkRefs(b *testing.B) {
 		idx := tsdb.NewTSDBIndex(reader)
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, err := idx.GetChunkRefs(context.Background(), "fake", 0, math.MaxInt64, bm.matchers...)
+				_, err := idx.GetChunkRefs(context.Background(), "fake", 0, math.MaxInt64, nil, bm.matchers...)
 				if err != nil {
 					panic(err)
 				}

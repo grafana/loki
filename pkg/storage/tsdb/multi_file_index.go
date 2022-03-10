@@ -8,6 +8,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/pkg/querier/astmapper"
 )
 
 type MultiIndex struct {
@@ -90,9 +92,9 @@ func (i *MultiIndex) forIndices(ctx context.Context, from, through model.Time, f
 	return results, nil
 }
 
-func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, shard *astmapper.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
-		return idx.GetChunkRefs(ctx, userID, from, through, matchers...)
+		return idx.GetChunkRefs(ctx, userID, from, through, shard, matchers...)
 	})
 
 	if err != nil {
@@ -130,9 +132,9 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 
 }
 
-func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, shard *astmapper.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
 	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
-		return idx.Series(ctx, userID, from, through, matchers...)
+		return idx.Series(ctx, userID, from, through, shard, matchers...)
 	})
 
 	if err != nil {
