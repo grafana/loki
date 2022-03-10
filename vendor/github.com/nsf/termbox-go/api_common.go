@@ -9,7 +9,7 @@ type (
 	EventType  uint8
 	Modifier   uint8
 	Key        uint16
-	Attribute  uint16
+	Attribute  uint64
 )
 
 // This type represents a termbox event. The 'Mod', 'Key' and 'Ch' fields are
@@ -142,6 +142,14 @@ const (
 	ColorMagenta
 	ColorCyan
 	ColorWhite
+	ColorDarkGray
+	ColorLightRed
+	ColorLightGreen
+	ColorLightYellow
+	ColorLightBlue
+	ColorLightMagenta
+	ColorLightCyan
+	ColorLightGray
 )
 
 // Cell attributes, it is possible to use multiple attributes by combining them
@@ -154,8 +162,13 @@ const (
 // them with caution and test your code on various terminals.
 const (
 	AttrBold Attribute = 1 << (iota + 9)
+	AttrBlink
+	AttrHidden
+	AttrDim
 	AttrUnderline
+	AttrCursive
 	AttrReverse
+	max_attr
 )
 
 // Input mode. See SetInputMode function.
@@ -173,6 +186,7 @@ const (
 	Output256
 	Output216
 	OutputGrayscale
+	OutputRGB
 )
 
 // Event type. See Event.Type field.
@@ -185,3 +199,30 @@ const (
 	EventRaw
 	EventNone
 )
+
+// AttributeToRGB converts an Attribute to the underlying rgb triplet.
+// This is only useful if termbox is in Full RGB mode and the specified
+// attribute is also an attribute with r, g, b specified
+func AttributeToRGB(attr Attribute) (uint8, uint8, uint8) {
+	var color uint64 = uint64(attr) / uint64(max_attr)
+	// Have to right-shift with the highest attribute bit.
+	// For this, we divide by max_attr
+	var b uint8 = uint8(color % 256)
+	var g uint8 = uint8(color >> 8 % 256)
+	var r uint8 = uint8(color >> 16 % 256)
+	return r, g, b
+}
+
+// RGBToAttribute is used to convert an rgb triplet into a termbox attribute.
+// This attribute can only be applied when termbox is in Full RGB mode,
+// otherwise it'll be ignored and no color will be drawn.
+// R, G, B have to be in the range of 0 and 255.
+func RGBToAttribute(r uint8, g uint8, b uint8) Attribute {
+	var color uint64 = uint64(b)
+	color += uint64(g) << 8
+	color += uint64(r) << 16
+	color += 1 << 25
+	color = color * uint64(max_attr)
+	// Left-shift back to the place where rgb is stored.
+	return Attribute(color)
+}

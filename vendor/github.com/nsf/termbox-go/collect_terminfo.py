@@ -69,7 +69,10 @@ funcs = [
 def iter_pairs(iterable):
 	iterable = iter(iterable)
 	while True:
-		yield (next(iterable), next(iterable))
+		try:
+			yield (next(iterable), next(iterable))
+		except StopIteration:
+			return
 
 def do_term(term, nick):
 	w("// %s\n" % term)

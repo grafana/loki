@@ -14,6 +14,11 @@ import "io"
 // private API
 
 const (
+	// for future contributors: after adding something here,
+	// you have to add the corresponding index in a terminfo
+	// file to `terminfo.go#ti_funcs`. The values can be taken
+	// from (ncurses) `term.h`. The builtin terminfo at terminfo_builtin.go
+	// also needs adjusting with the new values.
 	t_enter_ca = iota
 	t_exit_ca
 	t_show_cursor
@@ -22,7 +27,10 @@ const (
 	t_sgr0
 	t_underline
 	t_bold
+	t_hidden
 	t_blink
+	t_dim
+	t_cursive
 	t_reverse
 	t_enter_keypad
 	t_exit_keypad
@@ -102,10 +110,19 @@ func write_sgr_fg(a Attribute) {
 		outbuf.WriteString("\033[38;5;")
 		outbuf.Write(strconv.AppendUint(intbuf, uint64(a-1), 10))
 		outbuf.WriteString("m")
+	case OutputRGB:
+		r, g, b := AttributeToRGB(a)
+		outbuf.WriteString(escapeRGB(true, r, g, b))
 	default:
-		outbuf.WriteString("\033[3")
-		outbuf.Write(strconv.AppendUint(intbuf, uint64(a-1), 10))
-		outbuf.WriteString("m")
+		if a < ColorDarkGray {
+			outbuf.WriteString("\033[3")
+			outbuf.Write(strconv.AppendUint(intbuf, uint64(a-ColorBlack), 10))
+			outbuf.WriteString("m")
+		} else {
+			outbuf.WriteString("\033[9")
+			outbuf.Write(strconv.AppendUint(intbuf, uint64(a-ColorDarkGray), 10))
+			outbuf.WriteString("m")
+		}
 	}
 }
 
@@ -115,10 +132,19 @@ func write_sgr_bg(a Attribute) {
 		outbuf.WriteString("\033[48;5;")
 		outbuf.Write(strconv.AppendUint(intbuf, uint64(a-1), 10))
 		outbuf.WriteString("m")
+	case OutputRGB:
+		r, g, b := AttributeToRGB(a)
+		outbuf.WriteString(escapeRGB(false, r, g, b))
 	default:
-		outbuf.WriteString("\033[4")
-		outbuf.Write(strconv.AppendUint(intbuf, uint64(a-1), 10))
-		outbuf.WriteString("m")
+		if a < ColorDarkGray {
+			outbuf.WriteString("\033[4")
+			outbuf.Write(strconv.AppendUint(intbuf, uint64(a-ColorBlack), 10))
+			outbuf.WriteString("m")
+		} else {
+			outbuf.WriteString("\033[10")
+			outbuf.Write(strconv.AppendUint(intbuf, uint64(a-ColorDarkGray), 10))
+			outbuf.WriteString("m")
+		}
 	}
 }
 
@@ -131,13 +157,45 @@ func write_sgr(fg, bg Attribute) {
 		outbuf.WriteString("\033[48;5;")
 		outbuf.Write(strconv.AppendUint(intbuf, uint64(bg-1), 10))
 		outbuf.WriteString("m")
+	case OutputRGB:
+		r, g, b := AttributeToRGB(fg)
+		outbuf.WriteString(escapeRGB(true, r, g, b))
+		r, g, b = AttributeToRGB(bg)
+		outbuf.WriteString(escapeRGB(false, r, g, b))
 	default:
-		outbuf.WriteString("\033[3")
-		outbuf.Write(strconv.AppendUint(intbuf, uint64(fg-1), 10))
-		outbuf.WriteString(";4")
-		outbuf.Write(strconv.AppendUint(intbuf, uint64(bg-1), 10))
-		outbuf.WriteString("m")
+		if fg < ColorDarkGray {
+			outbuf.WriteString("\033[3")
+			outbuf.Write(strconv.AppendUint(intbuf, uint64(fg-ColorBlack), 10))
+			outbuf.WriteString(";")
+		} else {
+			outbuf.WriteString("\033[9")
+			outbuf.Write(strconv.AppendUint(intbuf, uint64(fg-ColorDarkGray), 10))
+			outbuf.WriteString(";")
+		}
+		if bg < ColorDarkGray {
+			outbuf.WriteString("4")
+			outbuf.Write(strconv.AppendUint(intbuf, uint64(bg-ColorBlack), 10))
+			outbuf.WriteString("m")
+		} else {
+			outbuf.WriteString("10")
+			outbuf.Write(strconv.AppendUint(intbuf, uint64(bg-ColorDarkGray), 10))
+			outbuf.WriteString("m")
+		}
 	}
+}
+
+func escapeRGB(fg bool, r uint8, g uint8, b uint8) string {
+	var escape string = "\033["
+	if fg {
+		escape += "38"
+	} else {
+		escape += "48"
+	}
+	escape += ";2;"
+	escape += strconv.FormatUint(uint64(r), 10) + ";"
+	escape += strconv.FormatUint(uint64(g), 10) + ";"
+	escape += strconv.FormatUint(uint64(b), 10) + "m"
+	return escape
 }
 
 type winsize struct {
@@ -197,9 +255,12 @@ func send_attr(fg, bg Attribute) {
 		if bgcol != ColorDefault {
 			bgcol = grayscale[bgcol]
 		}
+	case OutputRGB:
+		fgcol = fg
+		bgcol = bg
 	default:
-		fgcol = fg & 0x0F
-		bgcol = bg & 0x0F
+		fgcol = fg & 0xFF
+		bgcol = bg & 0xFF
 	}
 
 	if fgcol != ColorDefault {
@@ -215,11 +276,23 @@ func send_attr(fg, bg Attribute) {
 	if fg&AttrBold != 0 {
 		outbuf.WriteString(funcs[t_bold])
 	}
-	if bg&AttrBold != 0 {
+	/*if bg&AttrBold != 0 {
+		outbuf.WriteString(funcs[t_blink])
+	}*/
+	if fg&AttrBlink != 0 {
 		outbuf.WriteString(funcs[t_blink])
 	}
 	if fg&AttrUnderline != 0 {
 		outbuf.WriteString(funcs[t_underline])
+	}
+	if fg&AttrCursive != 0 {
+		outbuf.WriteString(funcs[t_cursive])
+	}
+	if fg&AttrHidden != 0 {
+		outbuf.WriteString(funcs[t_hidden])
+	}
+	if fg&AttrDim != 0 {
+		outbuf.WriteString(funcs[t_dim])
 	}
 	if fg&AttrReverse|bg&AttrReverse != 0 {
 		outbuf.WriteString(funcs[t_reverse])

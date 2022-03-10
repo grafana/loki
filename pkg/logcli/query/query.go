@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -37,6 +38,27 @@ import (
 
 	ui "github.com/grafana/termui/v3"
 	"github.com/grafana/termui/v3/widgets"
+)
+
+var (
+	availableColors = []ui.Color{
+		ui.ColorBlack,
+		ui.ColorRed,
+		ui.ColorGreen,
+		ui.ColorYellow,
+		ui.ColorBlue,
+		ui.ColorMagenta,
+		ui.ColorCyan,
+		ui.ColorWhite,
+		ui.ColorPurple,
+		ui.ColorOrange,
+		ui.ColorPink,
+		ui.ColorLightBlue,
+		ui.ColorLightGreen,
+		ui.ColorLightPurple,
+		ui.ColorLightYellow,
+		ui.ColorLightOrange,
+	}
 )
 
 type streamEntryPair struct {
@@ -789,9 +811,13 @@ func (u *UiController) UpdateStats(result stats.Result) {
 }
 
 func (u *UiController) GetColorForLabels(labels model.Metric) ui.Color {
-	// There are 8 colors, but the last one is white which is used for borders,
-	// so we use the first 7 colors. We also skip the first color, which is black.
-	return ui.Color(labels.FastFingerprint()%7) + 1
+	cIndex := int(labels.FastFingerprint()) % len(availableColors)
+
+	// NOTE(kavi): why Abs: because Fingerprint is uint64 and we need int for index operation.
+	// converting from uint64 -> int can overflow to negative int. (happened when I tested it with loki-ops with huge number of streams)
+	cIndex = int(math.Abs(float64(cIndex)))
+
+	return availableColors[cIndex]
 }
 
 func (u *UiController) IsLabelHidden(label string) bool {
