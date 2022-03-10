@@ -62,13 +62,20 @@ func TestMultiIndex_GetChunkRefs(t *testing.T) {
 		indices = append(indices, BuildIndex(t, cases))
 	}
 
-	idx, err := NewBoundedMultiIndex(NewBoundedParallelism(n), indices...)
+	idx, err := NewMultiIndex(indices...)
 	require.Nil(t, err)
 
 	refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 	require.Nil(t, err)
 
 	expected := []ChunkRef{
+		{
+			User:        "fake",
+			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+			Start:       1,
+			End:         10,
+			Checksum:    3,
+		},
 		{
 			User:        "fake",
 			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
@@ -82,13 +89,6 @@ func TestMultiIndex_GetChunkRefs(t *testing.T) {
 			Start:       1,
 			End:         4,
 			Checksum:    1,
-		},
-		{
-			User:        "fake",
-			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
-			Start:       1,
-			End:         10,
-			Checksum:    3,
 		},
 		{
 			User:        "fake",

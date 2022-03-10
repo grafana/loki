@@ -34,35 +34,3 @@ type Index interface {
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
 }
-
-// utility for heapsort
-type ChunkRefHeap [][]ChunkRef
-
-func (h ChunkRefHeap) Len() int { return len(h) }
-func (h ChunkRefHeap) Less(i, j int) bool {
-	return h[i][0].Less(h[j][0])
-}
-func (h ChunkRefHeap) Swap(i, j int) {
-	h[i], h[j] = h[j], h[i]
-}
-
-// Push a []ChunkRef to the heap
-func (h *ChunkRefHeap) Push(x interface{}) {
-	*h = append(*h, x.([]ChunkRef))
-}
-
-// Pop a single ChunkRef from the heap
-func (h *ChunkRefHeap) Pop() interface{} {
-	old := *h
-	n := h.Len()
-	x := old[n-1]
-	*h = old[:n-1]
-
-	result := x[0]
-	rem := x[1:]
-	if len(rem) > 0 {
-		h.Push(rem)
-	}
-
-	return result
-}
