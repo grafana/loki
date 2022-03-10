@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	logqllog "github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/util/unmarshal"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -73,12 +72,14 @@ func (q *Query) TailMetricQuery(delayFor time.Duration, c client.Client, out out
 		log.Println("Print only labels key:", color.RedString(strings.Join(q.ShowLabelsKey, ",")))
 	}
 
-	// if err := ui.Init(); err != nil {
-	// 	panic(err)
-	// }
-	// defer ui.Close()
+	if err := ui.Init(); err != nil {
+		log.Fatalf("failed to initialize termui: %v", err)
+	}
+	defer ui.Close()
 
-	for {
+	data := make([][]float64, 0)
+
+	do := func() {
 		err := unmarshal.ReadTailResponseJSON(tailResponse, conn)
 		if err != nil {
 			log.Println("Error reading stream:", err)
@@ -104,25 +105,25 @@ func (q *Query) TailMetricQuery(delayFor time.Duration, c client.Client, out out
 			panic(err)
 		}
 
-		err = marshal.WriteQueryResponseJSON(result, os.Stdout)
-		if err != nil {
-			panic(err)
-		}
-
-		// prettyPrint(result.Data.(promql.Matrix))
-
-		// uiEvents := ui.PollEvents()
-		// select {
-		// case e := <-uiEvents:
-		// 	if e.ID == "q" || e.ID == "<C-c>" {
-		// 		return
-		// 	}
-		// default:
-		// 	continue
-
+		// err = marshal.WriteQueryResponseJSON(result, os.Stdout)
+		// if err != nil {
+		// 	panic(err)
 		// }
 
-		time.Sleep(3 * time.Second)
+		prettyPrint(result.Data.(promql.Matrix))
+	}
+	ticker := time.NewTicker(time.Millisecond * 1000)
+	uiEvents := ui.PollEvents()
+
+	for {
+		select {
+		case e := <-uiEvents:
+			if e.ID == "q" || e.ID == "<C-c>" {
+				return
+			}
+		case <-ticker.C:
+			do()
+		}
 	}
 }
 
@@ -130,20 +131,26 @@ func prettyPrint(matrix promql.Matrix) {
 	data := make([][]float64, 0)
 
 	for _, s := range matrix {
-		fv := make([]float64, len(s.Points))
-		for i, v := range s.Points {
-			fv[i] = float64(v.V)
+		if len(s.Points) <= 1 {
+			continue
+		}
+		fv := make([]float64, 0)
+		for _, v := range s.Points {
+			fv = append(fv, float64(v.V))
+		}
+		if len(fv) == 1 {
+			panic(fv)
 		}
 		data = append(data, fv)
 	}
 
-	fmt.Fprintf(os.Stdout, "%+v\n", data)
+	// fmt.Println("data", data)
 
 	panel := widgets.NewPlot()
 	panel.Title = "Live"
 	panel.Data = data
-	width, height := ui.TerminalDimensions()
-	panel.SetRect(0, 0, width, height)
+	// width, height := ui.TerminalDimensions()
+	panel.SetRect(0, 0, 130, 40)
 
 	ui.Render(panel)
 }
