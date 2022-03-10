@@ -27,7 +27,6 @@ func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
 }
 
 func (i *TSDBIndex) forSeries(
-	from, through model.Time,
 	shard *astmapper.ShardAnnotation,
 	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
 	matchers ...*labels.Matcher,
@@ -62,7 +61,7 @@ func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through
 	queryBounds := newBounds(from, through)
 	var res []ChunkRef // TODO(owen-d): pool, reduce allocs
 
-	if err := i.forSeries(from, through, shard,
+	if err := i.forSeries(shard,
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			// TODO(owen-d): use logarithmic approach
 			for _, chk := range chks {
@@ -92,7 +91,7 @@ func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time
 	queryBounds := newBounds(from, through)
 	var res []Series // TODO(owen-d): pool, reduce allocs
 
-	if err := i.forSeries(from, through, shard,
+	if err := i.forSeries(shard,
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			// TODO(owen-d): use logarithmic approach
 			for _, chk := range chks {

@@ -3,9 +3,10 @@ package tsdb
 import (
 	"context"
 
-	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/querier/astmapper"
 )
 
 type Series struct {

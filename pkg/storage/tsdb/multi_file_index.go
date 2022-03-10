@@ -5,10 +5,11 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/pkg/querier/astmapper"
 )
 
 type MultiIndex struct {
