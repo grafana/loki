@@ -76,7 +76,7 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups="",resources=pods;nodes;services;endpoints;configmaps;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;clusterroles,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;clusterroles;roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors;prometheusrules,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update
@@ -139,7 +139,9 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&appsv1.Deployment{}, updateOrDeleteOnlyPred).
 		Owns(&appsv1.StatefulSet{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.ClusterRole{}, updateOrDeleteOnlyPred).
-		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred)
+		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
+		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
+		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred)
 
 	if r.Flags.EnablePrometheusAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
