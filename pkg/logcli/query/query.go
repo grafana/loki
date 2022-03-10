@@ -40,27 +40,6 @@ import (
 	"github.com/grafana/termui/v3/widgets"
 )
 
-var (
-	availableColors = []ui.Color{
-		ui.ColorBlack,
-		ui.ColorRed,
-		ui.ColorGreen,
-		ui.ColorYellow,
-		ui.ColorBlue,
-		ui.ColorMagenta,
-		ui.ColorCyan,
-		ui.ColorWhite,
-		ui.ColorPurple,
-		ui.ColorOrange,
-		ui.ColorPink,
-		ui.ColorLightBlue,
-		ui.ColorLightGreen,
-		ui.ColorLightPurple,
-		ui.ColorLightYellow,
-		ui.ColorLightOrange,
-	}
-)
-
 type streamEntryPair struct {
 	entry  loghttp.Entry
 	labels loghttp.LabelSet
@@ -520,7 +499,8 @@ func NewUiController(showStats bool, plotType PlotType) UiController {
 			uiCtrl.graphPanel.Title = "Graph"
 			uiCtrl.graphPanel.AxesColor = ui.ColorWhite
 			uiCtrl.graphPanel.XAxisFmter = func(v int) string {
-				return uiCtrl.graphPanel.DataLabels[v]
+				// return uiCtrl.graphPanel.DataLabels[v]
+				return fmt.Sprintf("%d", v)
 			}
 
 			if plotType == Lines {
@@ -811,13 +791,11 @@ func (u *UiController) UpdateStats(result stats.Result) {
 }
 
 func (u *UiController) GetColorForLabels(labels model.Metric) ui.Color {
-	cIndex := int(labels.FastFingerprint()) % len(availableColors)
+	cIndex := (int(labels.FastFingerprint()) % ui.MaxColor+1) + 1
 
 	// NOTE(kavi): why Abs: because Fingerprint is uint64 and we need int for index operation.
 	// converting from uint64 -> int can overflow to negative int. (happened when I tested it with loki-ops with huge number of streams)
-	cIndex = int(math.Abs(float64(cIndex)))
-
-	return availableColors[cIndex]
+	return ui.Color(math.Abs(float64(cIndex)))
 }
 
 func (u *UiController) IsLabelHidden(label string) bool {
@@ -834,19 +812,13 @@ func (u *UiController) IsLabelHidden(label string) bool {
 }
 
 func (u *UiController) GetLegend(labels []string, colors []ui.Color) []string {
-	reverseStyleParserColorMap := make(map[ui.Color]string, len(ui.StyleParserColorMap))
-	for k, v := range ui.StyleParserColorMap {
-		reverseStyleParserColorMap[v] = k
-	}
-
 	legend := make([]string, len(labels))
 	var colorIndex int
 	for i, l := range labels {
 		if u.IsLabelHidden(l) {
 			legend[i] = u.GetHiddenLabel(l)
 		} else {
-			labelColor := colors[colorIndex]
-			legend[i] = fmt.Sprintf("[%s](fg:%s)", l, reverseStyleParserColorMap[labelColor])
+			legend[i] = fmt.Sprintf("[%s](fg:%d)", l, colors[colorIndex])
 
 			// We have colors only for unhidden labels.
 			colorIndex++

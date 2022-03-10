@@ -1028,12 +1028,14 @@ github.com/grafana/regexp v0.0.0-20220304095617-2e8d9baf4ac2 h1:uirlL/j72L93RhV4
 github.com/grafana/regexp v0.0.0-20220304095617-2e8d9baf4ac2/go.mod h1:M5qHK+eWfAv8VR/265dIuEpL3fNfeC21tXXp9itM24A=
 github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03 h1:fGgFrAraMB0BaPfYumu+iulfDXwHm+GFyHA4xEtBqI8=
 github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03/go.mod h1:GIMXMPB/lRAllP5rVDvcGif87ryO2hgD7tCtHMdHrho=
+github.com/grafana/termui v3.1.0+incompatible h1:2P34Sk/xM0TM7AhX/KvSvi9/9JKR91SJ6b91CEBSd44=
+github.com/grafana/termui v3.1.0+incompatible/go.mod h1:NI4kJ21CNXuH+d4oGY0gqUqGg88avP0cBZN/lcK5Umo=
 github.com/grafana/termui/v3 v3.1.1-0.20220309174059-9ded7e240857 h1:IzJm4qO7hPHs0GmJvX9ykGvSUpoHpcHEs6Bn021W1rw=
 github.com/grafana/termui/v3 v3.1.1-0.20220309174059-9ded7e240857/go.mod h1:T2ATYla0ijpetD6wIKon+YqRQ/SsH6iks6/p31DFG8g=
 github.com/grafana/termui/v3 v3.1.1-0.20220309194111-c1b2592ec34b h1:8JaO418NeSBTSBZINZIsMMbWoewdA/E/Ty6eC+3OEDs=
 github.com/grafana/termui/v3 v3.1.1-0.20220309194111-c1b2592ec34b/go.mod h1:T2ATYla0ijpetD6wIKon+YqRQ/SsH6iks6/p31DFG8g=
-github.com/grafana/termui/v3 v3.1.1-0.20220310084458-e90edccee096 h1:GNEhgbS0Oh04gfZkrtpzPNxy2BK6GqyMw2gXmIq+1zc=
-github.com/grafana/termui/v3 v3.1.1-0.20220310084458-e90edccee096/go.mod h1:T2ATYla0ijpetD6wIKon+YqRQ/SsH6iks6/p31DFG8g=
+github.com/grafana/termui/v3 v3.1.1-0.20220310092924-2e66505f9231 h1:kYCLUe1GEiuSnYw2V1f/g5ge3nKiV7eBGkdFldwTnZE=
+github.com/grafana/termui/v3 v3.1.1-0.20220310092924-2e66505f9231/go.mod h1:T2ATYla0ijpetD6wIKon+YqRQ/SsH6iks6/p31DFG8g=
 github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7/go.mod h1:FecbI9+v66THATjSRHfNgh1IVFe/9kFxbXtjV0ctIMA=
 github.com/grpc-ecosystem/go-grpc-middleware v1.0.0/go.mod h1:FiyG127CGDf3tlThmgyCl78X/SZQqEOJBCDaAfeWzPs=
 github.com/grpc-ecosystem/go-grpc-middleware v1.0.1-0.20190118093823-f849b5445de4/go.mod h1:FiyG127CGDf3tlThmgyCl78X/SZQqEOJBCDaAfeWzPs=

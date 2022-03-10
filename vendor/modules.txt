@@ -547,7 +547,9 @@ github.com/grafana/dskit/spanlogger
 ## explicit; go 1.17
 github.com/grafana/regexp
 github.com/grafana/regexp/syntax
-# github.com/grafana/termui/v3 v3.1.1-0.20220310084458-e90edccee096
+# github.com/grafana/termui v3.1.0+incompatible
+## explicit
+# github.com/grafana/termui/v3 v3.1.1-0.20220310092924-2e66505f9231
 ## explicit; go 1.15
 github.com/grafana/termui/v3
 github.com/grafana/termui/v3/drawille

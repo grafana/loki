@@ -5,6 +5,7 @@
 package termui
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -42,14 +43,14 @@ var StyleParserColorMap = map[string]Color{
 	"clear":   ColorClear,
 	"green":   ColorGreen,
 	"magenta": ColorMagenta,
-        "purple":  ColorPurple,
-        "orange":  ColorOrange,
-        "pink":    ColorPink,
-        "lightblue": ColorLightBlue,
-        "lightgreen": ColorLightGreen,
-        "lightpurple": ColorLightPurple,
-        "lightyellow": ColorLightYellow,
-        "lightorange": ColorLightOrange,
+	"purple":  ColorPurple,
+	"orange":  ColorOrange,
+	"pink":    ColorPink,
+	"lightblue": ColorLightBlue,
+	"lightgreen": ColorLightGreen,
+	"lightpurple": ColorLightPurple,
+	"lightyellow": ColorLightYellow,
+	"lightorange": ColorLightOrange,
 }
 
 
@@ -68,15 +69,30 @@ func readStyle(runes []rune, defaultStyle Style) Style {
 		if len(pair) == 2 {
 			switch pair[0] {
 			case tokenFg:
-				style.Fg = StyleParserColorMap[pair[1]]
+				style.Fg = parseColor(pair[1])
 			case tokenBg:
-				style.Bg = StyleParserColorMap[pair[1]]
+				style.Bg = parseColor(pair[1])
 			case tokenModifier:
 				style.Modifier = modifierMap[pair[1]]
 			}
 		}
 	}
 	return style
+}
+
+func parseColor(value string) Color {
+	intValue, err := strconv.Atoi(value)
+	if err == nil {
+		return Color(intValue)
+	}
+
+	color, ok := StyleParserColorMap[value]
+	if ok {
+		return color
+	}
+
+	// If it's neither an integer nor a valid color, make it white
+	return ColorWhite
 }
 
 // ParseStyles parses a string for embedded Styles and returns []Cell with the correct styling.
