@@ -37,16 +37,14 @@ type JSONParser struct {
 	buf []byte // buffer used to build json keys
 	lbs *LabelsBuilder
 
-	keys         internedStringSet
-	jsonKeyCache map[string][][]string
+	keys internedStringSet
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
 func NewJSONParser() *JSONParser {
 	return &JSONParser{
-		buf:          make([]byte, 0, 1024),
-		keys:         internedStringSet{},
-		jsonKeyCache: make(map[string][][]string),
+		buf:  make([]byte, 0, 1024),
+		keys: internedStringSet{},
 	}
 }
 
@@ -104,26 +102,6 @@ func (j *JSONParser) parseJSONKeyVal(line []byte, requiredLabels []string) error
 		keys := make([]string, 0)
 		keys = append(keys, field)
 
-		cacheKeys, ok := j.jsonKeyCache[field]
-		if ok {
-			isMatchKey := false
-			for _, key := range cacheKeys {
-				v, _, _, e := jsonparser.Get(line, key...)
-				if e != nil {
-					continue
-				}
-				err := j.setJSONVal(field, v)
-				if err != nil {
-					return err
-				}
-				isMatchKey = true
-				break
-			}
-			if isMatchKey {
-				continue
-			}
-		}
-
 		keyArray := make([]string, 0)
 		jsonSpacerIndex := 0
 		for {
@@ -161,15 +139,6 @@ func (j *JSONParser) parseJSONKeyVal(line []byte, requiredLabels []string) error
 			err := j.setJSONVal(field, v)
 			if err != nil {
 				return err
-			}
-			if len(keys) > 1 { //just cache key >1
-				cacheKeys, ok := j.jsonKeyCache[field]
-				if !ok {
-					j.jsonKeyCache[field] = make([][]string, 0)
-					cacheKeys = j.jsonKeyCache[field]
-				}
-				cacheKeys = append(cacheKeys, keys)
-				j.jsonKeyCache[field] = cacheKeys
 			}
 			break
 		}
