@@ -499,8 +499,11 @@ func NewUiController(showStats bool, plotType PlotType) UiController {
 			uiCtrl.graphPanel.Title = "Graph"
 			uiCtrl.graphPanel.AxesColor = ui.ColorWhite
 			uiCtrl.graphPanel.XAxisFmter = func(v int) string {
-				// return uiCtrl.graphPanel.DataLabels[v]
-				return fmt.Sprintf("%d", v)
+				if len(uiCtrl.graphPanel.DataLabels) <= v {
+					return "N/A"
+				}
+
+				return uiCtrl.graphPanel.DataLabels[v]
 			}
 
 			if plotType == Lines {
@@ -674,7 +677,7 @@ func (u *UiController) UpdateGraph(matrix loghttp.Matrix) {
 
 	timestamps := make([]string, largestStreamSize)
 	for i, value := range matrix[largestStreamIdx].Values {
-		timestamps[i] = value.Timestamp.Time().UTC().Format("2006-01-02 15:04:05")
+		timestamps[i] = value.Timestamp.Time().UTC().Format("15:04")
 	}
 
 	switch u.plotType {
