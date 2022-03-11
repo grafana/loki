@@ -215,7 +215,8 @@ func init() {
 	jsoniter.RegisterTypeDecoderFunc("logproto.LegacySample", SampleJsoniterDecode)
 }
 
-// Combine unique values from multiple LabelResponses.
+// Combine unique values from multiple LabelResponses into a single LabelResponse.
+// TODO(jordanrushing): Should we sort labels lexicographically before returning?
 func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
 	if len(responses) == 0 {
 		return nil, fmt.Errorf("no label responses to merge")
@@ -244,7 +245,7 @@ func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
 	return result, nil
 }
 
-// Combine unique label sets from multiple SeriesResponse.
+// Combine unique label sets from multiple SeriesResponse and return a single, sorted SeriesResponse.
 func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) {
 	if len(responses) == 0 {
 		return nil, fmt.Errorf("no series responses to merge")

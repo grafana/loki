@@ -228,7 +228,8 @@ func TestMergeLabelResponses(t *testing.T) {
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
-				require.Equal(t, tc.expected[0], merged)
+
+				require.ElementsMatch(t, tc.expected[0].Values, merged.Values)
 			}
 		})
 	}
