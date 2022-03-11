@@ -229,6 +229,10 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides, deleteStore)
+	if err != nil {
+		return nil, err
+	}
+
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
 		t.Querier = querier.NewMultiTenantQuerier(q, util_log.Logger)
 	} else {
