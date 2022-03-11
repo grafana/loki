@@ -82,6 +82,13 @@ exposed by Promtail at its `/metrics` endpoint. See Promtail's documentation on
 An example Grafana dashboard was built by the community and is available as
 dashboard [10004](https://grafana.com/dashboards/10004).
 
+## Metrics cardinality
+
+Some of the metrics above are emitted per tracked file (active) with the file path included in the labels. 
+Depending on your setup, this may result in very large amount of label values across the environment (cardinality). This is generally discouraged by [Prometheus](https://prometheus.io/docs/practices/naming/#labels) and may result with unwanted side effects. 
+Make sure to review the emitted metrics before starting scraping with Prometheus and config the scraping accordingly if you suspect this might be an issue.
+
+
 ## Mixins
 
 The Loki repository has a [mixin](https://github.com/grafana/loki/blob/master/production/loki-mixin) that includes a
