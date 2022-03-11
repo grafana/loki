@@ -129,7 +129,7 @@ type Writer struct {
 	labelNames   map[string]uint64     // Label names, and their usage.
 
 	// Hold last series to validate that clients insert new series in order.
-	lastSeries labels.Labels
+	lastSeries uint64
 	lastRef    storage.SeriesRef
 
 	crc32 hash.Hash
@@ -425,11 +425,13 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
-	if labels.Compare(lset, w.lastSeries) <= 0 {
+
+	labelHash := lset.Hash()
+	if labelHash < w.lastSeries {
 		return errors.Errorf("out-of-order series added with label set %q", lset)
 	}
 
-	if ref < w.lastRef && len(w.lastSeries) != 0 {
+	if ref < w.lastRef && w.lastSeries != uint64(0) {
 		return errors.Errorf("series with reference greater than %d already added", ref)
 	}
 	// We add padding to 16 bytes to increase the addressable space we get through 4 byte
@@ -443,7 +445,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 	}
 
 	w.buf2.Reset()
-	w.buf2.PutBE64(lset.Hash())
+	w.buf2.PutBE64(labelHash)
 	w.buf2.PutUvarint(len(lset))
 
 	for _, l := range lset {
@@ -510,7 +512,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		return errors.Wrap(err, "write series data")
 	}
 
-	w.lastSeries = append(w.lastSeries[:0], lset...)
+	w.lastSeries = labelHash
 	w.lastRef = ref
 
 	return nil
