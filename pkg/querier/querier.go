@@ -224,8 +224,8 @@ func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT t
 
 	var deletes []*logproto.Delete
 	for _, del := range d {
-		for _, selector := range del.Selectors {
-			if int64(del.StartTime) <= end && int64(del.EndTime) >= start {
+		if int64(del.StartTime) <= end && int64(del.EndTime) >= start {
+			for _, selector := range del.Selectors {
 				deletes = append(deletes, &logproto.Delete{
 					Selector: selector,
 					Start:    int64(del.StartTime),
