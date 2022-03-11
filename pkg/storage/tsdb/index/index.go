@@ -51,6 +51,9 @@ const (
 	FormatV2 = 2
 
 	indexFilename = "index"
+
+	// store every 1024 series' fingerprints in the fingerprint offsets table
+	fingerprintInterval = 1 << 10
 )
 
 type indexWriterStage uint8
@@ -127,6 +130,8 @@ type Writer struct {
 
 	labelIndexes []labelIndexHashEntry // Label index offsets.
 	labelNames   map[string]uint64     // Label names, and their usage.
+	// Keeps track of the fingerprint/offset for every n series
+	fingerprintOffsets [][2]uint64
 
 	// Hold last series to validate that clients insert new series in order.
 	lastSeries uint64
@@ -139,13 +144,14 @@ type Writer struct {
 
 // TOC represents index Table Of Content that states where each section of index starts.
 type TOC struct {
-	Symbols           uint64
-	Series            uint64
-	LabelIndices      uint64
-	LabelIndicesTable uint64
-	Postings          uint64
-	PostingsTable     uint64
-	Metadata          Metadata
+	Symbols            uint64
+	Series             uint64
+	LabelIndices       uint64
+	LabelIndicesTable  uint64
+	Postings           uint64
+	PostingsTable      uint64
+	FingerprintOffsets uint64
+	Metadata           Metadata
 }
 
 // Metadata is TSDB-level metadata
@@ -182,12 +188,13 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 	}
 
 	return &TOC{
-		Symbols:           d.Be64(),
-		Series:            d.Be64(),
-		LabelIndices:      d.Be64(),
-		LabelIndicesTable: d.Be64(),
-		Postings:          d.Be64(),
-		PostingsTable:     d.Be64(),
+		Symbols:            d.Be64(),
+		Series:             d.Be64(),
+		LabelIndices:       d.Be64(),
+		LabelIndicesTable:  d.Be64(),
+		Postings:           d.Be64(),
+		PostingsTable:      d.Be64(),
+		FingerprintOffsets: d.Be64(),
 		Metadata: Metadata{
 			From:    d.Be64int64(),
 			Through: d.Be64int64(),
@@ -403,6 +410,12 @@ func (w *Writer) ensureStage(s indexWriterStage) error {
 		if err := w.writePostingsOffsetTable(); err != nil {
 			return err
 		}
+
+		w.toc.FingerprintOffsets = w.f.pos
+		if err := w.writeFingerprintOffsetsTable(); err != nil {
+			return err
+		}
+
 		if err := w.writeTOC(); err != nil {
 			return err
 		}
@@ -514,6 +527,10 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 
 	w.lastSeries = labelHash
 	w.lastRef = ref
+
+	if ref%fingerprintInterval == 0 {
+		w.fingerprintOffsets = append(w.fingerprintOffsets, [2]uint64{uint64(ref), labelHash})
+	}
 
 	return nil
 }
@@ -814,7 +831,36 @@ func (w *Writer) writePostingsOffsetTable() error {
 	return w.write(w.buf1.Get())
 }
 
-const indexTOCLen = 8*8 + crc32.Size
+func (w *Writer) writeFingerprintOffsetsTable() error {
+	w.buf1.Reset()
+	w.buf2.Reset()
+
+	// build offsets
+	for _, x := range w.fingerprintOffsets {
+		w.buf1.PutBE64(x[0]) // series offset
+		w.buf1.PutBE64(x[1]) // hash
+	}
+
+	// write length
+	ln := w.buf1.Len()
+	if ln > math.MaxUint32 {
+		return errors.Errorf("fingerprint offset size exceeds 4 bytes: %d", ln)
+	}
+
+	w.buf2.PutBE32int(ln)
+	if err := w.write(w.buf2.Get()); err != nil {
+		return err
+	}
+
+	// write offsets+checksum
+	w.buf1.PutHash(w.crc32)
+	if err := w.write(w.buf1.Get()); err != nil {
+		return errors.Wrap(err, "failure writing fingerprint offsets")
+	}
+	return nil
+}
+
+const indexTOCLen = 8*9 + crc32.Size
 
 func (w *Writer) writeTOC() error {
 	w.buf1.Reset()
@@ -825,6 +871,7 @@ func (w *Writer) writeTOC() error {
 	w.buf1.PutBE64(w.toc.LabelIndicesTable)
 	w.buf1.PutBE64(w.toc.Postings)
 	w.buf1.PutBE64(w.toc.PostingsTable)
+	w.buf1.PutBE64(w.toc.FingerprintOffsets)
 
 	// metadata
 	w.buf1.PutBE64int64(w.toc.Metadata.From)
