@@ -12,6 +12,14 @@ func Build(opts Options) []client.Object {
 		BuildClusterRoleBinding(opts),
 	}
 
+	if opts.BuildOpts.EnableServiceMonitors {
+		objs = append(
+			objs,
+			BuildMonitoringRole(opts),
+			BuildMonitoringRoleBinding(opts),
+		)
+	}
+
 	if opts.BuildOpts.EnableCertificateSigningService {
 		objs = append(objs, BuildServiceCAConfigMap(opts))
 	}

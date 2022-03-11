@@ -15,24 +15,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
 )
-
-var metrics = storage.NewClientMetrics()
 
 func Test_LeaderElection(t *testing.T) {
 	stabilityCheckInterval = 100 * time.Millisecond
 
 	result := make(chan *ClusterSeed, 10)
-	objectClient, err := storage.NewObjectClient(storage.StorageTypeFileSystem, storage.Config{
-		FSConfig: local.FSConfig{
-			Directory: t.TempDir(),
-		},
-	}, metrics)
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: t.TempDir(),
+	})
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		go func() {
-			r, err := NewReporter(Config{Leader: true}, kv.Config{
+			r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
 				Store: "inmemory",
 			}, objectClient, log.NewLogfmtLogger(os.Stdout), nil)
 			require.NoError(t, err)
@@ -42,7 +37,7 @@ func Test_LeaderElection(t *testing.T) {
 	}
 	for i := 0; i < 7; i++ {
 		go func() {
-			r, err := NewReporter(Config{Leader: false}, kv.Config{
+			r, err := NewReporter(Config{Leader: false, Enabled: true}, kv.Config{
 				Store: "inmemory",
 			}, objectClient, log.NewLogfmtLogger(os.Stdout), nil)
 			require.NoError(t, err)
@@ -86,14 +81,12 @@ func Test_ReportLoop(t *testing.T) {
 	}))
 	usageStatsURL = server.URL
 
-	objectClient, err := storage.NewObjectClient(storage.StorageTypeFileSystem, storage.Config{
-		FSConfig: local.FSConfig{
-			Directory: t.TempDir(),
-		},
-	}, metrics)
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: t.TempDir(),
+	})
 	require.NoError(t, err)
 
-	r, err := NewReporter(Config{Leader: true}, kv.Config{
+	r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
 		Store: "inmemory",
 	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
@@ -149,14 +142,12 @@ func Test_NextReport(t *testing.T) {
 }
 
 func TestWrongKV(t *testing.T) {
-	objectClient, err := storage.NewObjectClient(storage.StorageTypeFileSystem, storage.Config{
-		FSConfig: local.FSConfig{
-			Directory: t.TempDir(),
-		},
-	}, metrics)
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: t.TempDir(),
+	})
 	require.NoError(t, err)
 
-	r, err := NewReporter(Config{Leader: true}, kv.Config{
+	r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
 		Store: "",
 	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)

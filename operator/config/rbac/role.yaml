@@ -89,6 +89,7 @@ rules:
 - apiGroups:
   - monitoring.coreos.com
   resources:
+  - prometheusrules
   - servicemonitors
   verbs:
   - create
@@ -111,6 +112,8 @@ rules:
   resources:
   - clusterrolebindings
   - clusterroles
+  - rolebindings
+  - roles
   verbs:
   - create
   - delete

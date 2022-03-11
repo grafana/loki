@@ -15,8 +15,9 @@
 package regexp
 
 import (
-	"regexp/syntax"
 	"sync"
+
+	"github.com/grafana/regexp/syntax"
 )
 
 // A job is an entry on the backtracker's job stack. It holds
@@ -163,7 +164,7 @@ func (re *Regexp) tryBacktrack(b *bitState, i input, pc uint32, pos int) bool {
 		}
 	Skip:
 
-		inst := re.prog.Inst[pc]
+		inst := &re.prog.Inst[pc]
 
 		switch inst.Op {
 		default:
@@ -336,17 +337,7 @@ func (re *Regexp) backtrack(ib []byte, is string, pos int, ncap int, dstCap []in
 		// but we are not clearing visited between calls to TrySearch,
 		// so no work is duplicated and it ends up still being linear.
 		width := -1
-		for ; pos <= end && width != 0; pos += width {
-			if len(re.prefix) > 0 {
-				// Match requires literal prefix; fast search for it.
-				advance := i.index(re, pos)
-				if advance < 0 {
-					freeBitState(b)
-					return nil
-				}
-				pos += advance
-			}
-
+		for pos <= end && width != 0 {
 			if len(b.cap) > 0 {
 				b.cap[0] = pos
 			}
@@ -355,6 +346,17 @@ func (re *Regexp) backtrack(ib []byte, is string, pos int, ncap int, dstCap []in
 				goto Match
 			}
 			_, width = i.step(pos)
+			pos += width
+
+			if len(re.prefix) > 0 {
+				// Match requires literal prefix; fast search for next occurrence.
+				advance := i.index(re, pos)
+				if advance < 0 {
+					freeBitState(b)
+					return nil
+				}
+				pos += advance
+			}
 		}
 		freeBitState(b)
 		return nil

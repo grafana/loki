@@ -234,7 +234,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		desc  string
 		req   *logproto.SeriesRequest
 		setup func(*storeMock, *queryClientMock, *querierClientMock, validation.Limits, *logproto.SeriesRequest)
-		run   func(*testing.T, *Querier, *logproto.SeriesRequest)
+		run   func(*testing.T, *SingleTenantQuerier, *logproto.SeriesRequest)
 	}{
 		{
 			"ingester error",
@@ -244,7 +244,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 
 				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
-			func(t *testing.T, q *Querier, req *logproto.SeriesRequest) {
+			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
 				_, err := q.Series(ctx, req)
 				require.Error(t, err)
@@ -260,7 +260,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 
 				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
 			},
-			func(t *testing.T, q *Querier, req *logproto.SeriesRequest) {
+			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
 				_, err := q.Series(ctx, req)
 				require.Error(t, err)
@@ -273,7 +273,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
 				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
-			func(t *testing.T, q *Querier, req *logproto.SeriesRequest) {
+			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
@@ -294,7 +294,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{Labels: map[string]string{"a": "1", "b": "5"}},
 				}, nil)
 			},
-			func(t *testing.T, q *Querier, req *logproto.SeriesRequest) {
+			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
@@ -319,7 +319,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{Labels: map[string]string{"a": "1", "b": "3"}},
 				}, nil)
 			},
-			func(t *testing.T, q *Querier, req *logproto.SeriesRequest) {
+			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
@@ -666,7 +666,7 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			querier := Querier{cfg: Config{
+			querier := SingleTenantQuerier{cfg: Config{
 				IngesterQueryStoreMaxLookback: tc.ingesterQueryStoreMaxLookback,
 				QueryIngestersWithin:          tc.queryIngestersWithin,
 			}}
@@ -847,7 +847,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 	require.Equal(t, "test", delGetter.user)
 }
 
-func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, dg *mockDeleteGettter, store storage.Store, limits *validation.Overrides) (*Querier, error) {
+func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, dg *mockDeleteGettter, store storage.Store, limits *validation.Overrides) (*SingleTenantQuerier, error) {
 	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory)
 	if err != nil {
 		return nil, err

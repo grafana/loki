@@ -33,14 +33,14 @@ func TestQueryIndex(t *testing.T) {
 					Checksum: 1,
 					MinTime:  1,
 					MaxTime:  10,
-					Bytes:    10,
+					KB:       10,
 					Entries:  10,
 				},
 				{
 					Checksum: 2,
 					MinTime:  5,
 					MaxTime:  15,
-					Bytes:    10,
+					KB:       10,
 					Entries:  10,
 				},
 			},
@@ -52,14 +52,14 @@ func TestQueryIndex(t *testing.T) {
 					Checksum: 3,
 					MinTime:  20,
 					MaxTime:  30,
-					Bytes:    10,
+					KB:       10,
 					Entries:  10,
 				},
 				{
 					Checksum: 4,
 					MinTime:  40,
 					MaxTime:  50,
-					Bytes:    10,
+					KB:       10,
 					Entries:  10,
 				},
 			},
@@ -71,14 +71,14 @@ func TestQueryIndex(t *testing.T) {
 					Checksum: 1,
 					MinTime:  1,
 					MaxTime:  10,
-					Bytes:    10,
+					KB:       10,
 					Entries:  10,
 				},
 				{
 					Checksum: 2,
 					MinTime:  5,
 					MaxTime:  15,
-					Bytes:    10,
+					KB:       10,
 					Entries:  10,
 				},
 			},
@@ -113,4 +113,8 @@ func TestQueryIndex(t *testing.T) {
 	require.Equal(t, cases[0].labels.String(), ls.String())
 	require.Equal(t, cases[0].chunks, chks)
 	require.False(t, p.Next())
+
+	mint, maxt := reader.Bounds()
+	require.Equal(t, int64(1), mint)
+	require.Equal(t, int64(50), maxt)
 }

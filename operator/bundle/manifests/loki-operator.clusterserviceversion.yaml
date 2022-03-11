@@ -240,10 +240,18 @@ spec:
         path: storage
       - description: Name of a secret in the namespace configured for object storage
           secrets.
-        displayName: Object Storage Secret
+        displayName: Object Storage Secret Name
         path: storage.secret.name
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:Secret
+      - description: Type of object storage that should be used
+        displayName: Object Storage Secret Type
+        path: storage.secret.type
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:azure
+        - urn:alm:descriptor:com.tectonic.ui:select:gcs
+        - urn:alm:descriptor:com.tectonic.ui:select:s3
+        - urn:alm:descriptor:com.tectonic.ui:select:swift
       - description: Storage class name defines the storage class for ingester/querier
           PVCs.
         displayName: Storage Class Name
@@ -516,6 +524,7 @@ spec:
         - apiGroups:
           - monitoring.coreos.com
           resources:
+          - prometheusrules
           - servicemonitors
           verbs:
           - create
@@ -538,6 +547,8 @@ spec:
           resources:
           - clusterrolebindings
           - clusterroles
+          - rolebindings
+          - roles
           verbs:
           - create
           - delete
@@ -599,6 +610,7 @@ spec:
                 - --with-cert-signing-service
                 - --with-service-monitors
                 - --with-tls-service-monitors
+                - --with-prometheus-alerts
                 command:
                 - /manager
                 env:
@@ -645,6 +657,8 @@ spec:
                 volumeMounts:
                 - mountPath: /var/run/secrets/serving-cert
                   name: loki-operator-metrics-cert
+              nodeSelector:
+                kubernetes.io/os: linux
               terminationGracePeriodSeconds: 10
               volumes:
               - name: loki-operator-metrics-cert
@@ -696,6 +710,7 @@ spec:
   - email: loki-operator-team@googlegroups.com
     name: Grafana Loki SIG Operator
   maturity: alpha
+  minKubeVersion: 1.21.1
   provider:
     name: Grafana.com
   version: 0.0.1

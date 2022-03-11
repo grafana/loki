@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
 )
 
 type dnsProviderMock struct {
@@ -61,11 +60,9 @@ func createMemberlist(t *testing.T, port, memberID int) *memberlist.KV {
 func Test_Memberlist(t *testing.T) {
 	stabilityCheckInterval = time.Second
 
-	objectClient, err := storage.NewObjectClient(storage.StorageTypeFileSystem, storage.Config{
-		FSConfig: local.FSConfig{
-			Directory: t.TempDir(),
-		},
-	}, metrics)
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: t.TempDir(),
+	})
 	require.NoError(t, err)
 	result := make(chan *ClusterSeed, 10)
 
@@ -75,7 +72,8 @@ func Test_Memberlist(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(i int) {
 			leader, err := NewReporter(Config{
-				Leader: true,
+				Leader:  true,
+				Enabled: true,
 			}, kv.Config{
 				Store: "memberlist",
 				StoreConfig: kv.StoreConfig{

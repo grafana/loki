@@ -97,7 +97,7 @@ quantile_over_time(0.99,
   {cluster="ops-tools1",container="ingress-nginx"}
     | json
     | __error__ = ""
-    | unwrap request_time [1m])) by (path)
+    | unwrap request_time [1m]) by (path)
 ```
 
 This example calculates the p99 of the nginx-ingress latency by path.

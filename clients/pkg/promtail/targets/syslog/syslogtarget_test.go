@@ -424,19 +424,26 @@ func testSyslogTargetWithTLS(t *testing.T, octetCounting bool) {
 	c, err := tls.Dial("tcp", addr, &tlsConfig)
 	require.NoError(t, err)
 
-	messages := []string{
+	validMessages := []string{
 		`<165>1 2018-10-11T22:14:15.003Z host5 e - id1 [custom@32473 exkey="1"] An application event log entry...`,
 		`<165>1 2018-10-11T22:14:15.005Z host5 e - id2 [custom@32473 exkey="2"] An application event log entry...`,
 		`<165>1 2018-10-11T22:14:15.007Z host5 e - id3 [custom@32473 exkey="3"] An application event log entry...`,
 	}
+	// Messages that are malformed but still valid.
+	// This causes error messages being written, but the parser does not stop and close the connection.
+	malformeddMessages := []string{
+		`<165>1    -   An application event log entry...`,
+		`<165>1 2018-10-11T22:14:15.007Z host5 e -   An application event log entry...`,
+	}
+	messages := append(malformeddMessages, validMessages...)
 
 	err = writeMessagesToStream(c, messages, octetCounting)
 	require.NoError(t, err)
 	require.NoError(t, c.Close())
 
 	require.Eventuallyf(t, func() bool {
-		return len(client.Received()) == len(messages)
-	}, time.Second, time.Millisecond, "Expected to receive %d messages, got %d.", len(messages), len(client.Received()))
+		return len(client.Received()) == len(validMessages)
+	}, time.Second, time.Millisecond, "Expected to receive %d messages, got %d.", len(validMessages), len(client.Received()))
 
 	require.Equal(t, model.LabelSet{
 		"test": "syslog_target",

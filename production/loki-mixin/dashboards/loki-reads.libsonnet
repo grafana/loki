@@ -110,12 +110,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          $.row('BigTable')
                          .addPanel(
                            $.panel('QPS') +
-                           $.qpsPanel('cortex_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/ReadRows"}' % dashboards['loki-reads.json'].querierSelector)
+                           $.qpsPanel('loki_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/ReadRows"}' % dashboards['loki-reads.json'].querierSelector)
                          )
                          .addPanel(
                            $.panel('Latency') +
                            utils.latencyRecordingRulePanel(
-                             'cortex_bigtable_request_duration_seconds',
+                             'loki_bigtable_request_duration_seconds',
                              dashboards['loki-reads.json'].matchers.querier + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/ReadRows')]
                            )
                          )
@@ -124,11 +124,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          $.row('BoltDB Shipper')
                          .addPanel(
                            $.panel('QPS') +
-                           $.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
+                           $.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
                          )
                          .addPanel(
                            $.panel('Latency') +
-                           $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
+                           $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
                          )
                        ),
   },
