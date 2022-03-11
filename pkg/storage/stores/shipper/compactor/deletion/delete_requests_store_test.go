@@ -30,7 +30,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			StartTime: now.Add(-i * time.Hour),
 			EndTime:   now.Add(-i * time.Hour).Add(30 * time.Minute),
 			CreatedAt: now.Add(-i * time.Hour).Add(30 * time.Minute),
-			Query:     fmt.Sprintf(`{foo="%d", user="%s"}`, i, user1),
+			Queries:   []string{fmt.Sprintf(`{foo="%d", user="%s"}`, i, user1)},
 			Status:    StatusReceived,
 		})
 		user2ExpectedRequests = append(user2ExpectedRequests, DeleteRequest{
@@ -38,7 +38,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			StartTime: now.Add(-i * time.Hour),
 			EndTime:   now.Add(-(i + 1) * time.Hour),
 			CreatedAt: now.Add(-(i + 1) * time.Hour),
-			Query:     fmt.Sprintf(`{foo="%d", user="%s"}`, i, user2),
+			Queries:   []string{fmt.Sprintf(`{foo="%d", user="%s"}`, i, user2)},
 			Status:    StatusReceived,
 		})
 	}
@@ -66,11 +66,11 @@ func TestDeleteRequestsStore(t *testing.T) {
 			user1ExpectedRequests[i].CreatedAt,
 			user1ExpectedRequests[i].StartTime,
 			user1ExpectedRequests[i].EndTime,
-			user1ExpectedRequests[i].Query,
+			user1ExpectedRequests[i].Queries,
 		)
 		require.NoError(t, err)
 		user1ExpectedRequests[i].RequestID = string(requestID)
-		require.NoError(t, user1ExpectedRequests[i].AddQuery(user1ExpectedRequests[i].Query))
+		require.NoError(t, user1ExpectedRequests[i].AddQueries(user1ExpectedRequests[i].Queries))
 
 		requestID, err = testDeleteRequestsStore.(*deleteRequestsStore).addDeleteRequest(
 			context.Background(),
@@ -78,11 +78,11 @@ func TestDeleteRequestsStore(t *testing.T) {
 			user2ExpectedRequests[i].CreatedAt,
 			user2ExpectedRequests[i].StartTime,
 			user2ExpectedRequests[i].EndTime,
-			user2ExpectedRequests[i].Query,
+			user2ExpectedRequests[i].Queries,
 		)
 		require.NoError(t, err)
 		user2ExpectedRequests[i].RequestID = string(requestID)
-		require.NoError(t, user2ExpectedRequests[i].AddQuery(user2ExpectedRequests[i].Query))
+		require.NoError(t, user2ExpectedRequests[i].AddQueries(user2ExpectedRequests[i].Queries))
 	}
 
 	// get all requests with StatusReceived and see if they have expected values

@@ -16,7 +16,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 	now := model.Now()
 	user1 := "user1"
 
-	lbls := `{foo="bar", fizz="buzz"}`
+	lbls := []string{`{foo="bar", fizz="buzz"}`}
 
 	chunkEntry := retention.ChunkEntry{
 		ChunkRef: retention.ChunkRef{
@@ -24,7 +24,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			From:    now.Add(-3 * time.Hour),
 			Through: now.Add(-time.Hour),
 		},
-		Labels: mustParseLabel(lbls),
+		Labels: mustParseLabel(lbls[0]),
 	}
 
 	type resp struct {
@@ -43,7 +43,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				UserID:    user1,
 				StartTime: now.Add(-3 * time.Hour),
 				EndTime:   now.Add(-time.Hour),
-				Query:     lbls,
+				Queries:   lbls,
 			},
 			expectedResp: resp{
 				isDeleted:           true,
@@ -56,7 +56,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				UserID:    user1,
 				StartTime: now.Add(-3 * time.Hour),
 				EndTime:   now.Add(-2 * time.Hour),
-				Query:     lbls,
+				Queries:   lbls,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -74,7 +74,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				UserID:    user1,
 				StartTime: now.Add(-2 * time.Hour),
 				EndTime:   now,
-				Query:     lbls,
+				Queries:   lbls,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -92,7 +92,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				UserID:    user1,
 				StartTime: now.Add(-2 * time.Hour),
 				EndTime:   now,
-				Query:     lbls,
+				Queries:   lbls,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -110,7 +110,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				UserID:    user1,
 				StartTime: now.Add(-(2*time.Hour + 30*time.Minute)),
 				EndTime:   now.Add(-(time.Hour + 30*time.Minute)),
-				Query:     lbls,
+				Queries:   lbls,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -132,7 +132,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				UserID:    user1,
 				StartTime: now.Add(-12 * time.Hour),
 				EndTime:   now.Add(-10 * time.Hour),
-				Query:     lbls,
+				Queries:   lbls,
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -144,7 +144,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				UserID:    "user1",
 				StartTime: now.Add(-3 * time.Hour),
 				EndTime:   now.Add(-time.Hour),
-				Query:     `{foo1="bar"}`,
+				Queries:   []string{`{foo1="bar"}`},
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -156,7 +156,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				UserID:    "user2",
 				StartTime: now.Add(-3 * time.Hour),
 				EndTime:   now.Add(-time.Hour),
-				Query:     lbls,
+				Queries:   lbls,
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -164,7 +164,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.NoError(t, tc.deleteRequest.AddQuery(tc.deleteRequest.Query))
+			require.NoError(t, tc.deleteRequest.AddQueries(tc.deleteRequest.Queries))
 			isDeleted, nonDeletedIntervals := tc.deleteRequest.IsDeleted(chunkEntry)
 			require.Equal(t, tc.expectedResp.isDeleted, isDeleted)
 			require.Equal(t, tc.expectedResp.nonDeletedIntervals, nonDeletedIntervals)

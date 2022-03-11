@@ -26,7 +26,7 @@ func (m mockDeleteRequestsStore) UpdateStatus(ctx context.Context, userID, reque
 	return nil
 }
 
-func (m mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, LogQLRequest string) error {
+func (m mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, LogQLRequest []string) error {
 	panic("implement me")
 }
 
@@ -90,7 +90,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    "different-user",
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
 				},
@@ -105,7 +105,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
 				},
@@ -120,7 +120,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-48 * time.Hour),
 					EndTime:   now.Add(-24 * time.Hour),
 				},
@@ -135,13 +135,13 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-48 * time.Hour),
 					EndTime:   now.Add(-24 * time.Hour),
 				},
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-12 * time.Hour),
 					EndTime:   now,
 				},
@@ -156,25 +156,25 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-13 * time.Hour),
 					EndTime:   now.Add(-11 * time.Hour),
 				},
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-10 * time.Hour),
 					EndTime:   now.Add(-8 * time.Hour),
 				},
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-6 * time.Hour),
 					EndTime:   now.Add(-5 * time.Hour),
 				},
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-2 * time.Hour),
 					EndTime:   now,
 				},
@@ -202,13 +202,13 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-13 * time.Hour),
 					EndTime:   now.Add(-6 * time.Hour),
 				},
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-8 * time.Hour),
 					EndTime:   now,
 				},
@@ -223,19 +223,19 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-12 * time.Hour),
 					EndTime:   now.Add(-6*time.Hour) - 1,
 				},
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-6 * time.Hour),
 					EndTime:   now.Add(-4*time.Hour) - 1,
 				},
 				{
 					UserID:    testUserID,
-					Query:     lblFoo.String(),
+					Queries:   []string{lblFoo.String()},
 					StartTime: now.Add(-4 * time.Hour),
 					EndTime:   now,
 				},

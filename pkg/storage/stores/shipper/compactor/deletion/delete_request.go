@@ -11,7 +11,7 @@ type DeleteRequest struct {
 	RequestID string              `json:"request_id"`
 	StartTime model.Time          `json:"start_time"`
 	EndTime   model.Time          `json:"end_time"`
-	Query     string              `json:"logql_requests"`
+	Queries   []string            `json:"logql_requests"`
 	Status    DeleteRequestStatus `json:"status"`
 	CreatedAt model.Time          `json:"created_at"`
 
@@ -19,13 +19,17 @@ type DeleteRequest struct {
 	matchers []*labels.Matcher `json:"-"`
 }
 
-func (d *DeleteRequest) AddQuery(logQL string) error {
-	d.Query = logQL
-	matchers, err := parseDeletionQuery(logQL)
-	if err != nil {
-		return err
+func (d *DeleteRequest) AddQueries(queries []string) error {
+	d.Queries = queries
+	for _, query := range queries {
+		matchers, err := parseDeletionQuery(query)
+		if err != nil {
+			return err
+		}
+
+		d.matchers = append(d.matchers, matchers...)
 	}
-	d.matchers = matchers
+
 	return nil
 }
 
