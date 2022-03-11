@@ -1,7 +1,6 @@
 package logproto
 
 import (
-	"crypto/sha256"
 	stdjson "encoding/json"
 	"fmt"
 	"math"
@@ -216,6 +215,7 @@ func init() {
 	jsoniter.RegisterTypeDecoderFunc("logproto.LegacySample", SampleJsoniterDecode)
 }
 
+// Combine unique values from multiple LabelResponses.
 func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
 	if len(responses) == 0 {
 		return nil, fmt.Errorf("no label responses to merge")
@@ -223,27 +223,28 @@ func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
 		return responses[0], nil
 	}
 
-	result := &LabelResponse{
-		Values: make([]string, 0, len(responses)),
-	}
-
-	unique := make(map[string]bool)
+	unique := map[string]struct{}{}
 
 	for _, r := range responses {
 		for _, v := range r.Values {
 			if _, ok := unique[v]; !ok {
-				unique[v] = true
-				result.Values = append(result.Values, r.Values...)
+				unique[v] = struct{}{}
 			} else {
 				continue
 			}
 		}
 	}
 
+	result := &LabelResponse{Values: make([]string, 0, len(unique))}
+
+	for value := range unique {
+		result.Values = append(result.Values, value)
+	}
+
 	return result, nil
 }
 
-// TODO(jordanrushing): Fix this / improve performance (it's so slow); is there a better way to return only the combination of unique SeriesIdentifier?
+// Combine unique label sets from multiple SeriesResponse.
 func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) {
 	if len(responses) == 0 {
 		return nil, fmt.Errorf("no series responses to merge")
@@ -251,29 +252,52 @@ func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) 
 		return responses[0], nil
 	}
 
-	// Hash the response struct and compare to avoid duplicates
-	hashString := func(r *SeriesResponse) string {
-		h := sha256.New()
-		h.Write([]byte(fmt.Sprintf("%v", r)))
-		return fmt.Sprintf("%x", h.Sum(nil))
-	}
-
-	result := &SeriesResponse{
-		Series: make([]SeriesIdentifier, 0, len(responses)),
-	}
-
-	unique := make(map[string]bool)
+	unique := make(map[string]SeriesIdentifier)
 
 	for _, r := range responses {
-		responseHash := hashString(r)
-
-		if _, ok := unique[responseHash]; !ok {
-			unique[responseHash] = true
-			result.Series = append(result.Series, r.Series...)
-		} else {
-			continue
+		for _, s := range r.Series {
+			key := LabelSet(s.Labels).String()
+			if _, ok := unique[key]; !ok {
+				unique[key] = s
+			} else {
+				continue
+			}
 		}
 	}
 
+	result := &SeriesResponse{
+		Series: make([]SeriesIdentifier, 0, len(unique)),
+	}
+
+	for _, s := range unique {
+		result.Series = append(result.Series, s)
+	}
+
 	return result, nil
+}
+
+type LabelSet map[string]string
+
+// Identical to loghttp.LabelSet.String() but implemented here to avoid an import cycle
+func (l LabelSet) String() string {
+	var b strings.Builder
+
+	keys := make([]string, 0, len(l))
+	for k := range l {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	b.WriteByte('{')
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteByte(',')
+			b.WriteByte(' ')
+		}
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(strconv.Quote(l[k]))
+	}
+	b.WriteByte('}')
+	return b.String()
 }

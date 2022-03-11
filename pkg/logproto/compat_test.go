@@ -282,18 +282,6 @@ func TestMergeSeriesResponses(t *testing.T) {
 			},
 		},
 		{
-			desc: "merge three series responses including non-unique",
-			responses: []*SeriesResponse{
-				{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
-				{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
-				{Series: []SeriesIdentifier{{Labels: map[string]string{"test2": "test2"}}}},
-				{Series: []SeriesIdentifier{{Labels: map[string]string{"test3": "test3"}}}},
-			},
-			expected: []*SeriesResponse{
-				mockSeriesResponse([]map[string]string{{"test": "test"}, {"test2": "test2"}, {"test3": "test3"}}),
-			},
-		},
-		{
 			desc:      "merge none and expect an error",
 			responses: []*SeriesResponse{},
 			expected:  nil,
