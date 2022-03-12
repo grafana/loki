@@ -145,9 +145,9 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
-				GatewayName:      "abc",
-				GatewayNamespace: "efgh",
-				LokiStackName:    "abc",
+				GatewayName:        "abc",
+				LokiStackName:      "abc",
+				LokiStackNamespace: "efgh",
 			},
 		},
 		Stack: lokiv1beta1.LokiStackSpec{
@@ -176,10 +176,10 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
 				GatewayName:          "abc",
-				GatewayNamespace:     "efgh",
 				GatewaySvcName:       serviceNameGatewayHTTP("abcd"),
 				GatewaySvcTargetPort: gatewayHTTPPortName,
 				LokiStackName:        "abc",
+				LokiStackNamespace:   "efgh",
 			},
 		},
 		Stack: lokiv1beta1.LokiStackSpec{
@@ -213,10 +213,10 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ServiceAccountNameMatches(t 
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
 				GatewayName:          GatewayName("abcd"),
-				GatewayNamespace:     "efgh",
 				GatewaySvcName:       serviceNameGatewayHTTP("abcd"),
 				GatewaySvcTargetPort: gatewayHTTPPortName,
 				LokiStackName:        "abc",
+				LokiStackNamespace:   "efgh",
 			},
 		},
 		Stack: lokiv1beta1.LokiStackSpec{
@@ -248,10 +248,10 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
 				GatewayName:          GatewayName("abcd"),
-				GatewayNamespace:     "efgh",
 				GatewaySvcName:       serviceNameGatewayHTTP("abcd"),
 				GatewaySvcTargetPort: gatewayHTTPPortName,
 				LokiStackName:        "abc",
+				LokiStackNamespace:   "efgh",
 			},
 		},
 		Stack: lokiv1beta1.LokiStackSpec{

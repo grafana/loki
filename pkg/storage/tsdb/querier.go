@@ -18,6 +18,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
@@ -40,6 +41,9 @@ func init() {
 
 // IndexReader provides reading access of serialized index data.
 type IndexReader interface {
+	// Bounds returns the earliest and latest samples in the index
+	Bounds() (int64, int64)
+
 	// Symbols return an iterator over sorted string symbols that may occur in
 	// series' labels and indices. It is not safe to use the returned strings
 	// beyond the lifetime of the index reader.
@@ -275,4 +279,59 @@ func findSetMatches(pattern string) []string {
 		}
 	}
 	return matches
+}
+
+func labelValuesWithMatchers(r IndexReader, name string, matchers ...*labels.Matcher) ([]string, error) {
+	// We're only interested in metrics which have the label <name>.
+	requireLabel, err := labels.NewMatcher(labels.MatchNotEqual, name, "")
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to instantiate label matcher")
+	}
+
+	var p index.Postings
+	p, err = PostingsForMatchers(r, append(matchers, requireLabel)...)
+	if err != nil {
+		return nil, err
+	}
+
+	dedupe := map[string]interface{}{}
+	for p.Next() {
+		v, err := r.LabelValueFor(p.At(), name)
+		if err != nil {
+			if err == storage.ErrNotFound {
+				continue
+			}
+
+			return nil, err
+		}
+		dedupe[v] = nil
+	}
+
+	if err = p.Err(); err != nil {
+		return nil, err
+	}
+
+	values := make([]string, 0, len(dedupe))
+	for value := range dedupe {
+		values = append(values, value)
+	}
+
+	return values, nil
+}
+
+func labelNamesWithMatchers(r IndexReader, matchers ...*labels.Matcher) ([]string, error) {
+	p, err := PostingsForMatchers(r, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	var postings []storage.SeriesRef
+	for p.Next() {
+		postings = append(postings, p.At())
+	}
+	if p.Err() != nil {
+		return nil, errors.Wrapf(p.Err(), "postings for label names with matchers")
+	}
+
+	return r.LabelNamesFor(postings...)
 }
