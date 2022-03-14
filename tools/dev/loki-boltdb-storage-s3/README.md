@@ -53,8 +53,8 @@ If you use vs-code, you can add this snippet bellow in your [`launch.json`](http
     "substitutePath": [
         {
             "from": "${workspaceFolder}",
-            "to": "${workspaceFolder}",
-        },
+            "to": "${workspaceFolder}"
+        }
     ],
     "port": 18002,
     "host": "127.0.0.1",
@@ -62,8 +62,8 @@ If you use vs-code, you can add this snippet bellow in your [`launch.json`](http
     "remotePath": "/loki/loki",
     "showLog": true,
     "trace": "log",
-    "logOutput": "rpc",
-},
+    "logOutput": "rpc"
+}
 ```
 
 Then you can debug `ingester-1` with the `Launch Loki remote` configuration within the debugging tab.
