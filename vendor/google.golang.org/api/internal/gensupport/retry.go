@@ -20,8 +20,8 @@ type Backoff interface {
 
 // These are declared as global variables so that tests can overwrite them.
 var (
-	// Per-chunk deadline for resumable uploads.
-	retryDeadline = 32 * time.Second
+	// Default per-chunk deadline for resumable uploads.
+	defaultRetryDeadline = 32 * time.Second
 	// Default backoff timer.
 	backoff = func() Backoff {
 		return &gax.Backoff{Initial: 100 * time.Millisecond}
@@ -36,6 +36,10 @@ const (
 	// should be retried.
 	// https://cloud.google.com/storage/docs/json_api/v1/status-codes#standardcodes
 	statusTooManyRequests = 429
+
+	// statusRequestTimeout is returned by the storage API if the
+	// upload connection was broken. The request should be retried.
+	statusRequestTimeout = 408
 )
 
 // shouldRetry indicates whether an error is retryable for the purposes of this
@@ -46,7 +50,7 @@ func shouldRetry(status int, err error) bool {
 	if 500 <= status && status <= 599 {
 		return true
 	}
-	if status == statusTooManyRequests {
+	if status == statusTooManyRequests || status == statusRequestTimeout {
 		return true
 	}
 	if err == io.ErrUnexpectedEOF {

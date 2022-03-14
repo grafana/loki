@@ -305,7 +305,7 @@ func newScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSeed 
 				return mutateSampleLabels(l, opts.target, opts.honorLabels, opts.mrc)
 			},
 			func(l labels.Labels) labels.Labels { return mutateReportSampleLabels(l, opts.target) },
-			func(ctx context.Context) storage.Appender { return appender(app.Appender(ctx), opts.sampleLimit) },
+			func(ctx context.Context) storage.Appender { return app.Appender(ctx) },
 			cache,
 			jitterSeed,
 			opts.honorTimestamps,
@@ -748,7 +748,7 @@ type targetScraper struct {
 
 var errBodySizeLimit = errors.New("body size limit exceeded")
 
-const acceptHeader = `application/openmetrics-text; version=0.0.1,text/plain;version=0.0.4;q=0.5,*/*;q=0.1`
+const acceptHeader = `application/openmetrics-text;version=1.0.0,application/openmetrics-text;version=0.0.1;q=0.75,text/plain;version=0.0.4;q=0.5,*/*;q=0.1`
 
 var UserAgent = fmt.Sprintf("Prometheus/%s", version.Version)
 
@@ -1418,13 +1418,24 @@ type appendErrors struct {
 }
 
 func (sl *scrapeLoop) append(app storage.Appender, b []byte, contentType string, ts time.Time) (total, added, seriesAdded int, err error) {
+	p, err := textparse.New(b, contentType)
+	if err != nil {
+		level.Debug(sl.l).Log(
+			"msg", "Invalid content type on scrape, using prometheus parser as fallback.",
+			"content_type", contentType,
+			"err", err,
+		)
+	}
+
 	var (
-		p              = textparse.New(b, contentType)
 		defTime        = timestamp.FromTime(ts)
 		appErrs        = appendErrors{}
 		sampleLimitErr error
 		e              exemplar.Exemplar // escapes to heap so hoisted out of loop
 	)
+
+	// Take an appender with limits.
+	app = appender(app, sl.sampleLimit)
 
 	defer func() {
 		if err != nil {
@@ -1766,9 +1777,6 @@ func zeroConfig(c *config.ScrapeConfig) *config.ScrapeConfig {
 	z.ScrapeInterval = 0
 	z.ScrapeTimeout = 0
 	z.SampleLimit = 0
-	z.LabelLimit = 0
-	z.LabelNameLengthLimit = 0
-	z.LabelValueLengthLimit = 0
 	z.HTTPClientConfig = config_util.HTTPClientConfig{}
 	return &z
 }

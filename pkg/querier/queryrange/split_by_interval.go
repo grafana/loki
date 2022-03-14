@@ -12,7 +12,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
@@ -293,13 +293,13 @@ func forInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 
 // maxRangeVectorDuration returns the maximum range vector duration within a LogQL query.
 func maxRangeVectorDuration(q string) (time.Duration, error) {
-	expr, err := logql.ParseSampleExpr(q)
+	expr, err := syntax.ParseSampleExpr(q)
 	if err != nil {
 		return 0, err
 	}
 	var max time.Duration
 	expr.Walk(func(e interface{}) {
-		if r, ok := e.(*logql.LogRange); ok && r.Interval > max {
+		if r, ok := e.(*syntax.LogRange); ok && r.Interval > max {
 			max = r.Interval
 		}
 	})

@@ -507,7 +507,6 @@ func (q *SingleTenantQuerier) seriesForMatchers(
 	groups []string,
 	shards []string,
 ) ([]logproto.SeriesIdentifier, error) {
-
 	var results []logproto.SeriesIdentifier
 	// If no matchers were specified for the series query,
 	// we send a query with an empty matcher which will match every series.

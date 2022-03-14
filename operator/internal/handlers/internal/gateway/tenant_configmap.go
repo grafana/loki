@@ -43,7 +43,7 @@ type openShiftSpec struct {
 // clusters to auto-create redirect URLs for OpenShift Auth or an error.
 func GetTenantConfigMapData(ctx context.Context, k k8s.Client, req ctrl.Request) map[string]openshift.TenantData {
 	var tenantConfigMap corev1.ConfigMap
-	key := client.ObjectKey{Name: manifests.LabelGatewayComponent, Namespace: req.Namespace}
+	key := client.ObjectKey{Name: manifests.GatewayName(req.Name), Namespace: req.Namespace}
 	if err := k.Get(ctx, key, &tenantConfigMap); err != nil {
 		log.Error(err, "couldn't find")
 		return nil
