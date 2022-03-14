@@ -108,18 +108,6 @@ func (m mockIndex) Postings(name string, values ...string) (Postings, error) {
 	return Merge(p...), nil
 }
 
-func (m mockIndex) SortedPostings(p Postings) Postings {
-	ep, err := ExpandPostings(p)
-	if err != nil {
-		return ErrPostings(errors.Wrap(err, "expand postings"))
-	}
-
-	sort.Slice(ep, func(i, j int) bool {
-		return labels.Compare(m.series[ep[i]].l, m.series[ep[j]].l) < 0
-	})
-	return NewListPostings(ep)
-}
-
 func (m mockIndex) Series(ref storage.SeriesRef, lset *labels.Labels, chks *[]ChunkMeta) error {
 	s, ok := m.series[ref]
 	if !ok {

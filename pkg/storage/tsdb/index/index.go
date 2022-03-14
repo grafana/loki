@@ -1817,12 +1817,6 @@ func (r *Reader) Postings(name string, values ...string) (Postings, error) {
 	return Merge(res...), nil
 }
 
-// SortedPostings returns the given postings list reordered so that the backing series
-// are sorted.
-func (r *Reader) SortedPostings(p Postings) Postings {
-	return p
-}
-
 // Size returns the size of an index file.
 func (r *Reader) Size() int64 {
 	return int64(r.b.Len())

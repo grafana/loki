@@ -61,10 +61,6 @@ type IndexReader interface {
 	// during background garbage collections. Input values must be sorted.
 	Postings(name string, values ...string) (index.Postings, error)
 
-	// SortedPostings returns a postings list that is reordered to be sorted
-	// by the label set of the underlying series.
-	SortedPostings(index.Postings) index.Postings
-
 	// Series populates the given labels and chunk metas for the series identified
 	// by the reference.
 	// Returns storage.ErrNotFound if the ref does not resolve to a known series.
