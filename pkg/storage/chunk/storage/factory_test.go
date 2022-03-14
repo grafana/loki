@@ -42,7 +42,7 @@ func TestFactoryStop(t *testing.T) {
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 	metrics := NewClientMetrics()
-	store, err := NewStore(cfg, storeConfig, schemaConfig, nil /* index gateway ring */, limits, metrics, nil, nil, log.NewNopLogger())
+	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, metrics, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	store.Stop()
@@ -188,7 +188,7 @@ func TestCassandraInMultipleSchemas(t *testing.T) {
 	require.NoError(t, err)
 
 	metrics := NewClientMetrics()
-	store, err := NewStore(cfg, storeConfig, schemaCfg, nil /* index gateway ring */, limits, metrics, nil, nil, log.NewNopLogger())
+	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, metrics, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	store.Stop()

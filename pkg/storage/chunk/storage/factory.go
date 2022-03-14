@@ -168,7 +168,6 @@ func NewStore(
 	cfg Config,
 	storeCfg chunk.StoreConfig,
 	schemaCfg chunk.SchemaConfig,
-	indexGatewayRing ring.ReadRing,
 	limits StoreLimits,
 	clientMetrics ClientMetrics,
 	reg prometheus.Registerer,
@@ -216,7 +215,7 @@ func NewStore(
 		indexClientReg := prometheus.WrapRegistererWith(
 			prometheus.Labels{"component": "index-store-" + s.From.String()}, reg)
 
-		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, indexGatewayRing, limits, indexClientReg)
+		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, cfg.BoltDBConfig.Ring, limits, indexClientReg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
