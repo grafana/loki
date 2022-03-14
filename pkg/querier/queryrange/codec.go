@@ -897,6 +897,9 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 }
 
 func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
+	if len(responses) == 0 {
+		return nil
+	}
 	var (
 		lokiRes       = responses[0].(*LokiResponse)
 		mergedStats   stats.Result
