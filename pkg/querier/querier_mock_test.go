@@ -43,6 +43,11 @@ func (c *querierClientMock) Query(ctx context.Context, in *logproto.QueryRequest
 	return args.Get(0).(logproto.Querier_QueryClient), args.Error(1)
 }
 
+func (c *querierClientMock) QuerySample(ctx context.Context, in *logproto.SampleQueryRequest, opts ...grpc.CallOption) (logproto.Querier_QuerySampleClient, error) {
+	args := c.Called(ctx, in, opts)
+	return args.Get(0).(logproto.Querier_QuerySampleClient), args.Error(1)
+}
+
 func (c *querierClientMock) Label(ctx context.Context, in *logproto.LabelRequest, opts ...grpc.CallOption) (*logproto.LabelResponse, error) {
 	args := c.Called(ctx, in, opts)
 	return args.Get(0).(*logproto.LabelResponse), args.Error(1)
@@ -138,6 +143,49 @@ func (c *queryClientMock) RecvMsg(m interface{}) error {
 }
 
 func (c *queryClientMock) Context() context.Context {
+	return context.Background()
+}
+
+// queryClientMock is a mockable version of Querier_QueryClient
+type querySampleClientMock struct {
+	util.ExtendedMock
+	logproto.Querier_QueryClient
+}
+
+func newQuerySampleClientMock() *querySampleClientMock {
+	return &querySampleClientMock{}
+}
+
+func (c *querySampleClientMock) Recv() (*logproto.SampleQueryResponse, error) {
+	args := c.Called()
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.SampleQueryResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.SampleQueryResponse), args.Error(1)
+}
+
+func (c *querySampleClientMock) Header() (grpc_metadata.MD, error) {
+	return nil, nil
+}
+
+func (c *querySampleClientMock) Trailer() grpc_metadata.MD {
+	return nil
+}
+
+func (c *querySampleClientMock) CloseSend() error {
+	return nil
+}
+
+func (c *querySampleClientMock) SendMsg(m interface{}) error {
+	return nil
+}
+
+func (c *querySampleClientMock) RecvMsg(m interface{}) error {
+	return nil
+}
+
+func (c *querySampleClientMock) Context() context.Context {
 	return context.Background()
 }
 
@@ -379,6 +427,13 @@ func mockInstanceDesc(addr string, state ring.InstanceState) ring.InstanceDesc {
 // starting at from
 func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 	return iter.NewStreamIterator(mockStream(from, quantity))
+}
+
+// mockSampleIterator returns an iterator with 1 stream and quantity entries,
+// where entries timestamp and line string are constructed as sequential numbers
+// starting at from
+func mockSampleIterator(client iter.QuerySampleClient) iter.SampleIterator {
+	return iter.NewSampleQueryClientIterator(client)
 }
 
 // mockStream return a stream with quantity entries, where entries timestamp and

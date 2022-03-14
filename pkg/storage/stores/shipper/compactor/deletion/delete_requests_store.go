@@ -63,6 +63,10 @@ func NewDeleteStore(workingDirectory string, indexStorageClient storage.Client) 
 	return &deleteRequestsStore{indexClient: indexClient}, nil
 }
 
+func NewDeleteStoreFromIndexClient(ic chunk.IndexClient) DeleteRequestsStore {
+	return &deleteRequestsStore{ic}
+}
+
 func (ds *deleteRequestsStore) Stop() {
 	ds.indexClient.Stop()
 }
