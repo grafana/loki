@@ -37,11 +37,12 @@ type AuthorizationSpec struct {
 // on openshift.
 type BuildOptions struct {
 	LokiStackName                   string
+	LokiStackNamespace              string
 	GatewayName                     string
-	GatewayNamespace                string
 	GatewaySvcName                  string
 	GatewaySvcTargetPort            string
 	Labels                          map[string]string
+	EnableServiceMonitors           bool
 	EnableCertificateSigningService bool
 }
 
@@ -53,13 +54,14 @@ type TenantData struct {
 
 // NewOptions returns an openshift options struct.
 func NewOptions(
-	stackName string,
-	gwName, gwNamespace, gwBaseDomain, gwSvcName, gwPortName string,
+	stackName, stackNamespace string,
+	gwName, gwBaseDomain, gwSvcName, gwPortName string,
 	gwLabels map[string]string,
+	enableServiceMonitors bool,
 	enableCertSigningService bool,
 	tenantConfigMap map[string]TenantData,
 ) Options {
-	host := ingressHost(stackName, gwNamespace, gwBaseDomain)
+	host := ingressHost(stackName, stackNamespace, gwBaseDomain)
 
 	var authn []AuthenticationSpec
 	for _, name := range defaultTenants {
@@ -85,11 +87,12 @@ func NewOptions(
 	return Options{
 		BuildOpts: BuildOptions{
 			LokiStackName:                   stackName,
+			LokiStackNamespace:              stackNamespace,
 			GatewayName:                     gwName,
-			GatewayNamespace:                gwNamespace,
 			GatewaySvcName:                  gwSvcName,
 			GatewaySvcTargetPort:            gwPortName,
 			Labels:                          gwLabels,
+			EnableServiceMonitors:           enableServiceMonitors,
 			EnableCertificateSigningService: enableCertSigningService,
 		},
 		Authentication: authn,
