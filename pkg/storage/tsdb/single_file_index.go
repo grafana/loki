@@ -6,7 +6,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
@@ -27,7 +26,7 @@ func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
 }
 
 func (i *TSDBIndex) forSeries(
-	shard *astmapper.ShardAnnotation,
+	shard *index.ShardAnnotation,
 	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
 	matchers ...*labels.Matcher,
 ) error {
@@ -57,7 +56,7 @@ func (i *TSDBIndex) forSeries(
 	return p.Err()
 }
 
-func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through model.Time, shard *astmapper.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	queryBounds := newBounds(from, through)
 	var res []ChunkRef // TODO(owen-d): pool, reduce allocs
 
@@ -87,7 +86,7 @@ func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through
 	return res, nil
 }
 
-func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time, shard *astmapper.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
 	queryBounds := newBounds(from, through)
 	var res []Series // TODO(owen-d): pool, reduce allocs
 

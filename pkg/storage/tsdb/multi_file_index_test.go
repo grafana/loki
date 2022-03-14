@@ -73,13 +73,6 @@ func TestMultiIndex(t *testing.T) {
 		expected := []ChunkRef{
 			{
 				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
-				Start:       1,
-				End:         10,
-				Checksum:    3,
-			},
-			{
-				User:        "fake",
 				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
 				Start:       0,
 				End:         3,
@@ -99,6 +92,13 @@ func TestMultiIndex(t *testing.T) {
 				End:         5,
 				Checksum:    2,
 			},
+			{
+				User:        "fake",
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+				Start:       1,
+				End:         10,
+				Checksum:    3,
+			},
 		}
 		require.Equal(t, expected, refs)
 	})
@@ -108,12 +108,12 @@ func TestMultiIndex(t *testing.T) {
 		require.Nil(t, err)
 		expected := []Series{
 			{
-				Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
-			},
-			{
 				Labels:      mustParseLabels(`{foo="bar"}`),
 				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+			},
+			{
+				Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
 			},
 		}
 

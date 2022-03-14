@@ -104,16 +104,13 @@ func TestQueryIndex(t *testing.T) {
 	require.True(t, p.Next())
 	_, err = reader.Series(p.At(), &ls, &chks)
 	require.Nil(t, err)
-	// the second series should be the first returned as it's lexicographically sorted
-	// and bazz < foo
-	require.Equal(t, cases[1].labels.String(), ls.String())
-	require.Equal(t, cases[1].chunks, chks)
+	require.Equal(t, cases[0].labels.String(), ls.String())
+	require.Equal(t, cases[0].chunks, chks)
 	require.True(t, p.Next())
 	_, err = reader.Series(p.At(), &ls, &chks)
 	require.Nil(t, err)
-	// Now we should encounter the series "added" first.
-	require.Equal(t, cases[0].labels.String(), ls.String())
-	require.Equal(t, cases[0].chunks, chks)
+	require.Equal(t, cases[1].labels.String(), ls.String())
+	require.Equal(t, cases[1].chunks, chks)
 	require.False(t, p.Next())
 
 	mint, maxt := reader.Bounds()

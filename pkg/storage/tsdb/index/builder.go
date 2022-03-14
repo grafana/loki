@@ -52,7 +52,7 @@ func (b *Builder) Build(ctx context.Context, dir string) error {
 		streams = append(streams, s)
 	}
 	sort.Slice(streams, func(i, j int) bool {
-		return labels.Compare(streams[i].labels, streams[j].labels) < 0
+		return streams[i].labels.Hash() < streams[j].labels.Hash()
 	})
 
 	// Build symbols
