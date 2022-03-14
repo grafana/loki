@@ -1006,7 +1006,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, ok := pipeline.ProcessString(e.s)
+		newLine, parsedLbs, ok := pipeline.ProcessString(e.t, e.s)
 		if !ok {
 			return
 		}
@@ -1056,7 +1056,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 
 	for _, e := range hb.entries {
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.s)
+		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s)
 		if !ok {
 			continue
 		}
@@ -1263,7 +1263,7 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, lbs, ok := e.pipeline.Process(e.currLine)
+		newLine, lbs, ok := e.pipeline.Process(e.currTs, e.currLine)
 		if !ok {
 			continue
 		}
@@ -1294,7 +1294,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currLine)
+		val, labels, ok := e.extractor.Process(e.currTs, e.currLine)
 		if !ok {
 			continue
 		}

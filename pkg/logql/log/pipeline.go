@@ -19,8 +19,8 @@ type Pipeline interface {
 // A StreamPipeline never mutate the received line.
 type StreamPipeline interface {
 	BaseLabels() LabelsResult
-	Process(line []byte) (resultLine []byte, resultLabels LabelsResult, skip bool)
-	ProcessString(line string) (resultLine string, resultLabels LabelsResult, skip bool)
+	Process(ts int64, line []byte) (resultLine []byte, resultLabels LabelsResult, skip bool)
+	ProcessString(ts int64, line string) (resultLine string, resultLabels LabelsResult, skip bool)
 }
 
 // Stage is a single step of a Pipeline.
@@ -52,11 +52,11 @@ type noopStreamPipeline struct {
 	LabelsResult
 }
 
-func (n noopStreamPipeline) Process(line []byte) ([]byte, LabelsResult, bool) {
+func (n noopStreamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
 	return line, n.LabelsResult, true
 }
 
-func (n noopStreamPipeline) ProcessString(line string) (string, LabelsResult, bool) {
+func (n noopStreamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
 	return line, n.LabelsResult, true
 }
 
@@ -135,7 +135,7 @@ func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	return res
 }
 
-func (p *streamPipeline) Process(line []byte) ([]byte, LabelsResult, bool) {
+func (p *streamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
 	for _, s := range p.stages {
@@ -147,10 +147,10 @@ func (p *streamPipeline) Process(line []byte) ([]byte, LabelsResult, bool) {
 	return line, p.builder.LabelsResult(), true
 }
 
-func (p *streamPipeline) ProcessString(line string) (string, LabelsResult, bool) {
+func (p *streamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
 	// Stages only read from the line.
 	lb := unsafeGetBytes(line)
-	lb, lr, ok := p.Process(lb)
+	lb, lr, ok := p.Process(ts, lb)
 	// either the line is unchanged and we can just send back the same string.
 	// or we created a new buffer for it in which case it is still safe to avoid the string(byte) copy.
 	return unsafeGetString(lb), lr, ok
