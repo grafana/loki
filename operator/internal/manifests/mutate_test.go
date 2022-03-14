@@ -369,7 +369,6 @@ func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
 	require.Exactly(t, got.Annotations, want.Annotations)
 	require.Exactly(t, got.RoleRef, roleRef)
 	require.Exactly(t, got.Subjects, want.Subjects)
-
 }
 
 func TestGetMutateFunc_MutateRole(t *testing.T) {

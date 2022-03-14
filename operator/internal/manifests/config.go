@@ -76,5 +76,5 @@ func ConfigOptions(opt Options) config.Options {
 }
 
 func lokiConfigMapName(stackName string) string {
-	return fmt.Sprintf("loki-config-%s", stackName)
+	return fmt.Sprintf("%s-config", stackName)
 }
