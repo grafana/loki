@@ -229,7 +229,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
-		t.Querier = querier.NewMultiTenantQuerier(*q, util_log.Logger)
+		t.Querier = querier.NewMultiTenantQuerier(q, util_log.Logger)
 	} else {
 		t.Querier = q
 	}
@@ -763,14 +763,14 @@ func (t *Loki) initQueryScheduler() (services.Service, error) {
 }
 
 func (t *Loki) initUsageReport() (services.Service, error) {
-	if t.Cfg.UsageReport.Disabled {
+	if !t.Cfg.UsageReport.Enabled {
 		return nil, nil
 	}
 	t.Cfg.UsageReport.Leader = false
 	if t.isModuleActive(Ingester) {
 		t.Cfg.UsageReport.Leader = true
 	}
-	usagestats.Edition("oss")
+
 	usagestats.Target(t.Cfg.Target.String())
 	period, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
 	if err != nil {

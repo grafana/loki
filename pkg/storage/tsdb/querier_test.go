@@ -113,4 +113,8 @@ func TestQueryIndex(t *testing.T) {
 	require.Equal(t, cases[0].labels.String(), ls.String())
 	require.Equal(t, cases[0].chunks, chks)
 	require.False(t, p.Next())
+
+	mint, maxt := reader.Bounds()
+	require.Equal(t, int64(1), mint)
+	require.Equal(t, int64(50), maxt)
 }

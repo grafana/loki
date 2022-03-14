@@ -78,10 +78,6 @@ func (r *shardRecorder) Finish() {
 	}
 }
 
-func badASTMapping(expected string, got Expr) error {
-	return fmt.Errorf("Bad AST mapping: expected one type (%s), but got (%T)", expected, got)
-}
-
 func NewShardMapper(shards int, metrics *ShardingMetrics) (ShardMapper, error) {
 	if shards < 2 {
 		return ShardMapper{}, fmt.Errorf("Cannot create ShardMapper with <2 shards. Received %d", shards)
@@ -154,11 +150,11 @@ func (m ShardMapper) Map(expr Expr, r *shardRecorder) (Expr, error) {
 		}
 		lhsSampleExpr, ok := lhsMapped.(SampleExpr)
 		if !ok {
-			return nil, badASTMapping("SampleExpr", lhsMapped)
+			return nil, badASTMapping(lhsMapped)
 		}
 		rhsSampleExpr, ok := rhsMapped.(SampleExpr)
 		if !ok {
-			return nil, badASTMapping("SampleExpr", rhsMapped)
+			return nil, badASTMapping(rhsMapped)
 		}
 		e.SampleExpr = lhsSampleExpr
 		e.RHS = rhsSampleExpr
@@ -218,7 +214,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr, r *sh
 		}
 		sampleExpr, ok := subMapped.(SampleExpr)
 		if !ok {
-			return nil, badASTMapping("SampleExpr", subMapped)
+			return nil, badASTMapping(subMapped)
 		}
 
 		return &VectorAggregationExpr{

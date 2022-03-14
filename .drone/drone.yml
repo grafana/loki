@@ -1060,11 +1060,11 @@ name: ecr_secret_key
 ---
 get:
   name: config.json
-  path: common/loki/ci/autodeploy
+  path: secret/data/common/loki_ci_autodeploy
 kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 6fdb7d9dd0a3d62a7e1a8eaec15ec5e7b940fafb7362261d86730d5523e16e43
+hmac: 835c89da39567393f70fb1848d9f010d3276a4ff2e7dd9089b8ea70eee7beb1a
 
 ...
