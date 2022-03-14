@@ -203,7 +203,7 @@ To help with testing and development, a [Promtail](https://grafana.com/docs/loki
 In order to deploy these resources, follow the above steps to deploy the operator and instance. Then, do the following command:
 
 ```console
-kubectl apply -f ./hack/addons.yaml
+kubectl apply -f ./hack/addons_dev.yaml
 ```
 
 ## Basic Troubleshooting on Hacking on Loki Operator
