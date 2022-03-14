@@ -1,4 +1,4 @@
-package logql
+package syntax
 
 import (
 	"strings"
@@ -21,27 +21,47 @@ func TestLex(t *testing.T) {
 		{`{foo="bar"} |~ "\\w+" | foo = 0ms`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, IDENTIFIER, EQ, DURATION}},
 		{`{foo="bar"} |~ "\\w+" | latency > 1h15m30.918273645s`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, IDENTIFIER, GT, DURATION}},
 		{`{foo="bar"} |~ "\\w+" | latency > 1h0.0m0s`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, IDENTIFIER, GT, DURATION}},
-		{`{foo="bar"} |~ "\\w+" | latency > 1h0.0m0s or foo == 4.00 and bar ="foo"`,
-			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING,
-				PIPE, IDENTIFIER, GT, DURATION, OR, IDENTIFIER, CMP_EQ, NUMBER, AND, IDENTIFIER, EQ, STRING}},
-		{`{foo="bar"} |~ "\\w+" | duration > 1h0.0m0s or avg == 4.00 and bar ="foo"`,
-			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING,
-				PIPE, IDENTIFIER, GT, DURATION, OR, IDENTIFIER, CMP_EQ, NUMBER, AND, IDENTIFIER, EQ, STRING}},
-		{`{foo="bar"} |~ "\\w+" | latency > 1h0.0m0s or foo == 4.00 and bar ="foo" | unwrap foo`,
-			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING,
-				PIPE, IDENTIFIER, GT, DURATION, OR, IDENTIFIER, CMP_EQ, NUMBER, AND, IDENTIFIER, EQ, STRING, PIPE, UNWRAP, IDENTIFIER}},
+		{
+			`{foo="bar"} |~ "\\w+" | latency > 1h0.0m0s or foo == 4.00 and bar ="foo"`,
+			[]int{
+				OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING,
+				PIPE, IDENTIFIER, GT, DURATION, OR, IDENTIFIER, CMP_EQ, NUMBER, AND, IDENTIFIER, EQ, STRING,
+			},
+		},
+		{
+			`{foo="bar"} |~ "\\w+" | duration > 1h0.0m0s or avg == 4.00 and bar ="foo"`,
+			[]int{
+				OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING,
+				PIPE, IDENTIFIER, GT, DURATION, OR, IDENTIFIER, CMP_EQ, NUMBER, AND, IDENTIFIER, EQ, STRING,
+			},
+		},
+		{
+			`{foo="bar"} |~ "\\w+" | latency > 1h0.0m0s or foo == 4.00 and bar ="foo" | unwrap foo`,
+			[]int{
+				OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING,
+				PIPE, IDENTIFIER, GT, DURATION, OR, IDENTIFIER, CMP_EQ, NUMBER, AND, IDENTIFIER, EQ, STRING, PIPE, UNWRAP, IDENTIFIER,
+			},
+		},
 		{`{foo="bar"} |~ "\\w+" | size > 250kB`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, IDENTIFIER, GT, BYTES}},
-		{`{foo="bar"} |~ "\\w+" | size > 250kB and latency <= 1h15m30s or bar=1`,
-			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE,
-				IDENTIFIER, GT, BYTES, AND, IDENTIFIER, LTE, DURATION, OR, IDENTIFIER, EQ, NUMBER}},
-		{`{foo="bar"} |~ "\\w+" | size > 200MiB or foo == 4.00`,
-			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, IDENTIFIER, GT, BYTES, OR, IDENTIFIER, CMP_EQ, NUMBER}},
+		{
+			`{foo="bar"} |~ "\\w+" | size > 250kB and latency <= 1h15m30s or bar=1`,
+			[]int{
+				OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE,
+				IDENTIFIER, GT, BYTES, AND, IDENTIFIER, LTE, DURATION, OR, IDENTIFIER, EQ, NUMBER,
+			},
+		},
+		{
+			`{foo="bar"} |~ "\\w+" | size > 200MiB or foo == 4.00`,
+			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, IDENTIFIER, GT, BYTES, OR, IDENTIFIER, CMP_EQ, NUMBER},
+		},
 		{`{ foo = "bar" }`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
 		{`{ foo != "bar" }`, []int{OPEN_BRACE, IDENTIFIER, NEQ, STRING, CLOSE_BRACE}},
 		{`{ foo =~ "bar" }`, []int{OPEN_BRACE, IDENTIFIER, RE, STRING, CLOSE_BRACE}},
 		{`{ foo !~ "bar" }`, []int{OPEN_BRACE, IDENTIFIER, NRE, STRING, CLOSE_BRACE}},
-		{`{ foo = "bar", bar != "baz" }`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING,
-			COMMA, IDENTIFIER, NEQ, STRING, CLOSE_BRACE}},
+		{`{ foo = "bar", bar != "baz" }`, []int{
+			OPEN_BRACE, IDENTIFIER, EQ, STRING,
+			COMMA, IDENTIFIER, NEQ, STRING, CLOSE_BRACE,
+		}},
 		{`{ foo = "ba\"r" }`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
 		{`rate({foo="bar"}[10s])`, []int{RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS}},
 		{`count_over_time({foo="bar"}[5m])`, []int{COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS}},

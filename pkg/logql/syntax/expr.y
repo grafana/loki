@@ -1,5 +1,5 @@
 %{
-package logql
+package syntax
 
 import (
   "time"

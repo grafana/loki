@@ -16,8 +16,8 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -310,7 +310,7 @@ type logBatchIterator struct {
 
 	ctx      context.Context
 	cancel   context.CancelFunc
-	pipeline logql.Pipeline
+	pipeline syntax.Pipeline
 }
 
 func newLogBatchIterator(
@@ -320,7 +320,7 @@ func newLogBatchIterator(
 	chunks []*LazyChunk,
 	batchSize int,
 	matchers []*labels.Matcher,
-	pipeline logql.Pipeline,
+	pipeline syntax.Pipeline,
 	direction logproto.Direction,
 	start, end time.Time,
 	chunkFilterer ChunkFilterer,
@@ -456,7 +456,7 @@ type sampleBatchIterator struct {
 
 	ctx       context.Context
 	cancel    context.CancelFunc
-	extractor logql.SampleExtractor
+	extractor syntax.SampleExtractor
 }
 
 func newSampleBatchIterator(
@@ -466,7 +466,7 @@ func newSampleBatchIterator(
 	chunks []*LazyChunk,
 	batchSize int,
 	matchers []*labels.Matcher,
-	extractor logql.SampleExtractor,
+	extractor syntax.SampleExtractor,
 	start, end time.Time,
 	chunkFilterer ChunkFilterer,
 ) (iter.SampleIterator, error) {

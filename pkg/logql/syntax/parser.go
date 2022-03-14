@@ -1,20 +1,16 @@
-package logql
+package syntax
 
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"sort"
 	"strings"
 	"sync"
 	"text/scanner"
 
-	errors2 "github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -142,7 +138,7 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 	if !ok {
 		return nil, errors.New("only label matchers is supported")
 	}
-	return matcherExpr.matchers, nil
+	return matcherExpr.Mts, nil
 }
 
 // ParseSampleExpr parses a string and returns the sampleExpr
@@ -200,35 +196,4 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 	}
 	sort.Sort(ls)
 	return ls, nil
-}
-
-// Match extracts and parses multiple matcher groups from a slice of strings
-func Match(xs []string) ([][]*labels.Matcher, error) {
-	groups := make([][]*labels.Matcher, 0, len(xs))
-	for _, x := range xs {
-		ms, err := ParseMatchers(x)
-		if err != nil {
-			return nil, err
-		}
-		if len(ms) == 0 {
-			return nil, errors2.Errorf("0 matchers in group: %s", x)
-		}
-		groups = append(groups, ms)
-	}
-
-	return groups, nil
-}
-
-func ParseAndValidateSeriesQuery(r *http.Request) (*logproto.SeriesRequest, error) {
-	req, err := loghttp.ParseSeriesQuery(r)
-	if err != nil {
-		return nil, err
-	}
-	// ensure matchers are valid before fanning out to ingesters/store as well as returning valuable parsing errors
-	// instead of 500s
-	_, err = Match(req.Groups)
-	if err != nil {
-		return nil, err
-	}
-	return req, nil
 }

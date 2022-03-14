@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
@@ -130,8 +131,8 @@ var samples = []logproto.Sample{
 }
 
 var (
-	labelFoo, _ = logql.ParseLabels("{app=\"foo\"}")
-	labelBar, _ = logql.ParseLabels("{app=\"bar\"}")
+	labelFoo, _ = syntax.ParseLabels("{app=\"foo\"}")
+	labelBar, _ = syntax.ParseLabels("{app=\"bar\"}")
 )
 
 func newSampleIterator() iter.SampleIterator {

@@ -1,14 +1,17 @@
-package logql
+package syntax
 
 import (
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logql/log"
 )
+
+var labelBar, _ = ParseLabels("{app=\"bar\"}")
 
 func Test_logSelectorExpr_String(t *testing.T) {
 	t.Parallel()
@@ -482,4 +485,24 @@ func Test_canInjectVectorGrouping(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_MergeBinOpVectors_Filter(t *testing.T) {
+	res := MergeBinOp(
+		OpTypeGT,
+		&promql.Sample{
+			Point: promql.Point{V: 2},
+		},
+		&promql.Sample{
+			Point: promql.Point{V: 0},
+		},
+		true,
+		true,
+	)
+
+	// ensure we return the left hand side's value (2) instead of the
+	// comparison operator's result (1: the truthy answer)
+	require.Equal(t, &promql.Sample{
+		Point: promql.Point{V: 2},
+	}, res)
 }

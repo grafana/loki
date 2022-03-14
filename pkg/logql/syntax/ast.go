@@ -1,19 +1,18 @@
-package logql
+package syntax
 
 import (
-	"context"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
@@ -30,63 +29,10 @@ func Clone(e Expr) (Expr, error) {
 	return ParseExpr(e.String())
 }
 
-type QueryParams interface {
-	LogSelector() (LogSelectorExpr, error)
-	GetStart() time.Time
-	GetEnd() time.Time
-	GetShards() []string
-}
-
 // implicit holds default implementations
 type implicit struct{}
 
 func (implicit) logQLExpr() {}
-
-// SelectParams specifies parameters passed to data selections.
-type SelectLogParams struct {
-	*logproto.QueryRequest
-}
-
-func (s SelectLogParams) String() string {
-	if s.QueryRequest != nil {
-		return fmt.Sprintf("selector=%s, direction=%s, start=%s, end=%s, limit=%d, shards=%s",
-			s.Selector, logproto.Direction_name[int32(s.Direction)], s.Start, s.End, s.Limit, strings.Join(s.Shards, ","))
-	}
-	return ""
-}
-
-// LogSelector returns the LogSelectorExpr from the SelectParams.
-// The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
-func (s SelectLogParams) LogSelector() (LogSelectorExpr, error) {
-	return ParseLogSelector(s.Selector, true)
-}
-
-type SelectSampleParams struct {
-	*logproto.SampleQueryRequest
-}
-
-// Expr returns the SampleExpr from the SelectSampleParams.
-// The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
-func (s SelectSampleParams) Expr() (SampleExpr, error) {
-	return ParseSampleExpr(s.Selector)
-}
-
-// LogSelector returns the LogSelectorExpr from the SelectParams.
-// The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
-func (s SelectSampleParams) LogSelector() (LogSelectorExpr, error) {
-	expr, err := ParseSampleExpr(s.Selector)
-	if err != nil {
-		return nil, err
-	}
-	return expr.Selector(), nil
-}
-
-// Querier allows a LogQL expression to fetch an EntryIterator for a
-// set of matchers and filters
-type Querier interface {
-	SelectLogs(context.Context, SelectLogParams) (iter.EntryIterator, error)
-	SelectSamples(context.Context, SelectSampleParams) (iter.SampleIterator, error)
-}
 
 // LogSelectorExpr is a LogQL expression filtering and returning logs.
 type LogSelectorExpr interface {
@@ -154,20 +100,20 @@ func (m MultiStageExpr) String() string {
 func (MultiStageExpr) logQLExpr() {} // nolint:unused
 
 type MatchersExpr struct {
-	matchers []*labels.Matcher
+	Mts []*labels.Matcher
 	implicit
 }
 
 func newMatcherExpr(matchers []*labels.Matcher) *MatchersExpr {
-	return &MatchersExpr{matchers: matchers}
+	return &MatchersExpr{Mts: matchers}
 }
 
 func (e *MatchersExpr) Matchers() []*labels.Matcher {
-	return e.matchers
+	return e.Mts
 }
 
 func (e *MatchersExpr) AppendMatchers(m []*labels.Matcher) {
-	e.matchers = append(e.matchers, m...)
+	e.Mts = append(e.Mts, m...)
 }
 
 func (e *MatchersExpr) Shardable() bool { return true }
@@ -177,9 +123,9 @@ func (e *MatchersExpr) Walk(f WalkFn) { f(e) }
 func (e *MatchersExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString("{")
-	for i, m := range e.matchers {
+	for i, m := range e.Mts {
 		sb.WriteString(m.String())
-		if i+1 != len(e.matchers) {
+		if i+1 != len(e.Mts) {
 			sb.WriteString(", ")
 		}
 	}
@@ -764,10 +710,6 @@ type SampleExpr interface {
 	Expr
 }
 
-func badASTMapping(got Expr) error {
-	return fmt.Errorf("bad AST mapping: expected SampleExpr, but got (%T)", got)
-}
-
 type RangeAggregationExpr struct {
 	Left      *LogRange
 	Operation string
@@ -1108,7 +1050,7 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 			panic(logqlmodel.NewParseError(fmt.Sprintf(
 				"unexpected literal for left leg of logical/set binary operation (%s): %f",
 				op,
-				leftLit.value,
+				leftLit.Val,
 			), 0, 0))
 		}
 
@@ -1116,7 +1058,7 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 			panic(logqlmodel.NewParseError(fmt.Sprintf(
 				"unexpected literal for right leg of logical/set binary operation (%s): %f",
 				op,
-				rightLit.value,
+				rightLit.Val,
 			), 0, 0))
 		}
 	}
@@ -1138,18 +1080,258 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 // This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
 // Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
 func reduceBinOp(op string, left, right *LiteralExpr) *LiteralExpr {
-	merged := mergeBinOp(
+	merged := MergeBinOp(
 		op,
-		&promql.Sample{Point: promql.Point{V: left.value}},
-		&promql.Sample{Point: promql.Point{V: right.value}},
+		&promql.Sample{Point: promql.Point{V: left.Val}},
+		&promql.Sample{Point: promql.Point{V: right.Val}},
 		false,
 		false,
 	)
-	return &LiteralExpr{value: merged.V}
+	return &LiteralExpr{Val: merged.V}
+}
+
+func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) *promql.Sample {
+	var merger func(left, right *promql.Sample) *promql.Sample
+
+	switch op {
+	case OpTypeAdd:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			res.Point.V += right.Point.V
+			return &res
+		}
+
+	case OpTypeSub:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			res.Point.V -= right.Point.V
+			return &res
+		}
+
+	case OpTypeMul:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			res.Point.V *= right.Point.V
+			return &res
+		}
+
+	case OpTypeDiv:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			// guard against divide by zero
+			if right.Point.V == 0 {
+				res.Point.V = math.NaN()
+			} else {
+				res.Point.V /= right.Point.V
+			}
+			return &res
+		}
+
+	case OpTypeMod:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			// guard against divide by zero
+			if right.Point.V == 0 {
+				res.Point.V = math.NaN()
+			} else {
+				res.Point.V = math.Mod(res.Point.V, right.Point.V)
+			}
+			return &res
+		}
+
+	case OpTypePow:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			res.Point.V = math.Pow(left.Point.V, right.Point.V)
+			return &res
+		}
+
+	case OpTypeCmpEQ:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V == right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeNEQ:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V != right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeGT:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V > right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeGTE:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V >= right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeLT:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V < right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeLTE:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V <= right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	default:
+		panic(errors.Errorf("should never happen: unexpected operation: (%s)", op))
+	}
+
+	res := merger(left, right)
+	if !isVectorComparison {
+		return res
+	}
+
+	if filter {
+		// if a filter-enabled vector-wise comparison has returned non-nil,
+		// ensure we return the left hand side's value (2) instead of the
+		// comparison operator's result (1: the truthy answer)
+		if res != nil {
+			return left
+		}
+	}
+	return res
 }
 
 type LiteralExpr struct {
-	value float64
+	Val float64
 	implicit
 }
 
@@ -1164,12 +1346,12 @@ func mustNewLiteralExpr(s string, invert bool) *LiteralExpr {
 	}
 
 	return &LiteralExpr{
-		value: n,
+		Val: n,
 	}
 }
 
 func (e *LiteralExpr) String() string {
-	return fmt.Sprint(e.value)
+	return fmt.Sprint(e.Val)
 }
 
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
@@ -1182,7 +1364,7 @@ func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher             { return nil }
 func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
-func (e *LiteralExpr) Value() float64                          { return e.value }
+func (e *LiteralExpr) Value() float64                          { return e.Val }
 
 // helper used to impl Stringer for vector and range aggregations
 // nolint:interfacer
@@ -1266,4 +1448,42 @@ func (e *LabelReplaceExpr) String() string {
 	sb.WriteString(strconv.Quote(e.Regex))
 	sb.WriteString(")")
 	return sb.String()
+}
+
+// shardableOps lists the operations which may be sharded.
+// topk, botk, max, & min all must be concatenated and then evaluated in order to avoid
+// potential data loss due to series distribution across shards.
+// For example, grouping by `cluster` for a `max` operation may yield
+// 2 results on the first shard and 10 results on the second. If we prematurely
+// calculated `max`s on each shard, the shard/label combination with `2` may be
+// discarded and some other combination with `11` may be reported falsely as the max.
+//
+// Explanation: this is my (owen-d) best understanding.
+//
+// For an operation to be shardable, first the sample-operation itself must be associative like (+, *) but not (%, /, ^).
+// Secondly, if the operation is part of a vector aggregation expression or utilizes logical/set binary ops,
+// the vector operation must be distributive over the sample-operation.
+// This ensures that the vector merging operation can be applied repeatedly to data in different shards.
+// references:
+// https://en.wikipedia.org/wiki/Associative_property
+// https://en.wikipedia.org/wiki/Distributive_property
+var shardableOps = map[string]bool{
+	// vector ops
+	OpTypeSum: true,
+	// avg is only marked as shardable because we remap it into sum/count.
+	OpTypeAvg:   true,
+	OpTypeCount: true,
+
+	// range vector ops
+	OpRangeTypeCount:     true,
+	OpRangeTypeRate:      true,
+	OpRangeTypeBytes:     true,
+	OpRangeTypeBytesRate: true,
+	OpRangeTypeSum:       true,
+	OpRangeTypeMax:       true,
+	OpRangeTypeMin:       true,
+
+	// binops - arith
+	OpTypeAdd: true,
+	OpTypeMul: true,
 }

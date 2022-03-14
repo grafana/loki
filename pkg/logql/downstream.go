@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -61,13 +62,13 @@ func NewDownstreamEngine(opts EngineOpts, downstreamable Downstreamable, metrics
 }
 
 // Query constructs a Query
-func (ng *DownstreamEngine) Query(p Params, mapped Expr) Query {
+func (ng *DownstreamEngine) Query(p Params, mapped syntax.Expr) Query {
 	return &query{
 		logger:    ng.logger,
 		timeout:   ng.timeout,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer()),
-		parse: func(_ context.Context, _ string) (Expr, error) {
+		parse: func(_ context.Context, _ string) (syntax.Expr, error) {
 			return mapped, nil
 		},
 		limits: ng.limits,
@@ -77,7 +78,7 @@ func (ng *DownstreamEngine) Query(p Params, mapped Expr) Query {
 // DownstreamSampleExpr is a SampleExpr which signals downstream computation
 type DownstreamSampleExpr struct {
 	shard *astmapper.ShardAnnotation
-	SampleExpr
+	syntax.SampleExpr
 }
 
 func (d DownstreamSampleExpr) String() string {
@@ -87,14 +88,14 @@ func (d DownstreamSampleExpr) String() string {
 // DownstreamLogSelectorExpr is a LogSelectorExpr which signals downstream computation
 type DownstreamLogSelectorExpr struct {
 	shard *astmapper.ShardAnnotation
-	LogSelectorExpr
+	syntax.LogSelectorExpr
 }
 
 func (d DownstreamLogSelectorExpr) String() string {
 	return fmt.Sprintf("downstream<%s, shard=%s>", d.LogSelectorExpr.String(), d.shard)
 }
 
-func (d DownstreamSampleExpr) Walk(f WalkFn) { f(d) }
+func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) { f(d) }
 
 // ConcatSampleExpr is an expr for concatenating multiple SampleExpr
 // Contract: The embedded SampleExprs within a linked list of ConcatSampleExprs must be of the
@@ -112,7 +113,7 @@ func (c ConcatSampleExpr) String() string {
 	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.String())
 }
 
-func (c ConcatSampleExpr) Walk(f WalkFn) {
+func (c ConcatSampleExpr) Walk(f syntax.WalkFn) {
 	f(c)
 	f(c.next)
 }
@@ -163,7 +164,7 @@ type Downstreamable interface {
 }
 
 type DownstreamQuery struct {
-	Expr   Expr
+	Expr   syntax.Expr
 	Params Params
 	Shards Shards
 }
@@ -215,7 +216,7 @@ func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 func (ev *DownstreamEvaluator) StepEvaluator(
 	ctx context.Context,
 	nextEv SampleEvaluator,
-	expr SampleExpr,
+	expr syntax.SampleExpr,
 	params Params,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
@@ -280,7 +281,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 // Iterator returns the iter.EntryIterator for a given LogSelectorExpr
 func (ev *DownstreamEvaluator) Iterator(
 	ctx context.Context,
-	expr LogSelectorExpr,
+	expr syntax.LogSelectorExpr,
 	params Params,
 ) (iter.EntryIterator, error) {
 	switch e := expr.(type) {

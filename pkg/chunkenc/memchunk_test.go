@@ -23,8 +23,8 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
@@ -1037,7 +1037,7 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 			} {
 				b.Run(test, func(b *testing.B) {
 					b.ReportAllocs()
-					expr, err := logql.ParseLogSelector(test, true)
+					expr, err := syntax.ParseLogSelector(test, true)
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -1076,7 +1076,7 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 			} {
 				b.Run(test, func(b *testing.B) {
 					b.ReportAllocs()
-					expr, err := logql.ParseSampleExpr(test)
+					expr, err := syntax.ParseSampleExpr(test)
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -1119,7 +1119,7 @@ func Test_HeadIteratorReverse(t *testing.T) {
 			}
 
 			assertOrder := func(t *testing.T, total int64) {
-				expr, err := logql.ParseLogSelector(`{app="foo"} | logfmt`, true)
+				expr, err := syntax.ParseLogSelector(`{app="foo"} | logfmt`, true)
 				require.NoError(t, err)
 				p, err := expr.Pipeline()
 				require.NoError(t, err)
