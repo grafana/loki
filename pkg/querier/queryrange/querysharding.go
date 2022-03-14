@@ -74,7 +74,7 @@ func newASTMapperware(
 		confs:   confs,
 		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
 		next:    next,
-		ng:      logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics, limits, logger),
+		ng:      logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics, limits, logger),
 		metrics: metrics,
 	}
 }
@@ -83,7 +83,7 @@ type astMapperware struct {
 	confs   ShardingConfigs
 	logger  log.Logger
 	next    queryrangebase.Handler
-	ng      *logql.ShardedEngine
+	ng      *logql.DownstreamEngine
 	metrics *logql.ShardingMetrics
 }
 

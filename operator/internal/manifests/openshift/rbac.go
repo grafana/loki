@@ -70,7 +70,7 @@ func BuildClusterRoleBinding(opts Options) *rbacv1.ClusterRoleBinding {
 			{
 				Kind:      rbacv1.ServiceAccountKind,
 				Name:      serviceAccountName(opts),
-				Namespace: opts.BuildOpts.GatewayNamespace,
+				Namespace: opts.BuildOpts.LokiStackNamespace,
 			},
 		},
 	}

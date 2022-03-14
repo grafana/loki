@@ -764,6 +764,10 @@ type SampleExpr interface {
 	Expr
 }
 
+func badASTMapping(got Expr) error {
+	return fmt.Errorf("bad AST mapping: expected SampleExpr, but got (%T)", got)
+}
+
 type RangeAggregationExpr struct {
 	Left      *LogRange
 	Operation string
