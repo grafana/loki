@@ -40,12 +40,15 @@ services:
       - MYSQL_ALLOW_EMPTY_PASSWORD=yes
     ports:
       - "3306:3306"
+    # removes warning "mbind operation not permitted" enables you to see the docker logs 
+    cap_add:
+    - SYS_NICE  # CAP_SYS_NICE
   memcached:
     image: memcached
     ports:
       - "11211:11211"
   pgbouncer:
-    image: mbentley/ubuntu-pgbouncer
+    image: z9pascal/pgbouncer-container:1.15-latest
     environment:
       - PG_ENV_POSTGRESQL_USER=pgbouncer
       - PG_ENV_POSTGRESQL_PASS=pgbouncer
@@ -53,7 +56,7 @@ services:
       - "6432:6432"
   postgres:
     image: postgres:alpine
-    environment: 
+    environment:
       - POSTGRES_HOST_AUTH_METHOD=trust
     ports:
       - "5432:5432"
@@ -75,6 +78,10 @@ services:
     image: ncarlier/mqtt
     ports:
       - "1883:1883"
+  opcua:
+    image: open62541/open62541
+    ports:
+      - "4840:4840"
   riemann:
     image: stealthly/docker-riemann
     ports:

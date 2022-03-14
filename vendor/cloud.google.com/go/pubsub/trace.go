@@ -19,19 +19,10 @@ import (
 	"log"
 	"sync"
 
-	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"google.golang.org/api/option"
-	"google.golang.org/grpc"
 )
-
-func openCensusOptions() []option.ClientOption {
-	return []option.ClientOption{
-		option.WithGRPCDialOption(grpc.WithStatsHandler(&ocgrpc.ClientHandler{})),
-	}
-}
 
 // The following keys are used to tag requests with a specific topic/subscription ID.
 var (
@@ -93,6 +84,14 @@ var (
 	// StreamResponseCount is a measure of the number of responses received on a streaming-pull stream.
 	// It is EXPERIMENTAL and subject to change or removal without notice.
 	StreamResponseCount = stats.Int64(statsPrefix+"stream_response_count", "Number of gRPC StreamingPull response messages received", stats.UnitDimensionless)
+
+	// OutstandingMessages is a measure of the number of outstanding messages held by the client before they are processed.
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	OutstandingMessages = stats.Int64(statsPrefix+"outstanding_messages", "Number of outstanding Pub/Sub messages", stats.UnitDimensionless)
+
+	// OutstandingBytes is a measure of the number of bytes all outstanding messages held by the client take up.
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	OutstandingBytes = stats.Int64(statsPrefix+"outstanding_bytes", "Number of outstanding bytes", stats.UnitDimensionless)
 )
 
 var (
@@ -139,6 +138,14 @@ var (
 	// StreamResponseCountView is a cumulative sum of StreamResponseCount.
 	// It is EXPERIMENTAL and subject to change or removal without notice.
 	StreamResponseCountView *view.View
+
+	// OutstandingMessagesView is the last value of OutstandingMessages
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	OutstandingMessagesView *view.View
+
+	// OutstandingBytesView is the last value of OutstandingBytes
+	// It is EXPERIMENTAL and subject to change or removal without notice.
+	OutstandingBytesView *view.View
 )
 
 func init() {
@@ -153,6 +160,8 @@ func init() {
 	StreamRetryCountView = createCountView(StreamRetryCount, keySubscription)
 	StreamRequestCountView = createCountView(StreamRequestCount, keySubscription)
 	StreamResponseCountView = createCountView(StreamResponseCount, keySubscription)
+	OutstandingMessagesView = createLastValueView(OutstandingMessages, keySubscription)
+	OutstandingBytesView = createLastValueView(OutstandingBytes, keySubscription)
 
 	DefaultPublishViews = []*view.View{
 		PublishedMessagesView,
@@ -169,6 +178,8 @@ func init() {
 		StreamRetryCountView,
 		StreamRequestCountView,
 		StreamResponseCountView,
+		OutstandingMessagesView,
+		OutstandingBytesView,
 	}
 }
 
@@ -196,6 +207,16 @@ func createDistView(m stats.Measure, keys ...tag.Key) *view.View {
 		TagKeys:     keys,
 		Measure:     m,
 		Aggregation: view.Distribution(0, 25, 50, 75, 100, 200, 400, 600, 800, 1000, 2000, 4000, 6000),
+	}
+}
+
+func createLastValueView(m stats.Measure, keys ...tag.Key) *view.View {
+	return &view.View{
+		Name:        m.Name(),
+		Description: m.Description(),
+		TagKeys:     keys,
+		Measure:     m,
+		Aggregation: view.LastValue(),
 	}
 }
 
