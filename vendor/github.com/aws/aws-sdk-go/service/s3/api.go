@@ -313,8 +313,8 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 // You can store individual objects of up to 5 TB in Amazon S3. You create a
 // copy of your object up to 5 GB in size in a single atomic action using this
 // API. However, to copy an object greater than 5 GB, you must use the multipart
-// upload Upload Part - Copy API. For more information, see Copy Object Using
-// the REST Multipart Upload API (https://docs.aws.amazon.com/AmazonS3/latest/dev/CopyingObjctsUsingRESTMPUapi.html).
+// upload Upload Part - Copy (UploadPartCopy) API. For more information, see
+// Copy Object Using the REST Multipart Upload API (https://docs.aws.amazon.com/AmazonS3/latest/dev/CopyingObjctsUsingRESTMPUapi.html).
 //
 // All copy requests must be authenticated. Additionally, you must have read
 // access to the source object and write access to the destination bucket. For
@@ -363,7 +363,7 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 // in the Amazon S3 User Guide. For a complete list of Amazon S3-specific condition
 // keys, see Actions, Resources, and Condition Keys for Amazon S3 (https://docs.aws.amazon.com/AmazonS3/latest/dev/list_amazons3.html).
 //
-//  x-amz-copy-source-if Headers
+// x-amz-copy-source-if Headers
 //
 // To only copy an object under certain conditions, such as whether the Etag
 // matches or whether the object was modified before or after a specified date,
@@ -434,6 +434,13 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 // If your bucket uses the bucket owner enforced setting for Object Ownership,
 // all objects written to the bucket by any account will be owned by the bucket
 // owner.
+//
+// Checksums
+//
+// When copying an object, if it has a checksum, that checksum will be copied
+// to the new object by default. When you copy the object over, you may optionally
+// specify a different checksum algorithm to use with the x-amz-checksum-algorithm
+// header.
 //
 // Storage Class Options
 //
@@ -2826,13 +2833,14 @@ func (c *S3) GetBucketCorsRequest(input *GetBucketCorsInput) (req *request.Reque
 
 // GetBucketCors API operation for Amazon Simple Storage Service.
 //
-// Returns the cors configuration information set for the bucket.
+// Returns the Cross-Origin Resource Sharing (CORS) configuration information
+// set for the bucket.
 //
 // To use this operation, you must have permission to perform the s3:GetBucketCORS
 // action. By default, the bucket owner has this permission and can grant it
 // to others.
 //
-// For more information about cors, see Enabling Cross-Origin Resource Sharing
+// For more information about CORS, see Enabling Cross-Origin Resource Sharing
 // (https://docs.aws.amazon.com/AmazonS3/latest/dev/cors.html).
 //
 // The following operations are related to GetBucketCors:
@@ -4298,7 +4306,7 @@ func (c *S3) GetBucketTaggingRequest(input *GetBucketTaggingInput) (req *request
 //
 // GetBucketTagging has the following special error:
 //
-//    * Error code: NoSuchTagSetError Description: There is no tag set associated
+//    * Error code: NoSuchTagSet Description: There is no tag set associated
 //    with the bucket.
 //
 // The following operations are related to GetBucketTagging:
@@ -4573,8 +4581,6 @@ func (c *S3) GetObjectRequest(input *GetObjectInput) (req *request.Request, outp
 // more information about request types, see HTTP Host Header Bucket Specification
 // (https://docs.aws.amazon.com/AmazonS3/latest/dev/VirtualHosting.html#VirtualHostingSpecifyBucket).
 //
-// To distribute large files to many people, you can save bandwidth costs by
-// using BitTorrent. For more information, see Amazon S3 Torrent (https://docs.aws.amazon.com/AmazonS3/latest/dev/S3Torrent.html).
 // For more information about returning the ACL of an object, see GetObjectAcl
 // (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html).
 //
@@ -4767,7 +4773,10 @@ func (c *S3) GetObjectAclRequest(input *GetObjectAclInput) (req *request.Request
 // GetObjectAcl API operation for Amazon Simple Storage Service.
 //
 // Returns the access control list (ACL) of an object. To use this operation,
-// you must have READ_ACP access to the object.
+// you must have s3:GetObjectAcl permissions or READ_ACP access to the object.
+// For more information, see Mapping of ACL permissions and access policy permissions
+// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/acl-overview.html#acl-access-policy-permission-mapping)
+// in the Amazon S3 User Guide
 //
 // This action is not supported by Amazon S3 on Outposts.
 //
@@ -4785,6 +4794,8 @@ func (c *S3) GetObjectAclRequest(input *GetObjectAclInput) (req *request.Request
 // The following operations are related to GetObjectAcl:
 //
 //    * GetObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
+//
+//    * GetObjectAttributes (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html)
 //
 //    * DeleteObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html)
 //
@@ -4818,6 +4829,166 @@ func (c *S3) GetObjectAcl(input *GetObjectAclInput) (*GetObjectAclOutput, error)
 // for more information on using Contexts.
 func (c *S3) GetObjectAclWithContext(ctx aws.Context, input *GetObjectAclInput, opts ...request.Option) (*GetObjectAclOutput, error) {
 	req, out := c.GetObjectAclRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opGetObjectAttributes = "GetObjectAttributes"
+
+// GetObjectAttributesRequest generates a "aws/request.Request" representing the
+// client's request for the GetObjectAttributes operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See GetObjectAttributes for more information on using the GetObjectAttributes
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the GetObjectAttributesRequest method.
+//    req, resp := client.GetObjectAttributesRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/GetObjectAttributes
+func (c *S3) GetObjectAttributesRequest(input *GetObjectAttributesInput) (req *request.Request, output *GetObjectAttributesOutput) {
+	op := &request.Operation{
+		Name:       opGetObjectAttributes,
+		HTTPMethod: "GET",
+		HTTPPath:   "/{Bucket}/{Key+}?attributes",
+	}
+
+	if input == nil {
+		input = &GetObjectAttributesInput{}
+	}
+
+	output = &GetObjectAttributesOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// GetObjectAttributes API operation for Amazon Simple Storage Service.
+//
+// Retrieves all the metadata from an object without returning the object itself.
+// This action is useful if you're interested only in an object's metadata.
+// To use GetObjectAttributes, you must have READ access to the object.
+//
+// GetObjectAttributes combines the functionality of GetObjectAcl, GetObjectLegalHold,
+// GetObjectLockConfiguration, GetObjectRetention, GetObjectTagging, HeadObject,
+// and ListParts. All of the data returned with each of those individual calls
+// can be returned with a single call to GetObjectAttributes.
+//
+// If you encrypt an object by using server-side encryption with customer-provided
+// encryption keys (SSE-C) when you store the object in Amazon S3, then when
+// you retrieve the metadata from the object, you must use the following headers:
+//
+//    * x-amz-server-side-encryption-customer-algorithm
+//
+//    * x-amz-server-side-encryption-customer-key
+//
+//    * x-amz-server-side-encryption-customer-key-MD5
+//
+// For more information about SSE-C, see Server-Side Encryption (Using Customer-Provided
+// Encryption Keys) (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
+// in the Amazon S3 User Guide.
+//
+//    * Encryption request headers, such as x-amz-server-side-encryption, should
+//    not be sent for GET requests if your object uses server-side encryption
+//    with Amazon Web Services KMS keys stored in Amazon Web Services Key Management
+//    Service (SSE-KMS) or server-side encryption with Amazon S3 managed encryption
+//    keys (SSE-S3). If your object does use these types of keys, you'll get
+//    an HTTP 400 Bad Request error.
+//
+//    * The last modified property in this case is the creation date of the
+//    object.
+//
+// Consider the following when using request headers:
+//
+//    * If both of the If-Match and If-Unmodified-Since headers are present
+//    in the request as follows, then Amazon S3 returns the HTTP status code
+//    200 OK and the data requested: If-Match condition evaluates to true. If-Unmodified-Since
+//    condition evaluates to false.
+//
+//    * If both of the If-None-Match and If-Modified-Since headers are present
+//    in the request as follows, then Amazon S3 returns the HTTP status code
+//    304 Not Modified: If-None-Match condition evaluates to false. If-Modified-Since
+//    condition evaluates to true.
+//
+// For more information about conditional requests, see RFC 7232 (https://tools.ietf.org/html/rfc7232).
+//
+// Permissions
+//
+// The permissions that you need to use this operation depend on whether the
+// bucket is versioned. If the bucket is versioned, you need both the s3:GetObjectVersion
+// and s3:GetObjectVersionAttributes permissions for this operation. If the
+// bucket is not versioned, you need the s3:GetObject and s3:GetObjectAttributes
+// permissions. For more information, see Specifying Permissions in a Policy
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html)
+// in the Amazon S3 User Guide. If the object that you request does not exist,
+// the error Amazon S3 returns depends on whether you also have the s3:ListBucket
+// permission.
+//
+//    * If you have the s3:ListBucket permission on the bucket, Amazon S3 returns
+//    an HTTP status code 404 Not Found ("no such key") error.
+//
+//    * If you don't have the s3:ListBucket permission, Amazon S3 returns an
+//    HTTP status code 403 Forbidden ("access denied") error.
+//
+// The following actions are related to GetObjectAttributes:
+//
+//    * GetObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
+//
+//    * GetObjectAcl (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html)
+//
+//    * GetObjectLegalHold (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLegalHold.html)
+//
+//    * GetObjectLockConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLockConfiguration.html)
+//
+//    * GetObjectRetention (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html)
+//
+//    * GetObjectTagging (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html)
+//
+//    * HeadObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
+//
+//    * ListParts (https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html)
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation GetObjectAttributes for usage and error information.
+//
+// Returned Error Codes:
+//   * ErrCodeNoSuchKey "NoSuchKey"
+//   The specified key does not exist.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/GetObjectAttributes
+func (c *S3) GetObjectAttributes(input *GetObjectAttributesInput) (*GetObjectAttributesOutput, error) {
+	req, out := c.GetObjectAttributesRequest(input)
+	return out, req.Send()
+}
+
+// GetObjectAttributesWithContext is the same as GetObjectAttributes with the addition of
+// the ability to pass a context and additional request options.
+//
+// See GetObjectAttributes for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) GetObjectAttributesWithContext(ctx aws.Context, input *GetObjectAttributesInput, opts ...request.Option) (*GetObjectAttributesOutput, error) {
+	req, out := c.GetObjectAttributesRequest(input)
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
@@ -4867,10 +5038,14 @@ func (c *S3) GetObjectLegalHoldRequest(input *GetObjectLegalHoldInput) (req *req
 
 // GetObjectLegalHold API operation for Amazon Simple Storage Service.
 //
-// Gets an object's current Legal Hold status. For more information, see Locking
+// Gets an object's current legal hold status. For more information, see Locking
 // Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
 //
 // This action is not supported by Amazon S3 on Outposts.
+//
+// The following action is related to GetObjectLegalHold:
+//
+//    * GetObjectAttributes (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html)
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -4949,6 +5124,10 @@ func (c *S3) GetObjectLockConfigurationRequest(input *GetObjectLockConfiguration
 // placed in the specified bucket. For more information, see Locking Objects
 // (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
 //
+// The following action is related to GetObjectLockConfiguration:
+//
+//    * GetObjectAttributes (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html)
+//
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
 // the error.
@@ -5025,6 +5204,10 @@ func (c *S3) GetObjectRetentionRequest(input *GetObjectRetentionInput) (req *req
 // Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
 //
 // This action is not supported by Amazon S3 on Outposts.
+//
+// The following action is related to GetObjectRetention:
+//
+//    * GetObjectAttributes (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html)
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -5114,11 +5297,13 @@ func (c *S3) GetObjectTaggingRequest(input *GetObjectTaggingInput) (req *request
 // For information about the Amazon S3 object tagging feature, see Object Tagging
 // (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-tagging.html).
 //
-// The following action is related to GetObjectTagging:
-//
-//    * PutObjectTagging (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectTagging.html)
+// The following actions are related to GetObjectTagging:
 //
 //    * DeleteObjectTagging (https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjectTagging.html)
+//
+//    * GetObjectAttributes (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html)
+//
+//    * PutObjectTagging (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectTagging.html)
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -5539,9 +5724,11 @@ func (c *S3) HeadObjectRequest(input *HeadObjectInput) (req *request.Request, ou
 //    * If you don’t have the s3:ListBucket permission, Amazon S3 returns
 //    an HTTP status code 403 ("access denied") error.
 //
-// The following action is related to HeadObject:
+// The following actions are related to HeadObject:
 //
 //    * GetObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
+//
+//    * GetObjectAttributes (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html)
 //
 // See http://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#RESTErrorResponses
 // for more information on returned errors.
@@ -6019,6 +6206,7 @@ func (c *S3) ListBucketsRequest(input *ListBucketsInput) (req *request.Request, 
 // ListBuckets API operation for Amazon Simple Storage Service.
 //
 // Returns a list of all buckets owned by the authenticated sender of the request.
+// To use this operation, you must have the s3:ListAllMyBuckets permission.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -6753,6 +6941,9 @@ func (c *S3) ListPartsRequest(input *ListPartsInput) (req *request.Request, outp
 // requests you can include the part-number-marker query string parameter and
 // set its value to the NextPartNumberMarker field value from the previous response.
 //
+// If the upload was created using a checksum algorithm, you will need to have
+// permission to the kms:Decrypt action for the request to succeed.
+//
 // For more information on multipart uploads, see Uploading Objects Using Multipart
 // Upload (https://docs.aws.amazon.com/AmazonS3/latest/dev/uploadobjusingmpu.html).
 //
@@ -6768,6 +6959,8 @@ func (c *S3) ListPartsRequest(input *ListPartsInput) (req *request.Request, outp
 //    * CompleteMultipartUpload (https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html)
 //
 //    * AbortMultipartUpload (https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html)
+//
+//    * GetObjectAttributes (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html)
 //
 //    * ListMultipartUploads (https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html)
 //
@@ -7428,8 +7621,10 @@ func (c *S3) PutBucketEncryptionRequest(input *PutBucketEncryptionInput) (req *r
 // Default encryption for a bucket can use server-side encryption with Amazon
 // S3-managed keys (SSE-S3) or customer managed keys (SSE-KMS). If you specify
 // default encryption using SSE-KMS, you can also configure Amazon S3 Bucket
-// Key. For information about default encryption, see Amazon S3 default bucket
-// encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html)
+// Key. When the default encryption is SSE-KMS, if you upload an object to the
+// bucket and do not specify the KMS key to use for encryption, Amazon S3 uses
+// the default Amazon Web Services managed KMS key for your account. For information
+// about default encryption, see Amazon S3 default bucket encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html)
 // in the Amazon S3 User Guide. For more information about S3 Bucket Keys, see
 // Amazon S3 Bucket Keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-key.html)
 // in the Amazon S3 User Guide.
@@ -7903,8 +8098,10 @@ func (c *S3) PutBucketLifecycleConfigurationRequest(input *PutBucketLifecycleCon
 // PutBucketLifecycleConfiguration API operation for Amazon Simple Storage Service.
 //
 // Creates a new lifecycle configuration for the bucket or replaces an existing
-// lifecycle configuration. For information about lifecycle configuration, see
-// Managing your storage lifecycle (https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html).
+// lifecycle configuration. Keep in mind that this will overwrite an existing
+// lifecycle configuration, so if you want to retain any configuration details,
+// they must be included in the new lifecycle configuration. For information
+// about lifecycle configuration, see Managing your storage lifecycle (https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html).
 //
 // Bucket lifecycle configuration now supports specifying a lifecycle rule using
 // an object key name prefix, one or more object tags, or a combination of both.
@@ -8390,6 +8587,10 @@ func (c *S3) PutBucketNotificationConfigurationRequest(input *PutBucketNotificat
 //
 // You can disable notifications by adding the empty NotificationConfiguration
 // element.
+//
+// For more information about the number of event notification configurations
+// that you can create per bucket, see Amazon S3 service quotas (https://docs.aws.amazon.com/general/latest/gr/s3.html#limits_s3)
+// in Amazon Web Services General Reference.
 //
 // By default, only the bucket owner can configure notifications on a bucket.
 // However, bucket owners can use a bucket policy to grant permission to other
@@ -9028,8 +9229,7 @@ func (c *S3) PutBucketVersioningRequest(input *PutBucketVersioningInput) (req *r
 
 // PutBucketVersioning API operation for Amazon Simple Storage Service.
 //
-// Sets the versioning state of an existing bucket. To set the versioning state,
-// you must be the bucket owner.
+// Sets the versioning state of an existing bucket.
 //
 // You can set the versioning state with one of the following values:
 //
@@ -9043,10 +9243,10 @@ func (c *S3) PutBucketVersioningRequest(input *PutBucketVersioningInput) (req *r
 // state; a GetBucketVersioning (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketVersioning.html)
 // request does not return a versioning state value.
 //
-// If the bucket owner enables MFA Delete in the bucket versioning configuration,
-// the bucket owner must include the x-amz-mfa request header and the Status
-// and the MfaDelete request elements in a request to set the versioning state
-// of the bucket.
+// In order to enable MFA Delete, you must be the bucket owner. If you are the
+// bucket owner and want to enable MFA Delete in the bucket versioning configuration,
+// you must include the x-amz-mfa request header and the Status and the MfaDelete
+// request elements in a request to set the versioning state of the bucket.
 //
 // If you have an object expiration lifecycle policy in your non-versioned bucket
 // and you want to maintain the same permanent delete behavior when you enable
@@ -9630,7 +9830,7 @@ func (c *S3) PutObjectLegalHoldRequest(input *PutObjectLegalHoldInput) (req *req
 
 // PutObjectLegalHold API operation for Amazon Simple Storage Service.
 //
-// Applies a Legal Hold configuration to the specified object. For more information,
+// Applies a legal hold configuration to the specified object. For more information,
 // see Locking Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
 //
 // This action is not supported by Amazon S3 on Outposts.
@@ -9807,12 +10007,6 @@ func (c *S3) PutObjectRetentionRequest(input *PutObjectRetentionInput) (req *req
 // Retention configuration requires the s3:BypassGovernanceRetention permission.
 //
 // This action is not supported by Amazon S3 on Outposts.
-//
-// Permissions
-//
-// When the Object Lock retention mode is set to compliance, you need s3:PutObjectRetention
-// and s3:BypassGovernanceRetention permissions. For other requests to PutObjectRetention,
-// only s3:PutObjectRetention permissions are required.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -10535,7 +10729,7 @@ type SelectObjectContentEventStream struct {
 // (e.g. http.Response.Body), that will be closed when the stream Close method
 // is called.
 //
-//   es := NewSelectObjectContentEventStream(func(o *SelectObjectContentEventStream{
+//   es := NewSelectObjectContentEventStream(func(o *SelectObjectContentEventStream){
 //       es.Reader = myMockStreamReader
 //       es.StreamCloser = myMockStreamCloser
 //   })
@@ -10897,7 +11091,7 @@ func (c *S3) UploadPartCopyRequest(input *UploadPartCopyInput) (req *request.Req
 //    in the Amazon S3 User Guide.
 //
 //    * For information about copying objects using a single atomic action vs.
-//    the multipart upload, see Operations on Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectOperations.html)
+//    a multipart upload, see Operations on Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectOperations.html)
 //    in the Amazon S3 User Guide.
 //
 //    * For information about using server-side encryption with customer-provided
@@ -11161,17 +11355,17 @@ type AbortMultipartUploadInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Key of the object for which the multipart upload was initiated.
@@ -11181,8 +11375,8 @@ type AbortMultipartUploadInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -12346,6 +12540,85 @@ func (s *CSVOutput) SetRecordDelimiter(v string) *CSVOutput {
 	return s
 }
 
+// Contains all the possible checksum or digest values for an object.
+type Checksum struct {
+	_ struct{} `type:"structure"`
+
+	// The base64-encoded, 32-bit CRC32 checksum of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `type:"string"`
+
+	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `type:"string"`
+
+	// The base64-encoded, 160-bit SHA-1 digest of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `type:"string"`
+
+	// The base64-encoded, 256-bit SHA-256 digest of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s Checksum) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s Checksum) GoString() string {
+	return s.String()
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *Checksum) SetChecksumCRC32(v string) *Checksum {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *Checksum) SetChecksumCRC32C(v string) *Checksum {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *Checksum) SetChecksumSHA1(v string) *Checksum {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *Checksum) SetChecksumSHA256(v string) *Checksum {
+	s.ChecksumSHA256 = &v
+	return s
+}
+
 // Container for specifying the Lambda notification configuration.
 type CloudFunctionConfiguration struct {
 	_ struct{} `type:"structure"`
@@ -12469,17 +12742,45 @@ type CompleteMultipartUploadInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 32-bit CRC32 checksum of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `location:"header" locationName:"x-amz-checksum-crc32" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 32-bit CRC32C checksum of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `location:"header" locationName:"x-amz-checksum-crc32c" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 160-bit SHA-1 digest of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `location:"header" locationName:"x-amz-checksum-sha1" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 256-bit SHA-256 digest of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `location:"header" locationName:"x-amz-checksum-sha256" type:"string"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Object key for which the multipart upload was initiated.
@@ -12492,10 +12793,32 @@ type CompleteMultipartUploadInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
+
+	// The server-side encryption (SSE) algorithm used to encrypt the object. This
+	// parameter is needed only when the object was created using a checksum algorithm.
+	// For more information, see Protecting data using SSE-C keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
+	// in the Amazon S3 User Guide.
+	SSECustomerAlgorithm *string `location:"header" locationName:"x-amz-server-side-encryption-customer-algorithm" type:"string"`
+
+	// The server-side encryption (SSE) customer managed key. This parameter is
+	// needed only when the object was created using a checksum algorithm. For more
+	// information, see Protecting data using SSE-C keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
+	// in the Amazon S3 User Guide.
+	//
+	// SSECustomerKey is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CompleteMultipartUploadInput's
+	// String and GoString methods.
+	SSECustomerKey *string `marshal-as:"blob" location:"header" locationName:"x-amz-server-side-encryption-customer-key" type:"string" sensitive:"true"`
+
+	// The MD5 server-side encryption (SSE) customer managed key. This parameter
+	// is needed only when the object was created using a checksum algorithm. For
+	// more information, see Protecting data using SSE-C keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
+	// in the Amazon S3 User Guide.
+	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// ID for the initiated multipart upload.
 	//
@@ -12559,6 +12882,30 @@ func (s *CompleteMultipartUploadInput) getBucket() (v string) {
 	return *s.Bucket
 }
 
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *CompleteMultipartUploadInput) SetChecksumCRC32(v string) *CompleteMultipartUploadInput {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *CompleteMultipartUploadInput) SetChecksumCRC32C(v string) *CompleteMultipartUploadInput {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *CompleteMultipartUploadInput) SetChecksumSHA1(v string) *CompleteMultipartUploadInput {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *CompleteMultipartUploadInput) SetChecksumSHA256(v string) *CompleteMultipartUploadInput {
+	s.ChecksumSHA256 = &v
+	return s
+}
+
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
 func (s *CompleteMultipartUploadInput) SetExpectedBucketOwner(v string) *CompleteMultipartUploadInput {
 	s.ExpectedBucketOwner = &v
@@ -12580,6 +12927,31 @@ func (s *CompleteMultipartUploadInput) SetMultipartUpload(v *CompletedMultipartU
 // SetRequestPayer sets the RequestPayer field's value.
 func (s *CompleteMultipartUploadInput) SetRequestPayer(v string) *CompleteMultipartUploadInput {
 	s.RequestPayer = &v
+	return s
+}
+
+// SetSSECustomerAlgorithm sets the SSECustomerAlgorithm field's value.
+func (s *CompleteMultipartUploadInput) SetSSECustomerAlgorithm(v string) *CompleteMultipartUploadInput {
+	s.SSECustomerAlgorithm = &v
+	return s
+}
+
+// SetSSECustomerKey sets the SSECustomerKey field's value.
+func (s *CompleteMultipartUploadInput) SetSSECustomerKey(v string) *CompleteMultipartUploadInput {
+	s.SSECustomerKey = &v
+	return s
+}
+
+func (s *CompleteMultipartUploadInput) getSSECustomerKey() (v string) {
+	if s.SSECustomerKey == nil {
+		return v
+	}
+	return *s.SSECustomerKey
+}
+
+// SetSSECustomerKeyMD5 sets the SSECustomerKeyMD5 field's value.
+func (s *CompleteMultipartUploadInput) SetSSECustomerKeyMD5(v string) *CompleteMultipartUploadInput {
+	s.SSECustomerKeyMD5 = &v
 	return s
 }
 
@@ -12632,9 +13004,9 @@ type CompleteMultipartUploadOutput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	Bucket *string `type:"string"`
 
@@ -12642,16 +13014,50 @@ type CompleteMultipartUploadOutput struct {
 	// encryption with Amazon Web Services KMS (SSE-KMS).
 	BucketKeyEnabled *bool `location:"header" locationName:"x-amz-server-side-encryption-bucket-key-enabled" type:"boolean"`
 
+	// The base64-encoded, 32-bit CRC32 checksum of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `type:"string"`
+
+	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `type:"string"`
+
+	// The base64-encoded, 160-bit SHA-1 digest of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `type:"string"`
+
+	// The base64-encoded, 256-bit SHA-256 digest of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `type:"string"`
+
 	// Entity tag that identifies the newly created object's data. Objects with
 	// different object data will have different entity tags. The entity tag is
 	// an opaque string. The entity tag may or may not be an MD5 digest of the object
 	// data. If the entity tag is not an MD5 digest of the object data, it will
 	// contain one or more nonhexadecimal characters and/or will consist of less
-	// than 32 or more than 32 hexadecimal digits.
+	// than 32 or more than 32 hexadecimal digits. For more information about how
+	// the entity tag is calculated, see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
 	ETag *string `type:"string"`
 
 	// If the object expiration is configured, this will contain the expiration
-	// date (expiry-date) and rule ID (rule-id). The value of rule-id is URL encoded.
+	// date (expiry-date) and rule ID (rule-id). The value of rule-id is URL-encoded.
 	Expiration *string `location:"header" locationName:"x-amz-expiration" type:"string"`
 
 	// The object key of the newly created object.
@@ -12718,6 +13124,30 @@ func (s *CompleteMultipartUploadOutput) getBucket() (v string) {
 // SetBucketKeyEnabled sets the BucketKeyEnabled field's value.
 func (s *CompleteMultipartUploadOutput) SetBucketKeyEnabled(v bool) *CompleteMultipartUploadOutput {
 	s.BucketKeyEnabled = &v
+	return s
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *CompleteMultipartUploadOutput) SetChecksumCRC32(v string) *CompleteMultipartUploadOutput {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *CompleteMultipartUploadOutput) SetChecksumCRC32C(v string) *CompleteMultipartUploadOutput {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *CompleteMultipartUploadOutput) SetChecksumSHA1(v string) *CompleteMultipartUploadOutput {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *CompleteMultipartUploadOutput) SetChecksumSHA256(v string) *CompleteMultipartUploadOutput {
+	s.ChecksumSHA256 = &v
 	return s
 }
 
@@ -12808,6 +13238,38 @@ func (s *CompletedMultipartUpload) SetParts(v []*CompletedPart) *CompletedMultip
 type CompletedPart struct {
 	_ struct{} `type:"structure"`
 
+	// The base64-encoded, 32-bit CRC32 checksum of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `type:"string"`
+
+	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `type:"string"`
+
+	// The base64-encoded, 160-bit SHA-1 digest of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `type:"string"`
+
+	// The base64-encoded, 256-bit SHA-256 digest of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `type:"string"`
+
 	// Entity tag returned when the part was uploaded.
 	ETag *string `type:"string"`
 
@@ -12832,6 +13294,30 @@ func (s CompletedPart) String() string {
 // value will be replaced with "sensitive".
 func (s CompletedPart) GoString() string {
 	return s.String()
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *CompletedPart) SetChecksumCRC32(v string) *CompletedPart {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *CompletedPart) SetChecksumCRC32C(v string) *CompletedPart {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *CompletedPart) SetChecksumSHA1(v string) *CompletedPart {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *CompletedPart) SetChecksumSHA256(v string) *CompletedPart {
+	s.ChecksumSHA256 = &v
+	return s
 }
 
 // SetETag sets the ETag field's value.
@@ -12965,9 +13451,9 @@ type CopyObjectInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -12984,6 +13470,11 @@ type CopyObjectInput struct {
 
 	// Specifies caching behavior along the request/reply chain.
 	CacheControl *string `location:"header" locationName:"Cache-Control" type:"string"`
+
+	// Indicates the algorithm you want Amazon S3 to use to create the checksum
+	// for the object. For more information, see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
 
 	// Specifies presentational information for the object.
 	ContentDisposition *string `location:"header" locationName:"Content-Disposition" type:"string"`
@@ -13007,7 +13498,7 @@ type CopyObjectInput struct {
 	//    the source bucket and the key of the source object, separated by a slash
 	//    (/). For example, to copy the object reports/january.pdf from the bucket
 	//    awsexamplebucket, use awsexamplebucket/reports/january.pdf. The value
-	//    must be URL encoded.
+	//    must be URL-encoded.
 	//
 	//    * For objects accessed through access points, specify the Amazon Resource
 	//    Name (ARN) of the object as accessed through the access point, in the
@@ -13023,7 +13514,7 @@ type CopyObjectInput struct {
 	//    For example, to copy the object reports/january.pdf through outpost my-outpost
 	//    owned by account 123456789012 in Region us-west-2, use the URL encoding
 	//    of arn:aws:s3-outposts:us-west-2:123456789012:outpost/my-outpost/object/reports/january.pdf.
-	//    The value must be URL encoded.
+	//    The value must be URL-encoded.
 	//
 	// To copy a specific version of an object, append ?versionId=<version-id> to
 	// the value (for example, awsexamplebucket/reports/january.pdf?versionId=QUpfdndhfd8438MNFDN93jdnJFkdmqnh893).
@@ -13065,13 +13556,13 @@ type CopyObjectInput struct {
 	CopySourceSSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-copy-source-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// The account ID of the expected destination bucket owner. If the destination
-	// bucket is owned by a different account, the request will fail with an HTTP
-	// 403 (Access Denied) error.
+	// bucket is owned by a different account, the request fails with the HTTP status
+	// code 403 Forbidden (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The account ID of the expected source bucket owner. If the source bucket
-	// is owned by a different account, the request will fail with an HTTP 403 (Access
-	// Denied) error.
+	// is owned by a different account, the request fails with the HTTP status code
+	// 403 Forbidden (access denied).
 	ExpectedSourceBucketOwner *string `location:"header" locationName:"x-amz-source-expected-bucket-owner" type:"string"`
 
 	// The date and time at which the object is no longer cacheable.
@@ -13109,7 +13600,7 @@ type CopyObjectInput struct {
 	// with metadata provided in the request.
 	MetadataDirective *string `location:"header" locationName:"x-amz-metadata-directive" type:"string" enum:"MetadataDirective"`
 
-	// Specifies whether you want to apply a Legal Hold to the copied object.
+	// Specifies whether you want to apply a legal hold to the copied object.
 	ObjectLockLegalHoldStatus *string `location:"header" locationName:"x-amz-object-lock-legal-hold" type:"string" enum:"ObjectLockLegalHoldStatus"`
 
 	// The Object Lock mode that you want to apply to the copied object.
@@ -13120,8 +13611,8 @@ type CopyObjectInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -13265,6 +13756,12 @@ func (s *CopyObjectInput) SetBucketKeyEnabled(v bool) *CopyObjectInput {
 // SetCacheControl sets the CacheControl field's value.
 func (s *CopyObjectInput) SetCacheControl(v string) *CopyObjectInput {
 	s.CacheControl = &v
+	return s
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *CopyObjectInput) SetChecksumAlgorithm(v string) *CopyObjectInput {
+	s.ChecksumAlgorithm = &v
 	return s
 }
 
@@ -13669,6 +14166,38 @@ func (s *CopyObjectOutput) SetVersionId(v string) *CopyObjectOutput {
 type CopyObjectResult struct {
 	_ struct{} `type:"structure"`
 
+	// The base64-encoded, 32-bit CRC32 checksum of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `type:"string"`
+
+	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `type:"string"`
+
+	// The base64-encoded, 160-bit SHA-1 digest of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `type:"string"`
+
+	// The base64-encoded, 256-bit SHA-256 digest of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `type:"string"`
+
 	// Returns the ETag of the new object. The ETag reflects only changes to the
 	// contents of an object, not its metadata.
 	ETag *string `type:"string"`
@@ -13695,6 +14224,30 @@ func (s CopyObjectResult) GoString() string {
 	return s.String()
 }
 
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *CopyObjectResult) SetChecksumCRC32(v string) *CopyObjectResult {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *CopyObjectResult) SetChecksumCRC32C(v string) *CopyObjectResult {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *CopyObjectResult) SetChecksumSHA1(v string) *CopyObjectResult {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *CopyObjectResult) SetChecksumSHA256(v string) *CopyObjectResult {
+	s.ChecksumSHA256 = &v
+	return s
+}
+
 // SetETag sets the ETag field's value.
 func (s *CopyObjectResult) SetETag(v string) *CopyObjectResult {
 	s.ETag = &v
@@ -13710,6 +14263,38 @@ func (s *CopyObjectResult) SetLastModified(v time.Time) *CopyObjectResult {
 // Container for all response elements.
 type CopyPartResult struct {
 	_ struct{} `type:"structure"`
+
+	// The base64-encoded, 32-bit CRC32 checksum of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `type:"string"`
+
+	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `type:"string"`
+
+	// The base64-encoded, 160-bit SHA-1 digest of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `type:"string"`
+
+	// The base64-encoded, 256-bit SHA-256 digest of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `type:"string"`
 
 	// Entity tag of the object.
 	ETag *string `type:"string"`
@@ -13734,6 +14319,30 @@ func (s CopyPartResult) String() string {
 // value will be replaced with "sensitive".
 func (s CopyPartResult) GoString() string {
 	return s.String()
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *CopyPartResult) SetChecksumCRC32(v string) *CopyPartResult {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *CopyPartResult) SetChecksumCRC32C(v string) *CopyPartResult {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *CopyPartResult) SetChecksumSHA1(v string) *CopyPartResult {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *CopyPartResult) SetChecksumSHA256(v string) *CopyPartResult {
+	s.ChecksumSHA256 = &v
+	return s
 }
 
 // SetETag sets the ETag field's value.
@@ -13938,9 +14547,7 @@ func (s *CreateBucketInput) SetObjectOwnership(v string) *CreateBucketInput {
 type CreateBucketOutput struct {
 	_ struct{} `type:"structure"`
 
-	// Specifies the Region where the bucket will be created. If you are creating
-	// a bucket on the US East (N. Virginia) Region (us-east-1), you do not need
-	// to specify the location.
+	// A forward slash followed by the name of the bucket.
 	Location *string `location:"header" locationName:"Location" type:"string"`
 }
 
@@ -13988,9 +14595,9 @@ type CreateMultipartUploadInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -14008,6 +14615,11 @@ type CreateMultipartUploadInput struct {
 	// Specifies caching behavior along the request/reply chain.
 	CacheControl *string `location:"header" locationName:"Cache-Control" type:"string"`
 
+	// Indicates the algorithm you want Amazon S3 to use to create the checksum
+	// for the object. For more information, see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// Specifies presentational information for the object.
 	ContentDisposition *string `location:"header" locationName:"Content-Disposition" type:"string"`
 
@@ -14023,8 +14635,8 @@ type CreateMultipartUploadInput struct {
 	ContentType *string `location:"header" locationName:"Content-Type" type:"string"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The date and time at which the object is no longer cacheable.
@@ -14058,7 +14670,7 @@ type CreateMultipartUploadInput struct {
 	// A map of metadata to store with the object in S3.
 	Metadata map[string]*string `location:"headers" locationName:"x-amz-meta-" type:"map"`
 
-	// Specifies whether you want to apply a Legal Hold to the uploaded object.
+	// Specifies whether you want to apply a legal hold to the uploaded object.
 	ObjectLockLegalHoldStatus *string `location:"header" locationName:"x-amz-object-lock-legal-hold" type:"string" enum:"ObjectLockLegalHoldStatus"`
 
 	// Specifies the Object Lock mode that you want to apply to the uploaded object.
@@ -14069,8 +14681,8 @@ type CreateMultipartUploadInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -14205,6 +14817,12 @@ func (s *CreateMultipartUploadInput) SetBucketKeyEnabled(v bool) *CreateMultipar
 // SetCacheControl sets the CacheControl field's value.
 func (s *CreateMultipartUploadInput) SetCacheControl(v string) *CreateMultipartUploadInput {
 	s.CacheControl = &v
+	return s
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *CreateMultipartUploadInput) SetChecksumAlgorithm(v string) *CreateMultipartUploadInput {
+	s.ChecksumAlgorithm = &v
 	return s
 }
 
@@ -14424,15 +15042,18 @@ type CreateMultipartUploadOutput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	Bucket *string `locationName:"Bucket" type:"string"`
 
 	// Indicates whether the multipart upload uses an S3 Bucket Key for server-side
 	// encryption with Amazon Web Services KMS (SSE-KMS).
 	BucketKeyEnabled *bool `location:"header" locationName:"x-amz-server-side-encryption-bucket-key-enabled" type:"boolean"`
+
+	// The algorithm that was used to create a checksum of the object.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
 
 	// Object key for which the multipart upload was initiated.
 	Key *string `min:"1" type:"string"`
@@ -14523,6 +15144,12 @@ func (s *CreateMultipartUploadOutput) getBucket() (v string) {
 // SetBucketKeyEnabled sets the BucketKeyEnabled field's value.
 func (s *CreateMultipartUploadOutput) SetBucketKeyEnabled(v bool) *CreateMultipartUploadOutput {
 	s.BucketKeyEnabled = &v
+	return s
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *CreateMultipartUploadOutput) SetChecksumAlgorithm(v string) *CreateMultipartUploadOutput {
+	s.ChecksumAlgorithm = &v
 	return s
 }
 
@@ -14709,8 +15336,8 @@ type DeleteBucketAnalyticsConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The ID that identifies the analytics configuration.
@@ -14839,8 +15466,8 @@ type DeleteBucketCorsInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -14956,8 +15583,8 @@ type DeleteBucketEncryptionInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -15072,8 +15699,8 @@ type DeleteBucketInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -15286,8 +15913,8 @@ type DeleteBucketInventoryConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The ID used to identify the inventory configuration.
@@ -15416,8 +16043,8 @@ type DeleteBucketLifecycleInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -15532,8 +16159,8 @@ type DeleteBucketMetricsConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The ID used to identify the metrics configuration.
@@ -15684,8 +16311,8 @@ type DeleteBucketOwnershipControlsInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -15800,8 +16427,8 @@ type DeleteBucketPolicyInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -15916,8 +16543,8 @@ type DeleteBucketReplicationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -16032,8 +16659,8 @@ type DeleteBucketTaggingInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -16148,8 +16775,8 @@ type DeleteBucketWebsiteInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -16385,22 +17012,22 @@ type DeleteObjectInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// Indicates whether S3 Object Lock should bypass Governance-mode restrictions
-	// to process this operation. To use this header, you must have the s3:PutBucketPublicAccessBlock
+	// to process this operation. To use this header, you must have the s3:BypassGovernanceRetention
 	// permission.
 	BypassGovernanceRetention *bool `location:"header" locationName:"x-amz-bypass-governance-retention" type:"boolean"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Key name of the object to delete.
@@ -16416,8 +17043,8 @@ type DeleteObjectInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -16608,17 +17235,17 @@ type DeleteObjectTaggingInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The key that identifies the object in the bucket from which to remove all
@@ -16775,18 +17402,42 @@ type DeleteObjectsInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// Specifies whether you want to delete this object even if it has a Governance-type
-	// Object Lock in place. To use this header, you must have the s3:PutBucketPublicAccessBlock
+	// Object Lock in place. To use this header, you must have the s3:BypassGovernanceRetention
 	// permission.
 	BypassGovernanceRetention *bool `location:"header" locationName:"x-amz-bypass-governance-retention" type:"boolean"`
+
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// This checksum algorithm must be the same for all parts and it match the checksum
+	// value supplied in the CreateMultipartUpload request.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
 
 	// Container for the request.
 	//
@@ -16794,8 +17445,8 @@ type DeleteObjectsInput struct {
 	Delete *Delete `locationName:"Delete" type:"structure" required:"true" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The concatenation of the authentication device's serial number, a space,
@@ -16806,8 +17457,8 @@ type DeleteObjectsInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 }
@@ -16870,6 +17521,12 @@ func (s *DeleteObjectsInput) getBucket() (v string) {
 // SetBypassGovernanceRetention sets the BypassGovernanceRetention field's value.
 func (s *DeleteObjectsInput) SetBypassGovernanceRetention(v bool) *DeleteObjectsInput {
 	s.BypassGovernanceRetention = &v
+	return s
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *DeleteObjectsInput) SetChecksumAlgorithm(v string) *DeleteObjectsInput {
+	s.ChecksumAlgorithm = &v
 	return s
 }
 
@@ -16985,8 +17642,8 @@ type DeletePublicAccessBlockInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -18050,8 +18707,8 @@ type GetBucketAccelerateConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -18175,8 +18832,8 @@ type GetBucketAclInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -18309,8 +18966,8 @@ type GetBucketAnalyticsConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The ID that identifies the analytics configuration.
@@ -18448,8 +19105,8 @@ type GetBucketCorsInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -18575,8 +19232,8 @@ type GetBucketEncryptionInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -18829,8 +19486,8 @@ type GetBucketInventoryConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The ID used to identify the inventory configuration.
@@ -18968,8 +19625,8 @@ type GetBucketLifecycleConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -19093,8 +19750,8 @@ type GetBucketLifecycleInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -19218,8 +19875,8 @@ type GetBucketLocationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -19345,8 +20002,8 @@ type GetBucketLoggingInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -19473,8 +20130,8 @@ type GetBucketMetricsConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The ID used to identify the metrics configuration.
@@ -19612,8 +20269,8 @@ type GetBucketNotificationConfigurationRequest struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -19706,8 +20363,8 @@ type GetBucketOwnershipControlsInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -19832,8 +20489,8 @@ type GetBucketPolicyInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -19957,8 +20614,8 @@ type GetBucketPolicyStatusInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -20082,8 +20739,8 @@ type GetBucketReplicationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -20208,8 +20865,8 @@ type GetBucketRequestPaymentInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -20333,8 +20990,8 @@ type GetBucketTaggingInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -20460,8 +21117,8 @@ type GetBucketVersioningInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -20596,8 +21253,8 @@ type GetBucketWebsiteInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -20756,8 +21413,8 @@ type GetObjectAclInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The key of the object for which to get the ACL information.
@@ -20767,8 +21424,8 @@ type GetObjectAclInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -20930,6 +21587,423 @@ func (s *GetObjectAclOutput) SetRequestCharged(v string) *GetObjectAclOutput {
 	return s
 }
 
+type GetObjectAttributesInput struct {
+	_ struct{} `locationName:"GetObjectAttributesRequest" type:"structure"`
+
+	// The name of the bucket that contains the object.
+	//
+	// When using this action with an access point, you must direct requests to
+	// the access point hostname. The access point hostname takes the form AccessPointName-AccountId.s3-accesspoint.Region.amazonaws.com.
+	// When using this action with an access point through the Amazon Web Services
+	// SDKs, you provide the access point ARN in place of the bucket name. For more
+	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
+	// in the Amazon S3 User Guide.
+	//
+	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
+	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts bucket ARN in place of the bucket name. For more
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// in the Amazon S3 User Guide.
+	//
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// The account ID of the expected bucket owner. If the bucket is owned by a
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
+	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
+
+	// The object key.
+	//
+	// Key is a required field
+	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
+
+	// Sets the maximum number of parts to return.
+	MaxParts *int64 `location:"header" locationName:"x-amz-max-parts" type:"integer"`
+
+	// An XML header that specifies the fields at the root level that you want returned
+	// in the response. Fields that you do not specify are not returned.
+	//
+	// ObjectAttributes is a required field
+	ObjectAttributes []*string `location:"header" locationName:"x-amz-object-attributes" type:"list" required:"true"`
+
+	// Specifies the part after which listing should begin. Only parts with higher
+	// part numbers will be listed.
+	PartNumberMarker *int64 `location:"header" locationName:"x-amz-part-number-marker" type:"integer"`
+
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// in the Amazon S3 User Guide.
+	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
+
+	// Specifies the algorithm to use when encrypting the object (for example, AES256).
+	SSECustomerAlgorithm *string `location:"header" locationName:"x-amz-server-side-encryption-customer-algorithm" type:"string"`
+
+	// Specifies the customer-provided encryption key for Amazon S3 to use in encrypting
+	// data. This value is used to store the object and then it is discarded; Amazon
+	// S3 does not store the encryption key. The key must be appropriate for use
+	// with the algorithm specified in the x-amz-server-side-encryption-customer-algorithm
+	// header.
+	//
+	// SSECustomerKey is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by GetObjectAttributesInput's
+	// String and GoString methods.
+	SSECustomerKey *string `marshal-as:"blob" location:"header" locationName:"x-amz-server-side-encryption-customer-key" type:"string" sensitive:"true"`
+
+	// Specifies the 128-bit MD5 digest of the encryption key according to RFC 1321.
+	// Amazon S3 uses this header for a message integrity check to ensure that the
+	// encryption key was transmitted without error.
+	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
+
+	// The version ID used to reference a specific version of the object.
+	VersionId *string `location:"querystring" locationName:"versionId" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectAttributesInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectAttributesInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *GetObjectAttributesInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "GetObjectAttributesInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+	if s.Key == nil {
+		invalidParams.Add(request.NewErrParamRequired("Key"))
+	}
+	if s.Key != nil && len(*s.Key) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Key", 1))
+	}
+	if s.ObjectAttributes == nil {
+		invalidParams.Add(request.NewErrParamRequired("ObjectAttributes"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *GetObjectAttributesInput) SetBucket(v string) *GetObjectAttributesInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *GetObjectAttributesInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
+func (s *GetObjectAttributesInput) SetExpectedBucketOwner(v string) *GetObjectAttributesInput {
+	s.ExpectedBucketOwner = &v
+	return s
+}
+
+// SetKey sets the Key field's value.
+func (s *GetObjectAttributesInput) SetKey(v string) *GetObjectAttributesInput {
+	s.Key = &v
+	return s
+}
+
+// SetMaxParts sets the MaxParts field's value.
+func (s *GetObjectAttributesInput) SetMaxParts(v int64) *GetObjectAttributesInput {
+	s.MaxParts = &v
+	return s
+}
+
+// SetObjectAttributes sets the ObjectAttributes field's value.
+func (s *GetObjectAttributesInput) SetObjectAttributes(v []*string) *GetObjectAttributesInput {
+	s.ObjectAttributes = v
+	return s
+}
+
+// SetPartNumberMarker sets the PartNumberMarker field's value.
+func (s *GetObjectAttributesInput) SetPartNumberMarker(v int64) *GetObjectAttributesInput {
+	s.PartNumberMarker = &v
+	return s
+}
+
+// SetRequestPayer sets the RequestPayer field's value.
+func (s *GetObjectAttributesInput) SetRequestPayer(v string) *GetObjectAttributesInput {
+	s.RequestPayer = &v
+	return s
+}
+
+// SetSSECustomerAlgorithm sets the SSECustomerAlgorithm field's value.
+func (s *GetObjectAttributesInput) SetSSECustomerAlgorithm(v string) *GetObjectAttributesInput {
+	s.SSECustomerAlgorithm = &v
+	return s
+}
+
+// SetSSECustomerKey sets the SSECustomerKey field's value.
+func (s *GetObjectAttributesInput) SetSSECustomerKey(v string) *GetObjectAttributesInput {
+	s.SSECustomerKey = &v
+	return s
+}
+
+func (s *GetObjectAttributesInput) getSSECustomerKey() (v string) {
+	if s.SSECustomerKey == nil {
+		return v
+	}
+	return *s.SSECustomerKey
+}
+
+// SetSSECustomerKeyMD5 sets the SSECustomerKeyMD5 field's value.
+func (s *GetObjectAttributesInput) SetSSECustomerKeyMD5(v string) *GetObjectAttributesInput {
+	s.SSECustomerKeyMD5 = &v
+	return s
+}
+
+// SetVersionId sets the VersionId field's value.
+func (s *GetObjectAttributesInput) SetVersionId(v string) *GetObjectAttributesInput {
+	s.VersionId = &v
+	return s
+}
+
+func (s *GetObjectAttributesInput) getEndpointARN() (arn.Resource, error) {
+	if s.Bucket == nil {
+		return nil, fmt.Errorf("member Bucket is nil")
+	}
+	return parseEndpointARN(*s.Bucket)
+}
+
+func (s *GetObjectAttributesInput) hasEndpointARN() bool {
+	if s.Bucket == nil {
+		return false
+	}
+	return arn.IsARN(*s.Bucket)
+}
+
+// updateArnableField updates the value of the input field that
+// takes an ARN as an input. This method is useful to backfill
+// the parsed resource name from ARN into the input member.
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetObjectAttributesInput) updateArnableField(v string) (interface{}, error) {
+	if s.Bucket == nil {
+		return nil, fmt.Errorf("member Bucket is nil")
+	}
+	s.Bucket = aws.String(v)
+	return &s, nil
+}
+
+type GetObjectAttributesOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The checksum or digest of the object.
+	Checksum *Checksum `type:"structure"`
+
+	// Specifies whether the object retrieved was (true) or was not (false) a delete
+	// marker. If false, this response header does not appear in the response.
+	DeleteMarker *bool `location:"header" locationName:"x-amz-delete-marker" type:"boolean"`
+
+	// An ETag is an opaque identifier assigned by a web server to a specific version
+	// of a resource found at a URL.
+	ETag *string `type:"string"`
+
+	// The creation date of the object.
+	LastModified *time.Time `location:"header" locationName:"Last-Modified" type:"timestamp"`
+
+	// A collection of parts associated with a multipart upload.
+	ObjectParts *GetObjectAttributesParts `type:"structure"`
+
+	// The size of the object in bytes.
+	ObjectSize *int64 `type:"long"`
+
+	// If present, indicates that the requester was successfully charged for the
+	// request.
+	RequestCharged *string `location:"header" locationName:"x-amz-request-charged" type:"string" enum:"RequestCharged"`
+
+	// Provides the storage class information of the object. Amazon S3 returns this
+	// header for all objects except for S3 Standard storage class objects.
+	//
+	// For more information, see Storage Classes (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html).
+	StorageClass *string `type:"string" enum:"StorageClass"`
+
+	// The version ID of the object.
+	VersionId *string `location:"header" locationName:"x-amz-version-id" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectAttributesOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectAttributesOutput) GoString() string {
+	return s.String()
+}
+
+// SetChecksum sets the Checksum field's value.
+func (s *GetObjectAttributesOutput) SetChecksum(v *Checksum) *GetObjectAttributesOutput {
+	s.Checksum = v
+	return s
+}
+
+// SetDeleteMarker sets the DeleteMarker field's value.
+func (s *GetObjectAttributesOutput) SetDeleteMarker(v bool) *GetObjectAttributesOutput {
+	s.DeleteMarker = &v
+	return s
+}
+
+// SetETag sets the ETag field's value.
+func (s *GetObjectAttributesOutput) SetETag(v string) *GetObjectAttributesOutput {
+	s.ETag = &v
+	return s
+}
+
+// SetLastModified sets the LastModified field's value.
+func (s *GetObjectAttributesOutput) SetLastModified(v time.Time) *GetObjectAttributesOutput {
+	s.LastModified = &v
+	return s
+}
+
+// SetObjectParts sets the ObjectParts field's value.
+func (s *GetObjectAttributesOutput) SetObjectParts(v *GetObjectAttributesParts) *GetObjectAttributesOutput {
+	s.ObjectParts = v
+	return s
+}
+
+// SetObjectSize sets the ObjectSize field's value.
+func (s *GetObjectAttributesOutput) SetObjectSize(v int64) *GetObjectAttributesOutput {
+	s.ObjectSize = &v
+	return s
+}
+
+// SetRequestCharged sets the RequestCharged field's value.
+func (s *GetObjectAttributesOutput) SetRequestCharged(v string) *GetObjectAttributesOutput {
+	s.RequestCharged = &v
+	return s
+}
+
+// SetStorageClass sets the StorageClass field's value.
+func (s *GetObjectAttributesOutput) SetStorageClass(v string) *GetObjectAttributesOutput {
+	s.StorageClass = &v
+	return s
+}
+
+// SetVersionId sets the VersionId field's value.
+func (s *GetObjectAttributesOutput) SetVersionId(v string) *GetObjectAttributesOutput {
+	s.VersionId = &v
+	return s
+}
+
+// A collection of parts associated with a multipart upload.
+type GetObjectAttributesParts struct {
+	_ struct{} `type:"structure"`
+
+	// Indicates whether the returned list of parts is truncated. A value of true
+	// indicates that the list was truncated. A list can be truncated if the number
+	// of parts exceeds the limit returned in the MaxParts element.
+	IsTruncated *bool `type:"boolean"`
+
+	// The maximum number of parts allowed in the response.
+	MaxParts *int64 `type:"integer"`
+
+	// When a list is truncated, this element specifies the last part in the list,
+	// as well as the value to use for the PartNumberMarker request parameter in
+	// a subsequent request.
+	NextPartNumberMarker *int64 `type:"integer"`
+
+	// The marker for the current part.
+	PartNumberMarker *int64 `type:"integer"`
+
+	// A container for elements related to a particular part. A response can contain
+	// zero or more Parts elements.
+	Parts []*ObjectPart `locationName:"Part" type:"list" flattened:"true"`
+
+	// The total number of parts.
+	TotalPartsCount *int64 `locationName:"PartsCount" type:"integer"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectAttributesParts) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectAttributesParts) GoString() string {
+	return s.String()
+}
+
+// SetIsTruncated sets the IsTruncated field's value.
+func (s *GetObjectAttributesParts) SetIsTruncated(v bool) *GetObjectAttributesParts {
+	s.IsTruncated = &v
+	return s
+}
+
+// SetMaxParts sets the MaxParts field's value.
+func (s *GetObjectAttributesParts) SetMaxParts(v int64) *GetObjectAttributesParts {
+	s.MaxParts = &v
+	return s
+}
+
+// SetNextPartNumberMarker sets the NextPartNumberMarker field's value.
+func (s *GetObjectAttributesParts) SetNextPartNumberMarker(v int64) *GetObjectAttributesParts {
+	s.NextPartNumberMarker = &v
+	return s
+}
+
+// SetPartNumberMarker sets the PartNumberMarker field's value.
+func (s *GetObjectAttributesParts) SetPartNumberMarker(v int64) *GetObjectAttributesParts {
+	s.PartNumberMarker = &v
+	return s
+}
+
+// SetParts sets the Parts field's value.
+func (s *GetObjectAttributesParts) SetParts(v []*ObjectPart) *GetObjectAttributesParts {
+	s.Parts = v
+	return s
+}
+
+// SetTotalPartsCount sets the TotalPartsCount field's value.
+func (s *GetObjectAttributesParts) SetTotalPartsCount(v int64) *GetObjectAttributesParts {
+	s.TotalPartsCount = &v
+	return s
+}
+
 type GetObjectInput struct {
 	_ struct{} `locationName:"GetObjectRequest" type:"structure"`
 
@@ -20947,33 +22021,39 @@ type GetObjectInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// To retrieve the checksum, this mode must be enabled.
+	//
+	// The AWS SDK for Go v1 does not support automatic response payload checksum
+	// validation. This feature is available in the AWS SDK for Go v2.
+	ChecksumMode *string `location:"header" locationName:"x-amz-checksum-mode" type:"string" enum:"ChecksumMode"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
-	// Return the object only if its entity tag (ETag) is the same as the one specified,
-	// otherwise return a 412 (precondition failed).
+	// Return the object only if its entity tag (ETag) is the same as the one specified;
+	// otherwise, return a 412 (precondition failed) error.
 	IfMatch *string `location:"header" locationName:"If-Match" type:"string"`
 
-	// Return the object only if it has been modified since the specified time,
-	// otherwise return a 304 (not modified).
+	// Return the object only if it has been modified since the specified time;
+	// otherwise, return a 304 (not modified) error.
 	IfModifiedSince *time.Time `location:"header" locationName:"If-Modified-Since" type:"timestamp"`
 
 	// Return the object only if its entity tag (ETag) is different from the one
-	// specified, otherwise return a 304 (not modified).
+	// specified; otherwise, return a 304 (not modified) error.
 	IfNoneMatch *string `location:"header" locationName:"If-None-Match" type:"string"`
 
-	// Return the object only if it has not been modified since the specified time,
-	// otherwise return a 412 (precondition failed).
+	// Return the object only if it has not been modified since the specified time;
+	// otherwise, return a 412 (precondition failed) error.
 	IfUnmodifiedSince *time.Time `location:"header" locationName:"If-Unmodified-Since" type:"timestamp"`
 
 	// Key of the object to get.
@@ -20995,8 +22075,8 @@ type GetObjectInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -21093,6 +22173,12 @@ func (s *GetObjectInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumMode sets the ChecksumMode field's value.
+func (s *GetObjectInput) SetChecksumMode(v string) *GetObjectInput {
+	s.ChecksumMode = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -21246,7 +22332,7 @@ func (s GetObjectInput) updateArnableField(v string) (interface{}, error) {
 type GetObjectLegalHoldInput struct {
 	_ struct{} `locationName:"GetObjectLegalHoldRequest" type:"structure"`
 
-	// The bucket name containing the object whose Legal Hold status you want to
+	// The bucket name containing the object whose legal hold status you want to
 	// retrieve.
 	//
 	// When using this action with an access point, you must direct requests to
@@ -21260,23 +22346,23 @@ type GetObjectLegalHoldInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
-	// The key name for the object whose Legal Hold status you want to retrieve.
+	// The key name for the object whose legal hold status you want to retrieve.
 	//
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
-	// The version ID of the object whose Legal Hold status you want to retrieve.
+	// The version ID of the object whose legal hold status you want to retrieve.
 	VersionId *string `location:"querystring" locationName:"versionId" type:"string"`
 }
 
@@ -21387,7 +22473,7 @@ func (s GetObjectLegalHoldInput) updateArnableField(v string) (interface{}, erro
 type GetObjectLegalHoldOutput struct {
 	_ struct{} `type:"structure" payload:"LegalHold"`
 
-	// The current Legal Hold status for the specified object.
+	// The current legal hold status for the specified object.
 	LegalHold *ObjectLockLegalHold `type:"structure"`
 }
 
@@ -21431,8 +22517,8 @@ type GetObjectLockConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -21563,6 +22649,38 @@ type GetObjectOutput struct {
 	// Specifies caching behavior along the request/reply chain.
 	CacheControl *string `location:"header" locationName:"Cache-Control" type:"string"`
 
+	// The base64-encoded, 32-bit CRC32 checksum of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `location:"header" locationName:"x-amz-checksum-crc32" type:"string"`
+
+	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `location:"header" locationName:"x-amz-checksum-crc32c" type:"string"`
+
+	// The base64-encoded, 160-bit SHA-1 digest of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `location:"header" locationName:"x-amz-checksum-sha1" type:"string"`
+
+	// The base64-encoded, 256-bit SHA-256 digest of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `location:"header" locationName:"x-amz-checksum-sha256" type:"string"`
+
 	// Specifies presentational information for the object.
 	ContentDisposition *string `location:"header" locationName:"Content-Disposition" type:"string"`
 
@@ -21587,14 +22705,13 @@ type GetObjectOutput struct {
 	// Marker. If false, this response header does not appear in the response.
 	DeleteMarker *bool `location:"header" locationName:"x-amz-delete-marker" type:"boolean"`
 
-	// An ETag is an opaque identifier assigned by a web server to a specific version
-	// of a resource found at a URL.
+	// An entity tag (ETag) is an opaque identifier assigned by a web server to
+	// a specific version of a resource found at a URL.
 	ETag *string `location:"header" locationName:"ETag" type:"string"`
 
 	// If the object expiration is configured (see PUT Bucket lifecycle), the response
 	// includes this header. It includes the expiry-date and rule-id key-value pairs
-	// providing object expiration information. The value of the rule-id is URL
-	// encoded.
+	// providing object expiration information. The value of the rule-id is URL-encoded.
 	Expiration *string `location:"header" locationName:"x-amz-expiration" type:"string"`
 
 	// The date and time at which the object is no longer cacheable.
@@ -21626,7 +22743,8 @@ type GetObjectOutput struct {
 	// The date and time when this object's Object Lock will expire.
 	ObjectLockRetainUntilDate *time.Time `location:"header" locationName:"x-amz-object-lock-retain-until-date" type:"timestamp" timestampFormat:"iso8601"`
 
-	// The count of parts this object has.
+	// The count of parts this object has. This value is only returned if you specify
+	// partNumber in your request and the object was uploaded as a multipart upload.
 	PartsCount *int64 `location:"header" locationName:"x-amz-mp-parts-count" type:"integer"`
 
 	// Amazon S3 can return this if your request involves a bucket that is either
@@ -21719,6 +22837,30 @@ func (s *GetObjectOutput) SetBucketKeyEnabled(v bool) *GetObjectOutput {
 // SetCacheControl sets the CacheControl field's value.
 func (s *GetObjectOutput) SetCacheControl(v string) *GetObjectOutput {
 	s.CacheControl = &v
+	return s
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *GetObjectOutput) SetChecksumCRC32(v string) *GetObjectOutput {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *GetObjectOutput) SetChecksumCRC32C(v string) *GetObjectOutput {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *GetObjectOutput) SetChecksumSHA1(v string) *GetObjectOutput {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *GetObjectOutput) SetChecksumSHA256(v string) *GetObjectOutput {
+	s.ChecksumSHA256 = &v
 	return s
 }
 
@@ -21907,8 +23049,8 @@ type GetObjectRetentionInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The key name for the object whose retention settings you want to retrieve.
@@ -21918,8 +23060,8 @@ type GetObjectRetentionInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -22077,17 +23219,17 @@ type GetObjectTaggingInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Object key for which to get the tagging information.
@@ -22097,8 +23239,8 @@ type GetObjectTaggingInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -22262,8 +23404,8 @@ type GetObjectTorrentInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The object key for which to get the information.
@@ -22273,8 +23415,8 @@ type GetObjectTorrentInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 }
@@ -22428,8 +23570,8 @@ type GetPublicAccessBlockInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -22769,17 +23911,17 @@ type HeadBucketInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -22900,33 +24042,40 @@ type HeadObjectInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// To retrieve the checksum, this parameter must be enabled.
+	//
+	// In addition, if you enable ChecksumMode and the object is encrypted with
+	// Amazon Web Services Key Management Service (Amazon Web Services KMS), you
+	// must have permission to use the kms:Decrypt action for the request to succeed.
+	ChecksumMode *string `location:"header" locationName:"x-amz-checksum-mode" type:"string" enum:"ChecksumMode"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
-	// Return the object only if its entity tag (ETag) is the same as the one specified,
-	// otherwise return a 412 (precondition failed).
+	// Return the object only if its entity tag (ETag) is the same as the one specified;
+	// otherwise, return a 412 (precondition failed) error.
 	IfMatch *string `location:"header" locationName:"If-Match" type:"string"`
 
-	// Return the object only if it has been modified since the specified time,
-	// otherwise return a 304 (not modified).
+	// Return the object only if it has been modified since the specified time;
+	// otherwise, return a 304 (not modified) error.
 	IfModifiedSince *time.Time `location:"header" locationName:"If-Modified-Since" type:"timestamp"`
 
 	// Return the object only if its entity tag (ETag) is different from the one
-	// specified, otherwise return a 304 (not modified).
+	// specified; otherwise, return a 304 (not modified) error.
 	IfNoneMatch *string `location:"header" locationName:"If-None-Match" type:"string"`
 
-	// Return the object only if it has not been modified since the specified time,
-	// otherwise return a 412 (precondition failed).
+	// Return the object only if it has not been modified since the specified time;
+	// otherwise, return a 412 (precondition failed) error.
 	IfUnmodifiedSince *time.Time `location:"header" locationName:"If-Unmodified-Since" type:"timestamp"`
 
 	// The object key.
@@ -22946,8 +24095,8 @@ type HeadObjectInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -23026,6 +24175,12 @@ func (s *HeadObjectInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumMode sets the ChecksumMode field's value.
+func (s *HeadObjectInput) SetChecksumMode(v string) *HeadObjectInput {
+	s.ChecksumMode = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -23156,6 +24311,38 @@ type HeadObjectOutput struct {
 	// Specifies caching behavior along the request/reply chain.
 	CacheControl *string `location:"header" locationName:"Cache-Control" type:"string"`
 
+	// The base64-encoded, 32-bit CRC32 checksum of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `location:"header" locationName:"x-amz-checksum-crc32" type:"string"`
+
+	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `location:"header" locationName:"x-amz-checksum-crc32c" type:"string"`
+
+	// The base64-encoded, 160-bit SHA-1 digest of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `location:"header" locationName:"x-amz-checksum-sha1" type:"string"`
+
+	// The base64-encoded, 256-bit SHA-256 digest of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `location:"header" locationName:"x-amz-checksum-sha256" type:"string"`
+
 	// Specifies presentational information for the object.
 	ContentDisposition *string `location:"header" locationName:"Content-Disposition" type:"string"`
 
@@ -23177,14 +24364,13 @@ type HeadObjectOutput struct {
 	// Marker. If false, this response header does not appear in the response.
 	DeleteMarker *bool `location:"header" locationName:"x-amz-delete-marker" type:"boolean"`
 
-	// An ETag is an opaque identifier assigned by a web server to a specific version
-	// of a resource found at a URL.
+	// An entity tag (ETag) is an opaque identifier assigned by a web server to
+	// a specific version of a resource found at a URL.
 	ETag *string `location:"header" locationName:"ETag" type:"string"`
 
 	// If the object expiration is configured (see PUT Bucket lifecycle), the response
 	// includes this header. It includes the expiry-date and rule-id key-value pairs
-	// providing object expiration information. The value of the rule-id is URL
-	// encoded.
+	// providing object expiration information. The value of the rule-id is URL-encoded.
 	Expiration *string `location:"header" locationName:"x-amz-expiration" type:"string"`
 
 	// The date and time at which the object is no longer cacheable.
@@ -23222,7 +24408,8 @@ type HeadObjectOutput struct {
 	// is only returned if the requester has the s3:GetObjectRetention permission.
 	ObjectLockRetainUntilDate *time.Time `location:"header" locationName:"x-amz-object-lock-retain-until-date" type:"timestamp" timestampFormat:"iso8601"`
 
-	// The count of parts this object has.
+	// The count of parts this object has. This value is only returned if you specify
+	// partNumber in your request and the object was uploaded as a multipart upload.
 	PartsCount *int64 `location:"header" locationName:"x-amz-mp-parts-count" type:"integer"`
 
 	// Amazon S3 can return this header if your request involves a bucket that is
@@ -23234,7 +24421,7 @@ type HeadObjectOutput struct {
 	// these buckets, Amazon S3 will return the x-amz-replication-status header
 	// in the response as follows:
 	//
-	//    * If requesting an object from the source bucket — Amazon S3 will return
+	//    * If requesting an object from the source bucket, Amazon S3 will return
 	//    the x-amz-replication-status header if the object in your request is eligible
 	//    for replication. For example, suppose that in your replication configuration,
 	//    you specify object prefix TaxDocs requesting Amazon S3 to replicate objects
@@ -23244,12 +24431,12 @@ type HeadObjectOutput struct {
 	//    header with value PENDING, COMPLETED or FAILED indicating object replication
 	//    status.
 	//
-	//    * If requesting an object from a destination bucket — Amazon S3 will
-	//    return the x-amz-replication-status header with value REPLICA if the object
-	//    in your request is a replica that Amazon S3 created and there is no replica
+	//    * If requesting an object from a destination bucket, Amazon S3 will return
+	//    the x-amz-replication-status header with value REPLICA if the object in
+	//    your request is a replica that Amazon S3 created and there is no replica
 	//    modification replication in progress.
 	//
-	//    * When replicating objects to multiple destination buckets the x-amz-replication-status
+	//    * When replicating objects to multiple destination buckets, the x-amz-replication-status
 	//    header acts differently. The header of the source object will only return
 	//    a value of COMPLETED when replication is successful to all destinations.
 	//    The header will remain at value PENDING until replication has completed
@@ -23359,6 +24546,30 @@ func (s *HeadObjectOutput) SetBucketKeyEnabled(v bool) *HeadObjectOutput {
 // SetCacheControl sets the CacheControl field's value.
 func (s *HeadObjectOutput) SetCacheControl(v string) *HeadObjectOutput {
 	s.CacheControl = &v
+	return s
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *HeadObjectOutput) SetChecksumCRC32(v string) *HeadObjectOutput {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *HeadObjectOutput) SetChecksumCRC32C(v string) *HeadObjectOutput {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *HeadObjectOutput) SetChecksumSHA1(v string) *HeadObjectOutput {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *HeadObjectOutput) SetChecksumSHA256(v string) *HeadObjectOutput {
+	s.ChecksumSHA256 = &v
 	return s
 }
 
@@ -24688,7 +25899,7 @@ type LifecycleRule struct {
 
 	// The Filter is used to identify objects that a Lifecycle Rule applies to.
 	// A Filter must have exactly one of Prefix, Tag, or And specified. Filter is
-	// required if the LifecycleRule does not containt a Prefix element.
+	// required if the LifecycleRule does not contain a Prefix element.
 	Filter *LifecycleRuleFilter `type:"structure"`
 
 	// Unique identifier for the rule. The value cannot be longer than 255 characters.
@@ -25008,8 +26219,8 @@ type ListBucketAnalyticsConfigurationsInput struct {
 	ContinuationToken *string `location:"querystring" locationName:"continuation-token" type:"string"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -25334,8 +26545,8 @@ type ListBucketInventoryConfigurationsInput struct {
 	ContinuationToken *string `location:"querystring" locationName:"continuation-token" type:"string"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -25503,8 +26714,8 @@ type ListBucketMetricsConfigurationsInput struct {
 	ContinuationToken *string `location:"querystring" locationName:"continuation-token" type:"string"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -25683,7 +26894,7 @@ func (s ListBucketsInput) GoString() string {
 type ListBucketsOutput struct {
 	_ struct{} `type:"structure"`
 
-	// The list of buckets owned by the requestor.
+	// The list of buckets owned by the requester.
 	Buckets []*Bucket `locationNameList:"Bucket" type:"list"`
 
 	// The owner of the buckets listed.
@@ -25735,9 +26946,9 @@ type ListMultipartUploadsInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -25762,8 +26973,8 @@ type ListMultipartUploadsInput struct {
 	EncodingType *string `location:"querystring" locationName:"encoding-type" type:"string" enum:"EncodingType"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Together with upload-id-marker, this parameter specifies the multipart upload
@@ -26091,8 +27302,8 @@ type ListObjectVersionsInput struct {
 	EncodingType *string `location:"querystring" locationName:"encoding-type" type:"string" enum:"EncodingType"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Specifies the key to start with when listing objects in a bucket.
@@ -26408,9 +27619,9 @@ type ListObjectsInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -26428,8 +27639,8 @@ type ListObjectsInput struct {
 	EncodingType *string `location:"querystring" locationName:"encoding-type" type:"string" enum:"EncodingType"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Marker is where you want Amazon S3 to start listing from. Amazon S3 starts
@@ -26719,9 +27930,9 @@ type ListObjectsV2Input struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -26739,8 +27950,8 @@ type ListObjectsV2Input struct {
 	EncodingType *string `location:"querystring" locationName:"encoding-type" type:"string" enum:"EncodingType"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The owner field is not present in listV2 by default, if you want to return
@@ -26963,9 +28174,9 @@ type ListObjectsV2Output struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	Name *string `type:"string"`
 
@@ -27087,17 +28298,17 @@ type ListPartsInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Object key for which the multipart upload was initiated.
@@ -27114,10 +28325,32 @@ type ListPartsInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
+
+	// The server-side encryption (SSE) algorithm used to encrypt the object. This
+	// parameter is needed only when the object was created using a checksum algorithm.
+	// For more information, see Protecting data using SSE-C keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
+	// in the Amazon S3 User Guide.
+	SSECustomerAlgorithm *string `location:"header" locationName:"x-amz-server-side-encryption-customer-algorithm" type:"string"`
+
+	// The server-side encryption (SSE) customer managed key. This parameter is
+	// needed only when the object was created using a checksum algorithm. For more
+	// information, see Protecting data using SSE-C keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
+	// in the Amazon S3 User Guide.
+	//
+	// SSECustomerKey is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by ListPartsInput's
+	// String and GoString methods.
+	SSECustomerKey *string `marshal-as:"blob" location:"header" locationName:"x-amz-server-side-encryption-customer-key" type:"string" sensitive:"true"`
+
+	// The MD5 server-side encryption (SSE) customer managed key. This parameter
+	// is needed only when the object was created using a checksum algorithm. For
+	// more information, see Protecting data using SSE-C keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
+	// in the Amazon S3 User Guide.
+	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// Upload ID identifying the multipart upload whose parts are being listed.
 	//
@@ -27211,6 +28444,31 @@ func (s *ListPartsInput) SetRequestPayer(v string) *ListPartsInput {
 	return s
 }
 
+// SetSSECustomerAlgorithm sets the SSECustomerAlgorithm field's value.
+func (s *ListPartsInput) SetSSECustomerAlgorithm(v string) *ListPartsInput {
+	s.SSECustomerAlgorithm = &v
+	return s
+}
+
+// SetSSECustomerKey sets the SSECustomerKey field's value.
+func (s *ListPartsInput) SetSSECustomerKey(v string) *ListPartsInput {
+	s.SSECustomerKey = &v
+	return s
+}
+
+func (s *ListPartsInput) getSSECustomerKey() (v string) {
+	if s.SSECustomerKey == nil {
+		return v
+	}
+	return *s.SSECustomerKey
+}
+
+// SetSSECustomerKeyMD5 sets the SSECustomerKeyMD5 field's value.
+func (s *ListPartsInput) SetSSECustomerKeyMD5(v string) *ListPartsInput {
+	s.SSECustomerKeyMD5 = &v
+	return s
+}
+
 // SetUploadId sets the UploadId field's value.
 func (s *ListPartsInput) SetUploadId(v string) *ListPartsInput {
 	s.UploadId = &v
@@ -27266,6 +28524,9 @@ type ListPartsOutput struct {
 	// The name of the bucket to which the multipart upload was initiated. Does
 	// not return the access point ARN or access point alias if used.
 	Bucket *string `type:"string"`
+
+	// The algorithm that was used to create a checksum of the object.
+	ChecksumAlgorithm *string `type:"string" enum:"ChecksumAlgorithm"`
 
 	// Container element that identifies who initiated the multipart upload. If
 	// the initiator is an Amazon Web Services account, this element provides the
@@ -27356,6 +28617,12 @@ func (s *ListPartsOutput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *ListPartsOutput) SetChecksumAlgorithm(v string) *ListPartsOutput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetInitiator sets the Initiator field's value.
@@ -27982,6 +29249,9 @@ func (s *MetricsFilter) SetTag(v *Tag) *MetricsFilter {
 type MultipartUpload struct {
 	_ struct{} `type:"structure"`
 
+	// The algorithm that was used to create a checksum of the object.
+	ChecksumAlgorithm *string `type:"string" enum:"ChecksumAlgorithm"`
+
 	// Date and time at which the multipart upload was initiated.
 	Initiated *time.Time `type:"timestamp"`
 
@@ -28017,6 +29287,12 @@ func (s MultipartUpload) String() string {
 // value will be replaced with "sensitive".
 func (s MultipartUpload) GoString() string {
 	return s.String()
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *MultipartUpload) SetChecksumAlgorithm(v string) *MultipartUpload {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetInitiated sets the Initiated field's value.
@@ -28366,6 +29642,9 @@ func (s *NotificationConfigurationFilter) SetKey(v *KeyFilter) *NotificationConf
 type Object struct {
 	_ struct{} `type:"structure"`
 
+	// The algorithm that was used to create a checksum of the object.
+	ChecksumAlgorithm []*string `type:"list" flattened:"true"`
+
 	// The entity tag is a hash of the object. The ETag reflects changes only to
 	// the contents of an object, not its metadata. The ETag may or may not be an
 	// MD5 digest of the object data. Whether or not it is depends on how the object
@@ -28419,6 +29698,12 @@ func (s Object) String() string {
 // value will be replaced with "sensitive".
 func (s Object) GoString() string {
 	return s.String()
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *Object) SetChecksumAlgorithm(v []*string) *Object {
+	s.ChecksumAlgorithm = v
+	return s
 }
 
 // SetETag sets the ETag field's value.
@@ -28565,11 +29850,11 @@ func (s *ObjectLockConfiguration) SetRule(v *ObjectLockRule) *ObjectLockConfigur
 	return s
 }
 
-// A Legal Hold configuration for an object.
+// A legal hold configuration for an object.
 type ObjectLockLegalHold struct {
 	_ struct{} `type:"structure"`
 
-	// Indicates whether the specified object has a Legal Hold in place.
+	// Indicates whether the specified object has a legal hold in place.
 	Status *string `type:"string" enum:"ObjectLockLegalHoldStatus"`
 }
 
@@ -28673,9 +29958,109 @@ func (s *ObjectLockRule) SetDefaultRetention(v *DefaultRetention) *ObjectLockRul
 	return s
 }
 
+// A container for elements related to an individual part.
+type ObjectPart struct {
+	_ struct{} `type:"structure"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 32-bit CRC32 checksum of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `type:"string"`
+
+	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `type:"string"`
+
+	// The base64-encoded, 160-bit SHA-1 digest of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `type:"string"`
+
+	// The base64-encoded, 256-bit SHA-256 digest of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `type:"string"`
+
+	// The part number identifying the part. This value is a positive integer between
+	// 1 and 10,000.
+	PartNumber *int64 `type:"integer"`
+
+	// The size of the uploaded part in bytes.
+	Size *int64 `type:"integer"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectPart) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectPart) GoString() string {
+	return s.String()
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *ObjectPart) SetChecksumCRC32(v string) *ObjectPart {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *ObjectPart) SetChecksumCRC32C(v string) *ObjectPart {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *ObjectPart) SetChecksumSHA1(v string) *ObjectPart {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *ObjectPart) SetChecksumSHA256(v string) *ObjectPart {
+	s.ChecksumSHA256 = &v
+	return s
+}
+
+// SetPartNumber sets the PartNumber field's value.
+func (s *ObjectPart) SetPartNumber(v int64) *ObjectPart {
+	s.PartNumber = &v
+	return s
+}
+
+// SetSize sets the Size field's value.
+func (s *ObjectPart) SetSize(v int64) *ObjectPart {
+	s.Size = &v
+	return s
+}
+
 // The version of an object.
 type ObjectVersion struct {
 	_ struct{} `type:"structure"`
+
+	// The algorithm that was used to create a checksum of the object.
+	ChecksumAlgorithm []*string `type:"list" flattened:"true"`
 
 	// The entity tag is an MD5 hash of that version of the object.
 	ETag *string `type:"string"`
@@ -28719,6 +30104,12 @@ func (s ObjectVersion) String() string {
 // value will be replaced with "sensitive".
 func (s ObjectVersion) GoString() string {
 	return s.String()
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *ObjectVersion) SetChecksumAlgorithm(v []*string) *ObjectVersion {
+	s.ChecksumAlgorithm = v
+	return s
 }
 
 // SetETag sets the ETag field's value.
@@ -29042,6 +30433,36 @@ func (s ParquetInput) GoString() string {
 type Part struct {
 	_ struct{} `type:"structure"`
 
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 32-bit CRC32 checksum of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `type:"string"`
+
+	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `type:"string"`
+
+	// The base64-encoded, 160-bit SHA-1 digest of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 256-bit SHA-256 digest of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `type:"string"`
+
 	// Entity tag returned when the part was uploaded.
 	ETag *string `type:"string"`
 
@@ -29072,6 +30493,30 @@ func (s Part) String() string {
 // value will be replaced with "sensitive".
 func (s Part) GoString() string {
 	return s.String()
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *Part) SetChecksumCRC32(v string) *Part {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *Part) SetChecksumCRC32C(v string) *Part {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *Part) SetChecksumSHA1(v string) *Part {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *Part) SetChecksumSHA256(v string) *Part {
+	s.ChecksumSHA256 = &v
+	return s
 }
 
 // SetETag sets the ETag field's value.
@@ -29254,7 +30699,7 @@ type PublicAccessBlockConfiguration struct {
 	// for this bucket and objects in this bucket. Setting this element to TRUE
 	// causes the following behavior:
 	//
-	//    * PUT Bucket acl and PUT Object acl calls fail if the specified ACL is
+	//    * PUT Bucket ACL and PUT Object ACL calls fail if the specified ACL is
 	//    public.
 	//
 	//    * PUT Object calls fail if the request includes a public ACL.
@@ -29345,9 +30790,26 @@ type PutBucketAccelerateConfigurationInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -29405,6 +30867,12 @@ func (s *PutBucketAccelerateConfigurationInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketAccelerateConfigurationInput) SetChecksumAlgorithm(v string) *PutBucketAccelerateConfigurationInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -29476,9 +30944,30 @@ type PutBucketAclInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Allows grantee the read, write, read ACP, and write ACP permissions on the
@@ -29563,6 +31052,12 @@ func (s *PutBucketAclInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketAclInput) SetChecksumAlgorithm(v string) *PutBucketAclInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -29664,8 +31159,8 @@ type PutBucketAnalyticsConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The ID that identifies the analytics configuration.
@@ -29815,9 +31310,30 @@ type PutBucketCorsInput struct {
 	// CORSConfiguration is a required field
 	CORSConfiguration *CORSConfiguration `locationName:"CORSConfiguration" type:"structure" required:"true" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -29879,6 +31395,12 @@ func (s *PutBucketCorsInput) getBucket() (v string) {
 // SetCORSConfiguration sets the CORSConfiguration field's value.
 func (s *PutBucketCorsInput) SetCORSConfiguration(v *CORSConfiguration) *PutBucketCorsInput {
 	s.CORSConfiguration = v
+	return s
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketCorsInput) SetChecksumAlgorithm(v string) *PutBucketCorsInput {
+	s.ChecksumAlgorithm = &v
 	return s
 }
 
@@ -29949,9 +31471,30 @@ type PutBucketEncryptionInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Specifies the default server-side-encryption configuration.
@@ -30013,6 +31556,12 @@ func (s *PutBucketEncryptionInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketEncryptionInput) SetChecksumAlgorithm(v string) *PutBucketEncryptionInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -30224,8 +31773,8 @@ type PutBucketInventoryConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The ID used to identify the inventory configuration.
@@ -30372,9 +31921,30 @@ type PutBucketLifecycleConfigurationInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Container for lifecycle rules. You can add as many as 1,000 rules.
@@ -30431,6 +32001,12 @@ func (s *PutBucketLifecycleConfigurationInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketLifecycleConfigurationInput) SetChecksumAlgorithm(v string) *PutBucketLifecycleConfigurationInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -30500,9 +32076,30 @@ type PutBucketLifecycleInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Container for lifecycle rules. You can add as many as 1000 rules.
@@ -30559,6 +32156,12 @@ func (s *PutBucketLifecycleInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketLifecycleInput) SetChecksumAlgorithm(v string) *PutBucketLifecycleInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -30635,9 +32238,30 @@ type PutBucketLoggingInput struct {
 	// BucketLoggingStatus is a required field
 	BucketLoggingStatus *BucketLoggingStatus `locationName:"BucketLoggingStatus" type:"structure" required:"true" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -30699,6 +32323,12 @@ func (s *PutBucketLoggingInput) getBucket() (v string) {
 // SetBucketLoggingStatus sets the BucketLoggingStatus field's value.
 func (s *PutBucketLoggingInput) SetBucketLoggingStatus(v *BucketLoggingStatus) *PutBucketLoggingInput {
 	s.BucketLoggingStatus = v
+	return s
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketLoggingInput) SetChecksumAlgorithm(v string) *PutBucketLoggingInput {
+	s.ChecksumAlgorithm = &v
 	return s
 }
 
@@ -30766,8 +32396,8 @@ type PutBucketMetricsConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The ID used to identify the metrics configuration.
@@ -30915,8 +32545,8 @@ type PutBucketNotificationConfigurationInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// A container for specifying the notification configuration of the bucket.
@@ -31060,9 +32690,30 @@ type PutBucketNotificationInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The container for the configuration.
@@ -31119,6 +32770,12 @@ func (s *PutBucketNotificationInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketNotificationInput) SetChecksumAlgorithm(v string) *PutBucketNotificationInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -31191,8 +32848,8 @@ type PutBucketOwnershipControlsInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The OwnershipControls (BucketOwnerEnforced, BucketOwnerPreferred, or ObjectWriter)
@@ -31326,13 +32983,34 @@ type PutBucketPolicyInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// Set this parameter to true to confirm that you want to remove your permissions
 	// to change this bucket policy in the future.
 	ConfirmRemoveSelfBucketAccess *bool `location:"header" locationName:"x-amz-confirm-remove-self-bucket-access" type:"boolean"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The bucket policy as a JSON document.
@@ -31389,6 +33067,12 @@ func (s *PutBucketPolicyInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketPolicyInput) SetChecksumAlgorithm(v string) *PutBucketPolicyInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetConfirmRemoveSelfBucketAccess sets the ConfirmRemoveSelfBucketAccess field's value.
@@ -31466,9 +33150,30 @@ type PutBucketReplicationInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// A container for replication rules. You can add up to 1,000 rules. The maximum
@@ -31534,6 +33239,12 @@ func (s *PutBucketReplicationInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketReplicationInput) SetChecksumAlgorithm(v string) *PutBucketReplicationInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -31611,9 +33322,30 @@ type PutBucketRequestPaymentInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Container for Payer.
@@ -31675,6 +33407,12 @@ func (s *PutBucketRequestPaymentInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketRequestPaymentInput) SetChecksumAlgorithm(v string) *PutBucketRequestPaymentInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -31746,9 +33484,30 @@ type PutBucketTaggingInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Container for the TagSet and Tag elements.
@@ -31810,6 +33569,12 @@ func (s *PutBucketTaggingInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketTaggingInput) SetChecksumAlgorithm(v string) *PutBucketTaggingInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -31881,9 +33646,30 @@ type PutBucketVersioningInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The concatenation of the authentication device's serial number, a space,
@@ -31944,6 +33730,12 @@ func (s *PutBucketVersioningInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketVersioningInput) SetChecksumAlgorithm(v string) *PutBucketVersioningInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -32021,9 +33813,30 @@ type PutBucketWebsiteInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Container for the request.
@@ -32085,6 +33898,12 @@ func (s *PutBucketWebsiteInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutBucketWebsiteInput) SetChecksumAlgorithm(v string) *PutBucketWebsiteInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -32171,9 +33990,30 @@ type PutObjectAclInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Allows grantee the read, write, read ACP, and write ACP permissions on the
@@ -32215,9 +34055,9 @@ type PutObjectAclInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Key is a required field
@@ -32225,8 +34065,8 @@ type PutObjectAclInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -32302,6 +34142,12 @@ func (s *PutObjectAclInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutObjectAclInput) SetChecksumAlgorithm(v string) *PutObjectAclInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -32441,9 +34287,9 @@ type PutObjectInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -32462,6 +34308,51 @@ type PutObjectInput struct {
 	// more information, see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9
 	// (http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9).
 	CacheControl *string `location:"header" locationName:"Cache-Control" type:"string"`
+
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 32-bit CRC32 checksum of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `location:"header" locationName:"x-amz-checksum-crc32" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 32-bit CRC32C checksum of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `location:"header" locationName:"x-amz-checksum-crc32c" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 160-bit SHA-1 digest of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `location:"header" locationName:"x-amz-checksum-sha1" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 256-bit SHA-256 digest of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `location:"header" locationName:"x-amz-checksum-sha256" type:"string"`
 
 	// Specifies presentational information for the object. For more information,
 	// see http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.5.1 (http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.5.1).
@@ -32494,8 +34385,8 @@ type PutObjectInput struct {
 	ContentType *string `location:"header" locationName:"Content-Type" type:"string"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The date and time at which the object is no longer cacheable. For more information,
@@ -32543,8 +34434,8 @@ type PutObjectInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -32702,6 +34593,36 @@ func (s *PutObjectInput) SetBucketKeyEnabled(v bool) *PutObjectInput {
 // SetCacheControl sets the CacheControl field's value.
 func (s *PutObjectInput) SetCacheControl(v string) *PutObjectInput {
 	s.CacheControl = &v
+	return s
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutObjectInput) SetChecksumAlgorithm(v string) *PutObjectInput {
+	s.ChecksumAlgorithm = &v
+	return s
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *PutObjectInput) SetChecksumCRC32(v string) *PutObjectInput {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *PutObjectInput) SetChecksumCRC32C(v string) *PutObjectInput {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *PutObjectInput) SetChecksumSHA1(v string) *PutObjectInput {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *PutObjectInput) SetChecksumSHA256(v string) *PutObjectInput {
+	s.ChecksumSHA256 = &v
 	return s
 }
 
@@ -32904,7 +34825,7 @@ func (s PutObjectInput) updateArnableField(v string) (interface{}, error) {
 type PutObjectLegalHoldInput struct {
 	_ struct{} `locationName:"PutObjectLegalHoldRequest" type:"structure" payload:"LegalHold"`
 
-	// The bucket name containing the object that you want to place a Legal Hold
+	// The bucket name containing the object that you want to place a legal hold
 	// on.
 	//
 	// When using this action with an access point, you must direct requests to
@@ -32917,28 +34838,49 @@ type PutObjectLegalHoldInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
-	// The key name for the object that you want to place a Legal Hold on.
+	// The key name for the object that you want to place a legal hold on.
 	//
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
 
-	// Container element for the Legal Hold configuration you want to apply to the
+	// Container element for the legal hold configuration you want to apply to the
 	// specified object.
 	LegalHold *ObjectLockLegalHold `locationName:"LegalHold" type:"structure" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
-	// The version ID of the object that you want to place a Legal Hold on.
+	// The version ID of the object that you want to place a legal hold on.
 	VersionId *string `location:"querystring" locationName:"versionId" type:"string"`
 }
 
@@ -32993,6 +34935,12 @@ func (s *PutObjectLegalHoldInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutObjectLegalHoldInput) SetChecksumAlgorithm(v string) *PutObjectLegalHoldInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -33092,9 +35040,30 @@ type PutObjectLockConfigurationInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The Object Lock configuration that you want to apply to the specified bucket.
@@ -33102,8 +35071,8 @@ type PutObjectLockConfigurationInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -33156,6 +35125,12 @@ func (s *PutObjectLockConfigurationInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutObjectLockConfigurationInput) SetChecksumAlgorithm(v string) *PutObjectLockConfigurationInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -33248,6 +35223,38 @@ type PutObjectOutput struct {
 	// encryption with Amazon Web Services KMS (SSE-KMS).
 	BucketKeyEnabled *bool `location:"header" locationName:"x-amz-server-side-encryption-bucket-key-enabled" type:"boolean"`
 
+	// The base64-encoded, 32-bit CRC32 checksum of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `location:"header" locationName:"x-amz-checksum-crc32" type:"string"`
+
+	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `location:"header" locationName:"x-amz-checksum-crc32c" type:"string"`
+
+	// The base64-encoded, 160-bit SHA-1 digest of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `location:"header" locationName:"x-amz-checksum-sha1" type:"string"`
+
+	// The base64-encoded, 256-bit SHA-256 digest of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `location:"header" locationName:"x-amz-checksum-sha256" type:"string"`
+
 	// Entity tag for the uploaded object.
 	ETag *string `location:"header" locationName:"ETag" type:"string"`
 
@@ -33255,7 +35262,7 @@ type PutObjectOutput struct {
 	// (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html)),
 	// the response includes this header. It includes the expiry-date and rule-id
 	// key-value pairs that provide information about object expiration. The value
-	// of the rule-id is URL encoded.
+	// of the rule-id is URL-encoded.
 	Expiration *string `location:"header" locationName:"x-amz-expiration" type:"string"`
 
 	// If present, indicates that the requester was successfully charged for the
@@ -33322,6 +35329,30 @@ func (s PutObjectOutput) GoString() string {
 // SetBucketKeyEnabled sets the BucketKeyEnabled field's value.
 func (s *PutObjectOutput) SetBucketKeyEnabled(v bool) *PutObjectOutput {
 	s.BucketKeyEnabled = &v
+	return s
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *PutObjectOutput) SetChecksumCRC32(v string) *PutObjectOutput {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *PutObjectOutput) SetChecksumCRC32C(v string) *PutObjectOutput {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *PutObjectOutput) SetChecksumSHA1(v string) *PutObjectOutput {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *PutObjectOutput) SetChecksumSHA256(v string) *PutObjectOutput {
+	s.ChecksumSHA256 = &v
 	return s
 }
 
@@ -33398,9 +35429,30 @@ type PutObjectRetentionInput struct {
 	// Indicates whether this action should bypass Governance-mode restrictions.
 	BypassGovernanceRetention *bool `location:"header" locationName:"x-amz-bypass-governance-retention" type:"boolean"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The key name for the object that you want to apply this Object Retention
@@ -33411,8 +35463,8 @@ type PutObjectRetentionInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -33480,6 +35532,12 @@ func (s *PutObjectRetentionInput) getBucket() (v string) {
 // SetBypassGovernanceRetention sets the BypassGovernanceRetention field's value.
 func (s *PutObjectRetentionInput) SetBypassGovernanceRetention(v bool) *PutObjectRetentionInput {
 	s.BypassGovernanceRetention = &v
+	return s
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutObjectRetentionInput) SetChecksumAlgorithm(v string) *PutObjectRetentionInput {
+	s.ChecksumAlgorithm = &v
 	return s
 }
 
@@ -33587,17 +35645,38 @@ type PutObjectTaggingInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Name of the object key.
@@ -33607,8 +35686,8 @@ type PutObjectTaggingInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -33680,6 +35759,12 @@ func (s *PutObjectTaggingInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutObjectTaggingInput) SetChecksumAlgorithm(v string) *PutObjectTaggingInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -33779,9 +35864,30 @@ type PutPublicAccessBlockInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	//
+	// The SDK will automatically compute the Content-MD5 checksum for this operation.
+	// The AWS SDK for Go v2 allows you to configure alternative checksum algorithm
+	// to be used.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The PublicAccessBlock configuration that you want to apply to this Amazon
@@ -33842,6 +35948,12 @@ func (s *PutPublicAccessBlockInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *PutPublicAccessBlockInput) SetChecksumAlgorithm(v string) *PutPublicAccessBlockInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -34919,17 +37031,34 @@ type RestoreObjectInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Object key for which the action was initiated.
@@ -34939,8 +37068,8 @@ type RestoreObjectInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -35007,6 +37136,12 @@ func (s *RestoreObjectInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *RestoreObjectInput) SetChecksumAlgorithm(v string) *RestoreObjectInput {
+	s.ChecksumAlgorithm = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -35521,7 +37656,7 @@ type ScanRange struct {
 
 	// Specifies the start of the byte range. This parameter is optional. Valid
 	// values: non-negative integers. The default value is 0. If only start is supplied,
-	// it means scan from that point to the end of the file.For example; <scanrange><start>50</start></scanrange>
+	// it means scan from that point to the end of the file. For example, <scanrange><start>50</start></scanrange>
 	// means scan from byte 50 until the end of the file.
 	Start *int64 `type:"long"`
 }
@@ -35740,8 +37875,8 @@ type SelectObjectContentInput struct {
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The expression that is used to query the object.
@@ -35772,20 +37907,26 @@ type SelectObjectContentInput struct {
 	// Specifies if periodic request progress information should be enabled.
 	RequestProgress *RequestProgress `type:"structure"`
 
-	// The SSE Algorithm used to encrypt the object. For more information, see Server-Side
-	// Encryption (Using Customer-Provided Encryption Keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html).
+	// The server-side encryption (SSE) algorithm used to encrypt the object. This
+	// parameter is needed only when the object was created using a checksum algorithm.
+	// For more information, see Protecting data using SSE-C keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
+	// in the Amazon S3 User Guide.
 	SSECustomerAlgorithm *string `location:"header" locationName:"x-amz-server-side-encryption-customer-algorithm" type:"string"`
 
-	// The SSE Customer Key. For more information, see Server-Side Encryption (Using
-	// Customer-Provided Encryption Keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html).
+	// The server-side encryption (SSE) customer managed key. This parameter is
+	// needed only when the object was created using a checksum algorithm. For more
+	// information, see Protecting data using SSE-C keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
+	// in the Amazon S3 User Guide.
 	//
 	// SSECustomerKey is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by SelectObjectContentInput's
 	// String and GoString methods.
 	SSECustomerKey *string `marshal-as:"blob" location:"header" locationName:"x-amz-server-side-encryption-customer-key" type:"string" sensitive:"true"`
 
-	// The SSE Customer Key MD5. For more information, see Server-Side Encryption
-	// (Using Customer-Provided Encryption Keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html).
+	// The MD5 server-side encryption (SSE) customer managed key. This parameter
+	// is needed only when the object was created using a checksum algorithm. For
+	// more information, see Protecting data using SSE-C keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
+	// in the Amazon S3 User Guide.
 	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// Specifies the byte range of the object to get the records from. A record
@@ -37134,9 +39275,9 @@ type UploadPartCopyInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -37149,7 +39290,7 @@ type UploadPartCopyInput struct {
 	//    * For objects not accessed through an access point, specify the name of
 	//    the source bucket and key of the source object, separated by a slash (/).
 	//    For example, to copy the object reports/january.pdf from the bucket awsexamplebucket,
-	//    use awsexamplebucket/reports/january.pdf. The value must be URL encoded.
+	//    use awsexamplebucket/reports/january.pdf. The value must be URL-encoded.
 	//
 	//    * For objects accessed through access points, specify the Amazon Resource
 	//    Name (ARN) of the object as accessed through the access point, in the
@@ -37165,7 +39306,7 @@ type UploadPartCopyInput struct {
 	//    For example, to copy the object reports/january.pdf through outpost my-outpost
 	//    owned by account 123456789012 in Region us-west-2, use the URL encoding
 	//    of arn:aws:s3-outposts:us-west-2:123456789012:outpost/my-outpost/object/reports/january.pdf.
-	//    The value must be URL encoded.
+	//    The value must be URL-encoded.
 	//
 	// To copy a specific version of an object, append ?versionId=<version-id> to
 	// the value (for example, awsexamplebucket/reports/january.pdf?versionId=QUpfdndhfd8438MNFDN93jdnJFkdmqnh893).
@@ -37214,13 +39355,13 @@ type UploadPartCopyInput struct {
 	CopySourceSSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-copy-source-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// The account ID of the expected destination bucket owner. If the destination
-	// bucket is owned by a different account, the request will fail with an HTTP
-	// 403 (Access Denied) error.
+	// bucket is owned by a different account, the request fails with the HTTP status
+	// code 403 Forbidden (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The account ID of the expected source bucket owner. If the source bucket
-	// is owned by a different account, the request will fail with an HTTP 403 (Access
-	// Denied) error.
+	// is owned by a different account, the request fails with the HTTP status code
+	// 403 Forbidden (access denied).
 	ExpectedSourceBucketOwner *string `location:"header" locationName:"x-amz-source-expected-bucket-owner" type:"string"`
 
 	// Object key for which the multipart upload was initiated.
@@ -37236,8 +39377,8 @@ type UploadPartCopyInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -37605,13 +39746,61 @@ type UploadPartInput struct {
 	// When using this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action using S3 on Outposts through the Amazon Web Services SDKs,
+	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
 	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// Indicates the algorithm used to create the checksum for the object when using
+	// the SDK. This header will not provide any additional functionality if not
+	// using the SDK. When sending this header, there must be a corresponding x-amz-checksum
+	// or x-amz-trailer header sent. Otherwise, Amazon S3 fails the request with
+	// the HTTP status code 400 Bad Request. For more information, see Checking
+	// object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// If you provide an individual checksum, Amazon S3 ignores any provided ChecksumAlgorithm
+	// parameter.
+	//
+	// This checksum algorithm must be the same for all parts and it match the checksum
+	// value supplied in the CreateMultipartUpload request.
+	//
+	// The AWS SDK for Go v1 does not support automatic computing request payload
+	// checksum. This feature is available in the AWS SDK for Go v2. If a value
+	// is specified for this parameter, the matching algorithm's checksum member
+	// must be populated with the algorithm's checksum of the request payload.
+	ChecksumAlgorithm *string `location:"header" locationName:"x-amz-sdk-checksum-algorithm" type:"string" enum:"ChecksumAlgorithm"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 32-bit CRC32 checksum of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `location:"header" locationName:"x-amz-checksum-crc32" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 32-bit CRC32C checksum of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `location:"header" locationName:"x-amz-checksum-crc32c" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 160-bit SHA-1 digest of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `location:"header" locationName:"x-amz-checksum-sha1" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This header specifies
+	// the base64-encoded, 256-bit SHA-256 digest of the object. For more information,
+	// see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `location:"header" locationName:"x-amz-checksum-sha256" type:"string"`
 
 	// Size of the body in bytes. This parameter is useful when the size of the
 	// body cannot be determined automatically.
@@ -37623,8 +39812,8 @@ type UploadPartInput struct {
 	ContentMD5 *string `location:"header" locationName:"Content-MD5" type:"string"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request will fail with an HTTP 403 (Access Denied)
-	// error.
+	// different account, the request fails with the HTTP status code 403 Forbidden
+	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Object key for which the multipart upload was initiated.
@@ -37640,8 +39829,8 @@ type UploadPartInput struct {
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from requester pays buckets, see Downloading Objects
-	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// about downloading objects from Requester Pays buckets, see Downloading Objects
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -37735,6 +39924,36 @@ func (s *UploadPartInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetChecksumAlgorithm sets the ChecksumAlgorithm field's value.
+func (s *UploadPartInput) SetChecksumAlgorithm(v string) *UploadPartInput {
+	s.ChecksumAlgorithm = &v
+	return s
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *UploadPartInput) SetChecksumCRC32(v string) *UploadPartInput {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *UploadPartInput) SetChecksumCRC32C(v string) *UploadPartInput {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *UploadPartInput) SetChecksumSHA1(v string) *UploadPartInput {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *UploadPartInput) SetChecksumSHA256(v string) *UploadPartInput {
+	s.ChecksumSHA256 = &v
+	return s
 }
 
 // SetContentLength sets the ContentLength field's value.
@@ -37838,6 +40057,38 @@ type UploadPartOutput struct {
 	// encryption with Amazon Web Services KMS (SSE-KMS).
 	BucketKeyEnabled *bool `location:"header" locationName:"x-amz-server-side-encryption-bucket-key-enabled" type:"boolean"`
 
+	// The base64-encoded, 32-bit CRC32 checksum of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32 *string `location:"header" locationName:"x-amz-checksum-crc32" type:"string"`
+
+	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumCRC32C *string `location:"header" locationName:"x-amz-checksum-crc32c" type:"string"`
+
+	// The base64-encoded, 160-bit SHA-1 digest of the object. This will only be
+	// present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA1 *string `location:"header" locationName:"x-amz-checksum-sha1" type:"string"`
+
+	// The base64-encoded, 256-bit SHA-256 digest of the object. This will only
+	// be present if it was uploaded with the object. With multipart uploads, this
+	// may not be a checksum value of the object. For more information about how
+	// checksums are calculated with multipart uploads, see Checking object integrity
+	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums)
+	// in the Amazon S3 User Guide.
+	ChecksumSHA256 *string `location:"header" locationName:"x-amz-checksum-sha256" type:"string"`
+
 	// Entity tag for the uploaded object.
 	ETag *string `location:"header" locationName:"ETag" type:"string"`
 
@@ -37890,6 +40141,30 @@ func (s UploadPartOutput) GoString() string {
 // SetBucketKeyEnabled sets the BucketKeyEnabled field's value.
 func (s *UploadPartOutput) SetBucketKeyEnabled(v bool) *UploadPartOutput {
 	s.BucketKeyEnabled = &v
+	return s
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *UploadPartOutput) SetChecksumCRC32(v string) *UploadPartOutput {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *UploadPartOutput) SetChecksumCRC32C(v string) *UploadPartOutput {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *UploadPartOutput) SetChecksumSHA1(v string) *UploadPartOutput {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *UploadPartOutput) SetChecksumSHA256(v string) *UploadPartOutput {
+	s.ChecksumSHA256 = &v
 	return s
 }
 
@@ -38091,6 +40366,58 @@ type WriteGetObjectResponseInput struct {
 	// Specifies caching behavior along the request/reply chain.
 	CacheControl *string `location:"header" locationName:"x-amz-fwd-header-Cache-Control" type:"string"`
 
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This specifies the base64-encoded,
+	// 32-bit CRC32 checksum of the object returned by the Object Lambda function.
+	// This may not match the checksum for the object stored in Amazon S3. Amazon
+	// S3 will perform validation of the checksum values only when the original
+	// GetObject request required checksum validation. For more information about
+	// checksums, see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// Only one checksum header can be specified at a time. If you supply multiple
+	// checksum headers, this request will fail.
+	ChecksumCRC32 *string `location:"header" locationName:"x-amz-fwd-header-x-amz-checksum-crc32" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This specifies the base64-encoded,
+	// 32-bit CRC32C checksum of the object returned by the Object Lambda function.
+	// This may not match the checksum for the object stored in Amazon S3. Amazon
+	// S3 will perform validation of the checksum values only when the original
+	// GetObject request required checksum validation. For more information about
+	// checksums, see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// Only one checksum header can be specified at a time. If you supply multiple
+	// checksum headers, this request will fail.
+	ChecksumCRC32C *string `location:"header" locationName:"x-amz-fwd-header-x-amz-checksum-crc32c" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This specifies the base64-encoded,
+	// 160-bit SHA-1 digest of the object returned by the Object Lambda function.
+	// This may not match the checksum for the object stored in Amazon S3. Amazon
+	// S3 will perform validation of the checksum values only when the original
+	// GetObject request required checksum validation. For more information about
+	// checksums, see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// Only one checksum header can be specified at a time. If you supply multiple
+	// checksum headers, this request will fail.
+	ChecksumSHA1 *string `location:"header" locationName:"x-amz-fwd-header-x-amz-checksum-sha1" type:"string"`
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This specifies the base64-encoded,
+	// 256-bit SHA-256 digest of the object returned by the Object Lambda function.
+	// This may not match the checksum for the object stored in Amazon S3. Amazon
+	// S3 will perform validation of the checksum values only when the original
+	// GetObject request required checksum validation. For more information about
+	// checksums, see Checking object integrity (https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html)
+	// in the Amazon S3 User Guide.
+	//
+	// Only one checksum header can be specified at a time. If you supply multiple
+	// checksum headers, this request will fail.
+	ChecksumSHA256 *string `location:"header" locationName:"x-amz-fwd-header-x-amz-checksum-sha256" type:"string"`
+
 	// Specifies presentational information for the object.
 	ContentDisposition *string `location:"header" locationName:"x-amz-fwd-header-Content-Disposition" type:"string"`
 
@@ -38122,8 +40449,8 @@ type WriteGetObjectResponseInput struct {
 	// A string that uniquely identifies an error condition. Returned in the <Code>
 	// tag of the error XML response for a corresponding GetObject call. Cannot
 	// be used with a successful StatusCode header or when the transformed object
-	// is provided in the body. All error codes from S3 are sentence-cased. Regex
-	// value is "^[A-Z][a-zA-Z]+$".
+	// is provided in the body. All error codes from S3 are sentence-cased. The
+	// regular expression (regex) value is "^[A-Z][a-zA-Z]+$".
 	ErrorCode *string `location:"header" locationName:"x-amz-fwd-error-code" type:"string"`
 
 	// Contains a generic description of the error condition. Returned in the <Message>
@@ -38132,9 +40459,10 @@ type WriteGetObjectResponseInput struct {
 	// is provided in body.
 	ErrorMessage *string `location:"header" locationName:"x-amz-fwd-error-message" type:"string"`
 
-	// If object stored in Amazon S3 expiration is configured (see PUT Bucket lifecycle)
-	// it includes expiry-date and rule-id key-value pairs providing object expiration
-	// information. The value of the rule-id is URL encoded.
+	// If the object expiration is configured (see PUT Bucket lifecycle), the response
+	// includes this header. It includes the expiry-date and rule-id key-value pairs
+	// that provide the object expiration information. The value of the rule-id
+	// is URL-encoded.
 	Expiration *string `location:"header" locationName:"x-amz-fwd-header-x-amz-expiration" type:"string"`
 
 	// The date and time at which the object is no longer cacheable.
@@ -38245,7 +40573,10 @@ type WriteGetObjectResponseInput struct {
 	//    * 503 - Service Unavailable
 	StatusCode *int64 `location:"header" locationName:"x-amz-fwd-status" type:"integer"`
 
-	// The class of storage used to store object in Amazon S3.
+	// Provides storage class information of the object. Amazon S3 returns this
+	// header for all objects except for S3 Standard storage class objects.
+	//
+	// For more information, see Storage Classes (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html).
 	StorageClass *string `location:"header" locationName:"x-amz-fwd-header-x-amz-storage-class" type:"string" enum:"StorageClass"`
 
 	// The number of tags, if any, on the object.
@@ -38313,6 +40644,30 @@ func (s *WriteGetObjectResponseInput) SetBucketKeyEnabled(v bool) *WriteGetObjec
 // SetCacheControl sets the CacheControl field's value.
 func (s *WriteGetObjectResponseInput) SetCacheControl(v string) *WriteGetObjectResponseInput {
 	s.CacheControl = &v
+	return s
+}
+
+// SetChecksumCRC32 sets the ChecksumCRC32 field's value.
+func (s *WriteGetObjectResponseInput) SetChecksumCRC32(v string) *WriteGetObjectResponseInput {
+	s.ChecksumCRC32 = &v
+	return s
+}
+
+// SetChecksumCRC32C sets the ChecksumCRC32C field's value.
+func (s *WriteGetObjectResponseInput) SetChecksumCRC32C(v string) *WriteGetObjectResponseInput {
+	s.ChecksumCRC32C = &v
+	return s
+}
+
+// SetChecksumSHA1 sets the ChecksumSHA1 field's value.
+func (s *WriteGetObjectResponseInput) SetChecksumSHA1(v string) *WriteGetObjectResponseInput {
+	s.ChecksumSHA1 = &v
+	return s
+}
+
+// SetChecksumSHA256 sets the ChecksumSHA256 field's value.
+func (s *WriteGetObjectResponseInput) SetChecksumSHA256(v string) *WriteGetObjectResponseInput {
+	s.ChecksumSHA256 = &v
 	return s
 }
 
@@ -38749,6 +41104,42 @@ func BucketVersioningStatus_Values() []string {
 }
 
 const (
+	// ChecksumAlgorithmCrc32 is a ChecksumAlgorithm enum value
+	ChecksumAlgorithmCrc32 = "CRC32"
+
+	// ChecksumAlgorithmCrc32c is a ChecksumAlgorithm enum value
+	ChecksumAlgorithmCrc32c = "CRC32C"
+
+	// ChecksumAlgorithmSha1 is a ChecksumAlgorithm enum value
+	ChecksumAlgorithmSha1 = "SHA1"
+
+	// ChecksumAlgorithmSha256 is a ChecksumAlgorithm enum value
+	ChecksumAlgorithmSha256 = "SHA256"
+)
+
+// ChecksumAlgorithm_Values returns all elements of the ChecksumAlgorithm enum
+func ChecksumAlgorithm_Values() []string {
+	return []string{
+		ChecksumAlgorithmCrc32,
+		ChecksumAlgorithmCrc32c,
+		ChecksumAlgorithmSha1,
+		ChecksumAlgorithmSha256,
+	}
+}
+
+const (
+	// ChecksumModeEnabled is a ChecksumMode enum value
+	ChecksumModeEnabled = "ENABLED"
+)
+
+// ChecksumMode_Values returns all elements of the ChecksumMode enum
+func ChecksumMode_Values() []string {
+	return []string{
+		ChecksumModeEnabled,
+	}
+}
+
+const (
 	// CompressionTypeNone is a CompressionType enum value
 	CompressionTypeNone = "NONE"
 
@@ -39119,6 +41510,9 @@ const (
 
 	// InventoryOptionalFieldBucketKeyStatus is a InventoryOptionalField enum value
 	InventoryOptionalFieldBucketKeyStatus = "BucketKeyStatus"
+
+	// InventoryOptionalFieldChecksumAlgorithm is a InventoryOptionalField enum value
+	InventoryOptionalFieldChecksumAlgorithm = "ChecksumAlgorithm"
 )
 
 // InventoryOptionalField_Values returns all elements of the InventoryOptionalField enum
@@ -39136,6 +41530,7 @@ func InventoryOptionalField_Values() []string {
 		InventoryOptionalFieldObjectLockLegalHoldStatus,
 		InventoryOptionalFieldIntelligentTieringAccessTier,
 		InventoryOptionalFieldBucketKeyStatus,
+		InventoryOptionalFieldChecksumAlgorithm,
 	}
 }
 
@@ -39216,6 +41611,34 @@ func MetricsStatus_Values() []string {
 	return []string{
 		MetricsStatusEnabled,
 		MetricsStatusDisabled,
+	}
+}
+
+const (
+	// ObjectAttributesEtag is a ObjectAttributes enum value
+	ObjectAttributesEtag = "ETag"
+
+	// ObjectAttributesChecksum is a ObjectAttributes enum value
+	ObjectAttributesChecksum = "Checksum"
+
+	// ObjectAttributesObjectParts is a ObjectAttributes enum value
+	ObjectAttributesObjectParts = "ObjectParts"
+
+	// ObjectAttributesStorageClass is a ObjectAttributes enum value
+	ObjectAttributesStorageClass = "StorageClass"
+
+	// ObjectAttributesObjectSize is a ObjectAttributes enum value
+	ObjectAttributesObjectSize = "ObjectSize"
+)
+
+// ObjectAttributes_Values returns all elements of the ObjectAttributes enum
+func ObjectAttributes_Values() []string {
+	return []string{
+		ObjectAttributesEtag,
+		ObjectAttributesChecksum,
+		ObjectAttributesObjectParts,
+		ObjectAttributesStorageClass,
+		ObjectAttributesObjectSize,
 	}
 }
 
@@ -39581,8 +42004,8 @@ func RequestCharged_Values() []string {
 
 // Confirms that the requester knows that they will be charged for the request.
 // Bucket owners need not specify this parameter in their requests. For information
-// about downloading objects from requester pays buckets, see Downloading Objects
-// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+// about downloading objects from Requester Pays buckets, see Downloading Objects
+// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 // in the Amazon S3 User Guide.
 const (
 	// RequestPayerRequester is a RequestPayer enum value

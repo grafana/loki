@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 )
 
@@ -26,7 +27,7 @@ func connectToGrpcServer(serverAddress string) (GrpcStoreClient, *grpc.ClientCon
 		PermitWithoutStream: true,
 	}
 	param := grpc.WithKeepaliveParams(params)
-	cc, err := grpc.Dial(serverAddress, param, grpc.WithInsecure())
+	cc, err := grpc.Dial(serverAddress, param, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to dial grpc-store %s", serverAddress)
 	}

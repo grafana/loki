@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
@@ -677,7 +678,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 	// parse the request
 	start, end := errUtil.RoundToMilliseconds(reqStart, req.End)
-	matchers, err := logql.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers)
 	if err != nil {
 		return nil, err
 	}

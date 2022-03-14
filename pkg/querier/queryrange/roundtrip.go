@@ -12,7 +12,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -126,14 +126,14 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		expr, err := logql.ParseExpr(rangeQuery.Query)
+		expr, err := syntax.ParseExpr(rangeQuery.Query)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		switch e := expr.(type) {
-		case logql.SampleExpr:
+		case syntax.SampleExpr:
 			return r.metric.RoundTrip(req)
-		case logql.LogSelectorExpr:
+		case syntax.LogSelectorExpr:
 			expr, err := transformRegexQuery(req, e)
 			if err != nil {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -151,7 +151,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return r.next.RoundTrip(req)
 		}
 	case SeriesOp:
-		_, err := logql.ParseAndValidateSeriesQuery(req)
+		_, err := loghttp.ParseAndValidateSeriesQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -167,12 +167,12 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		expr, err := logql.ParseExpr(instantQuery.Query)
+		expr, err := syntax.ParseExpr(instantQuery.Query)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		switch expr.(type) {
-		case logql.SampleExpr:
+		case syntax.SampleExpr:
 			return r.instantMetric.RoundTrip(req)
 		default:
 			return r.next.RoundTrip(req)
@@ -183,10 +183,10 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // transformRegexQuery backport the old regexp params into the v1 query format
-func transformRegexQuery(req *http.Request, expr logql.LogSelectorExpr) (logql.LogSelectorExpr, error) {
+func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax.LogSelectorExpr, error) {
 	regexp := req.Form.Get("regexp")
 	if regexp != "" {
-		filterExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
+		filterExpr, err := syntax.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
 		if err != nil {
 			return nil, err
 		}

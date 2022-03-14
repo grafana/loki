@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -236,7 +237,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			Shards:    req.Shards,
 		}, nil
 	case SeriesOp:
-		req, err := logql.ParseAndValidateSeriesQuery(r)
+		req, err := loghttp.ParseAndValidateSeriesQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -873,11 +874,11 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		}, nil
 	case *LokiRequest:
 		// range query can either be metrics or logs
-		expr, err := logql.ParseExpr(req.Query)
+		expr, err := syntax.ParseExpr(req.Query)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		if _, ok := expr.(logql.SampleExpr); ok {
+		if _, ok := expr.(syntax.SampleExpr); ok {
 			return &LokiPromResponse{
 				Response: queryrangebase.NewEmptyPrometheusResponse(),
 			}, nil
