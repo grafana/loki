@@ -87,7 +87,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, l.limits.MaxCacheFreshness)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
-	if req.GetStart() > maxCacheTime {
+	if req.GetEnd() > maxCacheTime {
 		return l.next.Do(ctx, req)
 	}
 
@@ -104,7 +104,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	// The first subquery might not be aligned.
 	alignedStart := time.Unix(0, lokiReq.GetStartTs().UnixNano()-(lokiReq.GetStartTs().UnixNano()%interval.Nanoseconds()))
 	// generate the cache key based on query, tenant and start time.
-	cacheKey := fmt.Sprintf("log:%s:%s:%d", tenant.JoinTenantIDs(tenantIDs), req.GetQuery(), alignedStart.UnixNano()/(interval.Nanoseconds()))
+	cacheKey := fmt.Sprintf("log:%s:%s:%d:%d", tenant.JoinTenantIDs(tenantIDs), req.GetQuery(), interval.Nanoseconds(), alignedStart.UnixNano()/(interval.Nanoseconds()))
 
 	_, buff, _, err := l.cache.Fetch(ctx, []string{cache.HashKey(cacheKey)})
 	if err != nil {
@@ -166,8 +166,8 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	result := emptyResponse(cachedRequest)
 	// if the request is the same and cover the whole time range,
 	// we can just return the cached result.
-	if lokiReq.GetStartTs().After(cachedRequest.GetStartTs()) || lokiReq.GetStartTs().Equal(cachedRequest.GetStartTs()) &&
-		lokiReq.GetEndTs().Before(cachedRequest.GetEndTs()) || lokiReq.GetEndTs().Equal(cachedRequest.GetEndTs()) {
+	if !lokiReq.GetStartTs().After(cachedRequest.GetStartTs()) && lokiReq.GetStartTs().Equal(cachedRequest.GetStartTs()) &&
+		!lokiReq.GetEndTs().Before(cachedRequest.GetEndTs()) && lokiReq.GetEndTs().Equal(cachedRequest.GetEndTs()) {
 		return result, nil
 	}
 	// we could be missing data at the start and the end.
