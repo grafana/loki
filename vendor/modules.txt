@@ -781,7 +781,7 @@ github.com/morikuni/aec
 # github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 ## explicit
 github.com/mwitkow/go-conntrack
-# github.com/ncw/swift v1.0.52
+# github.com/ncw/swift v1.0.53
 ## explicit
 github.com/ncw/swift
 # github.com/oklog/run v1.1.0
