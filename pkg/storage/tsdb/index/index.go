@@ -835,6 +835,7 @@ func (w *Writer) writeFingerprintOffsetsTable() error {
 	w.buf1.Reset()
 	w.buf2.Reset()
 
+	w.buf1.PutBE32int(len(w.fingerprintOffsets)) // Count.
 	// build offsets
 	for _, x := range w.fingerprintOffsets {
 		w.buf1.PutBE64(x[0]) // series offset
@@ -1144,6 +1145,8 @@ type Reader struct {
 	nameSymbols map[uint32]string // Cache of the label name symbol lookups,
 	// as there are not many and they are half of all lookups.
 
+	fingerprintOffsets [][2]uint64
+
 	dec *Decoder
 
 	version int
@@ -1298,6 +1301,11 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 			return nil, errors.Wrap(err, "reverse symbol lookup")
 		}
 		r.nameSymbols[off] = k
+	}
+
+	r.fingerprintOffsets, err = ReadFingerprintOffsetsTable(r.b, r.toc.FingerprintOffsets)
+	if err != nil {
+		return nil, errors.Wrap(err, "loading fingerprint offsets")
 	}
 
 	r.dec = &Decoder{LookupSymbol: r.lookupSymbol}
@@ -1508,6 +1516,20 @@ func ReadOffsetTable(bs ByteSlice, off uint64, f func([]string, uint64, int) err
 		cnt--
 	}
 	return d.Err()
+}
+
+func ReadFingerprintOffsetsTable(bs ByteSlice, off uint64) ([][2]uint64, error) {
+	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable))
+	cnt := d.Be32()
+	res := make([][2]uint64, 0, int(cnt))
+
+	for d.Err() == nil && d.Len() > 0 && cnt > 0 {
+		res = append(res, [2]uint64{d.Be64(), d.Be64()})
+		cnt--
+	}
+
+	return res, d.Err()
+
 }
 
 // Close the reader and its underlying resources.
