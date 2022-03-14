@@ -8,9 +8,117 @@ _Note: While this document will only give instructions for two methods of log fo
 
 ## Openshift Logging
 
-Although there is a way to [forward logs to an external Loki instance](https://docs.openshift.com/container-platform/4.9/logging/cluster-logging-external.html#cluster-logging-collector-log-forward-loki_cluster-logging-external), [Openshift Logging](https://github.com/openshift/cluster-logging-operator) does not currently have support to send logs through the Lokistack Gateway.
+[Openshift Logging](https://github.com/openshift/cluster-logging-operator) supports [forwarding logs to an external Loki instance](https://docs.openshift.com/container-platform/4.9/logging/cluster-logging-external.html#cluster-logging-collector-log-forward-loki_cluster-logging-external). This can also be used to forward logs to LokiStack gateway.
 
-Support will be added in the near future.
+* Deploy the Loki Operator and an `lokistack` instance with the [gateway flag enabled](./hack_loki_operator.md#hacking-on-loki-operator-on-openshift).
+
+* Deploy the OpenShift Logging Operator from the Operator Hub or using the following command locally:
+
+    ```console
+    make deploy-image deploy-catalog install
+    ```
+
+* Create a Cluster Logging instance in the `openshift-logging` namespace with only `collection` defined.
+
+    ```yaml
+    apiVersion: "logging.openshift.io/v1"
+    kind: "ClusterLogging"
+    metadata:
+      name: "instance"
+      namespace: openshift-logging
+    spec:
+      collection:
+        logs:
+          type: "fluentd"
+          fluentd: {}
+    ```
+
+* The LokiStack Gateway requires a bearer token for communication with fluentd. Therefore, create a secret with `bearer_token_file` key and the path to the file.
+
+    ```console
+    kubectl -n openshift-logging create secret generic lokistack-gateway-metrics \
+    --from-literal=bearer_token_file="/var/run/secrets/kubernetes.io/serviceaccount/token"
+    ```
+
+* Create the following `ClusterRole` and `ClusterRoleBinding` which will allow the cluster to authenticate the user(s) submitting the logs:
+
+    ```yaml
+  ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: lokistack-dev-tenant-logs
+    rules:
+    - apiGroups:
+      - 'loki.grafana.com'
+      resources:
+      - application
+      - infrastructure
+      - audit
+      resourceNames:
+      - logs
+      verbs:
+      - 'get'
+      - 'create'
+  ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: lokistack-dev-tenant-logs
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: lokistack-dev-tenant-logs
+    subjects:
+    - kind: ServiceAccount
+      name: logcollector
+      namespace: openshift-logging
+    ```
+
+* Now create a ClusterLogForwarder CR to forward logs to LokiStack:
+
+    ```yaml
+    apiVersion: "logging.openshift.io/v1"
+    kind: "ClusterLogForwarder"
+    metadata:
+      name: "instance"
+      namespace: "openshift-logging"
+    spec:
+      outputs:
+       - name: loki-app
+         type: "loki"
+         url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application
+         secret:
+           name: lokistack-gateway-metrics
+       - name: loki-infra
+         type: "loki"
+         url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/infrastructure
+         secret:
+           name: lokistack-gateway-metrics
+       - name: loki-audit
+         type: "loki"
+         url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/audit
+         secret:
+           name: lokistack-gateway-metrics
+      pipelines:
+       - name: send-app-logs
+         inputRefs:
+         - application
+         outputRefs:
+         - loki-app
+       - name: send-infra-logs
+         inputRefs:
+         - infrastructure
+         outputRefs:
+         - loki-infra
+       - name: send-audit-logs
+         inputRefs:
+         - audit
+         outputRefs:
+         - loki-audit
+    ```
+
+    _Note:_ You can add/remove any pipeline from the ClusterLogForwarder spec in case if you want to limit the logs being sent.
 
 ## Forwarding Clients
 
