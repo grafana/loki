@@ -19,7 +19,7 @@ spec:
     targetPort: 8443
     tlsConfig:
       caFile: /etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt
-      serverName: loki-operator-controller-manager-metrics-service.openshift-logging.svc
+      serverName: loki-operator-controller-manager-metrics-service.openshift-operators-redhat.svc
   selector:
     matchLabels:
       app.kubernetes.io/name: loki-operator

@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 var samples = []logproto.Sample{
@@ -28,8 +29,8 @@ var samples = []logproto.Sample{
 }
 
 var (
-	labelFoo, _ = ParseLabels("{app=\"foo\"}")
-	labelBar, _ = ParseLabels("{app=\"bar\"}")
+	labelFoo, _ = syntax.ParseLabels("{app=\"foo\"}")
+	labelBar, _ = syntax.ParseLabels("{app=\"bar\"}")
 )
 
 func newSampleIterator() iter.SampleIterator {

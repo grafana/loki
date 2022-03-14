@@ -12,7 +12,7 @@ import (
 )
 
 func TestBuild_ServiceAccountRefMatches(t *testing.T) {
-	opts := NewOptions("abc", "abc", "efgh", "example.com", "abc", "abc", map[string]string{}, false, map[string]TenantData{})
+	opts := NewOptions("abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, false, false, map[string]TenantData{})
 
 	objs := Build(opts)
 	sa := objs[1].(*corev1.ServiceAccount)
@@ -24,7 +24,7 @@ func TestBuild_ServiceAccountRefMatches(t *testing.T) {
 }
 
 func TestBuild_ClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions("abc", "abc", "efgh", "example.com", "abc", "abc", map[string]string{}, false, map[string]TenantData{})
+	opts := NewOptions("abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, false, false, map[string]TenantData{})
 
 	objs := Build(opts)
 	cr := objs[2].(*rbacv1.ClusterRole)
@@ -34,8 +34,19 @@ func TestBuild_ClusterRoleRefMatches(t *testing.T) {
 	require.Equal(t, cr.Name, rb.RoleRef.Name)
 }
 
+func TestBuild_MonitoringClusterRoleRefMatches(t *testing.T) {
+	opts := NewOptions("abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, true, false, map[string]TenantData{})
+
+	objs := Build(opts)
+	cr := objs[4].(*rbacv1.Role)
+	rb := objs[5].(*rbacv1.RoleBinding)
+
+	require.Equal(t, cr.Kind, rb.RoleRef.Kind)
+	require.Equal(t, cr.Name, rb.RoleRef.Name)
+}
+
 func TestBuild_ServiceAccountAnnotationsRouteRefMatches(t *testing.T) {
-	opts := NewOptions("abc", "abc", "efgh", "example.com", "abc", "abc", map[string]string{}, false, map[string]TenantData{})
+	opts := NewOptions("abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, false, false, map[string]TenantData{})
 
 	objs := Build(opts)
 	rt := objs[0].(*routev1.Route)

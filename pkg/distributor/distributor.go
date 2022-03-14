@@ -24,7 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/tenant"
@@ -423,7 +423,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 	if ok {
 		return labelVal.(string), nil
 	}
-	ls, err := logql.ParseLabels(key)
+	ls, err := syntax.ParseLabels(key)
 	if err != nil {
 		return "", httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, err)
 	}

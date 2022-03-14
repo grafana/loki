@@ -20,6 +20,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
 
@@ -800,7 +801,7 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 			log.Fatal(err)
 		}
 	}()
-	conn, err := grpc.DialContext(context.Background(), "", grpc.WithInsecure(), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
 		return listener.Dial()
 	}))
 	require.NoError(t, err)

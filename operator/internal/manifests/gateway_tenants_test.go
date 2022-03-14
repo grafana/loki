@@ -82,9 +82,9 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
 						LokiStackName:        "lokistack-ocp",
-						GatewayName:          "lokistack-gateway-lokistack-ocp",
-						GatewayNamespace:     "stack-ns",
-						GatewaySvcName:       "lokistack-gateway-http-lokistack-ocp",
+						LokiStackNamespace:   "stack-ns",
+						GatewayName:          "lokistack-ocp-gateway",
+						GatewaySvcName:       "lokistack-ocp-gateway-http",
 						GatewaySvcTargetPort: "public",
 						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
 					},
@@ -92,19 +92,19 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						{
 							TenantName:     "application",
 							TenantID:       "",
-							ServiceAccount: "lokistack-gateway-lokistack-ocp",
+							ServiceAccount: "lokistack-ocp-gateway",
 							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/application/callback",
 						},
 						{
 							TenantName:     "infrastructure",
 							TenantID:       "",
-							ServiceAccount: "lokistack-gateway-lokistack-ocp",
+							ServiceAccount: "lokistack-ocp-gateway",
 							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/infrastructure/callback",
 						},
 						{
 							TenantName:     "audit",
 							TenantID:       "",
-							ServiceAccount: "lokistack-gateway-lokistack-ocp",
+							ServiceAccount: "lokistack-ocp-gateway",
 							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/audit/callback",
 						},
 					},

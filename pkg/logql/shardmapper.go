@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -78,8 +79,8 @@ func (r *shardRecorder) Finish() {
 	}
 }
 
-func badASTMapping(expected string, got Expr) error {
-	return fmt.Errorf("Bad AST mapping: expected one type (%s), but got (%T)", expected, got)
+func badASTMapping(got syntax.Expr) error {
+	return fmt.Errorf("bad AST mapping: expected SampleExpr, but got (%T)", got)
 }
 
 func NewShardMapper(shards int, metrics *ShardingMetrics) (ShardMapper, error) {
@@ -97,8 +98,8 @@ type ShardMapper struct {
 	metrics *ShardingMetrics
 }
 
-func (m ShardMapper) Parse(query string) (noop bool, expr Expr, err error) {
-	parsed, err := ParseExpr(query)
+func (m ShardMapper) Parse(query string) (noop bool, expr syntax.Expr, err error) {
+	parsed, err := syntax.ParseExpr(query)
 	if err != nil {
 		return false, nil, err
 	}
@@ -125,25 +126,25 @@ func (m ShardMapper) Parse(query string) (noop bool, expr Expr, err error) {
 	return noop, mapped, err
 }
 
-func (m ShardMapper) Map(expr Expr, r *shardRecorder) (Expr, error) {
+func (m ShardMapper) Map(expr syntax.Expr, r *shardRecorder) (syntax.Expr, error) {
 	// immediately clone the passed expr to avoid mutating the original
-	expr, err := Clone(expr)
+	expr, err := syntax.Clone(expr)
 	if err != nil {
 		return nil, err
 	}
 
 	switch e := expr.(type) {
-	case *LiteralExpr:
+	case *syntax.LiteralExpr:
 		return e, nil
-	case *MatchersExpr, *PipelineExpr:
-		return m.mapLogSelectorExpr(e.(LogSelectorExpr), r), nil
-	case *VectorAggregationExpr:
+	case *syntax.MatchersExpr, *syntax.PipelineExpr:
+		return m.mapLogSelectorExpr(e.(syntax.LogSelectorExpr), r), nil
+	case *syntax.VectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e, r)
-	case *LabelReplaceExpr:
+	case *syntax.LabelReplaceExpr:
 		return m.mapLabelReplaceExpr(e, r)
-	case *RangeAggregationExpr:
+	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r), nil
-	case *BinOpExpr:
+	case *syntax.BinOpExpr:
 		lhsMapped, err := m.Map(e.SampleExpr, r)
 		if err != nil {
 			return nil, err
@@ -152,13 +153,13 @@ func (m ShardMapper) Map(expr Expr, r *shardRecorder) (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		lhsSampleExpr, ok := lhsMapped.(SampleExpr)
+		lhsSampleExpr, ok := lhsMapped.(syntax.SampleExpr)
 		if !ok {
-			return nil, badASTMapping("SampleExpr", lhsMapped)
+			return nil, badASTMapping(lhsMapped)
 		}
-		rhsSampleExpr, ok := rhsMapped.(SampleExpr)
+		rhsSampleExpr, ok := rhsMapped.(syntax.SampleExpr)
 		if !ok {
-			return nil, badASTMapping("SampleExpr", rhsMapped)
+			return nil, badASTMapping(rhsMapped)
 		}
 		e.SampleExpr = lhsSampleExpr
 		e.RHS = rhsSampleExpr
@@ -168,7 +169,7 @@ func (m ShardMapper) Map(expr Expr, r *shardRecorder) (Expr, error) {
 	}
 }
 
-func (m ShardMapper) mapLogSelectorExpr(expr LogSelectorExpr, r *shardRecorder) LogSelectorExpr {
+func (m ShardMapper) mapLogSelectorExpr(expr syntax.LogSelectorExpr, r *shardRecorder) syntax.LogSelectorExpr {
 	var head *ConcatLogSelectorExpr
 	for i := m.shards - 1; i >= 0; i-- {
 		head = &ConcatLogSelectorExpr{
@@ -187,7 +188,7 @@ func (m ShardMapper) mapLogSelectorExpr(expr LogSelectorExpr, r *shardRecorder) 
 	return head
 }
 
-func (m ShardMapper) mapSampleExpr(expr SampleExpr, r *shardRecorder) SampleExpr {
+func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *shardRecorder) syntax.SampleExpr {
 	var head *ConcatSampleExpr
 	for i := m.shards - 1; i >= 0; i-- {
 		head = &ConcatSampleExpr{
@@ -208,7 +209,7 @@ func (m ShardMapper) mapSampleExpr(expr SampleExpr, r *shardRecorder) SampleExpr
 
 // technically, std{dev,var} are also parallelizable if there is no cross-shard merging
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
-func (m ShardMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr, r *shardRecorder) (SampleExpr, error) {
+func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr, r *shardRecorder) (syntax.SampleExpr, error) {
 	// if this AST contains unshardable operations, don't shard this at this level,
 	// but attempt to shard a child node.
 	if !expr.Shardable() {
@@ -216,12 +217,12 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr, r *sh
 		if err != nil {
 			return nil, err
 		}
-		sampleExpr, ok := subMapped.(SampleExpr)
+		sampleExpr, ok := subMapped.(syntax.SampleExpr)
 		if !ok {
-			return nil, badASTMapping("SampleExpr", subMapped)
+			return nil, badASTMapping(subMapped)
 		}
 
-		return &VectorAggregationExpr{
+		return &syntax.VectorAggregationExpr{
 			Left:      sampleExpr,
 			Grouping:  expr.Grouping,
 			Params:    expr.Params,
@@ -231,47 +232,47 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr, r *sh
 	}
 
 	switch expr.Operation {
-	case OpTypeSum:
+	case syntax.OpTypeSum:
 		// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
-		return &VectorAggregationExpr{
+		return &syntax.VectorAggregationExpr{
 			Left:      m.mapSampleExpr(expr, r),
 			Grouping:  expr.Grouping,
 			Params:    expr.Params,
 			Operation: expr.Operation,
 		}, nil
 
-	case OpTypeAvg:
+	case syntax.OpTypeAvg:
 		// avg(x) -> sum(x)/count(x)
-		lhs, err := m.mapVectorAggregationExpr(&VectorAggregationExpr{
+		lhs, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
 			Left:      expr.Left,
 			Grouping:  expr.Grouping,
-			Operation: OpTypeSum,
+			Operation: syntax.OpTypeSum,
 		}, r)
 		if err != nil {
 			return nil, err
 		}
-		rhs, err := m.mapVectorAggregationExpr(&VectorAggregationExpr{
+		rhs, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
 			Left:      expr.Left,
 			Grouping:  expr.Grouping,
-			Operation: OpTypeCount,
+			Operation: syntax.OpTypeCount,
 		}, r)
 		if err != nil {
 			return nil, err
 		}
 
-		return &BinOpExpr{
+		return &syntax.BinOpExpr{
 			SampleExpr: lhs,
 			RHS:        rhs,
-			Op:         OpTypeDiv,
+			Op:         syntax.OpTypeDiv,
 		}, nil
 
-	case OpTypeCount:
+	case syntax.OpTypeCount:
 		// count(x) -> sum(count(x, shard=1) ++ count(x, shard=2)...)
 		sharded := m.mapSampleExpr(expr, r)
-		return &VectorAggregationExpr{
+		return &syntax.VectorAggregationExpr{
 			Left:      sharded,
 			Grouping:  expr.Grouping,
-			Operation: OpTypeSum,
+			Operation: syntax.OpTypeSum,
 		}, nil
 	default:
 		// this should not be reachable. If an operation is shardable it should
@@ -284,17 +285,17 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr, r *sh
 	}
 }
 
-func (m ShardMapper) mapLabelReplaceExpr(expr *LabelReplaceExpr, r *shardRecorder) (SampleExpr, error) {
+func (m ShardMapper) mapLabelReplaceExpr(expr *syntax.LabelReplaceExpr, r *shardRecorder) (syntax.SampleExpr, error) {
 	subMapped, err := m.Map(expr.Left, r)
 	if err != nil {
 		return nil, err
 	}
 	cpy := *expr
-	cpy.Left = subMapped.(SampleExpr)
+	cpy.Left = subMapped.(syntax.SampleExpr)
 	return &cpy, nil
 }
 
-func (m ShardMapper) mapRangeAggregationExpr(expr *RangeAggregationExpr, r *shardRecorder) SampleExpr {
+func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, r *shardRecorder) syntax.SampleExpr {
 	if hasLabelModifier(expr) {
 		// if an expr can modify labels this means multiple shards can returns the same labelset.
 		// When this happens the merge strategy needs to be different than a simple concatenation.
@@ -303,7 +304,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *RangeAggregationExpr, r *shar
 		return expr
 	}
 	switch expr.Operation {
-	case OpRangeTypeCount, OpRangeTypeRate, OpRangeTypeBytesRate, OpRangeTypeBytes:
+	case syntax.OpRangeTypeCount, syntax.OpRangeTypeRate, syntax.OpRangeTypeBytesRate, syntax.OpRangeTypeBytes:
 		// count_over_time(x) -> count_over_time(x, shard=1) ++ count_over_time(x, shard=2)...
 		// rate(x) -> rate(x, shard=1) ++ rate(x, shard=2)...
 		// same goes for bytes_rate and bytes_over_time
@@ -315,54 +316,16 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *RangeAggregationExpr, r *shar
 
 // hasLabelModifier tells if an expression contains pipelines that can modify stream labels
 // parsers introduce new labels but does not alter original one for instance.
-func hasLabelModifier(expr *RangeAggregationExpr) bool {
+func hasLabelModifier(expr *syntax.RangeAggregationExpr) bool {
 	switch ex := expr.Left.Left.(type) {
-	case *MatchersExpr:
+	case *syntax.MatchersExpr:
 		return false
-	case *PipelineExpr:
+	case *syntax.PipelineExpr:
 		for _, p := range ex.MultiStages {
-			if _, ok := p.(*LabelFmtExpr); ok {
+			if _, ok := p.(*syntax.LabelFmtExpr); ok {
 				return true
 			}
 		}
 	}
 	return false
-}
-
-// shardableOps lists the operations which may be sharded.
-// topk, botk, max, & min all must be concatenated and then evaluated in order to avoid
-// potential data loss due to series distribution across shards.
-// For example, grouping by `cluster` for a `max` operation may yield
-// 2 results on the first shard and 10 results on the second. If we prematurely
-// calculated `max`s on each shard, the shard/label combination with `2` may be
-// discarded and some other combination with `11` may be reported falsely as the max.
-//
-// Explanation: this is my (owen-d) best understanding.
-//
-// For an operation to be shardable, first the sample-operation itself must be associative like (+, *) but not (%, /, ^).
-// Secondly, if the operation is part of a vector aggregation expression or utilizes logical/set binary ops,
-// the vector operation must be distributive over the sample-operation.
-// This ensures that the vector merging operation can be applied repeatedly to data in different shards.
-// references:
-// https://en.wikipedia.org/wiki/Associative_property
-// https://en.wikipedia.org/wiki/Distributive_property
-var shardableOps = map[string]bool{
-	// vector ops
-	OpTypeSum: true,
-	// avg is only marked as shardable because we remap it into sum/count.
-	OpTypeAvg:   true,
-	OpTypeCount: true,
-
-	// range vector ops
-	OpRangeTypeCount:     true,
-	OpRangeTypeRate:      true,
-	OpRangeTypeBytes:     true,
-	OpRangeTypeBytesRate: true,
-	OpRangeTypeSum:       true,
-	OpRangeTypeMax:       true,
-	OpRangeTypeMin:       true,
-
-	// binops - arith
-	OpTypeAdd: true,
-	OpTypeMul: true,
 }

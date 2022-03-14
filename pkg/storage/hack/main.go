@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	lstore "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
@@ -101,7 +101,7 @@ func fillStore(cm storage.ClientMetrics) error {
 		wgPush.Add(1)
 		go func(j int) {
 			defer wgPush.Done()
-			lbs, err := logql.ParseLabels(fmt.Sprintf("{foo=\"bar\",level=\"%d\"}", j))
+			lbs, err := syntax.ParseLabels(fmt.Sprintf("{foo=\"bar\",level=\"%d\"}", j))
 			if err != nil {
 				panic(err)
 			}

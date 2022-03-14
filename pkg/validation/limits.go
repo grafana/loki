@@ -13,7 +13,7 @@ import (
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/ruler/util"
 	"github.com/grafana/loki/pkg/util/flagext"
 )
@@ -213,10 +213,9 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Validate validates that this limits config is valid.
 func (l *Limits) Validate() error {
-
 	if l.StreamRetention != nil {
 		for i, rule := range l.StreamRetention {
-			matchers, err := logql.ParseMatchers(rule.Selector)
+			matchers, err := syntax.ParseMatchers(rule.Selector)
 			if err != nil {
 				return fmt.Errorf("invalid labels matchers: %w", err)
 			}
@@ -576,7 +575,6 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalJSON(val []byte) error {
 	sm.m = def
 
 	return nil
-
 }
 
 // MarshalYAML explicitly uses the the type receiver and not pointer receiver

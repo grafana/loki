@@ -19,7 +19,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	loki_util "github.com/grafana/loki/pkg/util"
@@ -124,7 +124,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		streamLabelsSize += int64(len(s.Labels))
 		var retentionHours string
 		if tenantsRetention != nil {
-			lbs, err := logql.ParseLabels(s.Labels)
+			lbs, err := syntax.ParseLabels(s.Labels)
 			if err != nil {
 				return nil, err
 			}
