@@ -201,6 +201,78 @@ func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string) (float
 
 func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
 
+// NewFilteringSampleExtractor creates a sample extractor where entries from
+// the underlying log stream are filtered by pipeline filters before being
+// passed to extract samples. Filters are always upstream of the extractor.
+func NewFilteringSampleExtractor(f []PipelineFilter, e SampleExtractor) SampleExtractor {
+	return &filteringSampleExtractor{
+		filters:   f,
+		extractor: e,
+	}
+}
+
+type filteringSampleExtractor struct {
+	filters   []PipelineFilter
+	extractor SampleExtractor
+}
+
+func (p *filteringSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
+	var streamFilters []streamFilter
+	for _, f := range p.filters {
+		if allMatch(f.Matchers, labels) {
+			streamFilters = append(streamFilters, streamFilter{
+				start:    f.Start,
+				end:      f.End,
+				pipeline: f.Pipeline.ForStream(labels),
+			})
+		}
+	}
+
+	return &filteringStreamExtractor{
+		filters:   streamFilters,
+		extractor: p.extractor.ForStream(labels),
+	}
+}
+
+type filteringStreamExtractor struct {
+	filters   []streamFilter
+	extractor StreamSampleExtractor
+}
+
+func (sp *filteringStreamExtractor) BaseLabels() LabelsResult {
+	return sp.extractor.BaseLabels()
+}
+
+func (sp *filteringStreamExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+	for _, filter := range sp.filters {
+		if ts < filter.start || ts > filter.end {
+			continue
+		}
+
+		_, _, skip := filter.pipeline.Process(ts, line)
+		if skip { //When the filter matches, don't run the next step
+			return 0, nil, false
+		}
+	}
+
+	return sp.extractor.Process(ts, line)
+}
+
+func (sp *filteringStreamExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+	for _, filter := range sp.filters {
+		if ts < filter.start || ts > filter.end {
+			continue
+		}
+
+		_, _, skip := filter.pipeline.ProcessString(ts, line)
+		if skip { //When the filter matches, don't run the next step
+			return 0, nil, false
+		}
+	}
+
+	return sp.extractor.ProcessString(ts, line)
+}
+
 func convertFloat(v string) (float64, error) {
 	return strconv.ParseFloat(v, 64)
 }

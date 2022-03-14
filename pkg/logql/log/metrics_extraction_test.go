@@ -162,10 +162,10 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	require.Equal(t, 1., f)
 	assertLabelResult(t, lbs, l)
 
-	filter, err := NewFilter("foo", labels.MatchEqual)
+	filter := mustFilter(NewFilter("foo", labels.MatchEqual)).ToStage()
 	require.NoError(t, err)
 
-	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{filter.ToStage()}, []string{"namespace"}, false, false)
+	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{filter}, []string{"namespace"}, false, false)
 	require.NoError(t, err)
 	sse = se.ForStream(lbs)
 	f, l, ok = sse.Process(0, []byte(`foo`))
@@ -175,4 +175,63 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	sse = se.ForStream(lbs)
 	_, _, ok = sse.Process(0, []byte(`nope`))
 	require.False(t, ok)
+}
+
+func TestFilteringSampleExtractor(t *testing.T) {
+	se := NewFilteringSampleExtractor([]PipelineFilter{
+		newPipelineFilter(2, 4, labels.Labels{{Name: "foo", Value: "bar"}, {Name: "bar", Value: "baz"}}, "e"),
+		newPipelineFilter(3, 5, labels.Labels{{Name: "baz", Value: "foo"}}, "e"),
+	}, newStubExtractor())
+
+	tt := []struct {
+		name   string
+		ts     int64
+		line   string
+		labels labels.Labels
+		ok     bool
+	}{
+		{"it doesn't fall in the timerange", 1, "line", labels.Labels{{Name: "baz", Value: "foo"}}, true},
+		{"it doesn't match the filter", 3, "all good", labels.Labels{{Name: "baz", Value: "foo"}}, true},
+		{"it doesn't match all the selectors", 3, "line", labels.Labels{{Name: "foo", Value: "bar"}}, true},
+		{"it matches all selectors", 3, "line", labels.Labels{{Name: "foo", Value: "bar"}, {Name: "bar", Value: "baz"}}, false},
+		{"it tries all the filters", 5, "line", labels.Labels{{Name: "baz", Value: "foo"}}, false},
+	}
+
+	for _, test := range tt {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, ok := se.ForStream(test.labels).Process(test.ts, []byte(test.line))
+			require.Equal(t, test.ok, ok)
+
+			_, _, ok = se.ForStream(test.labels).ProcessString(test.ts, test.line)
+			require.Equal(t, test.ok, ok)
+		})
+	}
+}
+
+func newStubExtractor() *stubExtractor {
+	return &stubExtractor{
+		sp: &stubStreamExtractor{},
+	}
+}
+
+type stubExtractor struct {
+	sp *stubStreamExtractor
+}
+
+func (p *stubExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
+	return p.sp
+}
+
+type stubStreamExtractor struct{}
+
+func (p *stubStreamExtractor) BaseLabels() LabelsResult {
+	return nil
+}
+
+func (p *stubStreamExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+	return 0, nil, true
+}
+
+func (p *stubStreamExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+	return 0, nil, true
 }

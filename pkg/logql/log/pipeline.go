@@ -158,6 +158,106 @@ func (p *streamPipeline) ProcessString(ts int64, line string) (string, LabelsRes
 
 func (p *streamPipeline) BaseLabels() LabelsResult { return p.builder.currentResult }
 
+// PipelineFilter contains a set of matchers and a pipeline that, when matched,
+// causes an entry from a log stream to be skipped. Matching entries must also
+// fall between 'start' and 'end'
+type PipelineFilter struct {
+	Start    int64
+	End      int64
+	Matchers []*labels.Matcher
+	Pipeline Pipeline
+}
+
+// NewFilteringPipeline creates a pipeline where entries from the underlying
+// log stream are filtered by pipeline filters before being passed to the
+// pipeline representing the queried data. Filters are always upstream of the
+// pipeline
+func NewFilteringPipeline(f []PipelineFilter, p Pipeline) Pipeline {
+	return &filteringPipeline{
+		filters:  f,
+		pipeline: p,
+	}
+}
+
+type filteringPipeline struct {
+	filters  []PipelineFilter
+	pipeline Pipeline
+}
+
+func (p *filteringPipeline) ForStream(labels labels.Labels) StreamPipeline {
+	var streamFilters []streamFilter
+	for _, f := range p.filters {
+		if allMatch(f.Matchers, labels) {
+			streamFilters = append(streamFilters, streamFilter{
+				start:    f.Start,
+				end:      f.End,
+				pipeline: f.Pipeline.ForStream(labels),
+			})
+		}
+	}
+
+	return &filteringStreamPipeline{
+		filters:  streamFilters,
+		pipeline: p.pipeline.ForStream(labels),
+	}
+}
+
+func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
+	for _, m := range matchers {
+		for _, l := range labels {
+			if m.Name == l.Name && !m.Matches(l.Value) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+type streamFilter struct {
+	start    int64
+	end      int64
+	pipeline StreamPipeline
+}
+
+type filteringStreamPipeline struct {
+	filters  []streamFilter
+	pipeline StreamPipeline
+}
+
+func (sp *filteringStreamPipeline) BaseLabels() LabelsResult {
+	return sp.pipeline.BaseLabels()
+}
+
+func (sp *filteringStreamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
+	for _, filter := range sp.filters {
+		if ts < filter.start || ts > filter.end {
+			continue
+		}
+
+		_, _, skip := filter.pipeline.Process(ts, line)
+		if skip { //When the filter matches, don't run the next step
+			return nil, nil, false
+		}
+	}
+
+	return sp.pipeline.Process(ts, line)
+}
+
+func (sp *filteringStreamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
+	for _, filter := range sp.filters {
+		if ts < filter.start || ts > filter.end {
+			continue
+		}
+
+		_, _, skip := filter.pipeline.ProcessString(ts, line)
+		if skip { //When the filter matches, don't run the next step
+			return "", nil, false
+		}
+	}
+
+	return sp.pipeline.ProcessString(ts, line)
+}
+
 // ReduceStages reduces multiple stages into one.
 func ReduceStages(stages []Stage) Stage {
 	if len(stages) == 0 {

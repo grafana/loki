@@ -50,6 +50,78 @@ func TestPipeline(t *testing.T) {
 	require.Equal(t, false, ok)
 }
 
+func TestFilteringPipeline(t *testing.T) {
+	p := NewFilteringPipeline([]PipelineFilter{
+		newPipelineFilter(2, 4, labels.Labels{{Name: "foo", Value: "bar"}, {Name: "bar", Value: "baz"}}, "e"),
+		newPipelineFilter(3, 5, labels.Labels{{Name: "baz", Value: "foo"}}, "e"),
+	}, newStubPipeline())
+
+	tt := []struct {
+		name   string
+		ts     int64
+		line   string
+		labels labels.Labels
+		ok     bool
+	}{
+		{"it doesn't fall in the timerange", 1, "line", labels.Labels{{Name: "baz", Value: "foo"}}, true},
+		{"it doesn't match the filter", 3, "all good", labels.Labels{{Name: "baz", Value: "foo"}}, true},
+		{"it doesn't match all the selectors", 3, "line", labels.Labels{{Name: "foo", Value: "bar"}}, true},
+		{"it matches all selectors", 3, "line", labels.Labels{{Name: "foo", Value: "bar"}, {Name: "bar", Value: "baz"}}, false},
+		{"it tries all the filters", 5, "line", labels.Labels{{Name: "baz", Value: "foo"}}, false},
+	}
+
+	for _, test := range tt {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, ok := p.ForStream(test.labels).Process(test.ts, []byte(test.line))
+			require.Equal(t, test.ok, ok)
+
+			_, _, ok = p.ForStream(test.labels).ProcessString(test.ts, test.line)
+			require.Equal(t, test.ok, ok)
+		})
+	}
+}
+
+func newPipelineFilter(start, end int64, lbls labels.Labels, filter string) PipelineFilter {
+	var stages []Stage
+	var matchers []*labels.Matcher
+	for _, l := range lbls {
+		m := labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value)
+		stages = append(stages, NewStringLabelFilter(m))
+		matchers = append(matchers, m)
+	}
+	stages = append(stages, mustFilter(NewFilter(filter, labels.MatchEqual)).ToStage())
+
+	return PipelineFilter{start, end, matchers, NewPipeline(stages)}
+}
+
+func newStubPipeline() *stubPipeline {
+	return &stubPipeline{
+		sp: &stubStreamPipeline{},
+	}
+}
+
+type stubPipeline struct {
+	sp *stubStreamPipeline
+}
+
+func (p *stubPipeline) ForStream(labels labels.Labels) StreamPipeline {
+	return p.sp
+}
+
+type stubStreamPipeline struct{}
+
+func (p *stubStreamPipeline) BaseLabels() LabelsResult {
+	return nil
+}
+
+func (p *stubStreamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
+	return nil, nil, true
+}
+
+func (p *stubStreamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
+	return "", nil, true
+}
+
 var (
 	resOK         bool
 	resLine       []byte
