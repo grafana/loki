@@ -18,6 +18,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -183,7 +184,7 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 	}))
 	conn, _ := grpc.DialContext(context.Background(), "", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 		return listener.Dial()
-	}), grpc.WithInsecure())
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	defer func() {
 		s.Stop()
 		conn.Close()
@@ -201,8 +202,8 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 		tableName := buildTableName(i)
 		objectStorageDir := filepath.Join(dir, "index", tableName)
 		cacheDir := filepath.Join(dir, "cache", tableName)
-		require.NoError(b, os.MkdirAll(objectStorageDir, 0777))
-		require.NoError(b, os.MkdirAll(cacheDir, 0777))
+		require.NoError(b, os.MkdirAll(objectStorageDir, 0o777))
+		require.NoError(b, os.MkdirAll(cacheDir, 0o777))
 
 		// add few rows at a time to the db because doing to many writes in a single transaction puts too much strain on boltdb and makes it slow
 		for i := 0; i < benchMarkNumEntries/numTables; i += 10000 {

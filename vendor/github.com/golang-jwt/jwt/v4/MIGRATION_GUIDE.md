@@ -1,6 +1,6 @@
 ## Migration Guide (v4.0.0)
 
-Starting from [v4.0.0](https://github.com/golang-jwt/jwt/releases/tag/v4.0.0]), the import path will be:
+Starting from [v4.0.0](https://github.com/golang-jwt/jwt/releases/tag/v4.0.0), the import path will be:
 
     "github.com/golang-jwt/jwt/v4"
 
