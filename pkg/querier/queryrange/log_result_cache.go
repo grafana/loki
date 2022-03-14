@@ -47,7 +47,7 @@ func NewLogResultCacheMetrics(registerer prometheus.Registerer) *LogResultCacheM
 // NewLogResultCache creates a new log result cache middleware.
 // Currently it only caches empty filter queries, this is because those are usually easily and freely cacheable.
 // Log hits are difficult to handle because of the limit query parameter and the size of the response.
-// In the future it could be extended to cache log hits.
+// In the future it could be extended to cache non-empty query results.
 // see https://docs.google.com/document/d/1_mACOpxdWZ5K0cIedaja5gzMbv-m0lUVazqZd2O4mEU/edit
 func NewLogResultCache(logger log.Logger, limits Limits, cache cache.Cache, shouldCache queryrangebase.ShouldCacheFn, metrics *LogResultCacheMetrics) queryrangebase.Middleware {
 	if metrics == nil {
@@ -164,7 +164,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	l.metrics.CacheHit.Inc()
 	// we start with an empty response
 	result := emptyResponse(cachedRequest)
-	// if the request is the same and cover the whole time range.
+	// if the request is the same and cover the whole time range,
 	// we can just return the cached result.
 	if lokiReq.GetStartTs().After(cachedRequest.GetStartTs()) || lokiReq.GetStartTs().Equal(cachedRequest.GetStartTs()) &&
 		lokiReq.GetEndTs().Before(cachedRequest.GetEndTs()) || lokiReq.GetEndTs().Equal(cachedRequest.GetEndTs()) {
