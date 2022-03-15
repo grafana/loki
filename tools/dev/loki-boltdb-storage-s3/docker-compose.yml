@@ -252,3 +252,15 @@ services:
     command: ["-f", "json", "-l", "-d", "2s"]
     depends_on:
       - distributor
+
+  log-gen-2:
+    logging:
+      driver: loki-compose
+      options:
+        loki-url: "http://localhost:8001/loki/api/v1/push"
+        loki-retries: "1"
+        loki-tenant-id: "2"
+    image: mingrammer/flog
+    command: ["-f", "json", "-l", "-d", "2s"]
+    depends_on:
+      - distributor
