@@ -58,7 +58,6 @@ func GetTenantConfigMapData(ctx context.Context, k k8s.Client, req ctrl.Request)
 	tcmMap := make(map[string]openshift.TenantData)
 	for _, tenant := range tcm.Tenants {
 		tcmMap[tenant.Name] = openshift.TenantData{
-			TenantID:     tenant.ID,
 			CookieSecret: tenant.OpenShift.CookieSecret,
 		}
 	}

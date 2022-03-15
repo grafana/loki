@@ -334,7 +334,6 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 	tenantConfigMap := make(map[string]gateway.TenantData)
 	for tenant, tenantData := range opt.TenantConfigMap {
 		tenantConfigMap[tenant] = gateway.TenantData{
-			TenantID:     tenantData.TenantID,
 			CookieSecret: tenantData.CookieSecret,
 		}
 	}
