@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
 
@@ -61,7 +61,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 	}
 
 	now := model.Now()
-	lblFoo, err := logql.ParseLabels(`{foo="bar"}`)
+	lblFoo, err := syntax.ParseLabels(`{foo="bar"}`)
 	require.NoError(t, err)
 
 	chunkEntry := retention.ChunkEntry{
