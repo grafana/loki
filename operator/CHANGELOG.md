@@ -1,5 +1,6 @@
 ## Main
 
+- [5621](https://github.com/grafana/loki/pull/5621) **periklis**: Use recommended labels for LokiStack components
 - [5607](https://github.com/grafana/loki/pull/5607) **periklis**: Use lokistack name as prefix for owned resources
 - [5588](https://github.com/grafana/loki/pull/5588) **periklis**: Add RBAC for Prometheus service discovery to Loki component metrics (OpenShift)
 - [5576](https://github.com/grafana/loki/pull/5576) **xperimental**: Change endpoints for generated liveness and readiness probes
