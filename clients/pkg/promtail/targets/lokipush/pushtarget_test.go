@@ -84,7 +84,8 @@ func TestLokiPushTarget(t *testing.T) {
 		BatchWait: 1 * time.Second,
 		BatchSize: 100 * 1024,
 	}
-	pc, err := client.New(prometheus.DefaultRegisterer, ccfg, logger)
+	m := client.NewMetrics(prometheus.DefaultRegisterer, nil)
+	pc, err := client.New(m, ccfg, nil, logger)
 	require.NoError(t, err)
 	defer pc.Stop()
 

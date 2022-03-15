@@ -45,6 +45,8 @@ import (
 
 const httpTestPort = 9080
 
+var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, nil)
+
 func TestPromtail(t *testing.T) {
 	// Setup.
 	w := log.NewSyncWriter(os.Stderr)
@@ -101,9 +103,8 @@ func TestPromtail(t *testing.T) {
 	defer func() {
 		_ = server.Shutdown(context.Background())
 	}()
-	// Run.
 
-	p, err := New(buildTestConfig(t, positionsFileName, testDir), false, nil)
+	p, err := New(buildTestConfig(t, positionsFileName, testDir), clientMetrics, false, nil)
 	if err != nil {
 		t.Error("error creating promtail", err)
 		return
@@ -647,7 +648,7 @@ func Test_DryRun(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
-	_, err = New(config.Config{}, true, nil)
+	_, err = New(config.Config{}, clientMetrics, true, nil)
 	require.Error(t, err)
 
 	// Set the minimum config needed to start a server. We need to do this since we
@@ -669,7 +670,7 @@ func Test_DryRun(t *testing.T) {
 			PositionsFile: f.Name(),
 			SyncPeriod:    time.Second,
 		},
-	}, true, nil)
+	}, clientMetrics, true, nil)
 	require.NoError(t, err)
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
@@ -681,7 +682,7 @@ func Test_DryRun(t *testing.T) {
 			PositionsFile: f.Name(),
 			SyncPeriod:    time.Second,
 		},
-	}, false, nil)
+	}, clientMetrics, false, nil)
 	require.NoError(t, err)
 	require.IsType(t, &client.MultiClient{}, p.client)
 }
