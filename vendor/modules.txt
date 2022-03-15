@@ -986,9 +986,6 @@ github.com/thanos-io/thanos/pkg/objstore/gcs
 github.com/thanos-io/thanos/pkg/objstore/s3
 github.com/thanos-io/thanos/pkg/objstore/swift
 github.com/thanos-io/thanos/pkg/runutil
-github.com/thanos-io/thanos/pkg/store/labelpb
-github.com/thanos-io/thanos/pkg/store/storepb
-github.com/thanos-io/thanos/pkg/store/storepb/prompb
 github.com/thanos-io/thanos/pkg/strutil
 github.com/thanos-io/thanos/pkg/testutil
 github.com/thanos-io/thanos/pkg/tracing
