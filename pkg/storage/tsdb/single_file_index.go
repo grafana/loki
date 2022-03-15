@@ -57,9 +57,9 @@ func (i *TSDBIndex) forSeries(
 	return p.Err()
 }
 
-func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through model.Time, res *[]ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
 	queryBounds := newBounds(from, through)
-	var res []ChunkRef // TODO(owen-d): pool, reduce allocs
+	*res = (*res)[:0]
 
 	if err := i.forSeries(shard,
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
@@ -71,7 +71,7 @@ func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through
 					continue
 				}
 
-				res = append(res, ChunkRef{
+				*res = append(*res, ChunkRef{
 					User:        userID, // assumed to be the same, will be enforced by caller.
 					Fingerprint: fp,
 					Start:       chk.From(),
@@ -81,15 +81,15 @@ func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through
 			}
 		},
 		matchers...); err != nil {
-		return nil, err
+		return err
 	}
 
-	return res, nil
+	return nil
 }
 
-func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time, res *[]Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
 	queryBounds := newBounds(from, through)
-	var res []Series // TODO(owen-d): pool, reduce allocs
+	*res = (*res)[:0]
 
 	if err := i.forSeries(shard,
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
@@ -98,7 +98,7 @@ func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time
 
 				if Overlap(queryBounds, chk) {
 					// this series has at least one chunk in the desired range
-					res = append(res, Series{
+					*res = append(*res, Series{
 						Labels:      ls.Copy(),
 						Fingerprint: fp,
 					})
@@ -107,10 +107,10 @@ func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time
 			}
 		},
 		matchers...); err != nil {
-		return nil, err
+		return err
 	}
 
-	return res, nil
+	return nil
 }
 
 func (i *TSDBIndex) LabelNames(_ context.Context, _ string, _, _ model.Time, matchers ...*labels.Matcher) ([]string, error) {

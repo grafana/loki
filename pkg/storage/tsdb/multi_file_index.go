@@ -92,80 +92,67 @@ func (i *MultiIndex) forIndices(ctx context.Context, from, through model.Time, f
 	return results, nil
 }
 
-func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res *[]ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
+	*res = (*res)[:0]
 	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
-		return idx.GetChunkRefs(ctx, userID, from, through, shard, matchers...)
+		refs := ChunkRefsPool.Get()
+		err := idx.GetChunkRefs(ctx, userID, from, through, &refs, shard, matchers...)
+		return refs, err
 	})
 
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	var maxLn int // maximum number of chunk refs, assuming no duplicates
-	refGroups := make([][]ChunkRef, 0, len(i.indices))
-	for _, group := range groups {
-		rg := group.([]ChunkRef)
-		maxLn += len(rg)
-		refGroups = append(refGroups, rg)
-	}
-	// optimistically allocate the maximum length slice
-	// to avoid growing incrementally
-	results := make([]ChunkRef, 0, maxLn)
 
 	// keep track of duplicates
 	seen := make(map[ChunkRef]struct{})
 
 	// TODO(owen-d): Do this more efficiently,
 	// not all indices overlap each other
-	for _, group := range refGroups {
-		for _, ref := range group {
+	for _, group := range groups {
+		g := group.([]ChunkRef)
+		for _, ref := range g {
 			_, ok := seen[ref]
 			if ok {
 				continue
 			}
 			seen[ref] = struct{}{}
-			results = append(results, ref)
+			*res = append(*res, ref)
 		}
+		ChunkRefsPool.Put(g)
 	}
 
-	return results, nil
+	return nil
 
 }
 
-func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, res *[]Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
+	*res = (*res)[:0]
 	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
-		return idx.Series(ctx, userID, from, through, shard, matchers...)
+		xs := SeriesPool.Get()
+		err := idx.Series(ctx, userID, from, through, &xs, shard, matchers...)
+		return xs, err
 	})
 
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var maxLn int // maximum number of chunk refs, assuming no duplicates
-	xs := make([][]Series, 0, len(i.indices))
-	for _, group := range groups {
-		x := group.([]Series)
-		maxLn += len(x)
-		xs = append(xs, x)
-	}
-
-	// optimistically allocate the maximum length slice
-	// to avoid growing incrementally
-	results := make([]Series, 0, maxLn)
 	seen := make(map[model.Fingerprint]struct{})
 
-	for _, seriesSet := range xs {
+	for _, x := range groups {
+		seriesSet := x.([]Series)
 		for _, s := range seriesSet {
 			_, ok := seen[s.Fingerprint]
 			if ok {
 				continue
 			}
 			seen[s.Fingerprint] = struct{}{}
-			results = append(results, s)
+			*res = append(*res, s)
 		}
 	}
 
-	return results, nil
+	return nil
 }
 
 func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
