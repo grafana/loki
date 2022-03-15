@@ -25,6 +25,8 @@ func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
 	return model.Time(from), model.Time(through)
 }
 
+// fn must NOT capture it's arguments. They're reused across series iterations and returned to
+// a pool after completion.
 func (i *TSDBIndex) forSeries(
 	shard *index.ShardAnnotation,
 	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
@@ -35,10 +37,9 @@ func (i *TSDBIndex) forSeries(
 		return err
 	}
 
-	var (
-		ls   labels.Labels
-		chks []index.ChunkMeta
-	)
+	var ls labels.Labels
+	chks := chunkMetasPool.Get()
+	defer chunkMetasPool.Put(chks)
 
 	for p.Next() {
 		if err := i.reader.Series(p.At(), &ls, &chks); err != nil {
