@@ -599,6 +599,160 @@ func Test_ChunkFilter(t *testing.T) {
 	}
 }
 
+func Test_QueryWithDelete(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	defaultLimits := defaultLimitsTestConfig()
+	overrides, err := validation.NewOverrides(defaultLimits, nil)
+	require.NoError(t, err)
+	instance := newInstance(
+		&ingesterConfig,
+		"fake",
+		NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1),
+		loki_runtime.DefaultTenantConfigs(),
+		noopWAL{},
+		NilMetrics,
+		nil,
+		nil,
+	)
+	ctx := context.TODO()
+	direction := logproto.BACKWARD
+	limit := uint32(2)
+
+	// insert data.
+	for i := 0; i < 10; i++ {
+		stream := "dispatcher"
+		if i%2 == 0 {
+			stream = "worker"
+		}
+		require.NoError(t,
+			instance.Push(ctx, &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: fmt.Sprintf(`{host="agent", log_stream="%s",job="3"}`, stream),
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf(`msg="%s_%d"`, stream, i)},
+						},
+					},
+				},
+			}),
+		)
+	}
+
+	// prepare iterators.
+	it, err := instance.Query(ctx,
+		logql.SelectLogParams{
+			QueryRequest: &logproto.QueryRequest{
+				Selector:  `{job="3"}`,
+				Limit:     limit,
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(0, 100000000),
+				Direction: direction,
+				Deletes: []*logproto.Delete{
+					{
+						Selector: `{log_stream="worker"}`,
+						Start:    0,
+						End:      10,
+					},
+					{
+						Selector: `{log_stream="dispatcher"}`,
+						Start:    0,
+						End:      5,
+					},
+					{
+						Selector: `{log_stream="dispatcher"} |= "9"`,
+						Start:    0,
+						End:      10,
+					},
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	defer it.Close()
+
+	var logs []string
+	for it.Next() {
+		logs = append(logs, it.Entry().Line)
+	}
+
+	require.Equal(t, logs, []string{`msg="dispatcher_7"`})
+}
+
+func Test_QuerySampleWithDelete(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	defaultLimits := defaultLimitsTestConfig()
+	overrides, err := validation.NewOverrides(defaultLimits, nil)
+	require.NoError(t, err)
+	instance := newInstance(
+		&ingesterConfig,
+		"fake",
+		NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1),
+		loki_runtime.DefaultTenantConfigs(),
+		noopWAL{},
+		NilMetrics,
+		nil,
+		nil,
+	)
+	ctx := context.TODO()
+
+	// insert data.
+	for i := 0; i < 10; i++ {
+		stream := "dispatcher"
+		if i%2 == 0 {
+			stream = "worker"
+		}
+		require.NoError(t,
+			instance.Push(ctx, &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: fmt.Sprintf(`{host="agent", log_stream="%s",job="3"}`, stream),
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf(`msg="%s_%d"`, stream, i)},
+						},
+					},
+				},
+			}),
+		)
+	}
+
+	// prepare iterators.
+	it, err := instance.QuerySample(ctx,
+		logql.SelectSampleParams{
+			SampleQueryRequest: &logproto.SampleQueryRequest{
+				Selector: `count_over_time({job="3"}[5m])`,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, 100000000),
+				Deletes: []*logproto.Delete{
+					{
+						Selector: `{log_stream="worker"}`,
+						Start:    0,
+						End:      10,
+					},
+					{
+						Selector: `{log_stream="dispatcher"}`,
+						Start:    0,
+						End:      5,
+					},
+					{
+						Selector: `{log_stream="dispatcher"} |= "9"`,
+						Start:    0,
+						End:      10,
+					},
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	defer it.Close()
+
+	var samples []float64
+	for it.Next() {
+		samples = append(samples, it.Sample().Value)
+	}
+
+	require.Equal(t, samples, []float64{1.})
+}
+
 type fakeQueryServer func(*logproto.QueryResponse) error
 
 func (f fakeQueryServer) Send(res *logproto.QueryResponse) error {
