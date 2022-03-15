@@ -81,6 +81,7 @@ func TestFilteringPipeline(t *testing.T) {
 	}
 }
 
+//nolint:unparam
 func newPipelineFilter(start, end int64, lbls labels.Labels, filter string) PipelineFilter {
 	var stages []Stage
 	var matchers []*labels.Matcher
