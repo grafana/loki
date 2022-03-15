@@ -39,13 +39,12 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	}
 
 	if len(tenantIDs) == 1 {
-		singleContext := user.InjectUserID(ctx, tenantIDs[0])
-		return q.Querier.SelectLogs(singleContext, params)
+		return q.Querier.SelectLogs(ctx, params)
 	}
 
 	iters := make([]iter.EntryIterator, len(tenantIDs))
 	for i, id := range tenantIDs {
-		singleContext := user.InjectUserID(ctx, id)
+		singleContext := user.InjectOrgID(ctx, id)
 		iter, err := q.Querier.SelectLogs(singleContext, params)
 		if err != nil {
 			return nil, err
@@ -63,13 +62,12 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	}
 
 	if len(tenantIDs) == 1 {
-		singleContext := user.InjectUserID(ctx, tenantIDs[0])
-		return q.Querier.SelectSamples(singleContext, params)
+		return q.Querier.SelectSamples(ctx, params)
 	}
 
 	iters := make([]iter.SampleIterator, len(tenantIDs))
 	for i, id := range tenantIDs {
-		singleContext := user.InjectUserID(ctx, id)
+		singleContext := user.InjectOrgID(ctx, id)
 		iter, err := q.Querier.SelectSamples(singleContext, params)
 		if err != nil {
 			return nil, err
