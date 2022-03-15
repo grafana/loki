@@ -92,7 +92,7 @@ querier:
     multi_tenant_queries_enabled: true
 query_range:
     align_queries_with_step: true
-    cache_results: false 
+    cache_results: true
     max_retries: 5
     parallelise_shardable_queries: true
     results_cache:
