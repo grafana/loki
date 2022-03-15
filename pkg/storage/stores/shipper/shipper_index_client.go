@@ -11,15 +11,13 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/dskit/grpcclient"
-	"github.com/grafana/dskit/ring"
 	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
@@ -29,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (

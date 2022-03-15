@@ -192,25 +192,24 @@ func (s *GatewayClient) ringModeDoQueries(ctx context.Context, gatewayQueries []
 		return errors.Wrap(err, "index gateway get ring")
 	}
 
-	_, err = rs.Do(ctx, 0 /* TODO(dylanguedes): what is this delay for? */, func(ctx context.Context, instanceDesc *ring.InstanceDesc) (interface{}, error) {
-		genericClient, err := s.pool.GetClientFor(instanceDesc.Addr)
+	addrs := rs.GetAddresses()
+	for _, addr := range addrs {
+		genericClient, err := s.pool.GetClientFor(addr)
 		if err != nil {
-			return nil, errors.Wrap(err, fmt.Sprintf("get client for instance %s", instanceDesc.Addr))
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", addr), "err", err)
+			continue
 		}
 
 		client := (genericClient.(indexgatewaypb.IndexGatewayClient))
-		// TODO(dylanguedes): does this works as a hedging request?
 		if err := s.clientDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback, client); err != nil {
-			return nil, err
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("client do queries failed for instance %s", addr), "err", err)
+			continue
 		}
 
-		return nil, nil
-	})
-
-	if err != nil {
-		return errors.Wrap(err, "index gateway replicationset do queries")
+		return nil
 	}
-	return nil
+
+	return fmt.Errorf("index gateway replicationSet clientDoQueries")
 }
 
 func (s *GatewayClient) NewWriteBatch() chunk.WriteBatch {
