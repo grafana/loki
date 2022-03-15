@@ -244,6 +244,10 @@ type S3API interface {
 	GetObjectAclWithContext(aws.Context, *s3.GetObjectAclInput, ...request.Option) (*s3.GetObjectAclOutput, error)
 	GetObjectAclRequest(*s3.GetObjectAclInput) (*request.Request, *s3.GetObjectAclOutput)
 
+	GetObjectAttributes(*s3.GetObjectAttributesInput) (*s3.GetObjectAttributesOutput, error)
+	GetObjectAttributesWithContext(aws.Context, *s3.GetObjectAttributesInput, ...request.Option) (*s3.GetObjectAttributesOutput, error)
+	GetObjectAttributesRequest(*s3.GetObjectAttributesInput) (*request.Request, *s3.GetObjectAttributesOutput)
+
 	GetObjectLegalHold(*s3.GetObjectLegalHoldInput) (*s3.GetObjectLegalHoldOutput, error)
 	GetObjectLegalHoldWithContext(aws.Context, *s3.GetObjectLegalHoldInput, ...request.Option) (*s3.GetObjectLegalHoldOutput, error)
 	GetObjectLegalHoldRequest(*s3.GetObjectLegalHoldInput) (*request.Request, *s3.GetObjectLegalHoldOutput)

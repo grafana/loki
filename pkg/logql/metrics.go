@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -148,14 +149,14 @@ func recordUsageStats(queryType string, stats logql_stats.Result) {
 }
 
 func QueryType(query string) (string, error) {
-	expr, err := ParseExpr(query)
+	expr, err := syntax.ParseExpr(query)
 	if err != nil {
 		return "", err
 	}
 	switch e := expr.(type) {
-	case SampleExpr:
+	case syntax.SampleExpr:
 		return QueryTypeMetric, nil
-	case LogSelectorExpr:
+	case syntax.LogSelectorExpr:
 		if e.HasFilter() {
 			return QueryTypeFilter, nil
 		}

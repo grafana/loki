@@ -58,7 +58,7 @@ func TestPromtail(t *testing.T) {
 	dirName := "/tmp/promtail_test_" + randName()
 	positionsFileName := dirName + "/positions.yml"
 
-	err := os.MkdirAll(dirName, 0750)
+	err := os.MkdirAll(dirName, 0o750)
 	if err != nil {
 		t.Error(err)
 		return
@@ -67,7 +67,7 @@ func TestPromtail(t *testing.T) {
 	defer func() { _ = os.RemoveAll(dirName) }()
 
 	testDir := dirName + "/logs"
-	err = os.MkdirAll(testDir, 0750)
+	err = os.MkdirAll(testDir, 0o750)
 	if err != nil {
 		t.Error(err)
 		return
@@ -350,7 +350,7 @@ func fileRoll(t *testing.T, filename string, prefix string) int {
 
 func symlinkRoll(t *testing.T, testDir string, filename string, prefix string) int {
 	symlinkDir := testDir + "/symlink"
-	if err := os.Mkdir(symlinkDir, 0750); err != nil {
+	if err := os.Mkdir(symlinkDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 
@@ -399,7 +399,7 @@ func symlinkRoll(t *testing.T, testDir string, filename string, prefix string) i
 }
 
 func subdirSingleFile(t *testing.T, filename string, prefix string) int {
-	if err := os.MkdirAll(filepath.Dir(filename), 0750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(filename), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	f, err := os.Create(filename)
@@ -513,7 +513,8 @@ func getPromMetrics(t *testing.T) ([]byte, string) {
 func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName string, label string) map[string]float64 {
 	rb := map[string]float64{}
 
-	pr := textparse.New(bytes, contentType)
+	pr, err := textparse.New(bytes, contentType)
+	require.NoError(t, err)
 	for {
 		et, err := pr.Next()
 		if err == io.EOF {

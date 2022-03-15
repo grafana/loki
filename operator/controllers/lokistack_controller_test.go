@@ -117,8 +117,21 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 			pred:  updateOrDeleteOnlyPred,
 		},
 		{
-			obj:   &networkingv1.Ingress{},
+			obj:   &rbacv1.Role{},
 			index: 7,
+			pred:  updateOrDeleteOnlyPred,
+		},
+		{
+			obj:   &rbacv1.RoleBinding{},
+			index: 8,
+			pred:  updateOrDeleteOnlyPred,
+		},
+		// The next two share the same index, because the
+		// controller either reconciles an Ingress (i.e. Kubernetes)
+		// or a Route (i.e. OpenShift).
+		{
+			obj:   &networkingv1.Ingress{},
+			index: 9,
 			flags: manifests.FeatureFlags{
 				EnableGatewayRoute: false,
 			},
@@ -126,7 +139,7 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		},
 		{
 			obj:   &routev1.Route{},
-			index: 7,
+			index: 9,
 			flags: manifests.FeatureFlags{
 				EnableGatewayRoute: true,
 			},
@@ -143,7 +156,7 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		require.NoError(t, err)
 
 		// Require Owns-Calls for all owned resources
-		require.Equal(t, 8, b.OwnsCallCount())
+		require.Equal(t, 10, b.OwnsCallCount())
 
 		// Require Owns-call options to have delete predicate only
 		obj, opts := b.OwnsArgsForCall(tst.index)

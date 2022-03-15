@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/tenant"
 )
 
@@ -32,22 +33,19 @@ func NewMultiTenantQuerier(querier Querier, logger log.Logger) *MultiTenantQueri
 }
 
 func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
-
 	tenantIDs, err := q.resolver.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(tenantIDs) == 1 {
-		singleContext := user.InjectUserID(ctx, tenantIDs[0])
-		return q.Querier.SelectLogs(singleContext, params)
+		return q.Querier.SelectLogs(ctx, params)
 	}
 
 	iters := make([]iter.EntryIterator, len(tenantIDs))
 	for i, id := range tenantIDs {
-		singleContext := user.InjectUserID(ctx, id)
+		singleContext := user.InjectOrgID(ctx, id)
 		iter, err := q.Querier.SelectLogs(singleContext, params)
-
 		if err != nil {
 			return nil, err
 		}
@@ -58,22 +56,19 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 }
 
 func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
-
 	tenantIDs, err := q.resolver.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(tenantIDs) == 1 {
-		singleContext := user.InjectUserID(ctx, tenantIDs[0])
-		return q.Querier.SelectSamples(singleContext, params)
+		return q.Querier.SelectSamples(ctx, params)
 	}
 
 	iters := make([]iter.SampleIterator, len(tenantIDs))
 	for i, id := range tenantIDs {
-		singleContext := user.InjectUserID(ctx, id)
+		singleContext := user.InjectOrgID(ctx, id)
 		iter, err := q.Querier.SelectSamples(singleContext, params)
-
 		if err != nil {
 			return nil, err
 		}
@@ -95,7 +90,7 @@ func NewTenantEntryIterator(iter iter.EntryIterator, id string) *TenantEntryIter
 
 func (i *TenantEntryIterator) Labels() string {
 	// TODO: cache manipulated labels and add a benchmark.
-	lbls, _ := logql.ParseLabels(i.EntryIterator.Labels())
+	lbls, _ := syntax.ParseLabels(i.EntryIterator.Labels())
 	builder := labels.NewBuilder(lbls.WithoutLabels(defaultTenantLabel))
 
 	// Prefix label if it conflicts with the tenant label.
@@ -119,7 +114,7 @@ func NewTenantSampleIterator(iter iter.SampleIterator, id string) *TenantSampleI
 
 func (i *TenantSampleIterator) Labels() string {
 	// TODO: cache manipulated labels
-	lbls, _ := logql.ParseLabels(i.SampleIterator.Labels())
+	lbls, _ := syntax.ParseLabels(i.SampleIterator.Labels())
 	builder := labels.NewBuilder(lbls.WithoutLabels(defaultTenantLabel))
 
 	// Prefix label if it conflicts with the tenant label.

@@ -16,7 +16,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
@@ -106,7 +106,7 @@ var (
 )
 
 func newChunkEntry(userID, labels string, from, through model.Time) ChunkEntry {
-	lbs, err := logql.ParseLabels(labels)
+	lbs, err := syntax.ParseLabels(labels)
 	if err != nil {
 		panic(err)
 	}

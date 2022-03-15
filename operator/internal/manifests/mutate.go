@@ -61,6 +61,16 @@ func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 			wantCrb := desired.(*rbacv1.ClusterRoleBinding)
 			mutateClusterRoleBinding(crb, wantCrb)
 
+		case *rbacv1.Role:
+			r := existing.(*rbacv1.Role)
+			wantR := desired.(*rbacv1.Role)
+			mutateRole(r, wantR)
+
+		case *rbacv1.RoleBinding:
+			rb := existing.(*rbacv1.RoleBinding)
+			wantRb := desired.(*rbacv1.RoleBinding)
+			mutateRoleBinding(rb, wantRb)
+
 		case *appsv1.Deployment:
 			dpl := existing.(*appsv1.Deployment)
 			wantDpl := desired.(*appsv1.Deployment)
@@ -127,9 +137,20 @@ func mutateClusterRole(existing, desired *rbacv1.ClusterRole) {
 }
 
 func mutateClusterRoleBinding(existing, desired *rbacv1.ClusterRoleBinding) {
+	existing.Annotations = desired.Annotations
 	existing.Labels = desired.Labels
 	existing.Subjects = desired.Subjects
-	existing.RoleRef = desired.RoleRef
+}
+
+func mutateRole(existing, desired *rbacv1.Role) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
+	existing.Rules = desired.Rules
+}
+
+func mutateRoleBinding(existing, desired *rbacv1.RoleBinding) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
 	existing.Subjects = desired.Subjects
 }
 

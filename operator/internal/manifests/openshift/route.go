@@ -17,7 +17,7 @@ func BuildRoute(opts Options) client.Object {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      routeName(opts),
-			Namespace: opts.BuildOpts.GatewayNamespace,
+			Namespace: opts.BuildOpts.LokiStackNamespace,
 			Labels:    opts.BuildOpts.Labels,
 		},
 		Spec: routev1.RouteSpec{
