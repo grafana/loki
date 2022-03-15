@@ -150,6 +150,7 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 			seen[s.Fingerprint] = struct{}{}
 			*res = append(*res, s)
 		}
+		SeriesPool.Put(seriesSet)
 	}
 
 	return nil
