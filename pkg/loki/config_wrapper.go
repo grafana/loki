@@ -128,7 +128,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Ruler.Ring.InstanceAddr = r.Common.InstanceAddr
 		r.QueryScheduler.SchedulerRing.InstanceAddr = r.Common.InstanceAddr
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
-		r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -138,7 +138,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Ruler.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 		r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
-		r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -250,15 +250,15 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 
 	// IndexGateway
 	if mergeWithExisting || reflect.DeepEqual(r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring, defaults.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring) {
-		r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.InstancePort = rc.InstancePort
-		r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.InstanceAddr = rc.InstanceAddr
-		r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.InstanceID = rc.InstanceID
-		r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.InstanceZone = rc.InstanceZone
-		r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.KVStore = rc.KVStore
+		r.IndexGateway.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IndexGateway.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IndexGateway.Ring.InstancePort = rc.InstancePort
+		r.IndexGateway.Ring.InstanceAddr = rc.InstanceAddr
+		r.IndexGateway.Ring.InstanceID = rc.InstanceID
+		r.IndexGateway.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.IndexGateway.Ring.InstanceZone = rc.InstanceZone
+		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
 }
 
@@ -288,7 +288,7 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	if err != nil {
 		return err
 	}
-	cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.TokensFilePath = f
+	cfg.IndexGateway.Ring.TokensFilePath = f
 
 	return nil
 }
@@ -364,8 +364,8 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 		cfg.Ruler.Ring.InstanceInterfaceNames = append(cfg.Ruler.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 
-	if reflect.DeepEqual(cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.InstanceInterfaceNames, defaults.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.InstanceInterfaceNames) {
-		cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.InstanceInterfaceNames = append(cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.InstanceInterfaceNames, loopbackIface)
+	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
+		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 }
 
@@ -379,7 +379,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.Ruler.Ring.KVStore.Store = memberlistStr
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
-	r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring.KVStore.Store = memberlistStr
+	r.IndexGateway.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")

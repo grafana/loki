@@ -34,7 +34,7 @@ const (
 )
 
 type GatewayClient struct {
-	cfg indexgateway.Config
+	cfg IndexGatewayClientConfig
 
 	storeGatewayClientRequestDuration *prometheus.HistogramVec
 
@@ -52,7 +52,7 @@ type GatewayClient struct {
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created.
 // Otherwise, it creates a single GRPC connection to an Index Gateway instance running in simple mode.
-func NewGatewayClient(cfg indexgateway.Config, indexGatewayRing ring.ReadRing, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
+func NewGatewayClient(cfg IndexGatewayClientConfig, indexGatewayRing ring.ReadRing, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
 	sgClient := &GatewayClient{
 		cfg: cfg,
 		storeGatewayClientRequestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{

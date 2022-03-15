@@ -121,7 +121,7 @@ func TestGatewayClient(t *testing.T) {
 	cleanup, storeAddress := createTestGrpcServer(t)
 	defer cleanup()
 
-	var cfg indexgateway.Config
+	var cfg IndexGatewayClientConfig
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
 

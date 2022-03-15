@@ -15,6 +15,9 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/ring"
+	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -54,19 +57,58 @@ type boltDBIndexClient interface {
 	Stop()
 }
 
+// IndexGatewayClientConfig configures the Index Gateway client used to
+// communicate with the Index Gateway server.
+type IndexGatewayClientConfig struct {
+	// Mode sets in which mode the client will operate. It is actually defined at the
+	// index_gateway YAML section and reused here.
+	Mode indexgateway.Mode `yaml:"-"`
+
+	// PoolConfig defines the behavior of the gRPC connection pool used to communicate
+	// with the Index Gateway.
+	//
+	// Only relevant for the ring mode.
+	// It is defined at the distributors YAML section and reused here.
+	PoolConfig clientpool.PoolConfig `yaml:"-"`
+
+	// Ring is the Index Gateway ring used to find the appropriate Index Gateway instance
+	// this client should talk to.
+	//
+	// Only relevant for the ring mode.
+	Ring ring.ReadRing `yaml:"-"`
+
+	// GRPCClientConfig configures the gRPC connection between the Index Gateway client and the server.
+	//
+	// Used by both, ring and simple mode.
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+
+	// Address of the Index Gateway instance responsible for retaining the index for all tenants.
+	//
+	// Only relevant for the simple mode.
+	Address string `yaml:"server_address,omitempty"`
+}
+
+// RegisterFlagsWithPrefix register client-specific flags with the given prefix.
+//
+// Flags that are used by both, client and server, are defined in the indexgateway package.
+func (i *IndexGatewayClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
+	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode.")
+}
+
 type Config struct {
-	ActiveIndexDirectory     string              `yaml:"active_index_directory"`
-	SharedStoreType          string              `yaml:"shared_store"`
-	SharedStoreKeyPrefix     string              `yaml:"shared_store_key_prefix"`
-	CacheLocation            string              `yaml:"cache_location"`
-	CacheTTL                 time.Duration       `yaml:"cache_ttl"`
-	ResyncInterval           time.Duration       `yaml:"resync_interval"`
-	QueryReadyNumDays        int                 `yaml:"query_ready_num_days"`
-	IndexGatewayClientConfig indexgateway.Config `yaml:"index_gateway_client"`
-	BuildPerTenantIndex      bool                `yaml:"build_per_tenant_index"`
-	IngesterName             string              `yaml:"-"`
-	Mode                     int                 `yaml:"-"`
-	IngesterDBRetainPeriod   time.Duration       `yaml:"-"`
+	ActiveIndexDirectory     string                   `yaml:"active_index_directory"`
+	SharedStoreType          string                   `yaml:"shared_store"`
+	SharedStoreKeyPrefix     string                   `yaml:"shared_store_key_prefix"`
+	CacheLocation            string                   `yaml:"cache_location"`
+	CacheTTL                 time.Duration            `yaml:"cache_ttl"`
+	ResyncInterval           time.Duration            `yaml:"resync_interval"`
+	QueryReadyNumDays        int                      `yaml:"query_ready_num_days"`
+	IndexGatewayClientConfig IndexGatewayClientConfig `yaml:"index_gateway_client"`
+	BuildPerTenantIndex      bool                     `yaml:"build_per_tenant_index"`
+	IngesterName             string                   `yaml:"-"`
+	Mode                     int                      `yaml:"-"`
+	IngesterDBRetainPeriod   time.Duration            `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
