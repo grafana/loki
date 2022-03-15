@@ -6,9 +6,9 @@ __Please read the [hacking guide](./hack_loki_operator.md) before proceeding wit
 
 _Note: While this document will only give instructions for two methods of log forwarding into the gateway, the examples given in the Promtail and Fluentd sections can be extrapolated to other log forwarders._
 
-## Openshift Logging
+## OpenShift Logging
 
-[Openshift Logging](https://github.com/openshift/cluster-logging-operator) supports [forwarding logs to an external Loki instance](https://docs.openshift.com/container-platform/4.9/logging/cluster-logging-external.html#cluster-logging-collector-log-forward-loki_cluster-logging-external). This can also be used to forward logs to LokiStack gateway.
+[OpenShift Logging](https://github.com/openshift/cluster-logging-operator) supports [forwarding logs to an external Loki instance](https://docs.openshift.com/container-platform/4.9/logging/cluster-logging-external.html#cluster-logging-collector-log-forward-loki_cluster-logging-external). This can also be used to forward logs to LokiStack gateway.
 
 * Deploy the Loki Operator and an `lokistack` instance with the [gateway flag enabled](./hack_loki_operator.md#hacking-on-loki-operator-on-openshift).
 
@@ -36,7 +36,7 @@ _Note: While this document will only give instructions for two methods of log fo
 * The LokiStack Gateway requires a bearer token for communication with fluentd. Therefore, create a secret with `bearer_token_file` key and the path to the file.
 
     ```console
-    kubectl -n openshift-logging create secret generic lokistack-gateway-metrics \
+    kubectl -n openshift-logging create secret generic lokistack-gateway-bearer-token \
     --from-literal=bearer_token_file="/var/run/secrets/kubernetes.io/serviceaccount/token"
     ```
 
@@ -89,17 +89,17 @@ _Note: While this document will only give instructions for two methods of log fo
          type: "loki"
          url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application
          secret:
-           name: lokistack-gateway-metrics
+           name: lokistack-gateway-bearer-token
        - name: loki-infra
          type: "loki"
          url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/infrastructure
          secret:
-           name: lokistack-gateway-metrics
+           name: lokistack-gateway-bearer-token
        - name: loki-audit
          type: "loki"
          url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/audit
          secret:
-           name: lokistack-gateway-metrics
+           name: lokistack-gateway-bearer-token
       pipelines:
        - name: send-app-logs
          inputRefs:
