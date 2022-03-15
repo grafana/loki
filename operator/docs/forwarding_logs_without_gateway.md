@@ -87,7 +87,7 @@ In order to enable communication between the log forwarder and the distributor, 
     outputs:
      - name: loki-operator
        type: "loki"
-       url: https://loki-distributor-http-lokistack-dev.openshift-logging.svc:3100
+       url: https://lokistack-dev-distributor-http.openshift-logging.svc:3100
        secret:
          name: loki-distributor-ca
        loki:
