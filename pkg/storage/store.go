@@ -7,6 +7,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -19,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	logql_log "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -352,6 +355,10 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
+	if len(lazyChunks) == 0 {
+		return iter.NoopIterator, nil
+	}
+
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -362,9 +369,11 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
-	if len(lazyChunks) == 0 {
-		return iter.NoopIterator, nil
+	pipeline, err = setupPipelineDelete(req, pipeline)
+	if err != nil {
+		return nil, err
 	}
+
 	var chunkFilterer ChunkFilterer
 	if s.chunkFilterer != nil {
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
@@ -373,18 +382,45 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 	return newLogBatchIterator(ctx, s.schemaCfg.SchemaConfig, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
 }
 
+func setupPipelineDelete(req logql.SelectLogParams, p logql_log.Pipeline) (logql_log.Pipeline, error) {
+	if len(req.Deletes) == 0 {
+		return p, nil
+	}
+
+	filters, err := deleteFilters(req.Deletes)
+	if err != nil {
+		return nil, err
+	}
+
+	return logql_log.NewFilteringPipeline(filters, p), nil
+}
+
+func deleteFilters(deletes []*logproto.Delete) ([]logql_log.PipelineFilter, error) {
+	var filters []logql_log.PipelineFilter
+	for _, d := range deletes {
+		expr, err := syntax.ParseLogSelector(d.Selector, true)
+		if err != nil {
+			return nil, err
+		}
+
+		pipeline, err := expr.Pipeline()
+		if err != nil {
+			return nil, err
+		}
+
+		filters = append(filters, logql_log.PipelineFilter{
+			Start:    d.Start,
+			End:      d.End,
+			Matchers: expr.Matchers(),
+			Pipeline: pipeline,
+		})
+	}
+
+	return filters, nil
+}
+
 func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	matchers, from, through, err := decodeReq(req)
-	if err != nil {
-		return nil, err
-	}
-
-	expr, err := req.Expr()
-	if err != nil {
-		return nil, err
-	}
-
-	extractor, err := expr.Extractor()
 	if err != nil {
 		return nil, err
 	}
@@ -397,12 +433,41 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	if len(lazyChunks) == 0 {
 		return iter.NoopIterator, nil
 	}
+
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err = setupExtractorDelete(req, extractor)
+	if err != nil {
+		return nil, err
+	}
+
 	var chunkFilterer ChunkFilterer
 	if s.chunkFilterer != nil {
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
 	return newSampleBatchIterator(ctx, s.schemaCfg.SchemaConfig, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
+}
+
+func setupExtractorDelete(req logql.SelectSampleParams, se logql_log.SampleExtractor) (logql_log.SampleExtractor, error) {
+	if len(req.Deletes) == 0 {
+		return se, nil
+	}
+
+	filters, err := deleteFilters(req.Deletes)
+	if err != nil {
+		return nil, err
+	}
+
+	return logql_log.NewFilteringSampleExtractor(filters, se), nil
 }
 
 func (s *store) GetSchemaConfigs() []chunk.PeriodConfig {

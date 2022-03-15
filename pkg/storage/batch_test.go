@@ -1589,7 +1589,7 @@ func TestBuildHeapIterator(t *testing.T) {
 				t.Errorf("buildHeapIterator error = %v", err)
 				return
 			}
-			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil)
+			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)
 			streams, _, err := iter.ReadBatch(it, req.Limit)
 			_ = it.Close()
 			if err != nil {
