@@ -7,7 +7,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/util/deletion"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -325,7 +325,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
-	pipeline, err = setupPipelineDelete(req, pipeline)
+	pipeline, err = deletion.SetupPipeline(req, pipeline)
 	if err != nil {
 		return nil, err
 	}
@@ -358,43 +358,6 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 	return iter.NewSortEntryIterator(iters, req.Direction), nil
 }
 
-func setupPipelineDelete(req logql.SelectLogParams, p log.Pipeline) (log.Pipeline, error) {
-	if len(req.Deletes) == 0 {
-		return p, nil
-	}
-
-	filters, err := deleteFilters(req.Deletes)
-	if err != nil {
-		return nil, err
-	}
-
-	return log.NewFilteringPipeline(filters, p), nil
-}
-
-func deleteFilters(deletes []*logproto.Delete) ([]log.PipelineFilter, error) {
-	var filters []log.PipelineFilter
-	for _, d := range deletes {
-		expr, err := syntax.ParseLogSelector(d.Selector, true)
-		if err != nil {
-			return nil, err
-		}
-
-		pipeline, err := expr.Pipeline()
-		if err != nil {
-			return nil, err
-		}
-
-		filters = append(filters, log.PipelineFilter{
-			Start:    d.Start,
-			End:      d.End,
-			Matchers: expr.Matchers(),
-			Pipeline: pipeline,
-		})
-	}
-
-	return filters, nil
-}
-
 func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	expr, err := req.Expr()
 	if err != nil {
@@ -406,7 +369,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	extractor, err = setupExtractorDelete(req, extractor)
+	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}
@@ -444,19 +407,6 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	}
 
 	return iter.NewSortSampleIterator(iters), nil
-}
-
-func setupExtractorDelete(req logql.SelectSampleParams, se log.SampleExtractor) (log.SampleExtractor, error) {
-	if len(req.Deletes) == 0 {
-		return se, nil
-	}
-
-	filters, err := deleteFilters(req.Deletes)
-	if err != nil {
-		return nil, err
-	}
-
-	return log.NewFilteringSampleExtractor(filters, se), nil
 }
 
 // Label returns the label names or values depending on the given request
