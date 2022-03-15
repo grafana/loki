@@ -104,8 +104,6 @@ In order to enable communication between the log forwarder and the distributor, 
 
   _Note:_ The `tenantKey: log_type` gets resolved as `application`, `audit` or `infrastructure` by fluentd and vector based on the type of logs being collected. This is later used as different tenants for storing logs in Loki.
 
-  _Disclaimer:_ Although these tenants look identical to the ones that the gateway uses in the openshift-logging configuration mode, but they do not map to the tenants used by the gateway, because it uses UUIDs internally.
-
 ## Troubleshooting
 
 ### Log Entries Out of Order
