@@ -178,7 +178,7 @@ func TestIndexRW_Postings(t *testing.T) {
 	ir, err := NewFileReader(fn)
 	require.NoError(t, err)
 
-	p, err := ir.Postings("a", "1")
+	p, err := ir.Postings("a", nil, "1")
 	require.NoError(t, err)
 
 	var l labels.Labels
@@ -297,7 +297,7 @@ func TestPostingsMany(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		it, err := ir.Postings("i", c.in...)
+		it, err := ir.Postings("i", nil, c.in...)
 		require.NoError(t, err)
 
 		got := []string{}
@@ -406,7 +406,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 	require.NoError(t, err)
 
 	for p := range mi.postings {
-		gotp, err := ir.Postings(p.Name, p.Value)
+		gotp, err := ir.Postings(p.Name, nil, p.Value)
 		require.NoError(t, err)
 
 		expp, err := mi.Postings(p.Name, p.Value)

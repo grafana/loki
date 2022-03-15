@@ -100,6 +100,7 @@ func TestSingleIdx(t *testing.T) {
 			Of:    2,
 		}
 		shardedRefs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+
 		require.Nil(t, err)
 
 		require.Equal(t, []ChunkRef{{

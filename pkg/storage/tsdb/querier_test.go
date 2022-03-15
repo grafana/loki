@@ -93,7 +93,7 @@ func TestQueryIndex(t *testing.T) {
 	reader, err := index.NewFileReader(dir)
 	require.Nil(t, err)
 
-	p, err := PostingsForMatchers(reader, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+	p, err := PostingsForMatchers(reader, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 	require.Nil(t, err)
 
 	var (

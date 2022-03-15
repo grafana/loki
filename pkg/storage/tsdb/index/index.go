@@ -131,7 +131,7 @@ type Writer struct {
 	labelIndexes []labelIndexHashEntry // Label index offsets.
 	labelNames   map[string]uint64     // Label names, and their usage.
 	// Keeps track of the fingerprint/offset for every n series
-	fingerprintOffsets [][2]uint64
+	fingerprintOffsets fingerprintOffsets
 
 	// Hold last series to validate that clients insert new series in order.
 	lastSeries uint64
@@ -1145,7 +1145,7 @@ type Reader struct {
 	nameSymbols map[uint32]string // Cache of the label name symbol lookups,
 	// as there are not many and they are half of all lookups.
 
-	fingerprintOffsets [][2]uint64
+	fingerprintOffsets fingerprintOffsets
 
 	dec *Decoder
 
@@ -1518,10 +1518,10 @@ func ReadOffsetTable(bs ByteSlice, off uint64, f func([]string, uint64, int) err
 	return d.Err()
 }
 
-func ReadFingerprintOffsetsTable(bs ByteSlice, off uint64) ([][2]uint64, error) {
+func ReadFingerprintOffsetsTable(bs ByteSlice, off uint64) (fingerprintOffsets, error) {
 	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable))
 	cnt := d.Be32()
-	res := make([][2]uint64, 0, int(cnt))
+	res := make(fingerprintOffsets, 0, int(cnt))
 
 	for d.Err() == nil && d.Len() > 0 && cnt > 0 {
 		res = append(res, [2]uint64{d.Be64(), d.Be64()})
@@ -1717,7 +1717,7 @@ func (r *Reader) Series(id storage.SeriesRef, lbls *labels.Labels, chks *[]Chunk
 	return fprint, nil
 }
 
-func (r *Reader) Postings(name string, values ...string) (Postings, error) {
+func (r *Reader) Postings(name string, shard *ShardAnnotation, values ...string) (Postings, error) {
 	if r.version == FormatV1 {
 		e, ok := r.postingsV1[name]
 		if !ok {
@@ -1814,7 +1814,12 @@ func (r *Reader) Postings(name string, values ...string) (Postings, error) {
 		}
 	}
 
-	return Merge(res...), nil
+	merged := Merge(res...)
+	if shard != nil {
+		return newShardedPostings(merged, *shard, r.fingerprintOffsets), nil
+	}
+
+	return merged, nil
 }
 
 // Size returns the size of an index file.

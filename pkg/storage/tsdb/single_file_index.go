@@ -30,7 +30,7 @@ func (i *TSDBIndex) forSeries(
 	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
 	matchers ...*labels.Matcher,
 ) error {
-	p, err := PostingsForMatchers(i.reader, matchers...)
+	p, err := PostingsForMatchers(i.reader, shard, matchers...)
 	if err != nil {
 		return err
 	}
