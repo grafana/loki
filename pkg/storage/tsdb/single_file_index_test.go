@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
@@ -96,7 +95,7 @@ func TestSingleIdx(t *testing.T) {
 	})
 
 	t.Run("GetChunkRefsSharded", func(t *testing.T) {
-		shard := astmapper.ShardAnnotation{
+		shard := index.ShardAnnotation{
 			Shard: 1,
 			Of:    2,
 		}
@@ -127,7 +126,7 @@ func TestSingleIdx(t *testing.T) {
 	})
 
 	t.Run("SeriesSharded", func(t *testing.T) {
-		shard := astmapper.ShardAnnotation{
+		shard := index.ShardAnnotation{
 			Shard: 0,
 			Of:    2,
 		}
