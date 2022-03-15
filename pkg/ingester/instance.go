@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
@@ -220,7 +221,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
 	}
 
-	labels, err := logql.ParseLabels(pushReqStream.Labels)
+	labels, err := syntax.ParseLabels(pushReqStream.Labels)
 	if err != nil {
 		if i.configs.LogStreamCreation(i.instanceID) {
 			level.Debug(util_log.Logger).Log(

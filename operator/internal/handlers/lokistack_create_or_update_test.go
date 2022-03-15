@@ -377,7 +377,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 			Kind: "LokiStack",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "someStack",
+			Name:      "my-stack",
 			Namespace: "some-ns",
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
@@ -398,7 +398,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "loki-gossip-ring-my-stack",
+			Name:      "my-stack-gossip-ring",
 			Namespace: "some-ns",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":     "loki",
@@ -412,7 +412,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 				{
 					APIVersion:         "loki.grafana.com/v1beta1",
 					Kind:               "LokiStack",
-					Name:               "someStack",
+					Name:               "my-stack",
 					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
 					Controller:         pointer.BoolPtr(true),
 					BlockOwnerDeletion: pointer.BoolPtr(true),
@@ -528,7 +528,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 			Kind: "LokiStack",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "someStack",
+			Name:      "my-stack",
 			Namespace: "some-ns",
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
@@ -549,7 +549,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "loki-gossip-ring-my-stack",
+			Name:      "my-stack-gossip-ring",
 			Namespace: "some-ns",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":     "loki",

@@ -18,6 +18,7 @@ import (
 	"database/sql/driver"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -227,6 +228,15 @@ func (t DateTime) MarshalBSONValue() (bsontype.Type, []byte, error) {
 // assumed to be valid. UnmarshalBSONValue must copy the BSON value bytes if it
 // wishes to retain the data after returning.
 func (t *DateTime) UnmarshalBSONValue(tpe bsontype.Type, data []byte) error {
+	if tpe == bsontype.Null {
+		*t = DateTime{}
+		return nil
+	}
+
+	if len(data) != 8 {
+		return errors.New("bson date field length not exactly 8 bytes")
+	}
+
 	i64 := int64(binary.LittleEndian.Uint64(data))
 	// TODO: Use bsonprim.DateTime.Time() method
 	*t = DateTime(time.Unix(i64/1000, i64%1000*1000000))

@@ -77,9 +77,10 @@ func commonAnnotations(h string) map[string]string {
 
 func commonLabels(stackName string) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/name":     "loki",
-		"app.kubernetes.io/provider": "openshift",
-		"loki.grafana.com/name":      stackName,
+		"app.kubernetes.io/name":       "lokistack",
+		"app.kubernetes.io/instance":   stackName,
+		"app.kubernetes.io/managed-by": "lokistack-controller",
+		"app.kubernetes.io/created-by": "lokistack-controller",
 	}
 }
 
@@ -91,10 +92,10 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 	return annotations
 }
 
-// ComponentLabels is a list of all commonLabels including the loki.grafana.com/component:<component> label
+// ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
 func ComponentLabels(component, stackName string) labels.Set {
 	return labels.Merge(commonLabels(stackName), map[string]string{
-		"loki.grafana.com/component": component,
+		"app.kubernetes.io/component": component,
 	})
 }
 
@@ -107,98 +108,98 @@ func GossipLabels() map[string]string {
 
 // CompactorName is the name of the compactor statefulset
 func CompactorName(stackName string) string {
-	return fmt.Sprintf("loki-compactor-%s", stackName)
+	return fmt.Sprintf("%s-compactor", stackName)
 }
 
 // DistributorName is the name of the distibutor deployment
 func DistributorName(stackName string) string {
-	return fmt.Sprintf("loki-distributor-%s", stackName)
+	return fmt.Sprintf("%s-distributor", stackName)
 }
 
 // IngesterName is the name of the compactor statefulset
 func IngesterName(stackName string) string {
-	return fmt.Sprintf("loki-ingester-%s", stackName)
+	return fmt.Sprintf("%s-ingester", stackName)
 }
 
 // QuerierName is the name of the querier deployment
 func QuerierName(stackName string) string {
-	return fmt.Sprintf("loki-querier-%s", stackName)
+	return fmt.Sprintf("%s-querier", stackName)
 }
 
 // QueryFrontendName is the name of the query-frontend statefulset
 func QueryFrontendName(stackName string) string {
-	return fmt.Sprintf("loki-query-frontend-%s", stackName)
+	return fmt.Sprintf("%s-query-frontend", stackName)
 }
 
 // IndexGatewayName is the name of the index-gateway statefulset
 func IndexGatewayName(stackName string) string {
-	return fmt.Sprintf("loki-index-gateway-%s", stackName)
+	return fmt.Sprintf("%s-index-gateway", stackName)
 }
 
 // GatewayName is the name of the lokiStack-gateway statefulset
 func GatewayName(stackName string) string {
-	return fmt.Sprintf("lokistack-gateway-%s", stackName)
+	return fmt.Sprintf("%s-gateway", stackName)
 }
 
 // PrometheusRuleName is the name of the loki-prometheus-rule
 func PrometheusRuleName(stackName string) string {
-	return fmt.Sprintf("loki-prometheus-rule-%s", stackName)
+	return fmt.Sprintf("%s-prometheus-rule", stackName)
 }
 
 func serviceNameQuerierHTTP(stackName string) string {
-	return fmt.Sprintf("loki-querier-http-%s", stackName)
+	return fmt.Sprintf("%s-querier-http", stackName)
 }
 
 func serviceNameQuerierGRPC(stackName string) string {
-	return fmt.Sprintf("loki-querier-grpc-%s", stackName)
+	return fmt.Sprintf("%s-querier-grpc", stackName)
 }
 
 func serviceNameIngesterGRPC(stackName string) string {
-	return fmt.Sprintf("loki-ingester-grpc-%s", stackName)
+	return fmt.Sprintf("%s-ingester-grpc", stackName)
 }
 
 func serviceNameIngesterHTTP(stackName string) string {
-	return fmt.Sprintf("loki-ingester-http-%s", stackName)
+	return fmt.Sprintf("%s-ingester-http", stackName)
 }
 
 func serviceNameDistributorGRPC(stackName string) string {
-	return fmt.Sprintf("loki-distributor-grpc-%s", stackName)
+	return fmt.Sprintf("%s-distributor-grpc", stackName)
 }
 
 func serviceNameDistributorHTTP(stackName string) string {
-	return fmt.Sprintf("loki-distributor-http-%s", stackName)
+	return fmt.Sprintf("%s-distributor-http", stackName)
 }
 
 func serviceNameCompactorGRPC(stackName string) string {
-	return fmt.Sprintf("loki-compactor-grpc-%s", stackName)
+	return fmt.Sprintf("%s-compactor-grpc", stackName)
 }
 
 func serviceNameCompactorHTTP(stackName string) string {
-	return fmt.Sprintf("loki-compactor-http-%s", stackName)
+	return fmt.Sprintf("%s-compactor-http", stackName)
 }
 
 func serviceNameQueryFrontendGRPC(stackName string) string {
-	return fmt.Sprintf("loki-query-frontend-grpc-%s", stackName)
+	return fmt.Sprintf("%s-query-frontend-grpc", stackName)
 }
 
 func serviceNameQueryFrontendHTTP(stackName string) string {
-	return fmt.Sprintf("loki-query-frontend-http-%s", stackName)
+	return fmt.Sprintf("%s-query-frontend-http", stackName)
 }
 
 func serviceNameIndexGatewayHTTP(stackName string) string {
-	return fmt.Sprintf("loki-index-gateway-http-%s", stackName)
+	return fmt.Sprintf("%s-index-gateway-http", stackName)
 }
 
 func serviceNameIndexGatewayGRPC(stackName string) string {
-	return fmt.Sprintf("loki-index-gateway-grpc-%s", stackName)
+	return fmt.Sprintf("%s-index-gateway-grpc", stackName)
 }
 
 func serviceNameGatewayHTTP(stackName string) string {
-	return fmt.Sprintf("lokistack-gateway-http-%s", stackName)
+	return fmt.Sprintf("%s-gateway-http", stackName)
 }
 
 func serviceMonitorName(componentName string) string {
-	return fmt.Sprintf("monitor-%s", componentName)
+	return fmt.Sprintf("%s-monitor", componentName)
 }
 
 func signingServiceSecretName(serviceName string) string {

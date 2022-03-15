@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -46,6 +47,13 @@ func (r *LokiRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
 	new := *r
 	new.StartTs = time.Unix(0, s*int64(time.Millisecond))
 	new.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	return &new
+}
+
+func (r *LokiRequest) WithStartEndTime(s time.Time, e time.Time) *LokiRequest {
+	new := *r
+	new.StartTs = s
+	new.EndTs = e
 	return &new
 }
 
@@ -229,7 +237,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			Shards:    req.Shards,
 		}, nil
 	case SeriesOp:
-		req, err := logql.ParseAndValidateSeriesQuery(r)
+		req, err := loghttp.ParseAndValidateSeriesQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -564,28 +572,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Statistics: mergedStats,
 		}, nil
 	case *LokiResponse:
-		lokiRes := responses[0].(*LokiResponse)
-
-		lokiResponses := make([]*LokiResponse, 0, len(responses))
-		for _, res := range responses {
-			lokiResult := res.(*LokiResponse)
-			mergedStats.Merge(lokiResult.Statistics)
-			lokiResponses = append(lokiResponses, lokiResult)
-		}
-
-		return &LokiResponse{
-			Status:     loghttp.QueryStatusSuccess,
-			Direction:  lokiRes.Direction,
-			Limit:      lokiRes.Limit,
-			Version:    lokiRes.Version,
-			ErrorType:  lokiRes.ErrorType,
-			Error:      lokiRes.Error,
-			Statistics: mergedStats,
-			Data: LokiData{
-				ResultType: loghttp.ResultTypeStream,
-				Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
-			},
-		}, nil
+		return mergeLokiResponse(responses...), nil
 	case *LokiSeriesResponse:
 		lokiSeriesRes := responses[0].(*LokiSeriesResponse)
 
@@ -887,11 +874,11 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		}, nil
 	case *LokiRequest:
 		// range query can either be metrics or logs
-		expr, err := logql.ParseExpr(req.Query)
+		expr, err := syntax.ParseExpr(req.Query)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		if _, ok := expr.(logql.SampleExpr); ok {
+		if _, ok := expr.(syntax.SampleExpr); ok {
 			return &LokiPromResponse{
 				Response: queryrangebase.NewEmptyPrometheusResponse(),
 			}, nil
@@ -907,5 +894,36 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
+	}
+}
+
+func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
+	if len(responses) == 0 {
+		return nil
+	}
+	var (
+		lokiRes       = responses[0].(*LokiResponse)
+		mergedStats   stats.Result
+		lokiResponses = make([]*LokiResponse, 0, len(responses))
+	)
+
+	for _, res := range responses {
+		lokiResult := res.(*LokiResponse)
+		mergedStats.Merge(lokiResult.Statistics)
+		lokiResponses = append(lokiResponses, lokiResult)
+	}
+
+	return &LokiResponse{
+		Status:     loghttp.QueryStatusSuccess,
+		Direction:  lokiRes.Direction,
+		Limit:      lokiRes.Limit,
+		Version:    lokiRes.Version,
+		ErrorType:  lokiRes.ErrorType,
+		Error:      lokiRes.Error,
+		Statistics: mergedStats,
+		Data: LokiData{
+			ResultType: loghttp.ResultTypeStream,
+			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
+		},
 	}
 }

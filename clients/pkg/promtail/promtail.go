@@ -46,7 +46,7 @@ type Promtail struct {
 }
 
 // New makes a new Promtail.
-func New(cfg config.Config, dryRun bool, reg prometheus.Registerer, opts ...Option) (*Promtail, error) {
+func New(cfg config.Config, metrics *client.Metrics, dryRun bool, opts ...Option) (*Promtail, error) {
 	// Initialize promtail with some defaults and allow the options to override
 	// them.
 	promtail := &Promtail{
@@ -54,6 +54,10 @@ func New(cfg config.Config, dryRun bool, reg prometheus.Registerer, opts ...Opti
 		reg:    prometheus.DefaultRegisterer,
 	}
 	for _, o := range opts {
+		// todo (callum) I don't understand why I needed to add this check
+		if o == nil {
+			continue
+		}
 		o(promtail)
 	}
 
@@ -64,13 +68,13 @@ func New(cfg config.Config, dryRun bool, reg prometheus.Registerer, opts ...Opti
 	}
 	var err error
 	if dryRun {
-		promtail.client, err = client.NewLogger(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfigs...)
+		promtail.client, err = client.NewLogger(metrics, cfg.ClientConfigs.StreamLagLabels, promtail.logger, cfg.ClientConfigs.Configs...)
 		if err != nil {
 			return nil, err
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		promtail.client, err = client.NewMulti(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfigs...)
+		promtail.client, err = client.NewMulti(metrics, cfg.ClientConfigs.StreamLagLabels, promtail.logger, cfg.ClientConfigs.Configs...)
 		if err != nil {
 			return nil, err
 		}
