@@ -371,24 +371,6 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
-  pipeline('benchmark-cron') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    node: { type: 'no-parallel' },
-    steps: [
-      run('All', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...']),
-    ],
-    trigger: {
-      event: {
-        include: ['cron'],
-      },
-      cron: {
-        include: ['loki-bench'],
-      },
-    },
-  },
 ] + [
   multiarch_image(arch)
   for arch in archs
