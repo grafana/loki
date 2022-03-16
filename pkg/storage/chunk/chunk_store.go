@@ -256,6 +256,7 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 		return result.Strings(), nil
 	}
 
+	// NOTE
 	return nil, errors.New("unimplemented: Matchers are not supported by chunk store")
 
 }
@@ -572,6 +573,8 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 	result = uniqueStrings(result)
 	return result, nil
 }
+
+// SOMETHING with delayed chunks fetching here
 
 func (c *baseStore) convertChunkIDsToChunks(_ context.Context, userID string, chunkIDs []string) ([]Chunk, error) {
 	chunkSet := make([]Chunk, 0, len(chunkIDs))
