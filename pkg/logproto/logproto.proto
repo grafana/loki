@@ -194,3 +194,12 @@ message GetChunkIDsRequest {
 message GetChunkIDsResponse {
   repeated string chunkIDs = 1;
 }
+
+// ChunkRef is used by tsdb storage and the index-gateway APIs
+message ChunkRef {
+  string user_id = 1 [(gogoproto.customname) = "UserID"];
+  uint64 fingerprint = 2;
+  int64 from = 3;
+  int64 through = 4;
+  uint32 checksum = 5;
+}

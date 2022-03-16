@@ -2,10 +2,15 @@ syntax = "proto3";
 
 package indexgatewaypb;
 
+import "pkg/logproto/logproto.proto";
+
 service IndexGateway {
     /// QueryIndex reads the indexes required for given query & sends back the batch of rows
     /// in rpc streams
     rpc QueryIndex(QueryIndexRequest) returns (stream QueryIndexResponse);
+
+    /// GetChunkRef returns chunk reference that match the provided label matchers
+    rpc GetChunkRef(GetChunkRefRequest) returns (stream logproto.ChunkRef) {};
 }
 
 message QueryIndexResponse {
@@ -30,3 +35,7 @@ message IndexQuery {
     bytes valueEqual          = 5;
 }
 
+message GetChunkRefRequest {
+
+  // TODO: Think if unique fingerprint might make sense
+}

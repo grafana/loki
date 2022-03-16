@@ -2,6 +2,7 @@ package indexgateway
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/grafana/dskit/services"
@@ -33,6 +34,10 @@ func NewIndexGateway(indexQuerier IndexQuerier) *gateway {
 		return nil
 	})
 	return g
+}
+
+func (g *gateway) GetChunkRef(request *indexgatewaypb.GetChunkRefRequest, server indexgatewaypb.IndexGateway_GetChunkRefServer) error {
+	return errors.New("implement me")
 }
 
 func (g *gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
