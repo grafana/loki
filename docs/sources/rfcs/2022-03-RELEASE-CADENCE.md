@@ -29,6 +29,8 @@ The below are our proposals for the target times between releases; we might rele
 - **[MINOR](https://semver.org/#spec-item-7)** releases: around **once a quarter**
 - **[MAJOR](https://semver.org/#spec-item-8)** releases: no predefined schedule, likely every **12-18 months**
 
+Adherence to the Semantic Versioning specification is out of scope for this RFC.
+
 ## Backporting
 
 We can't expect all of our users to be running the latest release of Loki OSS at all times. As such, we want to propose a backporting strategy.
