@@ -199,7 +199,7 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string
 	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer log.Span.Finish()
 
-	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	shortcut, err := c.indexStore.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
@@ -236,7 +236,7 @@ func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID strin
 		return c.baseStore.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
 	}
 
-	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	shortcut, err := c.indexStore.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
@@ -263,7 +263,7 @@ func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID strin
 	if err != nil {
 		return nil, err
 	}
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	entries, err := c.indexStore.lookupEntriesByQueries(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +415,7 @@ func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through mo
 		queries = append(queries, qs...)
 	}
 
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	entries, err := c.indexStore.lookupEntriesByQueries(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +443,7 @@ func (c *seriesStore) lookupLabelNamesBySeries(ctx context.Context, from, throug
 		queries = append(queries, qs...)
 	}
 	level.Debug(log).Log("queries", len(queries))
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	entries, err := c.indexStore.lookupEntriesByQueries(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
