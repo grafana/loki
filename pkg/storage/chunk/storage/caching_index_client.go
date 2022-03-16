@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/tenant"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -274,6 +275,7 @@ func isChunksQuery(q chunk.IndexQuery) bool {
 }
 
 func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) error {
+	logger := util_log.WithContext(ctx, s.logger)
 	cachePuts.Add(float64(len(keys)))
 
 	// We're doing the hashing to handle unicode and key len properly.
@@ -281,6 +283,9 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 	hashed := make([]string, 0, len(keys))
 	bufs := make([][]byte, 0, len(batches))
 	for i := range keys {
+		if len(batches[i].Entries) != 0 {
+			level.Debug(logger).Log("msg", "caching index entries", "key", keys[i], "count", len(batches[i].Entries))
+		}
 		hashed = append(hashed, cache.HashKey(keys[i]))
 		out, err := proto.Marshal(&batches[i])
 		if err != nil {
@@ -295,8 +300,9 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 }
 
 func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
-	log := spanlogger.FromContext(ctx)
-	level.Debug(log).Log("requested", len(keys))
+	spanLogger := spanlogger.FromContext(ctx)
+	logger := util_log.WithContext(ctx, s.logger)
+	level.Debug(spanLogger).Log("requested", len(keys))
 
 	cacheGets.Add(float64(len(keys)))
 
@@ -326,7 +332,7 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 		var readBatch ReadBatch
 
 		if err := proto.Unmarshal(bufs[j], &readBatch); err != nil {
-			level.Warn(log).Log("msg", "error unmarshalling index entry from cache", "err", err)
+			level.Warn(spanLogger).Log("msg", "error unmarshalling index entry from cache", "err", err)
 			cacheCorruptErrs.Inc()
 			continue
 		}
@@ -334,12 +340,17 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 		// Make sure the hash(key) is not a collision in the cache by looking at the
 		// key in the value.
 		if key != readBatch.Key {
-			level.Debug(log).Log("msg", "dropping index cache entry due to key collision", "key", key, "readBatch.Key", readBatch.Key, "expiry")
+			level.Debug(spanLogger).Log("msg", "dropping index cache entry due to key collision", "key", key, "readBatch.Key", readBatch.Key, "expiry")
 			continue
 		}
 
 		if readBatch.Expiry != 0 && time.Now().After(time.Unix(0, readBatch.Expiry)) {
 			continue
+		}
+
+		if len(readBatch.Entries) != 0 {
+			// not using spanLogger to avoid over-inflating traces since the query count can go much higher
+			level.Debug(logger).Log("msg", "found index cache entries", "key", key, "count", len(readBatch.Entries))
 		}
 
 		cacheHits.Inc()
@@ -359,6 +370,6 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 		missed = append(missed, miss)
 	}
 
-	level.Debug(log).Log("hits", len(batches), "misses", len(misses))
+	level.Debug(spanLogger).Log("hits", len(batches), "misses", len(misses))
 	return batches, missed
 }
