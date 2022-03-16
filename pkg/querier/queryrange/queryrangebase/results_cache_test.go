@@ -940,6 +940,10 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	require.False(t, hit)
 }
 
+func toMs(t time.Duration) int64 {
+	return t.Nanoseconds() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
 func TestConstSplitter_generateCacheKey(t *testing.T) {
 	t.Parallel()
 
