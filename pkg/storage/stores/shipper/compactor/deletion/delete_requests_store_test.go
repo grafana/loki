@@ -97,6 +97,14 @@ func TestDeleteRequestsStore(t *testing.T) {
 	require.NoError(t, err)
 	compareRequests(t, user2ExpectedRequests, user2Requests)
 
+	createGenNumber, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user1)
+	require.NoError(t, err)
+	require.NotEmpty(t, createGenNumber)
+
+	createGenNumber2, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user2)
+	require.NoError(t, err)
+	require.NotEmpty(t, createGenNumber2)
+
 	// get individual delete requests by id and see if they have expected values
 	for _, expectedRequest := range append(user1Requests, user2Requests...) {
 		actualRequest, err := testDeleteRequestsStore.GetDeleteRequest(context.Background(), expectedRequest.UserID, expectedRequest.RequestID)
@@ -131,6 +139,14 @@ func TestDeleteRequestsStore(t *testing.T) {
 	require.NoError(t, err)
 	compareRequests(t, user2ExpectedRequests, user2Requests)
 
+	updateGenNumber, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user1)
+	require.NoError(t, err)
+	require.NotEqual(t, createGenNumber, updateGenNumber)
+
+	updateGenNumber2, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user2)
+	require.NoError(t, err)
+	require.NotEqual(t, createGenNumber2, updateGenNumber2)
+
 	// delete the requests from the store updated previously
 	var remainingRequests []DeleteRequest
 	for i := 0; i < len(user1ExpectedRequests); i++ {
@@ -152,6 +168,14 @@ func TestDeleteRequestsStore(t *testing.T) {
 	deleteRequests, err = testDeleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
 	require.NoError(t, err)
 	compareRequests(t, remainingRequests, deleteRequests)
+
+	deleteGenNumber, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user1)
+	require.NoError(t, err)
+	require.NotEqual(t, updateGenNumber, deleteGenNumber)
+
+	deleteGenNumber2, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user2)
+	require.NoError(t, err)
+	require.NotEqual(t, updateGenNumber2, deleteGenNumber2)
 }
 
 func compareRequests(t *testing.T, expected []DeleteRequest, actual []DeleteRequest) {
