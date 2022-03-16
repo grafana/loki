@@ -2,6 +2,7 @@ package usagestats
 
 import (
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -95,13 +96,17 @@ func TestStatistic(t *testing.T) {
 
 func TestWordCounter(t *testing.T) {
 	w := NewWordCounter("test_words_count")
+	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			w.Add("foo")
 			w.Add("bar")
 			w.Add("foo")
 		}()
 	}
+	wg.Wait()
 	require.Equal(t, int64(2), w.Value())
 }
 
