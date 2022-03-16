@@ -97,7 +97,7 @@ func (c *CompositeStore) addSchema(storeCfg StoreConfig, schemaCfg SchemaConfig,
 
 func (c compositeStore) Put(ctx context.Context, chunks []Chunk) error {
 	for _, chunk := range chunks {
-		err := c.forStores(ctx, chunk.UserID, chunk.From, chunk.Through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+		err := c.forStores(ctx, chunk.Ref.UserID, model.Time(chunk.Ref.From), model.Time(chunk.Ref.Through), func(innerCtx context.Context, from, through model.Time, store Store) error {
 			return store.PutOne(innerCtx, from, through, chunk)
 		})
 		if err != nil {
@@ -108,7 +108,7 @@ func (c compositeStore) Put(ctx context.Context, chunks []Chunk) error {
 }
 
 func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
-	return c.forStores(ctx, chunk.UserID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+	return c.forStores(ctx, chunk.Ref.UserID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		return store.PutOne(innerCtx, from, through, chunk)
 	})
 }

@@ -58,7 +58,7 @@ func buildIterators(cs []chunk.Chunk) []*nonOverlappingIterator {
 outer:
 	for _, chunk := range chunks {
 		for i, chunkList := range chunkLists {
-			if chunkList[len(chunkList)-1].Through.Before(chunk.From) {
+			if model.Time(chunkList[len(chunkList)-1].Ref.Through).Before(model.Time(chunk.Ref.From)) {
 				chunkLists[i] = append(chunkLists[i], chunk)
 				continue outer
 			}
@@ -162,7 +162,7 @@ type byFrom []*chunkIterator
 
 func (b byFrom) Len() int           { return len(b) }
 func (b byFrom) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
-func (b byFrom) Less(i, j int) bool { return b[i].From < b[j].From }
+func (b byFrom) Less(i, j int) bool { return b[i].Ref.From < b[j].Ref.From }
 
 type nonOverlappingIterator struct {
 	curr   int

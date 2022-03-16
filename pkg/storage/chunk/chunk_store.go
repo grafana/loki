@@ -141,7 +141,7 @@ func newStore(cfg StoreConfig, scfg SchemaConfig, schema StoreSchema, index Inde
 // Put implements Store
 func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 	for _, chunk := range chunks {
-		if err := c.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
+		if err := c.PutOne(ctx, model.Time(chunk.Ref.From), model.Time(chunk.Ref.Through), chunk); err != nil {
 			return err
 		}
 	}
@@ -163,7 +163,7 @@ func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chun
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
-	writeReqs, err := c.calculateIndexEntries(chunk.UserID, from, through, chunk)
+	writeReqs, err := c.calculateIndexEntries(chunk.Ref.UserID, from, through, chunk)
 	if err != nil {
 		return err
 	}
@@ -508,7 +508,7 @@ func (c *store) DeleteChunk(ctx context.Context, from, through model.Time, userI
 	}
 
 	return c.deleteChunk(ctx, userID, chunkID, metric, chunkWriteEntries, partiallyDeletedInterval, func(chunk Chunk) error {
-		return c.PutOne(ctx, chunk.From, chunk.Through, chunk)
+		return c.PutOne(ctx, model.Time(chunk.Ref.From), model.Time(chunk.Ref.Through), chunk)
 	})
 }
 
@@ -560,7 +560,7 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 		return errors.Wrap(err, "when parsing external key")
 	}
 
-	if !intervalsOverlap(model.Interval{Start: chunk.From, End: chunk.Through}, partiallyDeletedInterval) {
+	if !intervalsOverlap(model.Interval{Start: model.Time(chunk.Ref.From), End: model.Time(chunk.Ref.Through)}, partiallyDeletedInterval) {
 		return ErrParialDeleteChunkNoOverlap
 	}
 
@@ -578,10 +578,10 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 
 	chunk = chunks[0]
 	var newChunks []*Chunk
-	if partiallyDeletedInterval.Start > chunk.From {
-		newChunk, err := chunk.Slice(chunk.From, partiallyDeletedInterval.Start-1)
+	if partiallyDeletedInterval.Start > model.Time(chunk.Ref.From) {
+		newChunk, err := chunk.Slice(model.Time(chunk.Ref.From), partiallyDeletedInterval.Start-1)
 		if err != nil && err != encoding.ErrSliceNoDataInRange {
-			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", chunk.From, partiallyDeletedInterval.Start-1)
+			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", chunk.Ref.From, partiallyDeletedInterval.Start-1)
 		}
 
 		if newChunk != nil {
@@ -589,10 +589,10 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 		}
 	}
 
-	if partiallyDeletedInterval.End < chunk.Through {
-		newChunk, err := chunk.Slice(partiallyDeletedInterval.End+1, chunk.Through)
+	if partiallyDeletedInterval.End < model.Time(chunk.Ref.Through) {
+		newChunk, err := chunk.Slice(partiallyDeletedInterval.End+1, model.Time(chunk.Ref.Through))
 		if err != nil && err != encoding.ErrSliceNoDataInRange {
-			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", partiallyDeletedInterval.End+1, chunk.Through)
+			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", partiallyDeletedInterval.End+1, chunk.Ref.Through)
 		}
 
 		if newChunk != nil {
@@ -602,12 +602,12 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 
 	for _, newChunk := range newChunks {
 		if err := newChunk.Encode(); err != nil {
-			return errors.Wrapf(err, "when encoding new chunk formed after slicing for interval %d - %d", newChunk.From, newChunk.Through)
+			return errors.Wrapf(err, "when encoding new chunk formed after slicing for interval %d - %d", newChunk.Ref.From, newChunk.Ref.Through)
 		}
 
 		err = putChunkFunc(*newChunk)
 		if err != nil {
-			return errors.Wrapf(err, "when putting new chunk formed after slicing for interval %d - %d", newChunk.From, newChunk.Through)
+			return errors.Wrapf(err, "when putting new chunk formed after slicing for interval %d - %d", newChunk.Ref.From, newChunk.Ref.Through)
 		}
 	}
 

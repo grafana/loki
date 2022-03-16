@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -484,7 +485,7 @@ func (s *ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) erro
 			return errors.WithStack(err)
 		}
 		key := s.schemaCfg.ExternalKey(chunks[i])
-		tableName, err := s.schemaCfg.ChunkTableFor(chunks[i].From)
+		tableName, err := s.schemaCfg.ChunkTableFor(model.Time(chunks[i].Ref.From))
 		if err != nil {
 			return err
 		}
@@ -513,7 +514,7 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decode
 		defer s.querySemaphore.Release(1)
 	}
 
-	tableName, err := s.schemaCfg.ChunkTableFor(input.From)
+	tableName, err := s.schemaCfg.ChunkTableFor(model.Time(input.Ref.From))
 	if err != nil {
 		return input, err
 	}
@@ -533,7 +534,7 @@ func (s *ObjectClient) DeleteChunk(ctx context.Context, userID, chunkID string) 
 		return err
 	}
 
-	tableName, err := s.schemaCfg.ChunkTableFor(chunkRef.From)
+	tableName, err := s.schemaCfg.ChunkTableFor(model.Time(chunkRef.Ref.From))
 	if err != nil {
 		return err
 	}

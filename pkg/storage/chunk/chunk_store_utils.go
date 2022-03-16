@@ -38,7 +38,7 @@ const chunkDecodeParallelism = 16
 func filterChunksByTime(from, through model.Time, chunks []Chunk) []Chunk {
 	filtered := make([]Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
-		if chunk.Through < from || through < chunk.From {
+		if model.Time(chunk.Ref.Through) < from || through < model.Time(chunk.Ref.From) {
 			continue
 		}
 		filtered = append(filtered, chunk)
@@ -71,12 +71,12 @@ func filterChunksByUniqueFingerprint(s SchemaConfig, chunks []Chunk) ([]Chunk, [
 	uniqueFp := map[model.Fingerprint]struct{}{}
 
 	for _, chunk := range chunks {
-		if _, ok := uniqueFp[chunk.Fingerprint]; ok {
+		if _, ok := uniqueFp[model.Fingerprint(chunk.Ref.Fingerprint)]; ok {
 			continue
 		}
 		filtered = append(filtered, chunk)
 		keys = append(keys, s.ExternalKey(chunk))
-		uniqueFp[chunk.Fingerprint] = struct{}{}
+		uniqueFp[model.Fingerprint(chunk.Ref.Fingerprint)] = struct{}{}
 	}
 	return filtered, keys
 }

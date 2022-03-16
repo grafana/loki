@@ -65,7 +65,7 @@ func mkChunk(t require.TestingT, from model.Time, points int, enc promchunk.Enco
 
 func mkGenericChunk(t require.TestingT, from model.Time, points int, enc promchunk.Encoding) GenericChunk {
 	ck := mkChunk(t, from, points, enc)
-	return NewGenericChunk(int64(ck.From), int64(ck.Through), ck.Data.NewIterator)
+	return NewGenericChunk(ck.Ref.From, ck.Ref.Through, ck.Data.NewIterator)
 }
 
 func testIter(t require.TestingT, points int, iter chunkenc.Iterator) {

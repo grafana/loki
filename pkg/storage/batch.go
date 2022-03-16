@@ -190,7 +190,7 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 			// we max out our iterator boundaries to the next chunks in the queue
 			// so that overlapping chunks are together
 			if it.direction == logproto.BACKWARD {
-				from = time.Unix(0, nextChunk.Chunk.Through.UnixNano())
+				from = time.Unix(0, model.Time(nextChunk.Chunk.Ref.Through).UnixNano())
 
 				// we have to reverse the inclusivity of the chunk iterator from
 				// [from, through) to (from, through] for backward queries, except when
@@ -200,7 +200,7 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 					from = from.Add(time.Nanosecond)
 				}
 			} else {
-				through = time.Unix(0, nextChunk.Chunk.From.UnixNano())
+				through = time.Unix(0, model.Time(nextChunk.Chunk.Ref.From).UnixNano())
 			}
 			// we save all overlapping chunks as they are also needed in the next batch to properly order entries.
 			// If we have chunks like below:
@@ -223,7 +223,7 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 		}
 
 		if it.direction == logproto.BACKWARD {
-			through = time.Unix(0, headChunk.Chunk.Through.UnixNano())
+			through = time.Unix(0, model.Time(headChunk.Chunk.Ref.Through).UnixNano())
 
 			if through.After(it.end) {
 				through = it.end
@@ -238,7 +238,7 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 			}
 		} else {
 
-			from = time.Unix(0, headChunk.Chunk.From.UnixNano())
+			from = time.Unix(0, model.Time(headChunk.Chunk.Ref.From).UnixNano())
 
 			// if the start of the batch is equal to the end of the query, since the end is not inclusive we can discard that batch.
 			if from.Equal(it.end) {
@@ -775,7 +775,7 @@ func loadFirstChunks(ctx context.Context, s chunk.SchemaConfig, chks map[model.F
 func partitionBySeriesChunks(chunks []*LazyChunk) map[model.Fingerprint][][]*LazyChunk {
 	chunksByFp := map[model.Fingerprint][]*LazyChunk{}
 	for _, c := range chunks {
-		fp := c.Chunk.Fingerprint
+		fp := model.Fingerprint(c.Chunk.Ref.Fingerprint)
 		chunksByFp[fp] = append(chunksByFp[fp], c)
 	}
 	result := make(map[model.Fingerprint][][]*LazyChunk, len(chunksByFp))
@@ -791,7 +791,7 @@ func partitionBySeriesChunks(chunks []*LazyChunk) map[model.Fingerprint][][]*Laz
 // todo this might reverse the order.
 func partitionOverlappingChunks(chunks []*LazyChunk) [][]*LazyChunk {
 	sort.Slice(chunks, func(i, j int) bool {
-		return chunks[i].Chunk.From < chunks[j].Chunk.From
+		return chunks[i].Chunk.Ref.From < chunks[j].Chunk.Ref.From
 	})
 
 	css := [][]*LazyChunk{}
@@ -799,7 +799,7 @@ outer:
 	for _, c := range chunks {
 		for i, cs := range css {
 			// If the chunk doesn't overlap with the current list, then add it to it.
-			if cs[len(cs)-1].Chunk.Through.Before(c.Chunk.From) {
+			if model.Time(cs[len(cs)-1].Chunk.Ref.Through).Before(model.Time(c.Chunk.Ref.From)) {
 				css[i] = append(css[i], c)
 				continue outer
 			}

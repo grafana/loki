@@ -53,7 +53,7 @@ type iterator interface {
 func NewChunkMergeIterator(chunks []chunk.Chunk, _, _ model.Time) chunkenc.Iterator {
 	converted := make([]GenericChunk, len(chunks))
 	for i, c := range chunks {
-		converted[i] = NewGenericChunk(int64(c.From), int64(c.Through), c.Data.NewIterator)
+		converted[i] = NewGenericChunk(c.Ref.From, c.Ref.Through, c.Data.NewIterator)
 	}
 
 	return NewGenericChunkMergeIterator(converted)

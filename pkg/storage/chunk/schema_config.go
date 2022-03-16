@@ -493,7 +493,7 @@ func (cfg *PeriodicTableConfig) tableForPeriod(i int64) string {
 
 // Generate the appropriate external key based on cfg.Schema, chunk.Checksum, and chunk.From
 func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
-	p, err := cfg.SchemaForTime(chunk.From)
+	p, err := cfg.SchemaForTime(model.Time(chunk.Ref.From))
 	v, _ := p.VersionAsInt()
 	if err == nil && v >= 12 {
 		return cfg.newerExternalKey(chunk)
@@ -507,7 +507,7 @@ func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
 // VersionForChunk will return the schema version associated with the `From` timestamp of a chunk.
 // The schema and chunk must be valid+compatible as the errors are not checked.
 func (cfg SchemaConfig) VersionForChunk(c Chunk) int {
-	p, _ := cfg.SchemaForTime(c.From)
+	p, _ := cfg.SchemaForTime(model.Time(c.Ref.From))
 	v, _ := p.VersionAsInt()
 	return v
 }
@@ -516,16 +516,16 @@ func (cfg SchemaConfig) VersionForChunk(c Chunk) int {
 func (cfg SchemaConfig) legacyExternalKey(chunk Chunk) string {
 	// This is the inverse of chunk.parseLegacyExternalKey, with "<user id>/" prepended.
 	// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
-	return fmt.Sprintf("%d:%d:%d", (chunk.Fingerprint), int64(chunk.From), int64(chunk.Through))
+	return fmt.Sprintf("%d:%d:%d", chunk.Ref.Fingerprint, chunk.Ref.From, chunk.Ref.Through)
 }
 
 // post-checksum
 func (cfg SchemaConfig) newExternalKey(chunk Chunk) string {
 	// This is the inverse of chunk.parseNewExternalKey.
-	return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+	return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.Ref.UserID, chunk.Ref.Fingerprint, chunk.Ref.From, chunk.Ref.Through, chunk.Ref.Checksum)
 }
 
 // v12+
 func (cfg SchemaConfig) newerExternalKey(chunk Chunk) string {
-	return fmt.Sprintf("%s/%x/%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+	return fmt.Sprintf("%s/%x/%x:%x:%x", chunk.Ref.UserID, chunk.Ref.Fingerprint, chunk.Ref.From, chunk.Ref.Through, chunk.Ref.Checksum)
 }

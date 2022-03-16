@@ -8,6 +8,7 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util/math"
@@ -55,7 +56,7 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 			return err
 		}
 		key := s.schemaCfg.ExternalKey(chunks[i])
-		tableName, err := s.schemaCfg.ChunkTableFor(chunks[i].From)
+		tableName, err := s.schemaCfg.ChunkTableFor(model.Time(chunks[i].Ref.From))
 		if err != nil {
 			return err
 		}
@@ -89,7 +90,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 	chunks := map[string]map[string]chunk.Chunk{}
 	keys := map[string]bigtable.RowList{}
 	for _, c := range input {
-		tableName, err := s.schemaCfg.ChunkTableFor(c.From)
+		tableName, err := s.schemaCfg.ChunkTableFor(model.Time(c.Ref.From))
 		if err != nil {
 			return nil, err
 		}
@@ -170,7 +171,7 @@ func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, userID, chunkID 
 		return err
 	}
 
-	tableName, err := s.schemaCfg.ChunkTableFor(chunkRef.From)
+	tableName, err := s.schemaCfg.ChunkTableFor(model.Time(chunkRef.Ref.From))
 	if err != nil {
 		return err
 	}

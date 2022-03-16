@@ -25,7 +25,7 @@ func (i *chunkIterator) Seek(t int64) bool {
 
 	// We assume seeks only care about a specific window; if this chunk doesn't
 	// contain samples in that window, we can shortcut.
-	if int64(i.Through) < t {
+	if i.Ref.Through < t {
 		return false
 	}
 

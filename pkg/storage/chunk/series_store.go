@@ -465,7 +465,7 @@ func (c *seriesStore) lookupLabelNamesBySeries(ctx context.Context, from, throug
 // Put implements Store
 func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 	for _, chunk := range chunks {
-		if err := c.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
+		if err := c.PutOne(ctx, model.Time(chunk.Ref.From), model.Time(chunk.Ref.Through), chunk); err != nil {
 			return err
 		}
 	}
@@ -546,7 +546,7 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
 
-	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.baseStore.schemaCfg.ExternalKey(chunk))
+	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.Ref.UserID, metricName, chunk.Metric, c.baseStore.schemaCfg.ExternalKey(chunk))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -561,7 +561,7 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 		}
 	}
 
-	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.baseStore.schemaCfg.ExternalKey(chunk))
+	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.Ref.UserID, metricName, chunk.Metric, c.baseStore.schemaCfg.ExternalKey(chunk))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -604,7 +604,7 @@ func (c *seriesStore) DeleteChunk(ctx context.Context, from, through model.Time,
 	}
 
 	return c.deleteChunk(ctx, userID, chunkID, metric, chunkWriteEntries, partiallyDeletedInterval, func(chunk Chunk) error {
-		return c.PutOne(ctx, chunk.From, chunk.Through, chunk)
+		return c.PutOne(ctx, model.Time(chunk.Ref.From), model.Time(chunk.Ref.Through), chunk)
 	})
 }
 
@@ -636,7 +636,7 @@ func (c *seriesStore) hasChunksForInterval(ctx context.Context, userID, seriesID
 	}
 
 	for _, chunk := range chunks {
-		if intervalsOverlap(model.Interval{Start: from, End: through}, model.Interval{Start: chunk.From, End: chunk.Through}) {
+		if intervalsOverlap(model.Interval{Start: from, End: through}, model.Interval{Start: model.Time(chunk.Ref.From), End: model.Time(chunk.Ref.Through)}) {
 			return true, nil
 		}
 	}

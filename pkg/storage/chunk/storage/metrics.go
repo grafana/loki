@@ -68,8 +68,8 @@ func (c metricsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk)
 	userSizes := map[string]int{}
 	userCounts := map[string]int{}
 	for _, c := range chunks {
-		userSizes[c.UserID] += c.Data.Size()
-		userCounts[c.UserID]++
+		userSizes[c.Ref.UserID] += c.Data.Size()
+		userCounts[c.Ref.UserID]++
 	}
 	for user, size := range userSizes {
 		c.metrics.chunksSizePutPerUser.WithLabelValues(user).Add(float64(size))
@@ -92,8 +92,8 @@ func (c metricsChunkClient) GetChunks(ctx context.Context, chunks []chunk.Chunk)
 	userSizes := map[string]int{}
 	userCounts := map[string]int{}
 	for _, c := range chks {
-		userSizes[c.UserID] += c.Data.Size()
-		userCounts[c.UserID]++
+		userSizes[c.Ref.UserID] += c.Data.Size()
+		userCounts[c.Ref.UserID]++
 	}
 	for user, size := range userSizes {
 		c.metrics.chunksSizeFetchedPerUser.WithLabelValues(user).Add(float64(size))

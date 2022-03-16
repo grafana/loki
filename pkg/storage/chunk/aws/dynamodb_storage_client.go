@@ -24,6 +24,7 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
@@ -424,7 +425,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 	for _, chunk := range chunks {
 		key := a.schemaCfg.ExternalKey(chunk)
 		chunksByKey[key] = chunk
-		tableName, err := a.schemaCfg.ChunkTableFor(chunk.From)
+		tableName, err := a.schemaCfg.ChunkTableFor(model.Time(chunk.Ref.From))
 		if err != nil {
 			return nil, log.Error(err)
 		}
@@ -559,7 +560,7 @@ func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, userID, chunkID 
 		return err
 	}
 
-	tableName, err := a.schemaCfg.ChunkTableFor(chunkRef.From)
+	tableName, err := a.schemaCfg.ChunkTableFor(model.Time(chunkRef.Ref.From))
 	if err != nil {
 		return err
 	}
@@ -583,7 +584,7 @@ func (a dynamoDBStorageClient) writesForChunks(chunks []chunk.Chunk) (dynamoDBWr
 		}
 		key := a.schemaCfg.ExternalKey(chunks[i])
 
-		table, err := a.schemaCfg.ChunkTableFor(chunks[i].From)
+		table, err := a.schemaCfg.ChunkTableFor(model.Time(chunks[i].Ref.From))
 		if err != nil {
 			return nil, err
 		}

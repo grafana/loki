@@ -67,8 +67,8 @@ func ChunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Tim
 			return nil, err
 		}
 
-		metrics[c.Fingerprint] = util.LabelsToMetric(c.Metric)
-		samplesBySeries[c.Fingerprint] = append(samplesBySeries[c.Fingerprint], ss)
+		metrics[model.Fingerprint(c.Ref.Fingerprint)] = util.LabelsToMetric(c.Metric)
+		samplesBySeries[model.Fingerprint(c.Ref.Fingerprint)] = append(samplesBySeries[model.Fingerprint(c.Ref.Fingerprint)], ss)
 	}
 
 	matrix := make(model.Matrix, 0, len(samplesBySeries))

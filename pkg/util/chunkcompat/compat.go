@@ -84,8 +84,8 @@ func ToChunks(in []chunk.Chunk) ([]client.Chunk, error) {
 	out := make([]client.Chunk, 0, len(in))
 	for _, i := range in {
 		wireChunk := client.Chunk{
-			StartTimestampMs: int64(i.From),
-			EndTimestampMs:   int64(i.Through),
+			StartTimestampMs: i.Ref.From,
+			EndTimestampMs:   i.Ref.Through,
 			Encoding:         int32(i.Data.Encoding()),
 		}
 

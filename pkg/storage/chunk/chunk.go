@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	errs "github.com/weaveworks/common/errors"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/prom1/storage/metric"
 	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
@@ -37,15 +38,20 @@ func errInvalidChunkID(s string) error {
 
 // Chunk contains encoded timeseries data
 type Chunk struct {
-	// These two fields will be missing from older chunks (as will the hash).
-	// On fetch we will initialise these fields from the DynamoDB key.
-	Fingerprint model.Fingerprint `json:"fingerprint"`
-	UserID      string            `json:"userID"`
+	Ref logproto.ChunkRef
 
-	// These fields will be in all chunks, including old ones.
-	From    model.Time    `json:"from"`
-	Through model.Time    `json:"through"`
-	Metric  labels.Labels `json:"metric"`
+	/*
+		// These two fields will be missing from older chunks (as will the hash).
+		// On fetch we will initialise these fields from the DynamoDB key.
+		Fingerprint model.Fingerprint `json:"fingerprint"`
+		UserID      string            `json:"userID"`
+
+		// These fields will be in all chunks, including old ones.
+		From    model.Time    `json:"from"`
+		Through model.Time    `json:"through"`
+	*/
+
+	Metric labels.Labels `json:"metric"`
 
 	// The hash is not written to the external storage either.  We use
 	// crc32, Castagnoli table.  See http://www.evanjones.ca/crc32c.html.
@@ -65,13 +71,15 @@ type Chunk struct {
 // NewChunk creates a new chunk
 func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_chunk.Chunk, from, through model.Time) Chunk {
 	return Chunk{
-		Fingerprint: fp,
-		UserID:      userID,
-		From:        from,
-		Through:     through,
-		Metric:      metric,
-		Encoding:    c.Encoding(),
-		Data:        c,
+		Ref: logproto.ChunkRef{
+			Fingerprint: uint64(fp),
+			UserID:      userID,
+			From:        int64(from),
+			Through:     int64(through),
+		},
+		Metric:   metric,
+		Encoding: c.Encoding(),
+		Data:     c,
 	}
 }
 
@@ -120,10 +128,12 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 		return Chunk{}, err
 	}
 	return Chunk{
-		UserID:      userID,
-		Fingerprint: model.Fingerprint(fingerprint),
-		From:        model.Time(from),
-		Through:     model.Time(through),
+		Ref: logproto.ChunkRef{
+			Fingerprint: fingerprint,
+			UserID:      userID,
+			From:        from,
+			Through:     through,
+		},
 	}, nil
 }
 
@@ -169,10 +179,12 @@ func parseNewExternalKey(userID, key string) (Chunk, error) {
 		return Chunk{}, err
 	}
 	return Chunk{
-		UserID:      userID,
-		Fingerprint: model.Fingerprint(fingerprint),
-		From:        model.Time(from),
-		Through:     model.Time(through),
+		Ref: logproto.ChunkRef{
+			Fingerprint: fingerprint,
+			UserID:      userID,
+			From:        from,
+			Through:     through,
+		},
 		Checksum:    uint32(checksum),
 		ChecksumSet: true,
 	}, nil
@@ -226,10 +238,12 @@ func parseNewerExternalKey(userID, key string) (Chunk, error) {
 		return Chunk{}, errors.Wrap(err, "parsing checksum")
 	}
 	return Chunk{
-		UserID:      userID,
-		Fingerprint: model.Fingerprint(fingerprint),
-		From:        model.Time(from),
-		Through:     model.Time(through),
+		Ref: logproto.ChunkRef{
+			Fingerprint: fingerprint,
+			UserID:      userID,
+			From:        from,
+			Through:     through,
+		},
 		Checksum:    uint32(checksum),
 		ChecksumSet: true,
 	}, nil
@@ -404,8 +418,8 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 }
 
 func equalByKey(a, b Chunk) bool {
-	return a.UserID == b.UserID && a.Fingerprint == b.Fingerprint &&
-		a.From == b.From && a.Through == b.Through && a.Checksum == b.Checksum
+	return a.Ref.UserID == b.Ref.UserID && a.Ref.Fingerprint == b.Ref.Fingerprint &&
+		a.Ref.From == b.Ref.From && a.Ref.Through == b.Ref.Through && a.Ref.Checksum == b.Ref.Checksum
 }
 
 // Samples returns all SamplePairs for the chunk.
@@ -418,7 +432,7 @@ func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
 // Slice builds a new smaller chunk with data only from given time range (inclusive)
 func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
 	// there should be atleast some overlap between chunk interval and slice interval
-	if from > c.Through || through < c.From {
+	if from > model.Time(c.Ref.Through) || through < model.Time(c.Ref.From) {
 		return nil, ErrSliceOutOfRange
 	}
 
@@ -427,7 +441,7 @@ func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
 		return nil, err
 	}
 
-	nc := NewChunk(c.UserID, c.Fingerprint, c.Metric, pc, from, through)
+	nc := NewChunk(c.Ref.UserID, model.Fingerprint(c.Ref.Fingerprint), c.Metric, pc, from, through)
 	return &nc, nil
 }
 

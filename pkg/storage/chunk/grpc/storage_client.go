@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -44,7 +45,7 @@ func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 		}
 
 		key := s.schemaCfg.ExternalKey(chunks[i])
-		tableName, err := s.schemaCfg.ChunkTableFor(chunks[i].From)
+		tableName, err := s.schemaCfg.ChunkTableFor(model.Time(chunks[i].Ref.From))
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -85,7 +86,7 @@ func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 	for _, inputInfo := range input {
 		chunkInfo := &Chunk{}
 		// send the table name from upstream gRPC client as gRPC server is unaware of schema
-		chunkInfo.TableName, err = s.schemaCfg.ChunkTableFor(inputInfo.From)
+		chunkInfo.TableName, err = s.schemaCfg.ChunkTableFor(model.Time(inputInfo.Ref.From))
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

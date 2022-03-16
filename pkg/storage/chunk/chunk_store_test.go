@@ -604,9 +604,9 @@ func TestChunkStoreRandom(t *testing.T) {
 
 				// We need to check that each chunk is in the time range
 				for _, chunk := range chunks {
-					assert.False(t, chunk.From.After(endTime))
-					assert.False(t, chunk.Through.Before(startTime))
-					samples, err := chunk.Samples(chunk.From, chunk.Through)
+					assert.False(t, model.Time(chunk.Ref.From).After(endTime))
+					assert.False(t, model.Time(chunk.Ref.Through).Before(startTime))
+					samples, err := chunk.Samples(chunk.Ref.From, chunk.Ref.Through)
 					assert.NoError(t, err)
 					assert.Equal(t, 1, len(samples))
 					// TODO verify chunk contents
