@@ -29,30 +29,30 @@ In order to enable communication between the log forwarder and the distributor, 
     For fluentd:
 
     ```yaml
-    apiVersion: "logging.openshift.io/v1"
-    kind: "ClusterLogging"
+    apiVersion: logging.openshift.io/v1
+    kind: ClusterLogging
     metadata:
-      name: "instance"
+      name: instance
       namespace: openshift-logging
     spec:
       collection:
         logs:
-          type: "fluentd"
+          type: fluentd
           fluentd: {}
     ```
 
     For vector:
 
     ```yaml
-    apiVersion: "logging.openshift.io/v1"
-    kind: "ClusterLogging"
+    apiVersion: logging.openshift.io/v1
+    kind: ClusterLogging
     metadata:
-      name: "instance"
+      name: instance
       namespace: openshift-logging
     spec:
       collection:
         logs:
-          type: "vector"
+          type: vector
           fluentd: {}
     ```
 
@@ -63,30 +63,32 @@ In order to enable communication between the log forwarder and the distributor, 
     Fetch the `ca-bundle.crt` using:
 
     ```console
-    kubectl -n openshift-logging get cm lokistack-dev-gateway-ca-bundle -o jsonpath="{.data.service-ca\.crt}"
+    kubectl -n openshift-logging get cm lokistack-dev-gateway-ca-bundle -o jsonpath="{.data.service-ca\.crt}" > <FILE_NAME>
     ```
+  
+    where `<FILE_NAME>` can be `ca_bundle.crt` and used directly to create secret in the next step.
   
 * Once secret is fetched, create a new secret file:
 
     ```console
     kubectl -n openshift-logging create secret generic loki-distributor-ca \
-    --from-literal=ca-bundle.crt="<CA_BUNDLE>"
+    --from-file=ca-bundle.crt=<PATH/TO/CA_BUNDLE.CRT>
     ```
     
-    where `<CA_BUNDLE>` is the copied value from previous step.
+    where `<PATH/TO/CA_BUNDLE.CRT>` is the file path where the `ca_bundle.crt` was copied to.
 
 * Now create a ClusterLogForwarder CR to forward logs to LokiStack:
 
   ```yaml
-  apiVersion: "logging.openshift.io/v1"
-  kind: "ClusterLogForwarder"
+  apiVersion: logging.openshift.io/v1
+  kind: ClusterLogForwarder
   metadata:
-    name: "instance"
-    namespace: "openshift-logging"
+    name: instance
+    namespace: openshift-logging
   spec:
     outputs:
      - name: loki-operator
-       type: "loki"
+       type: loki
        url: https://lokistack-dev-distributor-http.openshift-logging.svc:3100
        secret:
          name: loki-distributor-ca
