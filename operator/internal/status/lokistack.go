@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/ViaQ/logerr/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/internal/external/k8s"
+	lokiv1beta1 "github.com/grafana/loki/v2/operator/api/v1beta1"
+	"github.com/grafana/loki/v2/operator/internal/external/k8s"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

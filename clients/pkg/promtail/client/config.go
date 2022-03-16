@@ -9,7 +9,7 @@ import (
 	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/config"
 
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	lokiflag "github.com/grafana/loki/v2/pkg/util/flagext"
 )
 
 // NOTE the helm chart for promtail and fluent-bit also have defaults for these values, please update to match if you make changes here.

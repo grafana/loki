@@ -6,9 +6,9 @@ import (
 
 	otlog "github.com/opentracing/opentracing-go/log"
 
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v2/pkg/util/spanlogger"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
 )
 
 var decodeContextPool = sync.Pool{

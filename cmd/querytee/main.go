@@ -10,9 +10,9 @@ import (
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/tools/querytee"
+	"github.com/grafana/loki/v2/pkg/loghttp"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
+	"github.com/grafana/loki/v2/tools/querytee"
 )
 
 type Config struct {

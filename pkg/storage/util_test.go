@@ -11,15 +11,15 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	loki_util "github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v2/pkg/chunkenc"
+	"github.com/grafana/loki/v2/pkg/ingester/client"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logql/syntax"
+	"github.com/grafana/loki/v2/pkg/querier/astmapper"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/cache"
+	loki_util "github.com/grafana/loki/v2/pkg/util"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
 )
 
 var (

@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
 )
 
 // RingConfig masks the ring lifecycler config which contains

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logproto"
 	"github.com/prometheus/common/model"
 )
 

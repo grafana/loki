@@ -19,15 +19,15 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/v2/pkg/tenant"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/targets/target"
 
-	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/logproto"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v2/pkg/loghttp/push"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
 )
 
 type PushTarget struct {

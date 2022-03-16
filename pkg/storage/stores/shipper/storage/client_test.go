@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/local"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/util"
 )
 
 func TestIndexStorageClient(t *testing.T) {

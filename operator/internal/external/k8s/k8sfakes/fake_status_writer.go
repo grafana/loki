@@ -5,7 +5,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/grafana/loki/operator/internal/external/k8s"
+	"github.com/grafana/loki/v2/operator/internal/external/k8s"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 

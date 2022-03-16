@@ -19,16 +19,16 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	"github.com/grafana/loki/pkg/util/marshal"
-	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
+	"github.com/grafana/loki/v2/pkg/loghttp"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logql"
+	"github.com/grafana/loki/v2/pkg/logql/syntax"
+	"github.com/grafana/loki/v2/pkg/logqlmodel"
+	"github.com/grafana/loki/v2/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v2/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v2/pkg/util/httpreq"
+	"github.com/grafana/loki/v2/pkg/util/marshal"
+	marshal_legacy "github.com/grafana/loki/v2/pkg/util/marshal/legacy"
 )
 
 var LokiCodec = &Codec{}

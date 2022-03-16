@@ -7,9 +7,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/v2/pkg/logql/syntax"
+	"github.com/grafana/loki/v2/pkg/logqlmodel"
+	"github.com/grafana/loki/v2/pkg/querier/astmapper"
 )
 
 func TestShardedStringer(t *testing.T) {

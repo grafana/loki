@@ -10,10 +10,10 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/targets/target"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logproto"
 )
 
 type runnableDroppedTarget struct {

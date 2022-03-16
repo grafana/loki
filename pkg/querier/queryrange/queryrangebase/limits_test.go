@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v2/pkg/util"
 )
 
 func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {

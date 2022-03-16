@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/encoding"
 )
 
 func TestMergeIter(t *testing.T) {

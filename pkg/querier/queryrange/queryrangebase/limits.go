@@ -9,10 +9,10 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/grafana/loki/pkg/tenant"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v2/pkg/tenant"
+	"github.com/grafana/loki/v2/pkg/util"
+	"github.com/grafana/loki/v2/pkg/util/spanlogger"
+	"github.com/grafana/loki/v2/pkg/util/validation"
 )
 
 // Limits allows us to specify per-tenant runtime limits on the behavior of

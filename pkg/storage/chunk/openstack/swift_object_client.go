@@ -14,10 +14,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	bucket_swift "github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/hedging"
-	"github.com/grafana/loki/pkg/util/log"
+	bucket_swift "github.com/grafana/loki/v2/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/hedging"
+	"github.com/grafana/loki/v2/pkg/util/log"
 )
 
 var defaultTransport http.RoundTripper = &http.Transport{

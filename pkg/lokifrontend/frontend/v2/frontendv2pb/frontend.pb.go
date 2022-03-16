@@ -8,7 +8,7 @@ import (
 	fmt "fmt"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
-	stats "github.com/grafana/loki/pkg/querier/stats"
+	stats "github.com/grafana/loki/v2/pkg/querier/stats"
 	httpgrpc "github.com/weaveworks/common/httpgrpc"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"

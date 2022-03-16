@@ -20,11 +20,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/hedging"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/hedging"
+	chunk_util "github.com/grafana/loki/v2/pkg/storage/chunk/util"
+	"github.com/grafana/loki/v2/pkg/util"
+	"github.com/grafana/loki/v2/pkg/util/log"
 )
 
 const (

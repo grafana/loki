@@ -13,11 +13,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v2/pkg/querier/astmapper"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v2/pkg/util"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
+	"github.com/grafana/loki/v2/pkg/util/spanlogger"
 )
 
 // CardinalityExceededError is returned when the user reads a row that

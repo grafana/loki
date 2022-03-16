@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v2/pkg/util"
 )
 
 // ToWriteRequest converts matched slices of Labels, Samples and Metadata into a WriteRequest proto.

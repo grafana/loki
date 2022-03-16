@@ -8,7 +8,7 @@ import (
 	"github.com/ViaQ/logerr/kverrors"
 	"github.com/imdario/mergo"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
+	"github.com/grafana/loki/v2/operator/internal/manifests/internal/gateway"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"

@@ -8,8 +8,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
+	"github.com/grafana/loki/v2/pkg/validation"
 )
 
 type ExpirationChecker interface {

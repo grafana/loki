@@ -26,9 +26,9 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/ruler/storage/util"
-	"github.com/grafana/loki/pkg/ruler/storage/wal"
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v2/pkg/ruler/storage/util"
+	"github.com/grafana/loki/v2/pkg/ruler/storage/wal"
+	"github.com/grafana/loki/v2/pkg/util/build"
 )
 
 func init() {

@@ -12,9 +12,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/cache"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
+	"github.com/grafana/loki/v2/pkg/util/spanlogger"
 )
 
 var (

@@ -12,8 +12,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore/s3"
 
-	bucket_http "github.com/grafana/loki/pkg/storage/bucket/http"
-	"github.com/grafana/loki/pkg/util"
+	bucket_http "github.com/grafana/loki/v2/pkg/storage/bucket/http"
+	"github.com/grafana/loki/v2/pkg/util"
 )
 
 const (

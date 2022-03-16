@@ -14,17 +14,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/distributor"
-	"github.com/grafana/loki/pkg/loki/common"
-	"github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/storage/chunk/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/azure"
-	"github.com/grafana/loki/pkg/storage/chunk/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/cfg"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	loki_net "github.com/grafana/loki/pkg/util/net"
+	"github.com/grafana/loki/v2/pkg/distributor"
+	"github.com/grafana/loki/v2/pkg/loki/common"
+	"github.com/grafana/loki/v2/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/aws"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/azure"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/gcp"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/v2/pkg/util"
+	"github.com/grafana/loki/v2/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
+	loki_net "github.com/grafana/loki/v2/pkg/util/net"
 )
 
 // Can't use a totally empty yaml file or it causes weird behavior in the unmarshalling.

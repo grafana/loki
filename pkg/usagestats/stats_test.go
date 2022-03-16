@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v2/pkg/util/build"
 
 	"github.com/google/uuid"
 	jsoniter "github.com/json-iterator/go"

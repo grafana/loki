@@ -21,17 +21,17 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
-	"github.com/grafana/loki/pkg/tenant"
-	"github.com/grafana/loki/pkg/usagestats"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v2/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v2/pkg/ingester/client"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logql/syntax"
+	"github.com/grafana/loki/v2/pkg/runtime"
+	"github.com/grafana/loki/v2/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/v2/pkg/tenant"
+	"github.com/grafana/loki/v2/pkg/usagestats"
+	"github.com/grafana/loki/v2/pkg/util"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
+	"github.com/grafana/loki/v2/pkg/validation"
 )
 
 const (

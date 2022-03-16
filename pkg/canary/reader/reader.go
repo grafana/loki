@@ -22,10 +22,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/util/build"
-	"github.com/grafana/loki/pkg/util/unmarshal"
+	"github.com/grafana/loki/v2/pkg/loghttp"
+	"github.com/grafana/loki/v2/pkg/logqlmodel"
+	"github.com/grafana/loki/v2/pkg/util/build"
+	"github.com/grafana/loki/v2/pkg/util/unmarshal"
 )
 
 var (

@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-kit/log"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/api"
 )
 
 // MultiClient is client pushing to one or more loki instances.

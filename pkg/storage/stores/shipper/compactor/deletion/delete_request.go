@@ -5,7 +5,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/v2/pkg/storage/stores/shipper/compactor/retention"
 )
 
 // DeleteRequest holds all the details about a delete request.

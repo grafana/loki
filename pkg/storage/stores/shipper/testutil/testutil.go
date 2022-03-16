@@ -15,9 +15,9 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/local"
+	chunk_util "github.com/grafana/loki/v2/pkg/storage/chunk/util"
 )
 
 func AddRecordsToDB(t testing.TB, path string, dbClient *local.BoltIndexClient, start, numRecords int, bucketName []byte) {

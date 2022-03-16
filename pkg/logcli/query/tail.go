@@ -11,10 +11,10 @@ import (
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
 
-	"github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/util/unmarshal"
+	"github.com/grafana/loki/v2/pkg/logcli/client"
+	"github.com/grafana/loki/v2/pkg/logcli/output"
+	"github.com/grafana/loki/v2/pkg/loghttp"
+	"github.com/grafana/loki/v2/pkg/util/unmarshal"
 )
 
 // TailQuery connects to the Loki websocket endpoint and tails logs

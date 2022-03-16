@@ -10,9 +10,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/targets/target"
 )
 
 // GcplogTarget represents the target specific to GCP project.

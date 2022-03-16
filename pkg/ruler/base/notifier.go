@@ -19,7 +19,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/dns"
 	"github.com/prometheus/prometheus/notifier"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v2/pkg/util"
 )
 
 type NotifierConfig struct {

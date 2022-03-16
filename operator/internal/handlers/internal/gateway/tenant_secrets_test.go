@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/manifests"
+	lokiv1beta1 "github.com/grafana/loki/v2/operator/api/v1beta1"
+	"github.com/grafana/loki/v2/operator/internal/external/k8s/k8sfakes"
+	"github.com/grafana/loki/v2/operator/internal/manifests"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

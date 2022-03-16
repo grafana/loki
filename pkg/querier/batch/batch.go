@@ -4,9 +4,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
-	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/encoding"
+	promchunk "github.com/grafana/loki/v2/pkg/storage/chunk/encoding"
 )
 
 // GenericChunk is a generic chunk used by the batch iterator, in order to make the batch

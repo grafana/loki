@@ -19,12 +19,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/scrapeconfig"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logproto"
 )
 
 const localhost = "127.0.0.1"

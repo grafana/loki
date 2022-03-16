@@ -16,10 +16,10 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"gopkg.in/fsnotify.v1"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/scrapeconfig"
 )
 
 func newTestLogDirectories(t *testing.T) string {

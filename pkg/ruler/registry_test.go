@@ -18,10 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/pkg/ruler/util"
-	"github.com/grafana/loki/pkg/util/test"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v2/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/v2/pkg/ruler/util"
+	"github.com/grafana/loki/v2/pkg/util/test"
+	"github.com/grafana/loki/v2/pkg/validation"
 )
 
 const enabledRWTenant = "enabled"

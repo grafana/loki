@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	promchunk "github.com/grafana/loki/v2/pkg/storage/chunk/encoding"
 )
 
 func TestStream(t *testing.T) {

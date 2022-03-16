@@ -15,16 +15,16 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v2/pkg/util/spanlogger"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/local"
+	chunk_util "github.com/grafana/loki/v2/pkg/storage/chunk/util"
+	"github.com/grafana/loki/v2/pkg/storage/stores/shipper/downloads"
+	"github.com/grafana/loki/v2/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/v2/pkg/storage/stores/shipper/uploads"
+	shipper_util "github.com/grafana/loki/v2/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
 )
 
 const (

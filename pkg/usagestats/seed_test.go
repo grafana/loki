@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/local"
 )
 
 type dnsProviderMock struct {

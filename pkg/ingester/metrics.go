@@ -4,7 +4,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v2/pkg/validation"
 )
 
 type ingesterMetrics struct {

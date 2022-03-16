@@ -14,7 +14,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logproto"
 	"github.com/prometheus/common/model"
 )
 

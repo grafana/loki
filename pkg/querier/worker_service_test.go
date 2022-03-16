@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 
-	querier_worker "github.com/grafana/loki/pkg/querier/worker"
+	querier_worker "github.com/grafana/loki/v2/pkg/querier/worker"
 )
 
 func Test_InitQuerierService(t *testing.T) {

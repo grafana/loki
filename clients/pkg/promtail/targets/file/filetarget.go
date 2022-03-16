@@ -14,10 +14,10 @@ import (
 	"github.com/prometheus/common/model"
 	fsnotify "gopkg.in/fsnotify.v1"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/targets/target"
 )
 
 const (

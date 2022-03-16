@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
 )
 
 type TableClient struct {

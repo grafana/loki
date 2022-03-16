@@ -7,9 +7,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
-	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/encoding"
+	prom_chunk "github.com/grafana/loki/v2/pkg/storage/chunk/encoding"
 )
 
 // This includes test for all RPCs in

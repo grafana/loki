@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/v2/operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

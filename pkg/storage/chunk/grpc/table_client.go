@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
 )
 
 type TableClient struct {

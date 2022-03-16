@@ -9,10 +9,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
-	v1 "github.com/grafana/loki/pkg/lokifrontend/frontend/v1"
-	v2 "github.com/grafana/loki/pkg/lokifrontend/frontend/v2"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v2/pkg/lokifrontend/frontend/transport"
+	v1 "github.com/grafana/loki/v2/pkg/lokifrontend/frontend/v1"
+	v2 "github.com/grafana/loki/v2/pkg/lokifrontend/frontend/v2"
+	"github.com/grafana/loki/v2/pkg/util"
 )
 
 // This struct combines several configuration options together to preserve backwards compatibility.

@@ -40,16 +40,16 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/series"
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/rulestore"
-	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/hedging"
-	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
-	"github.com/grafana/loki/pkg/tenant"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/querier/series"
+	"github.com/grafana/loki/v2/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v2/pkg/ruler/rulestore"
+	"github.com/grafana/loki/v2/pkg/ruler/rulestore/objectclient"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/hedging"
+	chunk_storage "github.com/grafana/loki/v2/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/v2/pkg/tenant"
+	"github.com/grafana/loki/v2/pkg/util"
 )
 
 func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) Config {

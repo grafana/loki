@@ -19,8 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/scrapeconfig"
 )
 
 var (

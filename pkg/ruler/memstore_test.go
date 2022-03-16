@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v2/pkg/util"
 )
 
 var (

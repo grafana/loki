@@ -7,8 +7,8 @@ import (
 	"github.com/grafana/dskit/spanlogger"
 	"github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/tenant"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v2/pkg/tenant"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
 )
 
 type loggerCtxMarker struct{}

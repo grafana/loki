@@ -13,7 +13,7 @@ import (
 	github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
-	stats "github.com/grafana/loki/pkg/logqlmodel/stats"
+	stats "github.com/grafana/loki/v2/pkg/logqlmodel/stats"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"

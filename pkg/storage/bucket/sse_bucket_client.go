@@ -9,7 +9,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	thanos_s3 "github.com/thanos-io/thanos/pkg/objstore/s3"
 
-	"github.com/grafana/loki/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/v2/pkg/storage/bucket/s3"
 )
 
 // TenantConfigProvider defines a per-tenant config provider.

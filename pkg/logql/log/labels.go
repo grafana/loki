@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v2/pkg/logqlmodel"
 )
 
 const MaxInternedStrings = 1024

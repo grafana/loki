@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v2/pkg/scheduler/schedulerpb"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
 )
 
 func TestScheduler_setRunState(t *testing.T) {

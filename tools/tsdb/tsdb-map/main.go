@@ -10,10 +10,10 @@ import (
 	"go.etcd.io/bbolt"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
+	"github.com/grafana/loki/v2/pkg/storage/chunk"
+	"github.com/grafana/loki/v2/pkg/storage/stores/shipper/compactor/retention"
+	shipper_util "github.com/grafana/loki/v2/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/v2/pkg/storage/tsdb/index"
 )
 
 var (

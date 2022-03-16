@@ -3,7 +3,7 @@ package batch
 import (
 	"github.com/prometheus/common/model"
 
-	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	promchunk "github.com/grafana/loki/v2/pkg/storage/chunk/encoding"
 )
 
 // chunkIterator implement batchIterator over a chunk.  Its is designed to be

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
+	lokiv1beta1 "github.com/grafana/loki/v2/operator/api/v1beta1"
+	"github.com/grafana/loki/v2/operator/internal/manifests/storage"
 )
 
 // Options is used to render the loki-config.yaml file template

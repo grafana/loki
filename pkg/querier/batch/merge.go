@@ -4,7 +4,7 @@ import (
 	"container/heap"
 	"sort"
 
-	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	promchunk "github.com/grafana/loki/v2/pkg/storage/chunk/encoding"
 )
 
 type mergeIterator struct {

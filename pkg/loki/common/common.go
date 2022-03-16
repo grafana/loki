@@ -6,14 +6,14 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 
-	"github.com/grafana/loki/pkg/storage/chunk/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/azure"
-	"github.com/grafana/loki/pkg/storage/chunk/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/hedging"
-	"github.com/grafana/loki/pkg/storage/chunk/openstack"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/aws"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/azure"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/gcp"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/hedging"
+	"github.com/grafana/loki/v2/pkg/storage/chunk/openstack"
+	"github.com/grafana/loki/v2/pkg/util"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v2/pkg/util/log"
 )
 
 // Config holds common config that can be shared between multiple other config sections.

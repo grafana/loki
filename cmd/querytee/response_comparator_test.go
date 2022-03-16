@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/tools/querytee"
+	"github.com/grafana/loki/v2/tools/querytee"
 )
 
 func TestCompareStreams(t *testing.T) {

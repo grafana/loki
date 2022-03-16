@@ -5,7 +5,7 @@ import (
 
 	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v2/clients/pkg/promtail/scrapeconfig"
 )
 
 func Test_validateJobName(t *testing.T) {
