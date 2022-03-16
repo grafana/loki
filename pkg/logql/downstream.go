@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -73,7 +72,6 @@ func (ng *DownstreamEngine) Query(p Params, mapped syntax.Expr) Query {
 			return mapped, nil
 		},
 		limits:   ng.limits,
-		resolver: tenant.NewMultiResolver(),
 	}
 }
 

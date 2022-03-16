@@ -167,7 +167,6 @@ type query struct {
 	limits    Limits
 	evaluator Evaluator
 	record    bool
-	resolver  tenant.Resolver
 }
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
@@ -256,7 +255,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
-	tenantIDs, err := q.resolver.TenantIDs(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}

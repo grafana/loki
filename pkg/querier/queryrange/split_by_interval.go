@@ -50,7 +50,6 @@ type splitByInterval struct {
 	merger   queryrangebase.Merger
 	metrics  *SplitByMetrics
 	splitter Splitter
-	resolver tenant.Resolver
 }
 
 type Splitter func(req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
@@ -64,7 +63,6 @@ func SplitByIntervalMiddleware(limits Limits, merger queryrangebase.Merger, spli
 			merger:   merger,
 			metrics:  metrics,
 			splitter: splitter,
-			resolver: tenant.NewMultiResolver(),
 		}
 	})
 }
@@ -164,7 +162,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 }
 
 func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	tenantIDs, err := h.resolver.TenantIDs(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}

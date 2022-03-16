@@ -21,19 +21,17 @@ const (
 // MultiTenantQuerier is able to query across different tenants.
 type MultiTenantQuerier struct {
 	Querier
-	resolver tenant.Resolver
 }
 
 // NewMultiTenantQuerier returns a new querier able to query across different tenants.
 func NewMultiTenantQuerier(querier Querier, logger log.Logger) *MultiTenantQuerier {
 	return &MultiTenantQuerier{
 		Querier:  querier,
-		resolver: tenant.NewMultiResolver(),
 	}
 }
 
 func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
-	tenantIDs, err := q.resolver.TenantIDs(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +54,7 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 }
 
 func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
-	tenantIDs, err := q.resolver.TenantIDs(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
