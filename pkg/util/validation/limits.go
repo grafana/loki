@@ -708,7 +708,7 @@ func MaxDurationOrZeroPerTenant(tenantIDs []string, f func(string) time.Duration
 			return v
 		}
 
-		if v > 0 && (result == nil || v < *result) {
+		if v > 0 && (result == nil || v > *result) {
 			result = &v
 		}
 	}
