@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 )
@@ -20,14 +19,14 @@ type MultiClient struct {
 }
 
 // NewMulti creates a new client
-func NewMulti(reg prometheus.Registerer, logger log.Logger, cfgs ...Config) (Client, error) {
+func NewMulti(metrics *Metrics, streamLagLabels []string, logger log.Logger, cfgs ...Config) (Client, error) {
 	if len(cfgs) == 0 {
 		return nil, errors.New("at least one client config should be provided")
 	}
 
 	clients := make([]Client, 0, len(cfgs))
 	for _, cfg := range cfgs {
-		client, err := New(reg, cfg, logger)
+		client, err := New(metrics, cfg, streamLagLabels, logger)
 		if err != nil {
 			return nil, err
 		}

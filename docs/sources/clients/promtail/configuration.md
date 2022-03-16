@@ -156,8 +156,25 @@ The `server` block configures Promtail's behavior as an HTTP server:
 
 ## clients
 
-The `clients` block configures how Promtail connects to an instance of
+The `clients` block configures how Promtail connects to instances of
 Loki:
+
+```yaml
+# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
+# The default value is "filename". A "host" label is always included.
+# The stream lag metric indicates which streams are falling behind on writes to Loki;
+# be mindful about using too many labels, as it can increase cardinality.
+[stream_lag_labels: <string> | default = "filename"]
+
+configs:
+  - <client_config>
+```
+
+### client
+
+The `client` block configures how an individual Promtail client connects
+to instances of Loki:
+
 
 ```yaml
 # The URL where Loki is listening, denoted in Loki as http_listen_address and
@@ -273,12 +290,6 @@ external_labels:
 
 # Maximum time to wait for a server to respond to a request
 [timeout: <duration> | default = 10s]
-
-# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
-# The default value is "filename". A "host" label is always included.
-# The stream lag metric indicates which streams are falling behind on writes to Loki;
-# be mindful about using too many labels, as it can increase cardinality.
-[stream_lag_labels: <string> | default = "filename"]
 ```
 
 ## positions

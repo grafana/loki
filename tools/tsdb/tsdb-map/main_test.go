@@ -85,3 +85,35 @@ func BenchmarkQuery_GetChunkRefs(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkQuery_GetChunkRefsSharded(b *testing.B) {
+	for _, bm := range cases {
+		indexPath := os.Getenv("LOKI_TSDB_PATH")
+		if indexPath == "" {
+			return
+		}
+
+		reader, err := index.NewFileReader(indexPath)
+		if err != nil {
+			panic(err)
+		}
+		idx := tsdb.NewTSDBIndex(reader)
+		shardFactor := 16
+
+		b.Run(bm.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				for j := 0; j < shardFactor; j++ {
+					shard := index.ShardAnnotation{
+						Shard: uint32(j),
+						Of:    uint32(shardFactor),
+					}
+
+					_, err := idx.GetChunkRefs(context.Background(), "fake", 0, math.MaxInt64, &shard, bm.matchers...)
+					if err != nil {
+						panic(err)
+					}
+				}
+			}
+		})
+	}
+}

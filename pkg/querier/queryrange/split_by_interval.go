@@ -284,7 +284,6 @@ func forInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 		} else if endTimeInclusive {
 			newEnd = newEnd.Add(-time.Millisecond)
 		}
-
 		if firstInterval {
 			callback(ogStart, newEnd)
 			firstInterval = false
