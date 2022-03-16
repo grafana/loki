@@ -7,6 +7,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func Test_SplitRangeInterval(t *testing.T) {
+	rvm, err := NewRangeVectorMapper(2 * time.Second)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		expr     string
+		expected string
+	}{
+		{
+			`bytes_over_time({app="foo"}[3s])`,
+			`sum without(
+				downstream<bytes_over_time({app="foo"}[1s] offset 2s), shard=<nil>>
+				++ downstream<bytes_over_time({app="foo"}[2s]), shard=<nil>>
+			)`,
+		},
+		{
+			`count_over_time({app="foo"}[5s])`,
+			`sum without(
+				downstream<count_over_time({app="foo"}[1s] offset 4s), shard=<nil>>
+				++ downstream<count_over_time({app="foo"}[2s] offset 2s), shard=<nil>>
+				++ downstream<count_over_time({app="foo"}[2s]), shard=<nil>>
+			)`,
+		},
+	} {
+		tc := tc
+		t.Run(tc.expr, func(t *testing.T) {
+			t.Parallel()
+			noop, mappedExpr, err := rvm.Parse(tc.expr)
+			require.NoError(t, err)
+			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
+			require.Equal(t, false, noop)
+		})
+	}
+}
+
 func Test_SplitRangeVectorMapping(t *testing.T) {
 	rvm, err := NewRangeVectorMapper(time.Minute)
 	require.NoError(t, err)

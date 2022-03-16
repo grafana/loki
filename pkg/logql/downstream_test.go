@@ -113,98 +113,104 @@ func TestRangeMappingEquivalence(t *testing.T) {
 	)
 
 	for _, tc := range []struct {
-		query string
+		query           string
+		splitByInterval time.Duration
 	}{
 		// Range vector aggregators
-		{`bytes_over_time({a=~".+"}[2s])`},
-		{`count_over_time({a=~".+"}[2s])`},
-		{`sum_over_time({a=~".+"} | unwrap b [2s])`},
-		{`max_over_time({a=~".+"} | unwrap b [2s])`},
-		{`max_over_time({a=~".+"} | unwrap b [2s]) by (a)`},
-		{`min_over_time({a=~".+"} | unwrap b [2s])`},
-		{`min_over_time({a=~".+"} | unwrap b [2s]) by (a)`},
+		{`bytes_over_time({a=~".+"}[2s])`, time.Second},
+		{`count_over_time({a=~".+"}[2s])`, time.Second},
+		{`sum_over_time({a=~".+"} | unwrap b [2s])`, time.Second},
+		{`max_over_time({a=~".+"} | unwrap b [2s])`, time.Second},
+		{`max_over_time({a=~".+"} | unwrap b [2s]) by (a)`, time.Second},
+		{`min_over_time({a=~".+"} | unwrap b [2s])`, time.Second},
+		{`min_over_time({a=~".+"} | unwrap b [2s]) by (a)`, time.Second},
 
 		// sum
-		{`sum(bytes_over_time({a=~".+"}[2s]))`},
-		{`sum(count_over_time({a=~".+"}[2s]))`},
-		{`sum(sum_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`sum(max_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`sum(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
-		{`sum(min_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`sum(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
+		{`sum(bytes_over_time({a=~".+"}[2s]))`, time.Second},
+		{`sum(count_over_time({a=~".+"}[2s]))`, time.Second},
+		{`sum(sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`sum(max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`sum(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`sum(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`sum(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 
 		// sum by
-		{`sum by (a) (bytes_over_time({a=~".+"}[2s]))`},
-		{`sum by (a) (count_over_time({a=~".+"}[2s]))`},
-		{`sum by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`sum by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`sum by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
-		{`sum by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`sum by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
+		{`sum by (a) (bytes_over_time({a=~".+"}[2s]))`, time.Second},
+		{`sum by (a) (count_over_time({a=~".+"}[2s]))`, time.Second},
+		{`sum by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`sum by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`sum by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`sum by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`sum by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 
 		// count
-		{`count(bytes_over_time({a=~".+"}[2s]))`},
-		{`count(count_over_time({a=~".+"}[2s]))`},
-		{`count(sum_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`count(max_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`count(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
-		{`count(min_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`count(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
+		{`count(bytes_over_time({a=~".+"}[2s]))`, time.Second},
+		{`count(count_over_time({a=~".+"}[2s]))`, time.Second},
+		{`count(sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`count(max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`count(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`count(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`count(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 
 		// count by
-		{`count by (a) (bytes_over_time({a=~".+"}[2s]))`},
-		{`count by (a) (count_over_time({a=~".+"}[2s]))`},
-		{`count by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`count by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`count by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
-		{`count by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`count by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
+		{`count by (a) (bytes_over_time({a=~".+"}[2s]))`, time.Second},
+		{`count by (a) (count_over_time({a=~".+"}[2s]))`, time.Second},
+		{`count by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`count by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`count by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`count by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`count by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 
 		// max
-		{`max(bytes_over_time({a=~".+"}[2s]))`},
-		{`max(count_over_time({a=~".+"}[2s]))`},
-		{`max(sum_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`max(max_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`max(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
-		{`max(min_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`max(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
+		{`max(bytes_over_time({a=~".+"}[2s]))`, time.Second},
+		{`max(count_over_time({a=~".+"}[2s]))`, time.Second},
+		{`max(sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`max(max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`max(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`max(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`max(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 
 		// max by
-		{`max by (a) (bytes_over_time({a=~".+"}[2s]))`},
-		{`max by (a) (count_over_time({a=~".+"}[2s]))`},
-		{`max by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`max by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`max by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
-		{`max by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`max by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
+		{`max by (a) (bytes_over_time({a=~".+"}[2s]))`, time.Second},
+		{`max by (a) (count_over_time({a=~".+"}[2s]))`, time.Second},
+		{`max by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`max by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`max by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`max by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`max by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 
 		// min
-		{`min(bytes_over_time({a=~".+"}[2s]))`},
-		{`min(count_over_time({a=~".+"}[2s]))`},
-		{`min(sum_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`min(max_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`min(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
-		{`min(min_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`min(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
+		{`min(bytes_over_time({a=~".+"}[2s]))`, time.Second},
+		{`min(count_over_time({a=~".+"}[2s]))`, time.Second},
+		{`min(sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`min(max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`min(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`min(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`min(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 
 		// min by
-		{`min by (a) (bytes_over_time({a=~".+"}[2s]))`},
-		{`min by (a) (count_over_time({a=~".+"}[2s]))`},
-		{`min by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`min by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`min by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
-		{`min by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`},
-		{`min by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`},
+		{`min by (a) (bytes_over_time({a=~".+"}[2s]))`, time.Second},
+		{`min by (a) (count_over_time({a=~".+"}[2s]))`, time.Second},
+		{`min by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`min by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`min by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`min by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`min by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 
 		// Binary operations
-		{`bytes_over_time({a=~".+"}[3s]) + count_over_time({a=~".+"}[5s])`},
-		{`sum(count_over_time({a=~".+"}[3s]) * count(sum_over_time({a=~".+"} | unwrap b [5s])))`},
+		{`bytes_over_time({a=~".+"}[3s]) + count_over_time({a=~".+"}[5s])`, time.Second},
+		{`sum(count_over_time({a=~".+"}[3s]) * count(sum_over_time({a=~".+"} | unwrap b [5s])))`, time.Second},
 
 		// Multi vector aggregator layer queries
-		{`sum(max(bytes_over_time({a=~".+"}[3s])))`},
+		{`sum(max(bytes_over_time({a=~".+"}[3s])))`, time.Second},
 
 		// Non-splittable vector aggregators - TODO: Fix
-		//{`topk(2, count_over_time({a=~".+"}[3s]))`},
+		//{`topk(2, count_over_time({a=~".+"}[2s]))`, time.Second},
+		{`avg(count_over_time({a=~".+"}[2s]))`, time.Second},
+
+		// Uneven split times
+		{`bytes_over_time({a=~".+"}[3s])`, 2 * time.Second},
+		{`count_over_time({a=~".+"}[5s])`, 2 * time.Second},
 	} {
 		q := NewMockQuerier(
 			shards,
@@ -235,7 +241,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			require.Nil(t, err)
 
 			// Downstream engine - split by range
-			rangeMapper, err := NewRangeVectorMapper(time.Second)
+			rangeMapper, err := NewRangeVectorMapper(tc.splitByInterval)
 			require.Nil(t, err)
 			_, rangeExpr, err := rangeMapper.Parse(tc.query)
 			require.Nil(t, err)

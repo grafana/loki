@@ -90,39 +90,51 @@ func getRangeInterval(expr syntax.SampleExpr) time.Duration {
 	return rangeInterval
 }
 
-// mapSampleExpr transform expr in multiple subexpressions split by offset range interval
+// splitDownstreams adds expression expr with a range interval 'interval' and offset 'offset'  to the downstreams list.
+// Returns the updated downstream ConcatSampleExpr.
+func (m RangeVectorMapper) splitDownstreams(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
+	subExpr, _ := syntax.Clone(expr)
+	subSampleExpr := subExpr.(syntax.SampleExpr)
+	subSampleExpr.Walk(func(e interface{}) {
+		switch concrete := e.(type) {
+		case *syntax.RangeAggregationExpr:
+			concrete.Left.Interval = interval
+			if offset != 0 {
+				concrete.Left.Offset = offset
+			}
+		}
+
+	})
+	downstreams = &ConcatSampleExpr{
+		DownstreamSampleExpr: DownstreamSampleExpr{
+			SampleExpr: subSampleExpr,
+		},
+		next: downstreams,
+	}
+	return downstreams
+}
+
+// mapConcatSampleExpr transform expr in multiple downstream subexpressions split by offset range interval
 // rangeInterval should be greater than m.splitByInterval, otherwise the resultant expression
 // will have an unnecessary aggregation operation
-func (m RangeVectorMapper) mapSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration) syntax.SampleExpr {
-	var head *ConcatSampleExpr
+func (m RangeVectorMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration) syntax.SampleExpr {
+	var downstreams *ConcatSampleExpr
+	interval := 0
 
 	splitCount := int(rangeInterval / m.splitByInterval)
-	for i := 0; i < splitCount; i++ {
-		subExpr, _ := syntax.Clone(expr)
-		subSampleExpr := subExpr.(syntax.SampleExpr)
-		offset := time.Duration(i) * m.splitByInterval
-		subSampleExpr.Walk(func(e interface{}) {
-			switch concrete := e.(type) {
-			case *syntax.RangeAggregationExpr:
-				concrete.Left.Interval = m.splitByInterval
-				if offset != 0 {
-					concrete.Left.Offset = offset
-				}
-			}
-
-		})
-		head = &ConcatSampleExpr{
-			DownstreamSampleExpr: DownstreamSampleExpr{
-				SampleExpr: subSampleExpr,
-			},
-			next: head,
-		}
+	for interval = 0; interval < splitCount; interval++ {
+		downstreams = m.splitDownstreams(downstreams, expr, m.splitByInterval, time.Duration(interval)*m.splitByInterval)
+	}
+	// Add the remainder offset interval
+	if rangeInterval%m.splitByInterval != 0 {
+		offset := time.Duration(interval) * m.splitByInterval
+		downstreams = m.splitDownstreams(downstreams, expr, rangeInterval-offset, offset)
 	}
 
-	if head == nil {
+	if downstreams == nil {
 		return expr
 	}
-	return head
+	return downstreams
 }
 
 func (m RangeVectorMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr) (syntax.SampleExpr, error) {
@@ -168,7 +180,7 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregation
 		switch expr.Operation {
 		case syntax.OpRangeTypeBytes, syntax.OpRangeTypeCount, syntax.OpRangeTypeSum:
 			return &syntax.VectorAggregationExpr{
-				Left: m.mapSampleExpr(expr, rangeInterval),
+				Left: m.mapConcatSampleExpr(expr, rangeInterval),
 				Grouping: &syntax.Grouping{
 					Without: true,
 				},
@@ -182,7 +194,7 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregation
 				}
 			}
 			return &syntax.VectorAggregationExpr{
-				Left:      m.mapSampleExpr(expr, rangeInterval),
+				Left:      m.mapConcatSampleExpr(expr, rangeInterval),
 				Grouping:  grouping,
 				Operation: syntax.OpTypeMax,
 			}
@@ -194,7 +206,7 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregation
 				}
 			}
 			return &syntax.VectorAggregationExpr{
-				Left:      m.mapSampleExpr(expr, rangeInterval),
+				Left:      m.mapConcatSampleExpr(expr, rangeInterval),
 				Grouping:  grouping,
 				Operation: syntax.OpTypeMin,
 			}
