@@ -21,15 +21,15 @@ _Note: While this document will only give instructions for two methods of log fo
 * Create a Cluster Logging instance in the `openshift-logging` namespace with only `collection` defined.
 
     ```yaml
-    apiVersion: "logging.openshift.io/v1"
-    kind: "ClusterLogging"
+    apiVersion: logging.openshift.io/v1
+    kind: ClusterLogging
     metadata:
-      name: "instance"
+      name: instance
       namespace: openshift-logging
     spec:
       collection:
         logs:
-          type: "fluentd"
+          type: fluentd
           fluentd: {}
     ```
 
@@ -78,25 +78,25 @@ _Note: While this document will only give instructions for two methods of log fo
 * Now create a ClusterLogForwarder CR to forward logs to LokiStack:
 
     ```yaml
-    apiVersion: "logging.openshift.io/v1"
-    kind: "ClusterLogForwarder"
+    apiVersion: logging.openshift.io/v1
+    kind: ClusterLogForwarder
     metadata:
-      name: "instance"
-      namespace: "openshift-logging"
+      name: instance
+      namespace: openshift-logging
     spec:
       outputs:
        - name: loki-app
-         type: "loki"
+         type: loki
          url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application
          secret:
            name: lokistack-gateway-bearer-token
        - name: loki-infra
-         type: "loki"
+         type: loki
          url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/infrastructure
          secret:
            name: lokistack-gateway-bearer-token
        - name: loki-audit
-         type: "loki"
+         type: loki
          url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/audit
          secret:
            name: lokistack-gateway-bearer-token
