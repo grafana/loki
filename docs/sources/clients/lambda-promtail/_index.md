@@ -31,7 +31,7 @@ Terraform:
 terraform apply -var "lambda_promtail_image=<repo:tag>" -var "write_address=https://logs-prod-us-central1.grafana.net/loki/api/v1/push" -var "password=<password>" -var "username=<user>" -var 'log_group_names=["/aws/lambda/log-group-1", "/aws/lambda/log-group-2"]' -var 'bucket_names=["bucket-a", "bucket-b"]' -var 'batch_size=131072'
 ```
 
-The first few lines of `main.tf` define the AWS region to deploy to, you are free to modify this or remove and deploy to 
+The first few lines of `main.tf` define the AWS region to deploy to, you are free to modify this or remove and deploy to
 ```
 provider "aws" {
   region = "us-east-2"
@@ -71,7 +71,7 @@ To modify an already created CloudFormation stack you need to use [update-stack]
 
 This workflow is intended to be an effective approach for monitoring ephemeral jobs such as those run on AWS Lambda which are otherwise hard/impossible to monitor via one of the other Loki [clients](../).
 
-Ephemeral jobs can quite easily run afoul of cardinality best practices. During high request load, an AWS lambda function might balloon in concurrency, creating many log streams in Cloudwatch. For this reason lambda-promtail defaults to **not** keeping the log stream value as a label when propagating the logs to Loki. This is only possible because new versions of Loki no longer have an ingestion ordering constraing on logs within a single stream. 
+Ephemeral jobs can quite easily run afoul of cardinality best practices. During high request load, an AWS lambda function might balloon in concurrency, creating many log streams in Cloudwatch. For this reason lambda-promtail defaults to **not** keeping the log stream value as a label when propagating the logs to Loki. This is only possible because new versions of Loki no longer have an ingestion ordering constraing on logs within a single stream.
 
 ### Proof of concept Loki deployments
 
@@ -83,14 +83,19 @@ Note: Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ 
 
 This workflow allows ingesting AWS loadbalancer logs stored on S3 to Loki.
 
+### Cloudfront real-time logs
+
+Cloudfront [real-time logs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html) can be sent to a Kinesis data stream. The data stream can be mapped to be an [event source](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html) for lambda-promtail to deliver the logs to Loki.
+
 ## Propagated Labels
 
-Incoming logs can have six special labels assigned to them which can be used in [relabeling](../promtail/configuration/#relabel_config) or later stages in a Promtail [pipeline](../promtail/pipelines/):
+Incoming logs can have seven special labels assigned to them which can be used in [relabeling](../promtail/configuration/#relabel_config) or later stages in a Promtail [pipeline](../promtail/pipelines/):
 
-- `__aws_log_type`: Where this log came from (Cloudwatch or S3).
+- `__aws_log_type`: Where this log came from (Cloudwatch, Kinesis or S3).
 - `__aws_cloudwatch_log_group`: The associated Cloudwatch Log Group for this log.
 - `__aws_cloudwatch_log_stream`: The associated Cloudwatch Log Stream for this log (if `KEEP_STREAM=true`).
 - `__aws_cloudwatch_owner`: The AWS ID of the owner of this event.
+- `__aws_kinesis_event_source_arn`: The Kinesis event source ARN.
 - `__aws_s3_log_lb`: The name of the loadbalancer.
 - `__aws_s3_log_lb_owner`: The Account ID of the loadbalancer owner.
 
@@ -100,7 +105,7 @@ Incoming logs can have six special labels assigned to them which can be used in 
 
 Note: This section is relevant if running Promtail between lambda-promtail and the end Loki deployment and was used to circumvent `out of order` problems prior to the v2.4 Loki release which removed the ordering constraint.
 
-As stated earlier, this workflow moves the worst case stream cardinality from `number_of_log_streams` -> `number_of_log_groups` * `number_of_promtails`. For this reason, each Promtail must have a unique label attached to logs it processes (ideally via something like `--client.external-labels=promtail=${HOSTNAME}`) and it's advised to run a small number of Promtails behind a load balancer according to your throughput and redundancy needs. 
+As stated earlier, this workflow moves the worst case stream cardinality from `number_of_log_streams` -> `number_of_log_groups` * `number_of_promtails`. For this reason, each Promtail must have a unique label attached to logs it processes (ideally via something like `--client.external-labels=promtail=${HOSTNAME}`) and it's advised to run a small number of Promtails behind a load balancer according to your throughput and redundancy needs.
 
 This trade-off is very effective when you have a large number of log streams but want to aggregate them by the log group. This is very common in AWS Lambda, where log groups are the "application" and log streams are the individual application containers which are spun up and down at a whim, possibly just for a single function invocation.
 

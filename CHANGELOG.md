@@ -8,6 +8,7 @@
 * [5696](https://github.com/grafana/loki/pull/5696) **paullryan** don't block scraping of new logs from cloudflare within promtail if an error is received from cloudflare about too early logs.
 * [5685](https://github.com/grafana/loki/pull/5625) **chaudum** Fix bug in push request parser that allowed users to send arbitrary non-string data as "log line".
 * [5707](https://github.com/grafana/loki/pull/5707) **franzwong** Promtail: Rename config name limit_config to limits_config.
+* [5660](https://github.com/grafana/loki/pull/5660) **juissi-t** lambda-promtail: Add support for Kinesis data stream events
 * [5626](https://github.com/grafana/loki/pull/5626) **jeschkies** Support multi-tenant select logs and samples queries.
 * [5622](https://github.com/grafana/loki/pull/5622) **chaudum**: Fix bug in query splitter that caused `interval` query parameter to be ignored and therefore returning more logs than expected.
 * [5521](https://github.com/grafana/loki/pull/5521) **cstyan**: Move stream lag configuration to top level clients config struct and refactor stream lag metric, this resolves a bug with duplicate metric collection when a single Promtail binary is running multiple Promtail clients.
@@ -99,7 +100,7 @@ Release notes for 2.5.0 can be found on the [release notes page](https://grafana
 
 ### All Changes
 
-Here is a list of all significant changes, in the past we have included all changes 
+Here is a list of all significant changes, in the past we have included all changes
 but with over 500 PR's merged since the last release we decided to curate the list
 to include only the most relevant.
 
