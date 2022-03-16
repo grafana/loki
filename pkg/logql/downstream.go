@@ -71,7 +71,7 @@ func (ng *DownstreamEngine) Query(p Params, mapped syntax.Expr) Query {
 		parse: func(_ context.Context, _ string) (syntax.Expr, error) {
 			return mapped, nil
 		},
-		limits:   ng.limits,
+		limits: ng.limits,
 	}
 }
 
