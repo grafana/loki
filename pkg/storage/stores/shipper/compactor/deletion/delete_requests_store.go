@@ -39,7 +39,7 @@ const (
 var ErrDeleteRequestNotFound = errors.New("could not find matching delete request")
 
 type DeleteRequestsStore interface {
-	AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, logQLRequests []string) error
+	AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, queries []string) error
 	GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error)
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
 	UpdateStatus(ctx context.Context, userID, requestID string, newStatus DeleteRequestStatus) error
