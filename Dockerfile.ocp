@@ -1,18 +1,17 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.16-openshift-4.8 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.17-openshift-4.10 AS builder
 ARG GOARCH="amd64"
 WORKDIR /go/src/github.com/grafana/loki
 COPY . .
 RUN touch loki-build-image/.uptodate && mkdir /build
-RUN make clean && make touch-protos && make BUILD_IN_CONTAINER=false cmd/loki/loki
+RUN make clean && make BUILD_IN_CONTAINER=false loki
 
-FROM  registry.ci.openshift.org/ocp/4.8:base
+FROM  registry.ci.openshift.org/ocp/4.10:base
 LABEL io.k8s.display-name="OpenShift Loki" \
       io.k8s.description="Horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by Prometheus." \
       io.openshift.tags="grafana,prometheus,monitoring" \
       maintainer="OpenShift Development <dev@lists.openshift.redhat.com>" \
-      version="v2.2.1"
+      version="v2.4.2"
 
 COPY --from=builder /go/src/github.com/grafana/loki/cmd/loki/loki /usr/bin/loki
 COPY --from=builder /go/src/github.com/grafana/loki/cmd/loki/loki-local-config.yaml /etc/loki/local-config.yaml
-EXPOSE 80
 ENTRYPOINT ["/usr/bin/loki"]
