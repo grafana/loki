@@ -82,15 +82,24 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 type TenantEntryIterator struct {
 	iter.EntryIterator
 	tenantID string
+	cache map[string]labels.Labels
 }
 
 func NewTenantEntryIterator(iter iter.EntryIterator, id string) *TenantEntryIterator {
-	return &TenantEntryIterator{EntryIterator: iter, tenantID: id}
+	return &TenantEntryIterator{
+		EntryIterator: iter,
+		tenantID: id,
+		cache: map[string]labels.Labels{},
+	}
 }
 
 func (i *TenantEntryIterator) Labels() string {
-	// TODO: cache manipulated labels and add a benchmark.
-	lbls, _ := syntax.ParseLabels(i.EntryIterator.Labels())
+	lbls, ok := i.cache[i.EntryIterator.Labels()]
+	if ok {
+		return lbls.String()
+	}
+
+	lbls, _ = syntax.ParseLabels(i.EntryIterator.Labels())
 	builder := labels.NewBuilder(lbls.WithoutLabels(defaultTenantLabel))
 
 	// Prefix label if it conflicts with the tenant label.
@@ -99,7 +108,9 @@ func (i *TenantEntryIterator) Labels() string {
 	}
 	builder.Set(defaultTenantLabel, i.tenantID)
 
-	return builder.Labels().String()
+	lbls = builder.Labels()
+	i.cache[i.EntryIterator.Labels()] = lbls
+	return lbls.String()
 }
 
 // TenantEntry Iterator wraps a sample iterator and adds the tenant label.
