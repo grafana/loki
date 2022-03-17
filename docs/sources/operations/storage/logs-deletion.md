@@ -68,6 +68,8 @@ This endpoint returns both processed and unprocessed requests. It does not list 
 
 ### Request cancellation of a delete request
 
+Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki.
+
 Cancel a delete request using this Compactor endpoint:
 
 ```
