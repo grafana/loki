@@ -154,7 +154,7 @@ func newSampleIterator() iter.SampleIterator {
 }
 
 func BenchmarkTenantEntryIteratorLabels(b *testing.B) {
-	it := NewMockEntryIterator(12)
+	it := newMockEntryIterator(12)
 	tenantIter := NewTenantEntryIterator(it, "tenant_1") 
 
 	b.ResetTimer()
@@ -169,7 +169,7 @@ type mockEntryIterator struct{
 	labels string
 }
 
-func NewMockEntryIterator(numLabels int) mockEntryIterator {
+func newMockEntryIterator(numLabels int) mockEntryIterator {
 	builder := labels.NewBuilder(nil)
 	for i := 1; i <= numLabels; i++ {
 		builder.Set(fmt.Sprintf("label_%d", i), strconv.Itoa(i))
