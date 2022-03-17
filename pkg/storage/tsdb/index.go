@@ -32,8 +32,8 @@ func (r ChunkRef) Less(x ChunkRef) bool {
 
 type Index interface {
 	Bounded
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res *[]ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error
-	Series(ctx context.Context, userID string, from, through model.Time, res *[]Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error)
+	Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error)
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
 }

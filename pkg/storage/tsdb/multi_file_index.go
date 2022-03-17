@@ -92,16 +92,18 @@ func (i *MultiIndex) forIndices(ctx context.Context, from, through model.Time, f
 	return results, nil
 }
 
-func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res *[]ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
-	*res = (*res)[:0]
+func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+	if res == nil {
+		res = ChunkRefsPool.Get()
+	}
+	res = res[:0]
+
 	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
-		refs := ChunkRefsPool.Get()
-		err := idx.GetChunkRefs(ctx, userID, from, through, &refs, shard, matchers...)
-		return refs, err
+		return idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
 	})
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// keep track of duplicates
@@ -117,25 +119,27 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 				continue
 			}
 			seen[ref] = struct{}{}
-			*res = append(*res, ref)
+			res = append(res, ref)
 		}
 		ChunkRefsPool.Put(g)
 	}
 
-	return nil
+	return res, nil
 
 }
 
-func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, res *[]Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
-	*res = (*res)[:0]
+func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+	if res == nil {
+		res = SeriesPool.Get()
+	}
+	res = res[:0]
+
 	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
-		xs := SeriesPool.Get()
-		err := idx.Series(ctx, userID, from, through, &xs, shard, matchers...)
-		return xs, err
+		return idx.Series(ctx, userID, from, through, nil, shard, matchers...)
 	})
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	seen := make(map[model.Fingerprint]struct{})
@@ -148,12 +152,12 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 				continue
 			}
 			seen[s.Fingerprint] = struct{}{}
-			*res = append(*res, s)
+			res = append(res, s)
 		}
 		SeriesPool.Put(seriesSet)
 	}
 
-	return nil
+	return res, nil
 }
 
 func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {

@@ -58,8 +58,7 @@ func TestSingleIdx(t *testing.T) {
 	idx := BuildIndex(t, cases)
 
 	t.Run("GetChunkRefs", func(t *testing.T) {
-		refs := ChunkRefsPool.Get()
-		err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, &refs, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		refs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
 
 		expected := []ChunkRef{
@@ -100,8 +99,7 @@ func TestSingleIdx(t *testing.T) {
 			Shard: 1,
 			Of:    2,
 		}
-		shardedRefs := ChunkRefsPool.Get()
-		err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, &shardedRefs, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		shardedRefs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, nil, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 
 		require.Nil(t, err)
 
@@ -116,8 +114,7 @@ func TestSingleIdx(t *testing.T) {
 	})
 
 	t.Run("Series", func(t *testing.T) {
-		xs := SeriesPool.Get()
-		err := idx.Series(context.Background(), "fake", 8, 9, &xs, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		xs, err := idx.Series(context.Background(), "fake", 8, 9, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
 
 		expected := []Series{
@@ -135,8 +132,7 @@ func TestSingleIdx(t *testing.T) {
 			Of:    2,
 		}
 
-		xs := SeriesPool.Get()
-		err := idx.Series(context.Background(), "fake", 0, 10, &xs, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		xs, err := idx.Series(context.Background(), "fake", 0, 10, nil, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
 
 		expected := []Series{
