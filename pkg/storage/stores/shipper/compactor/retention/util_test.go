@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -187,11 +188,35 @@ func (t *testStore) GetChunks(userID string, from, through model.Time, metric la
 	for _, l := range metric {
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
 	}
-	chunks, err := t.Store.Get(user.InjectOrgID(context.Background(), userID),
-		userID, from, through, matchers...)
+	ctx := user.InjectOrgID(context.Background(), userID)
+	chunks, fetchers, err := t.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
 	require.NoError(t.t, err)
+	fetchedChunk := []chunk.Chunk{}
+	for _, f := range fetchers {
+		for _, cs := range chunks {
+			keys := make([]string, 0, len(cs))
+			sort.Slice(chunks, func(i, j int) bool { return schemaCfg.ExternalKey(cs[i]) < schemaCfg.ExternalKey(cs[j]) })
 
-	return chunks
+			for _, c := range cs {
+				keys = append(keys, schemaCfg.ExternalKey(c))
+			}
+			cks, err := f.FetchChunks(ctx, cs, keys)
+			if err != nil {
+				t.t.Fatal(err)
+			}
+		outer:
+			for _, c := range cks {
+				for _, matcher := range matchers {
+					if !matcher.Matches(c.Metric.Get(matcher.Name)) {
+						continue outer
+					}
+				}
+				fetchedChunk = append(fetchedChunk, c)
+			}
+
+		}
+	}
+	return fetchedChunk
 }
 
 func (t *testStore) open() {

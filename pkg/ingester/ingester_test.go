@@ -300,10 +300,6 @@ func (s *mockStore) PutOne(ctx context.Context, from, through model.Time, chunk 
 	return nil
 }
 
-func (s *mockStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	return nil, nil
-}
-
 func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
 	return nil, nil, nil
 }
@@ -317,14 +313,6 @@ func (s *mockStore) LabelNamesForMetricName(ctx context.Context, userID string, 
 }
 
 func (s *mockStore) GetChunkFetcher(tm model.Time) *chunk.Fetcher {
-	return nil
-}
-
-func (s *mockStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
-	return nil
-}
-
-func (s *mockStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
 	return nil
 }
 
