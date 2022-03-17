@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
@@ -58,10 +59,12 @@ func fillCache(t *testing.T, scfg chunk.SchemaConfig, cache cache.Cache) ([]stri
 		// cleanup the chunk to avoid any internal references mismatch (ie. appender
 		// pointer).
 		cleanChunk := chunk.Chunk{
-			UserID:      c.UserID,
-			Fingerprint: c.Fingerprint,
-			From:        c.From,
-			Through:     c.Through,
+			ChunkRef: logproto.ChunkRef{
+				UserID:      c.UserID,
+				Fingerprint: c.Fingerprint,
+				From:        c.From,
+				Through:     c.Through,
+			},
 			Checksum:    c.Checksum,
 			ChecksumSet: c.ChecksumSet,
 		}

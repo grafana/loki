@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	errs "github.com/weaveworks/common/errors"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/prom1/storage/metric"
 	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
@@ -37,15 +38,9 @@ func errInvalidChunkID(s string) error {
 
 // Chunk contains encoded timeseries data
 type Chunk struct {
-	// These two fields will be missing from older chunks (as will the hash).
-	// On fetch we will initialise these fields from the DynamoDB key.
-	Fingerprint model.Fingerprint `json:"fingerprint"`
-	UserID      string            `json:"userID"`
+	logproto.ChunkRef
 
-	// These fields will be in all chunks, including old ones.
-	From    model.Time    `json:"from"`
-	Through model.Time    `json:"through"`
-	Metric  labels.Labels `json:"metric"`
+	Metric labels.Labels `json:"metric"`
 
 	// The hash is not written to the external storage either.  We use
 	// crc32, Castagnoli table.  See http://www.evanjones.ca/crc32c.html.
@@ -65,13 +60,15 @@ type Chunk struct {
 // NewChunk creates a new chunk
 func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_chunk.Chunk, from, through model.Time) Chunk {
 	return Chunk{
-		Fingerprint: fp,
-		UserID:      userID,
-		From:        from,
-		Through:     through,
-		Metric:      metric,
-		Encoding:    c.Encoding(),
-		Data:        c,
+		ChunkRef: logproto.ChunkRef{
+			Fingerprint: uint64(fp),
+			UserID:      userID,
+			From:        from,
+			Through:     through,
+		},
+		Metric:   metric,
+		Encoding: c.Encoding(),
+		Data:     c,
 	}
 }
 
@@ -120,10 +117,12 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 		return Chunk{}, err
 	}
 	return Chunk{
-		UserID:      userID,
-		Fingerprint: model.Fingerprint(fingerprint),
-		From:        model.Time(from),
-		Through:     model.Time(through),
+		ChunkRef: logproto.ChunkRef{
+			UserID:      userID,
+			Fingerprint: fingerprint,
+			From:        model.Time(from),
+			Through:     model.Time(through),
+		},
 	}, nil
 }
 
@@ -169,10 +168,12 @@ func parseNewExternalKey(userID, key string) (Chunk, error) {
 		return Chunk{}, err
 	}
 	return Chunk{
-		UserID:      userID,
-		Fingerprint: model.Fingerprint(fingerprint),
-		From:        model.Time(from),
-		Through:     model.Time(through),
+		ChunkRef: logproto.ChunkRef{
+			UserID:      userID,
+			Fingerprint: fingerprint,
+			From:        model.Time(from),
+			Through:     model.Time(through),
+		},
 		Checksum:    uint32(checksum),
 		ChecksumSet: true,
 	}, nil
@@ -226,10 +227,12 @@ func parseNewerExternalKey(userID, key string) (Chunk, error) {
 		return Chunk{}, errors.Wrap(err, "parsing checksum")
 	}
 	return Chunk{
-		UserID:      userID,
-		Fingerprint: model.Fingerprint(fingerprint),
-		From:        model.Time(from),
-		Through:     model.Time(through),
+		ChunkRef: logproto.ChunkRef{
+			UserID:      userID,
+			Fingerprint: fingerprint,
+			From:        model.Time(from),
+			Through:     model.Time(through),
+		},
 		Checksum:    uint32(checksum),
 		ChecksumSet: true,
 	}, nil
@@ -427,6 +430,6 @@ func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
 		return nil, err
 	}
 
-	nc := NewChunk(c.UserID, c.Fingerprint, c.Metric, pc, from, through)
+	nc := NewChunk(c.UserID, c.FingerprintModel(), c.Metric, pc, from, through)
 	return &nc, nil
 }
