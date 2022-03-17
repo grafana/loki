@@ -51,9 +51,9 @@ These errors have many different possible causes. Main things to review with res
 - server.http_server_idle_timeout
 - If you have a reverse proxy in front of Loki (ie. between Loki and Grafana) then check any timeouts configured there (ie. NGINX proxy read timeout)
 
-To determine if the issue is related to the Loki deployment or another system (Grafana, or another client) attempt to run a logcli query as "directly" as you can. IE if running on VMs then run the query on that local machinem. If running in K8S the port forward the loki HTTP port and attempt to run the query there. If you still get a timeout then review the dot points above. If you do not then continue reading and some other common timeout issues will be mentioned.
+To determine if the issue is related to the Loki deployment or another system (Grafana, or another client) attempt to run a [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) query as "directly" as you can. IE if running on VMs then run the query on that local machinem. If running in K8S the port forward the loki HTTP port and attempt to run the query there. If you still get a timeout then review the dot points above. If you do not then continue reading and some other common timeout issues will be mentioned.
 
-- Grafana Dataproxy timeout (make sure you configure Grafana with a large enough dataproxy timeout)
+- Grafana Dataproxy [timeout](https://grafana.com/docs/grafana/latest/administration/configuration/#dataproxy) (make sure you configure Grafana with a large enough dataproxy timeout)
 - Any reverse proxies or load balancers between your client and Grafana. Queries to Grafana are made from the your local browser with Grafana serving as a proxy, therefore both connections to Grafana and from Grafana to Loki must have large timeouts configured (IE. Browser -> Grafana -> Loki)
 
 
