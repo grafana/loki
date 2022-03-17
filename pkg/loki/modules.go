@@ -88,6 +88,7 @@ const (
 	Read                     string = "read"
 	Write                    string = "write"
 	UsageReport              string = "usage-report"
+	CacheGenNumberLoader     string = "cache-gen-number-loader"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -411,7 +412,16 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	chunkStore, err := chunk_storage.NewStore(
+		t.Cfg.StorageConfig.Config,
+		t.Cfg.ChunkStoreConfig.StoreConfig,
+		t.Cfg.SchemaConfig.SchemaConfig,
+		t.overrides,
+		t.clientMetrics,
+		prometheus.DefaultRegisterer,
+		t.cacheGenNumLoader,
+		util_log.Logger,
+	)
 	if err != nil {
 		return
 	}
@@ -480,6 +490,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 		util_log.Logger,
 		t.overrides,
 		t.Cfg.SchemaConfig.SchemaConfig,
+		t.cacheGenNumLoader,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -816,6 +827,21 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 	}
 	t.usageReport = ur
 	return ur, nil
+}
+
+func (t *Loki) initCacheGenNumberLoader() (_ services.Service, err error) {
+	level.Debug(util_log.Logger).Log("msg", "initializing cache generation number generator")
+
+	deleteStore, err := t.deleteRequestsStore()
+	if err != nil {
+		return nil, err
+	}
+	t.cacheGenNumLoader = deletion.NewGenNumberLoader(deleteStore, prometheus.DefaultRegisterer)
+
+	return services.NewIdleService(nil, func(_ error) error {
+		deleteStore.Stop()
+		return nil
+	}), nil
 }
 
 func (t *Loki) deleteRequestsStore() (deletion.DeleteRequestsStore, error) {

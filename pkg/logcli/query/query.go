@@ -12,6 +12,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
+
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -192,7 +195,9 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	cm := chunk_storage.NewClientMetrics()
 	storage.RegisterCustomIndexClients(&conf.StorageConfig, cm, prometheus.DefaultRegisterer)
 	conf.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
-	chunkStore, err := chunk_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig.StoreConfig, conf.SchemaConfig.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, nil, util_log.Logger)
+
+	genNumLoader, err := cacheGenNumLoader(&conf, limits)
+	chunkStore, err := chunk_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig.StoreConfig, conf.SchemaConfig.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, genNumLoader, util_log.Logger)
 	if err != nil {
 		return err
 	}
@@ -247,6 +252,20 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	q.printResult(value, out, nil)
 	return nil
+}
+
+func cacheGenNumLoader(conf *loki.Config, overrides *validation.Overrides) (chunk.CacheGenNumLoader, error) {
+	deleteStore := deletion.NewNoOpDeleteRequestsStore()
+	if storage.UsingBoltdbShipper(conf.SchemaConfig.Configs) {
+		indexClient, err := chunk_storage.NewIndexClient(shipper.BoltDBShipperType, conf.StorageConfig.Config, conf.SchemaConfig.SchemaConfig, overrides, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, err
+		}
+
+		deleteStore = deletion.NewDeleteStoreFromIndexClient(indexClient)
+	}
+
+	return deletion.NewGenNumberLoader(deleteStore, prometheus.DefaultRegisterer), nil
 }
 
 // SetInstant makes the Query an instant type
