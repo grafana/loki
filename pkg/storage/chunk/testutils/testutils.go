@@ -37,7 +37,7 @@ func (f CloserFunc) Close() error {
 
 // DefaultSchemaConfig returns default schema for use in test fixtures
 func DefaultSchemaConfig(kind string) chunk.SchemaConfig {
-	schemaConfig := chunk.DefaultSchemaConfig(kind, "v1", model.Now().Add(-time.Hour*2))
+	schemaConfig := chunk.DefaultSchemaConfig(kind, "v9", model.Now().Add(-time.Hour*2))
 	return schemaConfig
 }
 
