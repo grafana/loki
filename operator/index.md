@@ -9,11 +9,18 @@ This is the Kubernetes Operator for Loki provided by the Grafana Loki SIG operat
 * There is also a [basic troubleshooting guide](https://github.com/grafana/loki/blob/master/operator/docs/hack_loki_operator.md#basic-troubleshooting-on-hacking-on-loki-operator) if you run into some common problems.
 * There is also a [document](https://github.com/grafana/loki/blob/master/operator/docs/hack_operator_make_run.md) which demonstrates how to use Loki Operator for development and testing locally without deploying the operator each time on Kind and OpenShift using the `make run` command.
 
-### Sending Logs to Loki through the Gateway Component
+### Sending Logs to Loki
+
+#### Sending Logs Through the Gateway Component
 
 * The [forwarding logs to LokiStack guide](https://github.com/grafana/loki/tree/master/operator/docs/forwarding_logs_to_gateway.md) provides instructions for configuring forwarding clients to ship logs to Loki through the gateway component.
 * This section details [how to connect a Promtail](https://github.com/grafana/loki/tree/master/operator/docs/forwarding_logs_to_gateway.md#promtail) installation to the gateway.
 * This section details [how to connect a Grafana Fluentd plugin](https://github.com/grafana/loki/tree/master/operator/docs/forwarding_logs_to_gateway.md#fluentd) installation to the gateway.
+
+#### Sending Logs Directly to the Distributor Component
+
+* The [forwarding logs to LokiStack without LokiStack Gateway](https://github.com/grafana/loki/tree/master/operator/docs/forwarding_logs_without_gateway.md) is used to send application, infrastructure, and audit logs to the Loki Distributor as different tenants using Fluentd or Vector.
+* The guide has a step-by-step guide to connect with OpenShift Logging for forwarding logs to LokiStack.
 
 ### Installation of Storage Size Calculator on OpenShift
 

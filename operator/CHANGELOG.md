@@ -1,5 +1,6 @@
 ## Main
 
+- [5551](https://github.com/grafana/loki/pull/5551) **sasagarw**: Document how to connect to distributor component
 - [5624](https://github.com/grafana/loki/pull/5624) **periklis**: Use tenant name as id for mode openshift-logging (OpenShift)
 - [5621](https://github.com/grafana/loki/pull/5621) **periklis**: Use recommended labels for LokiStack components
 - [5607](https://github.com/grafana/loki/pull/5607) **periklis**: Use lokistack name as prefix for owned resources
