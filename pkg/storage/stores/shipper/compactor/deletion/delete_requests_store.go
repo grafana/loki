@@ -275,7 +275,7 @@ func generateUniqueID(orgID string, logQLRequests []string) []byte {
 	binary.LittleEndian.PutUint64(timeNow, uint64(time.Now().UnixNano()))
 	_, _ = uniqueID.Write(timeNow)
 
-	for _, req := range logQLRequests {
+	for _, req := range queries {
 		_, _ = uniqueID.Write([]byte(req))
 	}
 
