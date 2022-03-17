@@ -6,11 +6,10 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
-
-	"fmt"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -102,13 +101,6 @@ func encodeBase64Bytes(bytes []byte) []byte {
 	encodedLen := base64.RawStdEncoding.EncodedLen(len(bytes))
 	encoded := make([]byte, encodedLen)
 	base64.RawStdEncoding.Encode(encoded, bytes)
-	return encoded
-}
-
-func encodeBase64Value(value string) []byte {
-	encodedLen := base64.RawStdEncoding.EncodedLen(len(value))
-	encoded := make([]byte, encodedLen)
-	base64.RawStdEncoding.Encode(encoded, []byte(value))
 	return encoded
 }
 
