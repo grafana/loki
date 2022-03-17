@@ -26,7 +26,7 @@ func (m mockDeleteRequestsStore) UpdateStatus(ctx context.Context, userID, reque
 	return nil
 }
 
-func (m mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, LogQLRequest []string) error {
+func (m mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, queries []string) error {
 	panic("implement me")
 }
 
