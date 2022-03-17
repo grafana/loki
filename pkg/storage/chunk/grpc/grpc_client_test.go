@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
@@ -78,10 +79,13 @@ func TestGrpcStore(t *testing.T) {
 
 	putChunksTestData := []chunk.Chunk{
 		{
-			Fingerprint: 15993187966453505842,
-			UserID:      "fake",
-			From:        1587997054298,
-			Through:     1587997054298,
+			ChunkRef: logproto.ChunkRef{
+				Fingerprint: uint64(15993187966453505842),
+				UserID:      "fake",
+				From:        1587997054298,
+				Through:     1587997054298,
+				Checksum:    3651208117,
+			},
 			Metric: labels.Labels{
 				{
 					Name:  "_name_",
@@ -97,7 +101,6 @@ func TestGrpcStore(t *testing.T) {
 				},
 			},
 			ChecksumSet: true,
-			Checksum:    3651208117,
 			Encoding:    encoding.Bigchunk,
 			Data:        prom_chunk.New(),
 		},
@@ -107,10 +110,13 @@ func TestGrpcStore(t *testing.T) {
 
 	getChunksTestData := []chunk.Chunk{
 		{
-			Fingerprint: 15993187966453505842,
-			UserID:      "fake",
-			From:        1587997054298,
-			Through:     1587997054298,
+			ChunkRef: logproto.ChunkRef{
+				Fingerprint: uint64(15993187966453505842),
+				UserID:      "fake",
+				From:        1587997054298,
+				Through:     1587997054298,
+				Checksum:    3651208117,
+			},
 			Metric: labels.Labels{
 				{
 					Name:  "_name_",
@@ -126,7 +132,6 @@ func TestGrpcStore(t *testing.T) {
 				},
 			},
 			ChecksumSet: true,
-			Checksum:    3651208117,
 			Encoding:    encoding.Bigchunk,
 			Data:        prom_chunk.New(),
 		},

@@ -360,7 +360,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 						}
 						if m.sourceUser != m.destUser {
 							// Because the incoming chunks are already encoded, to change the username we have to make a new chunk
-							nc := chunk.NewChunk(m.destUser, chk.Fingerprint, chk.Metric, chk.Data, chk.From, chk.Through)
+							nc := chunk.NewChunk(m.destUser, chk.FingerprintModel(), chk.Metric, chk.Data, chk.From, chk.Through)
 							err := nc.Encode()
 							if err != nil {
 								log.Println(threadID, "Failed to encode new chunk with new user:", err)
