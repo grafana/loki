@@ -8,7 +8,7 @@ import (
 
 func TestAllModes(t *testing.T) {
 	modes := AllModes()
-	require.ElementsMatch(t, []string{"disabled", "v1", "filter-only", "filter-and-delete"}, modes)
+	require.ElementsMatch(t, []string{"disabled", "whole-stream-deletion", "filter-only", "filter-and-delete"}, modes)
 }
 
 func TestParseMode(t *testing.T) {
@@ -16,9 +16,9 @@ func TestParseMode(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, Disabled, mode)
 
-	mode, err = ParseMode("v1")
+	mode, err = ParseMode("whole-stream-deletion")
 	require.NoError(t, err)
-	require.Equal(t, V1, mode)
+	require.Equal(t, WholeStreamDeletion, mode)
 
 	mode, err = ParseMode("filter-only")
 	require.NoError(t, err)

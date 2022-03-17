@@ -215,7 +215,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 	c.indexStorageClient = shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
 	c.metrics = newMetrics(r)
 
-	if c.cfg.RetentionEnabled && c.deleteMode == deletion.V1 {
+	if c.cfg.RetentionEnabled && c.deleteMode == deletion.WholeStreamDeletion {
 		var encoder objectclient.KeyEncoder
 		if _, ok := objectClient.(*local.FSObjectClient); ok {
 			encoder = objectclient.FSEncoder
