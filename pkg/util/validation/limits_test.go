@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// nolint:goconst
 func TestSmallestPositiveIntPerTenant(t *testing.T) {
 	type args struct {
 		tenantIDs []string
@@ -36,6 +37,7 @@ func TestSmallestPositiveIntPerTenant(t *testing.T) {
 	}
 }
 
+// nolint:goconst
 func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
 	type args struct {
 		tenantIDs []string
@@ -76,6 +78,7 @@ func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
 	}
 }
 
+// nolint:goconst
 func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
 	type args struct {
 		tenantIDs []string
@@ -116,6 +119,7 @@ func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
 	}
 }
 
+// nolint:goconst
 func TestMaxDurationPerTenant(t *testing.T) {
 	type args struct {
 		tenantIDs []string
@@ -156,6 +160,7 @@ func TestMaxDurationPerTenant(t *testing.T) {
 	}
 }
 
+// nolint:goconst
 func TestMaxDurationOrZeroPerTenant(t *testing.T) {
 	type args struct {
 		tenantIDs []string
