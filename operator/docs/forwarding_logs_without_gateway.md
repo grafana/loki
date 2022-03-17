@@ -6,7 +6,7 @@ __Please read the [hacking guide](./hack_loki_operator.md) before proceeding wit
 
 _Note:_ This document only applies to OpenShift-based deployments.
 
-_Disclaimer:_ This document helps in connecting fluentd or vector to LokiStack without authentication/authorization.
+_Disclaimer:_ This document helps to connect the forwarder (fluentd or vector) to the LokiStack by going around the authentication gateway. This is not a normal configuration for an OpenShift-based deployments and should only be used for testing if going through the gateway is no option.
 
 ## OpenShift Logging
 
