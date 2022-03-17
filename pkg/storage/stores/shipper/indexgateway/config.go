@@ -61,8 +61,6 @@ type Config struct {
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.Mode = SimpleMode // default mode.
-
 	cfg.Ring.RegisterFlagsWithPrefix(prefix+".", "collectors/", f)
-	f.Var(cfg.Mode, prefix+".mode", "Mode to run the index gateway client. Supported modes are simple (default) and ring.")
+	f.StringVar((*string)(&cfg.Mode), prefix+".mode", SimpleMode.String(), "mode in which the index gateway client will be running")
 }

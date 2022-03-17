@@ -54,7 +54,7 @@ type Gateway struct {
 	cfg          Config
 	log          log.Logger
 
-	shipper chunk.IndexClient
+	shipper IndexQuerier
 
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
