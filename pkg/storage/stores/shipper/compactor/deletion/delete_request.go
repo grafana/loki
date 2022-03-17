@@ -11,7 +11,7 @@ type DeleteRequest struct {
 	RequestID string              `json:"request_id"`
 	StartTime model.Time          `json:"start_time"`
 	EndTime   model.Time          `json:"end_time"`
-	Queries   []string            `json:"logql_requests"`
+	Queries   []string            `json:"queries"`
 	Status    DeleteRequestStatus `json:"status"`
 	CreatedAt model.Time          `json:"created_at"`
 
