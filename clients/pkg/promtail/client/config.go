@@ -41,6 +41,13 @@ type Config struct {
 
 	// deprecated use StreamLagLabels from config.Config instead
 	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels"`
+
+	// todo: real struct
+	WAL struct {
+		Dir                string        `yaml:"dir"`
+		CheckpointDuration time.Duration `yaml:"checkpoint_duration"`
+		PerTenant          bool          `yaml:"per_tenant"`
+	} `yaml:"wal"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
