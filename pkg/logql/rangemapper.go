@@ -105,6 +105,32 @@ func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 	return found
 }
 
+// sumOverFullRange returns an expression that sum up individual downstream queries by preserving labels
+// and dividing it by the full range in seconds to calculate a rate value
+// The operation defines the range aggregation operation of the downstream queries.
+// Example:
+// rate({app="foo"}[2m])
+// => (sum without (count_over_time({app="foo"}[1m]) ++ count_over_time({app="foo"}[1m]) offset 1m) / 120)
+func (m RangeVectorMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, operation string, rangeInterval time.Duration) syntax.SampleExpr {
+	without := &syntax.Grouping{
+		Without: true,
+	}
+	downstreamExpr := &syntax.RangeAggregationExpr{
+		Left:      expr.Left,
+		Operation: operation,
+	}
+	return &syntax.BinOpExpr{
+		SampleExpr: &syntax.VectorAggregationExpr{
+			Left:      m.mapConcatSampleExpr(downstreamExpr, rangeInterval),
+			Grouping:  without,
+			Operation: syntax.OpTypeSum,
+		},
+		RHS:  &syntax.LiteralExpr{Val: rangeInterval.Seconds()},
+		Op:   syntax.OpTypeDiv,
+		Opts: &syntax.BinOpOptions{},
+	}
+}
+
 // splitDownstreams adds expression expr with a range interval 'interval' and offset 'offset'  to the downstreams list.
 // Returns the updated downstream ConcatSampleExpr.
 func (m RangeVectorMapper) splitDownstreams(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
@@ -228,6 +254,10 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregation
 				Grouping:  grouping,
 				Operation: syntax.OpTypeMin,
 			}
+		case syntax.OpRangeTypeRate:
+			return m.sumOverFullRange(expr, syntax.OpRangeTypeCount, rangeInterval)
+		case syntax.OpRangeTypeBytesRate:
+			return m.sumOverFullRange(expr, syntax.OpRangeTypeBytes, rangeInterval)
 		default:
 			// this should not be reachable. If an operation is splittable it should
 			// have an optimization listed
@@ -267,9 +297,11 @@ var SplittableVectorOp = map[string]struct{}{
 }
 
 var SplittableRangeVectorOp = map[string]struct{}{
-	syntax.OpRangeTypeBytes: {},
-	syntax.OpRangeTypeCount: {},
-	syntax.OpRangeTypeSum:   {},
-	syntax.OpRangeTypeMax:   {},
-	syntax.OpRangeTypeMin:   {},
+	syntax.OpRangeTypeRate:      {},
+	syntax.OpRangeTypeBytesRate: {},
+	syntax.OpRangeTypeBytes:     {},
+	syntax.OpRangeTypeCount:     {},
+	syntax.OpRangeTypeSum:       {},
+	syntax.OpRangeTypeMax:       {},
+	syntax.OpRangeTypeMin:       {},
 }

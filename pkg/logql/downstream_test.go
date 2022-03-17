@@ -124,6 +124,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`max_over_time({a=~".+"} | unwrap b [2s]) by (a)`, time.Second},
 		{`min_over_time({a=~".+"} | unwrap b [2s])`, time.Second},
 		{`min_over_time({a=~".+"} | unwrap b [2s]) by (a)`, time.Second},
+		{`rate({a=~".+"}[2s])`, time.Second},
+		{`bytes_rate({a=~".+"}[2s])`, time.Second},
 
 		// sum
 		{`sum(bytes_over_time({a=~".+"}[2s]))`, time.Second},
@@ -196,6 +198,9 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`min by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`min by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+
+		{`sum by (b) (rate({a=~".+"}[2s]))`, time.Second},
+		{`sum by (b) (bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// Binary operations
 		{`bytes_over_time({a=~".+"}[3s]) + count_over_time({a=~".+"}[5s])`, time.Second},

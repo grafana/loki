@@ -124,6 +124,26 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			)`,
 			false,
 		},
+		// range aggregation - rate
+		{
+			`rate({app="foo"}[3m])`,
+			`(sum without(
+				downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+				++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+				++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
+			) / 180)`,
+			false,
+		},
+		// range aggregation - bytes_rate
+		{
+			`bytes_rate({app="foo"}[3m])`,
+			`(sum without(
+				downstream<bytes_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+				++ downstream<bytes_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+				++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
+			) / 180)`,
+			false,
+		},
 
 		// Vector aggregator - sum
 		{
@@ -796,6 +816,27 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			`,
 			false,
 		},
+		{
+			`sum by (app) (bytes_rate({app="foo"}[3m])) / sum by (app) (rate({app="foo"}[3m]))`,
+			`(
+				sum by (app) (
+					(sum without (
+						downstream<bytes_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+						++ downstream<bytes_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+						++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
+					) / 180)
+				)
+				/
+				sum by (app) (
+					(sum without (
+						downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+						++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+						++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
+					) / 180)
+				)
+			)`,
+			false,
+		},
 
 		// Multi vector aggregator layer queries
 		{
@@ -825,7 +866,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			)`,
 			false,
 		},
-
 		// Non-splittable range vector aggregators
 		{
 			`quantile_over_time(0.95, {app="foo"} | unwrap bar[3m])`,
