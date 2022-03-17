@@ -85,6 +85,7 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 }
 
 func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	// TODO(jordanrushing): If name in the request = defaultTenantLabel, then we need to return the tenant IDs
 	tenantIDs, err := q.resolver.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -111,6 +112,7 @@ func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelReque
 }
 
 func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	// TODO(jordanrushing): For each response, append the tenant_id label pair before sorting
 	tenantIDs, err := q.resolver.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
