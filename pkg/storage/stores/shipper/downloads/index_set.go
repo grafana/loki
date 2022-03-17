@@ -279,7 +279,7 @@ func (t *indexSet) Sync(ctx context.Context) (err error) {
 
 // sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
 func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
-	level.Debug(t.logger).Log("msg", "syncing files")
+	level.Debug(t.logger).Log("msg", "syncing index files")
 
 	defer func() {
 		status := statusSuccess
@@ -294,7 +294,7 @@ func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
 		return err
 	}
 
-	level.Debug(t.logger).Log("msg", fmt.Sprintf("sync updates. toDownload: %s, toDelete: %s", toDownload, toDelete))
+	level.Debug(t.logger).Log("msg", "index sync updates", "toDownload", fmt.Sprint(toDownload), "toDelete", fmt.Sprint(toDelete))
 
 	downloadedFiles, err := t.doConcurrentDownload(ctx, toDownload)
 	if err != nil {
