@@ -30,6 +30,13 @@ func Test_SplitRangeInterval(t *testing.T) {
 				++ downstream<count_over_time({app="foo"}[2s]), shard=<nil>>
 			)`,
 		},
+		{
+			`rate({app="foo"}[4s] offset 1m)`,
+			`(sum without(
+				downstream<count_over_time({app="foo"}[2s] offset 1m2s), shard=<nil>>
+				++ downstream<count_over_time({app="foo"}[2s] offset 1m0s), shard=<nil>>
+			) / 4)`,
+		},
 	} {
 		tc := tc
 		t.Run(tc.expr, func(t *testing.T) {

@@ -141,7 +141,7 @@ func (m RangeVectorMapper) splitDownstreams(downstreams *ConcatSampleExpr, expr 
 		case *syntax.RangeAggregationExpr:
 			concrete.Left.Interval = interval
 			if offset != 0 {
-				concrete.Left.Offset = offset
+				concrete.Left.Offset += offset
 			}
 		}
 

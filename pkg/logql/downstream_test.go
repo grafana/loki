@@ -216,6 +216,9 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		// Uneven split times
 		{`bytes_over_time({a=~".+"}[3s])`, 2 * time.Second},
 		{`count_over_time({a=~".+"}[5s])`, 2 * time.Second},
+
+		// range with offset
+		{`rate({a=~".+"}[2s] offset 2s)`, time.Second},
 	} {
 		q := NewMockQuerier(
 			shards,
@@ -279,3 +282,4 @@ func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 		require.Equal(t, a, b)
 	}
 }
+
