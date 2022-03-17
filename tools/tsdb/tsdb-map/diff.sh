@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 
 # This can be run like:
-# ./tools/tsdb/tsdb-map/diff.sh /tmp/loki-scratch/loki-ops-daily.r main $(git rev-parse --abbrev-ref HEAD)
+# ./tools/tsdb/tsdb-map/diff.sh /tmp/loki-scratch/loki-ops-daily.r main $(git rev-parse --abbrev-ref HEAD) <rounds>
 
 boltdb_base=$1
 branch_a=$2
 branch_b=$3
 COUNT="${4:-8}"
-
-echo using count: "${COUNT}"
+echo running "${COUNT}" rounds
 
 echo building from "${branch_a}"
 git checkout "${branch_a}"

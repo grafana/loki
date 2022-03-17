@@ -67,7 +67,7 @@ func TestMultiIndex(t *testing.T) {
 	require.Nil(t, err)
 
 	t.Run("GetChunkRefs", func(t *testing.T) {
-		refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
 
 		expected := []ChunkRef{
@@ -104,7 +104,7 @@ func TestMultiIndex(t *testing.T) {
 	})
 
 	t.Run("Series", func(t *testing.T) {
-		xs, err := idx.Series(context.Background(), "fake", 2, 5, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		xs, err := idx.Series(context.Background(), "fake", 2, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
 		expected := []Series{
 			{

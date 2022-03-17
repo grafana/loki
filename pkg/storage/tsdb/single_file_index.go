@@ -25,6 +25,8 @@ func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
 	return model.Time(from), model.Time(through)
 }
 
+// fn must NOT capture it's arguments. They're reused across series iterations and returned to
+// a pool after completion.
 func (i *TSDBIndex) forSeries(
 	shard *index.ShardAnnotation,
 	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
@@ -35,10 +37,9 @@ func (i *TSDBIndex) forSeries(
 		return err
 	}
 
-	var (
-		ls   labels.Labels
-		chks []index.ChunkMeta
-	)
+	var ls labels.Labels
+	chks := chunkMetasPool.Get()
+	defer chunkMetasPool.Put(chks)
 
 	for p.Next() {
 		hash, err := i.reader.Series(p.At(), &ls, &chks)
@@ -56,9 +57,12 @@ func (i *TSDBIndex) forSeries(
 	return p.Err()
 }
 
-func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	queryBounds := newBounds(from, through)
-	var res []ChunkRef // TODO(owen-d): pool, reduce allocs
+	if res == nil {
+		res = ChunkRefsPool.Get()
+	}
+	res = res[:0]
 
 	if err := i.forSeries(shard,
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
@@ -86,9 +90,12 @@ func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through
 	return res, nil
 }
 
-func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
 	queryBounds := newBounds(from, through)
-	var res []Series // TODO(owen-d): pool, reduce allocs
+	if res == nil {
+		res = SeriesPool.Get()
+	}
+	res = res[:0]
 
 	if err := i.forSeries(shard,
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
