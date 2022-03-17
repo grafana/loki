@@ -125,7 +125,7 @@ func TestGatewayClient(t *testing.T) {
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
 
-	gatewayClient, err := NewGatewayClient(cfg, nil /* ring */, prometheus.DefaultRegisterer, util_log.Logger)
+	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, util_log.Logger)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "fake")

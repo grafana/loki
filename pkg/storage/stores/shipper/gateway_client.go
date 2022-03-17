@@ -52,7 +52,7 @@ type GatewayClient struct {
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created.
 // Otherwise, it creates a single GRPC connection to an Index Gateway instance running in simple mode.
-func NewGatewayClient(cfg IndexGatewayClientConfig, indexGatewayRing ring.ReadRing, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
+func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
 	sgClient := &GatewayClient{
 		cfg: cfg,
 		storeGatewayClientRequestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
@@ -62,7 +62,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, indexGatewayRing ring.ReadRi
 			Buckets:   instrument.DefBuckets,
 		}, []string{"operation", "status_code"}),
 		mode: cfg.Mode,
-		ring: indexGatewayRing,
+		ring: cfg.Ring,
 	}
 
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(sgClient.storeGatewayClientRequestDuration))
@@ -80,7 +80,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, indexGatewayRing ring.ReadRi
 			return igPool, nil
 		}
 
-		sgClient.pool = clientpool.NewPool(cfg.PoolConfig, indexGatewayRing, factory, logger)
+		sgClient.pool = clientpool.NewPool(cfg.PoolConfig, sgClient.ring, factory, logger)
 	} else {
 		sgClient.conn, err = grpc.Dial(cfg.Address, dialOpts...)
 		if err != nil {

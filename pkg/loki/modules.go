@@ -392,7 +392,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	t.Cfg.StorageConfig.BoltDBConfig.Ring = t.indexGatewayRing
+	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRing
 	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		return

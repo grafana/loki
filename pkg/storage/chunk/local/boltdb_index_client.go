@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/ring"
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 
@@ -40,8 +39,6 @@ const (
 // BoltDBConfig for a BoltDB index client.
 type BoltDBConfig struct {
 	Directory string `yaml:"directory"`
-
-	Ring ring.ReadRing
 }
 
 // RegisterFlags registers flags.

@@ -9,7 +9,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/ring"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -427,13 +426,13 @@ func RegisterCustomIndexClients(cfg *Config, cm storage.ClientMetrics, registere
 	// in tests for creating multiple instances of it at a time.
 	var boltDBIndexClientWithShipper chunk.IndexClient
 
-	storage.RegisterIndexStore(shipper.BoltDBShipperType, func(limits storage.StoreLimits, indexGatewayRing ring.ReadRing) (chunk.IndexClient, error) {
+	storage.RegisterIndexStore(shipper.BoltDBShipperType, func(limits storage.StoreLimits) (chunk.IndexClient, error) {
 		if boltDBIndexClientWithShipper != nil {
 			return boltDBIndexClientWithShipper, nil
 		}
 
 		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly {
-			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexGatewayRing, registerer, util_log.Logger)
+			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
 			if err != nil {
 				return nil, errors.Wrap(err, "shipper new gateway client")
 			}
