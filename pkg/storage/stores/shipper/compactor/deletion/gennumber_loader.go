@@ -66,7 +66,7 @@ func (l *GenNumberLoader) loop() {
 		case <-timer.C:
 			err := l.reload()
 			if err != nil {
-				level.Error(log.Logger).Log("msg", "error reloading tombstones", "err", err)
+				level.Error(log.Logger).Log("msg", "error reloading generation numbers", "err", err)
 			}
 		case <-l.quit:
 			return

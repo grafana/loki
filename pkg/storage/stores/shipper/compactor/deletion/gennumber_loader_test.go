@@ -14,7 +14,7 @@ func TestGetCacheGenNumber(t *testing.T) {
 			"tenant-b": "1050",
 		},
 	}
-	tombstonesLoader := NewGenNumberLoader(s, nil)
+	loader := NewGenNumberLoader(s, nil)
 
 	for _, tc := range []struct {
 		name                          string
@@ -36,7 +36,7 @@ func TestGetCacheGenNumber(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.expectedResultsCacheGenNumber, tombstonesLoader.GetResultsCacheGenNumber(tc.tenantIDs))
+			assert.Equal(t, tc.expectedResultsCacheGenNumber, loader.GetResultsCacheGenNumber(tc.tenantIDs))
 		})
 	}
 }
