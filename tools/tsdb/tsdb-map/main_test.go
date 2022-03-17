@@ -52,7 +52,7 @@ func BenchmarkQuery_PostingsForMatchers(b *testing.B) {
 		}
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				p, _ := tsdb.PostingsForMatchers(reader, bm.matchers...)
+				p, _ := tsdb.PostingsForMatchers(reader, nil, bm.matchers...)
 
 				for p.Next() {
 				}
