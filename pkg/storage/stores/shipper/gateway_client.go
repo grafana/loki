@@ -41,8 +41,6 @@ type GatewayClient struct {
 	conn       *grpc.ClientConn
 	grpcClient indexgatewaypb.IndexGatewayClient
 
-	mode indexgateway.Mode
-
 	pool *ring_client.Pool
 
 	ring ring.ReadRing
@@ -61,7 +59,6 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 			Help:      "Time (in seconds) spent serving requests when using boltdb shipper store gateway",
 			Buckets:   instrument.DefBuckets,
 		}, []string{"operation", "status_code"}),
-		mode: cfg.Mode,
 		ring: cfg.Ring,
 	}
 
@@ -70,7 +67,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 		return nil, errors.Wrap(err, "index gateway grpc dial option")
 	}
 
-	if sgClient.mode == indexgateway.RingMode {
+	if sgClient.cfg.Mode == indexgateway.RingMode {
 		factory := func(addr string) (ring_client.PoolClient, error) {
 			igPool, err := NewIndexGatewayGRPCPool(addr, dialOpts)
 			if err != nil {
@@ -97,7 +94,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 //
 // If it is in simple mode, the sinlge GRPC connection is closed. Otherwise, nothing happens.
 func (s *GatewayClient) Stop() {
-	if s.mode == indexgateway.SimpleMode {
+	if s.cfg.Mode == indexgateway.SimpleMode {
 		s.conn.Close()
 	}
 }
@@ -132,7 +129,7 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuer
 		})
 	}
 
-	if s.mode == indexgateway.RingMode {
+	if s.cfg.Mode == indexgateway.RingMode {
 		return s.ringModeDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback)
 	}
 
