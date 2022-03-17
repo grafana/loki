@@ -53,7 +53,7 @@ func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 			},
 		},
 	} {
-		for _, schema := range seriesStoreSchemas {
+		for _, schema := range schemas {
 			for _, storeCase := range stores {
 				t.Run(fmt.Sprintf("%s / %s / %s / %s", tc.metricName, tc.labelName, schema, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running labelValues with metricName", tc.metricName, "with labelName", tc.labelName, "with schema", schema)
