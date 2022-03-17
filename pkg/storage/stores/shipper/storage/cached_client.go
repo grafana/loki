@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/util/spanlogger"
 	"path"
 	"strings"
 	"sync"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
