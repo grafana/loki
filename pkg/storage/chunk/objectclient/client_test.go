@@ -42,8 +42,8 @@ func TestFSEncoder(t *testing.T) {
 			From:        MustParseDayTime("2020-01-02").Time,
 			Through:     MustParseDayTime("2020-01-03").Time,
 			Fingerprint: uint64(456),
+			Checksum:    123,
 		},
-		Checksum:    123,
 		ChecksumSet: true,
 	}
 
@@ -54,8 +54,8 @@ func TestFSEncoder(t *testing.T) {
 			From:        MustParseDayTime("2022-01-02").Time,
 			Through:     MustParseDayTime("2022-01-03").Time,
 			Fingerprint: uint64(456),
+			Checksum:    123,
 		},
-		Checksum:    123,
 		ChecksumSet: true,
 	}
 

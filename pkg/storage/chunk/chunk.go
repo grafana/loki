@@ -42,11 +42,8 @@ type Chunk struct {
 
 	Metric labels.Labels `json:"metric"`
 
-	// The hash is not written to the external storage either.  We use
-	// crc32, Castagnoli table.  See http://www.evanjones.ca/crc32c.html.
 	// For old chunks, ChecksumSet will be false.
-	ChecksumSet bool   `json:"-"`
-	Checksum    uint32 `json:"-"`
+	ChecksumSet bool `json:"-"`
 
 	// We never use Delta encoding (the zero value), so if this entry is
 	// missing, we default to DoubleDelta.
@@ -173,8 +170,8 @@ func parseNewExternalKey(userID, key string) (Chunk, error) {
 			Fingerprint: fingerprint,
 			From:        model.Time(from),
 			Through:     model.Time(through),
+			Checksum:    uint32(checksum),
 		},
-		Checksum:    uint32(checksum),
 		ChecksumSet: true,
 	}, nil
 }
@@ -232,8 +229,8 @@ func parseNewerExternalKey(userID, key string) (Chunk, error) {
 			Fingerprint: fingerprint,
 			From:        model.Time(from),
 			Through:     model.Time(through),
+			Checksum:    uint32(checksum),
 		},
-		Checksum:    uint32(checksum),
 		ChecksumSet: true,
 	}, nil
 }

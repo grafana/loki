@@ -64,8 +64,8 @@ func fillCache(t *testing.T, scfg chunk.SchemaConfig, cache cache.Cache) ([]stri
 				Fingerprint: c.Fingerprint,
 				From:        c.From,
 				Through:     c.Through,
+				Checksum:    c.Checksum,
 			},
-			Checksum:    c.Checksum,
 			ChecksumSet: c.ChecksumSet,
 		}
 		err = cleanChunk.Decode(chunk.NewDecodeContext(), buf)

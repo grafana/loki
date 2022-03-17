@@ -84,6 +84,7 @@ func TestGrpcStore(t *testing.T) {
 				UserID:      "fake",
 				From:        1587997054298,
 				Through:     1587997054298,
+				Checksum:    3651208117,
 			},
 			Metric: labels.Labels{
 				{
@@ -100,7 +101,6 @@ func TestGrpcStore(t *testing.T) {
 				},
 			},
 			ChecksumSet: true,
-			Checksum:    3651208117,
 			Encoding:    encoding.Bigchunk,
 			Data:        prom_chunk.New(),
 		},
@@ -115,6 +115,7 @@ func TestGrpcStore(t *testing.T) {
 				UserID:      "fake",
 				From:        1587997054298,
 				Through:     1587997054298,
+				Checksum:    3651208117,
 			},
 			Metric: labels.Labels{
 				{
@@ -131,7 +132,6 @@ func TestGrpcStore(t *testing.T) {
 				},
 			},
 			ChecksumSet: true,
-			Checksum:    3651208117,
 			Encoding:    encoding.Bigchunk,
 			Data:        prom_chunk.New(),
 		},

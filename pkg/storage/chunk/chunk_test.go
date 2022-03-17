@@ -212,9 +212,9 @@ func TestParseExternalKey(t *testing.T) {
 				Fingerprint: uint64(2),
 				From:        model.Time(655200000),
 				Through:     model.Time(655200000),
+				Checksum:    4165752645,
 			},
 			ChecksumSet: true,
-			Checksum:    4165752645,
 		}},
 
 		{key: userID + "/2/270d8f00:270d8f00:f84c5745", chunk: Chunk{
@@ -223,9 +223,9 @@ func TestParseExternalKey(t *testing.T) {
 				Fingerprint: uint64(2),
 				From:        model.Time(655200000),
 				Through:     model.Time(655200000),
+				Checksum:    4165752645,
 			},
 			ChecksumSet: true,
-			Checksum:    4165752645,
 		}},
 
 		{key: "invalidUserID/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{}, err: ErrWrongMetadata},
@@ -429,9 +429,9 @@ func TestChunkKeys(t *testing.T) {
 					UserID:      "fake",
 					From:        model.TimeFromUnix(1000),
 					Through:     model.TimeFromUnix(5000),
+					Checksum:    12345,
 				},
 				ChecksumSet: true,
-				Checksum:    12345,
 			},
 			schemaCfg: SchemaConfig{
 				Configs: []PeriodConfig{
@@ -451,9 +451,9 @@ func TestChunkKeys(t *testing.T) {
 					UserID:      "fake",
 					From:        model.TimeFromUnix(1000),
 					Through:     model.TimeFromUnix(5000),
+					Checksum:    12345,
 				},
 				ChecksumSet: true,
-				Checksum:    12345,
 			},
 			schemaCfg: SchemaConfig{
 				Configs: []PeriodConfig{

@@ -204,4 +204,8 @@ message ChunkRef {
   string user_id = 2 [(gogoproto.customname) = "UserID", (gogoproto.jsontag) = "userID"];
   int64 from = 3 [(gogoproto.jsontag) = "from", (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
   int64 through = 4 [(gogoproto.jsontag) = "through", (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
+
+  // The checksum is not written to the external storage. We use crc32,
+  // Castagnoli table. See http://www.evanjones.ca/crc32c.html.
+  uint32 checksum = 5 [(gogoproto.jsontag) = "-"];
 }
