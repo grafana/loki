@@ -136,7 +136,7 @@ func (g *Gateway) running(ctx context.Context) error {
 // Only invoked if the Index Gateway is in ring mode.
 func (g *Gateway) stopping(_ error) error {
 	level.Debug(util_log.Logger).Log("msg", "stopping index gateway")
-	g.shipper.Stop()
+	defer g.shipper.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), g.subservices)
 }
 
@@ -151,11 +151,6 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 		cfg:          cfg,
 		log:          log,
 	}
-
-	g.Service = services.NewIdleService(nil, func(failureCase error) error {
-		g.indexQuerier.Stop()
-		return nil
-	})
 
 	if cfg.Mode == RingMode {
 		ringStore, err := kv.NewClient(
