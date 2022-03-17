@@ -431,7 +431,8 @@ func RegisterCustomIndexClients(cfg *Config, cm storage.ClientMetrics, registere
 			return boltDBIndexClientWithShipper, nil
 		}
 
-		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly {
+		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly &&
+			(cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" || cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Ring != nil) {
 			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
 			if err != nil {
 				return nil, errors.Wrap(err, "shipper new gateway client")
