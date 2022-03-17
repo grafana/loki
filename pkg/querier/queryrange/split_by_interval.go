@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type lokiResult struct {
@@ -89,7 +90,7 @@ func (h *splitByInterval) Process(
 	parallelism int,
 	threshold int64,
 	input []*lokiResult,
-	userID string,
+	maxSeries int,
 ) ([]queryrangebase.Response, error) {
 	var responses []queryrangebase.Response
 	ctx, cancel := context.WithCancel(ctx)
@@ -110,7 +111,7 @@ func (h *splitByInterval) Process(
 	}
 
 	// per request wrapped handler for limiting the amount of series.
-	next := newSeriesLimiter(h.limits.MaxQuerySeries(userID)).Wrap(h.next)
+	next := newSeriesLimiter(maxSeries).Wrap(h.next)
 	for i := 0; i < p; i++ {
 		go h.loop(ctx, ch, next)
 	}
@@ -161,12 +162,12 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 }
 
 func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	userid, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	interval := h.limits.QuerySplitDuration(userid)
+	interval := validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.QuerySplitDuration)
 	// skip split by if unset
 	if interval == 0 {
 		return h.next.Do(ctx, r)
@@ -215,7 +216,9 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		})
 	}
 
-	resps, err := h.Process(ctx, h.limits.MaxQueryParallelism(userid), limit, input, userid)
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, h.limits.MaxQuerySeries)
+	maxParallelism := validation.SmallestPositiveIntPerTenant(tenantIDs, h.limits.MaxQueryParallelism)
+	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
 	if err != nil {
 		return nil, err
 	}
