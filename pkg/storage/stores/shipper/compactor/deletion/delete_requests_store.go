@@ -72,14 +72,14 @@ func (ds *deleteRequestsStore) Stop() {
 }
 
 // AddDeleteRequest creates entries for a new delete request.
-func (ds *deleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, logQLRequests []string) error {
-	_, err := ds.addDeleteRequest(ctx, userID, model.Now(), startTime, endTime, logQLRequests)
+func (ds *deleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, queries []string) error {
+	_, err := ds.addDeleteRequest(ctx, userID, model.Now(), startTime, endTime, queries)
 	return err
 }
 
 // addDeleteRequest is also used for tests to create delete requests with different createdAt time.
-func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID string, createdAt, startTime, endTime model.Time, logQLRequests []string) ([]byte, error) {
-	requestID := generateUniqueID(userID, logQLRequests)
+func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID string, createdAt, startTime, endTime model.Time, queries []string) ([]byte, error) {
+	requestID := generateUniqueID(userID, queries)
 
 	for {
 		_, err := ds.GetDeleteRequest(ctx, userID, string(requestID))
@@ -92,7 +92,7 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 
 		// we have a collision here, lets recreate a new requestID and check for collision
 		time.Sleep(time.Millisecond)
-		requestID = generateUniqueID(userID, logQLRequests)
+		requestID = generateUniqueID(userID, queries)
 	}
 
 	// userID, requestID
@@ -106,7 +106,7 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(createdAt), int64(startTime), int64(endTime))
 	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
-		[]byte(rangeValue), []byte(strings.Join(logQLRequests, separator)))
+		[]byte(rangeValue), []byte(strings.Join(queries, separator)))
 
 	err := ds.indexClient.BatchWrite(ctx, writeBatch)
 	if err != nil {
