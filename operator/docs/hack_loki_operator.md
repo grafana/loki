@@ -198,13 +198,19 @@ Each tenant Secret is required to match:
 
 ## Development Add-Ons
 
-To help with testing and development, a [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) and [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) deployment are available. The example file has been configured to work with the [lokistack-gateway](./forwarding_logs_to_gateway.md). In order to work without this component, change the url to `distributor` and `query-frontend` respectively.
+To help with testing and development, a [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) and [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) deployment are available. The example file has been configured to work with the [lokistack-gateway](./forwarding_logs_to_gateway.md). In order to work without this component, change the URLs to use the `distributor` and `query-frontend` service respectively.
 
 In order to deploy these resources, follow the above steps to deploy the operator and instance. Then, do the following command:
 
 ```console
 kubectl apply -f ./hack/addons_dev.yaml
 ```
+
+### Notes
+
+[1] When using an OpenShift cluster, the `addons_ocp.yaml` should be used. In a native K8s cluster the `addons_dev.yaml` should be used. The OpenShift environment uses `SecurityContextConstraints` in order to limit or enable pod capabilities.
+
+[2] When deploying on a native K8s cluster, ensure that the namespaces of the `ServiceAccount` in the `ClusterRoleBinding` objects are changed accordingly.
 
 ## Basic Troubleshooting on Hacking on Loki Operator
 
