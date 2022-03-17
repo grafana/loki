@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -19,10 +20,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/wal"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
+	"github.com/grafana/loki/pkg/ingester"
+	"github.com/grafana/loki/pkg/util"
 	lokiutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/build"
 )
@@ -38,12 +45,40 @@ const (
 	LatencyLabel = "filename"
 	HostLabel    = "host"
 	ClientLabel  = "client"
+
+"io"
+"net/http"
+"sort"
+"strconv"
+"sync"
+"time"
+
+"github.com/go-kit/log"
+"github.com/go-kit/log/level"
+"github.com/grafana/dskit/backoff"
+"github.com/prometheus/client_golang/prometheus"
+"github.com/prometheus/common/config"
+"github.com/prometheus/common/model"
+"github.com/prometheus/prometheus/model/labels"
+"github.com/prometheus/prometheus/promql/parser"
+"github.com/prometheus/prometheus/tsdb/chunks"
+"github.com/prometheus/prometheus/tsdb/record"
+"github.com/prometheus/prometheus/tsdb/wal"
+
+"github.com/grafana/loki/clients/pkg/promtail/api"
+
+"github.com/grafana/loki/pkg/ingester"
+"github.com/grafana/loki/pkg/util"
+lokiutil "github.com/grafana/loki/pkg/util"
+"github.com/grafana/loki/pkg/util/build"
+)
 	TenantLabel  = "tenant"
 )
 
 var UserAgent = fmt.Sprintf("promtail/%s", build.Version)
 
 type Metrics struct {
+	registerer prometheus.Registerer
 	encodedBytes       *prometheus.CounterVec
 	sentBytes          *prometheus.CounterVec
 	droppedBytes       *prometheus.CounterVec
@@ -57,7 +92,9 @@ type Metrics struct {
 }
 
 func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
-	var m Metrics
+	m := Metrics{
+		registerer: reg,
+	}
 
 	m.encodedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
@@ -162,6 +199,8 @@ type client struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	maxStreams int
+
+	wal WAL
 }
 
 // Tripperware can wrap a roundtripper.
@@ -182,6 +221,11 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	// todo segment size?
+	wal, err := wal.NewSize(log.With(logger, "component", "wal"), metrics.registerer, cfg.WAL.Dir, wal.DefaultSegmentSize*4, false)
+	if err != nil {
+		return nil, fmt.Errorf("could not start WAL: %w", err)
+	}
 
 	c := &client{
 		logger:          log.With(logger, "component", "client", "host", cfg.URL.Host),
@@ -195,12 +239,14 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 		ctx:            ctx,
 		cancel:         cancel,
 		maxStreams:     maxStreams,
+
+		wal: wal,
 	}
 	if cfg.Name != "" {
 		c.name = cfg.Name
 	}
 
-	err := cfg.Client.Validate()
+	err = cfg.Client.Validate()
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +313,9 @@ func (c *client) run() {
 	for {
 		select {
 		case e, ok := <-c.entries:
+
+			c.appendEntryToWAL(e)
+
 			if !ok {
 				return
 			}
@@ -313,6 +362,32 @@ func (c *client) run() {
 			}
 		}
 	}
+}
+
+func (c *client) appendEntryToWAL(e api.Entry) error {
+	buf := make([]byte, 64)
+
+	r := &ingester.WALRecord{
+		Series:     make([]record.RefSeries, 0, 1),
+		RefEntries: make([]ingester.RefEntries, 0, 1),
+	}
+	r.Reset()
+
+	lbs := labels.FromMap(util.ModelLabelSetToMap(e.Labels))
+	sort.Sort(lbs)
+	var fp uint64
+	fp, buf = lbs.HashWithoutLabels(buf, []string(nil)...)
+	r.Series = []record.RefSeries{
+		{
+			Labels: lbs,
+			Ref:    chunks.HeadSeriesRef(fp),
+		},
+	}
+	// todo think about the counter.
+	r.AddEntries(fp, 0, e.Entry)
+	c.wal.Log(r)
+
+	return nil
 }
 
 func (c *client) Chan() chan<- api.Entry {
