@@ -267,7 +267,7 @@ func parseDeleteRequestTimestamps(rangeValue []byte, deleteRequest DeleteRequest
 }
 
 // An id is useful in managing delete requests
-func generateUniqueID(orgID string, logQLRequests []string) []byte {
+func generateUniqueID(orgID string, queries []string) []byte {
 	uniqueID := fnv.New32()
 	_, _ = uniqueID.Write([]byte(orgID))
 
