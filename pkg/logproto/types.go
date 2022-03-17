@@ -4,6 +4,8 @@ import (
 	fmt "fmt"
 	io "io"
 	"time"
+
+	"github.com/prometheus/common/model"
 )
 
 // Stream contains a unique labels set as a string and a set of entries for it.
@@ -462,4 +464,8 @@ func (m *Entry) Equal(that interface{}) bool {
 		return false
 	}
 	return true
+}
+
+func (c *ChunkRef) FingerprintModel() model.Fingerprint {
+	return model.Fingerprint(c.Fingerprint)
 }

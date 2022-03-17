@@ -26,7 +26,6 @@ type CacheGenNumLoader interface {
 type Store interface {
 	Put(ctx context.Context, chunks []Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error
-	Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error)
 	// GetChunkRefs returns the un-loaded chunks and the fetchers to be used to load them. You can load each slice of chunks ([]Chunk),
 	// using the corresponding Fetcher (fetchers[i].FetchChunks(ctx, chunks[i], ...)
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error)
@@ -34,11 +33,6 @@ type Store interface {
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
 	GetChunkFetcher(tm model.Time) *Fetcher
 
-	// DeleteChunk deletes a chunks index entry and then deletes the actual chunk from chunk storage.
-	// It takes care of chunks which are deleting partially by creating and inserting a new chunk first and then deleting the original chunk
-	DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error
-	// DeleteSeriesIDs is only relevant for SeriesStore.
-	DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error
 	Stop()
 }
 
@@ -83,8 +77,6 @@ func (c *CompositeStore) addSchema(storeCfg StoreConfig, schemaCfg SchemaConfig,
 	switch s := schema.(type) {
 	case SeriesStoreSchema:
 		store, err = newSeriesStore(storeCfg, schemaCfg, s, index, chunks, limits, chunksCache, writeDedupeCache)
-	case StoreSchema:
-		store, err = newStore(storeCfg, schemaCfg, s, index, chunks, limits, chunksCache)
 	default:
 		err = errors.New("invalid schema type")
 	}
@@ -111,19 +103,6 @@ func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, ch
 	return c.forStores(ctx, chunk.UserID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		return store.PutOne(innerCtx, from, through, chunk)
 	})
-}
-
-func (c compositeStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error) {
-	var results []Chunk
-	err := c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		chunks, err := store.Get(innerCtx, userID, from, through, matchers...)
-		if err != nil {
-			return err
-		}
-		results = append(results, chunks...)
-		return nil
-	})
-	return results, err
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
@@ -189,21 +168,6 @@ func (c compositeStore) GetChunkFetcher(tm model.Time) *Fetcher {
 	}
 
 	return nil
-}
-
-// DeleteSeriesIDs deletes series IDs from index in series store
-func (c CompositeStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
-	return c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		return store.DeleteSeriesIDs(innerCtx, from, through, userID, metric)
-	})
-}
-
-// DeleteChunk deletes a chunks index entry and then deletes the actual chunk from chunk storage.
-// It takes care of chunks which are deleting partially by creating and inserting a new chunk first and then deleting the original chunk
-func (c CompositeStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
-	return c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		return store.DeleteChunk(innerCtx, from, through, userID, chunkID, metric, partiallyDeletedInterval)
-	})
 }
 
 func (c compositeStore) Stop() {

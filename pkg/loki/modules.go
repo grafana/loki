@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
+	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
@@ -235,6 +236,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
 		t.Querier = querier.NewMultiTenantQuerier(q, util_log.Logger)
+		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	} else {
 		t.Querier = q
 	}

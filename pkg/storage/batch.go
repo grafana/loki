@@ -775,7 +775,7 @@ func loadFirstChunks(ctx context.Context, s chunk.SchemaConfig, chks map[model.F
 func partitionBySeriesChunks(chunks []*LazyChunk) map[model.Fingerprint][][]*LazyChunk {
 	chunksByFp := map[model.Fingerprint][]*LazyChunk{}
 	for _, c := range chunks {
-		fp := c.Chunk.Fingerprint
+		fp := c.Chunk.FingerprintModel()
 		chunksByFp[fp] = append(chunksByFp[fp], c)
 	}
 	result := make(map[model.Fingerprint][][]*LazyChunk, len(chunksByFp))

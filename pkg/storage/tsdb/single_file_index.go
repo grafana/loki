@@ -32,7 +32,7 @@ func (i *TSDBIndex) forSeries(
 	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
 	matchers ...*labels.Matcher,
 ) error {
-	p, err := PostingsForMatchers(i.reader, matchers...)
+	p, err := PostingsForMatchers(i.reader, shard, matchers...)
 	if err != nil {
 		return err
 	}
@@ -42,11 +42,11 @@ func (i *TSDBIndex) forSeries(
 	defer chunkMetasPool.Put(chks)
 
 	for p.Next() {
-		if err := i.reader.Series(p.At(), &ls, &chks); err != nil {
+		hash, err := i.reader.Series(p.At(), &ls, &chks)
+		if err != nil {
 			return err
 		}
 
-		hash := ls.Hash()
 		// skip series that belong to different shards
 		if shard != nil && !shard.Match(model.Fingerprint(hash)) {
 			continue
