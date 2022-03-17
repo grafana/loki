@@ -90,6 +90,21 @@ func getRangeInterval(expr syntax.SampleExpr) time.Duration {
 	return rangeInterval
 }
 
+// hasLabelExtractionStage returns true if an expression contains a stage for label extraction,
+// such as `| json` or `| logfmt`
+func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
+	found := false
+	expr.Walk(func(e interface{}) {
+		switch concrete := e.(type) {
+		case *syntax.LabelParserExpr:
+			if concrete.Op == syntax.OpParserTypeJSON || concrete.Op == syntax.OpParserTypeLogfmt {
+				found = true
+			}
+		}
+	})
+	return found
+}
+
 // splitDownstreams adds expression expr with a range interval 'interval' and offset 'offset'  to the downstreams list.
 // Returns the updated downstream ConcatSampleExpr.
 func (m RangeVectorMapper) splitDownstreams(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
@@ -177,6 +192,9 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregation
 	}
 
 	if isSplittableByRange(expr) {
+		if expr.Grouping == nil && hasLabelExtractionStage(expr) {
+			return expr
+		}
 		switch expr.Operation {
 		case syntax.OpRangeTypeBytes, syntax.OpRangeTypeCount, syntax.OpRangeTypeSum:
 			return &syntax.VectorAggregationExpr{

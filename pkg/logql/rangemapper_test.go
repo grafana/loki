@@ -89,6 +89,15 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			false,
 		},
 		{
+			`max_over_time({app="foo"} | json | unwrap bar [3m]) by (bar)`,
+			`max by (bar) (
+				downstream<max_over_time({app="foo"} | json | unwrap bar [1m] offset 2m0s) by (bar), shard=<nil>>
+				++ downstream<max_over_time({app="foo"} | json | unwrap bar [1m] offset 1m0s) by (bar), shard=<nil>>
+				++ downstream<max_over_time({app="foo"} | json | unwrap bar [1m]) by (bar), shard=<nil>>
+			)`,
+			false,
+		},
+		{
 			`max_over_time({app="foo"} | unwrap bar [3m]) by (baz)`,
 			`max by (baz) (
 				downstream<max_over_time({app="foo"} | unwrap bar [1m] offset 2m0s) by (baz), shard=<nil>>
@@ -833,6 +842,59 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 		{
 			`bytes_over_time({app="foo"}[1m])`,
 			`bytes_over_time({app="foo"}[1m])`,
+			true,
+		},
+
+		// should be noop if inner range aggregation includes a stage for label extraction such as `| json` or `| logfmt`
+		// because otherwise the downstream queries would result in too many series
+		{
+			`sum(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`sum(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			true,
+		},
+		{
+			`sum(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`sum(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			true,
+		},
+		{
+			`sum(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`sum(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			true,
+		},
+		{
+			`min(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`min(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			true,
+		},
+		{
+			`min(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`min(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			true,
+		},
+		{
+			`min(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`min(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			true,
+		},
+		{
+			`max(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`max(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			true,
+		},
+		{
+			`max(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`max(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			true,
+		},
+		{
+			`max(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`max(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			true,
+		},
+		{
+			`max_over_time({app="foo"} | json | unwrap bar [3m])`,
+			`max_over_time({app="foo"} | json | unwrap bar [3m])`,
 			true,
 		},
 	} {
