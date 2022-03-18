@@ -184,7 +184,7 @@
         max_concurrent: $._config.querier.concurrency,
         query_ingesters_within: '2h',  // twice the max-chunk age (1h default) for safety buffer
       } + (if $._config.querier.multi_tenant_queries_enabled != null then
-            { multi_tenant_queries_enabled: $._config.querier.multi_tenant_queries_enabled }
+             { multi_tenant_queries_enabled: $._config.querier.multi_tenant_queries_enabled }
            else {}),
       limits_config: {
         enforce_metric_name: false,
