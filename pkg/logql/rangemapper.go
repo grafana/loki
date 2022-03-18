@@ -110,18 +110,26 @@ func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 // Example:
 // rate({app="foo"}[2m])
 // => (sum without (count_over_time({app="foo"}[1m]) ++ count_over_time({app="foo"}[1m]) offset 1m) / 120)
-func (m RangeVectorMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, operation string, rangeInterval time.Duration) syntax.SampleExpr {
-	without := &syntax.Grouping{
-		Without: true,
-	}
-	downstreamExpr := &syntax.RangeAggregationExpr{
+func (m RangeVectorMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrideDownstream *syntax.VectorAggregationExpr, operation string, rangeInterval time.Duration) syntax.SampleExpr {
+	var downstreamExpr syntax.SampleExpr = &syntax.RangeAggregationExpr{
 		Left:      expr.Left,
 		Operation: operation,
 	}
+	// Optimization: in case overrideDownstream exists, the downstream expression can be optimized with the grouping
+	// and operation of the overrideDownstream expression in order to reduce the returned streams' label set.
+	if overrideDownstream != nil {
+		downstreamExpr = &syntax.VectorAggregationExpr{
+			Left:      downstreamExpr,
+			Grouping:  overrideDownstream.Grouping,
+			Operation: overrideDownstream.Operation,
+		}
+	}
 	return &syntax.BinOpExpr{
 		SampleExpr: &syntax.VectorAggregationExpr{
-			Left:      m.mapConcatSampleExpr(downstreamExpr, rangeInterval),
-			Grouping:  without,
+			Left: m.mapConcatSampleExpr(downstreamExpr, rangeInterval),
+			Grouping: &syntax.Grouping{
+				Without: true,
+			},
 			Operation: syntax.OpTypeSum,
 		},
 		RHS:  &syntax.LiteralExpr{Val: rangeInterval.Seconds()},
@@ -143,7 +151,6 @@ func (m RangeVectorMapper) splitDownstreams(downstreams *ConcatSampleExpr, expr 
 				concrete.Left.Offset += offset
 			}
 		}
-
 	})
 	downstreams = &ConcatSampleExpr{
 		DownstreamSampleExpr: DownstreamSampleExpr{
@@ -281,9 +288,9 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregation
 				Operation: syntax.OpTypeMin,
 			}
 		case syntax.OpRangeTypeRate:
-			return m.sumOverFullRange(expr, syntax.OpRangeTypeCount, rangeInterval)
+			return m.sumOverFullRange(expr, overrideDownstream, syntax.OpRangeTypeCount, rangeInterval)
 		case syntax.OpRangeTypeBytesRate:
-			return m.sumOverFullRange(expr, syntax.OpRangeTypeBytes, rangeInterval)
+			return m.sumOverFullRange(expr, overrideDownstream, syntax.OpRangeTypeBytes, rangeInterval)
 		default:
 			// this should not be reachable. If an operation is splittable it should
 			// have an optimization listed

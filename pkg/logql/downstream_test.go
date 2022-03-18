@@ -137,6 +137,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`sum(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`sum(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`sum(rate({a=~".+"}[2s]))`, time.Second},
+		{`sum(bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// sum by
 		{`sum by (a) (bytes_over_time({a=~".+"}[2s]))`, time.Second},
@@ -146,6 +148,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`sum by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`sum by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`sum by (a) (rate({a=~".+"}[2s]))`, time.Second},
+		{`sum by (a) (bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// count
 		{`count(bytes_over_time({a=~".+"}[2s]))`, time.Second},
@@ -155,6 +159,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`count(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`count(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`count(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`count(rate({a=~".+"}[2s]))`, time.Second},
+		{`count(bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// count by
 		{`count by (a) (bytes_over_time({a=~".+"}[2s]))`, time.Second},
@@ -164,6 +170,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`count by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`count by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`count by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`count by (a) (rate({a=~".+"}[2s]))`, time.Second},
+		{`count by (a) (bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// max
 		{`max(bytes_over_time({a=~".+"}[2s]))`, time.Second},
@@ -173,6 +181,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`max(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`max(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`max(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`max(rate({a=~".+"}[2s]))`, time.Second},
+		{`max(bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// max by
 		{`max by (a) (bytes_over_time({a=~".+"}[2s]))`, time.Second},
@@ -182,6 +192,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`max by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`max by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`max by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`max by (a) (rate({a=~".+"}[2s]))`, time.Second},
+		{`max by (a) (bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// min
 		{`min(bytes_over_time({a=~".+"}[2s]))`, time.Second},
@@ -191,6 +203,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`min(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`min(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
+		{`min(rate({a=~".+"}[2s]))`, time.Second},
+		{`min(bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// min by
 		{`min by (a) (bytes_over_time({a=~".+"}[2s]))`, time.Second},
@@ -200,9 +214,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`min by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`min by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-
-		{`sum by (b) (rate({a=~".+"}[2s]))`, time.Second},
-		{`sum by (b) (bytes_rate({a=~".+"}[2s]))`, time.Second},
+		{`min by (a) (rate({a=~".+"}[2s]))`, time.Second},
+		{`min by (a) (bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// Binary operations
 		{`bytes_over_time({a=~".+"}[3s]) + count_over_time({a=~".+"}[5s])`, time.Second},
@@ -211,7 +224,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		// Multi vector aggregator layer queries
 		{`sum(max(bytes_over_time({a=~".+"}[3s])))`, time.Second},
 
-		// Non-splittable vector aggregators - TODO: Fix
+		// Non-splittable vector aggregators
+		// TODO: Fix topk
 		//{`topk(2, count_over_time({a=~".+"}[2s]))`, time.Second},
 		{`avg(count_over_time({a=~".+"}[2s]))`, time.Second},
 
@@ -591,6 +605,82 @@ func TestRangeMappingEquivalenceMockMapper(t *testing.T) {
 					Without: false,
 				},
 				Operation: syntax.OpTypeMin,
+			},
+		},
+
+		{
+			`sum by (a) (rate({a=~".+"}[2s]))`,
+			&syntax.VectorAggregationExpr{
+				Left: &syntax.VectorAggregationExpr{
+					Left: &syntax.BinOpExpr{
+						SampleExpr: &syntax.VectorAggregationExpr{
+							Left: &ConcatSampleExpr{
+								DownstreamSampleExpr: DownstreamSampleExpr{
+									SampleExpr: &syntax.VectorAggregationExpr{
+										Left: &syntax.RangeAggregationExpr{
+											Left: &syntax.LogRange{
+												Left: &syntax.MatchersExpr{
+													Mts: []*labels.Matcher{labelMatcher},
+												},
+												Interval: time.Second,
+												Offset:   time.Second,
+												Unwrap:   nil,
+											},
+											Operation: syntax.OpRangeTypeCount,
+											Grouping:  nil,
+										},
+										Grouping: &syntax.Grouping{
+											Groups:  []string{"a"},
+											Without: false,
+										},
+										Params:    0,
+										Operation: syntax.OpTypeSum,
+									},
+								},
+								next: &ConcatSampleExpr{
+									DownstreamSampleExpr: DownstreamSampleExpr{
+										SampleExpr: &syntax.VectorAggregationExpr{
+											Left: &syntax.RangeAggregationExpr{
+												Left: &syntax.LogRange{
+													Left: &syntax.MatchersExpr{
+														Mts: []*labels.Matcher{labelMatcher},
+													},
+													Interval: time.Second,
+													Offset:   0,
+													Unwrap:   nil,
+												},
+												Operation: syntax.OpRangeTypeCount,
+												Grouping:  nil,
+											},
+											Grouping: &syntax.Grouping{
+												Groups:  []string{"a"},
+												Without: false,
+											},
+											Params:    0,
+											Operation: syntax.OpTypeSum,
+										},
+									},
+									next: nil,
+								},
+							},
+							Grouping: &syntax.Grouping{
+								Without: true,
+							},
+							Operation: syntax.OpTypeSum,
+						},
+						RHS:  &syntax.LiteralExpr{Val: (2 * time.Second).Seconds()},
+						Op:   syntax.OpTypeDiv,
+						Opts: &syntax.BinOpOptions{},
+					},
+					Grouping: &syntax.Grouping{
+						Without: true,
+					},
+				},
+				Grouping: &syntax.Grouping{
+					Groups:  []string{"a"},
+					Without: false,
+				},
+				Operation: syntax.OpTypeSum,
 			},
 		},
 	} {
