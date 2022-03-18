@@ -490,7 +490,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(UsageReport, t.initUsageReport)
-	mm.RegisterModule(CacheGenNumberLoader, t.initCacheGenNumberLoader)
+	mm.RegisterModule(CacheGenNumberLoader, t.initCacheGenNumberLoader, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
