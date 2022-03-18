@@ -282,4 +282,3 @@ func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 		require.Equal(t, a, b)
 	}
 }
-
