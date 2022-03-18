@@ -52,7 +52,7 @@ func BenchmarkQuery_PostingsForMatchers(b *testing.B) {
 		}
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				p, _ := tsdb.PostingsForMatchers(reader, bm.matchers...)
+				p, _ := tsdb.PostingsForMatchers(reader, nil, bm.matchers...)
 
 				for p.Next() {
 				}
@@ -76,8 +76,10 @@ func BenchmarkQuery_GetChunkRefs(b *testing.B) {
 		}
 		idx := tsdb.NewTSDBIndex(reader)
 		b.Run(bm.name, func(b *testing.B) {
+			refs := tsdb.ChunkRefsPool.Get()
 			for i := 0; i < b.N; i++ {
-				_, err := idx.GetChunkRefs(context.Background(), "fake", 0, math.MaxInt64, nil, bm.matchers...)
+				var err error
+				refs, err = idx.GetChunkRefs(context.Background(), "fake", 0, math.MaxInt64, refs, nil, bm.matchers...)
 				if err != nil {
 					panic(err)
 				}
@@ -101,14 +103,16 @@ func BenchmarkQuery_GetChunkRefsSharded(b *testing.B) {
 		shardFactor := 16
 
 		b.Run(bm.name, func(b *testing.B) {
+			refs := tsdb.ChunkRefsPool.Get()
 			for i := 0; i < b.N; i++ {
 				for j := 0; j < shardFactor; j++ {
 					shard := index.ShardAnnotation{
 						Shard: uint32(j),
 						Of:    uint32(shardFactor),
 					}
+					var err error
 
-					_, err := idx.GetChunkRefs(context.Background(), "fake", 0, math.MaxInt64, &shard, bm.matchers...)
+					refs, err = idx.GetChunkRefs(context.Background(), "fake", 0, math.MaxInt64, refs, &shard, bm.matchers...)
 					if err != nil {
 						panic(err)
 					}

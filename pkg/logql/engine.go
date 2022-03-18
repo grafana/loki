@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (
@@ -243,12 +244,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return q.evalLiteral(ctx, lit)
 	}
 
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	expr, err = optimizeSampleExpr(expr)
+	expr, err := optimizeSampleExpr(expr)
 	if err != nil {
 		return nil, err
 	}
@@ -259,8 +255,12 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
 	seriesIndex := map[uint64]*promql.Series{}
-	maxSeries := q.limits.MaxQuerySeries(userID)
 
 	next, ts, vec := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {

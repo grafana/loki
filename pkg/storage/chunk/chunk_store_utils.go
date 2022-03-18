@@ -61,12 +61,12 @@ func filterChunksByUniqueFingerprint(s SchemaConfig, chunks []Chunk) ([]Chunk, [
 	uniqueFp := map[model.Fingerprint]struct{}{}
 
 	for _, chunk := range chunks {
-		if _, ok := uniqueFp[chunk.Fingerprint]; ok {
+		if _, ok := uniqueFp[chunk.FingerprintModel()]; ok {
 			continue
 		}
 		filtered = append(filtered, chunk)
 		keys = append(keys, s.ExternalKey(chunk))
-		uniqueFp[chunk.Fingerprint] = struct{}{}
+		uniqueFp[chunk.FingerprintModel()] = struct{}{}
 	}
 	return filtered, keys
 }

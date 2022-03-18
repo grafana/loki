@@ -478,10 +478,10 @@ func (cfg SchemaConfig) legacyExternalKey(chunk Chunk) string {
 // post-checksum
 func (cfg SchemaConfig) newExternalKey(chunk Chunk) string {
 	// This is the inverse of chunk.parseNewExternalKey.
-	return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+	return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, chunk.Fingerprint, int64(chunk.From), int64(chunk.Through), chunk.Checksum)
 }
 
 // v12+
 func (cfg SchemaConfig) newerExternalKey(chunk Chunk) string {
-	return fmt.Sprintf("%s/%x/%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+	return fmt.Sprintf("%s/%x/%x:%x:%x", chunk.UserID, chunk.Fingerprint, int64(chunk.From), int64(chunk.Through), chunk.Checksum)
 }
