@@ -48,12 +48,32 @@ We will backport the patch to v15.1.0 and v16.0.0 as the feature exists there, b
 
 _How do we define backportable bugfixes?_ We've tried to come up with a clean definition, but it's quite a difficult thing to define; one exception here is security-related bugfixes, which should always be backported if relevant. We will use our best judgment, and contributors who submit bugfixes can of course motivate for their PRs to be backported.
 
+## Pre-releases
+
+We produce weekly container images available at https://hub.docker.com/r/grafana/loki/tags?page=1&name=k. We number these
+releases using the number of weeks since we began producing these releases.
+
+At the time of writing we are 89 weeks in, so the version is `k89`, and the latest image is `k89-d320873`.
+`d320873` is the commit SHA that the image was built from, in a branch of the same name as the version:
+https://github.com/grafana/loki/tree/k89.
+
+Every week on a Monday morning, we have a CI job which "cuts" a new release by forking the tip of `main` into a new `kXX` branch.
+This branch is not updated unless we find any issues with this image, in which case we will patch the release. Each time
+we patch a release, we update the `kXX` branch, and subsequently a new image will be built with a _new commit SHA but
+the same version_.
+
+**When we publish a release, we take the latest `kXX` build which has proven stable and base a release off of that.**
+
+As such, you can consider these weekly releases as "pre-release" quality, however please note that these images have no
+stability guarantees right now. Their use is discouraged in production systems; you should only use the latest stable release
+in production.
+
 ## Appendix
 
 ### Historical Effective Release Cadence
 
 | Release Date | Version | Type  | Delta        |
-| ------------ | ------- | ----- | ------------ |
+|--------------|---------|-------|--------------|
 | 12-01-2022   | 2.4.2   | patch | *+ 6 weeks*  |
 | 08-11-2021   | 2.4.1   | patch | *+ 2 days*   |
 | 06-11-2021   | 2.4.0   | minor | *+ 3 months* |
