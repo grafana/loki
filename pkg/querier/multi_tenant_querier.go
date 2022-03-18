@@ -76,50 +76,68 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	return iter.NewSortSampleIterator(iters), nil
 }
 
-// TenantEntry Iterator wraps an entry iterator and adds the tenant label.
-type TenantEntryIterator struct {
-	iter.EntryIterator
+type relabel struct {
 	tenantID string
+	cache    map[string]labels.Labels
 }
 
-func NewTenantEntryIterator(iter iter.EntryIterator, id string) *TenantEntryIterator {
-	return &TenantEntryIterator{EntryIterator: iter, tenantID: id}
-}
+func (r relabel) relabel(original string) string {
+	lbls, ok := r.cache[original]
+	if ok {
+		return lbls.String()
+	}
 
-func (i *TenantEntryIterator) Labels() string {
-	// TODO: cache manipulated labels and add a benchmark.
-	lbls, _ := syntax.ParseLabels(i.EntryIterator.Labels())
+	lbls, _ = syntax.ParseLabels(original)
 	builder := labels.NewBuilder(lbls.WithoutLabels(defaultTenantLabel))
 
 	// Prefix label if it conflicts with the tenant label.
 	if lbls.Has(defaultTenantLabel) {
 		builder.Set(retainExistingPrefix+defaultTenantLabel, lbls.Get(defaultTenantLabel))
 	}
-	builder.Set(defaultTenantLabel, i.tenantID)
+	builder.Set(defaultTenantLabel, r.tenantID)
 
-	return builder.Labels().String()
+	lbls = builder.Labels()
+	r.cache[original] = lbls
+	return lbls.String()
+}
+
+// TenantEntry Iterator wraps an entry iterator and adds the tenant label.
+type TenantEntryIterator struct {
+	iter.EntryIterator
+	relabel
+}
+
+func NewTenantEntryIterator(iter iter.EntryIterator, id string) *TenantEntryIterator {
+	return &TenantEntryIterator{
+		EntryIterator: iter,
+		relabel: relabel{
+			tenantID: id,
+			cache:    map[string]labels.Labels{},
+		},
+	}
+}
+
+func (i *TenantEntryIterator) Labels() string {
+	return i.relabel.relabel(i.EntryIterator.Labels())
 }
 
 // TenantEntry Iterator wraps a sample iterator and adds the tenant label.
 type TenantSampleIterator struct {
 	iter.SampleIterator
-	tenantID string
+	relabel
 }
 
 func NewTenantSampleIterator(iter iter.SampleIterator, id string) *TenantSampleIterator {
-	return &TenantSampleIterator{SampleIterator: iter, tenantID: id}
+	return &TenantSampleIterator{
+		SampleIterator: iter,
+		relabel: relabel{
+			tenantID: id,
+			cache:    map[string]labels.Labels{},
+		},
+	}
+
 }
 
 func (i *TenantSampleIterator) Labels() string {
-	// TODO: cache manipulated labels
-	lbls, _ := syntax.ParseLabels(i.SampleIterator.Labels())
-	builder := labels.NewBuilder(lbls.WithoutLabels(defaultTenantLabel))
-
-	// Prefix label if it conflicts with the tenant label.
-	if lbls.Has(defaultTenantLabel) {
-		builder.Set(retainExistingPrefix+defaultTenantLabel, lbls.Get(defaultTenantLabel))
-	}
-	builder.Set(defaultTenantLabel, i.tenantID)
-
-	return builder.Labels().String()
+	return i.relabel.relabel(i.SampleIterator.Labels())
 }
