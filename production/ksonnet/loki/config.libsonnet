@@ -47,6 +47,7 @@
       // A higher value will lead to a querier trying to process more requests than there are available
       // cores and will result in scheduling delays.
       concurrency: 4,
+      multi_tenant_queries_enabled: null,
     },
 
     queryFrontend: {
@@ -182,7 +183,9 @@
       querier: {
         max_concurrent: $._config.querier.concurrency,
         query_ingesters_within: '2h',  // twice the max-chunk age (1h default) for safety buffer
-      },
+      } + (if $._config.querier.multi_tenant_queries_enabled != null then
+            { multi_tenant_queries_enabled: $._config.querier.multi_tenant_queries_enabled }
+           else {}),
       limits_config: {
         enforce_metric_name: false,
         // align middleware parallelism with shard factor to optimize one-legged sharded queries.
