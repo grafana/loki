@@ -6,9 +6,9 @@ weight: 10
 
 After you [install and run Grafana Loki](../../installation/local/), you probably want to get logs from other applications into it.
 
-To get application logs into Loki, you need to edit the [Promtail](../../clients/promtail) configuration file.
+To get application logs into Loki, you need to edit the [Promtail](../clients/promtail) configuration file.
 
-Detailed information about configuring Promtail is available in [Promtail configuration](../../clients/promtail/configuration/).
+Detailed information about configuring Promtail is available in [Promtail configuration](../clients/promtail/configuration.md).
 
 The following instructions should help you get started.
 
