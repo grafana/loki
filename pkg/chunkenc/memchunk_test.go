@@ -59,7 +59,7 @@ func TestBlocksInclusive(t *testing.T) {
 	chk := NewMemChunk(EncNone, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
 	err := chk.Append(logprotoEntry(1, "1"))
 	require.Nil(t, err)
-	err = chk.cut()
+	err = chk.Cut()
 	require.Nil(t, err)
 
 	blocks := chk.Blocks(time.Unix(0, 1), time.Unix(0, 1))
@@ -128,7 +128,7 @@ func TestBlock(t *testing.T) {
 			for _, c := range cases {
 				require.NoError(t, chk.Append(logprotoEntry(c.ts, c.str)))
 				if c.cut {
-					require.NoError(t, chk.cut())
+					require.NoError(t, chk.Cut())
 				}
 			}
 
@@ -461,7 +461,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 		"append out of order in a new block right after cutting the previous one": func(t *testing.T, chk *MemChunk) {
 			assert.NoError(t, chk.Append(logprotoEntry(5, "test")))
 			assert.NoError(t, chk.Append(logprotoEntry(6, "test")))
-			assert.NoError(t, chk.cut())
+			assert.NoError(t, chk.Cut())
 
 			if chk.headFmt == OrderedHeadBlockFmt {
 				assert.EqualError(t, chk.Append(logprotoEntry(1, "test")), ErrOutOfOrder.Error())
@@ -471,10 +471,10 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 		},
 		"append out of order in a new block after multiple cuts": func(t *testing.T, chk *MemChunk) {
 			assert.NoError(t, chk.Append(logprotoEntry(5, "test")))
-			assert.NoError(t, chk.cut())
+			assert.NoError(t, chk.Cut())
 
 			assert.NoError(t, chk.Append(logprotoEntry(6, "test")))
-			assert.NoError(t, chk.cut())
+			assert.NoError(t, chk.Cut())
 
 			if chk.headFmt == OrderedHeadBlockFmt {
 				assert.EqualError(t, chk.Append(logprotoEntry(1, "test")), ErrOutOfOrder.Error())
@@ -909,7 +909,7 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 				require.NoError(t, it.Close())
 
 				// testing chunk blocks
-				require.NoError(t, c.cut())
+				require.NoError(t, c.Cut())
 				it, err = c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, noopStreamPipeline)
 				require.NoError(t, err)
 				for i := range tt.expect {
@@ -970,7 +970,7 @@ func TestCheckpointEncoding(t *testing.T) {
 			}
 
 			// cut it
-			require.Nil(t, c.cut())
+			require.Nil(t, c.Cut())
 
 			// add a few more to head
 			for i := 5; i < 10; i++ {
@@ -1133,7 +1133,7 @@ func Test_HeadIteratorReverse(t *testing.T) {
 
 			assertOrder(t, i)
 			// let's try again without the headblock.
-			require.NoError(t, c.cut())
+			require.NoError(t, c.Cut())
 			assertOrder(t, i)
 		})
 	}

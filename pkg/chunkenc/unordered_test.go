@@ -345,7 +345,7 @@ func TestUnorderedChunkIterators(t *testing.T) {
 
 		// ensure we have a mix of cut blocks + head block.
 		if i%30 == 0 {
-			require.Nil(t, c.cut())
+			require.Nil(t, c.Cut())
 		}
 	}
 
@@ -580,7 +580,7 @@ func TestReorderAcrossBlocks(t *testing.T) {
 				Line:      fmt.Sprint(x),
 			}))
 		}
-		require.Nil(t, c.cut())
+		require.Nil(t, c.Cut())
 	}
 	// get bounds before it's reordered
 	from, to := c.Bounds()

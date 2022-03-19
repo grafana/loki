@@ -286,7 +286,10 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 		} else {
 			shouldFlush := time.Since(chunk.lastUpdated) > i.cfg.MaxBlockIdle && chunk.chunk.HeadSize() >= i.cfg.MinBlockIdleSize
 			if shouldFlush {
-				chunk.chunk.Cut()
+				err := chunk.chunk.Cut()
+				if err != nil {
+					level.Debug(util_log.Logger).Log("msg", "block was not cut due to error")
+				}
 			}
 		}
 	}
