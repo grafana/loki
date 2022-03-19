@@ -266,8 +266,10 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	defer stream.chunkMtx.Unlock()
 
 	var result []*chunkDesc
+	var chunk *chunkDesc
 	for j := range stream.chunks {
-		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j])
+		chunk = &stream.chunks[j]
+		shouldFlush, reason := i.shouldFlushChunk(chunk)
 		if immediate || shouldFlush {
 			// Ensure no more writes happen to this chunk.
 			if !stream.chunks[j].closed {
@@ -275,11 +277,16 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 			}
 			// Flush this chunk if it hasn't already been successfully flushed.
 			if stream.chunks[j].flushed.IsZero() {
-				result = append(result, &stream.chunks[j])
+				result = append(result, chunk)
 				if immediate {
 					reason = flushReasonForced
 				}
 				chunksFlushedPerReason.WithLabelValues(reason).Add(1)
+			}
+		} else {
+			shouldFlush := time.Since(chunk.lastUpdated) > i.cfg.MaxBlockIdle && chunk.chunk.HeadSize() >= i.cfg.MinBlockIdleSize
+			if shouldFlush {
+				chunk.chunk.Cut()
 			}
 		}
 	}

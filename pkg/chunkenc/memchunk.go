@@ -646,6 +646,10 @@ func (c *MemChunk) UncompressedSize() int {
 	return size
 }
 
+func (c *MemChunk) HeadSize() int {
+	return c.head.UncompressedSize()
+}
+
 // CompressedSize implements Chunk.
 func (c *MemChunk) CompressedSize() int {
 	size := 0
@@ -679,7 +683,7 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 	}
 
 	if c.head.UncompressedSize() >= c.blockSize {
-		return c.cut()
+		return c.Cut()
 	}
 
 	return nil
@@ -688,7 +692,7 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 // Close implements Chunk.
 // TODO: Fix this to check edge cases.
 func (c *MemChunk) Close() error {
-	if err := c.cut(); err != nil {
+	if err := c.Cut(); err != nil {
 		return err
 	}
 	return c.reorder()
@@ -735,7 +739,7 @@ func (c *MemChunk) ConvertHead(desired HeadBlockFmt) error {
 }
 
 // cut a new block and add it to finished blocks.
-func (c *MemChunk) cut() error {
+func (c *MemChunk) Cut() error {
 	if c.head.IsEmpty() {
 		return nil
 	}

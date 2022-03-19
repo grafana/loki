@@ -71,6 +71,8 @@ type Config struct {
 	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
 	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
 	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
+	MaxBlockIdle        time.Duration     `yaml:"block_idle_period"`
+	MinBlockIdleSize    int               `yaml:"block_idle_size"`
 	BlockSize           int               `yaml:"chunk_block_size"`
 	TargetChunkSize     int               `yaml:"chunk_target_size"`
 	ChunkEncoding       string            `yaml:"chunk_encoding"`
@@ -112,6 +114,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
+	f.DurationVar(&cfg.MaxBlockIdle, "ingester.block-idle-period", 1*time.Hour, "")
+	f.IntVar(&cfg.MinBlockIdleSize, "ingester.block-idle-size", 128*1024, "")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "") // 1.5 MB
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
