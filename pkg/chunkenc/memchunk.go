@@ -10,6 +10,7 @@ import (
 	"hash/crc32"
 	"io"
 	"reflect"
+	"runtime"
 	"time"
 	"unsafe"
 
@@ -104,7 +105,7 @@ type MemChunk struct {
 	targetSize int
 
 	// The finished blocks.
-	blocks []block
+	blocks []*block
 	// The compressed size of all the blocks
 	cutBlockSize int
 
@@ -335,7 +336,7 @@ func NewMemChunk(enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *Me
 	return &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
-		blocks:     []block{},
+		blocks:     []*block{},
 
 		format: DefaultChunkFormat,
 		head:   head.NewBlock(),
@@ -388,10 +389,10 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 
 	// Read the number of blocks.
 	num := db.uvarint()
-	bc.blocks = make([]block, 0, num)
+	bc.blocks = make([]*block, 0, num)
 
 	for i := 0; i < num; i++ {
-		var blk block
+		blk := &block{}
 		// Read #entries.
 		blk.numEntries = db.uvarint()
 
@@ -734,27 +735,41 @@ func (c *MemChunk) ConvertHead(desired HeadBlockFmt) error {
 	return nil
 }
 
+func finalizeBlock(b *block) {
+	MmapFree(b.b)
+}
+
 // cut a new block and add it to finished blocks.
 func (c *MemChunk) cut() error {
 	if c.head.IsEmpty() {
 		return nil
 	}
 
-	b, err := c.head.Serialise(getWriterPool(c.encoding))
+	buffer, err := c.head.Serialise(getWriterPool(c.encoding))
 	if err != nil {
 		return err
 	}
 
+	buffer2, err := MmapAlloc(len(buffer))
+	if err != nil {
+		return err
+	}
+	copy(buffer, buffer2)
+
 	mint, maxt := c.head.Bounds()
-	c.blocks = append(c.blocks, block{
-		b:                b,
+	blk := &block{
+		b:                buffer2,
 		numEntries:       c.head.Entries(),
 		mint:             mint,
 		maxt:             maxt,
 		uncompressedSize: c.head.UncompressedSize(),
-	})
+	}
 
-	c.cutBlockSize += len(b)
+	runtime.SetFinalizer(blk, finalizeBlock)
+
+	c.blocks = append(c.blocks, blk)
+
+	c.cutBlockSize += len(buffer)
 
 	c.head.Reset()
 	return nil
@@ -953,7 +968,7 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 // chances of chunk<>block encoding drift in the codebase as the latter is parameterized by the former.
 type encBlock struct {
 	enc Encoding
-	block
+	*block
 }
 
 func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator {
