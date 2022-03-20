@@ -754,7 +754,7 @@ func (c *MemChunk) cut() error {
 	if err != nil {
 		return err
 	}
-	copy(buffer, buffer2)
+	copy(buffer2, buffer)
 
 	mint, maxt := c.head.Bounds()
 	blk := &block{
