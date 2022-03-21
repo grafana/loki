@@ -63,6 +63,7 @@ ingester:
   chunk_idle_period: 1h
   chunk_retain_period: 5m
   chunk_target_size: 2097152
+  max_chunk_age: 2h
   lifecycler:
     final_sleep: 0s
     heartbeat_period: 5s
@@ -130,9 +131,10 @@ querier:
     max_look_back_period: 30s
     timeout: 3m
   extra_query_delay: 0s
-  query_ingesters_within: 2h
+  query_ingesters_within: 3h
   query_timeout: 1m
   tail_max_duration: 1h
+  max_concurrent: 10
 query_range:
   align_queries_with_step: true
   cache_results: true
