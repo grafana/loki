@@ -15,7 +15,7 @@ import (
 
 const (
 	// sep defines the character used to separate the components of the cache key.
-	sep = "/"
+	sep = ":"
 )
 
 // CacheableIndex is an implementation of the TSDB index that cache calls to all operations.
