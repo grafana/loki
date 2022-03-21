@@ -69,7 +69,7 @@ func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg Sto
 	return newTestChunkStoreConfigWithMockStorage(t, schemaCfg, schema, storeCfg), schemaCfg
 }
 
-func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg SchemaConfig, schema BaseSchema, storeCfg StoreConfig) Store {
+func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg SchemaConfig, schema SeriesStoreSchema, storeCfg StoreConfig) Store {
 	var tbmConfig TableManagerConfig
 	err := schemaCfg.Validate()
 	require.NoError(t, err)
@@ -95,7 +95,7 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg Schema
 	require.NoError(t, err)
 
 	store := NewCompositeStore(nil)
-	err = store.addSchema(storeCfg, schemaCfg, schema, schemaCfg.Configs[0].From.Time, storage, storage, overrides, chunksCache, writeDedupeCache)
+	err = store.addSchema(storeCfg, schemaCfg.Configs[0], schema, schemaCfg.Configs[0].From.Time, storage, storage, overrides, chunksCache, writeDedupeCache)
 	require.NoError(t, err)
 	return store
 }
@@ -701,7 +701,6 @@ func TestChunkStoreError(t *testing.T) {
 func benchmarkParseIndexEntries(i int64, regex string, b *testing.B) {
 	b.ReportAllocs()
 	b.StopTimer()
-	store := &baseStore{}
 	ctx := context.Background()
 	entries := generateIndexEntries(i)
 	matcher, err := labels.NewMatcher(labels.MatchRegexp, "", regex)
@@ -710,7 +709,7 @@ func benchmarkParseIndexEntries(i int64, regex string, b *testing.B) {
 	}
 	b.StartTimer()
 	for n := 0; n < b.N; n++ {
-		keys, err := store.parseIndexEntries(ctx, entries, matcher)
+		keys, err := parseIndexEntries(ctx, entries, matcher)
 		if err != nil {
 			b.Fatal(err)
 		}

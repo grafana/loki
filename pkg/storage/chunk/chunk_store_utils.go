@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -36,6 +37,17 @@ const chunkDecodeParallelism = 16
 
 func filterChunksByTime(from, through model.Time, chunks []Chunk) []Chunk {
 	filtered := make([]Chunk, 0, len(chunks))
+	for _, chunk := range chunks {
+		if chunk.Through < from || through < chunk.From {
+			continue
+		}
+		filtered = append(filtered, chunk)
+	}
+	return filtered
+}
+
+func filterChunkRefsByTime(from, through model.Time, chunks []logproto.ChunkRef) []logproto.ChunkRef {
+	filtered := make([]logproto.ChunkRef, 0, len(chunks))
 	for _, chunk := range chunks {
 		if chunk.Through < from || through < chunk.From {
 			continue

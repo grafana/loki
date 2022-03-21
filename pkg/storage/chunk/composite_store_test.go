@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
 
 	"github.com/prometheus/common/model"
@@ -29,6 +30,10 @@ func (m mockStore) LabelValuesForMetricName(ctx context.Context, userID string, 
 
 func (m mockStore) GetChunkRefs(tx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
 	return nil, nil, nil
+}
+
+func (m mockStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
+	return nil, nil
 }
 
 func (m mockStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {

@@ -26,7 +26,7 @@ func (a ByHashRangeKey) Less(i, j int) bool {
 
 const table = "table"
 
-func mustMakeSchema(schemaName string) BaseSchema {
+func mustMakeSchema(schemaName string) SeriesStoreSchema {
 	s, err := PeriodConfig{
 		Schema:      schemaName,
 		IndexTables: PeriodicTableConfig{Prefix: table},

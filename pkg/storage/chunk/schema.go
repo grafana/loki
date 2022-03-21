@@ -44,18 +44,13 @@ type hasChunksForIntervalFunc func(userID, seriesID string, from, through model.
 // Schema interfaces define methods to calculate the hash and range keys needed
 // to write or read chunks from the external index.
 
-// BasicSchema has operation shared between StoreSchema and SeriesStoreSchema
-type BaseSchema interface {
+// SeriesStoreSchema is a schema used by seriesStore
+type SeriesStoreSchema interface {
 	// When doing a read, use these methods to return the list of entries you should query
 	GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error)
 	GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error)
 	GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error)
 	FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery
-}
-
-// SeriesStoreSchema is a schema used by seriesStore
-type SeriesStoreSchema interface {
-	BaseSchema
 
 	// returns cache key string and []IndexEntry per bucket, matched in order
 	GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]string, [][]IndexEntry, error)
@@ -65,12 +60,6 @@ type SeriesStoreSchema interface {
 	GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
 	// Returns queries to retrieve all label names of multiple series by id.
 	GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
-
-	// GetSeriesDeleteEntries returns IndexEntry's for deleting SeriesIDs from SeriesStore.
-	// Since SeriesIDs are created per bucket, it makes sure that we don't include series entries which are in use by verifying using hasChunksForIntervalFunc i.e
-	// It checks first and last buckets covered by the time interval to see if a SeriesID still has chunks in the store,
-	// if yes then it doesn't include IndexEntry's for that bucket for deletion.
-	GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error)
 }
 
 // IndexQuery describes a query for entries

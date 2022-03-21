@@ -177,7 +177,7 @@ func validateChunks(cfg PeriodConfig) error {
 }
 
 // CreateSchema returns the schema defined by the PeriodConfig
-func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
+func (cfg PeriodConfig) CreateSchema() (SeriesStoreSchema, error) {
 	buckets, bucketsPeriod := cfg.dailyBuckets, 24*time.Hour
 
 	// Ensure the tables period is a multiple of the bucket period

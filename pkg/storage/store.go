@@ -244,6 +244,10 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 }
 
 func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var from, through model.Time
 	var matchers []*labels.Matcher
 
@@ -267,75 +271,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 			return nil, err
 		}
 	}
-
-	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
-	if err != nil {
-		return nil, err
-	}
-
-	// group chunks by series
-	chunksBySeries := partitionBySeriesChunks(lazyChunks)
-
-	firstChunksPerSeries := make([]*LazyChunk, 0, len(chunksBySeries))
-
-	// discard all but one chunk per series
-	for _, chks := range chunksBySeries {
-		firstChunksPerSeries = append(firstChunksPerSeries, chks[0][0])
-	}
-
-	results := make(logproto.SeriesIdentifiers, 0, len(firstChunksPerSeries))
-
-	// bound concurrency
-	groups := make([][]*LazyChunk, 0, len(firstChunksPerSeries)/s.cfg.MaxChunkBatchSize+1)
-
-	split := s.cfg.MaxChunkBatchSize
-	if len(firstChunksPerSeries) < split {
-		split = len(firstChunksPerSeries)
-	}
-
-	var chunkFilterer ChunkFilterer
-	if s.chunkFilterer != nil {
-		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
-	}
-
-	for split > 0 {
-		groups = append(groups, firstChunksPerSeries[:split])
-		firstChunksPerSeries = firstChunksPerSeries[split:]
-		if len(firstChunksPerSeries) < split {
-			split = len(firstChunksPerSeries)
-		}
-	}
-
-	for _, group := range groups {
-		err = fetchLazyChunks(ctx, s.schemaCfg.SchemaConfig, group)
-		if err != nil {
-			return nil, err
-		}
-
-	outer:
-		for _, chk := range group {
-			for _, matcher := range matchers {
-				if matcher.Name == astmapper.ShardLabel || matcher.Name == labels.MetricName {
-					continue
-				}
-				if !matcher.Matches(chk.Chunk.Metric.Get(matcher.Name)) {
-					continue outer
-				}
-			}
-
-			if chunkFilterer != nil && chunkFilterer.ShouldFilter(chk.Chunk.Metric) {
-				continue outer
-			}
-
-			m := chk.Chunk.Metric.Map()
-			delete(m, labels.MetricName)
-			results = append(results, logproto.SeriesIdentifier{
-				Labels: m,
-			})
-		}
-	}
-	sort.Sort(results)
-	return results, nil
+	return s.Store.GetSeries(ctx, userID, from, through, matchers...)
 }
 
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
