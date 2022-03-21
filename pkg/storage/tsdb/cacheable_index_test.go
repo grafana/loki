@@ -46,36 +46,28 @@ func TestCacheableIndex(t *testing.T) {
 			},
 		},
 		{
-			// should be excluded due to bounds checking
-			Labels: mustParseLabels(`{foo="bar", bazz="bozz", bonk="borb"}`),
+			Labels: mustParseLabels(`{foo="bard", bazz="bozz", bonk="borb"}`),
 			Chunks: []index.ChunkMeta{
 				{
-					MinTime:  8,
-					MaxTime:  9,
+					MinTime:  1,
+					MaxTime:  7,
 					Checksum: 4,
 				},
 			},
 		},
 	}
 
-	index := BuildIndex(t, cases)
+	idx := BuildIndex(t, cases)
 
 	t.Run("GetChunkRefs", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(index, cache)
+		cacheableIndex := NewCacheableIndex(idx, cache)
 
-		refs, err := cacheableIndex.GetChunkRefs(context.Background(), "fake", 2, 5, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
-		require.Nil(t, err)
+		refs, err := cacheableIndex.GetChunkRefs(context.Background(), "fake", 1, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		require.NoError(t, err)
 
 		expected := []ChunkRef{
-			{
-				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
-				Start:       1,
-				End:         10,
-				Checksum:    3,
-			},
 			{
 				User:        "fake",
 				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
@@ -97,35 +89,60 @@ func TestCacheableIndex(t *testing.T) {
 				End:         5,
 				Checksum:    2,
 			},
+			{
+				User:        "fake",
+				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+				Start:       1,
+				End:         10,
+				Checksum:    3,
+			},
 		}
 		require.Equal(t, expected, refs)
+	})
+
+	t.Run("GetChunkRefsSharded", func(t *testing.T) {
+		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
+		defer cache.Stop()
+		cacheableIndex := NewCacheableIndex(idx, cache)
+
+		shard := index.ShardAnnotation{
+			Shard: 1,
+			Of:    2,
+		}
+		shardedRefs, err := cacheableIndex.GetChunkRefs(context.Background(), "fake", 1, 5, nil, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+
+		require.NoError(t, err)
+
+		require.Equal(t, []ChunkRef{{
+			User:        "fake",
+			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+			Start:       1,
+			End:         10,
+			Checksum:    3,
+		}}, shardedRefs)
 	})
 
 	t.Run("Series", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(index, cache)
+		cacheableIndex := NewCacheableIndex(idx, cache)
 
-		xs, err := cacheableIndex.Series(context.Background(), "fake", 2, 5, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
-		require.Nil(t, err)
+		xs, err := cacheableIndex.Series(context.Background(), "fake", 8, 9, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		require.NoError(t, err)
+
 		expected := []Series{
 			{
 				Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
 				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
 			},
-			{
-				Labels:      mustParseLabels(`{foo="bar"}`),
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
-			},
 		}
-
 		require.Equal(t, expected, xs)
 	})
 
 	t.Run("LabelNames", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(index, cache)
+		cacheableIndex := NewCacheableIndex(idx, cache)
 
 		// request data at the end of the tsdb range, but it should return all labels present
 		xs, err := cacheableIndex.LabelNames(context.Background(), "fake", 8, 10)
@@ -138,7 +155,7 @@ func TestCacheableIndex(t *testing.T) {
 	t.Run("LabelNamesWithMatchers", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(index, cache)
+		cacheableIndex := NewCacheableIndex(idx, cache)
 
 		// request data at the end of the tsdb range, but it should return all labels present
 		xs, err := cacheableIndex.LabelNames(context.Background(), "fake", 8, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
@@ -151,7 +168,7 @@ func TestCacheableIndex(t *testing.T) {
 	t.Run("LabelValues", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(index, cache)
+		cacheableIndex := NewCacheableIndex(idx, cache)
 
 		xs, err := cacheableIndex.LabelValues(context.Background(), "fake", 1, 2, "bazz")
 		require.Nil(t, err)
@@ -164,7 +181,7 @@ func TestCacheableIndex(t *testing.T) {
 	t.Run("LabelValuesWithMatchers", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(index, cache)
+		cacheableIndex := NewCacheableIndex(idx, cache)
 
 		xs, err := cacheableIndex.LabelValues(context.Background(), "fake", 1, 2, "bazz", labels.MustNewMatcher(labels.MatchEqual, "bonk", "borb"))
 		require.Nil(t, err)

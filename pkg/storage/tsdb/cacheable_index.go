@@ -46,7 +46,7 @@ func (i *CacheableIndex) Stop() error {
 // GetChunkRefs is a cached implementation of GetChunkRefs.
 //
 // It uses as a key for the cache all parameters (userID, from, through, shard, matchers) separated by a slash (/).
-func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	const opName = "GetChunkRefs"
 
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matcher *labels.Matcher) string {
@@ -61,7 +61,7 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 	}
 
 	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([][]byte, error) {
-		series, err := i.Index.GetChunkRefs(ctx, userID, from, through, shard, matcher...)
+		series, err := i.Index.GetChunkRefs(ctx, userID, from, through, res, shard, matcher...)
 		if err != nil {
 			return nil, errors.Wrap(err, "call to GetChunkRefs")
 		}
@@ -81,7 +81,6 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 	}
 
 	var values []ChunkRef
-	var res []ChunkRef
 	for _, val := range results {
 		decoderBuf := bytes.NewBuffer(val)
 		dec := gob.NewDecoder(decoderBuf)
@@ -98,7 +97,7 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 // Series is a cached implementation of Series.
 //
 // It uses as a key for the cache all parameters (userID, from, through, shard, matchers) separated by a slash (/).
-func (i *CacheableIndex) Series(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *CacheableIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
 	const opName = "Series"
 
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matcher *labels.Matcher) string {
@@ -114,7 +113,7 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 	}
 
 	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([][]byte, error) {
-		series, err := i.Index.Series(ctx, userID, from, through, shard, matcher...)
+		series, err := i.Index.Series(ctx, userID, from, through, res, shard, matcher...)
 		if err != nil {
 			return nil, errors.Wrap(err, "call to Series")
 		}
@@ -135,7 +134,6 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 	}
 
 	var values []Series
-	var res []Series
 	for _, val := range results {
 		decoderBuf := bytes.NewBuffer(val)
 		dec := gob.NewDecoder(decoderBuf)
