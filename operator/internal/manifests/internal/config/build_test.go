@@ -55,6 +55,7 @@ ingester:
     ring:
       replication_factor: 1
       heartbeat_timeout: 1m
+  max_chunk_age: 2h
   max_transfer_retries: 0
   wal:
     enabled: true
@@ -112,7 +113,8 @@ querier:
     max_look_back_period: 30s
     timeout: 3m
   extra_query_delay: 0s
-  query_ingesters_within: 2h
+  max_concurrent: 10
+  query_ingesters_within: 3h
   query_timeout: 1m
   tail_max_duration: 1h
 query_range:
@@ -274,6 +276,7 @@ ingester:
     ring:
       replication_factor: 1
       heartbeat_timeout: 1m
+  max_chunk_age: 2h
   max_transfer_retries: 0
   wal:
     enabled: true
@@ -331,7 +334,8 @@ querier:
     max_look_back_period: 30s
     timeout: 3m
   extra_query_delay: 0s
-  query_ingesters_within: 2h
+  max_concurrent: 10
+  query_ingesters_within: 3h
   query_timeout: 1m
   tail_max_duration: 1h
 query_range:
