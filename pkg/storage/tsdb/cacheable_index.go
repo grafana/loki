@@ -75,7 +75,7 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 		return [][]byte{encodeBuf.Bytes()}, nil
 	}
 
-	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, nil, matchers...)
+	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, shard, matchers...)
 	if err != nil {
 		return nil, errors.Wrap(err, "cacheable index call to cacheable op GetChunkRef")
 	}
@@ -128,7 +128,7 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 		return [][]byte{encodeBuf.Bytes()}, nil
 	}
 
-	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, nil, matchers...)
+	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, shard, matchers...)
 	if err != nil {
 		return nil, errors.Wrap(err, "cacheable index call to cacheable op Series")
 	}
@@ -176,7 +176,7 @@ func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, th
 		return [][]byte{encodeBuf.Bytes()}, nil
 	}
 
-	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, nil, matchers...)
+	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, shard, matchers...)
 	if err != nil {
 		return nil, errors.Wrap(err, "cacheable index call to cacheable op LabelNames")
 	}
@@ -289,7 +289,6 @@ func (i *CacheableIndex) CacheableOp(ctx context.Context, opName string, keyFn m
 		if err != nil {
 			return nil, errors.Wrap(err, "fallback call")
 		}
-
 		res = append(res, result...)
 
 		if err := i.Cache.Store(ctx, []string{miss}, result); err != nil {
