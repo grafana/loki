@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
 func TestCacheableIndex(t *testing.T) {
