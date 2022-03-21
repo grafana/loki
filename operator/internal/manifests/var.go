@@ -77,9 +77,10 @@ func commonAnnotations(h string) map[string]string {
 
 func commonLabels(stackName string) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/name":     "loki",
-		"app.kubernetes.io/provider": "openshift",
-		"loki.grafana.com/name":      stackName,
+		"app.kubernetes.io/name":       "lokistack",
+		"app.kubernetes.io/instance":   stackName,
+		"app.kubernetes.io/managed-by": "lokistack-controller",
+		"app.kubernetes.io/created-by": "lokistack-controller",
 	}
 }
 
@@ -91,10 +92,10 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 	return annotations
 }
 
-// ComponentLabels is a list of all commonLabels including the loki.grafana.com/component:<component> label
+// ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
 func ComponentLabels(component, stackName string) labels.Set {
 	return labels.Merge(commonLabels(stackName), map[string]string{
-		"loki.grafana.com/component": component,
+		"app.kubernetes.io/component": component,
 	})
 }
 

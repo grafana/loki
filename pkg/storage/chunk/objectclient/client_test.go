@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
@@ -36,21 +37,25 @@ func TestFSEncoder(t *testing.T) {
 
 	// chunk that resolves to v11
 	oldChunk := chunk.Chunk{
-		UserID:      "fake",
-		From:        MustParseDayTime("2020-01-02").Time,
-		Through:     MustParseDayTime("2020-01-03").Time,
-		Checksum:    123,
-		Fingerprint: 456,
+		ChunkRef: logproto.ChunkRef{
+			UserID:      "fake",
+			From:        MustParseDayTime("2020-01-02").Time,
+			Through:     MustParseDayTime("2020-01-03").Time,
+			Fingerprint: uint64(456),
+			Checksum:    123,
+		},
 		ChecksumSet: true,
 	}
 
 	// chunk that resolves to v12
 	newChunk := chunk.Chunk{
-		UserID:      "fake",
-		From:        MustParseDayTime("2022-01-02").Time,
-		Through:     MustParseDayTime("2022-01-03").Time,
-		Checksum:    123,
-		Fingerprint: 456,
+		ChunkRef: logproto.ChunkRef{
+			UserID:      "fake",
+			From:        MustParseDayTime("2022-01-02").Time,
+			Through:     MustParseDayTime("2022-01-03").Time,
+			Fingerprint: uint64(456),
+			Checksum:    123,
+		},
 		ChecksumSet: true,
 	}
 

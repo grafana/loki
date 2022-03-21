@@ -63,15 +63,12 @@ func TestGetTenantConfigMapData_ConfigMapExist(t *testing.T) {
 
 	expected := map[string]openshift.TenantData{
 		"application": {
-			TenantID:     "test-123",
 			CookieSecret: "test123",
 		},
 		"infrastructure": {
-			TenantID:     "test-456",
 			CookieSecret: "test456",
 		},
 		"audit": {
-			TenantID:     "test-789",
 			CookieSecret: "test789",
 		},
 	}

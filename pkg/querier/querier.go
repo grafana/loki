@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
+
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -86,24 +88,33 @@ type SingleTenantQuerier struct {
 	store           storage.Store
 	limits          *validation.Overrides
 	ingesterQuerier *IngesterQuerier
+	deleteGetter    deleteGetter
+}
+
+type deleteGetter interface {
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error)
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides) (*SingleTenantQuerier, error) {
-	querier := SingleTenantQuerier{
+func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides, d deleteGetter) (*SingleTenantQuerier, error) {
+	return &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
 		ingesterQuerier: ingesterQuerier,
 		limits:          limits,
-	}
-
-	return &querier, nil
+		deleteGetter:    d,
+	}, nil
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	params.QueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
 	if err != nil {
 		return nil, err
 	}
@@ -157,6 +168,11 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		return nil, err
 	}
 
+	params.SampleQueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
+	if err != nil {
+		return nil, err
+	}
+
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	iters := []iter.SampleIterator{}
@@ -190,6 +206,36 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		iters = append(iters, storeIter)
 	}
 	return iter.NewMergeSampleIterator(ctx, iters), nil
+}
+
+func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT time.Time) ([]*logproto.Delete, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	d, err := q.deleteGetter.GetAllDeleteRequestsForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	start := startT.UnixNano()
+	end := endT.UnixNano()
+
+	var deletes []*logproto.Delete
+	for _, del := range d {
+		if int64(del.StartTime) <= end && int64(del.EndTime) >= start {
+			for _, selector := range del.Selectors {
+				deletes = append(deletes, &logproto.Delete{
+					Selector: selector,
+					Start:    int64(del.StartTime),
+					End:      int64(del.EndTime),
+				})
+			}
+		}
+	}
+
+	return deletes, nil
 }
 
 func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {

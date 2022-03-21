@@ -831,3 +831,71 @@ type seriesRefSlice []storage.SeriesRef
 func (x seriesRefSlice) Len() int           { return len(x) }
 func (x seriesRefSlice) Less(i, j int) bool { return x[i] < x[j] }
 func (x seriesRefSlice) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
+
+type shardedPostings struct {
+	p                    Postings
+	minOffset, maxOffset uint64
+	initialized          bool
+}
+
+// Note: shardedPostings can technically return more series than just those that correspond to
+// the requested shard. This is because we do fingperint/offset sampling in TSDB so we won't know exactly
+// which offsets to start/end at, but will likely buffer a little on each end, so they still need to be
+// checked for shard inclusiveness.
+// For example (below), given a shard, we'll likely return a slight superset of offsets surrounding the shard.
+// ---[shard0]--- # Shard membership
+// -[--shard0--]- # Series returned by shardedPostings
+func newShardedPostings(p Postings, shard ShardAnnotation, offsets fingerprintOffsets) *shardedPostings {
+	min, max := offsets.Range(shard)
+	return &shardedPostings{
+		p:         p,
+		minOffset: min,
+		maxOffset: max,
+	}
+}
+
+// Next advances the iterator and returns true if another value was found.
+func (sp *shardedPostings) Next() bool {
+	// fast forward to the point we know we'll have to start checking
+	if !sp.initialized {
+		sp.initialized = true
+		// Underlying bigEndianPostings doesn't play nice with Seek(0)
+		// so we first advance manually once
+		if ok := sp.p.Next(); !ok {
+			return false
+		}
+		return sp.p.Seek(storage.SeriesRef(sp.minOffset))
+	}
+	ok := sp.p.Next()
+	if !ok {
+		return false
+	}
+
+	if sp.p.At() > storage.SeriesRef(sp.maxOffset) {
+		return false
+	}
+
+	return true
+}
+
+// Seek advances the iterator to value v or greater and returns
+// true if a value was found.
+func (sp *shardedPostings) Seek(v storage.SeriesRef) (res bool) {
+	if v > storage.SeriesRef(sp.maxOffset) {
+		return false
+	}
+	if v < storage.SeriesRef(sp.minOffset) {
+		v = storage.SeriesRef(sp.minOffset)
+	}
+	return sp.p.Seek(v)
+}
+
+// At returns the value at the current iterator position.
+func (sp *shardedPostings) At() storage.SeriesRef {
+	return sp.p.At()
+}
+
+// Err returns the last error of the iterator.
+func (sp *shardedPostings) Err() (err error) {
+	return sp.p.Err()
+}

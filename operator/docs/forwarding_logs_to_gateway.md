@@ -71,13 +71,13 @@ To configure Promtail to send application, audit, and infrastructure logs, add t
 clients:
   - # ...
     bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-    url: http://lokistack-gateway-http-lokistack-dev.openshift-logging.svc:8080/api/logs/v1/audit/loki/api/v1/push
+    url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/audit/loki/api/v1/push
   - # ...
     bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-    url: http://lokistack-gateway-http-lokistack-dev.openshift-logging.svc:8080/api/logs/v1/application/loki/api/v1/push
+    url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application/loki/api/v1/push
   - # ...
     bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-    url: http://lokistack-gateway-http-lokistack-dev.openshift-logging.svc:8080/api/logs/v1/infrastructure/loki/api/v1/push
+    url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/infrastructure/loki/api/v1/push
 ```
 
 The rest of the configuration can be configured to the developer's desire.
@@ -93,7 +93,7 @@ The Fluentd configuration can be overrided to target the `application` endpoint 
   @type loki
   # ...
   bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-  url: http://lokistack-gateway-http-lokistack-dev.openshift-logging.svc:8080/api/logs/v1/application
+  url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application
 </match>
 ```
 

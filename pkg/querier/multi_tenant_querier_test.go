@@ -2,10 +2,13 @@ package querier
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -14,9 +17,14 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/tenant"
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
+	original := tenant.DefaultResolver
+	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+	defer tenant.WithDefaultResolver(original)
+
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
@@ -74,6 +82,10 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 }
 
 func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
+	original := tenant.DefaultResolver
+	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+	defer tenant.WithDefaultResolver(original)
+
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
@@ -148,4 +160,52 @@ func newSampleIterator() iter.SampleIterator {
 			StreamHash: labelBar.Hash(),
 		}),
 	})
+}
+
+func BenchmarkTenantEntryIteratorLabels(b *testing.B) {
+	it := newMockEntryIterator(12)
+	tenantIter := NewTenantEntryIterator(it, "tenant_1")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		tenantIter.Labels()
+	}
+}
+
+type mockEntryIterator struct {
+	labels string
+}
+
+func newMockEntryIterator(numLabels int) mockEntryIterator {
+	builder := labels.NewBuilder(nil)
+	for i := 1; i <= numLabels; i++ {
+		builder.Set(fmt.Sprintf("label_%d", i), strconv.Itoa(i))
+	}
+	return mockEntryIterator{labels: builder.Labels().String()}
+}
+
+func (it mockEntryIterator) Labels() string {
+	return it.labels
+}
+
+func (it mockEntryIterator) Entry() logproto.Entry {
+	return logproto.Entry{}
+}
+
+func (it mockEntryIterator) Next() bool {
+	return true
+}
+
+func (it mockEntryIterator) StreamHash() uint64 {
+	return 0
+}
+
+func (it mockEntryIterator) Error() error {
+	return nil
+}
+
+func (it mockEntryIterator) Close() error {
+	return nil
 }

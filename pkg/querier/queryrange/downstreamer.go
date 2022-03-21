@@ -3,7 +3,6 @@ package queryrange
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
@@ -26,7 +25,7 @@ type DownstreamHandler struct {
 }
 
 func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebase.Request {
-	if params.Start() == params.End() {
+	if params.Start().Equal(params.End()) {
 		return &LokiInstantRequest{
 			Query:     params.Query(),
 			Limit:     params.Limit(),
@@ -39,7 +38,8 @@ func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebas
 	return &LokiRequest{
 		Query:     params.Query(),
 		Limit:     params.Limit(),
-		Step:      int64(params.Step() / time.Millisecond),
+		Step:      params.Step().Milliseconds(),
+		Interval:  params.Interval().Milliseconds(),
 		StartTs:   params.Start(),
 		EndTs:     params.End(),
 		Direction: params.Direction(),
