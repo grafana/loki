@@ -12,7 +12,7 @@ _Note: While this document will only give instructions for two methods of log fo
 
 * Deploy the Loki Operator and an `lokistack` instance with the [gateway flag enabled](./hack_loki_operator.md#hacking-on-loki-operator-on-openshift).
 
-* Deploy the OpenShift Logging Operator from the Operator Hub or using the following command locally:
+* Deploy the [OpenShift Logging Operator](https://github.com/openshift/cluster-logging-operator/blob/master/docs/HACKING.md) from the Operator Hub or using the following command locally:
 
     ```console
     make deploy-image deploy-catalog install
@@ -58,7 +58,6 @@ _Note: While this document will only give instructions for two methods of log fo
       resourceNames:
       - logs
       verbs:
-      - 'get'
       - 'create'
   ---
     apiVersion: rbac.authorization.k8s.io/v1
