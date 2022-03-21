@@ -6,7 +6,6 @@ import (
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
-	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/config"
 
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
@@ -22,12 +21,7 @@ const (
 	Timeout        = 10 * time.Second
 )
 
-type Configs struct {
-	StreamLagLabels dskit_flagext.StringSliceCSV `yaml:"stream_lag_labels,omitempty"`
-	Configs         []Config                     `yaml:"configs"`
-}
-
-// Config describes configuration for a HTTP pusher client.
+// Config describes configuration for an HTTP pusher client.
 type Config struct {
 	Name      string `yaml:"name,omitempty"`
 	URL       flagext.URLValue
@@ -44,6 +38,9 @@ type Config struct {
 	// The tenant ID to use when pushing logs to Loki (empty string means
 	// single tenant mode)
 	TenantID string `yaml:"tenant_id"`
+
+	// deprecated use StreamLagLabels from config.Config instead
+	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by

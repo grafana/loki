@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 
+	dskit_flagext "github.com/grafana/dskit/flagext"
+
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
@@ -20,12 +22,13 @@ import (
 type Config struct {
 	ServerConfig server.Config `yaml:"server,omitempty"`
 	// deprecated use ClientConfigs instead
-	ClientConfig    client.Config         `yaml:"client,omitempty"`
-	ClientConfigs   client.Configs        `yaml:"clients,omitempty"`
-	PositionsConfig positions.Config      `yaml:"positions,omitempty"`
-	ScrapeConfig    []scrapeconfig.Config `yaml:"scrape_configs,omitempty"`
-	TargetConfig    file.Config           `yaml:"target_config,omitempty"`
-	LimitConfig     limit.Config          `yaml:"limit_config,omitempty"`
+	ClientConfig    client.Config                `yaml:"client,omitempty"`
+	ClientConfigs   []client.Config              `yaml:"clients,omitempty"`
+	PositionsConfig positions.Config             `yaml:"positions,omitempty"`
+	ScrapeConfig    []scrapeconfig.Config        `yaml:"scrape_configs,omitempty"`
+	TargetConfig    file.Config                  `yaml:"target_config,omitempty"`
+	LimitConfig     limit.Config                 `yaml:"limit_config,omitempty"`
+	StreamLagLabels dskit_flagext.StringSliceCSV `yaml:"stream_lag_labels,omitempty"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
@@ -54,7 +57,7 @@ func (c Config) String() string {
 func (c *Config) Setup() {
 	if c.ClientConfig.URL.URL != nil {
 		// if a single client config is used we add it to the multiple client config for backward compatibility
-		c.ClientConfigs.Configs = append(c.ClientConfigs.Configs, c.ClientConfig)
+		c.ClientConfigs = append(c.ClientConfigs, c.ClientConfig)
 	}
 
 	// This is a bit crude but if the Loki Push API target is specified,
@@ -73,8 +76,8 @@ func (c *Config) Setup() {
 	// not typically the order of precedence, the assumption here is someone providing a specific config in
 	// yaml is doing so explicitly to make a key specific to a client.
 	if len(c.ClientConfig.ExternalLabels.LabelSet) > 0 {
-		for i := range c.ClientConfigs.Configs {
-			c.ClientConfigs.Configs[i].ExternalLabels = flagext.LabelSet{LabelSet: c.ClientConfig.ExternalLabels.LabelSet.Merge(c.ClientConfigs.Configs[i].ExternalLabels.LabelSet)}
+		for i := range c.ClientConfigs {
+			c.ClientConfigs[i].ExternalLabels = flagext.LabelSet{LabelSet: c.ClientConfig.ExternalLabels.LabelSet.Merge(c.ClientConfigs[i].ExternalLabels.LabelSet)}
 		}
 	}
 }

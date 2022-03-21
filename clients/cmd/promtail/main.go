@@ -111,7 +111,7 @@ func main() {
 		}
 	}
 
-	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, config.Config.ClientConfigs.StreamLagLabels)
+	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, config.Config.StreamLagLabels)
 	p, err := promtail.New(config.Config, clientMetrics, config.dryRun)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error creating promtail", "error", err)
