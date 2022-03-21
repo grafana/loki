@@ -13,6 +13,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+type DegradedCondition struct {
+	Message string
+	Reason  lokiv1beta1.LokiStackConditionReason
+}
+
 // SetReadyCondition updates or appends the condition Ready to the lokistack status conditions.
 // In addition it resets all other Status conditions to false.
 func SetReadyCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
