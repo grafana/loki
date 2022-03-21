@@ -176,7 +176,7 @@ func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, th
 		return [][]byte{encodeBuf.Bytes()}, nil
 	}
 
-	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, shard, matchers...)
+	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, nil, matchers...)
 	if err != nil {
 		return nil, errors.Wrap(err, "cacheable index call to cacheable op LabelNames")
 	}
