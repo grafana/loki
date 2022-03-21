@@ -32,8 +32,27 @@ var cases = []testCase{
 		matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "namespace", "loki-ops")},
 	},
 	{
-		name:     "match ns regexp",
-		matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "namespace", "loki-ops")},
+		name:     "match job regexp",
+		matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "job", "loki.*/distributor")},
+	},
+	{
+		name: "match regexp and equals",
+		matchers: []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchRegexp, "job", "loki.*/distributor"),
+			labels.MustNewMatcher(labels.MatchEqual, "cluster", "prod-us-central-0"),
+		},
+	},
+	{
+		name: "not equals cluster",
+		matchers: []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchNotEqual, "cluster", "prod-us-central-0"),
+		},
+	},
+	{
+		name: "inverse regexp",
+		matchers: []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchNotRegexp, "cluster", "prod.*"),
+		},
 	},
 }
 
