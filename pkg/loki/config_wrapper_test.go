@@ -182,7 +182,7 @@ memberlist:
   join_members:
     - foo.bar.example.com`
 
-			config, _ := testContext(configFileString, []string{"-ruler.ring.store", "inmemory", "-boltdb.shipper.index-gateway-client.ring.store", "etcd"})
+			config, _ := testContext(configFileString, []string{"-ruler.ring.store", "inmemory", "-index-gateway.ring.store", "etcd"})
 
 			assert.EqualValues(t, "inmemory", config.Ruler.Ring.KVStore.Store)
 			assert.EqualValues(t, "etcd", config.IndexGateway.Ring.KVStore.Store)
@@ -979,7 +979,7 @@ query_scheduler:
   scheduler_ring:
     tokens_file_path: /sched/tokes
 index_gateway:
-  index_gateway_ring:
+  ring:
     tokens_file_path: /looki/tookens
 common:
   persist_tokens: true
@@ -1390,7 +1390,7 @@ compactor:
   compactor_ring:
     instance_addr: mycompactor
 index_gateway:
-  index_gateway_ring:
+  ring:
     instance_addr: myindexgateway
 common:
   instance_addr: 99.99.99.99
@@ -1458,7 +1458,7 @@ query_scheduler:
     instance_interface_names:
     - myscheduler
 index_gateway:
-  index_gateway_ring:
+  ring:
     instance_interface_names:
     - myindexgateway
 frontend:
