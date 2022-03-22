@@ -16,7 +16,7 @@ var cfg = Config{
 	"",
 	"test_chunk_loki_table",
 	"root",
-	flagext.Secret{"yourpassword"},
+	flagext.Secret{""},
 	0,
 	"",
 	BACKEND_ALIBABACLOUD_LINDORM,
@@ -26,7 +26,7 @@ func TestTableClient_CreateTableQuery(t *testing.T) {
 	if cfg.Addresses == "" { //skip test
 		return
 	}
-	client, err := NewTableClient(context.Background(), cfg, registerer)
+	client, err := NewTableClient(context.Background(), cfg)
 	require.NoError(t, err)
 	desc, _, _ := client.DescribeTable(context.Background(), testTableName)
 	err = client.CreateTable(context.Background(), desc)
@@ -37,7 +37,7 @@ func TestTableClient_ListTables(t *testing.T) {
 	if cfg.Addresses == "" { //skip test
 		return
 	}
-	client, err := NewTableClient(context.Background(), cfg, registerer)
+	client, err := NewTableClient(context.Background(), cfg)
 	require.NoError(t, err)
 	tables, err := client.ListTables(context.Background())
 	require.NoError(t, err)
@@ -48,7 +48,7 @@ func TestTableClient_DeleteTable(t *testing.T) {
 	if cfg.Addresses == "" { //skip test
 		return
 	}
-	client, err := NewTableClient(context.Background(), cfg, registerer)
+	client, err := NewTableClient(context.Background(), cfg)
 	require.NoError(t, err)
 	err = client.DeleteTable(context.Background(), testTableName)
 	require.NoError(t, err)

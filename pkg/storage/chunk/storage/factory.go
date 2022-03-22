@@ -370,7 +370,7 @@ func NewTableClient(name string, cfg Config, registerer prometheus.Registerer) (
 	case StorageTypeCassandra:
 		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig, registerer)
 	case StorageTypeAvatica:
-		return avatica.NewTableClient(context.Background(), cfg.AvaticaConfig, registerer)
+		return avatica.NewTableClient(context.Background(), cfg.AvaticaConfig)
 	case StorageTypeBoltDB:
 		return local.NewTableClient(cfg.BoltDBConfig.Directory)
 	case StorageTypeGrpc:

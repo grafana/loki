@@ -5,10 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/pkg/errors"
 )
 
 type tableClient struct {
@@ -17,8 +15,8 @@ type tableClient struct {
 }
 
 // NewTableClient returns a new TableClient.
-func NewTableClient(ctx context.Context, cfg Config, registerer prometheus.Registerer) (chunk.TableClient, error) {
-	session, err := cfg.session("table-manager", registerer)
+func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) {
+	session, err := cfg.session()
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

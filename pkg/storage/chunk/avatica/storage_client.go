@@ -25,10 +25,6 @@ var requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 9),
 }, []string{"operation", "status_code"})
 
-func init() {
-	prometheus.MustRegister(requestDuration)
-}
-
 const BACKEND_ALIBABACLOUD_LINDORM = "alibabacloud_lindorm"
 
 // Config for a StorageClient
@@ -55,7 +51,7 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-func (cfg *Config) session(name string, reg prometheus.Registerer) (*sql.DB, error) {
+func (cfg *Config) session() (*sql.DB, error) {
 	conn := avatica.NewConnector(cfg.Addresses).(*avatica.Connector)
 	conn.Info = map[string]string{
 		"user":     cfg.Username,
@@ -63,6 +59,7 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*sql.DB, err
 		"database": cfg.Database,
 	}
 	db := sql.OpenDB(conn)
+	//TODO: lindorm should support ping()
 	//err := db.Ping()
 	//if err != nil {
 	//	return nil, err
@@ -74,6 +71,7 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*sql.DB, err
 	}
 
 	db = sql.OpenDB(conn)
+	//TODO: lindorm should support ping()
 	//err = db.Ping()
 	//if err != nil {
 	//	return nil, err
@@ -105,12 +103,16 @@ type StorageClient struct {
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, registerer prometheus.Registerer) (*StorageClient, error) {
-	readSession, err := cfg.session("index-read", registerer)
+	if registerer != nil {
+		registerer.MustRegister(requestDuration)
+	}
+
+	readSession, err := cfg.session( )
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	writeSession, err := cfg.session("index-write", registerer)
+	writeSession, err := cfg.session( )
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -168,11 +170,11 @@ func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
 func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	b := batch.(*writeBatch)
 	for _, entry := range b.entries {
-		querySql := fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)",
+		querySQL := fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)",
 			entry.TableName)
 
-		err := s.queryInstrumentation(querySql, func() error {
-			_, err := s.writeSession.Query(querySql, entry.HashValue, entry.RangeValue, entry.Value)
+		err := s.queryInstrumentation(querySQL, func() error {
+			_, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue, entry.Value)
 			return err
 		})
 		if err != nil {
@@ -181,10 +183,10 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	}
 
 	for _, entry := range b.deletes {
-		querySql := fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
+		querySQL := fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
 			entry.TableName)
-		err := s.queryInstrumentation(querySql, func() error {
-			_, err := s.writeSession.Query(querySql, entry.HashValue, entry.RangeValue)
+		err := s.queryInstrumentation(querySQL, func() error {
+			_, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue)
 			return err
 		})
 		if err != nil {
