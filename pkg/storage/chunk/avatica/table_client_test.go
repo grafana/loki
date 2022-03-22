@@ -20,6 +20,8 @@ var cfg = Config{
 	0,
 	"",
 	BackendAlibabacloudLindorm,
+	16,
+	3,
 }
 
 func TestTableClient_CreateTableQuery(t *testing.T) {
