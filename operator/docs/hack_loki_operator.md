@@ -194,7 +194,7 @@ It will cleanup deployments of the operator bundle, and the operator via OLM on 
 
 [1] `lokistack-gateway` is an optional component deployed as part of Loki Operator. It provides secure access to Loki's distributor (i.e. for pushing logs) and query-frontend (i.e. for querying logs) via consulting an OAuth/OIDC endpoint for the request subject.
 
-[2] If you get multiple images as options, and you are required to select one of them then select `docker.io/library/golang:1.16`
+[2] If you get multiple images as options, and you are required to select one of them then select `docker.io/library/golang:1.17`
 
 [3] The OIDC configuration expects `clientID`, `clientSecret` and `issuerCAPath` which should be provided via a Kubernetes secret that the LokiStack admin provides upfront.
 
