@@ -36,6 +36,8 @@ type Config struct {
 	QueryConcurrency int            `yaml:"query_concurrency"`
 	TableOptions     string         `yaml:"table_options"`
 	Backend          string         `yaml:"backend"`
+	MaxOpenConns     int            `yaml:"max_open_conns"`
+	MaxIdleConns     int            `yaml:"max_idle_conns"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -44,7 +46,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Database, "avatica.database", "", "database to use .")
 	f.StringVar(&cfg.Username, "avatica.username", "", "Username to use when connecting to avatica.")
 	f.Var(&cfg.Password, "avatica.password", "Password to use when connecting to avatica.")
+	f.IntVar(&cfg.QueryConcurrency, "avatica.query-concurrency", 0, "Limit number of concurrent queries to avatica. Set to 0 to disable the limit.")
 	f.StringVar(&cfg.Backend, "avatica.backend", BackendAlibabacloudLindorm, "backend of avatica.")
+	f.IntVar(&cfg.MaxOpenConns, "avatica.max-open-conns", 16, "sets the maximum number of open connections to the database.")
+	f.IntVar(&cfg.MaxIdleConns, "avatica.max-idle-conns", 3, "sets the maximum number of connections in the idle connection pool.")
 }
 
 func (cfg *Config) Validate() error {
@@ -71,6 +76,8 @@ func (cfg *Config) session() (*sql.DB, error) {
 	}
 
 	db = sql.OpenDB(conn)
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
 	//TODO: lindorm should support ping()
 	//err = db.Ping()
 	//if err != nil {
