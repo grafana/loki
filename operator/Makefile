@@ -52,6 +52,17 @@ REGISTRY_ORG ?= openshift-logging
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
 BUNDLE_IMG ?= quay.io/$(REGISTRY_ORG)/loki-operator-bundle:$(VERSION)
 
+# BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
+BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(subst v,,$(VERSION)) $(BUNDLE_METADATA_OPTS)
+
+# USE_IMAGE_DIGESTS defines if images are resolved via tags or digests
+# You can enable this value if you would like to use SHA Based Digests
+# To enable set flag to true
+USE_IMAGE_DIGESTS ?= false
+ifeq ($(USE_IMAGE_DIGESTS), true)
+    BUNDLE_GEN_FLAGS += --use-image-digests
+endif
+
 CALCULATOR_IMG ?= quay.io/$(REGISTRY_ORG)/storage-size-calculator:latest
 
 GO_FILES := $(shell find . -type f -name '*.go')
@@ -158,7 +169,7 @@ oci-push: ## Push the image
 bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle -q --overwrite --version $(subst v,,$(VERSION)) $(BUNDLE_METADATA_OPTS)
+	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
 	$(OPERATOR_SDK) bundle validate ./bundle
 
 .PHONY: bundle-build
