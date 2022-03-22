@@ -1,5 +1,6 @@
 ## Main
 
+- [5615](https://github.com/grafana/loki/pull/5615) **sasagarw**: Document how to connect to LokiStack gateway component
 - [5655](https://github.com/grafana/loki/pull/5655) **xperimental**: Update Loki operand to 2.4.2
 - [5579](https://github.com/grafana/loki/pull/5579) **Red-GV**: Add playbook for responding to operator alerts
 - [5640](https://github.com/grafana/loki/pull/5640) **sasagarw**: Update CSV to point to candidate channel and use openshift-operators-redhat ns (OpenShift)

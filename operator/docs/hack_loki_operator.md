@@ -85,6 +85,12 @@ It will undeploy controller from the configured Kubernetes cluster in [~/.kube/c
 
 ### Installation of Loki Operator
 
+* Create the `openshift-operators-redhat` namespace in the cluster:
+
+  ```console
+  kubectl create ns openshift-operators-redhat
+  ```
+
 * Build and push the container image [2] and then deploy the operator with:
 
   ```console
