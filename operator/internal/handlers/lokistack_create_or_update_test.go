@@ -658,8 +658,8 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	require.Zero(t, k.StatusCallCount())
+	require.Zero(t, sw.UpdateCallCount())
 }
 
 func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
@@ -714,8 +714,8 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	require.Zero(t, k.StatusCallCount())
+	require.Zero(t, sw.UpdateCallCount())
 }
 
 func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *testing.T) {
@@ -789,8 +789,8 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 	require.NoError(t, err)
 
 	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	require.Zero(t, k.StatusCallCount())
+	require.Zero(t, sw.UpdateCallCount())
 }
 
 func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing.T) {
@@ -1015,6 +1015,6 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	require.Zero(t, k.StatusCallCount())
+	require.Zero(t, sw.UpdateCallCount())
 }
