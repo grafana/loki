@@ -649,13 +649,19 @@ spec:
                 - --logtostderr=true
                 - --tls-cert-file=/var/run/secrets/serving-cert/tls.crt
                 - --tls-private-key-file=/var/run/secrets/serving-cert/tls.key
-                - --v=2
+                - --v=0
                 image: quay.io/openshift/origin-kube-rbac-proxy:latest
                 name: kube-rbac-proxy
                 ports:
                 - containerPort: 8443
                   name: https
-                resources: {}
+                resources:
+                  limits:
+                    cpu: 500m
+                    memory: 128Mi
+                  requests:
+                    cpu: 5m
+                    memory: 64Mi
                 volumeMounts:
                 - mountPath: /var/run/secrets/serving-cert
                   name: loki-operator-metrics-cert
