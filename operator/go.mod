@@ -1,6 +1,6 @@
 module github.com/grafana/loki/operator
 
-go 1.16
+go 1.17
 
 require (
 	github.com/ViaQ/logerr v1.0.10
