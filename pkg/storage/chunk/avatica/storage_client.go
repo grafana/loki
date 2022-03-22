@@ -105,10 +105,6 @@ type StorageClient struct {
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, registerer prometheus.Registerer) (*StorageClient, error) {
-	if registerer != nil {
-		registerer.MustRegister(requestDuration)
-	}
-
 	readSession, err := cfg.session("index-read", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
