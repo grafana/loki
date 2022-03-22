@@ -134,6 +134,7 @@ type Client interface {
 	api.EntryHandler
 	// Stop goroutine sending batch of entries without retries.
 	StopNow()
+	Name() string
 }
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
@@ -453,4 +454,8 @@ func (c *client) processEntry(e api.Entry) (api.Entry, string) {
 func (c *client) UnregisterLatencyMetric(labels prometheus.Labels) {
 	labels[HostLabel] = c.cfg.URL.Host
 	c.metrics.streamLag.Delete(labels)
+}
+
+func (c *client) Name() string {
+	return c.name
 }
