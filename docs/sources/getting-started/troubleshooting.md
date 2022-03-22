@@ -44,17 +44,25 @@ Promtail yet. There may be one of many root causes:
 
 ## Loki Timeouts (504 errors, context canelled, error processing requests)
 
-These errors have many different possible causes. Main things to review with respect to Loki are:
+These errors can have many possible causes. With respect to Loki you should review the following first:
+### Loki Configuration
+
 - Loki configuration querier.query_timeout
 - server.http_server_read_timeout
 - server.http_server_write_timeout
 - server.http_server_idle_timeout
+
+### Loki Deployment
+
 - If you have a reverse proxy in front of Loki (ie. between Loki and Grafana) then check any timeouts configured there (ie. NGINX proxy read timeout)
 
-To determine if the issue is related to the Loki deployment or another system (Grafana, or another client) attempt to run a [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) query as "directly" as you can. IE if running on VMs then run the query on that local machinem. If running in K8S the port forward the loki HTTP port and attempt to run the query there. If you still get a timeout then review the dot points above. If you do not then continue reading and some other common timeout issues will be mentioned.
+### Other Causes
+
+To determine if the issue is related to Loki itself or another system (Grafana, clientside error) attempt to run a [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) query as "directly" as you can. IE. if running on VMs then run the query on that local machine. If running in K8S then port forward the Loki HTTP port and attempt to run the query there. If you do not get a timeout then continue on and some common causes of timeouts external to Loki will be mentioned (if you still get a timeout review the [list](#loki-configuration) above).
 
 - Grafana Dataproxy [timeout](https://grafana.com/docs/grafana/latest/administration/configuration/#dataproxy) (make sure you configure Grafana with a large enough dataproxy timeout)
-- Any reverse proxies or load balancers between your client and Grafana. Queries to Grafana are made from the your local browser with Grafana serving as a proxy, therefore both connections to Grafana and from Grafana to Loki must have large timeouts configured (IE. Browser -> Grafana -> Loki)
+- Any reverse proxies or load balancers between your client and Grafana. This is because queries to Grafana are made from the your local browser with Grafana serving as a proxy ("dataproxy"), therefore connections from your client to Grafana must have their timeout configured as well (IE. **Browser -> Grafana** -> Loki)
+    - Note: As stated above you must also configure timeouts appropriately from Grafana to Loki - see [here](#loki-configuration) for how to do that.
 
 
 ## Troubleshooting targets
