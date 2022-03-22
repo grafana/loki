@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/pkg/storage/chunk/avatica"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -35,6 +36,7 @@ const (
 
 // Supported storage clients
 const (
+	StorageTypeAvatica        = "avatica"
 	StorageTypeAWS            = "aws"
 	StorageTypeAWSDynamo      = "aws-dynamo"
 	StorageTypeAzure          = "azure"
@@ -87,6 +89,7 @@ type Config struct {
 	GCPStorageConfig       gcp.Config              `yaml:"bigtable"`
 	GCSConfig              gcp.GCSConfig           `yaml:"gcs"`
 	CassandraStorageConfig cassandra.Config        `yaml:"cassandra"`
+	AvaticaConfig          avatica.Config          `yaml:"avatica"`
 	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
 	FSConfig               local.FSConfig          `yaml:"filesystem"`
 	Swift                  openstack.SwiftConfig   `yaml:"swift"`
@@ -274,6 +277,8 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, limit
 		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case StorageTypeCassandra:
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
+	case StorageTypeAvatica:
+		return avatica.NewStorageClient(cfg.AvaticaConfig, registerer)
 	case StorageTypeBoltDB:
 		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
 	case StorageTypeGrpc:
@@ -364,6 +369,8 @@ func NewTableClient(name string, cfg Config, registerer prometheus.Registerer) (
 		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
 	case StorageTypeCassandra:
 		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig, registerer)
+	case StorageTypeAvatica:
+		return avatica.NewTableClient(context.Background(), cfg.AvaticaConfig, registerer)
 	case StorageTypeBoltDB:
 		return local.NewTableClient(cfg.BoltDBConfig.Directory)
 	case StorageTypeGrpc:

@@ -1,0 +1,10 @@
+language: go
+notifications:
+  email: false
+go:
+  - "1.12"
+before_script:
+  - make install
+script:
+  - make build
+  - make test
