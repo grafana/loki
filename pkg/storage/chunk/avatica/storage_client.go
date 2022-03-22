@@ -9,11 +9,11 @@ import (
 	"time"
 
 	avatica "github.com/apache/calcite-avatica-go/v5"
-	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 )
@@ -25,7 +25,7 @@ var requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 9),
 }, []string{"operation", "status_code"})
 
-const BACKEND_ALIBABACLOUD_LINDORM = "alibabacloud_lindorm"
+const BackendAlibabacloudLindorm = "alibabacloud_lindorm"
 
 // Config for a StorageClient
 type Config struct {
@@ -44,7 +44,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Database, "avatica.database", "", "database to use .")
 	f.StringVar(&cfg.Username, "avatica.username", "", "Username to use when connecting to avatica.")
 	f.Var(&cfg.Password, "avatica.password", "Password to use when connecting to avatica.")
-	f.StringVar(&cfg.Backend, "avatica.backend", BACKEND_ALIBABACLOUD_LINDORM, "backend of avatica.")
+	f.StringVar(&cfg.Backend, "avatica.backend", BackendAlibabacloudLindorm, "backend of avatica.")
 }
 
 func (cfg *Config) Validate() error {
@@ -106,17 +106,14 @@ func NewStorageClient(cfg Config, registerer prometheus.Registerer) (*StorageCli
 	if registerer != nil {
 		registerer.MustRegister(requestDuration)
 	}
-
-	readSession, err := cfg.session( )
+	readSession, err := cfg.session()
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-
-	writeSession, err := cfg.session( )
+	writeSession, err := cfg.session()
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-
 	var querySemaphore *semaphore.Weighted
 	if cfg.QueryConcurrency > 0 {
 		querySemaphore = semaphore.NewWeighted(int64(cfg.QueryConcurrency))

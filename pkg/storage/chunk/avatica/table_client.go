@@ -5,8 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type tableClient struct {
@@ -70,7 +71,7 @@ func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) err
 }
 
 func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
-	if c.cfg.Backend == BACKEND_ALIBABACLOUD_LINDORM {
+	if c.cfg.Backend == BackendAlibabacloudLindorm {
 		_, err := c.session.Query(fmt.Sprintf(`
 		OFFLINE TABLE %s`, name))
 		if err != nil {

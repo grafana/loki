@@ -16,10 +16,10 @@ var cfg = Config{
 	"",
 	"test_chunk_loki_table",
 	"root",
-	flagext.Secret{""},
+	flagext.Secret{Value: "test"},
 	0,
 	"",
-	BACKEND_ALIBABACLOUD_LINDORM,
+	BackendAlibabacloudLindorm,
 }
 
 func TestTableClient_CreateTableQuery(t *testing.T) {
