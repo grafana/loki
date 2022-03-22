@@ -122,6 +122,7 @@ func TestGatewayClient(t *testing.T) {
 	defer cleanup()
 
 	var cfg IndexGatewayClientConfig
+	cfg.Mode = indexgateway.SimpleMode
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
 

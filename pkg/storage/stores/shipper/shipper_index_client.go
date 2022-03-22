@@ -95,6 +95,10 @@ func (i *IndexGatewayClientConfig) RegisterFlagsWithPrefix(prefix string, f *fla
 	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode.")
 }
 
+func (i *IndexGatewayClientConfig) RegisterFlags(f *flag.FlagSet) {
+	i.RegisterFlagsWithPrefix("index-gateway-client", f)
+}
+
 type Config struct {
 	ActiveIndexDirectory     string                   `yaml:"active_index_directory"`
 	SharedStoreType          string                   `yaml:"shared_store"`
