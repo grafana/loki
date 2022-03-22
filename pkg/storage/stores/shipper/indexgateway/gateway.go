@@ -63,6 +63,69 @@ type Gateway struct {
 	ring           *ring.Ring
 }
 
+// NewIndexGateway instantiates a new Index Gateway and start its services.
+//
+// In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
+// Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
+func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexClient chunk.IndexClient, indexQuerier IndexQuerier) (*Gateway, error) {
+	g := &Gateway{
+		indexQuerier: indexQuerier,
+		shipper:      indexClient,
+		cfg:          cfg,
+		log:          log,
+	}
+
+	if cfg.Mode == RingMode {
+		ringStore, err := kv.NewClient(
+			cfg.Ring.KVStore,
+			ring.GetCodec(),
+			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), "index-gateway"),
+			log,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "create KV store client")
+		}
+
+		lifecyclerCfg, err := cfg.Ring.ToLifecyclerConfig(ringNumTokens, log)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid ring lifecycler config")
+		}
+
+		delegate := ring.BasicLifecyclerDelegate(g)
+		delegate = ring.NewLeaveOnStoppingDelegate(delegate, log)
+		delegate = ring.NewTokensPersistencyDelegate(cfg.Ring.TokensFilePath, ring.JOINING, delegate, log)
+		delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.Ring.HeartbeatTimeout, delegate, log)
+
+		g.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, RingKey, ringStore, delegate, log, registerer)
+		if err != nil {
+			return nil, errors.Wrap(err, "index gateway create ring lifecycler")
+		}
+
+		ringCfg := cfg.Ring.ToRingConfig(RingReplicationFactor)
+		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), log)
+		if err != nil {
+			return nil, errors.Wrap(err, "index gateway create ring client")
+		}
+
+		svcs := []services.Service{g.ringLifecycler, g.ring}
+		g.subservices, err = services.NewManager(svcs...)
+		if err != nil {
+			return nil, fmt.Errorf("new index gateway services manager: %w", err)
+		}
+
+		g.subservicesWatcher = services.NewFailureWatcher()
+		g.subservicesWatcher.WatchManager(g.subservices)
+		g.Service = services.NewBasicService(g.starting, g.running, g.stopping)
+	} else {
+		g.Service = services.NewIdleService(nil, func(failureCase error) error {
+			g.shipper.Stop()
+			return nil
+		})
+	}
+
+	return g, nil
+}
+
 // starting implements the Lifecycler interface and is one of the lifecycle hooks.
 //
 // Only invoked if the Index Gateway is in ring mode.
@@ -138,69 +201,6 @@ func (g *Gateway) stopping(_ error) error {
 	level.Debug(util_log.Logger).Log("msg", "stopping index gateway")
 	defer g.shipper.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), g.subservices)
-}
-
-// NewIndexGateway instantiates a new Index Gateway and start its services.
-//
-// In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
-// Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexClient chunk.IndexClient, indexQuerier IndexQuerier) (*Gateway, error) {
-	g := &Gateway{
-		indexQuerier: indexQuerier,
-		shipper:      indexClient,
-		cfg:          cfg,
-		log:          log,
-	}
-
-	if cfg.Mode == RingMode {
-		ringStore, err := kv.NewClient(
-			cfg.Ring.KVStore,
-			ring.GetCodec(),
-			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), "index-gateway"),
-			log,
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "create KV store client")
-		}
-
-		lifecyclerCfg, err := cfg.Ring.ToLifecyclerConfig(ringNumTokens, log)
-		if err != nil {
-			return nil, errors.Wrap(err, "invalid ring lifecycler config")
-		}
-
-		delegate := ring.BasicLifecyclerDelegate(g)
-		delegate = ring.NewLeaveOnStoppingDelegate(delegate, log)
-		delegate = ring.NewTokensPersistencyDelegate(cfg.Ring.TokensFilePath, ring.JOINING, delegate, log)
-		delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.Ring.HeartbeatTimeout, delegate, log)
-
-		g.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, RingKey, ringStore, delegate, log, registerer)
-		if err != nil {
-			return nil, errors.Wrap(err, "index gateway create ring lifecycler")
-		}
-
-		ringCfg := cfg.Ring.ToRingConfig(RingReplicationFactor)
-		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), log)
-		if err != nil {
-			return nil, errors.Wrap(err, "index gateway create ring client")
-		}
-
-		svcs := []services.Service{g.ringLifecycler, g.ring}
-		g.subservices, err = services.NewManager(svcs...)
-		if err != nil {
-			return nil, fmt.Errorf("new index gateway services manager: %w", err)
-		}
-
-		g.subservicesWatcher = services.NewFailureWatcher()
-		g.subservicesWatcher.WatchManager(g.subservices)
-		g.Service = services.NewBasicService(g.starting, g.running, g.stopping)
-	} else {
-		g.Service = services.NewIdleService(nil, func(failureCase error) error {
-			g.shipper.Stop()
-			return nil
-		})
-	}
-
-	return g, nil
 }
 
 func (g *Gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
