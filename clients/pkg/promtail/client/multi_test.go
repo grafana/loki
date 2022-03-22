@@ -82,11 +82,11 @@ func TestNewMulti_BlockDuplicates(t *testing.T) {
 	}
 	cc1Copy := cc1
 
-	clients, err := NewMulti(metrics, nil, util_log.Logger, cc1, cc1Copy)
+	_, err = NewMulti(metrics, nil, util_log.Logger, cc1, cc1Copy)
 	require.Error(t, err, "expected NewMulti to reject duplicate client configs")
 
 	cc1Copy.Name = "copy"
-	clients, err = NewMulti(metrics, nil, util_log.Logger, cc1, cc1Copy)
+	clients, err := NewMulti(metrics, nil, util_log.Logger, cc1, cc1Copy)
 	require.NoError(t, err, "expected NewMulti to reject duplicate client configs")
 
 	multi := clients.(*MultiClient)
