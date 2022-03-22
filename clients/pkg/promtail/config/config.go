@@ -18,17 +18,22 @@ import (
 	"github.com/grafana/loki/pkg/util/flagext"
 )
 
+// Options contains cross-cutting promtail configurations
+type Options struct {
+	StreamLagLabels dskit_flagext.StringSliceCSV `yaml:"stream_lag_labels,omitempty"`
+}
+
 // Config for promtail, describing what files to watch.
 type Config struct {
 	ServerConfig server.Config `yaml:"server,omitempty"`
 	// deprecated use ClientConfigs instead
-	ClientConfig    client.Config                `yaml:"client,omitempty"`
-	ClientConfigs   []client.Config              `yaml:"clients,omitempty"`
-	PositionsConfig positions.Config             `yaml:"positions,omitempty"`
-	ScrapeConfig    []scrapeconfig.Config        `yaml:"scrape_configs,omitempty"`
-	TargetConfig    file.Config                  `yaml:"target_config,omitempty"`
-	LimitConfig     limit.Config                 `yaml:"limit_config,omitempty"`
-	StreamLagLabels dskit_flagext.StringSliceCSV `yaml:"stream_lag_labels,omitempty"`
+	ClientConfig    client.Config         `yaml:"client,omitempty"`
+	ClientConfigs   []client.Config       `yaml:"clients,omitempty"`
+	PositionsConfig positions.Config      `yaml:"positions,omitempty"`
+	ScrapeConfig    []scrapeconfig.Config `yaml:"scrape_configs,omitempty"`
+	TargetConfig    file.Config           `yaml:"target_config,omitempty"`
+	LimitConfig     limit.Config          `yaml:"limit_config,omitempty"`
+	Options         Options               `yaml:"options,omitempty"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by

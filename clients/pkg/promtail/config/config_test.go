@@ -36,6 +36,8 @@ scrape_configs:
 limit_config:
   readline_rate: 100
   readline_burst: 200
+options:
+  stream_lag_labels: foo
 `
 
 func Test_Load(t *testing.T) {
@@ -71,7 +73,9 @@ func TestConfig_Setup(t *testing.T) {
 						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2"}},
 					},
 				},
-				StreamLagLabels: []string{},
+				Options: Options{
+					StreamLagLabels: []string{},
+				},
 			},
 			Config{
 				ClientConfig: client.Config{
@@ -85,7 +89,9 @@ func TestConfig_Setup(t *testing.T) {
 						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2", "foo": "bar"}},
 					},
 				},
-				StreamLagLabels: []string{},
+				Options: Options{
+					StreamLagLabels: []string{},
+				},
 			},
 		},
 		{
@@ -102,7 +108,9 @@ func TestConfig_Setup(t *testing.T) {
 						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2"}},
 					},
 				},
-				StreamLagLabels: []string{},
+				Options: Options{
+					StreamLagLabels: []string{},
+				},
 			},
 			Config{
 				ClientConfig: client.Config{
@@ -121,7 +129,9 @@ func TestConfig_Setup(t *testing.T) {
 						URL:            dskitflagext.URLValue{URL: mustURL("http://foo")},
 					},
 				},
-				StreamLagLabels: []string{},
+				Options: Options{
+					StreamLagLabels: []string{},
+				},
 			},
 		},
 	} {

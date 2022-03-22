@@ -68,13 +68,13 @@ func New(cfg config.Config, metrics *client.Metrics, dryRun bool, opts ...Option
 	}
 	var err error
 	if dryRun {
-		promtail.client, err = client.NewLogger(metrics, cfg.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
+		promtail.client, err = client.NewLogger(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		promtail.client, err = client.NewMulti(metrics, cfg.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
+		promtail.client, err = client.NewMulti(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
