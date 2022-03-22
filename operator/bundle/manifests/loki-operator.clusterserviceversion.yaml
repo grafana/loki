@@ -721,4 +721,11 @@ spec:
   minKubeVersion: 1.21.1
   provider:
     name: Grafana.com
+  relatedImages:
+  - image: quay.io/observatorium/opa-openshift:latest
+    name: opa
+  - image: quay.io/openshift-logging/loki:v2.4.2
+    name: loki
+  - image: quay.io/observatorium/api:latest
+    name: gateway
   version: 0.0.1

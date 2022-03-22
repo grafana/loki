@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: controller-manager
+  labels:
+    control-plane: controller-manager
 spec:
   selector:
     matchLabels:
