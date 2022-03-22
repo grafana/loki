@@ -152,7 +152,7 @@ schema_config:
       index:
         period: 24h
         prefix: index_
-      object_store: s3
+      object_store: {{ .ObjectStorage.SharedStore }}
       schema: v11
       store: boltdb-shipper
 server:
@@ -172,7 +172,7 @@ storage_config:
     cache_location: {{ .StorageDirectory }}/index_cache
     cache_ttl: 24h
     resync_interval: 5m
-    shared_store: s3
+    shared_store: {{ .ObjectStorage.SharedStore }}
     index_gateway_client:
       server_address: dns:///{{ .IndexGateway.FQDN }}:{{ .IndexGateway.Port }}
 tracing:
