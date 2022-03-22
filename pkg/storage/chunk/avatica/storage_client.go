@@ -65,7 +65,7 @@ func (cfg *Config) session() (*sql.DB, error) {
 	//	return nil, err
 	//}
 
-	// keyspace not exist
+	// database not exist
 	if err := cfg.createDatabase(db); err != nil {
 		return nil, errors.WithStack(err)
 	}
