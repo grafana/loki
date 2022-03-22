@@ -66,6 +66,7 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+.PHONY: all
 all: generate lint manager bin/loki-broker
 
 OCI_RUNTIME ?= $(shell which podman || which docker)
@@ -83,6 +84,7 @@ OCI_RUNTIME ?= $(shell which podman || which docker)
 # More info on the awk command:
 # http://linuxcommand.org/lc3_adv_awk.php
 
+.PHONY: help
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
@@ -94,25 +96,32 @@ deps: go.mod go.sum
 	go mod download
 	go mod verify
 
+.PHONY: cli
 cli: deps bin/loki-broker ## Build loki-broker CLI binary
 bin/loki-broker: $(GO_FILES) | generate
 	go build -o $@ ./cmd/loki-broker/
 
+.PHONY: manager
 manager: deps generate ## Build manager binary
 	go build -o bin/manager main.go
 
+.PHONY: size-calculator
 size-calculator: deps generate ## Build size-calculator binary
 	go build -o bin/size-calculator main.go
 
+.PHONY: go-generate
 go-generate: ## Run go generate
 	go generate ./...
 
+.PHONY: generate
 generate: $(CONTROLLER_GEN) ## Generate controller and crd code
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+.PHONY: manifests
 manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
+.PHONY: test
 test: deps generate go-generate lint lint-prometheus manifests ## Run tests
 test: $(GO_FILES)
 	go test ./... -coverprofile cover.out
@@ -121,9 +130,11 @@ test: $(GO_FILES)
 test-unit-prometheus: $(PROMTOOL) ## Run prometheus unit tests
 	@$(PROMTOOL) test rules ./internal/manifests/internal/alerts/testdata/test.yaml
 
+.PHONY: scorecard
 scorecard: generate go-generate bundle ## Run scorecard test
 	$(OPERATOR_SDK) scorecard bundle
 
+.PHONY: lint
 lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 	$(GOLANGCI_LINT) run ./...
 
@@ -131,12 +142,15 @@ lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and alerts.
 	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus-alerts.yaml
 
+.PHONY: fmt
 fmt: $(GOFUMPT) ## Run gofumpt on source code.
 	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
 
+.PHONY: oci-build
 oci-build: ## Build the image
 	$(OCI_RUNTIME) build -t ${IMG} .
 
+.PHONY: oci-push
 oci-push: ## Push the image
 	$(OCI_RUNTIME) push ${IMG}
 
@@ -153,21 +167,30 @@ bundle-build: ## Build the bundle image.
 
 ##@ Deployment
 
+ifndef ignore-not-found
+  ignore-not-found = false
+endif
+
+.PHONY: run
 run: generate manifests ## Run against the configured Kubernetes cluster in ~/.kube/config
 	go run ./main.go
 
+.PHONY: install
 install: manifests $(KUSTOMIZE) ## Install CRDs into a cluster
 	$(KUSTOMIZE) build config/crd | kubectl apply -f -
 
-uninstall: manifests $(KUSTOMIZE) ## Uninstall CRDs from a cluster
-	$(KUSTOMIZE) build config/crd | kubectl delete -f -
+.PHONY: uninstall
+uninstall: manifests $(KUSTOMIZE) ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUSTOMIZE) build config/crd | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
+.PHONY: deploy
 deploy: manifests $(KUSTOMIZE) ## Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/overlays/development | kubectl apply -f -
 
-undeploy: ## Undeploy controller from the configured Kubernetes cluster in ~/.kube/config
-	$(KUSTOMIZE) build config/overlays/development | kubectl delete -f -
+.PHONY: undeploy
+undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUSTOMIZE) build config/overlays/development | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
 # Build and push the bundle image to a container registry.
 .PHONY: olm-deploy-bundle
@@ -207,8 +230,10 @@ endif
 undeploy-size-calculator: ## Undeploy storage size calculator
 	$(KUSTOMIZE) build config/overlays/openshift/size-calculator | kubectl delete -f -
 
+.PHONY: oci-build-calculator
 oci-build-calculator: ## Build the calculator image
 	$(OCI_RUNTIME) build -f calculator.Dockerfile -t $(CALCULATOR_IMG) .
 
+.PHONY: oci-push-calculator
 oci-push-calculator: ## Push the calculator image
 	$(OCI_RUNTIME) push $(CALCULATOR_IMG)

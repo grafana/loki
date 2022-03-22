@@ -595,6 +595,8 @@ spec:
           strategy: {}
           template:
             metadata:
+              annotations:
+                kubectl.kubernetes.io/default-container: manager
               labels:
                 app.kubernetes.io/instance: loki-operator-v0.0.1
                 app.kubernetes.io/managed-by: operator-lifecycle-manager
