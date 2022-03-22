@@ -105,7 +105,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	err = handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme, r.Flags)
+	err = handlers.CreateOrUpdateLokiStack(r.Log, ctx, req, r.Client, r.Scheme, r.Flags)
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,
