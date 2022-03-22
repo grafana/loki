@@ -38,7 +38,7 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	tableVals := make([]interface{}, len(columns))
-	for idx, _ := range tableVals {
+	for idx := range tableVals {
 		var val interface{}
 		tableVals[idx] = &val
 	}
