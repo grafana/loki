@@ -25,7 +25,7 @@ import (
 )
 
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
-func CreateOrUpdateLokiStack(log logr.Logger, ctx context.Context, req ctrl.Request, k k8s.Client, s *runtime.Scheme, flags manifests.FeatureFlags) error {
+func CreateOrUpdateLokiStack(ctx context.Context, log logr.Logger, req ctrl.Request, k k8s.Client, s *runtime.Scheme, flags manifests.FeatureFlags) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createOrUpdate")
 
 	var stack lokiv1beta1.LokiStack
@@ -100,7 +100,7 @@ func CreateOrUpdateLokiStack(log logr.Logger, ctx context.Context, req ctrl.Requ
 			}
 
 			// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
-			tenantConfigMap = gateway.GetTenantConfigMapData(ctx, k, req)
+			tenantConfigMap = gateway.GetTenantConfigMapData(ctx, log, k, req)
 		}
 	}
 
@@ -158,7 +158,7 @@ func CreateOrUpdateLokiStack(log logr.Logger, ctx context.Context, req ctrl.Requ
 		}
 
 		desired := obj.DeepCopyObject().(client.Object)
-		mutateFn := manifests.MutateFuncFor(obj, desired)
+		mutateFn := manifests.MutateFuncFor(log, obj, desired)
 
 		op, err := ctrl.CreateOrUpdate(ctx, k, obj, mutateFn)
 		if err != nil {

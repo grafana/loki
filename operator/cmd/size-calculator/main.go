@@ -29,9 +29,7 @@ const (
 	sizeOneXMedium string = "1x.medium"
 )
 
-var (
-	logger = log.NewLogger("size-calculator")
-)
+var logger = log.NewLogger("size-calculator")
 
 func main() {
 	logger.Info("starting storage size calculator...")

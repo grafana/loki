@@ -18,9 +18,7 @@ import (
 	"k8s.io/utils/pointer"
 )
 
-var (
-	logger = log.DefaultLogger()
-)
+var logger = log.DefaultLogger()
 
 func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 	got := &corev1.ConfigMap{

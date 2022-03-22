@@ -92,7 +92,7 @@ type LokiStackReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ok, err := state.IsManaged(ctx, req, r.Client)
+	ok, err := state.IsManaged(ctx, r.Log, req, r.Client)
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,
@@ -105,7 +105,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	err = handlers.CreateOrUpdateLokiStack(r.Log, ctx, req, r.Client, r.Scheme, r.Flags)
+	err = handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.Flags)
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,
