@@ -9,11 +9,11 @@ import (
 	"time"
 
 	avatica "github.com/apache/calcite-avatica-go/v5"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 )
