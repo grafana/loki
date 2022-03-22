@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -54,10 +55,15 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 		if shard != nil {
 			stringfiedShard = shard.String()
 		}
-		if matcher == nil {
-			return userID + sep + from.String() + sep + through.String() + stringfiedShard + sep
+
+		keyMembers := []string{
+			userID, from.String(), through.String(), stringfiedShard,
 		}
-		return userID + sep + from.String() + sep + through.String() + stringfiedShard + sep + matcher.String()
+		if matcher != nil {
+			keyMembers = append(keyMembers, matcher.String())
+		}
+
+		return strings.Join(keyMembers, sep)
 	}
 
 	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([][]byte, error) {
@@ -106,10 +112,14 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 			stringfiedShard = shard.String()
 		}
 
-		if matcher == nil {
-			return userID + sep + from.String() + sep + through.String() + stringfiedShard + sep
+		keyMembers := []string{
+			userID, from.String(), through.String(), stringfiedShard,
 		}
-		return userID + sep + from.String() + sep + through.String() + stringfiedShard + sep + matcher.String()
+		if matcher != nil {
+			keyMembers = append(keyMembers, matcher.String())
+		}
+
+		return strings.Join(keyMembers, sep)
 	}
 
 	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([][]byte, error) {
@@ -206,7 +216,7 @@ func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, t
 		if matcher == nil {
 			return name
 		}
-		return name + sep + matcher.String()
+		return strings.Join([]string{name, matcher.String()}, sep)
 	}
 
 	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([][]byte, error) {
