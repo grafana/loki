@@ -151,7 +151,10 @@ func (t *Target) pull(ctx context.Context, start, end time.Time) error {
 
 	for backoff.Ongoing() {
 		it, err = t.client.LogpullReceived(ctx, start, end)
-		if err != nil {
+		if err != nil && err.Error() == "HTTP status 400: bad query: error parsing time: invalid time range: too early: logs older than 168h0m0s are not available" {
+			level.Debug(t.logger).Log("msg", "failed iterating over logs, out of cloudflare range, not retrying", "err", err, "start", start, "end", end, "retries", backoff.NumRetries())
+			return nil
+		} else if err != nil {
 			errs.Add(err)
 			backoff.Wait()
 			continue
