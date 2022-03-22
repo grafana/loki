@@ -70,7 +70,7 @@ endif
 
 all: generate lint manager bin/loki-broker
 
-OCI_RUNTIME ?= $(shell which podman || which docker)
+OCI_RUNTIME ?= $(shell which docker)
 
 ##@ General
 
