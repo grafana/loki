@@ -7,12 +7,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
 func mustParseLabels(s string) labels.Labels {
-	ls, err := logql.ParseLabels(s)
+	ls, err := syntax.ParseLabels(s)
 	if err != nil {
 		panic(err)
 	}
@@ -93,7 +93,7 @@ func TestQueryIndex(t *testing.T) {
 	reader, err := index.NewFileReader(dir)
 	require.Nil(t, err)
 
-	p, err := PostingsForMatchers(reader, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+	p, err := PostingsForMatchers(reader, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 	require.Nil(t, err)
 
 	var (
@@ -102,16 +102,15 @@ func TestQueryIndex(t *testing.T) {
 	)
 
 	require.True(t, p.Next())
-	require.Nil(t, reader.Series(p.At(), &ls, &chks))
-	// the second series should be the first returned as it's lexicographically sorted
-	// and bazz < foo
-	require.Equal(t, cases[1].labels.String(), ls.String())
-	require.Equal(t, cases[1].chunks, chks)
-	require.True(t, p.Next())
-	require.Nil(t, reader.Series(p.At(), &ls, &chks))
-	// Now we should encounter the series "added" first.
+	_, err = reader.Series(p.At(), &ls, &chks)
+	require.Nil(t, err)
 	require.Equal(t, cases[0].labels.String(), ls.String())
 	require.Equal(t, cases[0].chunks, chks)
+	require.True(t, p.Next())
+	_, err = reader.Series(p.At(), &ls, &chks)
+	require.Nil(t, err)
+	require.Equal(t, cases[1].labels.String(), ls.String())
+	require.Equal(t, cases[1].chunks, chks)
 	require.False(t, p.Next())
 
 	mint, maxt := reader.Bounds()

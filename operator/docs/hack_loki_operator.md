@@ -85,6 +85,12 @@ It will undeploy controller from the configured Kubernetes cluster in [~/.kube/c
 
 ### Installation of Loki Operator
 
+* Create the `openshift-operators-redhat` namespace in the cluster:
+
+  ```console
+  kubectl create ns openshift-operators-redhat
+  ```
+
 * Build and push the container image [2] and then deploy the operator with:
 
   ```console
@@ -195,6 +201,22 @@ It will cleanup deployments of the operator bundle, and the operator via OLM on 
 Each tenant Secret is required to match:
 * `metadata.name` with `TenantsSecretsSpec.Name`.
 * `metadata.namespace` with `LokiStack.metadata.namespace`.
+
+## Development Add-Ons
+
+To help with testing and development, a [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) and [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) deployment are available. The example file has been configured to work with the [lokistack-gateway](./forwarding_logs_to_gateway.md). In order to work without this component, change the URLs to use the `distributor` and `query-frontend` service respectively.
+
+In order to deploy these resources, follow the above steps to deploy the operator and instance. Then, do the following command:
+
+```console
+kubectl apply -f ./hack/addons_dev.yaml
+```
+
+### Notes
+
+[1] When using an OpenShift cluster, the `addons_ocp.yaml` should be used. In a native K8s cluster the `addons_dev.yaml` should be used. The OpenShift environment uses `SecurityContextConstraints` in order to limit or enable pod capabilities.
+
+[2] When deploying on a native K8s cluster, ensure that the namespaces of the `ServiceAccount` in the `ClusterRoleBinding` objects are changed accordingly.
 
 ## Basic Troubleshooting on Hacking on Loki Operator
 

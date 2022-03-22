@@ -35,14 +35,15 @@ metadata:
       Loki is a memory intensive application.  The initial
       set of OCP nodes may not be large enough to support the Loki stack.  Additional OCP nodes must be added
       to the OCP cluster if you desire to run with the recommended (or better) memory.
-    olm.skipRange: '>=4.6.0-0 <5.4.0'
+    olm.skipRange: '>=5.4.0-0 <5.5.0'
     operatorframework.io/cluster-monitoring: "true"
-    operatorframework.io/suggested-namespace: openshift-logging
+    operatorframework.io/suggested-namespace: openshift-operators-redhat
     operators.operatorframework.io/builder: operator-sdk-unknown
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
     support: AOS Cluster Logging
   labels:
     operatorframework.io/arch.amd64: supported
+    operatorframework.io/arch.arm64: supported
     operatorframework.io/arch.ppc64le: supported
     operatorframework.io/arch.s390x: supported
   name: loki-operator.v0.0.1
@@ -615,7 +616,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.4.1
+                  value: quay.io/openshift-logging/loki:v2.4.2
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA

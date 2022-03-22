@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -197,28 +198,34 @@ func TestParseExternalKey(t *testing.T) {
 		err   error
 	}{
 		{key: "2:1484661279394:1484664879394", chunk: Chunk{
-			UserID:      userID,
-			Fingerprint: model.Fingerprint(2),
-			From:        model.Time(1484661279394),
-			Through:     model.Time(1484664879394),
+			ChunkRef: logproto.ChunkRef{
+				UserID:      userID,
+				Fingerprint: uint64(2),
+				From:        model.Time(1484661279394),
+				Through:     model.Time(1484664879394),
+			},
 		}},
 
 		{key: userID + "/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{
-			UserID:      userID,
-			Fingerprint: model.Fingerprint(2),
-			From:        model.Time(655200000),
-			Through:     model.Time(655200000),
+			ChunkRef: logproto.ChunkRef{
+				UserID:      userID,
+				Fingerprint: uint64(2),
+				From:        model.Time(655200000),
+				Through:     model.Time(655200000),
+				Checksum:    4165752645,
+			},
 			ChecksumSet: true,
-			Checksum:    4165752645,
 		}},
 
 		{key: userID + "/2/270d8f00:270d8f00:f84c5745", chunk: Chunk{
-			UserID:      userID,
-			Fingerprint: model.Fingerprint(2),
-			From:        model.Time(655200000),
-			Through:     model.Time(655200000),
+			ChunkRef: logproto.ChunkRef{
+				UserID:      userID,
+				Fingerprint: uint64(2),
+				From:        model.Time(655200000),
+				Through:     model.Time(655200000),
+				Checksum:    4165752645,
+			},
 			ChecksumSet: true,
-			Checksum:    4165752645,
 		}},
 
 		{key: "invalidUserID/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{}, err: ErrWrongMetadata},
@@ -417,29 +424,14 @@ func TestChunkKeys(t *testing.T) {
 		{
 			name: "Legacy key (pre-checksum)",
 			chunk: Chunk{
-				Fingerprint: 100,
-				UserID:      "fake",
-				From:        model.TimeFromUnix(1000),
-				Through:     model.TimeFromUnix(5000),
-			},
-			schemaCfg: SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						From:   DayTime{Time: 0},
-						Schema: "v9",
-					},
+				ChunkRef: logproto.ChunkRef{
+					Fingerprint: 100,
+					UserID:      "fake",
+					From:        model.TimeFromUnix(1000),
+					Through:     model.TimeFromUnix(5000),
+					Checksum:    12345,
 				},
-			},
-		},
-		{
-			name: "New key (post-checksum)",
-			chunk: Chunk{
-				Fingerprint: 100,
-				UserID:      "fake",
-				From:        model.TimeFromUnix(1000),
-				Through:     model.TimeFromUnix(5000),
 				ChecksumSet: true,
-				Checksum:    12345,
 			},
 			schemaCfg: SchemaConfig{
 				Configs: []PeriodConfig{
@@ -454,12 +446,14 @@ func TestChunkKeys(t *testing.T) {
 		{
 			name: "Newer key (post-v12)",
 			chunk: Chunk{
-				Fingerprint: 100,
-				UserID:      "fake",
-				From:        model.TimeFromUnix(1000),
-				Through:     model.TimeFromUnix(5000),
+				ChunkRef: logproto.ChunkRef{
+					Fingerprint: 100,
+					UserID:      "fake",
+					From:        model.TimeFromUnix(1000),
+					Through:     model.TimeFromUnix(5000),
+					Checksum:    12345,
+				},
 				ChecksumSet: true,
-				Checksum:    12345,
 			},
 			schemaCfg: SchemaConfig{
 				Configs: []PeriodConfig{

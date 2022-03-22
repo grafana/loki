@@ -33,8 +33,8 @@ var (
 	InjectCABundleKey = "service.beta.openshift.io/inject-cabundle"
 )
 
-func clusterRoleName(opts Options) string {
-	return opts.BuildOpts.GatewayName
+func authorizerRbacName(opts Options) string {
+	return fmt.Sprintf("%s-authorizer", opts.BuildOpts.GatewayName)
 }
 
 func monitoringRbacName(stackName string) string {

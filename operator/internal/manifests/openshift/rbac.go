@@ -17,7 +17,7 @@ func BuildClusterRole(opts Options) *rbacv1.ClusterRole {
 			APIVersion: rbacv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   clusterRoleName(opts),
+			Name:   authorizerRbacName(opts),
 			Labels: opts.BuildOpts.Labels,
 		},
 		Rules: []rbacv1.PolicyRule{
@@ -58,13 +58,13 @@ func BuildClusterRoleBinding(opts Options) *rbacv1.ClusterRoleBinding {
 			APIVersion: rbacv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   opts.BuildOpts.GatewayName,
+			Name:   authorizerRbacName(opts),
 			Labels: opts.BuildOpts.Labels,
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "ClusterRole",
-			Name:     clusterRoleName(opts),
+			Name:     authorizerRbacName(opts),
 		},
 		Subjects: []rbacv1.Subject{
 			{

@@ -15,12 +15,14 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 	serverutil "github.com/grafana/loki/pkg/util/server"
+	util_validation "github.com/grafana/loki/pkg/util/validation"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -148,14 +150,14 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expr, err := logql.ParseExpr(request.Query)
+	expr, err := syntax.ParseExpr(request.Query)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
 
 	// short circuit metric queries
-	if _, ok := expr.(logql.SampleExpr); ok {
+	if _, ok := expr.(syntax.SampleExpr); ok {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logqlmodel.ValueTypeStreams), w)
 		return
 	}
@@ -340,7 +342,7 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
 func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
-	req, err := logql.ParseAndValidateSeriesQuery(r)
+	req, err := loghttp.ParseAndValidateSeriesQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
@@ -365,11 +367,11 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	query := httpRequest.Form.Get("query")
 	regexp := httpRequest.Form.Get("regexp")
 	if regexp != "" {
-		expr, err := logql.ParseLogSelector(query, true)
+		expr, err := syntax.ParseLogSelector(query, true)
 		if err != nil {
 			return "", err
 		}
-		newExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
+		newExpr, err := syntax.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
 		if err != nil {
 			return "", err
 		}
@@ -379,22 +381,22 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 }
 
 func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
-	userID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	expr, err := logql.ParseExpr(query)
+	expr, err := syntax.ParseExpr(query)
 	if err != nil {
 		return err
 	}
 
 	// entry limit does not apply to metric queries.
-	if _, ok := expr.(logql.SampleExpr); ok {
+	if _, ok := expr.(syntax.SampleExpr); ok {
 		return nil
 	}
 
-	maxEntriesLimit := q.limits.MaxEntriesLimitPerQuery(userID)
+	maxEntriesLimit := util_validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.limits.MaxEntriesLimitPerQuery)
 	if int(limit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", limit, maxEntriesLimit)

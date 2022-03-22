@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/tenant"
 )
 
@@ -20,34 +21,29 @@ const (
 // MultiTenantQuerier is able to query across different tenants.
 type MultiTenantQuerier struct {
 	Querier
-	resolver tenant.Resolver
 }
 
 // NewMultiTenantQuerier returns a new querier able to query across different tenants.
 func NewMultiTenantQuerier(querier Querier, logger log.Logger) *MultiTenantQuerier {
 	return &MultiTenantQuerier{
-		Querier:  querier,
-		resolver: tenant.NewMultiResolver(),
+		Querier: querier,
 	}
 }
 
 func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
-
-	tenantIDs, err := q.resolver.TenantIDs(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(tenantIDs) == 1 {
-		singleContext := user.InjectUserID(ctx, tenantIDs[0])
-		return q.Querier.SelectLogs(singleContext, params)
+		return q.Querier.SelectLogs(ctx, params)
 	}
 
 	iters := make([]iter.EntryIterator, len(tenantIDs))
 	for i, id := range tenantIDs {
-		singleContext := user.InjectUserID(ctx, id)
+		singleContext := user.InjectOrgID(ctx, id)
 		iter, err := q.Querier.SelectLogs(singleContext, params)
-
 		if err != nil {
 			return nil, err
 		}
@@ -58,22 +54,19 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 }
 
 func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
-
-	tenantIDs, err := q.resolver.TenantIDs(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(tenantIDs) == 1 {
-		singleContext := user.InjectUserID(ctx, tenantIDs[0])
-		return q.Querier.SelectSamples(singleContext, params)
+		return q.Querier.SelectSamples(ctx, params)
 	}
 
 	iters := make([]iter.SampleIterator, len(tenantIDs))
 	for i, id := range tenantIDs {
-		singleContext := user.InjectUserID(ctx, id)
+		singleContext := user.InjectOrgID(ctx, id)
 		iter, err := q.Querier.SelectSamples(singleContext, params)
-
 		if err != nil {
 			return nil, err
 		}
@@ -83,50 +76,68 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	return iter.NewSortSampleIterator(iters), nil
 }
 
-// TenantEntry Iterator wraps an entry iterator and adds the tenant label.
-type TenantEntryIterator struct {
-	iter.EntryIterator
+type relabel struct {
 	tenantID string
+	cache    map[string]labels.Labels
 }
 
-func NewTenantEntryIterator(iter iter.EntryIterator, id string) *TenantEntryIterator {
-	return &TenantEntryIterator{EntryIterator: iter, tenantID: id}
-}
+func (r relabel) relabel(original string) string {
+	lbls, ok := r.cache[original]
+	if ok {
+		return lbls.String()
+	}
 
-func (i *TenantEntryIterator) Labels() string {
-	// TODO: cache manipulated labels and add a benchmark.
-	lbls, _ := logql.ParseLabels(i.EntryIterator.Labels())
+	lbls, _ = syntax.ParseLabels(original)
 	builder := labels.NewBuilder(lbls.WithoutLabels(defaultTenantLabel))
 
 	// Prefix label if it conflicts with the tenant label.
 	if lbls.Has(defaultTenantLabel) {
 		builder.Set(retainExistingPrefix+defaultTenantLabel, lbls.Get(defaultTenantLabel))
 	}
-	builder.Set(defaultTenantLabel, i.tenantID)
+	builder.Set(defaultTenantLabel, r.tenantID)
 
-	return builder.Labels().String()
+	lbls = builder.Labels()
+	r.cache[original] = lbls
+	return lbls.String()
+}
+
+// TenantEntry Iterator wraps an entry iterator and adds the tenant label.
+type TenantEntryIterator struct {
+	iter.EntryIterator
+	relabel
+}
+
+func NewTenantEntryIterator(iter iter.EntryIterator, id string) *TenantEntryIterator {
+	return &TenantEntryIterator{
+		EntryIterator: iter,
+		relabel: relabel{
+			tenantID: id,
+			cache:    map[string]labels.Labels{},
+		},
+	}
+}
+
+func (i *TenantEntryIterator) Labels() string {
+	return i.relabel.relabel(i.EntryIterator.Labels())
 }
 
 // TenantEntry Iterator wraps a sample iterator and adds the tenant label.
 type TenantSampleIterator struct {
 	iter.SampleIterator
-	tenantID string
+	relabel
 }
 
 func NewTenantSampleIterator(iter iter.SampleIterator, id string) *TenantSampleIterator {
-	return &TenantSampleIterator{SampleIterator: iter, tenantID: id}
+	return &TenantSampleIterator{
+		SampleIterator: iter,
+		relabel: relabel{
+			tenantID: id,
+			cache:    map[string]labels.Labels{},
+		},
+	}
+
 }
 
 func (i *TenantSampleIterator) Labels() string {
-	// TODO: cache manipulated labels
-	lbls, _ := logql.ParseLabels(i.SampleIterator.Labels())
-	builder := labels.NewBuilder(lbls.WithoutLabels(defaultTenantLabel))
-
-	// Prefix label if it conflicts with the tenant label.
-	if lbls.Has(defaultTenantLabel) {
-		builder.Set(retainExistingPrefix+defaultTenantLabel, lbls.Get(defaultTenantLabel))
-	}
-	builder.Set(defaultTenantLabel, i.tenantID)
-
-	return builder.Labels().String()
+	return i.relabel.relabel(i.SampleIterator.Labels())
 }

@@ -72,7 +72,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: LabelGatewayComponent,
+							Name: GatewayName(opts.Name),
 						},
 					},
 				},
@@ -82,7 +82,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: LabelGatewayComponent,
+							Name: GatewayName(opts.Name),
 						},
 					},
 				},
@@ -92,7 +92,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: LabelGatewayComponent,
+							Name: GatewayName(opts.Name),
 						},
 					},
 				},
@@ -307,7 +307,7 @@ func gatewayConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   LabelGatewayComponent,
+			Name:   GatewayName(opt.Name),
 			Labels: commonLabels(opt.Name),
 		},
 		BinaryData: map[string][]byte{
@@ -334,7 +334,6 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 	tenantConfigMap := make(map[string]gateway.TenantData)
 	for tenant, tenantData := range opt.TenantConfigMap {
 		tenantConfigMap[tenant] = gateway.TenantData{
-			TenantID:     tenantData.TenantID,
 			CookieSecret: tenantData.CookieSecret,
 		}
 	}

@@ -24,8 +24,8 @@ LOKI_OPERATOR_NS ?= openshift-operators-redhat
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= v0.0.1
-CHANNELS ?= "tech-preview"
-DEFAULT_CHANNELS ?= "tech-preview"
+CHANNELS ?= "candidate"
+DEFAULT_CHANNEL ?= "candidate"
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
@@ -132,7 +132,7 @@ lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 
 .PHONY: lint-prometheus
 lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and alerts.
-	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus_alerts.yaml
+	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus-alerts.yaml
 
 fmt: $(GOFUMPT) ## Run gofumpt on source code.
 	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;

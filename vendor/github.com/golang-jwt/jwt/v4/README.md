@@ -1,12 +1,12 @@
 # jwt-go
 
 [![build](https://github.com/golang-jwt/jwt/actions/workflows/build.yml/badge.svg)](https://github.com/golang-jwt/jwt/actions/workflows/build.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/golang-jwt/jwt.svg)](https://pkg.go.dev/github.com/golang-jwt/jwt)
+[![Go Reference](https://pkg.go.dev/badge/github.com/golang-jwt/jwt/v4.svg)](https://pkg.go.dev/github.com/golang-jwt/jwt/v4)
 
 A [go](http://www.golang.org) (or 'golang' for search engine friendliness) implementation of [JSON Web Tokens](https://datatracker.ietf.org/doc/html/rfc7519).
 
-Starting with [v4.0.0](https://github.com/golang-jwt/jwt/releases/tag/v4.0.0) this project adds Go module support, but maintains backwards compataibility with older `v3.x.y` tags and upstream `github.com/dgrijalva/jwt-go`.
-See the `MIGRATION_GUIDE.md` for more information.
+Starting with [v4.0.0](https://github.com/golang-jwt/jwt/releases/tag/v4.0.0) this project adds Go module support, but maintains backwards compatibility with older `v3.x.y` tags and upstream `github.com/dgrijalva/jwt-go`.
+See the [`MIGRATION_GUIDE.md`](./MIGRATION_GUIDE.md) for more information.
 
 > After the original author of the library suggested migrating the maintenance of `jwt-go`, a dedicated team of open source maintainers decided to clone the existing library into this repository. See [dgrijalva/jwt-go#462](https://github.com/dgrijalva/jwt-go/issues/462) for a detailed discussion on this topic.
 
@@ -52,7 +52,7 @@ Here's an example of an extension that integrates with multiple Google Cloud Pla
 
 ## Compliance
 
-This library was last reviewed to comply with [RTF 7519](https://datatracker.ietf.org/doc/html/rfc7519) dated May 2015 with a few notable differences:
+This library was last reviewed to comply with [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519) dated May 2015 with a few notable differences:
 
 * In order to protect against accidental use of [Unsecured JWTs](https://datatracker.ietf.org/doc/html/rfc7519#section-6), tokens using `alg=none` will only be accepted if the constant `jwt.UnsafeAllowNoneSignatureType` is provided as the key.
 
@@ -91,6 +91,7 @@ Each signing method expects a different object type for its signing keys. See th
 * The [HMAC signing method](https://pkg.go.dev/github.com/golang-jwt/jwt#SigningMethodHMAC) (`HS256`,`HS384`,`HS512`) expect `[]byte` values for signing and validation
 * The [RSA signing method](https://pkg.go.dev/github.com/golang-jwt/jwt#SigningMethodRSA) (`RS256`,`RS384`,`RS512`) expect `*rsa.PrivateKey` for signing and `*rsa.PublicKey` for validation
 * The [ECDSA signing method](https://pkg.go.dev/github.com/golang-jwt/jwt#SigningMethodECDSA) (`ES256`,`ES384`,`ES512`) expect `*ecdsa.PrivateKey` for signing and `*ecdsa.PublicKey` for validation
+* The [EdDSA signing method](https://pkg.go.dev/github.com/golang-jwt/jwt#SigningMethodEd25519) (`Ed25519`) expect `ed25519.PrivateKey` for signing and `ed25519.PublicKey` for validation
 
 ### JWT and OAuth
 

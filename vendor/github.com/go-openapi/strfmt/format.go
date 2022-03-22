@@ -76,6 +76,7 @@ type defaultFormats struct {
 
 // NewFormats creates a new formats registry seeded with the values from the default
 func NewFormats() Registry {
+	//nolint:forcetypeassert
 	return NewSeededFormats(Default.(*defaultFormats).data, nil)
 }
 

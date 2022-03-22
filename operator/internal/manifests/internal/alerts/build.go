@@ -2,29 +2,44 @@ package alerts
 
 import (
 	"bytes"
-	// https://pkg.go.dev/embed#hdr-Strings_and_Bytes
-	_ "embed"
+	"embed"
+	"io"
+	"text/template"
 
+	"github.com/ViaQ/logerr/kverrors"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
-var (
-	//go:embed prometheus_alerts.yaml
-	alertsBytes []byte
-
-	alertsRules monitoringv1.PrometheusRuleSpec
+const (
+	// RunbookDefaultURL is the default url for the documentation of the Prometheus alerts
+	RunbookDefaultURL = "https://github.com/grafana/loki/tree/main/operator/docs/alerts.md"
 )
 
-func init() {
-	r := bytes.NewReader(alertsBytes)
-	err := yaml.NewYAMLOrJSONDecoder(r, 1000).Decode(&alertsRules)
-	if err != nil {
-		panic(err)
-	}
-}
+var (
+	//go:embed prometheus-alerts.yaml
+	alertsYAMLTmplFile embed.FS
 
-// NewAlertsSpec decodes the prometheus alerts for loki stack
-func NewAlertsSpec() monitoringv1.PrometheusRuleSpec {
-	return alertsRules
+	alertsYAMLTmpl = template.Must(template.New("").Delims("[[", "]]").ParseFS(alertsYAMLTmplFile, "prometheus-alerts.yaml"))
+)
+
+// Build creates Prometheus alerts for the Loki stack
+func Build(opts Options) (*monitoringv1.PrometheusRuleSpec, error) {
+	spec := monitoringv1.PrometheusRuleSpec{}
+
+	// Build alerts yaml
+	w := bytes.NewBuffer(nil)
+	err := alertsYAMLTmpl.ExecuteTemplate(w, "prometheus-alerts.yaml", opts)
+	if err != nil {
+		return nil, kverrors.Wrap(err, "failed to create prometheus alerts")
+	}
+
+	// Decode the spec
+	r := io.Reader(w)
+	err = yaml.NewYAMLOrJSONDecoder(r, 1000).Decode(&spec)
+	if err != nil {
+		return nil, kverrors.Wrap(err, "failed to decode spec from reader")
+	}
+
+	return &spec, nil
 }
