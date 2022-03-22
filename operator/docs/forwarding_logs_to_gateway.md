@@ -33,11 +33,11 @@ _Note: While this document will only give instructions for two methods of log fo
           fluentd: {}
     ```
 
-* The LokiStack Gateway requires a bearer token for communication with fluentd. Therefore, create a secret with `bearer_token_file` key and the path to the file.
+* The LokiStack Gateway requires a bearer token for communication with fluentd. Therefore, create a secret with `token` key and the path to the file.
 
     ```console
     kubectl -n openshift-logging create secret generic lokistack-gateway-bearer-token \
-    --from-literal=bearer_token_file="/var/run/secrets/kubernetes.io/serviceaccount/token"
+    --from-literal=token="/var/run/secrets/kubernetes.io/serviceaccount/token"
     ```
 
 * Create the following `ClusterRole` and `ClusterRoleBinding` which will allow the cluster to authenticate the user(s) submitting the logs:
