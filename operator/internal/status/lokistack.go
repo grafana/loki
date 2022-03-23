@@ -13,8 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DegradedCondition creates the condition Degraded to the lokistack status conditions.
-type DegradedCondition struct {
+// Degraded contains information about why the managed LokiStack has an invalid configuration.
+type Degraded struct {
 	Message string
 	Reason  lokiv1beta1.LokiStackConditionReason
 }
