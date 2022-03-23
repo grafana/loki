@@ -348,6 +348,8 @@ func (e *LabelParserExpr) Stage() (log.Stage, error) {
 		return log.NewJSONParser(), nil
 	case OpParserTypeLogfmt:
 		return log.NewLogfmtParser(), nil
+	case OpParserTypeSyslog:
+		return log.NewSyslogParser(), nil
 	case OpParserTypeRegexp:
 		return log.NewRegexpParser(e.Param)
 	case OpParserTypeUnpack:
@@ -655,6 +657,7 @@ const (
 	// parsers
 	OpParserTypeJSON    = "json"
 	OpParserTypeLogfmt  = "logfmt"
+	OpParserTypeSyslog  = "syslog"
 	OpParserTypeRegexp  = "regexp"
 	OpParserTypeUnpack  = "unpack"
 	OpParserTypePattern = "pattern"

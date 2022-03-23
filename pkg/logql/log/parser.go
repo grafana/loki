@@ -8,14 +8,18 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/grafana/regexp"
+	syslog "github.com/influxdata/go-syslog/v3"
+	"github.com/influxdata/go-syslog/v3/nontransparent"
+	"github.com/influxdata/go-syslog/v3/octetcounting"
+	"github.com/influxdata/go-syslog/v3/rfc5424"
+	jsoniter "github.com/json-iterator/go"
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/pkg/logql/log/pattern"
 	"github.com/grafana/loki/pkg/logqlmodel"
-
-	"github.com/grafana/regexp"
-	jsoniter "github.com/json-iterator/go"
-	"github.com/prometheus/common/model"
 )
 
 const (
@@ -23,12 +27,22 @@ const (
 	duplicateSuffix = "_extracted"
 	trueString      = "true"
 	falseString     = "false"
+
+	syslogSeverityLevel  = "severity"
+	syslogFacilityLevel  = "facility"
+	syslogHostname       = "hostname"
+	syslogAppname        = "app_name"
+	syslogProcID         = "proc_id"
+	syslogMessageID      = "msg_id"
+	syslogStructuredData = "sd_"
+	syslogMessage        = "msg"
 )
 
 var (
 	_ Stage = &JSONParser{}
-	_ Stage = &RegexpParser{}
 	_ Stage = &LogfmtParser{}
+	_ Stage = &RegexpParser{}
+	_ Stage = &SyslogParser{}
 
 	errUnexpectedJSONObject = fmt.Errorf("expecting json object(%d), but it is not", jsoniter.ObjectValue)
 	errMissingCapture       = errors.New("at least one named capture must be supplied")
@@ -485,4 +499,77 @@ func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBu
 		}
 	}
 	return entry, nil
+}
+
+type SyslogParser struct {
+	maxMessageLength int
+	lbs              *LabelsBuilder
+}
+
+func NewSyslogParser() *SyslogParser {
+	return &SyslogParser{maxMessageLength: 1 << 12}
+}
+
+func (l *SyslogParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if lbs.ParserLabelHints().NoLabels() {
+		return line, true
+	}
+	l.lbs = lbs
+	b := line[0]
+	r := bytes.NewReader(line)
+	if b == '<' {
+		nontransparent.NewParser(
+			syslog.WithListener(l.handleMessage),
+			syslog.WithMaxMessageLength(len(line)),
+		).Parse(r)
+	} else if b >= '0' && b <= '9' {
+		octetcounting.NewParser(
+			syslog.WithListener(l.handleMessage),
+			syslog.WithMaxMessageLength(len(line)),
+		).Parse(r)
+	} else {
+		return line, false
+	}
+	return line, true
+}
+
+func (l *SyslogParser) RequiredLabelNames() []string { return []string{} }
+
+func (l *SyslogParser) handleMessage(msg *syslog.Result) {
+	// nothing could be parsed
+	// we can ignore msg.Error in case we got a partially parsed syslog message
+	if msg.Message == nil && msg.Error != nil {
+		l.lbs.SetErr(errSyslog)
+		return
+	}
+	rfc5424Msg := msg.Message.(*rfc5424.SyslogMessage)
+	if v := rfc5424Msg.SeverityLevel(); v != nil {
+		l.lbs.Set(syslogSeverityLevel, *v)
+	}
+	if v := rfc5424Msg.FacilityLevel(); v != nil {
+		l.lbs.Set(syslogFacilityLevel, *v)
+	}
+	if v := rfc5424Msg.Hostname; v != nil {
+		l.lbs.Set(syslogHostname, *v)
+	}
+	if v := rfc5424Msg.Appname; v != nil {
+		l.lbs.Set(syslogAppname, *v)
+	}
+	if v := rfc5424Msg.ProcID; v != nil {
+		l.lbs.Set(syslogProcID, *v)
+	}
+	if v := rfc5424Msg.MsgID; v != nil {
+		l.lbs.Set(syslogMessageID, *v)
+	}
+	if rfc5424Msg.StructuredData != nil {
+		for id, params := range *rfc5424Msg.StructuredData {
+			id = strings.ReplaceAll(id, "@", "_")
+			for name, value := range params {
+				l.lbs.Set(syslogStructuredData+id+"_"+name, value)
+			}
+		}
+	}
+	if v := rfc5424Msg.Message; v != nil {
+		l.lbs.Set(syslogMessage, *v)
+	}
 }

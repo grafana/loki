@@ -720,6 +720,88 @@ func Test_logfmtParser_Parse(t *testing.T) {
 	}
 }
 
+func Test_syslogParser_Parse(t *testing.T) {
+	tests := []struct {
+		name string
+		line []byte
+		lbs  labels.Labels
+		want labels.Labels
+	}{
+		{
+			"not syslog",
+			[]byte("not a syslog"),
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+		},
+		{
+			"invalid syslog",
+			[]byte("2020-01-01T05:10:20.841485+01:00 localhost loki 4321 id1234 - messsage"),
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: logqlmodel.ErrorLabel, Value: errSyslog},
+			},
+		},
+		{
+			"syslog with invalid structured data",
+			[]byte("<14>1 2020-01-01T05:10:20.841485+01:00 localhost loki 5252 id12345 [meta label=foo] This is an interesting message"),
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: logqlmodel.ErrorLabel, Value: errSyslog},
+			},
+		},
+		{
+			"syslog without structured data",
+			[]byte("<14>1 2020-01-01T05:10:20.841485+01:00 localhost loki 4321 id1234 - This is an interesting message"),
+			labels.Labels{},
+			labels.Labels{
+				{Name: syslogAppname, Value: "loki"},
+				{Name: syslogFacilityLevel, Value: "user"},
+				{Name: syslogHostname, Value: "localhost"},
+				{Name: syslogMessageID, Value: "id1234"},
+				{Name: syslogProcID, Value: "4321"},
+				{Name: syslogSeverityLevel, Value: "informational"},
+				{Name: syslogMessage, Value: "This is an interesting message"},
+			},
+		},
+		{
+			"syslog with structured data",
+			[]byte("<14>1 2020-01-01T05:10:20.841485+01:00 localhost loki 4321 id1234 [meta source=\"stdout\"][myid@5678 level=\"warn\"] This is an interesting message"),
+			labels.Labels{},
+			labels.Labels{
+				{Name: syslogAppname, Value: "loki"},
+				{Name: syslogFacilityLevel, Value: "user"},
+				{Name: syslogHostname, Value: "localhost"},
+				{Name: syslogMessageID, Value: "id1234"},
+				{Name: syslogProcID, Value: "4321"},
+				{Name: syslogSeverityLevel, Value: "informational"},
+				{Name: "sd_meta_source", Value: "stdout"},
+				{Name: "sd_myid_5678_level", Value: "warn"},
+				{Name: syslogMessage, Value: "This is an interesting message"},
+			},
+		},
+	}
+	p := NewSyslogParser()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
+			_, _ = p.Process(tt.line, b)
+			sort.Sort(tt.want)
+			require.Equal(t, tt.want, b.Labels())
+		})
+	}
+}
+
 func Test_unpackParser_Parse(t *testing.T) {
 	tests := []struct {
 		name string

@@ -410,6 +410,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false},
 		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false},
 		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false},
+		{"syslog", OpParserTypeSyslog, "", log.NewSyslogParser(), false},
 		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false},
 		{"pattern err", OpParserTypePattern, "bar", nil, true},
 		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false},

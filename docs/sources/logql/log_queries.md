@@ -387,6 +387,30 @@ will get those labels extracted:
 "status" => "200"
 ```
 
+#### syslog
+
+The **syslog** parser can be added using the `| syslog` and will extract values from [RFC5424](https://datatracker.ietf.org/doc/html/rfc5424) formatted syslog lines.
+
+For example, parsing the following log line
+
+```
+<165>1 2003-10-11T22:14:15.003Z mymachine.example.com evntslog - ID47 [exampleSDID@32473 iut="3" eventSource="Application" eventID="1011"] An application event log entry
+```
+
+will get those labels extracted:
+
+```kv
+"app_name" => "evntslog"
+"facility" => "local4"
+"hostname" => "mymachine.example.com"
+"msg" => "An application event log entry"
+"msg_id" => "ID47"
+"sd_exampleSDID_32473_eventID" => "1011"
+"sd_exampleSDID_32473_eventSource" => "Application"
+"sd_exampleSDID_32473_iut" => "3"
+"severity" => "notice"
+```
+
 #### Pattern
 
 The pattern parser allows the explicit extraction of fields from log lines by defining a pattern expression (`| pattern "<pattern-expression>"`). The expression matches the structure of a log line.
