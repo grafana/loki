@@ -28,11 +28,11 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, degraded *Degr
 		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
-	cs := s.Status.Components
-
 	if degraded != nil {
 		return SetDegradedCondition(ctx, k, req, degraded.Message, degraded.Reason)
 	}
+
+	cs := s.Status.Components
 
 	// Check for failed pods first
 	failed := len(cs.Compactor[corev1.PodFailed]) +
