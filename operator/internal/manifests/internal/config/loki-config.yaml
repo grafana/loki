@@ -56,7 +56,7 @@ frontend_worker:
   frontend_address: {{ .FrontendWorker.FQDN }}:{{ .FrontendWorker.Port }}
   grpc_client_config:
     max_send_msg_size: 104857600
-  parallelism: {{ .QueryParallelism.Value }}
+  match_max_concurrent: true
 ingester:
   chunk_block_size: 262144
   chunk_encoding: snappy
@@ -134,7 +134,7 @@ querier:
   query_ingesters_within: 3h
   query_timeout: 1m
   tail_max_duration: 1h
-  max_concurrent: 10
+  max_concurrent: {{ .MaxConcurrent.AvailableQuerierCPUCores }}
 query_range:
   align_queries_with_step: true
   cache_results: true

@@ -1,5 +1,6 @@
 ## Main
 
+- [5693](https://github.com/grafana/loki/pull/5693) **periklis**: Replace frontend_worker parallelism with match_max_concurrent
 - [5699](https://github.com/grafana/loki/pull/5699) **Red-GV**: Configure boltdb_shipper and schema to use Azure, GCS, and Swift storage
 - [5701](https://github.com/grafana/loki/pull/5701) **sasagarw**: Make ReplicationFactor optional in LokiStack API
 - [5695](https://github.com/grafana/loki/pull/5695) **xperimental**: Update Go to 1.17
