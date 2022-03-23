@@ -35,18 +35,13 @@ type Address struct {
 
 // MaxConcurrent for query concurrent processing.
 type MaxConcurrent struct {
-	AvailableQuerierCPUCores int64
+	AvailableQuerierCPUCores int32
 }
 
 // WriteAheadLog for ingester processing
 type WriteAheadLog struct {
 	Directory             string
 	IngesterMemoryRequest int64
-}
-
-// Value returns the number of available CPU cores per querier.
-func (p MaxConcurrent) Value() int32 {
-	return int32(p.AvailableQuerierCPUCores)
 }
 
 // ReplayMemoryCeiling calculates 50% of the ingester memory

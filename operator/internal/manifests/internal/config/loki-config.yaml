@@ -134,7 +134,7 @@ querier:
   query_ingesters_within: 3h
   query_timeout: 1m
   tail_max_duration: 1h
-  max_concurrent: {{ .MaxConcurrent.Value }}
+  max_concurrent: {{ .MaxConcurrent.AvailableQuerierCPUCores }}
 query_range:
   align_queries_with_step: true
   cache_results: true

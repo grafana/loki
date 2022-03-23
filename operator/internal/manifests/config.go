@@ -64,7 +64,7 @@ func ConfigOptions(opt Options) config.Options {
 		},
 		StorageDirectory: dataDirectory,
 		MaxConcurrent: config.MaxConcurrent{
-			AvailableQuerierCPUCores: opt.ResourceRequirements.Querier.Requests.Cpu().Value(),
+			AvailableQuerierCPUCores: int32(opt.ResourceRequirements.Querier.Requests.Cpu().Value()),
 		},
 		WriteAheadLog: config.WriteAheadLog{
 			Directory:             walDirectory,
