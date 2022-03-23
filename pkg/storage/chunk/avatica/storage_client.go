@@ -10,6 +10,9 @@ import (
 
 	avatica "github.com/apache/calcite-avatica-go/v5"
 	"github.com/grafana/dskit/flagext"
+	ot "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
@@ -177,7 +180,7 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 		querySQL := fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)",
 			entry.TableName)
 
-		err := s.queryInstrumentation(querySQL, func() error {
+		err := s.queryInstrumentation(ctx, querySQL, func() error {
 			rows, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue, entry.Value)
 			if err != nil {
 				return nil
@@ -193,7 +196,7 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	for _, entry := range b.deletes {
 		querySQL := fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
 			entry.TableName)
-		err := s.queryInstrumentation(querySQL, func() error {
+		err := s.queryInstrumentation(ctx, querySQL, func() error {
 			rows, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue)
 			if err != nil {
 				return nil
@@ -210,10 +213,13 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	return nil
 }
 
-func (s *StorageClient) queryInstrumentation(query string, queryFunc func() error) error {
+func (s *StorageClient) queryInstrumentation(ctx context.Context, query string, queryFunc func() error) error {
 	var start time.Time
 	var end time.Time
 	var err error
+	sp := ot.SpanFromContext(ctx)
+	sp.SetTag("sql", query)
+
 	defer func() {
 		statusCode := "200"
 		if err != nil {
@@ -225,6 +231,8 @@ func (s *StorageClient) queryInstrumentation(query string, queryFunc func() erro
 	err = queryFunc()
 	end = time.Now()
 	if err != nil {
+		ext.Error.Set(sp, true)
+		sp.LogFields(otlog.String("event", "error"), otlog.String("message", err.Error()))
 		return errors.WithStack(err)
 	}
 	return nil
@@ -290,10 +298,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 			return err
 		}
 	}
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	err = s.queryInstrumentation(querySQL, queryFunc)
+	err = s.queryInstrumentation(ctx, querySQL, queryFunc)
 	if err != nil {
 		return errors.WithStack(err)
 	}
