@@ -32,6 +32,7 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	defer rows.Close()
 	result := []string{}
 	columns, err := rows.Columns()
 	if err != nil {
@@ -66,21 +67,30 @@ func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) err
 	if c.cfg.TableOptions != "" {
 		query = fmt.Sprintf("%s WITH %s", query, c.cfg.TableOptions)
 	}
-	_, err := c.session.Query(query)
-	return errors.WithStack(err)
+	rows, err := c.session.Query(query)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	rows.Close()
+	return nil
 }
 
 func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
 	if c.cfg.Backend == BackendAlibabacloudLindorm {
-		_, err := c.session.Query(fmt.Sprintf(`
+		rows, err := c.session.Query(fmt.Sprintf(`
 		OFFLINE TABLE %s`, name))
 		if err != nil {
 			return errors.WithStack(err)
 		}
+		rows.Close()
 	}
-	_, err := c.session.Query(fmt.Sprintf(`
+	rows, err := c.session.Query(fmt.Sprintf(`
 		DROP TABLE IF EXISTS %s`, name))
-	return errors.WithStack(err)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	rows.Close()
+	return nil
 }
 
 func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {

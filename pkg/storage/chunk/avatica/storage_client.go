@@ -178,8 +178,12 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 			entry.TableName)
 
 		err := s.queryInstrumentation(querySQL, func() error {
-			_, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue, entry.Value)
-			return err
+			rows, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue, entry.Value)
+			if err != nil {
+				return nil
+			}
+			rows.Close()
+			return nil
 		})
 		if err != nil {
 			return errors.WithStack(err)
@@ -190,8 +194,12 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 		querySQL := fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
 			entry.TableName)
 		err := s.queryInstrumentation(querySQL, func() error {
-			_, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue)
-			return err
+			rows, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue)
+			if err != nil {
+				return nil
+			}
+			rows.Close()
+			return nil
 		})
 		if err != nil {
 			return errors.WithStack(err)
@@ -289,6 +297,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		b := &readBatch{}
