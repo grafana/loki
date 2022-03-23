@@ -215,8 +215,7 @@ func init() {
 	jsoniter.RegisterTypeDecoderFunc("logproto.LegacySample", SampleJsoniterDecode)
 }
 
-// Combine unique values from multiple LabelResponses into a single LabelResponse.
-// TODO(jordanrushing): Should we sort labels lexicographically before returning?
+// Combine unique values from multiple LabelResponses into a single, sorted LabelResponse.
 func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
 	if len(responses) == 0 {
 		return nil, fmt.Errorf("no label responses to merge")
@@ -242,6 +241,9 @@ func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
 		result.Values = append(result.Values, value)
 	}
 
+	// Sort the unique values before returning because we can't rely on map key ordering
+	sort.Strings(result.Values)
+
 	return result, nil
 }
 
@@ -253,52 +255,13 @@ func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) 
 		return responses[0], nil
 	}
 
-	unique := make(map[string]SeriesIdentifier)
+	result := &SeriesResponse{
+		Series: make([]SeriesIdentifier, 0, len(responses)),
+	}
 
 	for _, r := range responses {
-		for _, s := range r.Series {
-			key := LabelSet(s.Labels).String()
-			if _, ok := unique[key]; !ok {
-				unique[key] = s
-			} else {
-				continue
-			}
-		}
-	}
-
-	result := &SeriesResponse{
-		Series: make([]SeriesIdentifier, 0, len(unique)),
-	}
-
-	for _, s := range unique {
-		result.Series = append(result.Series, s)
+		result.Series = append(result.Series, r.Series...)
 	}
 
 	return result, nil
-}
-
-type LabelSet map[string]string
-
-// Identical to loghttp.LabelSet.String() but implemented here to avoid an import cycle
-func (l LabelSet) String() string {
-	var b strings.Builder
-
-	keys := make([]string, 0, len(l))
-	for k := range l {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	b.WriteByte('{')
-	for i, k := range keys {
-		if i > 0 {
-			b.WriteByte(',')
-			b.WriteByte(' ')
-		}
-		b.WriteString(k)
-		b.WriteByte('=')
-		b.WriteString(strconv.Quote(l[k]))
-	}
-	b.WriteByte('}')
-	return b.String()
 }

@@ -224,17 +224,13 @@ func TestMultiTenantQuerier_Series(t *testing.T) {
 			req:  mockSeriesRequest([]string{`{a="1"}`}),
 			setup: func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
-					{"__tenant_id__": "1", "a": "1", "b": "2"},
-					{"__tenant_id__": "1", "a": "1", "b": "3"},
-					{"__tenant_id__": "2", "a": "1", "b": "2"},
-					{"__tenant_id__": "2", "a": "1", "b": "3"},
+					{"a": "1", "b": "2"},
+					{"a": "1", "b": "3"},
 				}), nil)
 
 				store.On("GetSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-					{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "4"}},
-					{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "5"}},
-					{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "4"}},
-					{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "5"}},
+					{Labels: map[string]string{"a": "1", "b": "4"}},
+					{Labels: map[string]string{"a": "1", "b": "5"}},
 				}, nil)
 			},
 			run: func(t *testing.T, q *MultiTenantQuerier, req *logproto.SeriesRequest) {
@@ -267,7 +263,7 @@ func TestMultiTenantQuerier_Series(t *testing.T) {
 			require.NoError(t, err)
 
 			q, err := newQuerier(
-				mockQuerierConfig(),
+				mockMultiTenantQuerierConfig(),
 				mockIngesterClientConfig(),
 				newIngesterClientMockFactory(ingesterClient),
 				mockReadRingWithOneActiveIngester(),
@@ -303,7 +299,7 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 	require.NoError(t, err)
 
 	q, err := newQuerier(
-		mockQuerierConfig(),
+		mockMultiTenantQuerierConfig(),
 		mockIngesterClientConfig(),
 		newIngesterClientMockFactory(ingesterClient),
 		mockReadRingWithOneActiveIngester(),
@@ -317,4 +313,12 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 	resp, labelErr := multiTenantQuerier.Label(ctx, &request)
 	require.NoError(t, labelErr)
 	require.ElementsMatch(t, []string{"test"}, resp.GetValues())
+}
+
+func mockMultiTenantQuerierConfig() Config {
+	return Config{
+		TailMaxDuration:           1 * time.Minute,
+		QueryTimeout:              queryTimeout,
+		MultiTenantQueriesEnabled: true,
+	}
 }
