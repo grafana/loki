@@ -214,6 +214,7 @@ overrides:
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
+			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",
@@ -452,6 +453,7 @@ overrides:
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
+			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",
@@ -515,6 +517,7 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
+			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",
