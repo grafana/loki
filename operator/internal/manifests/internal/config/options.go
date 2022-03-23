@@ -33,7 +33,7 @@ type Address struct {
 	Port int
 }
 
-// MaxConcurrent for query concurrent processing.
+// MaxConcurrent for concurrent query processing.
 type MaxConcurrent struct {
 	AvailableQuerierCPUCores int32
 }
