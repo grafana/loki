@@ -4,7 +4,6 @@
 - [5693](https://github.com/grafana/loki/pull/5693) **periklis**: Replace frontend_worker parallelism with match_max_concurrent
 - [5701](https://github.com/grafana/loki/pull/5701) **sasagarw**: Make ReplicationFactor optional in LokiStack API
 - [5695](https://github.com/grafana/loki/pull/5695) **xperimental**: Update Go to 1.17
-- [5695](https://github.com/grafana/loki/pull/5695) **xperimental**: Update Go to 1.17
 - [5615](https://github.com/grafana/loki/pull/5615) **sasagarw**: Document how to connect to LokiStack gateway component
 - [5655](https://github.com/grafana/loki/pull/5655) **xperimental**: Update Loki operand to 2.4.2
 - [5579](https://github.com/grafana/loki/pull/5579) **Red-GV**: Add playbook for responding to operator alerts
