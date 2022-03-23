@@ -585,7 +585,6 @@ spec:
                 - mode
                 type: object
             required:
-            - replicationFactor
             - size
             - storage
             - storageClassName
