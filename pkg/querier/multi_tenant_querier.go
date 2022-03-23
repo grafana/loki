@@ -85,10 +85,13 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 }
 
 func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	// TODO(jordanrushing): If name in the request = defaultTenantLabel, then we need to return the tenant IDs
 	tenantIDs, err := q.resolver.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if req.Name == defaultTenantLabel {
+		return &logproto.LabelResponse{Values: tenantIDs}, nil
 	}
 
 	if len(tenantIDs) == 1 {
@@ -100,7 +103,6 @@ func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelReque
 	for i, id := range tenantIDs {
 		singleContext := user.InjectUserID(ctx, id)
 		resp, err := q.Querier.Label(singleContext, req)
-
 		if err != nil {
 			return nil, err
 		}

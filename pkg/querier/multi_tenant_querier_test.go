@@ -223,15 +223,17 @@ func TestMultiTenantQuerier_Series(t *testing.T) {
 			desc: "returns series",
 			req:  mockSeriesRequest([]string{`{a="1"}`}),
 			setup: func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
-				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
-					{"a": "1", "b": "2"},
-					{"a": "1", "b": "3"},
-				}), nil)
+				ingester.On("Series", mock.Anything, req, mock.Anything).Return(
+					mockSeriesResponse([]map[string]string{
+						{"a": "1", "b": "2"},
+						{"a": "1", "b": "3"},
+					}), nil)
 
-				store.On("GetSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "4"}},
-					{Labels: map[string]string{"a": "1", "b": "5"}},
-				}, nil)
+				store.On("GetSeries", mock.Anything, mock.Anything).Return(
+					[]logproto.SeriesIdentifier{
+						{Labels: map[string]string{"a": "1", "b": "4"}},
+						{Labels: map[string]string{"a": "1", "b": "5"}},
+					}, nil)
 			},
 			run: func(t *testing.T, q *MultiTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "1|2")
@@ -277,42 +279,78 @@ func TestMultiTenantQuerier_Series(t *testing.T) {
 	}
 }
 
-// TODO(jordanrushing): Expand this test to include other scenarios
 func TestMultiTenantQuerier_Label(t *testing.T) {
-	startTime := time.Now().Add(-1 * time.Minute)
-	endTime := time.Now()
+	start := time.Unix(0, 0)
+	end := time.Unix(10, 0)
 
-	request := logproto.LabelRequest{
-		Name:   "test",
-		Values: true,
-		Start:  &startTime,
-		End:    &endTime,
+	mockLabelRequest := func(name string) *logproto.LabelRequest {
+		return &logproto.LabelRequest{
+			Name:   name,
+			Values: true,
+			Start:  &start,
+			End:    &end,
+		}
 	}
+	for _, tc := range []struct {
+		desc  string
+		req   *logproto.LabelRequest
+		setup func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.LabelRequest)
+		run   func(t *testing.T, q *MultiTenantQuerier, req *logproto.LabelRequest)
+	}{
+		{
+			desc: "test label request",
+			req:  mockLabelRequest("test"),
+			setup: func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.LabelRequest) {
+				ingester.On("Label", mock.Anything, req, mock.Anything).Return(mockLabelResponse(nil), nil)
+				store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(end.UnixNano()), "logs", req.Name).Return([]string{"test", "test"}, nil)
+			},
+			run: func(t *testing.T, q *MultiTenantQuerier, req *logproto.LabelRequest) {
+				ctx := user.InjectOrgID(context.Background(), "1|2")
+				resp, err := q.Label(ctx, req)
+				require.Nil(t, err)
+				require.Equal(t, resp.GetValues(), []string{"test"})
+			},
+		},
+		{
+			desc: "defaultTenantLabel label request",
+			req:  mockLabelRequest("defaultTenantLabel"),
+			setup: func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.LabelRequest) {
+				ingester.On("Label", mock.Anything, req, mock.Anything).Return(mockLabelResponse(nil), nil)
+				store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(end.UnixNano()), "logs", req.Name).Return([]string{"1", "2"}, nil)
+			},
+			run: func(t *testing.T, q *MultiTenantQuerier, req *logproto.LabelRequest) {
+				ctx := user.InjectOrgID(context.Background(), "1|2")
+				resp, err := q.Label(ctx, req)
+				require.Nil(t, err)
+				require.Equal(t, resp.GetValues(), []string{"1", "2"})
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			store := newStoreMock()
+			queryClient := newQueryClientMock()
+			ingesterClient := newQuerierClientMock()
+			defaultLimits := defaultLimitsTestConfig()
+			if tc.setup != nil {
+				tc.setup(store, queryClient, ingesterClient, defaultLimits, tc.req)
+			}
 
-	ingesterClient := newQuerierClientMock()
-	ingesterClient.On("Label", mock.Anything, &request, mock.Anything).Return(mockLabelResponse([]string{}), nil)
+			limits, err := validation.NewOverrides(defaultLimits, nil)
+			require.NoError(t, err)
 
-	store := newStoreMock()
-	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, model.TimeFromUnixNano(startTime.UnixNano()), model.TimeFromUnixNano(endTime.UnixNano()), "logs", "test").Return([]string{"test", "test"}, nil)
+			q, err := newQuerier(
+				mockMultiTenantQuerierConfig(),
+				mockIngesterClientConfig(),
+				newIngesterClientMockFactory(ingesterClient),
+				mockReadRingWithOneActiveIngester(),
+				store, limits)
+			require.NoError(t, err)
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-	require.NoError(t, err)
+			multiTenantQuerier := NewMultiTenantQuerier(q, log.NewNopLogger())
 
-	q, err := newQuerier(
-		mockMultiTenantQuerierConfig(),
-		mockIngesterClientConfig(),
-		newIngesterClientMockFactory(ingesterClient),
-		mockReadRingWithOneActiveIngester(),
-		store, limits)
-	require.NoError(t, err)
-
-	ctx := user.InjectOrgID(context.Background(), "1|2")
-
-	multiTenantQuerier := NewMultiTenantQuerier(q, log.NewNopLogger())
-
-	resp, labelErr := multiTenantQuerier.Label(ctx, &request)
-	require.NoError(t, labelErr)
-	require.ElementsMatch(t, []string{"test"}, resp.GetValues())
+			tc.run(t, multiTenantQuerier, tc.req)
+		})
+	}
 }
 
 func mockMultiTenantQuerierConfig() Config {
