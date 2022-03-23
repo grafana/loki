@@ -28,6 +28,8 @@ import (
 // The minimun window size is 1 minute.
 const minDelay = time.Minute
 
+const CLOUDFLARE_TOO_EARLY_ERROR = "invalid time range: too early: logs older than 168h0m0s are not available"
+
 var defaultBackoff = backoff.Config{
 	MinBackoff: 1 * time.Second,
 	MaxBackoff: 10 * time.Second,
@@ -151,7 +153,7 @@ func (t *Target) pull(ctx context.Context, start, end time.Time) error {
 
 	for backoff.Ongoing() {
 		it, err = t.client.LogpullReceived(ctx, start, end)
-		if err != nil && err.Error() == "HTTP status 400: bad query: error parsing time: invalid time range: too early: logs older than 168h0m0s are not available" {
+		if err != nil && strings.Contains(err.Error(), CLOUDFLARE_TOO_EARLY_ERROR) {
 			level.Warn(t.logger).Log("msg", "failed iterating over logs, out of cloudflare range, not retrying", "err", err, "start", start, "end", end, "retries", backoff.NumRetries())
 			return nil
 		} else if err != nil {
