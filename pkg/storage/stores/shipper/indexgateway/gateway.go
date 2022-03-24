@@ -67,10 +67,9 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, querier IndexQuerier, indexQuerier IndexQuerier) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
-		shipper:      querier,
 		cfg:          cfg,
 		log:          log,
 	}
@@ -118,7 +117,7 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 		g.Service = services.NewBasicService(g.starting, g.running, g.stopping)
 	} else {
 		g.Service = services.NewIdleService(nil, func(failureCase error) error {
-			g.shipper.Stop()
+			g.indexQuerier.Stop()
 			return nil
 		})
 	}
@@ -199,7 +198,7 @@ func (g *Gateway) running(ctx context.Context) error {
 // Only invoked if the Index Gateway is in ring mode.
 func (g *Gateway) stopping(_ error) error {
 	level.Debug(util_log.Logger).Log("msg", "stopping index gateway")
-	defer g.shipper.Stop()
+	defer g.indexQuerier.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), g.subservices)
 }
 
