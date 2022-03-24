@@ -63,8 +63,8 @@ func New(cfg config.Config, metrics *client.Metrics, dryRun bool, opts ...Option
 
 	cfg.Setup()
 
-	if cfg.LimitConfig.ReadlineRateEnabled {
-		stages.SetReadLineRateLimiter(cfg.LimitConfig.ReadlineRate, cfg.LimitConfig.ReadlineBurst, cfg.LimitConfig.ReadlineRateDrop)
+	if cfg.LimitsConfig.ReadlineRateEnabled {
+		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
 	}
 	var err error
 	if dryRun {
