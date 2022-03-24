@@ -745,7 +745,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		return nil, err
 	}
 
-	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, shipperIndexClient.(*shipper.Shipper), shipperIndexClient)
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, shipperIndexClient)
 	if err != nil {
 		return nil, err
 	}
@@ -756,6 +756,10 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
+	if t.Cfg.IndexGateway.Mode != indexgateway.RingMode {
+		return
+	}
+
 	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	ringCfg := t.Cfg.IndexGateway.Ring.ToRingConfig(indexgateway.RingReplicationFactor)
