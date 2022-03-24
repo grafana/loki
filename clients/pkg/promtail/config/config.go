@@ -32,7 +32,7 @@ type Config struct {
 	PositionsConfig positions.Config      `yaml:"positions,omitempty"`
 	ScrapeConfig    []scrapeconfig.Config `yaml:"scrape_configs,omitempty"`
 	TargetConfig    file.Config           `yaml:"target_config,omitempty"`
-	LimitsConfig     limit.Config          `yaml:"limits_config,omitempty"`
+	LimitsConfig    limit.Config          `yaml:"limits_config,omitempty"`
 	Options         Options               `yaml:"options,omitempty"`
 }
 
