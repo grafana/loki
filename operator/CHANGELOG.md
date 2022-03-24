@@ -1,5 +1,6 @@
 ## Main
 
+- [5691](https://github.com/grafana/loki/pull/5691) **sasagarw**: Fix immediate reset of degraded condition
 - [5704](https://github.com/grafana/loki/pull/5704) **xperimental**: Update operator-sdk to 1.18.1
 - [5693](https://github.com/grafana/loki/pull/5693) **periklis**: Replace frontend_worker parallelism with match_max_concurrent
 - [5699](https://github.com/grafana/loki/pull/5699) **Red-GV**: Configure boltdb_shipper and schema to use Azure, GCS, and Swift storage
