@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -106,6 +107,23 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	err = handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.Flags)
+
+	var degraded *status.DegradedError
+	if errors.As(err, &degraded) {
+		err = status.SetDegradedCondition(ctx, r.Client, req, degraded.Message, degraded.Reason)
+		if err != nil {
+			return ctrl.Result{
+				Requeue:      true,
+				RequeueAfter: time.Second,
+			}, err
+		}
+
+		return ctrl.Result{
+			Requeue:      degraded.Requeue,
+			RequeueAfter: time.Second,
+		}, nil
+	}
+
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,

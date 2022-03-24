@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers"
 	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/grafana/loki/operator/internal/status"
 
 	"github.com/ViaQ/logerr/log"
 	routev1 "github.com/openshift/api/route/v1"
@@ -620,6 +621,12 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 		},
 	}
 
+	degradedErr := &status.DegradedError{
+		Message: "Missing object storage secret",
+		Reason:  lokiv1beta1.ReasonMissingObjectStorageSecret,
+		Requeue: false,
+	}
+
 	stack := &lokiv1beta1.LokiStack{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "LokiStack",
@@ -654,12 +661,9 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
-	// make sure error is returned to re-trigger reconciliation
-	require.NoError(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
 }
 
 func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
@@ -670,6 +674,12 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid object storage secret contents",
+		Reason:  lokiv1beta1.ReasonInvalidObjectStorageSecret,
+		Requeue: false,
 	}
 
 	stack := &lokiv1beta1.LokiStack{
@@ -710,12 +720,9 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
-	// make sure error is returned to re-trigger reconciliation
-	require.NoError(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
 }
 
 func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *testing.T) {
@@ -726,6 +733,12 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid tenants configuration: mandatory configuration - missing OPA Url",
+		Reason:  lokiv1beta1.ReasonInvalidTenantsConfiguration,
+		Requeue: false,
 	}
 
 	ff := manifests.FeatureFlags{
@@ -785,12 +798,9 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
 
-	// make sure error is returned to re-trigger reconciliation
-	require.NoError(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
 }
 
 func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing.T) {
@@ -801,6 +811,12 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Missing secrets for tenant test",
+		Reason:  lokiv1beta1.ReasonMissingGatewayTenantSecret,
+		Requeue: true,
 	}
 
 	ff := manifests.FeatureFlags{
@@ -867,10 +883,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	require.Equal(t, degradedErr, err)
 }
 
 func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing.T) {
@@ -881,6 +894,12 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid gateway tenant secret contents",
+		Reason:  lokiv1beta1.ReasonInvalidGatewayTenantSecret,
+		Requeue: true,
 	}
 
 	ff := manifests.FeatureFlags{
@@ -951,10 +970,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	require.Equal(t, degradedErr, err)
 }
 
 func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
@@ -965,6 +981,12 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid tenants configuration - TenantsSpec cannot be nil when gateway flag is enabled",
+		Reason:  lokiv1beta1.ReasonInvalidTenantsConfiguration,
+		Requeue: false,
 	}
 
 	ff := manifests.FeatureFlags{
@@ -1011,10 +1033,7 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
 
-	// make sure no error is returned
-	require.NoError(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
 }
