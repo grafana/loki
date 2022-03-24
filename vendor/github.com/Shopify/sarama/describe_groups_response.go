@@ -179,12 +179,18 @@ func (gmd *GroupMemberDescription) decode(pd packetDecoder) (err error) {
 }
 
 func (gmd *GroupMemberDescription) GetMemberAssignment() (*ConsumerGroupMemberAssignment, error) {
+	if len(gmd.MemberAssignment) == 0 {
+		return nil, nil
+	}
 	assignment := new(ConsumerGroupMemberAssignment)
 	err := decode(gmd.MemberAssignment, assignment)
 	return assignment, err
 }
 
 func (gmd *GroupMemberDescription) GetMemberMetadata() (*ConsumerGroupMemberMetadata, error) {
+	if len(gmd.MemberMetadata) == 0 {
+		return nil, nil
+	}
 	metadata := new(ConsumerGroupMemberMetadata)
 	err := decode(gmd.MemberMetadata, metadata)
 	return metadata, err

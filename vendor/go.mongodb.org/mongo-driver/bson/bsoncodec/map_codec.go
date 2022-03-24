@@ -126,14 +126,7 @@ func (mc *MapCodec) mapEncodeValue(ec EncodeContext, dw bsonrw.DocumentWriter, v
 			continue
 		}
 
-		if enc, ok := currEncoder.(ValueEncoder); ok {
-			err = enc.EncodeValue(ec, vw, currVal)
-			if err != nil {
-				return err
-			}
-			continue
-		}
-		err = encoder.EncodeValue(ec, vw, currVal)
+		err = currEncoder.EncodeValue(ec, vw, currVal)
 		if err != nil {
 			return err
 		}
@@ -265,17 +258,15 @@ func (mc *MapCodec) decodeKey(key string, keyType reflect.Type) (reflect.Value, 
 		case reflect.String:
 			keyVal = reflect.ValueOf(key).Convert(keyType)
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			s := string(key)
-			n, parseErr := strconv.ParseInt(s, 10, 64)
+			n, parseErr := strconv.ParseInt(key, 10, 64)
 			if parseErr != nil || reflect.Zero(keyType).OverflowInt(n) {
-				err = fmt.Errorf("failed to unmarshal number key %v", s)
+				err = fmt.Errorf("failed to unmarshal number key %v", key)
 			}
 			keyVal = reflect.ValueOf(n).Convert(keyType)
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-			s := string(key)
-			n, parseErr := strconv.ParseUint(s, 10, 64)
+			n, parseErr := strconv.ParseUint(key, 10, 64)
 			if parseErr != nil || reflect.Zero(keyType).OverflowUint(n) {
-				err = fmt.Errorf("failed to unmarshal number key %v", s)
+				err = fmt.Errorf("failed to unmarshal number key %v", key)
 				break
 			}
 			keyVal = reflect.ValueOf(n).Convert(keyType)

@@ -3,6 +3,7 @@ package sarama
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // TestReporter has methods matching go's testing.T to avoid importing
@@ -264,6 +265,7 @@ func (mor *MockOffsetResponse) getOffset(topic string, partition int32, time int
 // MockFetchResponse is a `FetchResponse` builder.
 type MockFetchResponse struct {
 	messages       map[string]map[int32]map[int64]Encoder
+	messagesLock   *sync.RWMutex
 	highWaterMarks map[string]map[int32]int64
 	t              TestReporter
 	batchSize      int
@@ -273,6 +275,7 @@ type MockFetchResponse struct {
 func NewMockFetchResponse(t TestReporter, batchSize int) *MockFetchResponse {
 	return &MockFetchResponse{
 		messages:       make(map[string]map[int32]map[int64]Encoder),
+		messagesLock:   &sync.RWMutex{},
 		highWaterMarks: make(map[string]map[int32]int64),
 		t:              t,
 		batchSize:      batchSize,
@@ -285,6 +288,8 @@ func (mfr *MockFetchResponse) SetVersion(version int16) *MockFetchResponse {
 }
 
 func (mfr *MockFetchResponse) SetMessage(topic string, partition int32, offset int64, msg Encoder) *MockFetchResponse {
+	mfr.messagesLock.Lock()
+	defer mfr.messagesLock.Unlock()
 	partitions := mfr.messages[topic]
 	if partitions == nil {
 		partitions = make(map[int32]map[int64]Encoder)
@@ -339,6 +344,8 @@ func (mfr *MockFetchResponse) For(reqBody versionedDecoder) encoderWithHeader {
 }
 
 func (mfr *MockFetchResponse) getMessage(topic string, partition int32, offset int64) Encoder {
+	mfr.messagesLock.RLock()
+	defer mfr.messagesLock.RUnlock()
 	partitions := mfr.messages[topic]
 	if partitions == nil {
 		return nil
@@ -351,6 +358,8 @@ func (mfr *MockFetchResponse) getMessage(topic string, partition int32, offset i
 }
 
 func (mfr *MockFetchResponse) getMessageCount(topic string, partition int32) int {
+	mfr.messagesLock.RLock()
+	defer mfr.messagesLock.RUnlock()
 	partitions := mfr.messages[topic]
 	if partitions == nil {
 		return 0
@@ -926,6 +935,51 @@ func (mr *MockAlterConfigsResponseWithErrorCode) For(reqBody versionedDecoder) e
 	return res
 }
 
+type MockIncrementalAlterConfigsResponse struct {
+	t TestReporter
+}
+
+func NewMockIncrementalAlterConfigsResponse(t TestReporter) *MockIncrementalAlterConfigsResponse {
+	return &MockIncrementalAlterConfigsResponse{t: t}
+}
+
+func (mr *MockIncrementalAlterConfigsResponse) For(reqBody versionedDecoder) encoderWithHeader {
+	req := reqBody.(*IncrementalAlterConfigsRequest)
+	res := &IncrementalAlterConfigsResponse{}
+
+	for _, r := range req.Resources {
+		res.Resources = append(res.Resources, &AlterConfigsResourceResponse{
+			Name:     r.Name,
+			Type:     r.Type,
+			ErrorMsg: "",
+		})
+	}
+	return res
+}
+
+type MockIncrementalAlterConfigsResponseWithErrorCode struct {
+	t TestReporter
+}
+
+func NewMockIncrementalAlterConfigsResponseWithErrorCode(t TestReporter) *MockIncrementalAlterConfigsResponseWithErrorCode {
+	return &MockIncrementalAlterConfigsResponseWithErrorCode{t: t}
+}
+
+func (mr *MockIncrementalAlterConfigsResponseWithErrorCode) For(reqBody versionedDecoder) encoderWithHeader {
+	req := reqBody.(*IncrementalAlterConfigsRequest)
+	res := &IncrementalAlterConfigsResponse{}
+
+	for _, r := range req.Resources {
+		res.Resources = append(res.Resources, &AlterConfigsResourceResponse{
+			Name:      r.Name,
+			Type:      r.Type,
+			ErrorCode: 83,
+			ErrorMsg:  "",
+		})
+	}
+	return res
+}
+
 type MockCreateAclsResponse struct {
 	t TestReporter
 }
@@ -1302,31 +1356,38 @@ func (m *MockDescribeLogDirsResponse) For(reqBody versionedDecoder) encoderWithH
 }
 
 type MockApiVersionsResponse struct {
-	t TestReporter
+	t       TestReporter
+	apiKeys []ApiVersionsResponseKey
 }
 
 func NewMockApiVersionsResponse(t TestReporter) *MockApiVersionsResponse {
-	return &MockApiVersionsResponse{t: t}
-}
-
-func (mr *MockApiVersionsResponse) For(reqBody versionedDecoder) encoderWithHeader {
-	req := reqBody.(*ApiVersionsRequest)
-	res := &ApiVersionsResponse{
-		Version: req.Version,
-		ApiKeys: []ApiVersionsResponseKey{
+	return &MockApiVersionsResponse{
+		t: t,
+		apiKeys: []ApiVersionsResponseKey{
 			{
-				Version:    req.Version,
 				ApiKey:     0,
 				MinVersion: 5,
 				MaxVersion: 8,
 			},
 			{
-				Version:    req.Version,
 				ApiKey:     1,
 				MinVersion: 7,
 				MaxVersion: 11,
 			},
 		},
+	}
+}
+
+func (m *MockApiVersionsResponse) SetApiKeys(apiKeys []ApiVersionsResponseKey) *MockApiVersionsResponse {
+	m.apiKeys = apiKeys
+	return m
+}
+
+func (m *MockApiVersionsResponse) For(reqBody versionedDecoder) encoderWithHeader {
+	req := reqBody.(*ApiVersionsRequest)
+	res := &ApiVersionsResponse{
+		Version: req.Version,
+		ApiKeys: m.apiKeys,
 	}
 	return res
 }

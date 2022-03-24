@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## v1.1.0 - 2022-01-16
+
+- Add SHA-512 hash generator function for convenience.
+
 ## v1.0.2 - 2021-03-28
 
 - Switch PBKDF2 dependency to github.com/xdg-go/pbkdf2 to

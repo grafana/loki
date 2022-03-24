@@ -116,13 +116,13 @@ type StdLogger interface {
 type debugLogger struct{}
 
 func (d *debugLogger) Print(v ...interface{}) {
-	Logger.Print(v)
+	Logger.Print(v...)
 }
 func (d *debugLogger) Printf(format string, v ...interface{}) {
-	Logger.Printf(format, v)
+	Logger.Printf(format, v...)
 }
 func (d *debugLogger) Println(v ...interface{}) {
-	Logger.Println(v)
+	Logger.Println(v...)
 }
 
 // DebugLogger is the instance of a StdLogger that Sarama writes more verbose
