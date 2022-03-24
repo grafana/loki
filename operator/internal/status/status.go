@@ -15,7 +15,7 @@ import (
 // Refresh executes an aggregate update of the LokiStack Status struct, i.e.
 // - It recreates the Status.Components pod status map per component.
 // - It sets the appropriate Status.Condition to true that matches the pod status maps.
-func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, degraded *Degraded) error {
+func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 	if err := SetComponentsStatus(ctx, k, req); err != nil {
 		return err
 	}
@@ -26,10 +26,6 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, degraded *Degr
 			return nil
 		}
 		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
-	}
-
-	if degraded != nil {
-		return SetDegradedCondition(ctx, k, req, degraded.Message, degraded.Reason)
 	}
 
 	cs := s.Status.Components

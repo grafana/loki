@@ -2,6 +2,7 @@ package status
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ViaQ/logerr/kverrors"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
@@ -13,10 +14,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Degraded contains information about why the managed LokiStack has an invalid configuration.
-type Degraded struct {
+// DegradedError contains information about why the managed LokiStack has an invalid configuration.
+type DegradedError struct {
 	Message string
 	Reason  lokiv1beta1.LokiStackConditionReason
+	Requeue bool
+}
+
+func (e *DegradedError) Error() string {
+	return fmt.Sprintf("cluster degraded: %s", e.Message)
 }
 
 // SetReadyCondition updates or appends the condition Ready to the lokistack status conditions.
