@@ -38,7 +38,7 @@ frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
   grpc_client_config:
     max_send_msg_size: 104857600
-  parallelism: 1
+  match_max_concurrent: true
 ingester:
   chunk_block_size: 262144
   chunk_encoding: snappy
@@ -113,7 +113,7 @@ querier:
     max_look_back_period: 30s
     timeout: 3m
   extra_query_delay: 0s
-  max_concurrent: 10
+  max_concurrent: 2
   query_ingesters_within: 3h
   query_timeout: 1m
   tail_max_duration: 1h
@@ -205,15 +205,15 @@ overrides:
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		QueryParallelism: Parallelism{
-			QuerierCPULimits:      2,
-			QueryFrontendReplicas: 2,
+		MaxConcurrent: MaxConcurrent{
+			AvailableQuerierCPUCores: 2,
 		},
 		WriteAheadLog: WriteAheadLog{
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
+			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",
@@ -259,7 +259,7 @@ frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
   grpc_client_config:
     max_send_msg_size: 104857600
-  parallelism: 1
+  match_max_concurrent: true
 ingester:
   chunk_block_size: 262144
   chunk_encoding: snappy
@@ -334,7 +334,7 @@ querier:
     max_look_back_period: 30s
     timeout: 3m
   extra_query_delay: 0s
-  max_concurrent: 10
+  max_concurrent: 2
   query_ingesters_within: 3h
   query_timeout: 1m
   tail_max_duration: 1h
@@ -443,15 +443,15 @@ overrides:
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		QueryParallelism: Parallelism{
-			QuerierCPULimits:      2,
-			QueryFrontendReplicas: 2,
+		MaxConcurrent: MaxConcurrent{
+			AvailableQuerierCPUCores: 2,
 		},
 		WriteAheadLog: WriteAheadLog{
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
+			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",
@@ -506,15 +506,15 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
-		QueryParallelism: Parallelism{
-			QuerierCPULimits:      2,
-			QueryFrontendReplicas: 2,
+		MaxConcurrent: MaxConcurrent{
+			AvailableQuerierCPUCores: 2,
 		},
 		WriteAheadLog: WriteAheadLog{
 			Directory:             "/tmp/wal",
 			IngesterMemoryRequest: 5000,
 		},
 		ObjectStorage: storage.Options{
+			SharedStore: lokiv1beta1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
 				Endpoint:        "http://test.default.svc.cluster.local.:9000",
 				Region:          "us-east",

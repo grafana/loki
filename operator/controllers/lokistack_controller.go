@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -92,7 +93,7 @@ type LokiStackReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ok, err := state.IsManaged(ctx, req, r.Client)
+	ok, err := state.IsManaged(ctx, r.Log, req, r.Client)
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,
@@ -105,7 +106,24 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	err = handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme, r.Flags)
+	err = handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.Flags)
+
+	var degraded *status.DegradedError
+	if errors.As(err, &degraded) {
+		err = status.SetDegradedCondition(ctx, r.Client, req, degraded.Message, degraded.Reason)
+		if err != nil {
+			return ctrl.Result{
+				Requeue:      true,
+				RequeueAfter: time.Second,
+			}, err
+		}
+
+		return ctrl.Result{
+			Requeue:      degraded.Requeue,
+			RequeueAfter: time.Second,
+		}, nil
+	}
+
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,

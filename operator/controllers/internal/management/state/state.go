@@ -3,18 +3,17 @@ package state
 import (
 	"context"
 
-	"github.com/ViaQ/logerr/kverrors"
-	"github.com/ViaQ/logerr/log"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 
+	"github.com/ViaQ/logerr/kverrors"
+	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 // IsManaged checks if the custom resource is configured with ManagementState Managed.
-func IsManaged(ctx context.Context, req ctrl.Request, k k8s.Client) (bool, error) {
+func IsManaged(ctx context.Context, log logr.Logger, req ctrl.Request, k k8s.Client) (bool, error) {
 	ll := log.WithValues("lokistack", req.NamespacedName)
 
 	var stack lokiv1beta1.LokiStack

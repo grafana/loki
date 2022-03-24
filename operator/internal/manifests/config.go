@@ -63,9 +63,8 @@ func ConfigOptions(opt Options) config.Options {
 			Port: grpcPort,
 		},
 		StorageDirectory: dataDirectory,
-		QueryParallelism: config.Parallelism{
-			QuerierCPULimits:      opt.ResourceRequirements.Querier.Requests.Cpu().Value(),
-			QueryFrontendReplicas: opt.Stack.Template.QueryFrontend.Replicas,
+		MaxConcurrent: config.MaxConcurrent{
+			AvailableQuerierCPUCores: int32(opt.ResourceRequirements.Querier.Requests.Cpu().Value()),
 		},
 		WriteAheadLog: config.WriteAheadLog{
 			Directory:             walDirectory,
