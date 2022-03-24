@@ -4,11 +4,10 @@ import (
 	"reflect"
 
 	"github.com/ViaQ/logerr/kverrors"
-	"github.com/ViaQ/logerr/log"
+	"github.com/go-logr/logr"
 	"github.com/imdario/mergo"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -25,14 +24,14 @@ import (
 // - Deployment
 // - StatefulSet
 // - ServiceMonitor
-func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
+func MutateFuncFor(log logr.Logger, existing, desired client.Object) controllerutil.MutateFn {
 	return func() error {
 		existingAnnotations := existing.GetAnnotations()
-		mergeWithOverride(&existingAnnotations, desired.GetAnnotations())
+		mergeWithOverride(log, &existingAnnotations, desired.GetAnnotations())
 		existing.SetAnnotations(existingAnnotations)
 
 		existingLabels := existing.GetLabels()
-		mergeWithOverride(&existingLabels, desired.GetLabels())
+		mergeWithOverride(log, &existingLabels, desired.GetLabels())
 		existing.SetLabels(existingLabels)
 
 		switch existing.(type) {
@@ -44,7 +43,7 @@ func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 		case *corev1.Service:
 			svc := existing.(*corev1.Service)
 			wantSvc := desired.(*corev1.Service)
-			mutateService(svc, wantSvc)
+			mutateService(log, svc, wantSvc)
 
 		case *corev1.ServiceAccount:
 			sa := existing.(*corev1.ServiceAccount)
@@ -74,12 +73,12 @@ func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 		case *appsv1.Deployment:
 			dpl := existing.(*appsv1.Deployment)
 			wantDpl := desired.(*appsv1.Deployment)
-			mutateDeployment(dpl, wantDpl)
+			mutateDeployment(log, dpl, wantDpl)
 
 		case *appsv1.StatefulSet:
 			sts := existing.(*appsv1.StatefulSet)
 			wantSts := desired.(*appsv1.StatefulSet)
-			mutateStatefulSet(sts, wantSts)
+			mutateStatefulSet(log, sts, wantSts)
 
 		case *monitoringv1.ServiceMonitor:
 			svcMonitor := existing.(*monitoringv1.ServiceMonitor)
@@ -109,7 +108,7 @@ func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 	}
 }
 
-func mergeWithOverride(dst, src interface{}) {
+func mergeWithOverride(log logr.Logger, dst, src interface{}) {
 	err := mergo.Merge(dst, src, mergo.WithOverride)
 	if err != nil {
 		log.Error(err, "unable to mergeWithOverride", "dst", dst, "src", src)
@@ -120,9 +119,9 @@ func mutateConfigMap(existing, desired *corev1.ConfigMap) {
 	existing.BinaryData = desired.BinaryData
 }
 
-func mutateService(existing, desired *corev1.Service) {
+func mutateService(log logr.Logger, existing, desired *corev1.Service) {
 	existing.Spec.Ports = desired.Spec.Ports
-	mergeWithOverride(&existing.Spec.Selector, desired.Spec.Selector)
+	mergeWithOverride(log, &existing.Spec.Selector, desired.Spec.Selector)
 }
 
 func mutateServiceAccount(existing, desired *corev1.ServiceAccount) {
@@ -154,18 +153,18 @@ func mutateRoleBinding(existing, desired *rbacv1.RoleBinding) {
 	existing.Subjects = desired.Subjects
 }
 
-func mutateDeployment(existing, desired *appsv1.Deployment) {
+func mutateDeployment(log logr.Logger, existing, desired *appsv1.Deployment) {
 	// Deployment selector is immutable so we set this value only if
 	// a new object is going to be created
 	if existing.CreationTimestamp.IsZero() {
-		mergeWithOverride(existing.Spec.Selector, desired.Spec.Selector)
+		mergeWithOverride(log, existing.Spec.Selector, desired.Spec.Selector)
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
-	mergeWithOverride(&existing.Spec.Template, desired.Spec.Template)
-	mergeWithOverride(&existing.Spec.Strategy, desired.Spec.Strategy)
+	mergeWithOverride(log, &existing.Spec.Template, desired.Spec.Template)
+	mergeWithOverride(log, &existing.Spec.Strategy, desired.Spec.Strategy)
 }
 
-func mutateStatefulSet(existing, desired *appsv1.StatefulSet) {
+func mutateStatefulSet(log logr.Logger, existing, desired *appsv1.StatefulSet) {
 	// StatefulSet selector is immutable so we set this value only if
 	// a new object is going to be created
 	if existing.CreationTimestamp.IsZero() {
@@ -173,7 +172,7 @@ func mutateStatefulSet(existing, desired *appsv1.StatefulSet) {
 	}
 	existing.Spec.PodManagementPolicy = desired.Spec.PodManagementPolicy
 	existing.Spec.Replicas = desired.Spec.Replicas
-	mergeWithOverride(&existing.Spec.Template, desired.Spec.Template)
+	mergeWithOverride(log, &existing.Spec.Template, desired.Spec.Template)
 	for i := range existing.Spec.VolumeClaimTemplates {
 		existing.Spec.VolumeClaimTemplates[i].TypeMeta = desired.Spec.VolumeClaimTemplates[i].TypeMeta
 		existing.Spec.VolumeClaimTemplates[i].ObjectMeta = desired.Spec.VolumeClaimTemplates[i].ObjectMeta

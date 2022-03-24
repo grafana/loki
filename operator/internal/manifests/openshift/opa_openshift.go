@@ -81,7 +81,7 @@ func newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile strin
 			},
 		},
 		LivenessProbe: &corev1.Probe{
-			Handler: corev1.Handler{
+			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
 					Path:   "/live",
 					Port:   intstr.FromInt(int(GatewayOPAInternalPort)),
@@ -93,7 +93,7 @@ func newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile strin
 			FailureThreshold: 10,
 		},
 		ReadinessProbe: &corev1.Probe{
-			Handler: corev1.Handler{
+			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
 					Path:   "/ready",
 					Port:   intstr.FromInt(int(GatewayOPAInternalPort)),

@@ -5,18 +5,17 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
-
-	"github.com/ViaQ/logerr/kverrors"
-	"github.com/ViaQ/logerr/log"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/secrets"
 	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
 
+	"github.com/ViaQ/logerr/kverrors"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -26,7 +25,7 @@ import (
 )
 
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
-func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client, s *runtime.Scheme, flags manifests.FeatureFlags) error {
+func CreateOrUpdateLokiStack(ctx context.Context, log logr.Logger, req ctrl.Request, k k8s.Client, s *runtime.Scheme, flags manifests.FeatureFlags) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createOrUpdate")
 
 	var stack lokiv1beta1.LokiStack
@@ -101,7 +100,7 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 			}
 
 			// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
-			tenantConfigMap = gateway.GetTenantConfigMapData(ctx, k, req)
+			tenantConfigMap = gateway.GetTenantConfigMapData(ctx, log, k, req)
 		}
 	}
 
@@ -159,7 +158,7 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		}
 
 		desired := obj.DeepCopyObject().(client.Object)
-		mutateFn := manifests.MutateFuncFor(obj, desired)
+		mutateFn := manifests.MutateFuncFor(log, obj, desired)
 
 		op, err := ctrl.CreateOrUpdate(ctx, k, obj, mutateFn)
 		if err != nil {
