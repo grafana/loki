@@ -28,7 +28,7 @@ import (
 // The minimun window size is 1 minute.
 const minDelay = time.Minute
 
-const cloudflareTooEarlyError = "invalid time range: too early: logs older than 168h0m0s are not available"
+const cloudflareTooEarlyError = "too early: logs older than 168h0m0s are not available"
 
 var defaultBackoff = backoff.Config{
 	MinBackoff: 1 * time.Second,
