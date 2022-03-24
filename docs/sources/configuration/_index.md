@@ -1604,6 +1604,24 @@ cassandra:
   # CLI flag: -cassandra.connect-timeout
   [connect_timeout: <duration> | default = 600ms]
 
+# Configures storing the index in avatica
+avatica:
+  # Comma-separated hostnames or IPs of avatica instances
+  # CLI flag: -avatica.addresses
+        addresses: <string>
+
+  # Keyspace to use in avatica
+  # CLI flag: -avatica.database
+        database: <string>
+
+  # Username for password authentication when auth is true.
+  # CLI flag: -avatica.username
+        [username: <string>]
+
+  # Password for password authentication when auth is true.
+  # CLI flag: -avatica.password
+        [password: <string>]
+
 swift:
   # Openstack authentication URL.
   # CLI flag: -ruler.storage.swift.auth-url
@@ -1948,7 +1966,7 @@ for from specific time periods.
 # store and object_store below affect which <storage_config> key is
 # used.
 
-# Which store to use for the index. Either aws, aws-dynamo, gcp, bigtable, bigtable-hashed,
+# Which store to use for the index. Either aws, aws-dynamo, gcp, bigtable, avatica, bigtable-hashed,
 # cassandra, boltdb or boltdb-shipper.
 store: <string>
 
