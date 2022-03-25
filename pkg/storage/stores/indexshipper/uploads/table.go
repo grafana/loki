@@ -26,7 +26,9 @@ type Table interface {
 	Stop()
 }
 
-// table is a collection of multiple dbs created for a same table by the ingester.
+// table is a collection of one or more index files created by the ingester or compacted by the compactor.
+// A table would provide a logical grouping for index by a period. This period is controlled by `schema_config.configs.index.period` config.
+// It contains index for all the users sending logs to Loki.
 // All the public methods are concurrency safe and take care of mutexes to avoid any data race.
 type table struct {
 	name                                 string

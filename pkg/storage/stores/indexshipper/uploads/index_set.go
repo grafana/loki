@@ -191,9 +191,9 @@ func (t *indexSet) Cleanup(indexRetainPeriod time.Duration) error {
 	t.indexMtx.RLock()
 
 	for name := range t.index {
-		t.indexMtx.RLock()
+		t.indexUploadTimeMtx.RLock()
 		indexUploadTime, ok := t.indexUploadTime[name]
-		t.indexMtx.RUnlock()
+		t.indexUploadTimeMtx.RUnlock()
 
 		if ok && indexUploadTime.Before(cutoffTime) {
 			filesToCleanup = append(filesToCleanup, name)
