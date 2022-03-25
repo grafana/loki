@@ -9,6 +9,7 @@ import (
 	"time"
 
 	avatica "github.com/apache/calcite-avatica-go/v5"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	ot "github.com/opentracing/opentracing-go"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -245,6 +247,7 @@ func (s *StorageClient) queryInstrumentation(ctx context.Context, query string, 
 	err = queryFunc()
 	end = time.Now()
 	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "avatica query fail", "sql", query, "err", err)
 		ext.Error.Set(sp, true)
 		sp.LogFields(otlog.String("event", "error"), otlog.String("message", err.Error()))
 		return errors.WithStack(err)
