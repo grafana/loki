@@ -832,6 +832,62 @@ trigger:
   - pull_request
 ---
 depends_on:
+- check
+kind: pipeline
+name: querytee-amd64
+platform:
+  arch: amd64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  - echo ",main" >> .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-querytee-image
+  settings:
+    dockerfile: cmd/querytee/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/querytee
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-querytee-image
+  settings:
+    dockerfile: cmd/querytee/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/querytee
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
+---
+depends_on:
 - docker-amd64
 - docker-arm64
 - docker-arm
@@ -1045,6 +1101,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: c8daf173159729445944aec4a308e53263b9302e485bca9d26f71ef2ac47ce4b
+hmac: d46edb356841403724d7a261f095fcbaf22e0e077e35e9b2e4c8bbad7aa4b77e
 
 ...
