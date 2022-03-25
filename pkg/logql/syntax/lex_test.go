@@ -77,6 +77,7 @@ func TestLex(t *testing.T) {
 		{`{foo="bar"}|logfmt|rate="b"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, STRING}},
 		{`{foo="bar"}|logfmt|b=ip("b")`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, IP, OPEN_PARENTHESIS, STRING, CLOSE_PARENTHESIS}},
 		{`{foo="bar"}|logfmt|=ip("b")`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE_EXACT, IP, OPEN_PARENTHESIS, STRING, CLOSE_PARENTHESIS}},
+		{`{foo="bar"}|syslog|facility="user"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, SYSLOG, PIPE, IDENTIFIER, EQ, STRING}},
 		{`ip`, []int{IDENTIFIER}},
 		{`rate`, []int{IDENTIFIER}},
 		{`{foo="bar"} | json | baz="#"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, JSON, PIPE, IDENTIFIER, EQ, STRING}},

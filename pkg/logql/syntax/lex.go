@@ -62,6 +62,7 @@ var tokens = map[string]int{
 	OpParserTypeJSON:    JSON,
 	OpParserTypeRegexp:  REGEXP,
 	OpParserTypeLogfmt:  LOGFMT,
+	OpParserTypeSyslog:  SYSLOG,
 	OpParserTypeUnpack:  UNPACK,
 	OpParserTypePattern: PATTERN,
 
