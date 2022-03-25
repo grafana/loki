@@ -23,9 +23,6 @@ func (m mockStore) PutOne(ctx context.Context, from, through model.Time, chunk C
 	return nil
 }
 
-func (m mockStore) Get(tx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error) {
-	return nil, nil
-}
 func (m mockStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
@@ -36,13 +33,6 @@ func (m mockStore) GetChunkRefs(tx context.Context, userID string, from, through
 
 func (m mockStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	return nil, nil
-}
-
-func (m mockStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
-	return nil
-}
-func (m mockStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
-	return nil
 }
 
 func (m mockStore) GetChunkFetcher(tm model.Time) *Fetcher {
@@ -233,7 +223,6 @@ func TestCompositeStoreLabels(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 type mockStoreGetChunkFetcher struct {
@@ -287,5 +276,4 @@ func TestCompositeStore_GetChunkFetcher(t *testing.T) {
 			require.Same(t, tc.expectedFetcher, cs.GetChunkFetcher(tc.tm))
 		})
 	}
-
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/joncrlsn/dque"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -52,7 +51,7 @@ type dqueClient struct {
 }
 
 // New makes a new dque loki client
-func newDque(cfg *config, logger log.Logger) (client.Client, error) {
+func newDque(cfg *config, logger log.Logger, metrics *client.Metrics, streamLagLabels []string) (client.Client, error) {
 	var err error
 
 	q := &dqueClient{
@@ -73,7 +72,7 @@ func newDque(cfg *config, logger log.Logger) (client.Client, error) {
 		_ = q.queue.TurboOn()
 	}
 
-	q.loki, err = client.New(prometheus.DefaultRegisterer, cfg.clientConfig, logger)
+	q.loki, err = client.New(metrics, cfg.clientConfig, streamLagLabels, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -150,4 +149,8 @@ func (c *dqueClient) enqueuer() {
 			level.Warn(c.logger).Log("msg", fmt.Sprintf("cannot enqueue record %s:", e.Line), "err", err)
 		}
 	}
+}
+
+func (c *dqueClient) Name() string {
+	return ""
 }

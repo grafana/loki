@@ -179,8 +179,8 @@ func TestFlushingCollidingLabels(t *testing.T) {
 	// make sure all chunks have different fingerprint, even colliding ones.
 	chunkFingerprints := map[model.Fingerprint]bool{}
 	for _, c := range store.getChunksForUser(userID) {
-		require.False(t, chunkFingerprints[c.Fingerprint])
-		chunkFingerprints[c.Fingerprint] = true
+		require.False(t, chunkFingerprints[c.FingerprintModel()])
+		chunkFingerprints[c.FingerprintModel()] = true
 	}
 }
 

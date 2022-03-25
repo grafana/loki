@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
@@ -123,6 +124,13 @@ func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 	if time.Since(c.cacheBuiltAt) < cacheTimeout {
 		return nil
 	}
+
+	logger := spanlogger.FromContextWithFallback(ctx, util_log.Logger)
+	level.Info(logger).Log("msg", "building index list cache")
+	now := time.Now()
+	defer func() {
+		level.Info(logger).Log("msg", "index list cache built", "duration", time.Since(now))
+	}()
 
 	objects, _, err := c.ObjectClient.List(ctx, "", "")
 	if err != nil {

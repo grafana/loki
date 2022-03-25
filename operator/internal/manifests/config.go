@@ -63,9 +63,8 @@ func ConfigOptions(opt Options) config.Options {
 			Port: grpcPort,
 		},
 		StorageDirectory: dataDirectory,
-		QueryParallelism: config.Parallelism{
-			QuerierCPULimits:      opt.ResourceRequirements.Querier.Requests.Cpu().Value(),
-			QueryFrontendReplicas: opt.Stack.Template.QueryFrontend.Replicas,
+		MaxConcurrent: config.MaxConcurrent{
+			AvailableQuerierCPUCores: int32(opt.ResourceRequirements.Querier.Requests.Cpu().Value()),
 		},
 		WriteAheadLog: config.WriteAheadLog{
 			Directory:             walDirectory,
@@ -76,5 +75,5 @@ func ConfigOptions(opt Options) config.Options {
 }
 
 func lokiConfigMapName(stackName string) string {
-	return fmt.Sprintf("loki-config-%s", stackName)
+	return fmt.Sprintf("%s-config", stackName)
 }

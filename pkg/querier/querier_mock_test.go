@@ -43,6 +43,11 @@ func (c *querierClientMock) Query(ctx context.Context, in *logproto.QueryRequest
 	return args.Get(0).(logproto.Querier_QueryClient), args.Error(1)
 }
 
+func (c *querierClientMock) QuerySample(ctx context.Context, in *logproto.SampleQueryRequest, opts ...grpc.CallOption) (logproto.Querier_QuerySampleClient, error) {
+	args := c.Called(ctx, in, opts)
+	return args.Get(0).(logproto.Querier_QuerySampleClient), args.Error(1)
+}
+
 func (c *querierClientMock) Label(ctx context.Context, in *logproto.LabelRequest, opts ...grpc.CallOption) (*logproto.LabelResponse, error) {
 	args := c.Called(ctx, in, opts)
 	return args.Get(0).(*logproto.LabelResponse), args.Error(1)
@@ -141,6 +146,49 @@ func (c *queryClientMock) Context() context.Context {
 	return context.Background()
 }
 
+// queryClientMock is a mockable version of Querier_QueryClient
+type querySampleClientMock struct {
+	util.ExtendedMock
+	logproto.Querier_QueryClient
+}
+
+func newQuerySampleClientMock() *querySampleClientMock {
+	return &querySampleClientMock{}
+}
+
+func (c *querySampleClientMock) Recv() (*logproto.SampleQueryResponse, error) {
+	args := c.Called()
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.SampleQueryResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.SampleQueryResponse), args.Error(1)
+}
+
+func (c *querySampleClientMock) Header() (grpc_metadata.MD, error) {
+	return nil, nil
+}
+
+func (c *querySampleClientMock) Trailer() grpc_metadata.MD {
+	return nil
+}
+
+func (c *querySampleClientMock) CloseSend() error {
+	return nil
+}
+
+func (c *querySampleClientMock) SendMsg(m interface{}) error {
+	return nil
+}
+
+func (c *querySampleClientMock) RecvMsg(m interface{}) error {
+	return nil
+}
+
+func (c *querySampleClientMock) Context() context.Context {
+	return context.Background()
+}
+
 // tailClientMock is mockable version of Querier_TailClient
 type tailClientMock struct {
 	util.ExtendedMock
@@ -227,11 +275,6 @@ func (s *storeMock) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	return res.(iter.SampleIterator), args.Error(1)
 }
 
-func (s *storeMock) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	args := s.Called(ctx, userID, from, through, matchers)
-	return args.Get(0).([]chunk.Chunk), args.Error(1)
-}
-
 func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
 	args := s.Called(ctx, userID, from, through, matchers)
 	return args.Get(0).([][]chunk.Chunk), args.Get(0).([]*chunk.Fetcher), args.Error(2)
@@ -253,14 +296,6 @@ func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string,
 func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName)
 	return args.Get(0).([]string), args.Error(1)
-}
-
-func (s *storeMock) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
-	panic("don't call me please")
-}
-
-func (s *storeMock) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
-	panic("don't call me please")
 }
 
 func (s *storeMock) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
@@ -379,6 +414,13 @@ func mockInstanceDesc(addr string, state ring.InstanceState) ring.InstanceDesc {
 // starting at from
 func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 	return iter.NewStreamIterator(mockStream(from, quantity))
+}
+
+// mockSampleIterator returns an iterator with 1 stream and quantity entries,
+// where entries timestamp and line string are constructed as sequential numbers
+// starting at from
+func mockSampleIterator(client iter.QuerySampleClient) iter.SampleIterator {
+	return iter.NewSampleQueryClientIterator(client)
 }
 
 // mockStream return a stream with quantity entries, where entries timestamp and

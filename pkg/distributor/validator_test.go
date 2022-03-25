@@ -12,7 +12,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -203,7 +203,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 }
 
 func mustParseLabels(s string) labels.Labels {
-	ls, err := logql.ParseLabels(s)
+	ls, err := syntax.ParseLabels(s)
 	if err != nil {
 		panic(err)
 	}

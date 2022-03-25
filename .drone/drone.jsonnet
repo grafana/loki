@@ -136,6 +136,30 @@ local promtail_win() = pipeline('promtail-windows') {
   ],
 };
 
+local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
+  steps+: [
+    // dry run for everything that is not tag or main
+    docker('amd64', 'querytee') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMain,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/querytee',
+      },
+    },
+  ] + [
+    // publish for tag or main
+    docker('amd64', 'querytee') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMain,
+      settings+: {
+        repo: 'grafana/querytee',
+      },
+    },
+  ],
+  depends_on: ['check'],
+};
+
 local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
   steps+: [
     // dry run for everything that is not tag or main
@@ -371,24 +395,6 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
-  pipeline('benchmark-cron') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    node: { type: 'no-parallel' },
-    steps: [
-      run('All', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...']),
-    ],
-    trigger: {
-      event: {
-        include: ['cron'],
-      },
-      cron: {
-        include: ['loki-bench'],
-      },
-    },
-  },
 ] + [
   multiarch_image(arch)
   for arch in archs
@@ -422,6 +428,7 @@ local manifest(apps) = pipeline('manifest') {
   fluentbit(),
   fluentd(),
   logstash(),
+  querytee(),
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMain {

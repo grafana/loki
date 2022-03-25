@@ -43,7 +43,6 @@ func TestBuild_MonitoringClusterRoleRefMatches(t *testing.T) {
 
 	require.Equal(t, cr.Kind, rb.RoleRef.Kind)
 	require.Equal(t, cr.Name, rb.RoleRef.Name)
-
 }
 
 func TestBuild_ServiceAccountAnnotationsRouteRefMatches(t *testing.T) {

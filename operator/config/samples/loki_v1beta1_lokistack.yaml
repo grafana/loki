@@ -4,7 +4,6 @@ metadata:
   name: lokistack-sample
 spec:
   size: 1x.small
-  replicationFactor: 2
   storage:
     secret:
       name: test

@@ -10,115 +10,13 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-func TestHourlyBuckets(t *testing.T) {
-	const (
-		userID     = "0"
-		metricName = model.LabelValue("name")
-		tableName  = "table"
-	)
-	var cfg = PeriodConfig{
-		IndexTables: PeriodicTableConfig{Prefix: tableName},
-	}
-
-	type args struct {
-		from    model.Time
-		through model.Time
-	}
-	tests := []struct {
-		name string
-		args args
-		want []Bucket
-	}{
-		{
-			"0 hour window",
-			args{
-				from:    model.TimeFromUnix(0),
-				through: model.TimeFromUnix(0),
-			},
-			[]Bucket{{
-				from:       0,
-				through:    0,
-				tableName:  "table",
-				hashKey:    "0:0",
-				bucketSize: uint32(millisecondsInHour),
-			}},
-		},
-		{
-			"30 minute window",
-			args{
-				from:    model.TimeFromUnix(0),
-				through: model.TimeFromUnix(1800),
-			},
-			[]Bucket{{
-				from:       0,
-				through:    1800 * 1000, // ms
-				tableName:  "table",
-				hashKey:    "0:0",
-				bucketSize: uint32(millisecondsInHour),
-			}},
-		},
-		{
-			"1 hour window",
-			args{
-				from:    model.TimeFromUnix(0),
-				through: model.TimeFromUnix(3600),
-			},
-			[]Bucket{{
-				from:       0,
-				through:    3600 * 1000, // ms
-				tableName:  "table",
-				hashKey:    "0:0",
-				bucketSize: uint32(millisecondsInHour),
-			}, {
-				from:       0,
-				through:    0, // ms
-				tableName:  "table",
-				hashKey:    "0:1",
-				bucketSize: uint32(millisecondsInHour),
-			}},
-		},
-		{
-			"window spanning 3 hours with non-zero start",
-			args{
-				from:    model.TimeFromUnix(900),
-				through: model.TimeFromUnix((2 * 3600) + 1800),
-			},
-			[]Bucket{{
-				from:       900 * 1000,  // ms
-				through:    3600 * 1000, // ms
-				tableName:  "table",
-				hashKey:    "0:0",
-				bucketSize: uint32(millisecondsInHour),
-			}, {
-				from:       0,
-				through:    3600 * 1000, // ms
-				tableName:  "table",
-				hashKey:    "0:1",
-				bucketSize: uint32(millisecondsInHour),
-			}, {
-				from:       0,
-				through:    1800 * 1000, // ms
-				tableName:  "table",
-				hashKey:    "0:2",
-				bucketSize: uint32(millisecondsInHour),
-			}},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := cfg.hourlyBuckets(tt.args.from, tt.args.through, userID)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
 func TestDailyBuckets(t *testing.T) {
 	const (
 		userID     = "0"
 		metricName = model.LabelValue("name")
 		tableName  = "table"
 	)
-	var cfg = PeriodConfig{
+	cfg := PeriodConfig{
 		IndexTables: PeriodicTableConfig{Prefix: tableName},
 	}
 
@@ -314,49 +212,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 		"should pass the default config (ie. used cortex runs with a target not requiring the schema config)": {
 			config: &SchemaConfig{},
 			err:    nil,
-		},
-		"should fail on invalid schema version": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{Schema: "v0"},
-				},
-			},
-			err: errInvalidSchemaVersion,
-		},
-		"should fail on index table period not multiple of 1h for schema v1": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:      "v1",
-						IndexTables: PeriodicTableConfig{Period: 30 * time.Minute},
-					},
-				},
-			},
-			err: errInvalidTablePeriod,
-		},
-		"should fail on chunk table period not multiple of 1h for schema v1": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:      "v1",
-						IndexTables: PeriodicTableConfig{Period: 6 * time.Hour},
-						ChunkTables: PeriodicTableConfig{Period: 30 * time.Minute},
-					},
-				},
-			},
-			err: errInvalidTablePeriod,
-		},
-		"should pass on index and chunk table period multiple of 1h for schema v1": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:      "v1",
-						IndexTables: PeriodicTableConfig{Period: 6 * time.Hour},
-						ChunkTables: PeriodicTableConfig{Period: 6 * time.Hour},
-					},
-				},
-			},
-			err: nil,
 		},
 		"should fail on index table period not multiple of 24h for schema v10": {
 			config: &SchemaConfig{
@@ -621,7 +476,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 		{
 			desc: "ignore pre v10 sharding",
 			in: PeriodConfig{
-
 				Schema:      "v9",
 				IndexTables: PeriodicTableConfig{Period: 0},
 				ChunkTables: PeriodicTableConfig{Period: 0},
@@ -630,7 +484,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 		{
 			desc: "error on invalid schema",
 			in: PeriodConfig{
-
 				Schema:      "v99",
 				IndexTables: PeriodicTableConfig{Period: 0},
 				ChunkTables: PeriodicTableConfig{Period: 0},
@@ -640,7 +493,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 		{
 			desc: "v10 with shard factor",
 			in: PeriodConfig{
-
 				Schema:      "v10",
 				RowShards:   16,
 				IndexTables: PeriodicTableConfig{Period: 0},
@@ -650,7 +502,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 		{
 			desc: "v11 with shard factor",
 			in: PeriodConfig{
-
 				Schema:      "v11",
 				RowShards:   16,
 				IndexTables: PeriodicTableConfig{Period: 0},
@@ -660,7 +511,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 		{
 			desc: "error v10 no specified shard factor",
 			in: PeriodConfig{
-
 				Schema:      "v10",
 				IndexTables: PeriodicTableConfig{Period: 0},
 				ChunkTables: PeriodicTableConfig{Period: 0},
@@ -811,7 +661,6 @@ func TestVersionAsInt(t *testing.T) {
 			if tc.err {
 				require.NotNil(t, err)
 			} else {
-
 				require.NoError(t, err)
 			}
 		})
@@ -831,7 +680,7 @@ store: boltdb-shipper
 
 	var cfg PeriodConfig
 	require.Nil(t, yaml.Unmarshal([]byte(input), &cfg))
-	var n = 11
+	n := 11
 
 	expected := PeriodConfig{
 		From:       DayTime{model.Time(1596153600000)},

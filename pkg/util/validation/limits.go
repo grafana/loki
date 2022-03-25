@@ -698,3 +698,22 @@ func MaxDurationPerTenant(tenantIDs []string, f func(string) time.Duration) time
 	}
 	return result
 }
+
+// MaxDurationOrDisabledPerTenant is returning the maximum duration per tenant or zero if one tenant has time.Duration(0).
+func MaxDurationOrZeroPerTenant(tenantIDs []string, f func(string) time.Duration) time.Duration {
+	var result *time.Duration
+	for _, tenantID := range tenantIDs {
+		v := f(tenantID)
+		if v == 0 {
+			return v
+		}
+
+		if v > 0 && (result == nil || v > *result) {
+			result = &v
+		}
+	}
+	if result == nil {
+		return 0
+	}
+	return *result
+}
