@@ -9,6 +9,7 @@ import (
 	"time"
 
 	avatica "github.com/apache/calcite-avatica-go/v5"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
@@ -41,6 +42,7 @@ type Config struct {
 	Backend          string         `yaml:"backend"`
 	MaxOpenConns     int            `yaml:"max_open_conns"`
 	MaxIdleConns     int            `yaml:"max_idle_conns"`
+	BackoffConfig    backoff.Config `yaml:"backoff_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -53,6 +55,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Backend, "avatica.backend", BackendAlibabacloudLindorm, "backend of avatica.")
 	f.IntVar(&cfg.MaxOpenConns, "avatica.max-open-conns", 16, "sets the maximum number of open connections to the database.")
 	f.IntVar(&cfg.MaxIdleConns, "avatica.max-idle-conns", 3, "sets the maximum number of connections in the idle connection pool.")
+	f.DurationVar(&cfg.BackoffConfig.MinBackoff, "avatica.min-backoff", 100*time.Millisecond, "Minimum backoff time when avatica query")
+	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, "avatica.max-backoff", 3*time.Second, "Maximum backoff time when s3 avatica query")
+	f.IntVar(&cfg.BackoffConfig.MaxRetries, "avatica.max-retries", 5, "Maximum number of times to retry when s3 avatica query")
 }
 
 func (cfg *Config) Validate() error {
@@ -109,6 +114,7 @@ type StorageClient struct {
 	readSession    *sql.DB
 	writeSession   *sql.DB
 	querySemaphore *semaphore.Weighted
+	BackoffConfig  backoff.Config `yaml:"backoff_config"`
 }
 
 // NewStorageClient returns a new StorageClient.
@@ -179,15 +185,22 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	for _, entry := range b.entries {
 		querySQL := fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)",
 			entry.TableName)
-
-		err := s.queryInstrumentation(ctx, querySQL, func() error {
-			rows, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue, entry.Value)
-			if err != nil {
+		retries := backoff.New(ctx, s.cfg.BackoffConfig)
+		err := ctx.Err()
+		for retries.Ongoing() {
+			err = s.queryInstrumentation(ctx, querySQL, func() error {
+				rows, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue, entry.Value)
+				if err != nil {
+					return nil
+				}
+				rows.Close()
 				return nil
+			})
+			if err == nil {
+				continue
 			}
-			rows.Close()
-			return nil
-		})
+			retries.Wait()
+		}
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -228,6 +241,7 @@ func (s *StorageClient) queryInstrumentation(ctx context.Context, query string, 
 		parts := strings.SplitN(query, " ", 2)
 		requestDuration.WithLabelValues(parts[0], statusCode).Observe(end.Sub(start).Seconds())
 	}()
+	start = time.Now()
 	err = queryFunc()
 	end = time.Now()
 	if err != nil {
@@ -298,12 +312,20 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 			return err
 		}
 	}
-	err = s.queryInstrumentation(ctx, querySQL, queryFunc)
+
+	retries := backoff.New(ctx, s.cfg.BackoffConfig)
+	err = ctx.Err()
+	for retries.Ongoing() {
+		err = s.queryInstrumentation(ctx, querySQL, queryFunc)
+		if err == nil {
+			continue
+		}
+		retries.Wait()
+	}
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	defer rows.Close()
-
 	for rows.Next() {
 		b := &readBatch{}
 		err = rows.Scan(&b.rangeValue, &b.value)
