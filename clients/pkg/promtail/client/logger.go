@@ -81,3 +81,7 @@ func (l *logger) run() {
 	}
 }
 func (l *logger) StopNow() { l.Stop() }
+
+func (l *logger) Name() string {
+	return ""
+}

@@ -220,7 +220,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										},
 									},
 									LivenessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/live",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -232,7 +232,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										FailureThreshold: 10,
 									},
 									ReadinessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/ready",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -315,7 +315,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										},
 									},
 									LivenessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/live",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -327,7 +327,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										FailureThreshold: 10,
 									},
 									ReadinessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/ready",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -452,7 +452,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										},
 									},
 									LivenessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/live",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -464,7 +464,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										FailureThreshold: 10,
 									},
 									ReadinessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/ready",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),

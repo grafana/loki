@@ -510,8 +510,8 @@ type LokiStackSpec struct {
 
 	// ReplicationFactor defines the policy for log stream replication.
 	//
-	// +required
-	// +kubebuilder:validation:Required
+	// +optional
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Minimum:=1
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
 	ReplicationFactor int32 `json:"replicationFactor"`

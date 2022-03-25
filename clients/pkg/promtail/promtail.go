@@ -63,18 +63,18 @@ func New(cfg config.Config, metrics *client.Metrics, dryRun bool, opts ...Option
 
 	cfg.Setup()
 
-	if cfg.LimitConfig.ReadlineRateEnabled {
-		stages.SetReadLineRateLimiter(cfg.LimitConfig.ReadlineRate, cfg.LimitConfig.ReadlineBurst, cfg.LimitConfig.ReadlineRateDrop)
+	if cfg.LimitsConfig.ReadlineRateEnabled {
+		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
 	}
 	var err error
 	if dryRun {
-		promtail.client, err = client.NewLogger(metrics, cfg.ClientConfigs.StreamLagLabels, promtail.logger, cfg.ClientConfigs.Configs...)
+		promtail.client, err = client.NewLogger(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		promtail.client, err = client.NewMulti(metrics, cfg.ClientConfigs.StreamLagLabels, promtail.logger, cfg.ClientConfigs.Configs...)
+		promtail.client, err = client.NewMulti(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
