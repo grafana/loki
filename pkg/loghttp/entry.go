@@ -25,7 +25,12 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 		i          int
 		parseError error
 	)
-	_, err := jsonparser.ArrayEach(data, func(value []byte, _ jsonparser.ValueType, _ int, _ error) {
+	_, err := jsonparser.ArrayEach(data, func(value []byte, t jsonparser.ValueType, _ int, _ error) {
+		// assert that both items in array are of type string
+		if t != jsonparser.String {
+			parseError = jsonparser.MalformedStringError
+			return
+		}
 		switch i {
 		case 0: // timestamp
 			ts, err := jsonparser.ParseInt(value)
