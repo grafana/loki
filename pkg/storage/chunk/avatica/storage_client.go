@@ -191,13 +191,13 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 			err = s.queryInstrumentation(ctx, querySQL, func() error {
 				rows, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue, entry.Value)
 				if err != nil {
-					return nil
+					return err
 				}
 				rows.Close()
 				return nil
 			})
 			if err == nil {
-				continue
+				break
 			}
 			retries.Wait()
 		}
@@ -212,7 +212,7 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 		err := s.queryInstrumentation(ctx, querySQL, func() error {
 			rows, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue)
 			if err != nil {
-				return nil
+				return err
 			}
 			rows.Close()
 			return nil
@@ -318,7 +318,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 	for retries.Ongoing() {
 		err = s.queryInstrumentation(ctx, querySQL, queryFunc)
 		if err == nil {
-			continue
+			break
 		}
 		retries.Wait()
 	}
