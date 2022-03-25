@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,7 @@ var cfg = Config{
 	BackendAlibabacloudLindorm,
 	16,
 	3,
+	backoff.Config{},
 }
 
 func TestTableClient_CreateTableQuery(t *testing.T) {
