@@ -11,18 +11,14 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/grpcclient"
-	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -54,49 +50,6 @@ type boltDBIndexClient interface {
 	NewWriteBatch() chunk.WriteBatch
 	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 	Stop()
-}
-
-// IndexGatewayClientConfig configures the Index Gateway client used to
-// communicate with the Index Gateway server.
-type IndexGatewayClientConfig struct {
-	// Mode sets in which mode the client will operate. It is actually defined at the
-	// index_gateway YAML section and reused here.
-	Mode indexgateway.Mode `yaml:"-"`
-
-	// PoolConfig defines the behavior of the gRPC connection pool used to communicate
-	// with the Index Gateway.
-	//
-	// Only relevant for the ring mode.
-	// It is defined at the distributors YAML section and reused here.
-	PoolConfig clientpool.PoolConfig `yaml:"-"`
-
-	// Ring is the Index Gateway ring used to find the appropriate Index Gateway instance
-	// this client should talk to.
-	//
-	// Only relevant for the ring mode.
-	Ring ring.ReadRing `yaml:"-"`
-
-	// GRPCClientConfig configures the gRPC connection between the Index Gateway client and the server.
-	//
-	// Used by both, ring and simple mode.
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
-
-	// Address of the Index Gateway instance responsible for retaining the index for all tenants.
-	//
-	// Only relevant for the simple mode.
-	Address string `yaml:"server_address,omitempty"`
-}
-
-// RegisterFlagsWithPrefix register client-specific flags with the given prefix.
-//
-// Flags that are used by both, client and server, are defined in the indexgateway package.
-func (i *IndexGatewayClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
-	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode.")
-}
-
-func (i *IndexGatewayClientConfig) RegisterFlags(f *flag.FlagSet) {
-	i.RegisterFlagsWithPrefix("index-gateway-client", f)
 }
 
 type Config struct {

@@ -2,6 +2,7 @@ package shipper
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 
@@ -32,6 +33,49 @@ const (
 	maxQueriesPerGrpc      = 100
 	maxConcurrentGrpcCalls = 10
 )
+
+// IndexGatewayClientConfig configures the Index Gateway client used to
+// communicate with the Index Gateway server.
+type IndexGatewayClientConfig struct {
+	// Mode sets in which mode the client will operate. It is actually defined at the
+	// index_gateway YAML section and reused here.
+	Mode indexgateway.Mode `yaml:"-"`
+
+	// PoolConfig defines the behavior of the gRPC connection pool used to communicate
+	// with the Index Gateway.
+	//
+	// Only relevant for the ring mode.
+	// It is defined at the distributors YAML section and reused here.
+	PoolConfig clientpool.PoolConfig `yaml:"-"`
+
+	// Ring is the Index Gateway ring used to find the appropriate Index Gateway instance
+	// this client should talk to.
+	//
+	// Only relevant for the ring mode.
+	Ring ring.ReadRing `yaml:"-"`
+
+	// GRPCClientConfig configures the gRPC connection between the Index Gateway client and the server.
+	//
+	// Used by both, ring and simple mode.
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+
+	// Address of the Index Gateway instance responsible for retaining the index for all tenants.
+	//
+	// Only relevant for the simple mode.
+	Address string `yaml:"server_address,omitempty"`
+}
+
+// RegisterFlagsWithPrefix register client-specific flags with the given prefix.
+//
+// Flags that are used by both, client and server, are defined in the indexgateway package.
+func (i *IndexGatewayClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
+	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode.")
+}
+
+func (i *IndexGatewayClientConfig) RegisterFlags(f *flag.FlagSet) {
+	i.RegisterFlagsWithPrefix("index-gateway-client", f)
+}
 
 type GatewayClient struct {
 	cfg IndexGatewayClientConfig
