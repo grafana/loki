@@ -194,12 +194,12 @@ func (t *SyslogTarget) handleConnection(cn net.Conn) {
 
 	connLabels := t.connectionLabels(c)
 
-	err := syslogparser.ParseStream(c, func(msg *syslog.Result) {
-		if err := msg.Error; err != nil {
+	err := syslogparser.ParseStream(c, func(result *syslog.Result) {
+		if err := result.Error; err != nil {
 			t.handleMessageError(err)
 			return
 		}
-		t.handleMessage(connLabels.Copy(), msg.Message)
+		t.handleMessage(connLabels.Copy(), result.Message)
 	}, t.maxMessageLength())
 
 	if err != nil {
@@ -271,7 +271,14 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 	} else {
 		timestamp = time.Now()
 	}
-	t.messages <- message{filtered, *rfc5424Msg.Message, timestamp}
+
+	m := *rfc5424Msg.Message
+	if t.config.UseRFC5424Message {
+		if fullMsg, err := rfc5424Msg.String(); err == nil {
+			m = fullMsg
+		}
+	}
+	t.messages <- message{filtered, m, timestamp}
 }
 
 func (t *SyslogTarget) messageSender(entries chan<- api.Entry) {
