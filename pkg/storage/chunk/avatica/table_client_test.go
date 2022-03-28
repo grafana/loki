@@ -3,6 +3,7 @@ package avatica
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -23,6 +24,8 @@ var cfg = Config{
 	BackendAlibabacloudLindorm,
 	16,
 	3,
+	10 * time.Minute,
+	time.Minute,
 	backoff.Config{},
 }
 
