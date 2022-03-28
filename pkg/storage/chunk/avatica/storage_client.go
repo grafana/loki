@@ -137,10 +137,12 @@ func NewStorageClient(cfg Config, registerer prometheus.Registerer) (*StorageCli
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	collector := sqlstats.NewStatsCollector(cfg.Database, readSession)
+	collectorRead := sqlstats.NewStatsCollector(cfg.Database+"_read", readSession)
+	collectorWrite := sqlstats.NewStatsCollector(cfg.Database+"_write", writeSession)
 	if registerer != nil {
 		registerer.MustRegister(requestDuration)
-		registerer.MustRegister(collector)
+		registerer.MustRegister(collectorRead)
+		registerer.MustRegister(collectorWrite)
 	}
 	var querySemaphore *semaphore.Weighted
 	if cfg.QueryConcurrency > 0 {
