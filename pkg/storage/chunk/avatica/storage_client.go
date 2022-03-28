@@ -219,11 +219,10 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 		querySQL := fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
 			entry.TableName)
 		err := s.queryInstrumentation(ctx, querySQL, func() error {
-			rows, err := s.writeSession.QueryContext(ctx, querySQL, entry.HashValue, entry.RangeValue)
+			_, err := s.writeSession.ExecContext(ctx, querySQL, entry.HashValue, entry.RangeValue)
 			if err != nil {
 				return err
 			}
-			rows.Close()
 			return nil
 		})
 		if err != nil {
