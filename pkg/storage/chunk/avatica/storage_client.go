@@ -9,6 +9,7 @@ import (
 	"time"
 
 	avatica "github.com/apache/calcite-avatica-go/v5"
+	"github.com/dlmiddlecote/sqlstats"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -128,9 +129,6 @@ type StorageClient struct {
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, registerer prometheus.Registerer) (*StorageClient, error) {
-	if registerer != nil {
-		registerer.MustRegister(requestDuration)
-	}
 	readSession, err := cfg.session()
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -139,11 +137,15 @@ func NewStorageClient(cfg Config, registerer prometheus.Registerer) (*StorageCli
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	collector := sqlstats.NewStatsCollector(cfg.Database, readSession)
+	if registerer != nil {
+		registerer.MustRegister(requestDuration)
+		registerer.MustRegister(collector)
+	}
 	var querySemaphore *semaphore.Weighted
 	if cfg.QueryConcurrency > 0 {
 		querySemaphore = semaphore.NewWeighted(int64(cfg.QueryConcurrency))
 	}
-
 	client := &StorageClient{
 		cfg:            cfg,
 		readSession:    readSession,

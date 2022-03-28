@@ -110,7 +110,10 @@ require (
 	k8s.io/klog v1.0.0
 )
 
-require github.com/apache/calcite-avatica-go/v5 v5.0.0
+require (
+	github.com/apache/calcite-avatica-go/v5 v5.0.0
+	github.com/dlmiddlecote/sqlstats v1.0.2
+)
 
 require (
 	cloud.google.com/go v0.100.2 // indirect
