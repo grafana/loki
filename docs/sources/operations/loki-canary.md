@@ -328,7 +328,7 @@ All options:
   -out-of-order-percentage int
       	Percentage (0-100) of log entries that should be sent out of order
   -pass string
-        Loki password
+        Loki password. Must not be set with tenant-id flag.
   -port int
         Port which Loki Canary should expose metrics (default 3500)
   -pruneinterval duration
@@ -355,10 +355,12 @@ All options:
   -streamvalue string
         The unique stream value for this instance of Loki Canary to use in the log selector
         (default "stdout")
+  -tenant-id string
+        Tenant id to be set in X-Scope-OrgID header. Must not be set with user/pass flags.
   -tls
         Does the Loki connection use TLS?
   -user string
-        Loki user name
+        Loki username. Must not be set with tenant-id flag.
   -version
         Print this build's version information
   -wait duration
