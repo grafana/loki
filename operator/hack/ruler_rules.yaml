@@ -1,0 +1,10 @@
+groups:
+  - name: PlatformRules
+    interval: 1m
+    rules:
+    - record: logs:openshift:platform:rate1m
+      expr: |
+        sum(rate({namespace=~"openshift+"}[1m]))
+      labels:
+        metric: "rate"
+        source: "logs"

@@ -1,0 +1,16 @@
+apiVersion: loki.grafana.com/v1beta1
+kind: LokiStack
+metadata:
+  name: lokistack-dev
+spec:
+  size: 1x.extra-small
+  replicationFactor: 1
+  storage:
+    secret:
+      name: test
+      type: s3
+  storageClassName: standard
+  template:
+    ruler:
+      replicas: 2
+      prometheusEndpoint: "http://prometheus-kube-prometheus-prometheus.default.svc.cluster.local:9090"

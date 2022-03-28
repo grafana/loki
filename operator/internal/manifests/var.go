@@ -58,6 +58,8 @@ const (
 	LabelQuerierComponent string = "querier"
 	// LabelQueryFrontendComponent is the label value for the query frontend component
 	LabelQueryFrontendComponent string = "query-frontend"
+	// LabelRulerCompoznent is the label value for the ruler component
+	LabelRulerComponent string = "ruler"
 	// LabelIndexGatewayComponent is the label value for the lokiStack-index-gateway component
 	LabelIndexGatewayComponent string = "index-gateway"
 	// LabelGatewayComponent is the label value for the lokiStack-gateway component
@@ -131,6 +133,11 @@ func QueryFrontendName(stackName string) string {
 	return fmt.Sprintf("%s-query-frontend", stackName)
 }
 
+// RulerName is the name of the query-frontend deployment
+func RulerName(stackName string) string {
+	return fmt.Sprintf("loki-ruler-%s", stackName)
+}
+
 // IndexGatewayName is the name of the index-gateway statefulset
 func IndexGatewayName(stackName string) string {
 	return fmt.Sprintf("%s-index-gateway", stackName)
@@ -192,6 +199,13 @@ func serviceNameIndexGatewayHTTP(stackName string) string {
 
 func serviceNameIndexGatewayGRPC(stackName string) string {
 	return fmt.Sprintf("%s-index-gateway-grpc", stackName)
+}
+
+func serviceNameRulerHTTP(stackName string) string {
+	return fmt.Sprintf("loki-ruler-http-%s", stackName)
+}
+func serviceNameRulerGRPC(stackName string) string {
+	return fmt.Sprintf("loki-ruler-grpc-%s", stackName)
 }
 
 func serviceNameGatewayHTTP(stackName string) string {

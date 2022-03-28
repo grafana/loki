@@ -23,6 +23,7 @@ type Options struct {
 	WriteAheadLog    WriteAheadLog
 
 	ObjectStorage storage.Options
+	Prometheus    Prometheus
 }
 
 // Address FQDN and port for a k8s service.
@@ -42,6 +43,10 @@ type MaxConcurrent struct {
 type WriteAheadLog struct {
 	Directory             string
 	IngesterMemoryRequest int64
+}
+
+type Prometheus struct {
+	Endpoint string
 }
 
 // ReplayMemoryCeiling calculates 50% of the ingester memory

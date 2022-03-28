@@ -44,6 +44,19 @@ common:
       region_name: {{ .Region }}
       container_name: {{ .Container }}
     {{ end }}
+{{ if ne .Prometheus.Endpoint "" }}ruler:
+  storage:
+    type: local
+    local:
+      directory: /etc/loki/rules
+  ring:
+    kvstore:
+      store: memberlist
+  rule_path: /tmp/loki/scratch
+  remote_write:
+    enabled: true
+    client:
+      url: {{ .Prometheus.Endpoint }} {{ end }}
 compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor
