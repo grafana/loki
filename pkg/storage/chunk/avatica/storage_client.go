@@ -44,6 +44,8 @@ type Config struct {
 	Backend          string         `yaml:"backend"`
 	MaxOpenConns     int            `yaml:"max_open_conns"`
 	MaxIdleConns     int            `yaml:"max_idle_conns"`
+	ConnMaxLifetime  time.Duration  `yaml:"conn_max_lifetime"`
+	ConnMaxIdleTime  time.Duration  `yaml:"conn_max_idletime"`
 	BackoffConfig    backoff.Config `yaml:"backoff_config"`
 }
 
@@ -57,6 +59,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Backend, "avatica.backend", BackendAlibabacloudLindorm, "backend of avatica.")
 	f.IntVar(&cfg.MaxOpenConns, "avatica.max-open-conns", 16, "sets the maximum number of open connections to the database.")
 	f.IntVar(&cfg.MaxIdleConns, "avatica.max-idle-conns", 3, "sets the maximum number of connections in the idle connection pool.")
+	f.DurationVar(&cfg.ConnMaxLifetime, "cassandra.conn-max-life-time", 5*time.Minute, "Initial connection  max lifetime")
+	f.DurationVar(&cfg.ConnMaxIdleTime, "cassandra.conn-max-idle-time", 1*time.Minute, "Initial connection  max idletime")
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, "avatica.min-backoff", 100*time.Millisecond, "Minimum backoff time when avatica query")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, "avatica.max-backoff", 3*time.Second, "Maximum backoff time when s3 avatica query")
 	f.IntVar(&cfg.BackoffConfig.MaxRetries, "avatica.max-retries", 5, "Maximum number of times to retry when s3 avatica query")
@@ -88,6 +92,9 @@ func (cfg *Config) session() (*sql.DB, error) {
 	db = sql.OpenDB(conn)
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
 	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+
 	//TODO: lindorm should support ping()
 	//err = db.Ping()
 	//if err != nil {
@@ -191,11 +198,10 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 		err := ctx.Err()
 		for retries.Ongoing() {
 			err = s.queryInstrumentation(ctx, querySQL, func() error {
-				rows, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue, entry.Value)
+				_, err := s.writeSession.ExecContext(ctx, querySQL, entry.HashValue, entry.RangeValue, entry.Value)
 				if err != nil {
 					return err
 				}
-				rows.Close()
 				return nil
 			})
 			if err == nil {
@@ -204,6 +210,7 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 			retries.Wait()
 		}
 		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "avatica INSERT fail", "sql", querySQL, "err", err)
 			return errors.WithStack(err)
 		}
 	}
@@ -212,7 +219,7 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 		querySQL := fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
 			entry.TableName)
 		err := s.queryInstrumentation(ctx, querySQL, func() error {
-			rows, err := s.writeSession.Query(querySQL, entry.HashValue, entry.RangeValue)
+			rows, err := s.writeSession.QueryContext(ctx, querySQL, entry.HashValue, entry.RangeValue)
 			if err != nil {
 				return err
 			}
@@ -220,6 +227,7 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 			return nil
 		})
 		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "avatica DELETE fail", "sql", querySQL, "err", err)
 			return errors.WithStack(err)
 		}
 
@@ -247,7 +255,7 @@ func (s *StorageClient) queryInstrumentation(ctx context.Context, query string, 
 	err = queryFunc()
 	end = time.Now()
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "avatica query fail", "sql", query, "err", err)
+		level.Warn(util_log.Logger).Log("msg", "avatica query fail", "sql", query, "err", err)
 		ext.Error.Set(sp, true)
 		sp.LogFields(otlog.String("event", "error"), otlog.String("message", err.Error()))
 		return errors.WithStack(err)
@@ -276,42 +284,42 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 		querySQL = fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND range < ?",
 			query.TableName)
 		queryFunc = func() error {
-			rows, err = s.readSession.Query(querySQL, query.HashValue, query.RangeValuePrefix, append(query.RangeValuePrefix, '\xff'))
+			rows, err = s.readSession.QueryContext(ctx, querySQL, query.HashValue, query.RangeValuePrefix, append(query.RangeValuePrefix, '\xff'))
 			return err
 		}
 	case len(query.RangeValuePrefix) > 0 && query.ValueEqual != nil:
 		querySQL = fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND range < ? AND value = ? ALLOW FILTERING",
 			query.TableName)
 		queryFunc = func() error {
-			rows, err = s.readSession.Query(querySQL, query.HashValue, query.RangeValuePrefix, append(query.RangeValuePrefix, '\xff'), query.ValueEqual)
+			rows, err = s.readSession.QueryContext(ctx, querySQL, query.HashValue, query.RangeValuePrefix, append(query.RangeValuePrefix, '\xff'), query.ValueEqual)
 			return err
 		}
 	case len(query.RangeValueStart) > 0 && query.ValueEqual == nil:
 		querySQL = fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?",
 			query.TableName)
 		queryFunc = func() error {
-			rows, err = s.readSession.Query(querySQL, query.HashValue, query.RangeValueStart)
+			rows, err = s.readSession.QueryContext(ctx, querySQL, query.HashValue, query.RangeValueStart)
 			return err
 		}
 	case len(query.RangeValueStart) > 0 && query.ValueEqual != nil:
 		querySQL = fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND value = ? ALLOW FILTERING",
 			query.TableName)
 		queryFunc = func() error {
-			rows, err = s.readSession.Query(querySQL, query.HashValue, query.RangeValueStart, query.ValueEqual)
+			rows, err = s.readSession.QueryContext(ctx, querySQL, query.HashValue, query.RangeValueStart, query.ValueEqual)
 			return err
 		}
 	case query.ValueEqual == nil:
 		querySQL = fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ?",
 			query.TableName)
 		queryFunc = func() error {
-			rows, err = s.readSession.Query(querySQL, query.HashValue)
+			rows, err = s.readSession.QueryContext(ctx, querySQL, query.HashValue)
 			return err
 		}
 	case query.ValueEqual != nil:
 		querySQL = fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND value = ? ALLOW FILTERING",
 			query.TableName)
 		queryFunc = func() error {
-			rows, err = s.readSession.Query(querySQL, query.HashValue, query.ValueEqual)
+			rows, err = s.readSession.QueryContext(ctx, querySQL, query.HashValue, query.ValueEqual)
 			return err
 		}
 	}
@@ -326,6 +334,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 		retries.Wait()
 	}
 	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "avatica QUERY fail", "sql", querySQL, "err", err)
 		return errors.WithStack(err)
 	}
 	defer rows.Close()
