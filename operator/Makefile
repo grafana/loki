@@ -71,7 +71,7 @@ endif
 
 all: generate lint manager bin/loki-broker
 
-OCI_RUNTIME ?= $(shell which podman || which docker)
+OCI_RUNTIME ?= $(shell which docker)
 
 ##@ General
 
@@ -189,6 +189,20 @@ else
 olm-deploy: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
 	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode AllNamespaces $(BUNDLE_IMG)
 endif
+
+# Build and push ruler rules configmap
+.PHONY: olm-deploy-example-rules-configmap
+olm-deploy-example-rules-configmap:
+	hack/deploy-example-rules-configmap.sh $(CLUSTER_LOGGING_NS)
+
+# Build and push the secret for the S3 storage
+.PHONY: olm-deploy-example-storage-secret
+olm-deploy-example-storage-secret:
+	hack/deploy-example-secret.sh $(CLUSTER_LOGGING_NS)
+
+.PHONY: olm-deploy-example
+olm-deploy-example: olm-deploy olm-deploy-example-storage-secret ## Deploy example LokiStack custom resource
+	kubectl -n $(CLUSTER_LOGGING_NS) create -f hack/lokistack_dev.yaml
 
 .PHONY: olm-undeploy
 olm-undeploy: $(OPERATOR_SDK) ## Cleanup deployments of the operator bundle and the operator via OLM on an OpenShift cluster selected via KUBECONFIG.
