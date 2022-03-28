@@ -86,9 +86,10 @@ func NewReader(writer io.Writer,
 	interval time.Duration) *Reader {
 	h := http.Header{}
 	if user != "" {
-		h = http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))}}
-	} else if tenantID != "" {
-		h = http.Header{"X-Scope-OrgID": {tenantID}}
+		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+pass)))
+	}
+	if tenantID != "" {
+		h.Set("X-Scope-OrgID", tenantID)
 	}
 
 	next := time.Now()
@@ -181,7 +182,8 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 
 	if r.user != "" {
 		req.SetBasicAuth(r.user, r.pass)
-	} else if r.tenantID != "" {
+	}
+	if r.tenantID != "" {
 		req.Header.Set("X-Scope-OrgID", r.tenantID)
 	}
 	req.Header.Set("User-Agent", userAgent)
@@ -271,7 +273,8 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 
 	if r.user != "" {
 		req.SetBasicAuth(r.user, r.pass)
-	} else if r.tenantID != "" {
+	}
+	if r.tenantID != "" {
 		req.Header.Set("X-Scope-OrgID", r.tenantID)
 	}
 	req.Header.Set("User-Agent", userAgent)
