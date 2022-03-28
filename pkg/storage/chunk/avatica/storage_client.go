@@ -9,7 +9,6 @@ import (
 	"time"
 
 	avatica "github.com/apache/calcite-avatica-go/v5"
-	"github.com/dlmiddlecote/sqlstats"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -18,6 +17,8 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+
 	"golang.org/x/sync/semaphore"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -137,8 +138,9 @@ func NewStorageClient(cfg Config, registerer prometheus.Registerer) (*StorageCli
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	collectorRead := sqlstats.NewStatsCollector(cfg.Database+"_read", readSession)
-	collectorWrite := sqlstats.NewStatsCollector(cfg.Database+"_write", writeSession)
+
+	collectorRead := collectors.NewDBStatsCollector(readSession, cfg.Database+"_read")
+	collectorWrite := collectors.NewDBStatsCollector(writeSession, cfg.Database+"_write")
 	if registerer != nil {
 		registerer.MustRegister(requestDuration)
 		registerer.MustRegister(collectorRead)
