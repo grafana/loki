@@ -569,7 +569,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	drone jsonnet --stream --format -V __build-image-version=$(BUILD_IMAGE_VERSION) --source .drone/drone.jsonnet --target .drone/drone.yml
 	drone lint .drone/drone.yml --trusted
-	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN. These values can be found on the drone settings page."
+	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN. These values can be found on your [drone account](http://drone.grafana.net/account) page."
 endif
 
 check-drone-drift:
