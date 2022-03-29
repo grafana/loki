@@ -16,18 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
-// CardinalityExceededError is returned when the user reads a row that
-// is too large.
-type CardinalityExceededError struct {
-	MetricName, LabelName string
-	Size, Limit           int32
-}
-
-func (e CardinalityExceededError) Error() string {
-	return fmt.Sprintf("cardinality limit exceeded for %s{%s}; %d entries, more than limit of %d",
-		e.MetricName, e.LabelName, e.Size, e.Limit)
-}
-
 var (
 	indexLookupsPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "loki",

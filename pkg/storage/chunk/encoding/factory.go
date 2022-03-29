@@ -1,7 +1,6 @@
 package encoding
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"strconv"
@@ -27,10 +26,6 @@ func (Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate errors out if the encoding is set to Delta.
 func (Config) Validate() error {
-	if DefaultEncoding == Delta {
-		// Delta is deprecated.
-		return errors.New("delta encoding is deprecated")
-	}
 	return nil
 }
 
@@ -43,17 +38,8 @@ func (e Encoding) String() string {
 }
 
 const (
-	// Delta encoding is no longer supported and will be automatically changed to DoubleDelta.
-	// It still exists here to not change the `ingester.chunk-encoding` flag values.
-	Delta Encoding = iota
-	// DoubleDelta encoding
-	DoubleDelta
-	// Varbit encoding
-	Varbit
-	// Bigchunk encoding
-	Bigchunk
-	// PrometheusXorChunk is a wrapper around Prometheus XOR-encoded chunk.
-	PrometheusXorChunk
+	// Big chunk encoding.
+	Bigchunk Encoding = iota
 )
 
 type encoding struct {
@@ -62,28 +48,10 @@ type encoding struct {
 }
 
 var encodings = map[Encoding]encoding{
-	DoubleDelta: {
-		Name: "DoubleDelta",
-		New: func() Chunk {
-			return newDoubleDeltaEncodedChunk(d1, d0, true, ChunkLen)
-		},
-	},
-	Varbit: {
-		Name: "Varbit",
-		New: func() Chunk {
-			return newVarbitChunk(varbitZeroEncoding)
-		},
-	},
 	Bigchunk: {
 		Name: "Bigchunk",
 		New: func() Chunk {
 			return newBigchunk()
-		},
-	},
-	PrometheusXorChunk: {
-		Name: "PrometheusXorChunk",
-		New: func() Chunk {
-			return newPrometheusXorChunk()
 		},
 	},
 }

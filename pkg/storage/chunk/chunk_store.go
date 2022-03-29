@@ -22,7 +22,6 @@ import (
 
 var (
 	ErrQueryMustContainMetricName = QueryError("query must contain metric name")
-	ErrMetricNameLabelMissing     = errors.New("metric name label missing")
 	ErrParialDeleteChunkNoOverlap = errors.New("interval for partial deletion has not overlap with chunk interval")
 
 	indexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{

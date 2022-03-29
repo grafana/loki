@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -115,8 +116,8 @@ func TestChunkCodec(t *testing.T) {
 			encoded, err := c.chunk.Encoded()
 			require.NoError(t, err)
 
-			s := SchemaConfig{
-				Configs: []PeriodConfig{
+			s := index.SchemaConfig{
+				Configs: []index.PeriodConfig{
 					{
 						From:      DayTime{Time: 0},
 						Schema:    "v11",
@@ -479,9 +480,11 @@ func TestChunkKeys(t *testing.T) {
 func BenchmarkParseNewerExternalKey(b *testing.B) {
 	benchmarkParseExternalKey(b, "fake/57f628c7f6d57aad/162c699f000:162c69a07eb:eb242d99")
 }
+
 func BenchmarkParseNewExternalKey(b *testing.B) {
 	benchmarkParseExternalKey(b, "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
 }
+
 func BenchmarkParseLegacyExternalKey(b *testing.B) {
 	benchmarkParseExternalKey(b, "2:1484661279394:1484664879394")
 }

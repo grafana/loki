@@ -13,7 +13,9 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/config"
 	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -24,7 +26,7 @@ const (
 // Fixture type for per-backend testing.
 type Fixture interface {
 	Name() string
-	Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, io.Closer, error)
+	Clients() (index.IndexClient, chunk.Client, index.TableClient, config.SchemaConfig, io.Closer, error)
 }
 
 // CloserFunc is to io.Closer as http.HandlerFunc is to http.Handler.
@@ -36,21 +38,21 @@ func (f CloserFunc) Close() error {
 }
 
 // DefaultSchemaConfig returns default schema for use in test fixtures
-func DefaultSchemaConfig(kind string) chunk.SchemaConfig {
+func DefaultSchemaConfig(kind string) config.SchemaConfig {
 	schemaConfig := chunk.DefaultSchemaConfig(kind, "v9", model.Now().Add(-time.Hour*2))
 	return schemaConfig
 }
 
 // Setup a fixture with initial tables
-func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.Client, io.Closer, error) {
-	var tbmConfig chunk.TableManagerConfig
+func Setup(fixture Fixture, tableName string) (index.IndexClient, chunk.Client, io.Closer, error) {
+	var tbmConfig index.TableManagerConfig
 	flagext.DefaultValues(&tbmConfig)
 	indexClient, chunkClient, tableClient, schemaConfig, closer, err := fixture.Clients()
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil, nil, nil)
+	tableManager, err := index.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil, nil, nil)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -60,7 +62,7 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.Client, 
 		return nil, nil, nil, err
 	}
 
-	err = tableClient.CreateTable(context.Background(), chunk.TableDesc{
+	err = tableClient.CreateTable(context.Background(), config.TableDesc{
 		Name: tableName,
 	})
 
@@ -68,7 +70,7 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.Client, 
 }
 
 // CreateChunks creates some chunks for testing
-func CreateChunks(scfg chunk.SchemaConfig, startIndex, batchSize int, from model.Time, through model.Time) ([]string, []chunk.Chunk, error) {
+func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from model.Time, through model.Time) ([]string, []chunk.Chunk, error) {
 	keys := []string{}
 	chunks := []chunk.Chunk{}
 	for j := 0; j < batchSize; j++ {
@@ -77,7 +79,7 @@ func CreateChunks(scfg chunk.SchemaConfig, startIndex, batchSize int, from model
 			{Name: "index", Value: strconv.Itoa(startIndex*batchSize + j)},
 		})
 		chunks = append(chunks, chunk)
-		keys = append(keys, scfg.ExternalKey(chunk))
+		keys = append(keys, scfg.ExternalKey(chunk.ChunkRef))
 	}
 	return keys, chunks, nil
 }
@@ -108,13 +110,13 @@ func dummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
 	return chunk
 }
 
-func SetupTestChunkStoreWithClients(indexClient chunk.IndexClient, chunksClient chunk.Client, tableClient chunk.TableClient) (chunk.Store, error) {
+func SetupTestChunkStoreWithClients(indexClient index.IndexClient, chunksClient chunk.Client, tableClient index.TableClient) (chunk.Store, error) {
 	var (
-		tbmConfig chunk.TableManagerConfig
+		tbmConfig index.TableManagerConfig
 		schemaCfg = chunk.DefaultSchemaConfig("", "v10", 0)
 	)
 	flagext.DefaultValues(&tbmConfig)
-	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, tableClient, nil, nil, nil)
+	tableManager, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, tableClient, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}

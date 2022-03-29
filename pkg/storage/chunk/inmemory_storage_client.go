@@ -13,6 +13,8 @@ import (
 
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -34,7 +36,7 @@ type MockStorage struct {
 	mtx       sync.RWMutex
 	tables    map[string]*mockTable
 	objects   map[string][]byte
-	schemaCfg SchemaConfig
+	schemaCfg config.SchemaConfig
 
 	numIndexWrites int
 	numChunkWrites int
@@ -54,10 +56,10 @@ type mockItem struct {
 // NewMockStorage creates a new MockStorage.
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
-		schemaCfg: SchemaConfig{
-			Configs: []PeriodConfig{
+		schemaCfg: config.SchemaConfig{
+			Configs: []config.PeriodConfig{
 				{
-					From:      DayTime{Time: 0},
+					From:      config.DayTime{Time: 0},
 					Schema:    "v11",
 					RowShards: 16,
 				},
@@ -110,7 +112,7 @@ func (m *MockStorage) ListTables(_ context.Context) ([]string, error) {
 }
 
 // CreateTable implements StorageClient.
-func (m *MockStorage) CreateTable(_ context.Context, desc TableDesc) error {
+func (m *MockStorage) CreateTable(_ context.Context, desc config.TableDesc) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -142,16 +144,16 @@ func (m *MockStorage) DeleteTable(_ context.Context, name string) error {
 }
 
 // DescribeTable implements StorageClient.
-func (m *MockStorage) DescribeTable(_ context.Context, name string) (desc TableDesc, isActive bool, err error) {
+func (m *MockStorage) DescribeTable(_ context.Context, name string) (desc config.TableDesc, isActive bool, err error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
 	table, ok := m.tables[name]
 	if !ok {
-		return TableDesc{}, false, fmt.Errorf("not found")
+		return config.TableDesc{}, false, fmt.Errorf("not found")
 	}
 
-	return TableDesc{
+	return config.TableDesc{
 		Name:             name,
 		ProvisionedRead:  table.read,
 		ProvisionedWrite: table.write,
@@ -159,7 +161,7 @@ func (m *MockStorage) DescribeTable(_ context.Context, name string) (desc TableD
 }
 
 // UpdateTable implements StorageClient.
-func (m *MockStorage) UpdateTable(_ context.Context, _, desc TableDesc) error {
+func (m *MockStorage) UpdateTable(_ context.Context, _, desc config.TableDesc) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -175,12 +177,12 @@ func (m *MockStorage) UpdateTable(_ context.Context, _, desc TableDesc) error {
 }
 
 // NewWriteBatch implements StorageClient.
-func (m *MockStorage) NewWriteBatch() WriteBatch {
+func (m *MockStorage) NewWriteBatch() index.WriteBatch {
 	return &mockWriteBatch{}
 }
 
 // BatchWrite implements StorageClient.
-func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
+func (m *MockStorage) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -258,7 +260,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 }
 
 // QueryPages implements StorageClient.
-func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, callback QueryPagesCallback) error {
+func (m *MockStorage) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -267,7 +269,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, call
 	}
 
 	for _, query := range queries {
-		err := m.query(ctx, query, func(b ReadBatch) bool {
+		err := m.query(ctx, query, func(b index.ReadBatch) bool {
 			return callback(query, b)
 		})
 		if err != nil {
@@ -278,7 +280,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, call
 	return nil
 }
 
-func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func(ReadBatch) (shouldContinue bool)) error {
+func (m *MockStorage) query(ctx context.Context, query index.IndexQuery, callback func(index.ReadBatch) (shouldContinue bool)) error {
 	logger := log.WithContext(ctx, log.Logger)
 	level.Debug(logger).Log("msg", "QueryPages", "query", query.HashValue)
 
@@ -370,7 +372,7 @@ func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
 		if err != nil {
 			return err
 		}
-		m.objects[m.schemaCfg.ExternalKey(chunks[i])] = buf
+		m.objects[m.schemaCfg.ExternalKey(chunks[i].ChunkRef)] = buf
 	}
 	return nil
 }
@@ -387,7 +389,7 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	decodeContext := NewDecodeContext()
 	result := []Chunk{}
 	for _, chunk := range chunkSet {
-		key := m.schemaCfg.ExternalKey(chunk)
+		key := m.schemaCfg.ExternalKey(chunk.ChunkRef)
 		buf, ok := m.objects[key]
 		if !ok {
 			return nil, errStorageObjectNotFound
@@ -546,7 +548,7 @@ type mockReadBatch struct {
 	items []mockItem
 }
 
-func (b *mockReadBatch) Iterator() ReadBatchIterator {
+func (b *mockReadBatch) Iterator() index.ReadBatchIterator {
 	return &mockReadBatchIter{
 		index:         -1,
 		mockReadBatch: b,

@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/config"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
@@ -266,7 +267,7 @@ type stats struct {
 
 type chunkMover struct {
 	ctx        context.Context
-	schema     chunk.SchemaConfig
+	schema     config.SchemaConfig
 	source     storage.Store
 	dest       storage.Store
 	sourceUser string

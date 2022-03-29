@@ -16,12 +16,13 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/config"
 	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 const userID = "1"
 
-func fillCache(t *testing.T, scfg chunk.SchemaConfig, cache cache.Cache) ([]string, []chunk.Chunk) {
+func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]string, []chunk.Chunk) {
 	const chunkLen = 13 * 3600 // in seconds
 
 	// put a set of chunks, larger than background batch size, with varying timestamps and values
@@ -71,7 +72,7 @@ func fillCache(t *testing.T, scfg chunk.SchemaConfig, cache cache.Cache) ([]stri
 		err = cleanChunk.Decode(chunk.NewDecodeContext(), buf)
 		require.NoError(t, err)
 
-		keys = append(keys, scfg.ExternalKey(c))
+		keys = append(keys, scfg.ExternalKey(c.ChunkRef))
 		bufs = append(bufs, buf)
 		chunks = append(chunks, cleanChunk)
 	}
@@ -118,10 +119,10 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 }
 
 func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk.Chunk) {
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -141,13 +142,13 @@ func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk
 
 type byExternalKey struct {
 	chunks []chunk.Chunk
-	scfg   chunk.SchemaConfig
+	scfg   config.SchemaConfig
 }
 
 func (a byExternalKey) Len() int      { return len(a.chunks) }
 func (a byExternalKey) Swap(i, j int) { a.chunks[i], a.chunks[j] = a.chunks[j], a.chunks[i] }
 func (a byExternalKey) Less(i, j int) bool {
-	return a.scfg.ExternalKey(a.chunks[i]) < a.scfg.ExternalKey(a.chunks[j])
+	return a.scfg.ExternalKey(a.chunks[i].ChunkRef) < a.scfg.ExternalKey(a.chunks[j].ChunkRef)
 }
 
 func testCacheMiss(t *testing.T, cache cache.Cache) {
@@ -161,10 +162,10 @@ func testCacheMiss(t *testing.T, cache cache.Cache) {
 }
 
 func testCache(t *testing.T, cache cache.Cache) {
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},

@@ -86,41 +86,10 @@ func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_
 // v12+, fingerprint is now a prefix to support better read and write request parallelization:
 // `<user>/<fprint>/<start>:<end>:<checksum>`
 func ParseExternalKey(userID, externalKey string) (Chunk, error) {
-	if !strings.Contains(externalKey, "/") { // pre-checksum
-		return parseLegacyChunkID(userID, externalKey)
-	} else if strings.Count(externalKey, "/") == 2 { // v12+
+	if strings.Count(externalKey, "/") == 2 { // v12+
 		return parseNewerExternalKey(userID, externalKey)
-	} else { // post-checksum
-		return parseNewExternalKey(userID, externalKey)
 	}
-}
-
-// pre-checksum
-func parseLegacyChunkID(userID, key string) (Chunk, error) {
-	parts := strings.Split(key, ":")
-	if len(parts) != 3 {
-		return Chunk{}, errInvalidChunkID(key)
-	}
-	fingerprint, err := strconv.ParseUint(parts[0], 10, 64)
-	if err != nil {
-		return Chunk{}, err
-	}
-	from, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return Chunk{}, err
-	}
-	through, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		return Chunk{}, err
-	}
-	return Chunk{
-		ChunkRef: logproto.ChunkRef{
-			UserID:      userID,
-			Fingerprint: fingerprint,
-			From:        model.Time(from),
-			Through:     model.Time(through),
-		},
-	}, nil
+	return parseNewExternalKey(userID, externalKey)
 }
 
 // post-checksum

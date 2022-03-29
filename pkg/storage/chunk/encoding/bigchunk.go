@@ -171,29 +171,6 @@ func (b *bigchunk) Size() int {
 	return sum
 }
 
-func (b *bigchunk) NewIterator(reuseIter Iterator) Iterator {
-	if bci, ok := reuseIter.(*bigchunkIterator); ok {
-		bci.bigchunk = b
-		bci.i = 0
-		if len(b.chunks) > 0 {
-			bci.curr = b.chunks[0].Iterator(bci.curr)
-		} else {
-			bci.curr = chunkenc.NewNopIterator()
-		}
-		return bci
-	}
-	var it chunkenc.Iterator
-	if len(b.chunks) > 0 {
-		it = b.chunks[0].Iterator(it)
-	} else {
-		it = chunkenc.NewNopIterator()
-	}
-	return &bigchunkIterator{
-		bigchunk: b,
-		curr:     it,
-	}
-}
-
 func (b *bigchunk) Slice(start, end model.Time) Chunk {
 	i, j := 0, len(b.chunks)
 	for k := 0; k < len(b.chunks); k++ {
@@ -208,10 +185,6 @@ func (b *bigchunk) Slice(start, end model.Time) Chunk {
 	return &bigchunk{
 		chunks: b.chunks[i:j],
 	}
-}
-
-func (b *bigchunk) Rebound(start, end model.Time) (Chunk, error) {
-	return reboundChunk(b, start, end)
 }
 
 type writer struct {
@@ -248,98 +221,16 @@ func (r *reader) ReadBytes(count int) ([]byte, error) {
 	return result, nil
 }
 
-type bigchunkIterator struct {
-	*bigchunk
-
-	curr chunkenc.Iterator
-	i    int
-}
-
-func (it *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
-	if it.i >= len(it.chunks) {
-		return false
+// addToOverflowChunk is a utility function that creates a new chunk as overflow
+// chunk, adds the provided sample to it, and returns a chunk slice containing
+// the provided old chunk followed by the new overflow chunk.
+func addToOverflowChunk(s model.SamplePair) (Chunk, error) {
+	overflowChunk := New()
+	_, err := overflowChunk.Add(s)
+	if err != nil {
+		return nil, err
 	}
-
-	// If the seek is outside the current chunk, use the index to find the right
-	// chunk.
-	if int64(target) < it.chunks[it.i].start ||
-		(it.i+1 < len(it.chunks) && int64(target) >= it.chunks[it.i+1].start) {
-		it.curr = nil
-		for it.i = 0; it.i+1 < len(it.chunks) && int64(target) >= it.chunks[it.i+1].start; it.i++ {
-		}
-	}
-
-	if it.curr == nil {
-		it.curr = it.chunks[it.i].Iterator(it.curr)
-	} else if t, _ := it.curr.At(); int64(target) <= t {
-		it.curr = it.chunks[it.i].Iterator(it.curr)
-	}
-
-	for it.curr.Next() {
-		t, _ := it.curr.At()
-		if t >= int64(target) {
-			return true
-		}
-	}
-	// Timestamp is after the end of that chunk - if there is another chunk
-	// then the position we need is at the beginning of it.
-	if it.i+1 < len(it.chunks) {
-		it.i++
-		it.curr = it.chunks[it.i].Iterator(it.curr)
-		it.curr.Next()
-		return true
-	}
-	return false
-}
-
-func (it *bigchunkIterator) Scan() bool {
-	if it.curr.Next() {
-		return true
-	}
-	if err := it.curr.Err(); err != nil {
-		return false
-	}
-
-	for it.i < len(it.chunks)-1 {
-		it.i++
-		it.curr = it.chunks[it.i].Iterator(it.curr)
-		if it.curr.Next() {
-			return true
-		}
-	}
-	return false
-}
-
-func (it *bigchunkIterator) Value() model.SamplePair {
-	t, v := it.curr.At()
-	return model.SamplePair{
-		Timestamp: model.Time(t),
-		Value:     model.SampleValue(v),
-	}
-}
-
-func (it *bigchunkIterator) Batch(size int) Batch {
-	var result Batch
-	j := 0
-	for j < size {
-		t, v := it.curr.At()
-		result.Timestamps[j] = t
-		result.Values[j] = v
-		j++
-
-		if j < size && !it.Scan() {
-			break
-		}
-	}
-	result.Length = j
-	return result
-}
-
-func (it *bigchunkIterator) Err() error {
-	if it.curr != nil {
-		return it.curr.Err()
-	}
-	return nil
+	return overflowChunk, nil
 }
 
 func firstTime(c chunkenc.Chunk, iter chunkenc.Iterator) (int64, chunkenc.Iterator, error) {
