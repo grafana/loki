@@ -29,7 +29,7 @@ import (
 // The minimun window size is 1 minute.
 const minDelay = time.Minute
 
-var cloudflareTooEarlyError = regexp.MustCompile("too early: logs older than \\S+ are not available")
+var cloudflareTooEarlyError = regexp.MustCompile(`too early: logs older than \S+ are not available`)
 
 var defaultBackoff = backoff.Config{
 	MinBackoff: 1 * time.Second,
