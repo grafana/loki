@@ -5,6 +5,9 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/index"
 )
 
 var (
@@ -18,15 +21,15 @@ var (
 type Client interface {
 	Stop()
 
-	PutChunks(ctx context.Context, chunks []Chunk) error
-	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
+	PutChunks(ctx context.Context, chunks []encoding.Chunk) error
+	GetChunks(ctx context.Context, chunks []encoding.Chunk) ([]encoding.Chunk, error)
 	DeleteChunk(ctx context.Context, userID, chunkID string) error
 	IsChunkNotFoundErr(err error) bool
 }
 
 // ObjectAndIndexClient allows optimisations where the same client handles both
 type ObjectAndIndexClient interface {
-	PutChunksAndIndex(ctx context.Context, chunks []Chunk, index index.WriteBatch) error
+	PutChunksAndIndex(ctx context.Context, chunks []encoding.Chunk, index index.WriteBatch) error
 }
 
 // ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)

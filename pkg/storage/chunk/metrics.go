@@ -3,20 +3,19 @@ package chunk
 import (
 	"context"
 
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 // takes a chunk client and exposes metrics for its operations.
 type metricsChunkClient struct {
-	client chunk.Client
+	client Client
 
 	metrics chunkClientMetrics
 }
 
-func newMetricsChunkClient(client chunk.Client, metrics chunkClientMetrics) metricsChunkClient {
+func newMetricsChunkClient(client Client, metrics chunkClientMetrics) metricsChunkClient {
 	return metricsChunkClient{
 		client:  client,
 		metrics: metrics,
@@ -59,7 +58,7 @@ func (c metricsChunkClient) Stop() {
 	c.client.Stop()
 }
 
-func (c metricsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (c metricsChunkClient) PutChunks(ctx context.Context, chunks []encoding.Chunk) error {
 	if err := c.client.PutChunks(ctx, chunks); err != nil {
 		return err
 	}
@@ -81,7 +80,7 @@ func (c metricsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk)
 	return nil
 }
 
-func (c metricsChunkClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (c metricsChunkClient) GetChunks(ctx context.Context, chunks []encoding.Chunk) ([]encoding.Chunk, error) {
 	chks, err := c.client.GetChunks(ctx, chunks)
 	if err != nil {
 		return chks, err

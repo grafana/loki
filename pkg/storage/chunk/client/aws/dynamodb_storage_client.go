@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	client_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/log"
@@ -364,12 +365,12 @@ func (a dynamoDBRequestAdapter) Retryable() bool {
 }
 
 type chunksPlusError struct {
-	chunks []chunk.Chunk
+	chunks []encoding.Chunk
 	err    error
 }
 
 // GetChunks implements chunk.Client.
-func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []encoding.Chunk) ([]encoding.Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "GetChunks.DynamoDB", ot.Tag{Key: "numChunks", Value: len(chunks)})
 	defer log.Span.Finish()
 	level.Debug(log).Log("chunks requested", len(chunks))
@@ -397,7 +398,7 @@ func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chu
 			results <- chunksPlusError{outChunks, err}
 		}(i)
 	}
-	finalChunks := []chunk.Chunk{}
+	finalChunks := []encoding.Chunk{}
 	for i := 0; i < len(dynamoDBChunks); i += gangSize {
 		in := <-results
 		if in.err != nil {
@@ -418,11 +419,11 @@ var placeholder = []byte{'c'}
 // Fetch a set of chunks from DynamoDB, handling retries and backoff.
 // Structure is identical to BatchWrite(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
-func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []encoding.Chunk) ([]encoding.Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "getDynamoDBChunks", ot.Tag{Key: "numChunks", Value: len(chunks)})
 	defer log.Span.Finish()
 	outstanding := dynamoDBReadRequest{}
-	chunksByKey := map[string]chunk.Chunk{}
+	chunksByKey := map[string]encoding.Chunk{}
 	for _, chunk := range chunks {
 		key := a.schemaCfg.ExternalKey(chunk.ChunkRef)
 		chunksByKey[key] = chunk
@@ -433,7 +434,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 		outstanding.Add(tableName, key, placeholder)
 	}
 
-	result := []chunk.Chunk{}
+	result := []encoding.Chunk{}
 	unprocessed := dynamoDBReadRequest{}
 	backoff := backoff.New(ctx, a.cfg.BackoffConfig)
 
@@ -505,9 +506,9 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 	return result, nil
 }
 
-func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map[string]chunk.Chunk) ([]chunk.Chunk, error) {
-	result := []chunk.Chunk{}
-	decodeContext := chunk.NewDecodeContext()
+func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map[string]encoding.Chunk) ([]encoding.Chunk, error) {
+	result := []encoding.Chunk{}
+	decodeContext := encoding.NewDecodeContext()
 	for _, items := range response.Responses {
 		for _, item := range items {
 			key, ok := item[hashKey]
@@ -537,7 +538,7 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 
 // PutChunkAndIndex implements chunk.ObjectAndIndexClient
 // Combine both sets of writes before sending to DynamoDB, for performance
-func (a dynamoDBStorageClient) PutChunksAndIndex(ctx context.Context, chunks []chunk.Chunk, index index.WriteBatch) error {
+func (a dynamoDBStorageClient) PutChunksAndIndex(ctx context.Context, chunks []encoding.Chunk, index index.WriteBatch) error {
 	dynamoDBWrites, err := a.writesForChunks(chunks)
 	if err != nil {
 		return err
@@ -547,7 +548,7 @@ func (a dynamoDBStorageClient) PutChunksAndIndex(ctx context.Context, chunks []c
 }
 
 // PutChunks implements chunk.Client.
-func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []encoding.Chunk) error {
 	dynamoDBWrites, err := a.writesForChunks(chunks)
 	if err != nil {
 		return err
@@ -556,7 +557,7 @@ func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 }
 
 func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
-	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
+	chunkRef, err := encoding.ParseExternalKey(userID, chunkID)
 	if err != nil {
 		return err
 	}
@@ -575,7 +576,7 @@ func (a dynamoDBStorageClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
-func (a dynamoDBStorageClient) writesForChunks(chunks []chunk.Chunk) (dynamoDBWriteBatch, error) {
+func (a dynamoDBStorageClient) writesForChunks(chunks []encoding.Chunk) (dynamoDBWriteBatch, error) {
 	dynamoDBWrites := dynamoDBWriteBatch{}
 
 	for i := range chunks {

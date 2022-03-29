@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -70,9 +71,9 @@ func Setup(fixture Fixture, tableName string) (index.IndexClient, chunk.Client, 
 }
 
 // CreateChunks creates some chunks for testing
-func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from model.Time, through model.Time) ([]string, []chunk.Chunk, error) {
+func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from model.Time, through model.Time) ([]string, []encoding.Chunk, error) {
 	keys := []string{}
-	chunks := []chunk.Chunk{}
+	chunks := []encoding.Chunk{}
 	for j := 0; j < batchSize; j++ {
 		chunk := dummyChunkFor(from, through, labels.Labels{
 			{Name: model.MetricNameLabel, Value: "foo"},
@@ -84,7 +85,7 @@ func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from mode
 	return keys, chunks, nil
 }
 
-func dummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
+func dummyChunkFor(from, through model.Time, metric labels.Labels) encoding.Chunk {
 	cs := promchunk.New()
 
 	for ts := from; ts <= through; ts = ts.Add(15 * time.Second) {
@@ -94,7 +95,7 @@ func dummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
 		}
 	}
 
-	chunk := chunk.NewChunk(
+	chunk := encoding.NewChunk(
 		userID,
 		client.Fingerprint(metric),
 		metric,

@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/config"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
@@ -79,7 +78,7 @@ func TestGrpcStore(t *testing.T) {
 	// rpc calls for storageClient
 	storageClient, _ := NewTestStorageClient(cfg, schemaCfg)
 
-	putChunksTestData := []chunk.Chunk{
+	putChunksTestData := []encoding.Chunk{
 		{
 			ChunkRef: logproto.ChunkRef{
 				Fingerprint: uint64(15993187966453505842),
@@ -110,7 +109,7 @@ func TestGrpcStore(t *testing.T) {
 	err = storageClient.PutChunks(context.Background(), putChunksTestData)
 	require.NoError(t, err)
 
-	getChunksTestData := []chunk.Chunk{
+	getChunksTestData := []encoding.Chunk{
 		{
 			ChunkRef: logproto.ChunkRef{
 				Fingerprint: uint64(15993187966453505842),

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -61,7 +62,7 @@ func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 					store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
 
-					if err := store.Put(ctx, []Chunk{
+					if err := store.Put(ctx, []encoding.Chunk{
 						fooChunk1,
 						fooChunk2,
 					}); err != nil {

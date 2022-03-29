@@ -11,12 +11,13 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 // KeyEncoder is used to encode chunk keys before writing/retrieving chunks
 // from the underlying ObjectClient
 // Schema/Chunk are passed as arguments to allow this to improve over revisions
-type KeyEncoder func(schema config.SchemaConfig, chk chunk.Chunk) string
+type KeyEncoder func(schema config.SchemaConfig, chk encoding.Chunk) string
 
 // base64Encoder is used to encode chunk keys in base64 before storing/retrieving
 // them from the ObjectClient
@@ -24,7 +25,7 @@ var base64Encoder = func(key string) string {
 	return base64.StdEncoding.EncodeToString([]byte(key))
 }
 
-var FSEncoder = func(schema config.SchemaConfig, chk chunk.Chunk) string {
+var FSEncoder = func(schema config.SchemaConfig, chk encoding.Chunk) string {
 	// Filesystem encoder pre-v12 encodes the chunk as one base64 string.
 	// This has the downside of making them opaque and storing all chunks in a single
 	// directory, hurting performance at scale and discoverability.
@@ -70,7 +71,7 @@ func (o *Client) Stop() {
 
 // PutChunks stores the provided chunks in the configured backend. If multiple errors are
 // returned, the last one sequentially will be propagated up.
-func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (o *Client) PutChunks(ctx context.Context, chunks []encoding.Chunk) error {
 	var (
 		chunkKeys []string
 		chunkBufs [][]byte
@@ -111,7 +112,7 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 }
 
 // GetChunks retrieves the specified chunks from the configured backend
-func (o *Client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (o *Client) GetChunks(ctx context.Context, chunks []encoding.Chunk) ([]encoding.Chunk, error) {
 	getChunkMaxParallel := o.getChunkMaxParallel
 	if getChunkMaxParallel == 0 {
 		getChunkMaxParallel = defaultMaxParallel
@@ -119,9 +120,9 @@ func (o *Client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.C
 	return util.GetParallelChunks(ctx, getChunkMaxParallel, chunks, o.getChunk)
 }
 
-func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
+func (o *Client) getChunk(ctx context.Context, decodeContext *encoding.DecodeContext, c encoding.Chunk) (encoding.Chunk, error) {
 	if ctx.Err() != nil {
-		return chunk.Chunk{}, ctx.Err()
+		return encoding.Chunk{}, ctx.Err()
 	}
 
 	key := o.schema.ExternalKey(c.ChunkRef)
@@ -131,7 +132,7 @@ func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 
 	readCloser, size, err := o.store.GetObject(ctx, key)
 	if err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
+		return encoding.Chunk{}, errors.WithStack(err)
 	}
 
 	defer readCloser.Close()
@@ -141,11 +142,11 @@ func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	buf := bytes.NewBuffer(make([]byte, 0, size+bytes.MinRead))
 	_, err = buf.ReadFrom(readCloser)
 	if err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
+		return encoding.Chunk{}, errors.WithStack(err)
 	}
 
 	if err := c.Decode(decodeContext, buf.Bytes()); err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
+		return encoding.Chunk{}, errors.WithStack(err)
 	}
 	return c, nil
 }
@@ -154,7 +155,7 @@ func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 func (o *Client) DeleteChunk(ctx context.Context, userID, chunkID string) error {
 	key := chunkID
 	if o.keyEncoder != nil {
-		c, err := chunk.ParseExternalKey(userID, key)
+		c, err := encoding.ParseExternalKey(userID, key)
 		if err != nil {
 			return err
 		}

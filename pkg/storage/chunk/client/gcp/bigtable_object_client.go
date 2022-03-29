@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/util/math"
 )
 
@@ -46,7 +47,7 @@ func (s *bigtableObjectClient) Stop() {
 	s.client.Close()
 }
 
-func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []encoding.Chunk) error {
 	keys := map[string][]string{}
 	muts := map[string][]*bigtable.Mutation{}
 
@@ -82,12 +83,12 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 	return nil
 }
 
-func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
+func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []encoding.Chunk) ([]encoding.Chunk, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks")
 	defer sp.Finish()
 	sp.LogFields(otlog.Int("chunks requested", len(input)))
 
-	chunks := map[string]map[string]chunk.Chunk{}
+	chunks := map[string]map[string]encoding.Chunk{}
 	keys := map[string]bigtable.RowList{}
 	for _, c := range input {
 		tableName, err := s.schemaCfg.ChunkTableFor(c.From)
@@ -97,12 +98,12 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 		key := s.schemaCfg.ExternalKey(c.ChunkRef)
 		keys[tableName] = append(keys[tableName], key)
 		if _, ok := chunks[tableName]; !ok {
-			chunks[tableName] = map[string]chunk.Chunk{}
+			chunks[tableName] = map[string]encoding.Chunk{}
 		}
 		chunks[tableName][key] = c
 	}
 
-	outs := make(chan chunk.Chunk, len(input))
+	outs := make(chan encoding.Chunk, len(input))
 	errs := make(chan error, len(input))
 
 	for tableName := range keys {
@@ -115,7 +116,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 		for i := 0; i < len(keys); i += maxRowReads {
 			page := keys[i:math.Min(i+maxRowReads, len(keys))]
 			go func(page bigtable.RowList) {
-				decodeContext := chunk.NewDecodeContext()
+				decodeContext := encoding.NewDecodeContext()
 
 				var processingErr error
 				receivedChunks := 0
@@ -150,7 +151,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 		}
 	}
 
-	output := make([]chunk.Chunk, 0, len(input))
+	output := make([]encoding.Chunk, 0, len(input))
 	for i := 0; i < len(input); i++ {
 		select {
 		case c := <-outs:
@@ -166,7 +167,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 }
 
 func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
-	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
+	chunkRef, err := encoding.ParseExternalKey(userID, chunkID)
 	if err != nil {
 		return err
 	}

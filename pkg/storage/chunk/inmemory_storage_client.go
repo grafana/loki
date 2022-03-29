@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/util/log"
 )
@@ -269,7 +270,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, queries []index.IndexQuery
 	}
 
 	for _, query := range queries {
-		err := m.query(ctx, query, func(b index.ReadBatch) bool {
+		err := m.query(ctx, query, func(b index.ReadBatchResult) bool {
 			return callback(query, b)
 		})
 		if err != nil {
@@ -280,7 +281,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, queries []index.IndexQuery
 	return nil
 }
 
-func (m *MockStorage) query(ctx context.Context, query index.IndexQuery, callback func(index.ReadBatch) (shouldContinue bool)) error {
+func (m *MockStorage) query(ctx context.Context, query index.IndexQuery, callback func(index.ReadBatchResult) (shouldContinue bool)) error {
 	logger := log.WithContext(ctx, log.Logger)
 	level.Debug(logger).Log("msg", "QueryPages", "query", query.HashValue)
 
@@ -357,7 +358,7 @@ func (m *MockStorage) query(ctx context.Context, query index.IndexQuery, callbac
 }
 
 // PutChunks implements StorageClient.
-func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
+func (m *MockStorage) PutChunks(_ context.Context, chunks []encoding.Chunk) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -378,7 +379,7 @@ func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
 }
 
 // GetChunks implements StorageClient.
-func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk, error) {
+func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []encoding.Chunk) ([]encoding.Chunk, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -386,8 +387,8 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 		return nil, errPermissionDenied
 	}
 
-	decodeContext := NewDecodeContext()
-	result := []Chunk{}
+	decodeContext := encoding.NewDecodeContext()
+	result := []encoding.Chunk{}
 	for _, chunk := range chunkSet {
 		key := m.schemaCfg.ExternalKey(chunk.ChunkRef)
 		buf, ok := m.objects[key]

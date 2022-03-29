@@ -13,6 +13,13 @@ type schemaCaching struct {
 	cacheOlderThan time.Duration
 }
 
+func NewSchemaCaching(schema SeriesStoreSchema, cacheOlderThan time.Duration) SeriesStoreSchema {
+	return &schemaCaching{
+		SeriesStoreSchema: schema,
+		cacheOlderThan:    cacheOlderThan,
+	}
+}
+
 func (s *schemaCaching) GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error) {
 	queries, err := s.SeriesStoreSchema.GetReadQueriesForMetric(from, through, userID, metricName)
 	if err != nil {

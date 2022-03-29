@@ -3,13 +3,12 @@ package chunk
 // Chunk functions used only in tests
 
 import (
-	"context"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/storage/chunk/config"
 )
 
 // BenchmarkLabels is a real example from Kubernetes' embedded cAdvisor metrics, lightly obfuscated
@@ -34,17 +33,17 @@ var BenchmarkLabels = labels.Labels{
 }
 
 // DefaultSchemaConfig creates a simple schema config for testing
-func DefaultSchemaConfig(store, schema string, from model.Time) SchemaConfig {
-	s := SchemaConfig{
-		Configs: []PeriodConfig{{
+func DefaultSchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{{
 			IndexType: store,
 			Schema:    schema,
-			From:      DayTime{from},
-			ChunkTables: PeriodicTableConfig{
+			From:      config.DayTime{from},
+			ChunkTables: config.PeriodicTableConfig{
 				Prefix: "cortex",
 				Period: 7 * 24 * time.Hour,
 			},
-			IndexTables: PeriodicTableConfig{
+			IndexTables: config.PeriodicTableConfig{
 				Prefix: "cortex_chunks",
 				Period: 7 * 24 * time.Hour,
 			},
@@ -54,30 +53,4 @@ func DefaultSchemaConfig(store, schema string, from model.Time) SchemaConfig {
 		panic(err)
 	}
 	return s
-}
-
-// ChunksToMatrix converts a set of chunks to a model.Matrix.
-func ChunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {
-	// Group chunks by series, sort and dedupe samples.
-	metrics := map[model.Fingerprint]model.Metric{}
-	samplesBySeries := map[model.Fingerprint][][]model.SamplePair{}
-	for _, c := range chunks {
-		ss, err := c.Samples(from, through)
-		if err != nil {
-			return nil, err
-		}
-
-		metrics[c.FingerprintModel()] = util.LabelsToMetric(c.Metric)
-		samplesBySeries[c.FingerprintModel()] = append(samplesBySeries[c.FingerprintModel()], ss)
-	}
-
-	matrix := make(model.Matrix, 0, len(samplesBySeries))
-	for fp, ss := range samplesBySeries {
-		matrix = append(matrix, &model.SampleStream{
-			Metric: metrics[fp],
-			Values: util.MergeNSampleSets(ss...),
-		})
-	}
-
-	return matrix, nil
 }

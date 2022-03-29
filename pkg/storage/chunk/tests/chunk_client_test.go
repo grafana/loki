@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/storage/chunk/testutils"
 )
@@ -46,14 +47,14 @@ func TestChunksBasic(t *testing.T) {
 		// Get a few batches of chunks.
 		for batch := 0; batch < 50; batch++ {
 			keysToGet := map[string]struct{}{}
-			chunksToGet := []chunk.Chunk{}
+			chunksToGet := []encoding.Chunk{}
 			for len(chunksToGet) < batchSize {
 				key := written[rand.Intn(len(written))]
 				if _, ok := keysToGet[key]; ok {
 					continue
 				}
 				keysToGet[key] = struct{}{}
-				chunk, err := chunk.ParseExternalKey(userID, key)
+				chunk, err := encoding.ParseExternalKey(userID, key)
 				require.NoError(t, err)
 				chunksToGet = append(chunksToGet, chunk)
 			}

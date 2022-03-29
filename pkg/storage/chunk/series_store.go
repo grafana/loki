@@ -13,6 +13,9 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -53,30 +56,27 @@ var (
 
 // seriesStore implements Store
 type seriesStore struct {
-	schema           SeriesStoreSchema
+	schema           index.SeriesStoreSchema
 	writeDedupeCache cache.Cache
 	chunks           Client
 	limits           StoreLimits
 	fetcher          *Fetcher
-	schemaCfg        SchemaConfig
+	schemaCfg        config.SchemaConfig
 	cfg              StoreConfig
 
 	index       Index
-	indexClient IndexClient
+	indexClient index.IndexClient
 }
 
-func newSeriesStore(cfg StoreConfig, scfg SchemaConfig, schema SeriesStoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
+func newSeriesStore(cfg StoreConfig, scfg config.SchemaConfig, schema index.SeriesStoreSchema, idx index.IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
 	if cfg.CacheLookupsOlderThan != 0 {
-		schema = &schemaCaching{
-			SeriesStoreSchema: schema,
-			cacheOlderThan:    time.Duration(cfg.CacheLookupsOlderThan),
-		}
+		schema = index.NewSchemaCaching(schema, time.Duration(cfg.CacheLookupsOlderThan))
 	}
 	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, scfg, chunks, cfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, cfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize)
 	if err != nil {
 		return nil, err
 	}
-	indexStore := newSeriesIndexStore(scfg, schema, index, fetcher)
+	indexStore := newSeriesIndexStore(scfg, schema, idx, fetcher)
 	return &seriesStore{
 		cfg:              cfg,
 		schema:           schema,
@@ -84,13 +84,13 @@ func newSeriesStore(cfg StoreConfig, scfg SchemaConfig, schema SeriesStoreSchema
 		limits:           limits,
 		writeDedupeCache: writeDedupeCache,
 		fetcher:          fetcher,
-		indexClient:      index,
+		indexClient:      idx,
 		index:            indexStore,
 		schemaCfg:        scfg,
 	}, nil
 }
 
-func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]encoding.Chunk, []*Fetcher, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
@@ -108,14 +108,14 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, thr
 	level.Debug(log).Log("metric", metricName)
 	refs, err := c.index.GetChunkRefs(ctx, userID, from, through, matchers...)
 
-	chunks := make([]Chunk, len(refs))
+	chunks := make([]encoding.Chunk, len(refs))
 	for i, ref := range refs {
-		chunks[i] = Chunk{
+		chunks[i] = encoding.Chunk{
 			ChunkRef: ref,
 		}
 	}
 
-	return [][]Chunk{chunks}, []*Fetcher{c.fetcher}, err
+	return [][]encoding.Chunk{chunks}, []*Fetcher{c.fetcher}, err
 }
 
 func (c *seriesStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
@@ -153,7 +153,7 @@ func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID strin
 }
 
 // Put implements Store
-func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
+func (c *seriesStore) Put(ctx context.Context, chunks []encoding.Chunk) error {
 	for _, chunk := range chunks {
 		if err := c.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
 			return err
@@ -163,13 +163,13 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 }
 
 // PutOne implements Store
-func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
+func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk encoding.Chunk) error {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
 	defer log.Finish()
 	writeChunk := true
 
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
-	found, _, _, _ := c.fetcher.cache.Fetch(ctx, []string{c.schemaCfg.ExternalKey(chunk)})
+	found, _, _, _ := c.fetcher.cache.Fetch(ctx, []string{c.schemaCfg.ExternalKey(chunk.ChunkRef)})
 
 	if len(found) > 0 {
 		writeChunk = false
@@ -183,7 +183,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 		return nil
 	}
 
-	chunks := []Chunk{chunk}
+	chunks := []encoding.Chunk{chunk}
 
 	writeReqs, keysToCache, err := c.calculateIndexEntries(ctx, from, through, chunk)
 	if err != nil {
@@ -193,7 +193,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	if oic, ok := c.fetcher.storage.(ObjectAndIndexClient); ok {
 		chunks := chunks
 		if !writeChunk {
-			chunks = []Chunk{}
+			chunks = []encoding.Chunk{}
 		}
 		if err = oic.PutChunksAndIndex(ctx, chunks, writeReqs); err != nil {
 			return err
@@ -227,16 +227,16 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
-func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
+func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through model.Time, chunk encoding.Chunk) (index.WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
-	entries := []IndexEntry{}
+	entries := []index.IndexEntry{}
 
 	metricName := chunk.Metric.Get(labels.MetricName)
 	if metricName == "" {
 		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
 
-	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.schemaCfg.ExternalKey(chunk))
+	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.schemaCfg.ExternalKey(chunk.ChunkRef))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -251,7 +251,7 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 		}
 	}
 
-	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.schemaCfg.ExternalKey(chunk))
+	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.schemaCfg.ExternalKey(chunk.ChunkRef))
 	if err != nil {
 		return nil, nil, err
 	}

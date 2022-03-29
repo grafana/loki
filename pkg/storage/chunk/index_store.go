@@ -8,6 +8,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/extract"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -17,20 +20,18 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-var _ Index = &seriesIndexStore{}
-
 type fetcher interface {
-	FetchChunks(ctx context.Context, chunks []Chunk, keys []string) ([]Chunk, error)
+	FetchChunks(ctx context.Context, chunks []encoding.Chunk, keys []string) ([]encoding.Chunk, error)
 }
 
 type seriesIndexStore struct {
-	schema    SeriesStoreSchema
-	index     IndexClient
-	schemaCfg SchemaConfig
+	schema    index.SeriesStoreSchema
+	index     index.IndexClient
+	schemaCfg config.SchemaConfig
 	fetcher   fetcher
 }
 
-func newSeriesIndexStore(schemaCfg SchemaConfig, schema SeriesStoreSchema, index IndexClient, fetcher fetcher) *seriesIndexStore {
+func newSeriesIndexStore(schemaCfg config.SchemaConfig, schema index.SeriesStoreSchema, index index.IndexClient, fetcher fetcher) *seriesIndexStore {
 	return &seriesIndexStore{
 		schema:    schema,
 		index:     index,
@@ -344,7 +345,7 @@ func (c *seriesIndexStore) lookupSeriesByMetricNameMatcher(ctx context.Context, 
 
 func (c *seriesIndexStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
 	var err error
-	var queries []IndexQuery
+	var queries []index.IndexQuery
 	var labelName string
 	if matcher == nil {
 		queries, err = c.schema.GetReadQueriesForMetric(from, through, userID, metricName)

@@ -6,18 +6,18 @@ import (
 
 	otlog "github.com/opentracing/opentracing-go/log"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 var decodeContextPool = sync.Pool{
 	New: func() interface{} {
-		return chunk.NewDecodeContext()
+		return encoding.NewDecodeContext()
 	},
 }
 
 // GetParallelChunks fetches chunks in parallel (up to maxParallel).
-func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chunk, f func(context.Context, *chunk.DecodeContext, chunk.Chunk) (chunk.Chunk, error)) ([]chunk.Chunk, error) {
+func GetParallelChunks(ctx context.Context, maxParallel int, chunks []encoding.Chunk, f func(context.Context, *encoding.DecodeContext, encoding.Chunk) (encoding.Chunk, error)) ([]encoding.Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "GetParallelChunks")
 	defer log.Finish()
 	log.LogFields(otlog.Int("requested", len(chunks)))
@@ -26,7 +26,7 @@ func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chun
 		return nil, ctx.Err()
 	}
 
-	queuedChunks := make(chan chunk.Chunk)
+	queuedChunks := make(chan encoding.Chunk)
 
 	go func() {
 		for _, c := range chunks {
@@ -35,12 +35,12 @@ func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chun
 		close(queuedChunks)
 	}()
 
-	processedChunks := make(chan chunk.Chunk)
+	processedChunks := make(chan encoding.Chunk)
 	errors := make(chan error)
 
 	for i := 0; i < min(maxParallel, len(chunks)); i++ {
 		go func() {
-			decodeContext := decodeContextPool.Get().(*chunk.DecodeContext)
+			decodeContext := decodeContextPool.Get().(*encoding.DecodeContext)
 			for c := range queuedChunks {
 				c, err := f(ctx, decodeContext, c)
 				if err != nil {
@@ -53,7 +53,7 @@ func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chun
 		}()
 	}
 
-	result := make([]chunk.Chunk, 0, len(chunks))
+	result := make([]encoding.Chunk, 0, len(chunks))
 	var lastErr error
 	for i := 0; i < len(chunks); i++ {
 		select {
