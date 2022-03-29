@@ -40,6 +40,8 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/series"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
@@ -48,7 +50,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
-	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
 )
 

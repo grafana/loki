@@ -19,7 +19,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
