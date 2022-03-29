@@ -1,4 +1,4 @@
-package chunk
+package series
 
 import (
 	"context"
@@ -16,7 +16,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/config"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
+	"github.com/grafana/loki/pkg/util/extract"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (
@@ -52,13 +55,34 @@ var (
 		Name:      "chunk_store_deduped_chunks_total",
 		Help:      "Count of chunks which were not stored because they have already been stored by another replica.",
 	})
+
+	ErrQueryMustContainMetricName = QueryError("query must contain metric name")
+
+	indexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "loki",
+		Name:      "chunk_store_index_entries_per_chunk",
+		Help:      "Number of entries written to storage per chunk.",
+		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
+	})
 )
 
+// Query errors are to be treated as user errors, rather than storage errors.
+type QueryError string
+
+func (e QueryError) Error() string {
+	return string(e)
+}
+
+// StoreLimits helps get Limits specific to Queries for Stores
+type StoreLimits interface {
+	MaxChunksPerQueryFromStore(userID string) int
+	MaxQueryLength(userID string) time.Duration
+}
+
 // seriesStore implements Store
-type seriesStore struct {
+type Store struct {
 	schema           index.SeriesStoreSchema
 	writeDedupeCache cache.Cache
-	chunks           Client
 	limits           StoreLimits
 	fetcher          *Fetcher
 	schemaCfg        config.SchemaConfig
@@ -68,7 +92,7 @@ type seriesStore struct {
 	indexClient index.IndexClient
 }
 
-func newSeriesStore(cfg StoreConfig, scfg config.SchemaConfig, schema index.SeriesStoreSchema, idx index.IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
+func NewStore(cfg StoreConfig, scfg config.SchemaConfig, schema index.SeriesStoreSchema, idx index.IndexClient, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (*Store, error) {
 	if cfg.CacheLookupsOlderThan != 0 {
 		schema = index.NewSchemaCaching(schema, time.Duration(cfg.CacheLookupsOlderThan))
 	}
@@ -77,7 +101,7 @@ func newSeriesStore(cfg StoreConfig, scfg config.SchemaConfig, schema index.Seri
 		return nil, err
 	}
 	indexStore := newSeriesIndexStore(scfg, schema, idx, fetcher)
-	return &seriesStore{
+	return &Store{
 		cfg:              cfg,
 		schema:           schema,
 		chunks:           chunks,
@@ -90,7 +114,7 @@ func newSeriesStore(cfg StoreConfig, scfg config.SchemaConfig, schema index.Seri
 	}, nil
 }
 
-func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]encoding.Chunk, []*Fetcher, error) {
+func (c *Store) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]encoding.Chunk, []*Fetcher, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
@@ -118,12 +142,12 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, thr
 	return [][]encoding.Chunk{chunks}, []*Fetcher{c.fetcher}, err
 }
 
-func (c *seriesStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
+func (c *Store) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
 	return c.index.GetSeries(ctx, userID, from, through, matchers...)
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c *Store) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer log.Span.Finish()
 
@@ -138,7 +162,7 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string
 	return c.index.LabelNamesForMetricName(ctx, userID, from, through, metricName)
 }
 
-func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (c *Store) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelValuesForMetricName")
 	defer log.Span.Finish()
 
@@ -153,7 +177,7 @@ func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID strin
 }
 
 // Put implements Store
-func (c *seriesStore) Put(ctx context.Context, chunks []encoding.Chunk) error {
+func (c *Store) Put(ctx context.Context, chunks []encoding.Chunk) error {
 	for _, chunk := range chunks {
 		if err := c.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
 			return err
@@ -163,7 +187,7 @@ func (c *seriesStore) Put(ctx context.Context, chunks []encoding.Chunk) error {
 }
 
 // PutOne implements Store
-func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk encoding.Chunk) error {
+func (c *Store) PutOne(ctx context.Context, from, through model.Time, chunk encoding.Chunk) error {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
 	defer log.Finish()
 	writeChunk := true
@@ -227,7 +251,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
-func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through model.Time, chunk encoding.Chunk) (index.WriteBatch, []string, error) {
+func (c *Store) calculateIndexEntries(ctx context.Context, from, through model.Time, chunk encoding.Chunk) (index.WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
 	entries := []index.IndexEntry{}
 
@@ -270,4 +294,62 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 	}
 
 	return result, missing, nil
+}
+
+// Stop any background goroutines (ie in the cache.)
+func (c *Store) Stop() {
+	c.fetcher.storage.Stop()
+	c.fetcher.Stop()
+	c.indexClient.Stop()
+}
+
+func (c *Store) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
+	//nolint:ineffassign,staticcheck //Leaving ctx even though we don't currently use it, we want to make it available for when we might need it and hopefully will ensure us using the correct context at that time
+
+	if *through < *from {
+		return false, QueryError(fmt.Sprintf("invalid query, through < from (%s < %s)", through, from))
+	}
+
+	maxQueryLength := c.limits.MaxQueryLength(userID)
+	if maxQueryLength > 0 && (*through).Sub(*from) > maxQueryLength {
+		return false, QueryError(fmt.Sprintf(validation.ErrQueryTooLong, (*through).Sub(*from), maxQueryLength))
+	}
+
+	now := model.Now()
+
+	if from.After(now) {
+		// time-span start is in future ... regard as legal
+		level.Info(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
+		return true, nil
+	}
+
+	if through.After(now.Add(5 * time.Minute)) {
+		// time-span end is in future ... regard as legal
+		level.Info(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
+		*through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
+	}
+
+	return false, nil
+}
+
+func (c *Store) validateQuery(ctx context.Context, userID string, from *model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, from, through)
+	if err != nil {
+		return "", nil, false, err
+	}
+	if shortcut {
+		return "", nil, true, nil
+	}
+
+	// Check there is a metric name matcher of type equal,
+	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(matchers)
+	if !ok || metricNameMatcher.Type != labels.MatchEqual {
+		return "", nil, false, ErrQueryMustContainMetricName
+	}
+
+	return metricNameMatcher.Value, matchers, false, nil
+}
+
+func (c *Store) GetChunkFetcher(_ model.Time) *Fetcher {
+	return c.fetcher
 }

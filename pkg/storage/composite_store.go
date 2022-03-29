@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -12,12 +11,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
-
-// StoreLimits helps get Limits specific to Queries for Stores
-type StoreLimits interface {
-	MaxChunksPerQueryFromStore(userID string) int
-	MaxQueryLength(userID string) time.Duration
-}
 
 type CacheGenNumLoader interface {
 	GetStoreCacheGenNumber(tenantIDs []string) string

@@ -1,4 +1,4 @@
-package chunk
+package series
 
 import (
 	"testing"

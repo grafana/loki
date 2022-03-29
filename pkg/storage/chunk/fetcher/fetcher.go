@@ -1,22 +1,19 @@
-package chunk
+package fetcher
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql"
-
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/config"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/promql"
 )
 
 var (
@@ -33,57 +30,19 @@ var (
 		Name: "loki_chunk_fetcher_cache_dequeued_total",
 		Help: "Total number of chunks asynchronously dequeued from a buffer and written back to the chunk cache.",
 	})
+	cacheCorrupt = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "cache_corrupt_chunks_total",
+		Help:      "Total count of corrupt chunks found in cache.",
+	})
 )
 
+type Client interface {
+	GetChunks(ctx context.Context, chunkSet []encoding.Chunk) ([]encoding.Chunk, error)
+	IsChunkNotFoundErr(err error) bool
+}
+
 const chunkDecodeParallelism = 16
-
-func filterChunksByTime(from, through model.Time, chunks []encoding.Chunk) []encoding.Chunk {
-	filtered := make([]encoding.Chunk, 0, len(chunks))
-	for _, chunk := range chunks {
-		if chunk.Through < from || through < chunk.From {
-			continue
-		}
-		filtered = append(filtered, chunk)
-	}
-	return filtered
-}
-
-func filterChunkRefsByTime(from, through model.Time, chunks []logproto.ChunkRef) []logproto.ChunkRef {
-	filtered := make([]logproto.ChunkRef, 0, len(chunks))
-	for _, chunk := range chunks {
-		if chunk.Through < from || through < chunk.From {
-			continue
-		}
-		filtered = append(filtered, chunk)
-	}
-	return filtered
-}
-
-func labelNamesFromChunks(chunks []encoding.Chunk) []string {
-	var result UniqueStrings
-	for _, c := range chunks {
-		for _, l := range c.Metric {
-			result.Add(l.Name)
-		}
-	}
-	return result.Strings()
-}
-
-func filterChunksByUniqueFingerprint(s config.SchemaConfig, chunks []encoding.Chunk) ([]encoding.Chunk, []string) {
-	filtered := make([]encoding.Chunk, 0, len(chunks))
-	keys := make([]string, 0, len(chunks))
-	uniqueFp := map[model.Fingerprint]struct{}{}
-
-	for _, chunk := range chunks {
-		if _, ok := uniqueFp[chunk.FingerprintModel()]; ok {
-			continue
-		}
-		filtered = append(filtered, chunk)
-		keys = append(keys, s.ExternalKey(chunk.ChunkRef))
-		uniqueFp[chunk.FingerprintModel()] = struct{}{}
-	}
-	return filtered, keys
-}
 
 // Fetcher deals with fetching chunk contents from the cache/store,
 // and writing back any misses to the cache.  Also responsible for decoding
@@ -115,8 +74,8 @@ type decodeResponse struct {
 	err   error
 }
 
-// NewChunkFetcher makes a new ChunkFetcher.
-func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage Client, maxAsyncConcurrency int, maxAsyncBufferSize int) (*Fetcher, error) {
+// New makes a new ChunkFetcher.
+func New(cacher cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage Client, maxAsyncConcurrency int, maxAsyncBufferSize int) (*Fetcher, error) {
 	c := &Fetcher{
 		schema:              schema,
 		storage:             storage,
