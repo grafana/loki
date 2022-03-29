@@ -468,9 +468,25 @@ func (q *querierMock) Label(ctx context.Context, req *logproto.LabelRequest) (*l
 	return args.Get(0).(*logproto.LabelResponse), args.Error(1)
 }
 
+// Instead of reusing the args, return a new response
 func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	args := q.Called(ctx, req)
-	return args.Get(0).(*logproto.SeriesResponse), args.Error(1)
+	return &logproto.SeriesResponse{
+		Series: []logproto.SeriesIdentifier{
+			{
+				Labels: map[string]string{"a": "1", "b": "2"},
+			},
+			{
+				Labels: map[string]string{"a": "1", "b": "3"},
+			},
+			{
+				Labels: map[string]string{"a": "1", "b": "4"},
+			},
+			{
+				Labels: map[string]string{"a": "1", "b": "5"},
+			},
+		},
+	}, args.Error(1)
 }
 
 func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {

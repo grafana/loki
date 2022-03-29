@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"testing"
@@ -20,8 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/tenant"
-  "github.com/grafana/loki/pkg/validation"
-
+	"github.com/grafana/loki/pkg/validation"
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
@@ -166,133 +164,6 @@ func newSampleIterator() iter.SampleIterator {
 	})
 }
 
-func TestMultiTenantQuerier_Series(t *testing.T) {
-	mockSeriesRequest := func(groups []string) *logproto.SeriesRequest {
-		return &logproto.SeriesRequest{
-			Start:  time.Unix(0, 0),
-			End:    time.Unix(10, 0),
-			Groups: groups,
-		}
-	}
-
-	mockSeriesResponse := func(series []map[string]string) *logproto.SeriesResponse {
-		resp := &logproto.SeriesResponse{}
-		for _, s := range series {
-			resp.Series = append(resp.Series, logproto.SeriesIdentifier{
-				Labels: s,
-			})
-		}
-		return resp
-	}
-
-	for _, tc := range []struct {
-		desc  string
-		req   *logproto.SeriesRequest
-		setup func(*storeMock, *queryClientMock, *querierClientMock, validation.Limits, *logproto.SeriesRequest)
-		run   func(*testing.T, *MultiTenantQuerier, *logproto.SeriesRequest)
-	}{
-		{
-			desc: "ingester error",
-			req:  mockSeriesRequest([]string{`{a="1"}`}),
-			setup: func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
-				ingester.On("Series", mock.Anything, req, mock.Anything).Return(nil, errors.New("tst-err"))
-				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, nil)
-			},
-			run: func(t *testing.T, q *MultiTenantQuerier, req *logproto.SeriesRequest) {
-				ctx := user.InjectOrgID(context.Background(), "1|2")
-				_, err := q.Series(ctx, req)
-				require.Error(t, err)
-			},
-		},
-		{
-			desc: "store error",
-			req:  mockSeriesRequest([]string{`{a="1"}`}),
-			setup: func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
-				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
-					{"a": "1"},
-				}), nil)
-				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
-			},
-			run: func(t *testing.T, q *MultiTenantQuerier, req *logproto.SeriesRequest) {
-				ctx := user.InjectOrgID(context.Background(), "1|2")
-				_, err := q.Series(ctx, req)
-				require.Error(t, err)
-			},
-		},
-		{
-			desc: "no matches",
-			req:  mockSeriesRequest([]string{`{a="1"}`}),
-			setup: func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
-				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
-				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, nil)
-			},
-			run: func(t *testing.T, q *MultiTenantQuerier, req *logproto.SeriesRequest) {
-				ctx := user.InjectOrgID(context.Background(), "1|2")
-				resp, err := q.Series(ctx, req)
-				require.Nil(t, err)
-				require.Equal(t, &logproto.SeriesResponse{Series: make([]logproto.SeriesIdentifier, 0)}, resp)
-			},
-		},
-		{
-			desc: "returns series",
-			req:  mockSeriesRequest([]string{`{a="1"}`}),
-			setup: func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
-				ingester.On("Series", mock.Anything, req, mock.Anything).Return(
-					mockSeriesResponse([]map[string]string{
-						{"a": "1", "b": "2"},
-						{"a": "1", "b": "3"},
-					}), nil)
-
-				store.On("GetSeries", mock.Anything, mock.Anything).Return(
-					[]logproto.SeriesIdentifier{
-						{Labels: map[string]string{"a": "1", "b": "4"}},
-						{Labels: map[string]string{"a": "1", "b": "5"}},
-					}, nil)
-			},
-			run: func(t *testing.T, q *MultiTenantQuerier, req *logproto.SeriesRequest) {
-				ctx := user.InjectOrgID(context.Background(), "1|2")
-				resp, err := q.Series(ctx, req)
-				require.Nil(t, err)
-				require.ElementsMatch(t, []logproto.SeriesIdentifier{
-					{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "2"}},
-					{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "3"}},
-					{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "4"}},
-					{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "5"}},
-					{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "2"}},
-					{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "3"}},
-					{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "4"}},
-					{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "5"}},
-				}, resp.GetSeries())
-			},
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			store := newStoreMock()
-			queryClient := newQueryClientMock()
-			ingesterClient := newQuerierClientMock()
-			defaultLimits := defaultLimitsTestConfig()
-			if tc.setup != nil {
-				tc.setup(store, queryClient, ingesterClient, defaultLimits, tc.req)
-			}
-
-			limits, err := validation.NewOverrides(defaultLimits, nil)
-			require.NoError(t, err)
-
-			q, err := newQuerier(
-				mockMultiTenantQuerierConfig(),
-				mockIngesterClientConfig(),
-				newIngesterClientMockFactory(ingesterClient),
-				mockReadRingWithOneActiveIngester(),
-				store, limits)
-			require.NoError(t, err)
-
-			multiTenantQuerier := NewMultiTenantQuerier(q, log.NewNopLogger())
-
-			tc.run(t, multiTenantQuerier, tc.req)
-		})
-	}
-}
-
 func TestMultiTenantQuerier_Label(t *testing.T) {
 	start := time.Unix(0, 0)
 	end := time.Unix(10, 0)
@@ -308,13 +179,13 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 	for _, tc := range []struct {
 		desc  string
 		req   *logproto.LabelRequest
-		setup func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.LabelRequest)
+		setup func(store *storeMock, ingester *querierClientMock, limits validation.Limits, req *logproto.LabelRequest)
 		run   func(t *testing.T, q *MultiTenantQuerier, req *logproto.LabelRequest)
 	}{
 		{
 			desc: "test label request",
 			req:  mockLabelRequest("test"),
-			setup: func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.LabelRequest) {
+			setup: func(store *storeMock, ingester *querierClientMock, limits validation.Limits, req *logproto.LabelRequest) {
 				ingester.On("Label", mock.Anything, req, mock.Anything).Return(mockLabelResponse(nil), nil)
 				store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(end.UnixNano()), "logs", req.Name).Return([]string{"test", "test"}, nil)
 			},
@@ -328,7 +199,7 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 		{
 			desc: "defaultTenantLabel label request",
 			req:  mockLabelRequest("defaultTenantLabel"),
-			setup: func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.LabelRequest) {
+			setup: func(store *storeMock, ingester *querierClientMock, limits validation.Limits, req *logproto.LabelRequest) {
 				ingester.On("Label", mock.Anything, req, mock.Anything).Return(mockLabelResponse(nil), nil)
 				store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(end.UnixNano()), "logs", req.Name).Return([]string{"1", "2"}, nil)
 			},
@@ -342,11 +213,10 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			store := newStoreMock()
-			queryClient := newQueryClientMock()
 			ingesterClient := newQuerierClientMock()
 			defaultLimits := defaultLimitsTestConfig()
 			if tc.setup != nil {
-				tc.setup(store, queryClient, ingesterClient, defaultLimits, tc.req)
+				tc.setup(store, ingesterClient, defaultLimits, tc.req)
 			}
 
 			limits, err := validation.NewOverrides(defaultLimits, nil)
@@ -373,6 +243,7 @@ func mockMultiTenantQuerierConfig() Config {
 		QueryTimeout:              queryTimeout,
 		MultiTenantQueriesEnabled: true,
 	}
+}
 
 func BenchmarkTenantEntryIteratorLabels(b *testing.B) {
 	it := newMockEntryIterator(12)
@@ -420,4 +291,55 @@ func (it mockEntryIterator) Error() error {
 
 func (it mockEntryIterator) Close() error {
 	return nil
+}
+
+func TestMultiTenantQuerierSeries(t *testing.T) {
+	for _, tc := range []struct {
+		desc           string
+		orgID          string
+		expectedSeries []logproto.SeriesIdentifier
+	}{
+		{
+			desc:  "multiple tenantIDs",
+			orgID: "1|2",
+			expectedSeries: []logproto.SeriesIdentifier{
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "2"}},
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "3"}},
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "4"}},
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "5"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "2"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "3"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "4"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "5"}},
+			},
+		},
+		{
+			desc:  "single tenantID; behaves like a normal `Series` call",
+			orgID: "2",
+			expectedSeries: []logproto.SeriesIdentifier{
+				{Labels: map[string]string{"a": "1", "b": "2"}},
+				{Labels: map[string]string{"a": "1", "b": "3"}},
+				{Labels: map[string]string{"a": "1", "b": "4"}},
+				{Labels: map[string]string{"a": "1", "b": "5"}},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			querier := newQuerierMock()
+			querier.On("Series", mock.Anything, mock.Anything).Return(&logproto.SeriesResponse{}, nil)
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			resp, err := multiTenantQuerier.Series(ctx, mockSeriesRequest())
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedSeries, resp.GetSeries())
+		})
+	}
+}
+
+func mockSeriesRequest() *logproto.SeriesRequest {
+	return &logproto.SeriesRequest{
+		Start: time.Unix(0, 0),
+		End:   time.Unix(10, 0),
+	}
 }

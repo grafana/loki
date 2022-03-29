@@ -218,7 +218,7 @@ func init() {
 // Combine unique values from multiple LabelResponses into a single, sorted LabelResponse.
 func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
 	if len(responses) == 0 {
-		return nil, fmt.Errorf("no label responses to merge")
+		return &LabelResponse{}, nil
 	} else if len(responses) == 1 {
 		return responses[0], nil
 	}
@@ -247,10 +247,10 @@ func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
 	return result, nil
 }
 
-// Combine unique label sets from multiple SeriesResponse and return a single, sorted SeriesResponse.
+// Combine unique label sets from multiple SeriesResponse and return a single SeriesResponse.
 func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) {
 	if len(responses) == 0 {
-		return nil, fmt.Errorf("no series responses to merge")
+		return &SeriesResponse{}, nil
 	} else if len(responses) == 1 {
 		return responses[0], nil
 	}

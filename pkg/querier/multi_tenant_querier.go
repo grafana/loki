@@ -107,7 +107,6 @@ func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelReque
 }
 
 func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	// TODO(jordanrushing): For each response, append the tenant_id label pair before sorting
 	tenantIDs, err := q.resolver.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -122,13 +121,14 @@ func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 	for i, id := range tenantIDs {
 		singleContext := user.InjectUserID(ctx, id)
 		resp, err := q.Querier.Series(singleContext, req)
-
 		if err != nil {
 			return nil, err
 		}
 
 		for _, s := range resp.GetSeries() {
-			s.Labels[defaultTenantLabel] = id
+			if _, ok := s.Labels[defaultTenantLabel]; !ok {
+				s.Labels[defaultTenantLabel] = id
+			}
 		}
 
 		responses[i] = resp

@@ -217,18 +217,18 @@ func TestMergeLabelResponses(t *testing.T) {
 			},
 		},
 		{
-			desc:      "merge empty and expect an error",
+			desc:      "merge empty and expect empty",
 			responses: []*LabelResponse{},
-			expected:  nil,
-			err:       fmt.Errorf("no label responses to merge"),
+			expected:  []*LabelResponse{},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			merged, err := MergeLabelResponses(tc.responses)
 			if err != nil {
 				require.Equal(t, tc.err, err)
+			} else if len(tc.expected) == 0 {
+				require.Empty(t, merged)
 			} else {
-
 				require.ElementsMatch(t, tc.expected[0].Values, merged.Values)
 			}
 		})
@@ -283,18 +283,19 @@ func TestMergeSeriesResponses(t *testing.T) {
 			},
 		},
 		{
-			desc:      "merge none and expect an error",
+			desc:      "merge empty and expect empty",
 			responses: []*SeriesResponse{},
-			expected:  nil,
-			err:       fmt.Errorf("no series responses to merge"),
+			expected:  []*SeriesResponse{},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			merged, err := MergeSeriesResponses(tc.responses)
 			if err != nil {
 				require.Equal(t, tc.err, err)
+			} else if len(tc.expected) == 0 {
+				require.Empty(t, merged)
 			} else {
-				require.Equal(t, tc.expected[0], merged)
+				require.ElementsMatch(t, tc.expected[0].Series, merged.Series)
 			}
 		})
 	}
