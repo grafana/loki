@@ -274,7 +274,10 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 
 	m := *rfc5424Msg.Message
 	if t.config.UseRFC5424Message {
-		if fullMsg, err := rfc5424Msg.String(); err == nil {
+		fullMsg, err := rfc5424Msg.String()
+		if err != nil {
+			level.Debug(t.logger).Log("msg", "failed to convert rfc5424 message to string; using message field instead", "err", err)
+		} else {
 			m = fullMsg
 		}
 	}
