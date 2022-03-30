@@ -15,6 +15,11 @@ import (
 
 	_ "github.com/grafana/loki/pkg/util/build"
 )
+import (
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/clients/pkg/promtail/client"
+)
 
 var (
 	// registered loki plugin instances, required for disposal during shutdown
@@ -83,7 +88,8 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 	level.Info(paramLogger).Log("key_file", conf.clientConfig.Client.TLSConfig.KeyFile)
 	level.Info(paramLogger).Log("insecure_skip_verify", conf.clientConfig.Client.TLSConfig.InsecureSkipVerify)
 
-	plugin, err := newPlugin(conf, logger)
+	m := client.NewMetrics(prometheus.DefaultRegisterer, nil)
+	plugin, err := newPlugin(conf, logger, m)
 	if err != nil {
 		level.Error(logger).Log("newPlugin", err)
 		return output.FLB_ERROR

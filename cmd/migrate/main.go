@@ -15,12 +15,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/dskit/tenant"
+
+	"github.com/grafana/loki/pkg/logql/syntax"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -126,7 +127,7 @@ func main() {
 	matchers := []*labels.Matcher{nameLabelMatcher}
 
 	if *match != "" {
-		m, err := logql.ParseMatchers(*match)
+		m, err := syntax.ParseMatchers(*match)
 		if err != nil {
 			log.Println("Failed to parse log matcher:", err)
 			os.Exit(1)
@@ -360,7 +361,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 						}
 						if m.sourceUser != m.destUser {
 							// Because the incoming chunks are already encoded, to change the username we have to make a new chunk
-							nc := chunk.NewChunk(m.destUser, chk.Fingerprint, chk.Metric, chk.Data, chk.From, chk.Through)
+							nc := chunk.NewChunk(m.destUser, chk.FingerprintModel(), chk.Metric, chk.Data, chk.From, chk.Through)
 							err := nc.Encode()
 							if err != nil {
 								log.Println(threadID, "Failed to encode new chunk with new user:", err)

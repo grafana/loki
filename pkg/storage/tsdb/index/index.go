@@ -51,6 +51,9 @@ const (
 	FormatV2 = 2
 
 	indexFilename = "index"
+
+	// store every 1024 series' fingerprints in the fingerprint offsets table
+	fingerprintInterval = 1 << 10
 )
 
 type indexWriterStage uint8
@@ -127,9 +130,11 @@ type Writer struct {
 
 	labelIndexes []labelIndexHashEntry // Label index offsets.
 	labelNames   map[string]uint64     // Label names, and their usage.
+	// Keeps track of the fingerprint/offset for every n series
+	fingerprintOffsets fingerprintOffsets
 
 	// Hold last series to validate that clients insert new series in order.
-	lastSeries labels.Labels
+	lastSeries uint64
 	lastRef    storage.SeriesRef
 
 	crc32 hash.Hash
@@ -139,12 +144,30 @@ type Writer struct {
 
 // TOC represents index Table Of Content that states where each section of index starts.
 type TOC struct {
-	Symbols           uint64
-	Series            uint64
-	LabelIndices      uint64
-	LabelIndicesTable uint64
-	Postings          uint64
-	PostingsTable     uint64
+	Symbols            uint64
+	Series             uint64
+	LabelIndices       uint64
+	LabelIndicesTable  uint64
+	Postings           uint64
+	PostingsTable      uint64
+	FingerprintOffsets uint64
+	Metadata           Metadata
+}
+
+// Metadata is TSDB-level metadata
+type Metadata struct {
+	From, Through int64
+}
+
+func (m *Metadata) EnsureBounds(from, through int64) {
+	if m.From == 0 || from < m.From {
+		m.From = from
+	}
+
+	if m.Through == 0 || through > m.Through {
+		m.Through = through
+	}
+
 }
 
 // NewTOCFromByteSlice return parsed TOC from given index byte slice.
@@ -165,12 +188,17 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 	}
 
 	return &TOC{
-		Symbols:           d.Be64(),
-		Series:            d.Be64(),
-		LabelIndices:      d.Be64(),
-		LabelIndicesTable: d.Be64(),
-		Postings:          d.Be64(),
-		PostingsTable:     d.Be64(),
+		Symbols:            d.Be64(),
+		Series:             d.Be64(),
+		LabelIndices:       d.Be64(),
+		LabelIndicesTable:  d.Be64(),
+		Postings:           d.Be64(),
+		PostingsTable:      d.Be64(),
+		FingerprintOffsets: d.Be64(),
+		Metadata: Metadata{
+			From:    d.Be64int64(),
+			Through: d.Be64int64(),
+		},
 	}, nil
 }
 
@@ -382,6 +410,12 @@ func (w *Writer) ensureStage(s indexWriterStage) error {
 		if err := w.writePostingsOffsetTable(); err != nil {
 			return err
 		}
+
+		w.toc.FingerprintOffsets = w.f.pos
+		if err := w.writeFingerprintOffsetsTable(); err != nil {
+			return err
+		}
+
 		if err := w.writeTOC(); err != nil {
 			return err
 		}
@@ -404,11 +438,13 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
-	if labels.Compare(lset, w.lastSeries) <= 0 {
+
+	labelHash := lset.Hash()
+	if labelHash < w.lastSeries {
 		return errors.Errorf("out-of-order series added with label set %q", lset)
 	}
 
-	if ref < w.lastRef && len(w.lastSeries) != 0 {
+	if ref < w.lastRef && w.lastSeries != uint64(0) {
 		return errors.Errorf("series with reference greater than %d already added", ref)
 	}
 	// We add padding to 16 bytes to increase the addressable space we get through 4 byte
@@ -422,6 +458,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 	}
 
 	w.buf2.Reset()
+	w.buf2.PutBE64(labelHash)
 	w.buf2.PutUvarint(len(lset))
 
 	for _, l := range lset {
@@ -456,6 +493,8 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 
 	if len(chunks) > 0 {
 		c := chunks[0]
+		w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
+
 		w.buf2.PutVarint64(c.MinTime)
 		w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
 		w.buf2.PutUvarint32(c.KB)
@@ -464,6 +503,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		t0 := c.MaxTime
 
 		for _, c := range chunks[1:] {
+			w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
 			// Encode the diff against previous chunk as varint
 			// instead of uvarint because chunks may overlap
 			w.buf2.PutVarint64(c.MinTime - t0)
@@ -485,8 +525,12 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		return errors.Wrap(err, "write series data")
 	}
 
-	w.lastSeries = append(w.lastSeries[:0], lset...)
+	w.lastSeries = labelHash
 	w.lastRef = ref
+
+	if ref%fingerprintInterval == 0 {
+		w.fingerprintOffsets = append(w.fingerprintOffsets, [2]uint64{uint64(ref), labelHash})
+	}
 
 	return nil
 }
@@ -787,7 +831,37 @@ func (w *Writer) writePostingsOffsetTable() error {
 	return w.write(w.buf1.Get())
 }
 
-const indexTOCLen = 6*8 + crc32.Size
+func (w *Writer) writeFingerprintOffsetsTable() error {
+	w.buf1.Reset()
+	w.buf2.Reset()
+
+	w.buf1.PutBE32int(len(w.fingerprintOffsets)) // Count.
+	// build offsets
+	for _, x := range w.fingerprintOffsets {
+		w.buf1.PutBE64(x[0]) // series offset
+		w.buf1.PutBE64(x[1]) // hash
+	}
+
+	// write length
+	ln := w.buf1.Len()
+	if ln > math.MaxUint32 {
+		return errors.Errorf("fingerprint offset size exceeds 4 bytes: %d", ln)
+	}
+
+	w.buf2.PutBE32int(ln)
+	if err := w.write(w.buf2.Get()); err != nil {
+		return err
+	}
+
+	// write offsets+checksum
+	w.buf1.PutHash(w.crc32)
+	if err := w.write(w.buf1.Get()); err != nil {
+		return errors.Wrap(err, "failure writing fingerprint offsets")
+	}
+	return nil
+}
+
+const indexTOCLen = 8*9 + crc32.Size
 
 func (w *Writer) writeTOC() error {
 	w.buf1.Reset()
@@ -798,6 +872,11 @@ func (w *Writer) writeTOC() error {
 	w.buf1.PutBE64(w.toc.LabelIndicesTable)
 	w.buf1.PutBE64(w.toc.Postings)
 	w.buf1.PutBE64(w.toc.PostingsTable)
+	w.buf1.PutBE64(w.toc.FingerprintOffsets)
+
+	// metadata
+	w.buf1.PutBE64int64(w.toc.Metadata.From)
+	w.buf1.PutBE64int64(w.toc.Metadata.Through)
 
 	w.buf1.PutHash(w.crc32)
 
@@ -876,6 +955,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 			l := d.Uvarint() // Length of this series in bytes.
 			startLen := d.Len()
 
+			_ = d.Be64() // skip fingerprint
 			// See if label names we want are in the series.
 			numLabels := d.Uvarint()
 			for i := 0; i < numLabels; i++ {
@@ -1065,6 +1145,8 @@ type Reader struct {
 	nameSymbols map[uint32]string // Cache of the label name symbol lookups,
 	// as there are not many and they are half of all lookups.
 
+	fingerprintOffsets fingerprintOffsets
+
 	dec *Decoder
 
 	version int
@@ -1219,6 +1301,11 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 			return nil, errors.Wrap(err, "reverse symbol lookup")
 		}
 		r.nameSymbols[off] = k
+	}
+
+	r.fingerprintOffsets, err = ReadFingerprintOffsetsTable(r.b, r.toc.FingerprintOffsets)
+	if err != nil {
+		return nil, errors.Wrap(err, "loading fingerprint offsets")
 	}
 
 	r.dec = &Decoder{LookupSymbol: r.lookupSymbol}
@@ -1431,6 +1518,20 @@ func ReadOffsetTable(bs ByteSlice, off uint64, f func([]string, uint64, int) err
 	return d.Err()
 }
 
+func ReadFingerprintOffsetsTable(bs ByteSlice, off uint64) (fingerprintOffsets, error) {
+	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable))
+	cnt := d.Be32()
+	res := make(fingerprintOffsets, 0, int(cnt))
+
+	for d.Err() == nil && d.Len() > 0 && cnt > 0 {
+		res = append(res, [2]uint64{d.Be64(), d.Be64()})
+		cnt--
+	}
+
+	return res, d.Err()
+
+}
+
 // Close the reader and its underlying resources.
 func (r *Reader) Close() error {
 	return r.c.Close()
@@ -1441,6 +1542,10 @@ func (r *Reader) lookupSymbol(o uint32) (string, error) {
 		return s, nil
 	}
 	return r.symbols.Lookup(o)
+}
+
+func (r *Reader) Bounds() (int64, int64) {
+	return r.toc.Metadata.From, r.toc.Metadata.Through
 }
 
 // Symbols returns an iterator over the symbols that exist within the index.
@@ -1593,7 +1698,7 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *Reader) Series(id storage.SeriesRef, lbls *labels.Labels, chks *[]ChunkMeta) error {
+func (r *Reader) Series(id storage.SeriesRef, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
 	offset := id
 	// In version 2 series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1602,12 +1707,17 @@ func (r *Reader) Series(id storage.SeriesRef, lbls *labels.Labels, chks *[]Chunk
 	}
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 	if d.Err() != nil {
-		return d.Err()
+		return 0, d.Err()
 	}
-	return errors.Wrap(r.dec.Series(d.Get(), lbls, chks), "read series")
+
+	fprint, err := r.dec.Series(d.Get(), lbls, chks)
+	if err != nil {
+		return 0, errors.Wrap(err, "read series")
+	}
+	return fprint, nil
 }
 
-func (r *Reader) Postings(name string, values ...string) (Postings, error) {
+func (r *Reader) Postings(name string, shard *ShardAnnotation, values ...string) (Postings, error) {
 	if r.version == FormatV1 {
 		e, ok := r.postingsV1[name]
 		if !ok {
@@ -1704,13 +1814,12 @@ func (r *Reader) Postings(name string, values ...string) (Postings, error) {
 		}
 	}
 
-	return Merge(res...), nil
-}
+	merged := Merge(res...)
+	if shard != nil {
+		return newShardedPostings(merged, *shard, r.fingerprintOffsets), nil
+	}
 
-// SortedPostings returns the given postings list reordered so that the backing series
-// are sorted.
-func (r *Reader) SortedPostings(p Postings) Postings {
-	return p
+	return merged, nil
 }
 
 // Size returns the size of an index file.
@@ -1785,6 +1894,7 @@ func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
 // They are returned in the same order they're stored, which should be sorted lexicographically.
 func (dec *Decoder) LabelNamesOffsetsFor(b []byte) ([]uint32, error) {
 	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
+	_ = d.Be64() // skip fingerprint
 	k := d.Uvarint()
 
 	offsets := make([]uint32, k)
@@ -1803,6 +1913,7 @@ func (dec *Decoder) LabelNamesOffsetsFor(b []byte) ([]uint32, error) {
 // LabelValueFor decodes a label for a given series.
 func (dec *Decoder) LabelValueFor(b []byte, label string) (string, error) {
 	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
+	_ = d.Be64() // skip fingerprint
 	k := d.Uvarint()
 
 	for i := 0; i < k; i++ {
@@ -1832,12 +1943,13 @@ func (dec *Decoder) LabelValueFor(b []byte, label string) (string, error) {
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) error {
+func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
 	*lbls = (*lbls)[:0]
 	*chks = (*chks)[:0]
 
 	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 
+	fprint := d.Be64()
 	k := d.Uvarint()
 
 	for i := 0; i < k; i++ {
@@ -1845,16 +1957,16 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) err
 		lvo := uint32(d.Uvarint())
 
 		if d.Err() != nil {
-			return errors.Wrap(d.Err(), "read series label offsets")
+			return 0, errors.Wrap(d.Err(), "read series label offsets")
 		}
 
 		ln, err := dec.LookupSymbol(lno)
 		if err != nil {
-			return errors.Wrap(err, "lookup label name")
+			return 0, errors.Wrap(err, "lookup label name")
 		}
 		lv, err := dec.LookupSymbol(lvo)
 		if err != nil {
-			return errors.Wrap(err, "lookup label value")
+			return 0, errors.Wrap(err, "lookup label value")
 		}
 
 		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
@@ -1864,7 +1976,7 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) err
 	k = d.Uvarint()
 
 	if k == 0 {
-		return d.Err()
+		return 0, d.Err()
 	}
 
 	t0 := d.Varint64()
@@ -1893,7 +2005,7 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) err
 		t0 = maxt
 
 		if d.Err() != nil {
-			return errors.Wrapf(d.Err(), "read meta for chunk %d", i)
+			return 0, errors.Wrapf(d.Err(), "read meta for chunk %d", i)
 		}
 
 		*chks = append(*chks, ChunkMeta{
@@ -1904,7 +2016,7 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) err
 			Entries:  entries,
 		})
 	}
-	return d.Err()
+	return fprint, d.Err()
 }
 
 func yoloString(b []byte) string {

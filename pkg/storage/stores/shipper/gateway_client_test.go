@@ -19,6 +19,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -31,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -165,6 +167,16 @@ func buildTableName(i int) string {
 	return fmt.Sprintf("%s%d", tableNamePrefix, i)
 }
 
+type mockLimits struct{}
+
+func (m mockLimits) AllByUserID() map[string]*validation.Limits {
+	return map[string]*validation.Limits{}
+}
+
+func (m mockLimits) DefaultLimits() *validation.Limits {
+	return &validation.Limits{}
+}
+
 func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 	buffer := 1024 * 1024
 	listener := bufconn.Listen(buffer)
@@ -175,7 +187,7 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 	}))
 	conn, _ := grpc.DialContext(context.Background(), "", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 		return listener.Dial()
-	}), grpc.WithInsecure())
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	defer func() {
 		s.Stop()
 		conn.Close()
@@ -193,8 +205,8 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 		tableName := buildTableName(i)
 		objectStorageDir := filepath.Join(dir, "index", tableName)
 		cacheDir := filepath.Join(dir, "cache", tableName)
-		require.NoError(b, os.MkdirAll(objectStorageDir, 0777))
-		require.NoError(b, os.MkdirAll(cacheDir, 0777))
+		require.NoError(b, os.MkdirAll(objectStorageDir, 0o777))
+		require.NoError(b, os.MkdirAll(cacheDir, 0o777))
 
 		// add few rows at a time to the db because doing to many writes in a single transaction puts too much strain on boltdb and makes it slow
 		for i := 0; i < benchMarkNumEntries/numTables; i += 10000 {
@@ -214,6 +226,7 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 		SyncInterval:      15 * time.Minute,
 		CacheTTL:          15 * time.Minute,
 		QueryReadyNumDays: 30,
+		Limits:            mockLimits{},
 	}, bclient, storage.NewIndexStorageClient(fs, "index/"), nil)
 	require.NoError(b, err)
 

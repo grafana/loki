@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
 
@@ -172,7 +172,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 }
 
 func mustParseLabel(input string) labels.Labels {
-	lbls, err := logql.ParseLabels(input)
+	lbls, err := syntax.ParseLabels(input)
 	if err != nil {
 		panic(err)
 	}

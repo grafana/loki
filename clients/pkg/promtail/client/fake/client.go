@@ -56,3 +56,7 @@ func (c *Client) Received() []api.Entry {
 func (c *Client) StopNow() {
 	c.Stop()
 }
+
+func (c *Client) Name() string {
+	return "fake"
+}

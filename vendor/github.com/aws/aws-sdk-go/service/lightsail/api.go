@@ -1038,6 +1038,7 @@ func (c *Lightsail) CreateBucketAccessKeyRequest(input *CreateBucketAccessKeyInp
 //
 // Access keys grant full programmatic access to the specified bucket and its
 // objects. You can have a maximum of two access keys per bucket. Use the GetBucketAccessKeys
+// (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetBucketAccessKeys.html)
 // action to get a list of current access keys for a specific bucket. For more
 // information about access keys, see Creating access keys for a bucket in Amazon
 // Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-creating-bucket-access-keys)
@@ -2795,7 +2796,11 @@ func (c *Lightsail) CreateKeyPairRequest(input *CreateKeyPairInput) (req *reques
 
 // CreateKeyPair API operation for Amazon Lightsail.
 //
-// Creates an SSH key pair.
+// Creates a custom SSH key pair that you can use with an Amazon Lightsail instance.
+//
+// Use the DownloadDefaultKeyPair (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_DownloadDefaultKeyPair.html)
+// action to create a Lightsail default key pair in an Amazon Web Services Region
+// where a default key pair does not currently exist.
 //
 // The create key pair operation supports tag-based access control via request
 // tags. For more information, see the Amazon Lightsail Developer Guide (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-controlling-access-using-tags).
@@ -5030,7 +5035,14 @@ func (c *Lightsail) DeleteKeyPairRequest(input *DeleteKeyPairInput) (req *reques
 
 // DeleteKeyPair API operation for Amazon Lightsail.
 //
-// Deletes a specific SSH key pair.
+// Deletes the specified key pair by removing the public key from Amazon Lightsail.
+//
+// You can delete key pairs that were created using the ImportKeyPair (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_ImportKeyPair.html)
+// and CreateKeyPair (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_CreateKeyPair.html)
+// actions, as well as the Lightsail default key pair. A new default key pair
+// will not be created unless you launch an instance without specifying a custom
+// key pair, or you call the DownloadDefaultKeyPair (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_DownloadDefaultKeyPair.html)
+// API.
 //
 // The delete key pair operation supports tag-based access control via resource
 // tags applied to the resource identified by key pair name. For more information,
@@ -6214,7 +6226,10 @@ func (c *Lightsail) DownloadDefaultKeyPairRequest(input *DownloadDefaultKeyPairI
 
 // DownloadDefaultKeyPair API operation for Amazon Lightsail.
 //
-// Downloads the default SSH key pair from the user's account.
+// Downloads the regional Amazon Lightsail default key pair.
+//
+// This action also creates a Lightsail default key pair if a default key pair
+// does not currently exist in the Amazon Web Services Region.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -6967,8 +6982,8 @@ func (c *Lightsail) GetBucketAccessKeysRequest(input *GetBucketAccessKeysInput) 
 //
 // This action does not return the secret access key value of an access key.
 // You can get a secret access key only when you create it from the response
-// of the CreateBucketAccessKey action. If you lose the secret access key, you
-// must create a new access key.
+// of the CreateBucketAccessKey (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_CreateBucketAccessKey.html)
+// action. If you lose the secret access key, you must create a new access key.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -7070,7 +7085,8 @@ func (c *Lightsail) GetBucketBundlesRequest(input *GetBucketBundlesInput) (req *
 // The bucket bundle specifies the monthly cost, storage quota, and data transfer
 // quota for a bucket.
 //
-// Use the UpdateBucketBundle action to update the bundle for a bucket.
+// Use the UpdateBucketBundle (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_UpdateBucketBundle.html)
+// action to update the bundle for a bucket.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -9532,7 +9548,8 @@ func (c *Lightsail) GetExportSnapshotRecordsRequest(input *GetExportSnapshotReco
 // operation.
 //
 // An export snapshot record can be used to create a new Amazon EC2 instance
-// and its related resources with the CreateCloudFormationStack action.
+// and its related resources with the CreateCloudFormationStack (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_CreateCloudFormationStack.html)
+// action.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -15498,8 +15515,9 @@ func (c *Lightsail) UpdateBucketBundleRequest(input *UpdateBucketBundleInput) (r
 // A bucket bundle specifies the monthly cost, storage space, and data transfer
 // quota for a bucket. You can update a bucket's bundle only one time within
 // a monthly AWS billing cycle. To determine if you can update a bucket's bundle,
-// use the GetBuckets action. The ableToUpdateBundle parameter in the response
-// will indicate whether you can currently update a bucket's bundle.
+// use the GetBuckets (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetBuckets.html)
+// action. The ableToUpdateBundle parameter in the response will indicate whether
+// you can currently update a bucket's bundle.
 //
 // Update a bucket's bundle if it's consistently going over its storage space
 // or data transfer quota, or if a bucket's usage is consistently in the lower
@@ -16392,6 +16410,7 @@ func (s *AccessDeniedException) RequestID() string {
 //
 // Access keys grant full programmatic access to the specified bucket and its
 // objects. You can have a maximum of two access keys per bucket. Use the CreateBucketAccessKey
+// (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_CreateBucketAccessKey.html)
 // action to create an access key for a specific bucket. For more information
 // about access keys, see Creating access keys for a bucket in Amazon Lightsail
 // (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-creating-bucket-access-keys)
@@ -16417,6 +16436,7 @@ type AccessKey struct {
 	// An object that describes the last time the access key was used.
 	//
 	// This object does not include data in the response of a CreateBucketAccessKey
+	// (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_CreateBucketAccessKey.html)
 	// action. If the access key has not been used, the region and serviceName values
 	// are N/A, and the lastUsedDate value is null.
 	LastUsed *AccessKeyLastUsed `locationName:"lastUsed" type:"structure"`
@@ -16485,6 +16505,7 @@ func (s *AccessKey) SetStatus(v string) *AccessKey {
 // Describes the last time an access key was used.
 //
 // This object does not include data in the response of a CreateBucketAccessKey
+// (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_CreateBucketAccessKey.html)
 // action.
 type AccessKeyLastUsed struct {
 	_ struct{} `type:"structure"`
@@ -18011,7 +18032,8 @@ type Bucket struct {
 	// You can update a bucket's bundle only one time within a monthly AWS billing
 	// cycle.
 	//
-	// Use the UpdateBucketBundle action to change a bucket's bundle.
+	// Use the UpdateBucketBundle (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_UpdateBucketBundle.html)
+	// action to change a bucket's bundle.
 	AbleToUpdateBundle *bool `locationName:"ableToUpdateBundle" type:"boolean"`
 
 	// An object that describes the access log configuration for the bucket.
@@ -18028,7 +18050,8 @@ type Bucket struct {
 	// A bucket bundle specifies the monthly cost, storage space, and data transfer
 	// quota for a bucket.
 	//
-	// Use the UpdateBucketBundle action to change the bundle of a bucket.
+	// Use the UpdateBucketBundle (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_UpdateBucketBundle.html)
+	// action to change the bundle of a bucket.
 	BundleId *string `locationName:"bundleId" type:"string"`
 
 	// The timestamp when the distribution was created.
@@ -18062,8 +18085,8 @@ type Bucket struct {
 	// An array of objects that describe Lightsail instances that have access to
 	// the bucket.
 	//
-	// Use the SetResourceAccessForBucket action to update the instances that have
-	// access to a bucket.
+	// Use the SetResourceAccessForBucket (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_SetResourceAccessForBucket.html)
+	// action to update the instances that have access to a bucket.
 	ResourcesReceivingAccess []*ResourceReceivingAccess `locationName:"resourcesReceivingAccess" type:"list"`
 
 	// An object that describes the state of the bucket.
@@ -18604,8 +18627,6 @@ func (s *CacheBehavior) SetBehavior(v string) *CacheBehavior {
 // if the distribution's cacheBehavior is dont-cache, then a per-path cache
 // behavior can be used to specify a directory, file, or file type that your
 // distribution will not cache.
-//
-// if the cacheBehavior's behavior is set to 'cache', then
 type CacheBehaviorPerPath struct {
 	_ struct{} `type:"structure"`
 
@@ -20746,11 +20767,11 @@ type CreateBucketInput struct {
 	// A bucket bundle specifies the monthly cost, storage space, and data transfer
 	// quota for a bucket.
 	//
-	// Use the GetBucketBundles action to get a list of bundle IDs that you can
-	// specify.
+	// Use the GetBucketBundles (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetBucketBundles.html)
+	// action to get a list of bundle IDs that you can specify.
 	//
-	// Use the UpdateBucketBundle action to change the bundle after the bucket is
-	// created.
+	// Use the UpdateBucketBundle (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_UpdateBucketBundle.html)
+	// action to change the bundle after the bucket is created.
 	//
 	// BundleId is a required field
 	BundleId *string `locationName:"bundleId" type:"string" required:"true"`
@@ -20765,7 +20786,8 @@ type CreateBucketInput struct {
 
 	// The tag keys and optional values to add to the bucket during creation.
 	//
-	// Use the TagResource action to tag the bucket after it's created.
+	// Use the TagResource (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_TagResource.html)
+	// action to tag the bucket after it's created.
 	Tags []*Tag `locationName:"tags" type:"list"`
 }
 
@@ -22095,7 +22117,7 @@ type CreateDistributionInput struct {
 	IpAddressType *string `locationName:"ipAddressType" type:"string" enum:"IpAddressType"`
 
 	// An object that describes the origin resource for the distribution, such as
-	// a Lightsail instance or load balancer.
+	// a Lightsail instance, bucket, or load balancer.
 	//
 	// The distribution pulls, caches, and serves content from the origin.
 	//
@@ -24249,8 +24271,8 @@ type DeleteBucketAccessKeyInput struct {
 
 	// The ID of the access key to delete.
 	//
-	// Use the GetBucketAccessKeys action to get a list of access key IDs that you
-	// can specify.
+	// Use the GetBucketAccessKeys (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetBucketAccessKeys.html)
+	// action to get a list of access key IDs that you can specify.
 	//
 	// AccessKeyId is a required field
 	AccessKeyId *string `locationName:"accessKeyId" type:"string" required:"true"`
@@ -24348,7 +24370,8 @@ type DeleteBucketInput struct {
 
 	// The name of the bucket to delete.
 	//
-	// Use the GetBuckets action to get a list of bucket names that you can specify.
+	// Use the GetBuckets (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetBuckets.html)
+	// action to get a list of bucket names that you can specify.
 	//
 	// BucketName is a required field
 	BucketName *string `locationName:"bucketName" min:"3" type:"string" required:"true"`
@@ -24360,6 +24383,7 @@ type DeleteBucketInput struct {
 	//    * The bucket is the origin of a distribution.
 	//
 	//    * The bucket has instances that were granted access to it using the SetResourceAccessForBucket
+	//    (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_SetResourceAccessForBucket.html)
 	//    action.
 	//
 	//    * The bucket has objects.
@@ -25359,6 +25383,12 @@ func (s *DeleteInstanceSnapshotOutput) SetOperations(v []*Operation) *DeleteInst
 type DeleteKeyPairInput struct {
 	_ struct{} `type:"structure"`
 
+	// The RSA fingerprint of the Lightsail default key pair to delete.
+	//
+	// The expectedFingerprint parameter is required only when specifying to delete
+	// a Lightsail default key pair.
+	ExpectedFingerprint *string `locationName:"expectedFingerprint" type:"string"`
+
 	// The name of the key pair to delete.
 	//
 	// KeyPairName is a required field
@@ -25394,6 +25424,12 @@ func (s *DeleteKeyPairInput) Validate() error {
 		return invalidParams
 	}
 	return nil
+}
+
+// SetExpectedFingerprint sets the ExpectedFingerprint field's value.
+func (s *DeleteKeyPairInput) SetExpectedFingerprint(v string) *DeleteKeyPairInput {
+	s.ExpectedFingerprint = &v
+	return s
 }
 
 // SetKeyPairName sets the KeyPairName field's value.
@@ -27196,6 +27232,9 @@ func (s DownloadDefaultKeyPairInput) GoString() string {
 type DownloadDefaultKeyPairOutput struct {
 	_ struct{} `type:"structure"`
 
+	// The timestamp when the default key pair was created.
+	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
+
 	// A base64-encoded RSA private key.
 	PrivateKeyBase64 *string `locationName:"privateKeyBase64" type:"string"`
 
@@ -27219,6 +27258,12 @@ func (s DownloadDefaultKeyPairOutput) String() string {
 // value will be replaced with "sensitive".
 func (s DownloadDefaultKeyPairOutput) GoString() string {
 	return s.String()
+}
+
+// SetCreatedAt sets the CreatedAt field's value.
+func (s *DownloadDefaultKeyPairOutput) SetCreatedAt(v time.Time) *DownloadDefaultKeyPairOutput {
+	s.CreatedAt = &v
+	return s
 }
 
 // SetPrivateKeyBase64 sets the PrivateKeyBase64 field's value.
@@ -28414,7 +28459,8 @@ type GetBucketsInput struct {
 	BucketName *string `locationName:"bucketName" min:"3" type:"string"`
 
 	// A Boolean value that indicates whether to include Lightsail instances that
-	// were given access to the bucket using the SetResourceAccessForBucket action.
+	// were given access to the bucket using the SetResourceAccessForBucket (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_SetResourceAccessForBucket.html)
+	// action.
 	IncludeConnectedResources *bool `locationName:"includeConnectedResources" type:"boolean"`
 
 	// The token to advance to the next page of results from your request.
@@ -31512,6 +31558,10 @@ func (s *GetKeyPairOutput) SetKeyPair(v *KeyPair) *GetKeyPairOutput {
 type GetKeyPairsInput struct {
 	_ struct{} `type:"structure"`
 
+	// A Boolean value that indicates whether to include the default key pair in
+	// the response of your request.
+	IncludeDefaultKeyPair *bool `locationName:"includeDefaultKeyPair" type:"boolean"`
+
 	// The token to advance to the next page of results from your request.
 	//
 	// To get a page token, perform an initial GetKeyPairs request. If your results
@@ -31536,6 +31586,12 @@ func (s GetKeyPairsInput) String() string {
 // value will be replaced with "sensitive".
 func (s GetKeyPairsInput) GoString() string {
 	return s.String()
+}
+
+// SetIncludeDefaultKeyPair sets the IncludeDefaultKeyPair field's value.
+func (s *GetKeyPairsInput) SetIncludeDefaultKeyPair(v bool) *GetKeyPairsInput {
+	s.IncludeDefaultKeyPair = &v
+	return s
 }
 
 // SetPageToken sets the PageToken field's value.
@@ -34168,8 +34224,8 @@ func (s *ImportKeyPairOutput) SetOperation(v *Operation) *ImportKeyPairOutput {
 // Describes the origin resource of an Amazon Lightsail content delivery network
 // (CDN) distribution.
 //
-// An origin can be a Lightsail instance or load balancer. A distribution pulls
-// content from an origin, caches it, and serves it to viewers via a worldwide
+// An origin can be a Lightsail instance, bucket, or load balancer. A distribution
+// pulls content from an origin, caches it, and serves it to viewers via a worldwide
 // network of edge servers.
 type InputOrigin struct {
 	_ struct{} `type:"structure"`
@@ -35799,7 +35855,7 @@ type LightsailDistribution struct {
 	Name *string `locationName:"name" type:"string"`
 
 	// An object that describes the origin resource of the distribution, such as
-	// a Lightsail instance or load balancer.
+	// a Lightsail instance, bucket, or load balancer.
 	//
 	// The distribution pulls, caches, and serves content from the origin.
 	Origin *Origin `locationName:"origin" type:"structure"`
@@ -37294,8 +37350,8 @@ func (s *OperationFailureException) RequestID() string {
 // Describes the origin resource of an Amazon Lightsail content delivery network
 // (CDN) distribution.
 //
-// An origin can be a Lightsail instance or load balancer. A distribution pulls
-// content from an origin, caches it, and serves it to viewers via a worldwide
+// An origin can be a Lightsail instance, bucket, or load balancer. A distribution
+// pulls content from an origin, caches it, and serves it to viewers via a worldwide
 // network of edge servers.
 type Origin struct {
 	_ struct{} `type:"structure"`
@@ -41115,8 +41171,8 @@ type UpdateBucketBundleInput struct {
 
 	// The ID of the new bundle to apply to the bucket.
 	//
-	// Use the GetBucketBundles action to get a list of bundle IDs that you can
-	// specify.
+	// Use the GetBucketBundles (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetBucketBundles.html)
+	// action to get a list of bundle IDs that you can specify.
 	//
 	// BundleId is a required field
 	BundleId *string `locationName:"bundleId" type:"string" required:"true"`
@@ -41599,7 +41655,7 @@ type UpdateDistributionInput struct {
 	IsEnabled *bool `locationName:"isEnabled" type:"boolean"`
 
 	// An object that describes the origin resource for the distribution, such as
-	// a Lightsail instance or load balancer.
+	// a Lightsail instance, bucket, or load balancer.
 	//
 	// The distribution pulls, caches, and serves content from the origin.
 	Origin *InputOrigin `locationName:"origin" type:"structure"`

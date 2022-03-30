@@ -34,6 +34,10 @@ type ResumableUpload struct {
 
 	// Retry optionally configures retries for requests made against the upload.
 	Retry *RetryConfig
+
+	// ChunkRetryDeadline configures the per-chunk deadline after which no further
+	// retries should happen.
+	ChunkRetryDeadline time.Duration
 }
 
 // Progress returns the number of bytes uploaded at this point.
@@ -151,10 +155,24 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 			}
 			return nil, err
 		}
+		// This case is very unlikely but possible only if rx.ChunkRetryDeadline is
+		// set to a very small value, in which case no requests will be sent before
+		// the deadline. Return an error to avoid causing a panic.
+		if resp == nil {
+			return nil, fmt.Errorf("upload request to %v not sent, choose larger value for ChunkRetryDealine", rx.URI)
+		}
 		return resp, nil
 	}
 	// Configure retryable error criteria.
 	errorFunc := rx.Retry.errorFunc()
+
+	// Configure per-chunk retry deadline.
+	var retryDeadline time.Duration
+	if rx.ChunkRetryDeadline != 0 {
+		retryDeadline = rx.ChunkRetryDeadline
+	} else {
+		retryDeadline = defaultRetryDeadline
+	}
 
 	// Send all chunks.
 	for {
@@ -175,6 +193,22 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 			case <-time.After(pause):
 			case <-quitAfter:
 				return prepareReturn(resp, err)
+			}
+
+			// Check for context cancellation or timeout once more. If more than one
+			// case in the select statement above was satisfied at the same time, Go
+			// will choose one arbitrarily.
+			// That can cause an operation to go through even if the context was
+			// canceled before or the timeout was reached.
+			select {
+			case <-ctx.Done():
+				if err == nil {
+					err = ctx.Err()
+				}
+				return prepareReturn(resp, err)
+			case <-quitAfter:
+				return prepareReturn(resp, err)
+			default:
 			}
 
 			resp, err = rx.transferChunk(ctx)

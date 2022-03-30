@@ -341,7 +341,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 		}
 
 		newChunk := chunk.NewChunk(
-			userID, chks[0].Fingerprint, chks[0].Metric,
+			userID, chks[0].FingerprintModel(), chks[0].Metric,
 			facade,
 			interval.Start,
 			interval.End,

@@ -11,7 +11,6 @@ metadata:
             "name": "lokistack-sample"
           },
           "spec": {
-            "replicationFactor": 2,
             "size": "1x.small",
             "storage": {
               "secret": {
@@ -35,14 +34,15 @@ metadata:
       Loki is a memory intensive application.  The initial
       set of OCP nodes may not be large enough to support the Loki stack.  Additional OCP nodes must be added
       to the OCP cluster if you desire to run with the recommended (or better) memory.
-    olm.skipRange: '>=4.6.0-0 <5.4.0'
+    olm.skipRange: '>=5.4.0-0 <5.5.0'
     operatorframework.io/cluster-monitoring: "true"
-    operatorframework.io/suggested-namespace: openshift-logging
+    operatorframework.io/suggested-namespace: openshift-operators-redhat
     operators.operatorframework.io/builder: operator-sdk-unknown
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
     support: AOS Cluster Logging
   labels:
     operatorframework.io/arch.amd64: supported
+    operatorframework.io/arch.arm64: supported
     operatorframework.io/arch.ppc64le: supported
     operatorframework.io/arch.s390x: supported
   name: loki-operator.v0.0.1
@@ -524,6 +524,7 @@ spec:
         - apiGroups:
           - monitoring.coreos.com
           resources:
+          - prometheusrules
           - servicemonitors
           verbs:
           - create
@@ -546,6 +547,8 @@ spec:
           resources:
           - clusterrolebindings
           - clusterroles
+          - rolebindings
+          - roles
           verbs:
           - create
           - delete
@@ -592,6 +595,8 @@ spec:
           strategy: {}
           template:
             metadata:
+              annotations:
+                kubectl.kubernetes.io/default-container: manager
               labels:
                 app.kubernetes.io/instance: loki-operator-v0.0.1
                 app.kubernetes.io/managed-by: operator-lifecycle-manager
@@ -607,11 +612,12 @@ spec:
                 - --with-cert-signing-service
                 - --with-service-monitors
                 - --with-tls-service-monitors
+                - --with-prometheus-alerts
                 command:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.4.1
+                  value: quay.io/openshift-logging/loki:v2.4.2
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -643,7 +649,7 @@ spec:
                 - --logtostderr=true
                 - --tls-cert-file=/var/run/secrets/serving-cert/tls.crt
                 - --tls-private-key-file=/var/run/secrets/serving-cert/tls.key
-                - --v=2
+                - --v=0
                 image: quay.io/openshift/origin-kube-rbac-proxy:latest
                 name: kube-rbac-proxy
                 ports:
@@ -653,6 +659,8 @@ spec:
                 volumeMounts:
                 - mountPath: /var/run/secrets/serving-cert
                   name: loki-operator-metrics-cert
+              nodeSelector:
+                kubernetes.io/os: linux
               terminationGracePeriodSeconds: 10
               volumes:
               - name: loki-operator-metrics-cert
@@ -704,6 +712,14 @@ spec:
   - email: loki-operator-team@googlegroups.com
     name: Grafana Loki SIG Operator
   maturity: alpha
+  minKubeVersion: 1.21.1
   provider:
     name: Grafana.com
+  relatedImages:
+  - image: quay.io/observatorium/opa-openshift:latest
+    name: opa
+  - image: quay.io/openshift-logging/loki:v2.4.2
+    name: loki
+  - image: quay.io/observatorium/api:latest
+    name: gateway
   version: 0.0.1

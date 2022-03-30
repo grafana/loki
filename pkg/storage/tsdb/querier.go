@@ -18,6 +18,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
@@ -40,6 +41,9 @@ func init() {
 
 // IndexReader provides reading access of serialized index data.
 type IndexReader interface {
+	// Bounds returns the earliest and latest samples in the index
+	Bounds() (int64, int64)
+
 	// Symbols return an iterator over sorted string symbols that may occur in
 	// series' labels and indices. It is not safe to use the returned strings
 	// beyond the lifetime of the index reader.
@@ -55,16 +59,12 @@ type IndexReader interface {
 	// The Postings here contain the offsets to the series inside the index.
 	// Found IDs are not strictly required to point to a valid Series, e.g.
 	// during background garbage collections. Input values must be sorted.
-	Postings(name string, values ...string) (index.Postings, error)
-
-	// SortedPostings returns a postings list that is reordered to be sorted
-	// by the label set of the underlying series.
-	SortedPostings(index.Postings) index.Postings
+	Postings(name string, shard *index.ShardAnnotation, values ...string) (index.Postings, error)
 
 	// Series populates the given labels and chunk metas for the series identified
 	// by the reference.
 	// Returns storage.ErrNotFound if the ref does not resolve to a known series.
-	Series(ref storage.SeriesRef, lset *labels.Labels, chks *[]index.ChunkMeta) error
+	Series(ref storage.SeriesRef, lset *labels.Labels, chks *[]index.ChunkMeta) (uint64, error)
 
 	// LabelNames returns all the unique label names present in the index in sorted order.
 	LabelNames(matchers ...*labels.Matcher) ([]string, error)
@@ -84,7 +84,7 @@ type IndexReader interface {
 
 // PostingsForMatchers assembles a single postings iterator against the index reader
 // based on the given matchers. The resulting postings are not ordered by series.
-func PostingsForMatchers(ix IndexReader, ms ...*labels.Matcher) (index.Postings, error) {
+func PostingsForMatchers(ix IndexReader, shard *index.ShardAnnotation, ms ...*labels.Matcher) (index.Postings, error) {
 	var its, notIts []index.Postings
 	// See which label must be non-empty.
 	// Optimization for case like {l=~".", l!="1"}.
@@ -108,7 +108,7 @@ func PostingsForMatchers(ix IndexReader, ms ...*labels.Matcher) (index.Postings,
 					return nil, err
 				}
 
-				it, err := postingsForMatcher(ix, inverse)
+				it, err := postingsForMatcher(ix, shard, inverse)
 				if err != nil {
 					return nil, err
 				}
@@ -121,14 +121,14 @@ func PostingsForMatchers(ix IndexReader, ms ...*labels.Matcher) (index.Postings,
 					return nil, err
 				}
 
-				it, err := inversePostingsForMatcher(ix, inverse)
+				it, err := inversePostingsForMatcher(ix, shard, inverse)
 				if err != nil {
 					return nil, err
 				}
 				its = append(its, it)
 			} else { // l="a"
 				// Non-Not matcher, use normal postingsForMatcher.
-				it, err := postingsForMatcher(ix, m)
+				it, err := postingsForMatcher(ix, shard, m)
 				if err != nil {
 					return nil, err
 				}
@@ -139,7 +139,7 @@ func PostingsForMatchers(ix IndexReader, ms ...*labels.Matcher) (index.Postings,
 			// the series which don't have the label name set too. See:
 			// https://github.com/prometheus/prometheus/issues/3575 and
 			// https://github.com/prometheus/prometheus/pull/3578#issuecomment-351653555
-			it, err := inversePostingsForMatcher(ix, m)
+			it, err := inversePostingsForMatcher(ix, shard, m)
 			if err != nil {
 				return nil, err
 			}
@@ -150,7 +150,7 @@ func PostingsForMatchers(ix IndexReader, ms ...*labels.Matcher) (index.Postings,
 	// If there's nothing to subtract from, add in everything and remove the notIts later.
 	if len(its) == 0 && len(notIts) != 0 {
 		k, v := index.AllPostingsKey()
-		allPostings, err := ix.Postings(k, v)
+		allPostings, err := ix.Postings(k, shard, v)
 		if err != nil {
 			return nil, err
 		}
@@ -166,12 +166,12 @@ func PostingsForMatchers(ix IndexReader, ms ...*labels.Matcher) (index.Postings,
 	return it, nil
 }
 
-func postingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Postings, error) {
+func postingsForMatcher(ix IndexReader, shard *index.ShardAnnotation, m *labels.Matcher) (index.Postings, error) {
 	// This method will not return postings for missing labels.
 
 	// Fast-path for equal matching.
 	if m.Type == labels.MatchEqual {
-		return ix.Postings(m.Name, m.Value)
+		return ix.Postings(m.Name, shard, m.Value)
 	}
 
 	// Fast-path for set matching.
@@ -179,7 +179,7 @@ func postingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Postings, erro
 		setMatches := findSetMatches(m.GetRegexString())
 		if len(setMatches) > 0 {
 			sort.Strings(setMatches)
-			return ix.Postings(m.Name, setMatches...)
+			return ix.Postings(m.Name, shard, setMatches...)
 		}
 	}
 
@@ -207,11 +207,11 @@ func postingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Postings, erro
 	if !isSorted {
 		sort.Strings(res)
 	}
-	return ix.Postings(m.Name, res...)
+	return ix.Postings(m.Name, shard, res...)
 }
 
 // inversePostingsForMatcher returns the postings for the series with the label name set but not matching the matcher.
-func inversePostingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Postings, error) {
+func inversePostingsForMatcher(ix IndexReader, shard *index.ShardAnnotation, m *labels.Matcher) (index.Postings, error) {
 	vals, err := ix.LabelValues(m.Name)
 	if err != nil {
 		return nil, err
@@ -232,7 +232,7 @@ func inversePostingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Posting
 	if !isSorted {
 		sort.Strings(res)
 	}
-	return ix.Postings(m.Name, res...)
+	return ix.Postings(m.Name, shard, res...)
 }
 
 func findSetMatches(pattern string) []string {
@@ -275,4 +275,59 @@ func findSetMatches(pattern string) []string {
 		}
 	}
 	return matches
+}
+
+func labelValuesWithMatchers(r IndexReader, name string, matchers ...*labels.Matcher) ([]string, error) {
+	// We're only interested in metrics which have the label <name>.
+	requireLabel, err := labels.NewMatcher(labels.MatchNotEqual, name, "")
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to instantiate label matcher")
+	}
+
+	var p index.Postings
+	p, err = PostingsForMatchers(r, nil, append(matchers, requireLabel)...)
+	if err != nil {
+		return nil, err
+	}
+
+	dedupe := map[string]interface{}{}
+	for p.Next() {
+		v, err := r.LabelValueFor(p.At(), name)
+		if err != nil {
+			if err == storage.ErrNotFound {
+				continue
+			}
+
+			return nil, err
+		}
+		dedupe[v] = nil
+	}
+
+	if err = p.Err(); err != nil {
+		return nil, err
+	}
+
+	values := make([]string, 0, len(dedupe))
+	for value := range dedupe {
+		values = append(values, value)
+	}
+
+	return values, nil
+}
+
+func labelNamesWithMatchers(r IndexReader, matchers ...*labels.Matcher) ([]string, error) {
+	p, err := PostingsForMatchers(r, nil, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	var postings []storage.SeriesRef
+	for p.Next() {
+		postings = append(postings, p.At())
+	}
+	if p.Err() != nil {
+		return nil, errors.Wrapf(p.Err(), "postings for label names with matchers")
+	}
+
+	return r.LabelNamesFor(postings...)
 }

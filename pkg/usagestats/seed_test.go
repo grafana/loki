@@ -72,7 +72,8 @@ func Test_Memberlist(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(i int) {
 			leader, err := NewReporter(Config{
-				Leader: true,
+				Leader:  true,
+				Enabled: true,
 			}, kv.Config{
 				Store: "memberlist",
 				StoreConfig: kv.StoreConfig{

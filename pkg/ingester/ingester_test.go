@@ -20,8 +20,11 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
+
+	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -32,7 +35,6 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -299,10 +301,6 @@ func (s *mockStore) PutOne(ctx context.Context, from, through model.Time, chunk 
 	return nil
 }
 
-func (s *mockStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	return nil, nil
-}
-
 func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
 	return nil, nil, nil
 }
@@ -316,14 +314,6 @@ func (s *mockStore) LabelNamesForMetricName(ctx context.Context, userID string, 
 }
 
 func (s *mockStore) GetChunkFetcher(tm model.Time) *chunk.Fetcher {
-	return nil
-}
-
-func (s *mockStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
-	return nil
-}
-
-func (s *mockStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
 	return nil
 }
 
@@ -800,7 +790,7 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 			log.Fatal(err)
 		}
 	}()
-	conn, err := grpc.DialContext(context.Background(), "", grpc.WithInsecure(), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
 		return listener.Dial()
 	}))
 	require.NoError(t, err)

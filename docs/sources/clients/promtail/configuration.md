@@ -97,6 +97,9 @@ scrape_configs:
 
 # Configures how tailed targets will be watched.
 [target_config: <target_config>]
+
+# Configures additional promtail configurations.
+[options: <options_config>]
 ```
 
 ## server
@@ -156,7 +159,7 @@ The `server` block configures Promtail's behavior as an HTTP server:
 
 ## clients
 
-The `clients` block configures how Promtail connects to an instance of
+The `clients` block configures how Promtail connects to instances of
 Loki:
 
 ```yaml
@@ -273,12 +276,6 @@ external_labels:
 
 # Maximum time to wait for a server to respond to a request
 [timeout: <duration> | default = 10s]
-
-# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
-# The default value is "filename". A "host" label is always included.
-# The stream lag metric indicates which streams are falling behind on writes to Loki;
-# be mindful about using too many labels, as it can increase cardinality.
-[stream_lag_labels: <string> | default = "filename"]
 ```
 
 ## positions
@@ -1769,6 +1766,16 @@ targets.
 # Period to resync directories being watched and files being tailed to discover
 # new ones or stop watching removed ones.
 sync_period: "10s"
+```
+
+## options_config
+
+```yaml
+# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
+# The default value is "filename". A "host" label is always included.
+# The stream lag metric indicates which streams are falling behind on writes to Loki;
+# be mindful about using too many labels, as it can increase cardinality.
+[stream_lag_labels: <string> | default = "filename"]
 ```
 
 ## Example Docker Config

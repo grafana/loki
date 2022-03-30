@@ -44,7 +44,7 @@ local pull_secret = secret('dockerconfigjson', 'secret/data/common/gcr', '.docke
 local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 'pat');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
-local deploy_configuration = secret('deploy_config', 'common/loki/ci/autodeploy', 'config.json');
+local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
 
 
 local run(name, commands) = {
@@ -134,6 +134,30 @@ local promtail_win() = pipeline('promtail-windows') {
       ],
     },
   ],
+};
+
+local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
+  steps+: [
+    // dry run for everything that is not tag or main
+    docker('amd64', 'querytee') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMain,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/loki-query-tee',
+      },
+    },
+  ] + [
+    // publish for tag or main
+    docker('amd64', 'querytee') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMain,
+      settings+: {
+        repo: 'grafana/loki-query-tee',
+      },
+    },
+  ],
+  depends_on: ['check'],
 };
 
 local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
@@ -371,24 +395,6 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
-  pipeline('benchmark-cron') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    node: { type: 'no-parallel' },
-    steps: [
-      run('All', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...']),
-    ],
-    trigger: {
-      event: {
-        include: ['cron'],
-      },
-      cron: {
-        include: ['loki-bench'],
-      },
-    },
-  },
 ] + [
   multiarch_image(arch)
   for arch in archs
@@ -422,6 +428,7 @@ local manifest(apps) = pipeline('manifest') {
   fluentbit(),
   fluentd(),
   logstash(),
+  querytee(),
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMain {

@@ -14,7 +14,7 @@ spec:
         - "--logtostderr=true"
         - "--tls-cert-file=/var/run/secrets/serving-cert/tls.crt"
         - "--tls-private-key-file=/var/run/secrets/serving-cert/tls.key"
-        - "--v=2"
+        - "--v=0"
         ports:
         - containerPort: 8443
           name: https

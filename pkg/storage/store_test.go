@@ -903,16 +903,21 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	defer store.Stop()
 
 	// get all the chunks from both the stores
-	chunks, err := store.Get(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
+	chunks, _, err := store.GetChunkRefs(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
 	require.NoError(t, err)
-
+	var totalChunks int
+	for _, chks := range chunks {
+		totalChunks += len(chks)
+	}
 	// we get common chunk twice because it is indexed in both the stores
-	require.Len(t, chunks, len(addedChunkIDs)+1)
+	require.Equal(t, totalChunks, len(addedChunkIDs)+1)
 
 	// check whether we got back all the chunks which were added
 	for i := range chunks {
-		_, ok := addedChunkIDs[schemaConfig.ExternalKey(chunks[i])]
-		require.True(t, ok)
+		for _, c := range chunks[i] {
+			_, ok := addedChunkIDs[schemaConfig.ExternalKey(c)]
+			require.True(t, ok)
+		}
 	}
 }
 
@@ -1118,7 +1123,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 
 func Test_OverlappingChunks(t *testing.T) {
 	chunks := []chunk.Chunk{
-
 		newChunk(logproto.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []logproto.Entry{

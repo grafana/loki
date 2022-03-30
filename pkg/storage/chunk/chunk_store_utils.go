@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -46,15 +45,6 @@ func filterChunksByTime(from, through model.Time, chunks []Chunk) []Chunk {
 	return filtered
 }
 
-func keysFromChunks(s SchemaConfig, chunks []Chunk) []string {
-	keys := make([]string, 0, len(chunks))
-	for _, chk := range chunks {
-		keys = append(keys, s.ExternalKey(chk))
-	}
-
-	return keys
-}
-
 func labelNamesFromChunks(chunks []Chunk) []string {
 	var result UniqueStrings
 	for _, c := range chunks {
@@ -71,28 +61,14 @@ func filterChunksByUniqueFingerprint(s SchemaConfig, chunks []Chunk) ([]Chunk, [
 	uniqueFp := map[model.Fingerprint]struct{}{}
 
 	for _, chunk := range chunks {
-		if _, ok := uniqueFp[chunk.Fingerprint]; ok {
+		if _, ok := uniqueFp[chunk.FingerprintModel()]; ok {
 			continue
 		}
 		filtered = append(filtered, chunk)
 		keys = append(keys, s.ExternalKey(chunk))
-		uniqueFp[chunk.Fingerprint] = struct{}{}
+		uniqueFp[chunk.FingerprintModel()] = struct{}{}
 	}
 	return filtered, keys
-}
-
-func filterChunksByMatchers(chunks []Chunk, filters []*labels.Matcher) []Chunk {
-	filteredChunks := make([]Chunk, 0, len(chunks))
-outer:
-	for _, chunk := range chunks {
-		for _, filter := range filters {
-			if !filter.Matches(chunk.Metric.Get(filter.Name)) {
-				continue outer
-			}
-		}
-		filteredChunks = append(filteredChunks, chunk)
-	}
-	return filteredChunks
 }
 
 // Fetcher deals with fetching chunk contents from the cache/store,

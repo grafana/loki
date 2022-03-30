@@ -16,8 +16,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.16']
+        go: ['1.17']
     steps:
+    - name: Install make
+      run: sudo apt-get install make
     - name: Set up Go 1.x
       uses: actions/setup-go@v2
       with:
@@ -31,6 +33,9 @@ jobs:
         skip-go-installation: true
         args: --timeout=2m
         working-directory: ./operator
+    - name: Check prometheus rules
+      working-directory: ./operator
+      run: make lint-prometheus
 
   build-manager:
     name: Build Manager
@@ -38,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.16']
+        go: ['1.17']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -59,7 +64,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.16']
+        go: ['1.17']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -80,8 +85,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.16']
+        go: ['1.17']
     steps:
+    - name: Install make
+      run: sudo apt-get install make
     - name: Set up Go 1.x
       uses: actions/setup-go@v2
       with:
@@ -91,6 +98,9 @@ jobs:
     - name: Run tests
       working-directory: ./operator
       run: go test -coverprofile=profile.cov ./...
+    - name: Run prometheus rule tests
+      working-directory: ./operator
+      run: make test-unit-prometheus
     - name: Send coverage
       uses: shogo82148/actions-goveralls@v1
       with:

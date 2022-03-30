@@ -4,14 +4,15 @@
 // requests to Amazon Elastic Compute Cloud.
 //
 // Amazon Elastic Compute Cloud (Amazon EC2) provides secure and resizable computing
-// capacity in the AWS Cloud. Using Amazon EC2 eliminates the need to invest
-// in hardware up front, so you can develop and deploy applications faster.
-// Amazon Virtual Private Cloud (Amazon VPC) enables you to provision a logically
-// isolated section of the AWS Cloud where you can launch AWS resources in a
-// virtual network that you've defined. Amazon Elastic Block Store (Amazon EBS)
-// provides block level storage volumes for use with EC2 instances. EBS volumes
-// are highly available and reliable storage volumes that can be attached to
-// any running instance and used like a hard drive.
+// capacity in the Amazon Web Services Cloud. Using Amazon EC2 eliminates the
+// need to invest in hardware up front, so you can develop and deploy applications
+// faster. Amazon Virtual Private Cloud (Amazon VPC) enables you to provision
+// a logically isolated section of the Amazon Web Services Cloud where you can
+// launch Amazon Web Services resources in a virtual network that you've defined.
+// Amazon Elastic Block Store (Amazon EBS) provides block level storage volumes
+// for use with EC2 instances. EBS volumes are highly available and reliable
+// storage volumes that can be attached to any running instance and used like
+// a hard drive.
 //
 // To learn more, see the following resources:
 //
@@ -24,8 +25,8 @@
 //    * Amazon VPC: Amazon VPC product page (http://aws.amazon.com/vpc), Amazon
 //    VPC documentation (http://aws.amazon.com/documentation/vpc)
 //
-//    * AWS VPN: AWS VPN product page (http://aws.amazon.com/vpn), AWS VPN documentation
-//    (http://aws.amazon.com/documentation/vpn)
+//    * Amazon Web Services VPN: Amazon Web Services VPN product page (http://aws.amazon.com/vpn),
+//    Amazon Web Services VPN documentation (http://aws.amazon.com/documentation/vpn)
 //
 // See https://docs.aws.amazon.com/goto/WebAPI/ec2-2016-11-15 for more information on this service.
 //
