@@ -68,6 +68,45 @@ func TestNewMulti(t *testing.T) {
 	}
 }
 
+func TestNewMulti_BlockDuplicates(t *testing.T) {
+	_, err := NewMulti(nilMetrics, nil, util_log.Logger, []Config{}...)
+	if err == nil {
+		t.Fatal("expected err but got nil")
+	}
+	host1, _ := url.Parse("http://localhost:3100")
+	cc1 := Config{
+		BatchSize:      20,
+		BatchWait:      1 * time.Second,
+		URL:            flagext.URLValue{URL: host1},
+		ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"order": "yaml"}},
+	}
+	cc1Copy := cc1
+
+	_, err = NewMulti(metrics, nil, util_log.Logger, cc1, cc1Copy)
+	require.Error(t, err, "expected NewMulti to reject duplicate client configs")
+
+	cc1Copy.Name = "copy"
+	clients, err := NewMulti(metrics, nil, util_log.Logger, cc1, cc1Copy)
+	require.NoError(t, err, "expected NewMulti to reject duplicate client configs")
+
+	multi := clients.(*MultiClient)
+	if len(multi.clients) != 2 {
+		t.Fatalf("expected client: 2 got:%d", len(multi.clients))
+	}
+	actualCfg1 := clients.(*MultiClient).clients[0].(*client).cfg
+	// Yaml should overridden the command line so 'order: yaml' should be expected
+	expectedCfg1 := Config{
+		BatchSize:      20,
+		BatchWait:      1 * time.Second,
+		URL:            flagext.URLValue{URL: host1},
+		ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"order": "yaml"}},
+	}
+
+	if !reflect.DeepEqual(actualCfg1, expectedCfg1) {
+		t.Fatalf("expected cfg: %v got:%v", expectedCfg1, actualCfg1)
+	}
+}
+
 func TestMultiClient_Stop(t *testing.T) {
 	var stopped int
 
