@@ -249,9 +249,16 @@ func (s *StorageClient) queryInstrumentation(ctx context.Context, query string, 
 	sp.SetTag("sql", query)
 
 	defer func() {
+		if p := recover(); p != nil {
+			errMsg := fmt.Sprintf("query avatica fail,panic msg: %v", p)
+			err = errors.New(errMsg)
+		}
 		statusCode := "200"
 		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "avatica query fail", "sql", query, "err", err)
 			statusCode = "500"
+			ext.Error.Set(sp, true)
+			sp.LogFields(otlog.String("event", "error"), otlog.String("message", err.Error()))
 		}
 		parts := strings.SplitN(query, " ", 2)
 		requestDuration.WithLabelValues(parts[0], statusCode).Observe(end.Sub(start).Seconds())
@@ -260,9 +267,6 @@ func (s *StorageClient) queryInstrumentation(ctx context.Context, query string, 
 	err = queryFunc()
 	end = time.Now()
 	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "avatica query fail", "sql", query, "err", err)
-		ext.Error.Set(sp, true)
-		sp.LogFields(otlog.String("event", "error"), otlog.String("message", err.Error()))
 		return errors.WithStack(err)
 	}
 	return nil
