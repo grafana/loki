@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -466,38 +465,31 @@ func (q *querierMock) SelectSamples(ctx context.Context, params logql.SelectSamp
 
 func (q *querierMock) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	args := q.Called(ctx, req)
-
-	if req.Name == defaultTenantLabel {
-		id, _ := tenant.TenantIDs(ctx)
-		return &logproto.LabelResponse{
-			Values: id,
-		}, args.Error(1)
-	}
-
-	return &logproto.LabelResponse{
-		Values: []string{"test"},
-	}, args.Error(1)
+	return args.Get(0).(*logproto.LabelResponse), args.Error(1)
 }
 
 func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	args := q.Called(ctx, req)
+	return args.Get(0).(func() *logproto.SeriesResponse)(), args.Error(1)
 
-	return &logproto.SeriesResponse{
-		Series: []logproto.SeriesIdentifier{
-			{
-				Labels: map[string]string{"a": "1", "b": "2"},
+	/*
+		return &logproto.SeriesResponse{
+			Series: []logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"a": "1", "b": "2"},
+				},
+				{
+					Labels: map[string]string{"a": "1", "b": "3"},
+				},
+				{
+					Labels: map[string]string{"a": "1", "b": "4"},
+				},
+				{
+					Labels: map[string]string{"a": "1", "b": "5"},
+				},
 			},
-			{
-				Labels: map[string]string{"a": "1", "b": "3"},
-			},
-			{
-				Labels: map[string]string{"a": "1", "b": "4"},
-			},
-			{
-				Labels: map[string]string{"a": "1", "b": "5"},
-			},
-		},
-	}, args.Error(1)
+		}, args.Error(1)
+	*/
 }
 
 func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {

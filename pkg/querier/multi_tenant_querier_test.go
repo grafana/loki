@@ -220,9 +220,7 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 		}
 	}
 
-	original := tenant.DefaultResolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-	defer tenant.WithDefaultResolver(original)
 
 	for _, tc := range []struct {
 		desc           string
@@ -257,7 +255,7 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			querier := newQuerierMock()
-			querier.On("Label", mock.Anything, mock.Anything).Return(mockLabelResponse([]string{}), nil)
+			querier.On("Label", mock.Anything, mock.Anything).Return(mockLabelResponse([]string{"test"}), nil)
 			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 
@@ -269,9 +267,7 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 }
 
 func TestMultiTenantQuerierSeries(t *testing.T) {
-	original := tenant.DefaultResolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-	defer tenant.WithDefaultResolver(original)
 
 	for _, tc := range []struct {
 		desc           string
@@ -323,7 +319,7 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			querier := newQuerierMock()
-			querier.On("Series", mock.Anything, mock.Anything).Return(mockSeriesResponse([]logproto.SeriesIdentifier{}), nil)
+			querier.On("Series", mock.Anything, mock.Anything).Return(func() *logproto.SeriesResponse { return mockSeriesResponse() }, nil)
 			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 
@@ -341,8 +337,21 @@ func mockSeriesRequest() *logproto.SeriesRequest {
 	}
 }
 
-func mockSeriesResponse(series []logproto.SeriesIdentifier) *logproto.SeriesResponse {
+func mockSeriesResponse() *logproto.SeriesResponse {
 	return &logproto.SeriesResponse{
-		Series: series,
+		Series: []logproto.SeriesIdentifier{
+			{
+				Labels: map[string]string{"a": "1", "b": "2"},
+			},
+			{
+				Labels: map[string]string{"a": "1", "b": "3"},
+			},
+			{
+				Labels: map[string]string{"a": "1", "b": "4"},
+			},
+			{
+				Labels: map[string]string{"a": "1", "b": "5"},
+			},
+		},
 	}
 }
