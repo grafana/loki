@@ -193,7 +193,7 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 				ctx := user.InjectOrgID(context.Background(), "1|2")
 				resp, err := q.Label(ctx, req)
 				require.Nil(t, err)
-				require.Equal(t, resp.GetValues(), []string{"test"})
+				require.Equal(t, []string{"test"}, resp.GetValues())
 			},
 		},
 		{
@@ -227,6 +227,7 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 				mockIngesterClientConfig(),
 				newIngesterClientMockFactory(ingesterClient),
 				mockReadRingWithOneActiveIngester(),
+				&mockDeleteGettter{},
 				store, limits)
 			require.NoError(t, err)
 
@@ -326,7 +327,12 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			querier := newQuerierMock()
-			querier.On("Series", mock.Anything, mock.Anything).Return(&logproto.SeriesResponse{}, nil)
+			querier.On("Series", mock.Anything, mock.Anything).Return(mockSeriesResponse([]logproto.SeriesIdentifier{
+				{Labels: map[string]string{"a": "1", "b": "2"}},
+				{Labels: map[string]string{"a": "1", "b": "3"}},
+				{Labels: map[string]string{"a": "1", "b": "4"}},
+				{Labels: map[string]string{"a": "1", "b": "5"}},
+			}), nil)
 			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 
@@ -341,5 +347,11 @@ func mockSeriesRequest() *logproto.SeriesRequest {
 	return &logproto.SeriesRequest{
 		Start: time.Unix(0, 0),
 		End:   time.Unix(10, 0),
+	}
+}
+
+func mockSeriesResponse(series []logproto.SeriesIdentifier) *logproto.SeriesResponse {
+	return &logproto.SeriesResponse{
+		Series: series,
 	}
 }

@@ -78,7 +78,7 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 }
 
 func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	tenantIDs, err := q.resolver.TenantIDs(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -88,8 +88,7 @@ func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelReque
 	}
 
 	if len(tenantIDs) == 1 {
-		singleContext := user.InjectUserID(ctx, tenantIDs[0])
-		return q.Querier.Label(singleContext, req)
+		return q.Querier.Label(ctx, req)
 	}
 
 	responses := make([]*logproto.LabelResponse, len(tenantIDs))
@@ -107,14 +106,13 @@ func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelReque
 }
 
 func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	tenantIDs, err := q.resolver.TenantIDs(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(tenantIDs) == 1 {
-		singleContext := user.InjectUserID(ctx, tenantIDs[0])
-		return q.Querier.Series(singleContext, req)
+		return q.Querier.Series(ctx, req)
 	}
 
 	responses := make([]*logproto.SeriesResponse, len(tenantIDs))
