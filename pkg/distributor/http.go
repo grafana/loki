@@ -9,8 +9,9 @@ import (
 
 	"github.com/grafana/loki/pkg/util"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"

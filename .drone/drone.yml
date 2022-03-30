@@ -855,7 +855,7 @@ steps:
     dry_run: true
     password:
       from_secret: docker_password
-    repo: grafana/querytee
+    repo: grafana/loki-query-tee
     username:
       from_secret: docker_username
   when:
@@ -873,7 +873,7 @@ steps:
     dry_run: false
     password:
       from_secret: docker_password
-    repo: grafana/querytee
+    repo: grafana/loki-query-tee
     username:
       from_secret: docker_username
   when:
@@ -1101,6 +1101,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: d46edb356841403724d7a261f095fcbaf22e0e077e35e9b2e4c8bbad7aa4b77e
+hmac: 70252f32b40ca530ac9c8013f1991ddaba11c459d4b3e5eaae0d6cf10aa19617
 
 ...

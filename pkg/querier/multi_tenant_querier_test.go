@@ -13,17 +13,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/tenant"
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
-	original := tenant.DefaultResolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-	defer tenant.WithDefaultResolver(original)
 
 	for _, tc := range []struct {
 		desc      string
@@ -82,9 +81,7 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 }
 
 func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
-	original := tenant.DefaultResolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-	defer tenant.WithDefaultResolver(original)
 
 	for _, tc := range []struct {
 		desc      string

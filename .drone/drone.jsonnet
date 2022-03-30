@@ -144,7 +144,7 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
       when: condition('exclude').tagMain,
       settings+: {
         dry_run: true,
-        repo: 'grafana/querytee',
+        repo: 'grafana/loki-query-tee',
       },
     },
   ] + [
@@ -153,7 +153,7 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
       depends_on: ['image-tag'],
       when: condition('include').tagMain,
       settings+: {
-        repo: 'grafana/querytee',
+        repo: 'grafana/loki-query-tee',
       },
     },
   ],

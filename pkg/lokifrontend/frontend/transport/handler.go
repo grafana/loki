@@ -18,8 +18,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/dskit/tenant"
+
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
-	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
