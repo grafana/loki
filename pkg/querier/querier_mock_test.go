@@ -466,20 +466,22 @@ func (q *querierMock) SelectSamples(ctx context.Context, params logql.SelectSamp
 
 func (q *querierMock) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	args := q.Called(ctx, req)
+
 	if req.Name == defaultTenantLabel {
 		id, _ := tenant.TenantIDs(ctx)
 		return &logproto.LabelResponse{
 			Values: id,
 		}, args.Error(1)
-	} else {
-		return &logproto.LabelResponse{
-			Values: []string{"test"},
-		}, args.Error(1)
 	}
+
+	return &logproto.LabelResponse{
+		Values: []string{"test"},
+	}, args.Error(1)
 }
 
 func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	args := q.Called(ctx, req)
+
 	return &logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
