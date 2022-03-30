@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"fmt"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -39,9 +40,8 @@ func NewCacheableIndex(index *TSDBIndex, cache cache.Cache) CacheableIndex {
 }
 
 // Stop does everything necessary to stop this index safely.
-func (i *CacheableIndex) Stop() error {
+func (i *CacheableIndex) Stop() {
 	i.Cache.Stop()
-	return nil
 }
 
 // GetChunkRefs is a cached implementation of GetChunkRefs.
@@ -51,11 +51,7 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 	const opName = "GetChunkRefs"
 
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matcher *labels.Matcher) string {
-		stringfiedShard := ""
-		if shard != nil {
-			stringfiedShard = shard.String()
-		}
-
+		stringfiedShard := fmt.Sprint(shard)
 		keyMembers := []string{
 			userID, from.String(), through.String(), stringfiedShard,
 		}
@@ -107,11 +103,7 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 	const opName = "Series"
 
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matcher *labels.Matcher) string {
-		stringfiedShard := ""
-		if shard != nil {
-			stringfiedShard = shard.String()
-		}
-
+		stringfiedShard := fmt.Sprint(shard)
 		keyMembers := []string{
 			userID, from.String(), through.String(), stringfiedShard,
 		}
