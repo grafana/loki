@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -465,10 +466,18 @@ func (q *querierMock) SelectSamples(ctx context.Context, params logql.SelectSamp
 
 func (q *querierMock) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	args := q.Called(ctx, req)
-	return args.Get(0).(*logproto.LabelResponse), args.Error(1)
+	if req.Name == defaultTenantLabel {
+		id, _ := tenant.TenantIDs(ctx)
+		return &logproto.LabelResponse{
+			Values: id,
+		}, args.Error(1)
+	} else {
+		return &logproto.LabelResponse{
+			Values: []string{"test"},
+		}, args.Error(1)
+	}
 }
 
-// Instead of reusing the args, return a new response
 func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	args := q.Called(ctx, req)
 	return &logproto.SeriesResponse{
