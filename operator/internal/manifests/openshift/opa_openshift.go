@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	envRelatedImageOPA = "RELATED_IMAGE_OPA"
-	defaultOPAImage    = "quay.io/observatorium/opa-openshift:latest"
-	opaContainerName   = "opa"
-	opaDefaultPackage  = "lokistack"
-	opaDefaultAPIGroup = "loki.grafana.com"
-	opaMetricsPortName = "opa-metrics"
+	envRelatedImageOPA     = "RELATED_IMAGE_OPA"
+	defaultOPAImage        = "quay.io/observatorium/opa-openshift:latest"
+	opaContainerName       = "opa"
+	opaDefaultPackage      = "lokistack"
+	opaDefaultAPIGroup     = "loki.grafana.com"
+	opaMetricsPortName     = "opa-metrics"
+	opaDefaultLabelMatcher = "kubernetes_namespace_name"
 )
 
 func newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile string, withTLS bool) corev1.Container {
@@ -35,6 +36,7 @@ func newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile strin
 	args = []string{
 		"--log.level=warn",
 		fmt.Sprintf("--opa.package=%s", opaDefaultPackage),
+		fmt.Sprintf("--opa.matcher=%s", opaDefaultLabelMatcher),
 		fmt.Sprintf("--web.listen=:%d", GatewayOPAHTTPPort),
 		fmt.Sprintf("--web.internal.listen=:%d", GatewayOPAInternalPort),
 		fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", GatewayOPAHTTPPort),
@@ -65,9 +67,10 @@ func newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile strin
 	}
 
 	return corev1.Container{
-		Name:  opaContainerName,
-		Image: image,
-		Args:  args,
+		Name:            opaContainerName,
+		Image:           image,
+		ImagePullPolicy: corev1.PullAlways,
+		Args:            args,
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          GatewayOPAHTTPPortName,
