@@ -84,9 +84,9 @@ dashboard [10004](https://grafana.com/dashboards/10004).
 
 ## Metrics cardinality
 
-Some of the metrics above are emitted per tracked file (active) with the file path included in the labels. 
-Depending on your setup, this may result in very large amount of label values across the environment (cardinality). This is generally discouraged by [Prometheus](https://prometheus.io/docs/practices/naming/#labels) and may result with unwanted side effects. 
-Make sure to review the emitted metrics before starting scraping with Prometheus and config the scraping accordingly if you suspect this might be an issue.
+Some of the Loki observability metrics are emitted per tracked file (active), with the file path included in labels. 
+This increases the quantity of label values across the environment, thereby increasing cardinality. Best practices with Prometheus [labels](https://prometheus.io/docs/practices/naming/#labels) discourage increasing cardinality in this way. 
+Review your emitted metrics before scraping with Prometheus, and configure the scraping to avoid this issue.
 
 
 ## Mixins
