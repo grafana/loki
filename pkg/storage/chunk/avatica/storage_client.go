@@ -284,10 +284,12 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 	var rows *sql.Rows
 	var err error
 	var queryFunc func() error
-	if p := recover(); p != nil {
-		errMsg := fmt.Sprintf("query avatica panic,querySQL: %v,panic msg: %v", querySQL, p)
-		return errors.New(errMsg)
-	}
+	defer func() {
+		if p := recover(); p != nil {
+			errMsg := fmt.Sprintf("query avatica panic,querySQL: %v,panic msg: %v", querySQL, p)
+			panic(errMsg)
+		}
+	}()
 
 	switch {
 	case len(query.RangeValuePrefix) > 0 && query.ValueEqual == nil:
