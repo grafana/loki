@@ -67,10 +67,9 @@ func newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile strin
 	}
 
 	return corev1.Container{
-		Name:            opaContainerName,
-		Image:           image,
-		ImagePullPolicy: corev1.PullAlways,
-		Args:            args,
+		Name:  opaContainerName,
+		Image: image,
+		Args:  args,
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          GatewayOPAHTTPPortName,
