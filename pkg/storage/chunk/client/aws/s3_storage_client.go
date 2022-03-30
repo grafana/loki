@@ -31,7 +31,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 
 	bucket_s3 "github.com/grafana/loki/pkg/storage/bucket/s3"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -410,9 +410,9 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 }
 
 // List implements chunk.ObjectClient.
-func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
-	var storageObjects []chunk.StorageObject
-	var commonPrefixes []chunk.StorageCommonPrefix
+func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	var storageObjects []client.StorageObject
+	var commonPrefixes []client.StorageCommonPrefix
 
 	for i := range a.bucketNames {
 		err := instrument.CollectedRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
@@ -429,14 +429,14 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 				}
 
 				for _, content := range output.Contents {
-					storageObjects = append(storageObjects, chunk.StorageObject{
+					storageObjects = append(storageObjects, client.StorageObject{
 						Key:        *content.Key,
 						ModifiedAt: *content.LastModified,
 					})
 				}
 
 				for _, commonPrefix := range output.CommonPrefixes {
-					commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(aws.StringValue(commonPrefix.Prefix)))
+					commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(aws.StringValue(commonPrefix.Prefix)))
 				}
 
 				if output.IsTruncated == nil || !*output.IsTruncated {

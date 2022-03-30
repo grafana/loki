@@ -1,4 +1,4 @@
-package chunk
+package storage
 
 import (
 	"os"

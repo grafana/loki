@@ -8,23 +8,22 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client/objectclient"
-	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
-	"github.com/grafana/loki/pkg/storage/chunk/testutils"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 type fixture struct {
 	name    string
-	clients func() (index.IndexClient, chunk.Client, index.TableClient, config.SchemaConfig, io.Closer, error)
+	clients func() (index.IndexClient, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error)
 }
 
 func (f fixture) Name() string {
 	return f.name
 }
 
-func (f fixture) Clients() (index.IndexClient, chunk.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
+func (f fixture) Clients() (index.IndexClient, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
 	return f.clients()
 }
 
@@ -32,7 +31,7 @@ func (f fixture) Clients() (index.IndexClient, chunk.Client, index.TableClient, 
 var Fixtures = []testutils.Fixture{
 	fixture{
 		name: "S3 chunks",
-		clients: func() (index.IndexClient, chunk.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
+		clients: func() (index.IndexClient, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
 			schemaConfig := testutils.DefaultSchemaConfig("s3")
 			dynamoDB := newMockDynamoDB(0, 0)
 			table := &dynamoTableClient{
@@ -47,7 +46,7 @@ var Fixtures = []testutils.Fixture{
 				metrics:                 newMetrics(nil),
 			}
 			mock := newMockS3()
-			object := objectclient.NewClient(&S3ObjectClient{S3: mock, hedgedS3: mock}, nil, schemaConfig)
+			object := client.NewClient(&S3ObjectClient{S3: mock, hedgedS3: mock}, nil, schemaConfig)
 			return index, object, table, schemaConfig, testutils.CloserFunc(func() error {
 				table.Stop()
 				index.Stop()
@@ -66,7 +65,7 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 	return fixture{
 		name: fmt.Sprintf("DynamoDB chunks provisionedErr=%d, ChunkGangSize=%d, ChunkGetMaxParallelism=%d",
 			provisionedErr, gangsize, maxParallelism),
-		clients: func() (index.IndexClient, chunk.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
+		clients: func() (index.IndexClient, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
 			dynamoDB := newMockDynamoDB(0, provisionedErr)
 			schemaCfg := testutils.DefaultSchemaConfig("aws")
 			table := &dynamoTableClient{

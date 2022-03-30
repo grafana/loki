@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/config"
-	"github.com/grafana/loki/pkg/storage/chunk/testutils"
+	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 const (
@@ -19,11 +19,11 @@ const (
 
 func TestChunksPartialError(t *testing.T) {
 	fixture := dynamoDBFixture(0, 10, 20)
-	_, client, closer, err := testutils.Setup(fixture, tableName)
+	_, c, closer, err := testutils.Setup(fixture, tableName)
 	require.NoError(t, err)
 	defer closer.Close()
 
-	sc, ok := client.(*dynamoDBStorageClient)
+	sc, ok := c.(*dynamoDBStorageClient)
 	if !ok {
 		t.Error("DynamoDB test client has unexpected type")
 		return
@@ -41,13 +41,13 @@ func TestChunksPartialError(t *testing.T) {
 	}
 	_, chunks, err := testutils.CreateChunks(s, 0, dynamoDBMaxReadBatchSize+50, model.Now().Add(-time.Hour), model.Now())
 	require.NoError(t, err)
-	err = client.PutChunks(ctx, chunks)
+	err = c.PutChunks(ctx, chunks)
 	require.NoError(t, err)
 
 	// Make the read fail after 1 success, and keep failing until all retries are exhausted
 	sc.setErrorParameters(999, 1)
 	// Try to read back all the chunks we created, so we should get an error plus the first batch
-	chunksWeGot, err := client.GetChunks(ctx, chunks)
+	chunksWeGot, err := c.GetChunks(ctx, chunks)
 	require.Error(t, err)
 	require.Equal(t, dynamoDBMaxReadBatchSize, len(chunksWeGot))
 }

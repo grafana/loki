@@ -20,7 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	client_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/util"
@@ -370,9 +370,9 @@ func (b *BlobStorage) fetchMSIToken() (*adal.ServicePrincipalToken, error) {
 }
 
 // List implements chunk.ObjectClient.
-func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
-	var storageObjects []chunk.StorageObject
-	var commonPrefixes []chunk.StorageCommonPrefix
+func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	var storageObjects []client.StorageObject
+	var commonPrefixes []client.StorageCommonPrefix
 
 	for marker := (azblob.Marker{}); marker.NotDone(); {
 		if ctx.Err() != nil {
@@ -389,7 +389,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]chu
 
 			// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 			for _, blobInfo := range listBlob.Segment.BlobItems {
-				storageObjects = append(storageObjects, chunk.StorageObject{
+				storageObjects = append(storageObjects, client.StorageObject{
 					Key:        blobInfo.Name,
 					ModifiedAt: blobInfo.Properties.LastModified,
 				})
@@ -397,7 +397,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]chu
 
 			// Process the BlobPrefixes so called commonPrefixes or synthetic directories in the listed synthetic directory
 			for _, blobPrefix := range listBlob.Segment.BlobPrefixes {
-				commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(blobPrefix.Name))
+				commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(blobPrefix.Name))
 			}
 
 			return nil

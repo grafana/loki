@@ -9,9 +9,9 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/math"
 )
 
@@ -23,7 +23,7 @@ type bigtableObjectClient struct {
 
 // NewBigtableObjectClient makes a new chunk.Client that stores chunks in
 // Bigtable.
-func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg config.SchemaConfig) (chunk.Client, error) {
+func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg config.SchemaConfig) (client.Client, error) {
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg config.S
 	return newBigtableObjectClient(cfg, schemaCfg, client), nil
 }
 
-func newBigtableObjectClient(cfg Config, schemaCfg config.SchemaConfig, client *bigtable.Client) chunk.Client {
+func newBigtableObjectClient(cfg Config, schemaCfg config.SchemaConfig, client *bigtable.Client) client.Client {
 	return &bigtableObjectClient{
 		cfg:       cfg,
 		schemaCfg: schemaCfg,

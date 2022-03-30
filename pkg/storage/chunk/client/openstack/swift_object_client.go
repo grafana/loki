@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	bucket_swift "github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/util/log"
 )
@@ -142,7 +142,7 @@ func (s *SwiftObjectClient) PutObject(ctx context.Context, objectKey string, obj
 }
 
 // List only objects from the store non-recursively
-func (s *SwiftObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+func (s *SwiftObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	if len(delimiter) > 1 {
 		return nil, nil, fmt.Errorf("delimiter must be a single character but was %s", delimiter)
 	}
@@ -159,18 +159,18 @@ func (s *SwiftObjectClient) List(ctx context.Context, prefix, delimiter string) 
 		return nil, nil, err
 	}
 
-	var storageObjects []chunk.StorageObject
-	var storagePrefixes []chunk.StorageCommonPrefix
+	var storageObjects []client.StorageObject
+	var storagePrefixes []client.StorageCommonPrefix
 
 	for _, obj := range objs {
 		// based on the docs when subdir is set, it means it's a pseudo directory.
 		// see https://docs.openstack.org/swift/latest/api/pseudo-hierarchical-folders-directories.html
 		if obj.SubDir != "" {
-			storagePrefixes = append(storagePrefixes, chunk.StorageCommonPrefix(obj.SubDir))
+			storagePrefixes = append(storagePrefixes, client.StorageCommonPrefix(obj.SubDir))
 			continue
 		}
 
-		storageObjects = append(storageObjects, chunk.StorageObject{
+		storageObjects = append(storageObjects, client.StorageObject{
 			Key:        obj.Name,
 			ModifiedAt: obj.LastModified,
 		})

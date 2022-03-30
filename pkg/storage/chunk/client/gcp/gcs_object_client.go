@@ -12,7 +12,7 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 )
@@ -147,9 +147,9 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 }
 
 // List implements chunk.ObjectClient.
-func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
-	var storageObjects []chunk.StorageObject
-	var commonPrefixes []chunk.StorageCommonPrefix
+func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	var storageObjects []client.StorageObject
+	var commonPrefixes []client.StorageCommonPrefix
 	q := &storage.Query{Prefix: prefix, Delimiter: delimiter}
 
 	// Using delimiter and selected attributes doesn't work well together -- it returns nothing.
@@ -179,11 +179,11 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 
 		// When doing query with Delimiter, Prefix is the only field set for entries which represent synthetic "directory entries".
 		if attr.Prefix != "" {
-			commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(attr.Prefix))
+			commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(attr.Prefix))
 			continue
 		}
 
-		storageObjects = append(storageObjects, chunk.StorageObject{
+		storageObjects = append(storageObjects, client.StorageObject{
 			Key:        attr.Name,
 			ModifiedAt: attr.Updated,
 		})

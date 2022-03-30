@@ -29,7 +29,7 @@ type ChunkWriter interface {
 }
 
 // Store for chunks.
-type Store interface {
+type ChunkStore interface {
 	ChunkWriter
 	// GetChunkRefs returns the un-loaded chunks and the fetchers to be used to load them. You can load each slice of chunks ([]Chunk),
 	// using the corresponding Fetcher (fetchers[i].FetchChunks(ctx, chunks[i], ...)

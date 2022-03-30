@@ -16,7 +16,6 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -24,6 +23,25 @@ const (
 	secondsInDay      = int64(24 * time.Hour / time.Second)
 	millisecondsInDay = int64(24 * time.Hour / time.Millisecond)
 	v12               = "v12"
+	// Supported storage clients
+
+	StorageTypeAWS            = "aws"
+	StorageTypeAWSDynamo      = "aws-dynamo"
+	StorageTypeAzure          = "azure"
+	StorageTypeBoltDB         = "boltdb"
+	StorageTypeCassandra      = "cassandra"
+	StorageTypeInMemory       = "inmemory"
+	StorageTypeBigTable       = "bigtable"
+	StorageTypeBigTableHashed = "bigtable-hashed"
+	StorageTypeFileSystem     = "filesystem"
+	StorageTypeGCP            = "gcp"
+	StorageTypeGCPColumnKey   = "gcp-columnkey"
+	StorageTypeGCS            = "gcs"
+	StorageTypeGrpc           = "grpc-store"
+	StorageTypeS3             = "s3"
+	StorageTypeSwift          = "swift"
+	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
+	BoltDBShipperType = "boltdb-shipper"
 )
 
 var (
@@ -131,12 +149,12 @@ func (cfg *SchemaConfig) Validate() error {
 	activePCIndex := ActivePeriodConfig((*cfg).Configs)
 
 	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
-	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
+	if cfg.Configs[activePCIndex].IndexType == BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
 		return errCurrentBoltdbShipperNon24Hours
 	}
 
 	// if upcoming index type is boltdb-shipper, it should always be set to 24 hours.
-	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex+1].IndexTables.Period != 24*time.Hour) {
+	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == BoltDBShipperType && cfg.Configs[activePCIndex+1].IndexTables.Period != 24*time.Hour) {
 		return errUpcomingBoltdbShipperNon24Hours
 	}
 
@@ -172,8 +190,8 @@ func ActivePeriodConfig(configs []PeriodConfig) int {
 // UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
 func UsingBoltdbShipper(configs []PeriodConfig) bool {
 	activePCIndex := ActivePeriodConfig(configs)
-	if configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
-		(len(configs)-1 > activePCIndex && configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
+	if configs[activePCIndex].IndexType == BoltDBShipperType ||
+		(len(configs)-1 > activePCIndex && configs[activePCIndex+1].IndexType == BoltDBShipperType) {
 		return true
 	}
 

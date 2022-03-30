@@ -1,18 +1,51 @@
-package objectclient
+package client
 
 import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"io"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/chunk/config"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/config"
 )
+
+// ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)
+type ObjectClient interface {
+	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
+	// NOTE: The consumer of GetObject should always call the Close method when it is done reading which otherwise could cause a resource leak.
+	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error)
+
+	// List objects with given prefix.
+	//
+	// If delimiter is empty, all objects are returned, even if they are in nested in "subdirectories".
+	// If delimiter is not empty, it is used to compute common prefixes ("subdirectories"),
+	// and objects containing delimiter in the name will not be returned in the result.
+	//
+	// For example, if the prefix is "notes/" and the delimiter is a slash (/) as in "notes/summer/july", the common prefix is "notes/summer/".
+	// Common prefixes will always end with passed delimiter.
+	//
+	// Keys of returned storage objects have given prefix.
+	List(ctx context.Context, prefix string, delimiter string) ([]StorageObject, []StorageCommonPrefix, error)
+	DeleteObject(ctx context.Context, objectKey string) error
+	IsObjectNotFoundErr(err error) bool
+	Stop()
+}
+
+// StorageObject represents an object being stored in an Object Store
+type StorageObject struct {
+	Key        string
+	ModifiedAt time.Time
+}
+
+// StorageCommonPrefix represents a common prefix aka a synthetic directory in Object Store.
+// It is guaranteed to always end with delimiter passed to List method.
+type StorageCommonPrefix string
 
 // KeyEncoder is used to encode chunk keys before writing/retrieving chunks
 // from the underlying ObjectClient
@@ -42,21 +75,21 @@ var FSEncoder = func(schema config.SchemaConfig, chk encoding.Chunk) string {
 
 const defaultMaxParallel = 150
 
-// Client is used to store chunks in object store backends
-type Client struct {
-	store               chunk.ObjectClient
+// client is used to store chunks in object store backends
+type client struct {
+	store               ObjectClient
 	keyEncoder          KeyEncoder
 	getChunkMaxParallel int
 	schema              config.SchemaConfig
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
-func NewClient(store chunk.ObjectClient, encoder KeyEncoder, schema config.SchemaConfig) *Client {
+func NewClient(store ObjectClient, encoder KeyEncoder, schema config.SchemaConfig) *client {
 	return NewClientWithMaxParallel(store, encoder, defaultMaxParallel, schema)
 }
 
-func NewClientWithMaxParallel(store chunk.ObjectClient, encoder KeyEncoder, maxParallel int, schema config.SchemaConfig) *Client {
-	return &Client{
+func NewClientWithMaxParallel(store ObjectClient, encoder KeyEncoder, maxParallel int, schema config.SchemaConfig) *client {
+	return &client{
 		store:               store,
 		keyEncoder:          encoder,
 		getChunkMaxParallel: maxParallel,
@@ -65,13 +98,13 @@ func NewClientWithMaxParallel(store chunk.ObjectClient, encoder KeyEncoder, maxP
 }
 
 // Stop shuts down the object store and any underlying clients
-func (o *Client) Stop() {
+func (o *client) Stop() {
 	o.store.Stop()
 }
 
 // PutChunks stores the provided chunks in the configured backend. If multiple errors are
 // returned, the last one sequentially will be propagated up.
-func (o *Client) PutChunks(ctx context.Context, chunks []encoding.Chunk) error {
+func (o *client) PutChunks(ctx context.Context, chunks []encoding.Chunk) error {
 	var (
 		chunkKeys []string
 		chunkBufs [][]byte
@@ -112,7 +145,7 @@ func (o *Client) PutChunks(ctx context.Context, chunks []encoding.Chunk) error {
 }
 
 // GetChunks retrieves the specified chunks from the configured backend
-func (o *Client) GetChunks(ctx context.Context, chunks []encoding.Chunk) ([]encoding.Chunk, error) {
+func (o *client) GetChunks(ctx context.Context, chunks []encoding.Chunk) ([]encoding.Chunk, error) {
 	getChunkMaxParallel := o.getChunkMaxParallel
 	if getChunkMaxParallel == 0 {
 		getChunkMaxParallel = defaultMaxParallel
@@ -120,7 +153,7 @@ func (o *Client) GetChunks(ctx context.Context, chunks []encoding.Chunk) ([]enco
 	return util.GetParallelChunks(ctx, getChunkMaxParallel, chunks, o.getChunk)
 }
 
-func (o *Client) getChunk(ctx context.Context, decodeContext *encoding.DecodeContext, c encoding.Chunk) (encoding.Chunk, error) {
+func (o *client) getChunk(ctx context.Context, decodeContext *encoding.DecodeContext, c encoding.Chunk) (encoding.Chunk, error) {
 	if ctx.Err() != nil {
 		return encoding.Chunk{}, ctx.Err()
 	}
@@ -152,7 +185,7 @@ func (o *Client) getChunk(ctx context.Context, decodeContext *encoding.DecodeCon
 }
 
 // GetChunks retrieves the specified chunks from the configured backend
-func (o *Client) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+func (o *client) DeleteChunk(ctx context.Context, userID, chunkID string) error {
 	key := chunkID
 	if o.keyEncoder != nil {
 		c, err := encoding.ParseExternalKey(userID, key)
@@ -164,6 +197,6 @@ func (o *Client) DeleteChunk(ctx context.Context, userID, chunkID string) error 
 	return o.store.DeleteObject(ctx, key)
 }
 
-func (o *Client) IsChunkNotFoundErr(err error) bool {
+func (o *client) IsChunkNotFoundErr(err error) bool {
 	return o.store.IsObjectNotFoundErr(err)
 }

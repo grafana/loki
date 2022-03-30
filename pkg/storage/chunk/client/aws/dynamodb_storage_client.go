@@ -28,11 +28,11 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
 	client_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/chunk/config"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
@@ -122,7 +122,7 @@ func NewDynamoDBIndexClient(cfg DynamoDBConfig, schemaCfg config.SchemaConfig, r
 }
 
 // NewDynamoDBChunkClient makes a new DynamoDB-backed chunk.Client.
-func NewDynamoDBChunkClient(cfg DynamoDBConfig, schemaCfg config.SchemaConfig, reg prometheus.Registerer) (chunk.Client, error) {
+func NewDynamoDBChunkClient(cfg DynamoDBConfig, schemaCfg config.SchemaConfig, reg prometheus.Registerer) (chunkclient.Client, error) {
 	return newDynamoDBStorageClient(cfg, schemaCfg, reg)
 }
 

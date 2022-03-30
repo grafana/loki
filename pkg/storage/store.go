@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -16,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -28,38 +28,13 @@ var (
 	schemaStats     = usagestats.NewString("store_schema")
 )
 
-// SchemaConfig contains the config for our chunk index schemas
-type SchemaConfig struct {
-	chunk.SchemaConfig `yaml:",inline"`
-}
-
-// Validate the schema config and returns an error if the validation doesn't pass
-func (cfg *SchemaConfig) Validate() error {
-	if len(cfg.Configs) == 0 {
-		return errZeroLengthConfig
-	}
-	activePCIndex := ActivePeriodConfig((*cfg).Configs)
-
-	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
-	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
-		return errCurrentBoltdbShipperNon24Hours
-	}
-
-	// if upcoming index type is boltdb-shipper, it should always be set to 24 hours.
-	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex+1].IndexTables.Period != 24*time.Hour) {
-		return errUpcomingBoltdbShipperNon24Hours
-	}
-
-	return cfg.SchemaConfig.Validate()
-}
-
 // Store is the Loki chunk store to retrieve and save chunks.
 type Store interface {
-	chunk.Store
+	ChunkStore
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
-	GetSchemaConfigs() []chunk.PeriodConfig
+	Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+	GetSchemaConfigs() []config.PeriodConfig
 	SetChunkFilterer(chunkFilter RequestChunkFilterer)
 }
 

@@ -1,4 +1,4 @@
-package chunk
+package testutils
 
 import (
 	"bytes"
@@ -13,9 +13,10 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -470,7 +471,7 @@ func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error 
 }
 
 // List implements chunk.ObjectClient.
-func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]StorageObject, []StorageCommonPrefix, error) {
+func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -480,7 +481,7 @@ func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]Sto
 
 	prefixes := map[string]struct{}{}
 
-	storageObjects := make([]StorageObject, 0, len(m.objects))
+	storageObjects := make([]client.StorageObject, 0, len(m.objects))
 	for key := range m.objects {
 		if !strings.HasPrefix(key, prefix) {
 			continue
@@ -488,13 +489,13 @@ func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]Sto
 
 		// ToDo: Store mtime when we have mtime based use-cases for storage objects
 		if delimiter == "" {
-			storageObjects = append(storageObjects, StorageObject{Key: key})
+			storageObjects = append(storageObjects, client.StorageObject{Key: key})
 			continue
 		}
 
 		ix := strings.Index(key[len(prefix):], delimiter)
 		if ix < 0 {
-			storageObjects = append(storageObjects, StorageObject{Key: key})
+			storageObjects = append(storageObjects, client.StorageObject{Key: key})
 			continue
 		}
 
@@ -502,9 +503,9 @@ func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]Sto
 		prefixes[commonPrefix] = struct{}{}
 	}
 
-	commonPrefixes := []StorageCommonPrefix(nil)
+	commonPrefixes := []client.StorageCommonPrefix(nil)
 	for p := range prefixes {
-		commonPrefixes = append(commonPrefixes, StorageCommonPrefix(p))
+		commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(p))
 	}
 
 	// Object stores return results in sorted order.

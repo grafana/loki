@@ -11,13 +11,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/config"
+	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 const (
@@ -27,7 +25,7 @@ const (
 // Fixture type for per-backend testing.
 type Fixture interface {
 	Name() string
-	Clients() (index.IndexClient, chunk.Client, index.TableClient, config.SchemaConfig, io.Closer, error)
+	Clients() (index.IndexClient, chunkclient.Client, index.TableClient, config.SchemaConfig, io.Closer, error)
 }
 
 // CloserFunc is to io.Closer as http.HandlerFunc is to http.Handler.
@@ -40,12 +38,11 @@ func (f CloserFunc) Close() error {
 
 // DefaultSchemaConfig returns default schema for use in test fixtures
 func DefaultSchemaConfig(kind string) config.SchemaConfig {
-	schemaConfig := chunk.DefaultSchemaConfig(kind, "v9", model.Now().Add(-time.Hour*2))
-	return schemaConfig
+	return defaultSchemaConfig(kind, "v9", model.Now().Add(-time.Hour*2))
 }
 
 // Setup a fixture with initial tables
-func Setup(fixture Fixture, tableName string) (index.IndexClient, chunk.Client, io.Closer, error) {
+func Setup(fixture Fixture, tableName string) (index.IndexClient, chunkclient.Client, io.Closer, error) {
 	var tbmConfig index.TableManagerConfig
 	flagext.DefaultValues(&tbmConfig)
 	indexClient, chunkClient, tableClient, schemaConfig, closer, err := fixture.Clients()
@@ -111,47 +108,69 @@ func dummyChunkFor(from, through model.Time, metric labels.Labels) encoding.Chun
 	return chunk
 }
 
-func SetupTestChunkStoreWithClients(indexClient index.IndexClient, chunksClient chunk.Client, tableClient index.TableClient) (chunk.Store, error) {
-	var (
-		tbmConfig index.TableManagerConfig
-		schemaCfg = chunk.DefaultSchemaConfig("", "v10", 0)
-	)
-	flagext.DefaultValues(&tbmConfig)
-	tableManager, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, tableClient, nil, nil, nil)
-	if err != nil {
-		return nil, err
+func defaultSchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{{
+			IndexType: store,
+			Schema:    schema,
+			From:      config.DayTime{from},
+			ChunkTables: config.PeriodicTableConfig{
+				Prefix: "cortex",
+				Period: 7 * 24 * time.Hour,
+			},
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: "cortex_chunks",
+				Period: 7 * 24 * time.Hour,
+			},
+		}},
 	}
-
-	err = tableManager.SyncTables(context.Background())
-	if err != nil {
-		return nil, err
+	if err := s.Validate(); err != nil {
+		panic(err)
 	}
-
-	var limits validation.Limits
-	flagext.DefaultValues(&limits)
-	limits.MaxQueryLength = model.Duration(30 * 24 * time.Hour)
-	overrides, err := validation.NewOverrides(limits, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var storeCfg chunk.StoreConfig
-	flagext.DefaultValues(&storeCfg)
-
-	store := chunk.NewCompositeStore(nil)
-	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], indexClient, chunksClient, overrides, cache.NewNoopCache(), cache.NewNoopCache())
-	if err != nil {
-		return nil, err
-	}
-
-	return store, nil
+	return s
 }
 
-func SetupTestChunkStore() (chunk.Store, error) {
-	storage := chunk.NewMockStorage()
-	return SetupTestChunkStoreWithClients(storage, storage, storage)
-}
+// func SetupTestChunkStoreWithClients(indexClient index.IndexClient, chunksClient chunkclient.Client, tableClient index.TableClient) (chunk.Store, error) {
+// 	var (
+// 		tbmConfig index.TableManagerConfig
+// 		schemaCfg = chunk.DefaultSchemaConfig("", "v10", 0)
+// 	)
+// 	flagext.DefaultValues(&tbmConfig)
+// 	tableManager, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, tableClient, nil, nil, nil)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-func SetupTestObjectStore() (chunk.ObjectClient, error) {
-	return chunk.NewMockStorage(), nil
-}
+// 	err = tableManager.SyncTables(context.Background())
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	var limits validation.Limits
+// 	flagext.DefaultValues(&limits)
+// 	limits.MaxQueryLength = model.Duration(30 * 24 * time.Hour)
+// 	overrides, err := validation.NewOverrides(limits, nil)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	var storeCfg config.StoreConfig
+// 	flagext.DefaultValues(&storeCfg)
+
+// 	store := storage.NewCompositeStore(nil)
+// 	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], indexClient, chunksClient, overrides, cache.NewNoopCache(), cache.NewNoopCache())
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	return store, nil
+// }
+
+// func SetupTestChunkStore() (storage.ChunkStore, error) {
+// 	storage := NewMockStorage()
+// 	return SetupTestChunkStoreWithClients(storage, storage, storage)
+// }
+
+// func SetupTestObjectStore() (chunkclient.ObjectClient, error) {
+// 	return NewMockStorage(), nil
+// }

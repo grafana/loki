@@ -13,12 +13,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	"github.com/grafana/loki/pkg/storage/chunk/client/objectclient"
-	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
-	"github.com/grafana/loki/pkg/storage/chunk/testutils"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 const (
@@ -41,7 +40,7 @@ func (f *fixture) Name() string {
 }
 
 func (f *fixture) Clients() (
-	iClient index.IndexClient, cClient chunk.Client, tClient index.TableClient,
+	iClient index.IndexClient, cClient client.Client, tClient index.TableClient,
 	schemaConfig config.SchemaConfig, closer io.Closer, err error,
 ) {
 	f.btsrv, err = bttest.NewServer("localhost:0")
@@ -68,7 +67,7 @@ func (f *fixture) Clients() (
 		client: adminClient,
 	}
 
-	client, err := bigtable.NewClient(ctx, proj, instance, option.WithGRPCConn(conn))
+	c, err := bigtable.NewClient(ctx, proj, instance, option.WithGRPCConn(conn))
 	if err != nil {
 		return
 	}
@@ -77,9 +76,9 @@ func (f *fixture) Clients() (
 		DistributeKeys: f.hashPrefix,
 	}
 	if f.columnKeyClient {
-		iClient = newStorageClientColumnKey(cfg, schemaConfig, client)
+		iClient = newStorageClientColumnKey(cfg, schemaConfig, c)
 	} else {
-		iClient = newStorageClientV1(cfg, schemaConfig, client)
+		iClient = newStorageClientV1(cfg, schemaConfig, c)
 	}
 
 	if f.gcsObjectClient {
@@ -90,9 +89,9 @@ func (f *fixture) Clients() (
 		if err != nil {
 			return
 		}
-		cClient = objectclient.NewClient(c, nil, config.SchemaConfig{})
+		cClient = client.NewClient(c, nil, config.SchemaConfig{})
 	} else {
-		cClient = newBigtableObjectClient(Config{}, schemaConfig, client)
+		cClient = newBigtableObjectClient(Config{}, schemaConfig, c)
 	}
 
 	closer = testutils.CloserFunc(func() error {

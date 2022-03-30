@@ -7,10 +7,10 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
-	"github.com/grafana/loki/pkg/storage/chunk/testutils"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 // GOCQL doesn't provide nice mocks, so we use a real Cassandra instance.
@@ -27,7 +27,7 @@ func (f *fixture) Name() string {
 	return f.name
 }
 
-func (f *fixture) Clients() (index.IndexClient, chunk.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
+func (f *fixture) Clients() (index.IndexClient, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 	cfg.Addresses = f.addresses

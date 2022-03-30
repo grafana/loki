@@ -3,7 +3,7 @@ package index
 import (
 	"context"
 
-	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 // TableClient is a client for telling Dynamo what to do with tables.

@@ -14,7 +14,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -108,7 +108,7 @@ func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object i
 
 // List implements chunk.ObjectClient.
 // FSObjectClient assumes that prefix is a directory, and only supports "" and "/" delimiters.
-func (f *FSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+func (f *FSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	if delimiter != "" && delimiter != "/" {
 		return nil, nil, fmt.Errorf("unsupported delimiter: %q", delimiter)
 	}
@@ -124,11 +124,11 @@ func (f *FSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 	}
 	if !info.IsDir() {
 		// When listing single file, return this file only.
-		return []chunk.StorageObject{{Key: info.Name(), ModifiedAt: info.ModTime()}}, nil, nil
+		return []client.StorageObject{{Key: info.Name(), ModifiedAt: info.ModTime()}}, nil, nil
 	}
 
-	var storageObjects []chunk.StorageObject
-	var commonPrefixes []chunk.StorageCommonPrefix
+	var storageObjects []client.StorageObject
+	var commonPrefixes []client.StorageCommonPrefix
 
 	err = filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -159,12 +159,12 @@ func (f *FSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 			}
 
 			if !empty {
-				commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(relPath+delimiter))
+				commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(relPath+delimiter))
 			}
 			return filepath.SkipDir
 		}
 
-		storageObjects = append(storageObjects, chunk.StorageObject{Key: relPath, ModifiedAt: info.ModTime()})
+		storageObjects = append(storageObjects, client.StorageObject{Key: relPath, ModifiedAt: info.ModTime()})
 		return nil
 	})
 
