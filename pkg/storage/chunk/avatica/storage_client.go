@@ -249,10 +249,6 @@ func (s *StorageClient) queryInstrumentation(ctx context.Context, query string, 
 	sp.SetTag("sql", query)
 
 	defer func() {
-		if p := recover(); p != nil {
-			errMsg := fmt.Sprintf("query avatica fail,panic msg: %v", p)
-			err = errors.New(errMsg)
-		}
 		statusCode := "200"
 		if err != nil {
 			level.Warn(util_log.Logger).Log("msg", "avatica query fail", "sql", query, "err", err)
@@ -288,6 +284,11 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 	var rows *sql.Rows
 	var err error
 	var queryFunc func() error
+	if p := recover(); p != nil {
+		errMsg := fmt.Sprintf("query avatica panic,querySQL: %v,panic msg: %v", querySQL, p)
+		return errors.New(errMsg)
+	}
+
 	switch {
 	case len(query.RangeValuePrefix) > 0 && query.ValueEqual == nil:
 		querySQL = fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND range < ?",
