@@ -392,7 +392,9 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.indexGatewayRing, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRing
+	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		return
 	}
@@ -731,7 +733,8 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
-	t.Cfg.IndexGateway.IndexGatewayRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+
 	objectClient, err := chunk_storage.NewObjectClient(t.Cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType, t.Cfg.StorageConfig.Config, t.clientMetrics)
 	if err != nil {
 		return nil, err
@@ -742,7 +745,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		return nil, err
 	}
 
-	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, shipperIndexClient.(*shipper.Shipper), shipperIndexClient)
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, shipperIndexClient)
 	if err != nil {
 		return nil, err
 	}
@@ -753,9 +756,13 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
-	t.Cfg.IndexGateway.IndexGatewayRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	t.Cfg.IndexGateway.IndexGatewayRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	ringCfg := t.Cfg.IndexGateway.IndexGatewayRing.ToRingConfig(indexgateway.RingReplicationFactor)
+	if t.Cfg.IndexGateway.Mode != indexgateway.RingMode {
+		return
+	}
+
+	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
+	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	ringCfg := t.Cfg.IndexGateway.Ring.ToRingConfig(indexgateway.RingReplicationFactor)
 	reg := prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer)
 	t.indexGatewayRing, err = ring.New(ringCfg, indexgateway.RingIdentifier, indexgateway.RingKey, util_log.Logger, reg)
 	if err != nil {

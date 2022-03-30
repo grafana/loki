@@ -65,10 +65,10 @@ type Config struct {
 	Server           server.Config            `yaml:"server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
 	Querier          querier.Config           `yaml:"querier,omitempty"`
-	IndexGateway     indexgateway.Config      `yaml:"index_gateway,omitempty"`
 	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
 	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
 	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
+	IndexGateway     indexgateway.Config      `yaml:"index_gateway"`
 	ChunkStoreConfig storage.ChunkStoreConfig `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig     storage.SchemaConfig     `yaml:"schema_config,omitempty"`
 	LimitsConfig     validation.Limits        `yaml:"limits_config,omitempty"`
@@ -106,6 +106,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)
+	c.IndexGateway.RegisterFlags(f)
 	c.ChunkStoreConfig.RegisterFlags(f)
 	c.SchemaConfig.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
@@ -120,7 +121,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.CompactorConfig.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.UsageReport.RegisterFlags(f)
-	c.IndexGateway.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -272,7 +272,7 @@ func New(cfg Config) (*Loki, error) {
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
-	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, &loki.Cfg.IndexGateway, loki.clientMetrics, prometheus.DefaultRegisterer)
+	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, loki.clientMetrics, prometheus.DefaultRegisterer)
 
 	return loki, nil
 }

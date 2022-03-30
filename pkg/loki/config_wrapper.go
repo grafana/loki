@@ -128,7 +128,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Ruler.Ring.InstanceAddr = r.Common.InstanceAddr
 		r.QueryScheduler.SchedulerRing.InstanceAddr = r.Common.InstanceAddr
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
-		r.IndexGateway.IndexGatewayRing.InstanceAddr = r.Common.InstanceAddr
+		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -138,7 +138,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Ruler.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 		r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
-		r.IndexGateway.IndexGatewayRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -249,16 +249,16 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 	}
 
 	// IndexGateway
-	if mergeWithExisting || reflect.DeepEqual(r.IndexGateway.IndexGatewayRing, defaults.IndexGateway.IndexGatewayRing) {
-		r.IndexGateway.IndexGatewayRing.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.IndexGateway.IndexGatewayRing.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.IndexGateway.IndexGatewayRing.InstancePort = rc.InstancePort
-		r.IndexGateway.IndexGatewayRing.InstanceAddr = rc.InstanceAddr
-		r.IndexGateway.IndexGatewayRing.InstanceID = rc.InstanceID
-		r.IndexGateway.IndexGatewayRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.IndexGateway.IndexGatewayRing.InstanceZone = rc.InstanceZone
-		r.IndexGateway.IndexGatewayRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.IndexGateway.IndexGatewayRing.KVStore = rc.KVStore
+	if mergeWithExisting || reflect.DeepEqual(r.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring, defaults.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring) {
+		r.IndexGateway.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IndexGateway.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IndexGateway.Ring.InstancePort = rc.InstancePort
+		r.IndexGateway.Ring.InstanceAddr = rc.InstanceAddr
+		r.IndexGateway.Ring.InstanceID = rc.InstanceID
+		r.IndexGateway.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.IndexGateway.Ring.InstanceZone = rc.InstanceZone
+		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
 }
 
@@ -288,7 +288,7 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	if err != nil {
 		return err
 	}
-	cfg.IndexGateway.IndexGatewayRing.TokensFilePath = f
+	cfg.IndexGateway.Ring.TokensFilePath = f
 
 	return nil
 }
@@ -364,8 +364,8 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 		cfg.Ruler.Ring.InstanceInterfaceNames = append(cfg.Ruler.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 
-	if reflect.DeepEqual(cfg.IndexGateway.IndexGatewayRing.InstanceInterfaceNames, defaults.IndexGateway.IndexGatewayRing.InstanceInterfaceNames) {
-		cfg.IndexGateway.IndexGatewayRing.InstanceInterfaceNames = append(cfg.IndexGateway.IndexGatewayRing.InstanceInterfaceNames, loopbackIface)
+	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
+		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 }
 
@@ -379,7 +379,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.Ruler.Ring.KVStore.Store = memberlistStr
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
-	r.IndexGateway.IndexGatewayRing.KVStore.Store = memberlistStr
+	r.IndexGateway.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
