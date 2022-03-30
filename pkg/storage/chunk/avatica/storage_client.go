@@ -286,7 +286,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 	var queryFunc func() error
 	defer func() {
 		if p := recover(); p != nil {
-			errMsg := fmt.Sprintf("query avatica panic,querySQL: %v,panic msg: %v", querySQL, p)
+			errMsg := fmt.Sprintf("query avatica panic,querySQL: %v,hash: %v,panic msg: %v", querySQL, query.HashValue, p)
 			panic(errMsg)
 		}
 	}()
