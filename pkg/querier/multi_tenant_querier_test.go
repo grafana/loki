@@ -164,6 +164,54 @@ func newSampleIterator() iter.SampleIterator {
 	})
 }
 
+func BenchmarkTenantEntryIteratorLabels(b *testing.B) {
+	it := newMockEntryIterator(12)
+	tenantIter := NewTenantEntryIterator(it, "tenant_1")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		tenantIter.Labels()
+	}
+}
+
+type mockEntryIterator struct {
+	labels string
+}
+
+func newMockEntryIterator(numLabels int) mockEntryIterator {
+	builder := labels.NewBuilder(nil)
+	for i := 1; i <= numLabels; i++ {
+		builder.Set(fmt.Sprintf("label_%d", i), strconv.Itoa(i))
+	}
+	return mockEntryIterator{labels: builder.Labels().String()}
+}
+
+func (it mockEntryIterator) Labels() string {
+	return it.labels
+}
+
+func (it mockEntryIterator) Entry() logproto.Entry {
+	return logproto.Entry{}
+}
+
+func (it mockEntryIterator) Next() bool {
+	return true
+}
+
+func (it mockEntryIterator) StreamHash() uint64 {
+	return 0
+}
+
+func (it mockEntryIterator) Error() error {
+	return nil
+}
+
+func (it mockEntryIterator) Close() error {
+	return nil
+}
+
 func TestMultiTenantQuerier_Label(t *testing.T) {
 	start := time.Unix(0, 0)
 	end := time.Unix(10, 0)
@@ -176,6 +224,7 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 			End:    &end,
 		}
 	}
+
 	for _, tc := range []struct {
 		desc  string
 		req   *logproto.LabelRequest
@@ -187,7 +236,7 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 			req:  mockLabelRequest("test"),
 			setup: func(store *storeMock, ingester *querierClientMock, limits validation.Limits, req *logproto.LabelRequest) {
 				ingester.On("Label", mock.Anything, req, mock.Anything).Return(mockLabelResponse(nil), nil)
-				store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(end.UnixNano()), "logs", req.Name).Return([]string{"test", "test"}, nil)
+				store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(end.UnixNano()), "logs", req.Name).Return([]string{"test"}, nil)
 			},
 			run: func(t *testing.T, q *MultiTenantQuerier, req *logproto.LabelRequest) {
 				ctx := user.InjectOrgID(context.Background(), "1|2")
@@ -238,63 +287,11 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 	}
 }
 
-func mockMultiTenantQuerierConfig() Config {
-	return Config{
-		TailMaxDuration:           1 * time.Minute,
-		QueryTimeout:              queryTimeout,
-		MultiTenantQueriesEnabled: true,
-	}
-}
-
-func BenchmarkTenantEntryIteratorLabels(b *testing.B) {
-	it := newMockEntryIterator(12)
-	tenantIter := NewTenantEntryIterator(it, "tenant_1")
-
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for n := 0; n < b.N; n++ {
-		tenantIter.Labels()
-	}
-}
-
-type mockEntryIterator struct {
-	labels string
-}
-
-func newMockEntryIterator(numLabels int) mockEntryIterator {
-	builder := labels.NewBuilder(nil)
-	for i := 1; i <= numLabels; i++ {
-		builder.Set(fmt.Sprintf("label_%d", i), strconv.Itoa(i))
-	}
-	return mockEntryIterator{labels: builder.Labels().String()}
-}
-
-func (it mockEntryIterator) Labels() string {
-	return it.labels
-}
-
-func (it mockEntryIterator) Entry() logproto.Entry {
-	return logproto.Entry{}
-}
-
-func (it mockEntryIterator) Next() bool {
-	return true
-}
-
-func (it mockEntryIterator) StreamHash() uint64 {
-	return 0
-}
-
-func (it mockEntryIterator) Error() error {
-	return nil
-}
-
-func (it mockEntryIterator) Close() error {
-	return nil
-}
-
 func TestMultiTenantQuerierSeries(t *testing.T) {
+	original := tenant.DefaultResolver
+	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+	defer tenant.WithDefaultResolver(original)
+
 	for _, tc := range []struct {
 		desc           string
 		orgID          string
@@ -327,12 +324,7 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			querier := newQuerierMock()
-			querier.On("Series", mock.Anything, mock.Anything).Return(mockSeriesResponse([]logproto.SeriesIdentifier{
-				{Labels: map[string]string{"a": "1", "b": "2"}},
-				{Labels: map[string]string{"a": "1", "b": "3"}},
-				{Labels: map[string]string{"a": "1", "b": "4"}},
-				{Labels: map[string]string{"a": "1", "b": "5"}},
-			}), nil)
+			querier.On("Series", mock.Anything, mock.Anything).Return(mockSeriesResponse([]logproto.SeriesIdentifier{}), nil)
 			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 
@@ -353,5 +345,13 @@ func mockSeriesRequest() *logproto.SeriesRequest {
 func mockSeriesResponse(series []logproto.SeriesIdentifier) *logproto.SeriesResponse {
 	return &logproto.SeriesResponse{
 		Series: series,
+	}
+}
+
+func mockMultiTenantQuerierConfig() Config {
+	return Config{
+		TailMaxDuration:           1 * time.Minute,
+		QueryTimeout:              queryTimeout,
+		MultiTenantQueriesEnabled: true,
 	}
 }
