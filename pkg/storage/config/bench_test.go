@@ -3,8 +3,8 @@ package config_test
 import (
 	"testing"
 
-	"github.com/grafana/loki/pkg/storage/chunk/config"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
 )

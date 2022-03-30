@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 func TestBackground(t *testing.T) {

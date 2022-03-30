@@ -2,7 +2,6 @@ package chunk
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"strings"
 	"time"
@@ -19,18 +18,11 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/grpc"
-	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	util_log "github.com/grafana/loki/pkg/util/log"
-)
-
-// Supported storage engines
-const (
-	StorageEngineChunks = "chunks"
-	StorageEngineBlocks = "blocks"
 )
 
 // Supported storage clients
@@ -79,29 +71,6 @@ type StoreLimits interface {
 	MaxQueryLength(userID string) time.Duration
 }
 
-// Config chooses which storage client to use.
-type Config struct {
-	Engine                 string                  `yaml:"engine"`
-	AWSStorageConfig       aws.StorageConfig       `yaml:"aws"`
-	AzureStorageConfig     azure.BlobStorageConfig `yaml:"azure"`
-	GCPStorageConfig       gcp.Config              `yaml:"bigtable"`
-	GCSConfig              gcp.GCSConfig           `yaml:"gcs"`
-	CassandraStorageConfig cassandra.Config        `yaml:"cassandra"`
-	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
-	FSConfig               local.FSConfig          `yaml:"filesystem"`
-	Swift                  openstack.SwiftConfig   `yaml:"swift"`
-
-	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
-
-	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
-	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
-	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
-
-	GrpcConfig grpc.Config `yaml:"grpc_store"`
-
-	Hedging hedging.Config `yaml:"hedging"`
-}
-
 type ClientMetrics struct {
 	AzureMetrics azure.BlobStorageMetrics
 }
@@ -114,52 +83,6 @@ func NewClientMetrics() ClientMetrics {
 
 func (c *ClientMetrics) Unregister() {
 	c.AzureMetrics.Unregister()
-}
-
-// RegisterFlags adds the flags required to configure this flag set.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.AWSStorageConfig.RegisterFlags(f)
-	cfg.AzureStorageConfig.RegisterFlags(f)
-	cfg.GCPStorageConfig.RegisterFlags(f)
-	cfg.GCSConfig.RegisterFlags(f)
-	cfg.CassandraStorageConfig.RegisterFlags(f)
-	cfg.BoltDBConfig.RegisterFlags(f)
-	cfg.FSConfig.RegisterFlags(f)
-	cfg.Swift.RegisterFlags(f)
-	cfg.GrpcConfig.RegisterFlags(f)
-	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
-
-	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or blocks.")
-	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading.", f)
-	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
-	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
-	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
-}
-
-// Validate config and returns error on failure
-func (cfg *Config) Validate() error {
-	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineBlocks {
-		return errors.New("unsupported storage engine")
-	}
-	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Cassandra Storage config")
-	}
-	if err := cfg.GCPStorageConfig.Validate(util_log.Logger); err != nil {
-		return errors.Wrap(err, "invalid GCP Storage Storage config")
-	}
-	if err := cfg.Swift.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Swift Storage config")
-	}
-	if err := cfg.IndexQueriesCacheConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Index Queries Cache config")
-	}
-	if err := cfg.AzureStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Azure Storage config")
-	}
-	if err := cfg.AWSStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid AWS Storage config")
-	}
-	return nil
 }
 
 // NewStore makes the storage clients based on the configuration.

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -30,6 +32,10 @@ var (
 	errConfigFileNotSet         = errors.New("schema config file needs to be set")
 	errConfigChunkPrefixNotSet  = errors.New("schema config for chunks is missing the 'prefix' setting")
 	errSchemaIncreasingFromTime = errors.New("from time in schemas must be distinct and in increasing order")
+
+	errCurrentBoltdbShipperNon24Hours  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
+	errUpcomingBoltdbShipperNon24Hours = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
+	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
 )
 
 // PeriodConfig defines the schema and tables to use for a period of time
@@ -119,6 +125,21 @@ func (cfg *SchemaConfig) loadFromFile() error {
 // Validate the schema config and returns an error if the validation
 // doesn't pass
 func (cfg *SchemaConfig) Validate() error {
+	if len(cfg.Configs) == 0 {
+		return errZeroLengthConfig
+	}
+	activePCIndex := ActivePeriodConfig((*cfg).Configs)
+
+	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
+	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
+		return errCurrentBoltdbShipperNon24Hours
+	}
+
+	// if upcoming index type is boltdb-shipper, it should always be set to 24 hours.
+	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex+1].IndexTables.Period != 24*time.Hour) {
+		return errUpcomingBoltdbShipperNon24Hours
+	}
+
 	for i := range cfg.Configs {
 		periodCfg := &cfg.Configs[i]
 		periodCfg.applyDefaults()
@@ -133,6 +154,30 @@ func (cfg *SchemaConfig) Validate() error {
 		}
 	}
 	return nil
+}
+
+// ActivePeriodConfig returns index of active PeriodicConfig which would be applicable to logs that would be pushed starting now.
+// Note: Another PeriodicConfig might be applicable for future logs which can change index type.
+func ActivePeriodConfig(configs []PeriodConfig) int {
+	now := model.Now()
+	i := sort.Search(len(configs), func(i int) bool {
+		return configs[i].From.Time > now
+	})
+	if i > 0 {
+		i--
+	}
+	return i
+}
+
+// UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
+func UsingBoltdbShipper(configs []PeriodConfig) bool {
+	activePCIndex := ActivePeriodConfig(configs)
+	if configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
+		(len(configs)-1 > activePCIndex && configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
+		return true
+	}
+
+	return false
 }
 
 func defaultRowShards(schema string) uint32 {

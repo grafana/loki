@@ -2,14 +2,8 @@ package storage
 
 import (
 	"context"
-	"errors"
-	"flag"
-	"sort"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -20,7 +14,6 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
@@ -30,27 +23,10 @@ import (
 )
 
 var (
-	errCurrentBoltdbShipperNon24Hours  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
-	errUpcomingBoltdbShipperNon24Hours = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
-	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
-	indexTypeStats                     = usagestats.NewString("store_index_type")
-	objectTypeStats                    = usagestats.NewString("store_object_type")
-	schemaStats                        = usagestats.NewString("store_schema")
+	indexTypeStats  = usagestats.NewString("store_index_type")
+	objectTypeStats = usagestats.NewString("store_object_type")
+	schemaStats     = usagestats.NewString("store_schema")
 )
-
-// Config is the loki storage configuration
-type Config struct {
-	storage.Config      `yaml:",inline"`
-	MaxChunkBatchSize   int            `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig shipper.Config `yaml:"boltdb_shipper"`
-}
-
-// RegisterFlags adds the flags required to configure this flag set.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.Config.RegisterFlags(f)
-	cfg.BoltDBShipperConfig.RegisterFlags(f)
-	f.IntVar(&cfg.MaxChunkBatchSize, "store.max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
-}
 
 // SchemaConfig contains the config for our chunk index schemas
 type SchemaConfig struct {
@@ -75,47 +51,6 @@ func (cfg *SchemaConfig) Validate() error {
 	}
 
 	return cfg.SchemaConfig.Validate()
-}
-
-type ChunkStoreConfig struct {
-	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config"`
-	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config"`
-
-	CacheLookupsOlderThan model.Duration `yaml:"cache_lookups_older_than"`
-
-	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers.
-	// This exists in case we don't want to cache all the chunks but still want to take advantage of
-	// ingester chunk write deduplication. But for the queriers we need the full value. So when this option
-	// is set, use different caches for ingesters and queriers.
-	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
-
-	// When DisableIndexDeduplication is true and chunk is already there in cache, only index would be written to the store and not chunk.
-	DisableIndexDeduplication bool `yaml:"-"`
-
-	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
-	// Will be deprecated in the next major release.
-	MaxLookBackPeriod model.Duration `yaml:"max_look_back_period"`
-}
-
-// RegisterFlags adds the flags required to configure this flag set.
-func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("store.chunks-cache.", "Cache config for chunks. ", f)
-	f.BoolVar(&cfg.chunkCacheStubs, "store.chunks-cache.cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
-	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing.", f)
-
-	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
-	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "This flag is deprecated. Use -querier.max-query-lookback instead.")
-}
-
-func (cfg *ChunkStoreConfig) Validate(logger log.Logger) error {
-	if cfg.MaxLookBackPeriod > 0 {
-		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(logger).Log("msg", "running with DEPRECATED flag -store.max-look-back-period, use -querier.max-query-lookback instead.")
-	}
-	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
-		return err
-	}
-	return cfg.WriteDedupeCacheConfig.Validate()
 }
 
 // Store is the Loki chunk store to retrieve and save chunks.
@@ -412,28 +347,4 @@ func RegisterCustomIndexClients(cfg *Config, cm storage.ClientMetrics, registere
 
 		return shipper.NewBoltDBShipperTableClient(objectClient, cfg.BoltDBShipperConfig.SharedStoreKeyPrefix), nil
 	})
-}
-
-// ActivePeriodConfig returns index of active PeriodicConfig which would be applicable to logs that would be pushed starting now.
-// Note: Another PeriodicConfig might be applicable for future logs which can change index type.
-func ActivePeriodConfig(configs []chunk.PeriodConfig) int {
-	now := model.Now()
-	i := sort.Search(len(configs), func(i int) bool {
-		return configs[i].From.Time > now
-	})
-	if i > 0 {
-		i--
-	}
-	return i
-}
-
-// UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
-func UsingBoltdbShipper(configs []chunk.PeriodConfig) bool {
-	activePCIndex := ActivePeriodConfig(configs)
-	if configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
-		(len(configs)-1 > activePCIndex && configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
-		return true
-	}
-
-	return false
 }
