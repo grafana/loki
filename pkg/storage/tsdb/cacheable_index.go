@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
@@ -50,13 +51,14 @@ func (i *CacheableIndex) Stop() {
 func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	const opName = "GetChunkRefs"
 
-	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matcher *labels.Matcher) string {
+	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
 		stringfiedShard := fmt.Sprint(shard)
 		keyMembers := []string{
 			userID, from.String(), through.String(), stringfiedShard,
 		}
-		if matcher != nil {
-			keyMembers = append(keyMembers, matcher.String())
+		if len(matchers) != 0 {
+			lmatchers, _ := toLabelMatchers(matchers)
+			keyMembers = append(keyMembers, lmatchers.String())
 		}
 
 		return strings.Join(keyMembers, sep)
@@ -102,13 +104,14 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 func (i *CacheableIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
 	const opName = "Series"
 
-	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matcher *labels.Matcher) string {
+	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
 		stringfiedShard := fmt.Sprint(shard)
 		keyMembers := []string{
 			userID, from.String(), through.String(), stringfiedShard,
 		}
-		if matcher != nil {
-			keyMembers = append(keyMembers, matcher.String())
+		if len(matchers) != 0 {
+			lmatchers, _ := toLabelMatchers(matchers)
+			keyMembers = append(keyMembers, lmatchers.String())
 		}
 
 		return strings.Join(keyMembers, sep)
@@ -155,11 +158,9 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
 	const opName = "LabelNames"
 
-	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matcher *labels.Matcher) string {
-		if matcher == nil {
-			return ""
-		}
-		return matcher.String()
+	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
+		lmatchers, _ := toLabelMatchers(matchers)
+		return lmatchers.String()
 	}
 
 	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([][]byte, error) {
@@ -204,11 +205,9 @@ func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, th
 func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
 	const opName = "LabelValues"
 
-	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matcher *labels.Matcher) string {
-		if matcher == nil {
-			return name
-		}
-		return strings.Join([]string{name, matcher.String()}, sep)
+	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
+		lmatchers, _ := toLabelMatchers(matchers)
+		return strings.Join([]string{name, lmatchers.String()}, sep)
 	}
 
 	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([][]byte, error) {
@@ -246,9 +245,41 @@ func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, t
 	return res, nil
 }
 
-type mountKeyFunc func(userID string, from model.Time, through model.Time, shard *index.ShardAnnotation, matcher *labels.Matcher) string
+type mountKeyFunc func(userID string, from model.Time, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string
 
 type fallbackFunc func(ctx context.Context, userID string, from model.Time, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([][]byte, error)
+
+// toLabelMatchers materialize the given matchers as LabelMatchers.
+//
+// Using LabelMatchers is specially useful because it supports String().
+func toLabelMatchers(matchers []*labels.Matcher) (*client.LabelMatchers, error) {
+	pbMatchers := &client.LabelMatchers{
+		Matchers: make([]*client.LabelMatcher, 0, len(matchers)),
+	}
+
+	for _, m := range matchers {
+		var mType client.MatchType
+		switch m.Type {
+		case labels.MatchEqual:
+			mType = client.EQUAL
+		case labels.MatchNotEqual:
+			mType = client.NOT_EQUAL
+		case labels.MatchRegexp:
+			mType = client.REGEX_MATCH
+		case labels.MatchNotRegexp:
+			mType = client.REGEX_NO_MATCH
+		default:
+			return nil, errors.New("invalid matcher type")
+		}
+		pbMatchers.Matchers = append(pbMatchers.Matchers, &client.LabelMatcher{
+			Type:  mType,
+			Name:  m.Name,
+			Value: m.Value,
+		})
+	}
+
+	return pbMatchers, nil
+}
 
 // CacheableOp abstracts an operation that cache its results.
 //
@@ -259,22 +290,8 @@ func (i *CacheableIndex) CacheableOp(ctx context.Context, opName string, keyFn m
 	userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([][]byte, error) {
 	var res [][]byte
 
-	// prepare a mapping of keys to matchers, used to retrieve matchers later.
-	keysMapping := make(map[string][]*labels.Matcher, len(matchers))
-	if len(matchers) == 0 {
-		key := keyFn(userID, from, through, shard, nil)
-		keysMapping[opName+sep+key] = []*labels.Matcher{}
-	}
-	for _, matcher := range matchers {
-		key := keyFn(userID, from, through, shard, matcher)
-		keysMapping[opName+sep+key] = []*labels.Matcher{matcher}
-	}
-
-	// define keys used to fetch data from cache.
-	var keys []string
-	for k := range keysMapping {
-		keys = append(keys, k)
-	}
+	key := keyFn(userID, from, through, shard, matchers...)
+	keys := []string{key}
 
 	// fetch data from cache.
 	_ /* hits */, response, misses, err := i.Cache.Fetch(ctx, keys)
@@ -286,8 +303,7 @@ func (i *CacheableIndex) CacheableOp(ctx context.Context, opName string, keyFn m
 
 	// fill misses and populate cache with them.
 	for _, miss := range misses {
-		missedMatchers := keysMapping[miss]
-		result, err := fallbackFn(ctx, userID, from, through, shard, missedMatchers...)
+		result, err := fallbackFn(ctx, userID, from, through, shard, matchers...)
 		if err != nil {
 			return nil, errors.Wrap(err, "fallback call")
 		}
