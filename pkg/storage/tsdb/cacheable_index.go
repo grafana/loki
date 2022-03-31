@@ -47,7 +47,7 @@ func (i *CacheableIndex) Stop() {
 
 // GetChunkRefs is a cached implementation of GetChunkRefs.
 //
-// It uses as a key for the cache all parameters (userID, from, through, shard, matchers) separated by a slash (/).
+// It uses as a key for the cache all parameters (userID, from, through, shard, matchers) separated by a colon (:).
 func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
 		stringfiedShard := fmt.Sprint(shard)
@@ -98,7 +98,7 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 
 // Series is a cached implementation of Series.
 //
-// It uses as a key for the cache all parameters (userID, from, through, shard, matchers) separated by a slash (/).
+// It uses as a key for the cache all parameters (userID, from, through, shard, matchers) separated by a colon (:).
 func (i *CacheableIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
 		stringfiedShard := fmt.Sprint(shard)
