@@ -157,10 +157,9 @@ The `server` block configures Promtail's behavior as an HTTP server:
 [health_check_target: <bool> | default = true]
 ```
 
-## clients
+## client_config
 
-The `clients` block configures how Promtail connects to instances of
-Loki:
+`client_config` configures how Promtail connects to instances of Loki:
 
 ```yaml
 # The URL where Loki is listening, denoted in Loki as http_listen_address and
