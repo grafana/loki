@@ -9,9 +9,9 @@ Promtail discovers locations of log files and extract labels from them through
 the `scrape_configs` section in the config YAML. The syntax is identical to what
 [Prometheus uses](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config).
 
-`scrape_configs` contains one or more entries which are executed for each
-discovered target (i.e., each container in each new pod running in the
-instance):
+`scrape_configs` contains one or more entries which specify scrape targets directly or
+how to discover them (for example, a `kubernetes_sd_config` entry can discover each container
+in each new pod running on a kubernetes cluster instance as a scrape target):
 
 ```
 scrape_configs:
