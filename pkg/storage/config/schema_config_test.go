@@ -594,3 +594,165 @@ store: boltdb-shipper
 
 	require.Equal(t, expected, cfg)
 }
+
+func TestUsingBoltdbShipper(t *testing.T) {
+	var cfg SchemaConfig
+
+	// just one PeriodConfig in the past using boltdb-shipper
+	cfg.Configs = []PeriodConfig{{
+		From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
+		IndexType: "boltdb-shipper",
+	}}
+	assert.Equal(t, true, UsingBoltdbShipper(cfg.Configs))
+
+	// just one PeriodConfig in the past not using boltdb-shipper
+	cfg.Configs[0].IndexType = "boltdb"
+	assert.Equal(t, false, UsingBoltdbShipper(cfg.Configs))
+
+	// add a newer PeriodConfig in the future using boltdb-shipper
+	cfg.Configs = append(cfg.Configs, PeriodConfig{
+		From:      DayTime{Time: model.Now().Add(time.Hour)},
+		IndexType: "boltdb-shipper",
+	})
+	assert.Equal(t, true, UsingBoltdbShipper(cfg.Configs))
+}
+
+func TestActiveIndexType(t *testing.T) {
+	var cfg SchemaConfig
+
+	// just one PeriodConfig in the past
+	cfg.Configs = []PeriodConfig{{
+		From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
+		IndexType: "first",
+	}}
+
+	assert.Equal(t, 0, ActivePeriodConfig(cfg.Configs))
+
+	// add a newer PeriodConfig in the past which should be considered
+	cfg.Configs = append(cfg.Configs, PeriodConfig{
+		From:      DayTime{Time: model.Now().Add(-12 * time.Hour)},
+		IndexType: "second",
+	})
+	assert.Equal(t, 1, ActivePeriodConfig(cfg.Configs))
+
+	// add a newer PeriodConfig in the future which should not be considered
+	cfg.Configs = append(cfg.Configs, PeriodConfig{
+		From:      DayTime{Time: model.Now().Add(time.Hour)},
+		IndexType: "third",
+	})
+	assert.Equal(t, 1, ActivePeriodConfig(cfg.Configs))
+}
+
+func TestSchemaConfig_ValidateBoltdb(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		configs []PeriodConfig
+		err     error
+	}{
+		{
+			name:    "empty",
+			configs: []PeriodConfig{},
+			err:     errZeroLengthConfig,
+		},
+		{
+			name: "NOT using boltdb-shipper",
+			configs: []PeriodConfig{{
+				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb",
+				Schema:    "v9",
+				IndexTables: PeriodicTableConfig{
+					Period: 7 * 24 * time.Hour,
+				},
+			}},
+		},
+		{
+			name: "current config boltdb-shipper with 7 days periodic config, without future index type changes",
+			configs: []PeriodConfig{{
+				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: PeriodicTableConfig{
+					Period: 7 * 24 * time.Hour,
+				},
+			}},
+			err: errCurrentBoltdbShipperNon24Hours,
+		},
+		{
+			name: "current config boltdb-shipper with 1 day periodic config, without future index type changes",
+			configs: []PeriodConfig{{
+				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: PeriodicTableConfig{
+					Period: 24 * time.Hour,
+				},
+			}},
+		},
+		{
+			name: "current config boltdb-shipper with 7 days periodic config, upcoming config NOT boltdb-shipper",
+			configs: []PeriodConfig{{
+				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: PeriodicTableConfig{
+					Period: 24 * time.Hour,
+				},
+			}, {
+				From:      DayTime{Time: model.Now().Add(time.Hour)},
+				IndexType: "boltdb",
+				Schema:    "v9",
+				IndexTables: PeriodicTableConfig{
+					Period: 7 * 24 * time.Hour,
+				},
+			}},
+		},
+		{
+			name: "current and upcoming config boltdb-shipper with 7 days periodic config",
+			configs: []PeriodConfig{{
+				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: PeriodicTableConfig{
+					Period: 24 * time.Hour,
+				},
+			}, {
+				From:      DayTime{Time: model.Now().Add(time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: PeriodicTableConfig{
+					Period: 7 * 24 * time.Hour,
+				},
+			}},
+			err: errUpcomingBoltdbShipperNon24Hours,
+		},
+		{
+			name: "current config NOT boltdb-shipper, upcoming config boltdb-shipper with 7 days periodic config",
+			configs: []PeriodConfig{{
+				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb",
+				Schema:    "v9",
+				IndexTables: PeriodicTableConfig{
+					Period: 24 * time.Hour,
+				},
+			}, {
+				From:      DayTime{Time: model.Now().Add(time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: PeriodicTableConfig{
+					Period: 7 * 24 * time.Hour,
+				},
+			}},
+			err: errUpcomingBoltdbShipperNon24Hours,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := SchemaConfig{Configs: tc.configs}
+			err := cfg.Validate()
+			if tc.err == nil {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, tc.err.Error())
+			}
+		})
+	}
+}

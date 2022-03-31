@@ -31,6 +31,10 @@ type ChunkStoreConfig struct {
 	MaxLookBackPeriod model.Duration `yaml:"max_look_back_period"`
 }
 
+func (cfg *ChunkStoreConfig) ChunkCacheStubs() bool {
+	return cfg.chunkCacheStubs
+}
+
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("store.chunks-cache.", "Cache config for chunks. ", f)

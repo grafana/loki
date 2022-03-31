@@ -12,15 +12,15 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/config"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
-	"github.com/grafana/loki/pkg/storage/chunk/testutils"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 func TestChunksBasic(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, _ index.IndexClient, client chunk.Client) {
+	forAllFixtures(t, func(t *testing.T, _ index.IndexClient, client client.Client) {
 		s := config.SchemaConfig{
 			Configs: []config.PeriodConfig{
 				{

@@ -19,7 +19,8 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 var NilMetrics = NewChunkMetrics(nil, 0)
@@ -42,10 +43,10 @@ func Test_batchIterSafeStart(t *testing.T) {
 		newLazyChunk(stream),
 	}
 
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -951,10 +952,10 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		},
 	}
 
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -1200,7 +1201,6 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
-
 						{
 							Timestamp: time.Unix(2, 0),
 							Line:      "2",
@@ -1264,7 +1264,6 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
-
 						{
 							Timestamp: time.Unix(1, 0),
 							Line:      "2",
@@ -1359,10 +1358,10 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 		},
 	}
 
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -1608,7 +1607,7 @@ func Test_IsInvalidChunkError(t *testing.T) {
 	}{
 		{
 			"invalid chunk cheksum error from cortex",
-			promql.ErrStorage{Err: chunk.ErrInvalidChecksum},
+			promql.ErrStorage{Err: encoding.ErrInvalidChecksum},
 			true,
 		},
 		{
@@ -1655,10 +1654,10 @@ func TestBatchCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -1682,7 +1681,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 		cfg: Config{
 			MaxChunkBatchSize: 50,
 		},
-		Store: newMockChunkStore(newOverlappingStreams(200, 200)),
+		ChunkStore: newMockChunkStore(newOverlappingStreams(200, 200)),
 	}
 	b.ResetTimer()
 	statsCtx, ctx := stats.NewContext(user.InjectOrgID(context.Background(), "fake"))

@@ -1,7 +1,8 @@
-package chunk
+package series
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"sync"
 
@@ -20,7 +21,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-type fetcher interface {
+var ErrNotSupported = errors.New("not supported")
+
+type chunkFetcher interface {
 	FetchChunks(ctx context.Context, chunks []encoding.Chunk, keys []string) ([]encoding.Chunk, error)
 }
 
@@ -28,10 +31,10 @@ type seriesIndexStore struct {
 	schema    index.SeriesStoreSchema
 	index     index.IndexClient
 	schemaCfg config.SchemaConfig
-	fetcher   fetcher
+	fetcher   chunkFetcher
 }
 
-func newSeriesIndexStore(schemaCfg config.SchemaConfig, schema index.SeriesStoreSchema, index index.IndexClient, fetcher fetcher) *seriesIndexStore {
+func newSeriesIndexStore(schemaCfg config.SchemaConfig, schema index.SeriesStoreSchema, index index.IndexClient, fetcher chunkFetcher) *seriesIndexStore {
 	return &seriesIndexStore{
 		schema:    schema,
 		index:     index,
@@ -202,9 +205,9 @@ func (c *seriesIndexStore) LabelValuesForMetricName(ctx context.Context, userID 
 		return nil, err
 	}
 
-	var result UniqueStrings
+	var result util.UniqueStrings
 	for _, entry := range entries {
-		_, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		_, labelValue, err := index.ParseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -240,9 +243,9 @@ func (c *seriesIndexStore) labelValuesForMetricNameWithMatchers(ctx context.Cont
 		return nil, err
 	}
 
-	result := NewUniqueStrings(len(entries))
+	result := util.NewUniqueStrings(len(entries))
 	for _, entry := range entries {
-		seriesID, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		seriesID, labelValue, err := index.ParseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -297,7 +300,7 @@ func (c *seriesIndexStore) lookupSeriesByMetricNameMatchers(ctx context.Context,
 	var preIntersectionCount int
 	var lastErr error
 	var cardinalityExceededErrors int
-	var cardinalityExceededError CardinalityExceededError
+	var cardinalityExceededError index.CardinalityExceededError
 	var initialized bool
 	for i := 0; i < len(matchers); i++ {
 		select {
@@ -314,7 +317,7 @@ func (c *seriesIndexStore) lookupSeriesByMetricNameMatchers(ctx context.Context,
 			// series and the other returns only 10 (a few), we don't lookup the first one at all.
 			// We just manually filter through the 10 series again using "filterChunksByMatchers",
 			// saving us from looking up and intersecting a lot of series.
-			if e, ok := err.(CardinalityExceededError); ok {
+			if e, ok := err.(index.CardinalityExceededError); ok {
 				cardinalityExceededErrors++
 				cardinalityExceededError = e
 			} else {
@@ -338,12 +341,12 @@ func (c *seriesIndexStore) lookupSeriesByMetricNameMatchers(ctx context.Context,
 }
 
 func (c *seriesIndexStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
-	return c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []IndexQuery) []IndexQuery {
+	return c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []index.IndexQuery) []index.IndexQuery {
 		return c.schema.FilterReadQueries(queries, shard)
 	})
 }
 
-func (c *seriesIndexStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
+func (c *seriesIndexStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]index.IndexQuery) []index.IndexQuery) ([]string, error) {
 	var err error
 	var queries []index.IndexQuery
 	var labelName string
@@ -366,7 +369,7 @@ func (c *seriesIndexStore) lookupIdsByMetricNameMatcher(ctx context.Context, fro
 	}
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
-	if e, ok := err.(CardinalityExceededError); ok {
+	if e, ok := err.(index.CardinalityExceededError); ok {
 		e.MetricName = metricName
 		e.LabelName = labelName
 		return nil, e
@@ -391,7 +394,7 @@ func (c *seriesIndexStore) lookupIdsByMetricNameMatcher(ctx context.Context, fro
 	return ids, nil
 }
 
-func parseIndexEntries(_ context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
+func parseIndexEntries(_ context.Context, entries []index.IndexEntry, matcher *labels.Matcher) ([]string, error) {
 	// Nothing to do if there are no entries.
 	if len(entries) == 0 {
 		return nil, nil
@@ -407,7 +410,7 @@ func parseIndexEntries(_ context.Context, entries []IndexEntry, matcher *labels.
 
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		chunkKey, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		chunkKey, labelValue, err := index.ParseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -436,19 +439,19 @@ func parseIndexEntries(_ context.Context, entries []IndexEntry, matcher *labels.
 	return result, nil
 }
 
-func (c *seriesIndexStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
+func (c *seriesIndexStore) lookupEntriesByQueries(ctx context.Context, queries []index.IndexQuery) ([]index.IndexEntry, error) {
 	// Nothing to do if there are no queries.
 	if len(queries) == 0 {
 		return nil, nil
 	}
 
 	var lock sync.Mutex
-	var entries []IndexEntry
-	err := c.index.QueryPages(ctx, queries, func(query IndexQuery, resp ReadBatch) bool {
+	var entries []index.IndexEntry
+	err := c.index.QueryPages(ctx, queries, func(query index.IndexQuery, resp index.ReadBatchResult) bool {
 		iter := resp.Iterator()
 		lock.Lock()
 		for iter.Next() {
-			entries = append(entries, IndexEntry{
+			entries = append(entries, index.IndexEntry{
 				TableName:  query.TableName,
 				HashValue:  query.HashValue,
 				RangeValue: iter.RangeValue(),
@@ -469,7 +472,7 @@ func (c *seriesIndexStore) lookupLabelNamesBySeries(ctx context.Context, from, t
 	defer log.Span.Finish()
 
 	level.Debug(log).Log("seriesIDs", len(seriesIDs))
-	queries := make([]IndexQuery, 0, len(seriesIDs))
+	queries := make([]index.IndexQuery, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
 		qs, err := c.schema.GetLabelNamesForSeries(from, through, userID, []byte(seriesID))
 		if err != nil {
@@ -484,7 +487,7 @@ func (c *seriesIndexStore) lookupLabelNamesBySeries(ctx context.Context, from, t
 	}
 	level.Debug(log).Log("entries", len(entries))
 
-	var result UniqueStrings
+	var result util.UniqueStrings
 	result.Add(model.MetricNameLabel)
 	for _, entry := range entries {
 		lbs := []string{}
@@ -532,7 +535,7 @@ func (c *seriesIndexStore) lookupLabelNamesByChunks(ctx context.Context, from, t
 }
 
 func (c *seriesIndexStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
-	queries := make([]IndexQuery, 0, len(seriesIDs))
+	queries := make([]index.IndexQuery, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
 		qs, err := c.schema.GetChunksForSeries(from, through, userID, []byte(seriesID))
 		if err != nil {
@@ -555,10 +558,10 @@ func (c *seriesIndexStore) lookupChunksBySeries(ctx context.Context, from, throu
 	return result, err
 }
 
-func (c *seriesIndexStore) convertChunkIDsToChunks(_ context.Context, userID string, chunkIDs []string) ([]Chunk, error) {
-	chunkSet := make([]Chunk, 0, len(chunkIDs))
+func (c *seriesIndexStore) convertChunkIDsToChunks(_ context.Context, userID string, chunkIDs []string) ([]encoding.Chunk, error) {
+	chunkSet := make([]encoding.Chunk, 0, len(chunkIDs))
 	for _, chunkID := range chunkIDs {
-		chunk, err := ParseExternalKey(userID, chunkID)
+		chunk, err := encoding.ParseExternalKey(userID, chunkID)
 		if err != nil {
 			return nil, err
 		}
@@ -571,7 +574,7 @@ func (c *seriesIndexStore) convertChunkIDsToChunks(_ context.Context, userID str
 func (c *seriesIndexStore) convertChunkIDsToChunkRefs(_ context.Context, userID string, chunkIDs []string) ([]logproto.ChunkRef, error) {
 	chunkSet := make([]logproto.ChunkRef, 0, len(chunkIDs))
 	for _, chunkID := range chunkIDs {
-		chunk, err := ParseExternalKey(userID, chunkID)
+		chunk, err := encoding.ParseExternalKey(userID, chunkID)
 		if err != nil {
 			return nil, err
 		}

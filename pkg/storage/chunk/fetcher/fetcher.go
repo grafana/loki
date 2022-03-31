@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/config"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/prometheus/client_golang/prometheus"
@@ -148,6 +148,10 @@ func (c *Fetcher) worker() {
 			err:   err,
 		}
 	}
+}
+
+func (c *Fetcher) Cache() cache.Cache {
+	return c.cache
 }
 
 // FetchChunks fetches a set of chunks from cache and store. Note that the keys passed in must be

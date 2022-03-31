@@ -27,26 +27,3 @@ var BenchmarkLabels = labels.Labels{
 	{Name: "namespace", Value: "kube-system"},
 	{Name: "pod_name", Value: "some-other-name-5j8s8"},
 }
-
-// // DefaultSchemaConfig creates a simple schema config for testing
-// func DefaultSchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
-// 	s := config.SchemaConfig{
-// 		Configs: []config.PeriodConfig{{
-// 			IndexType: store,
-// 			Schema:    schema,
-// 			From:      config.DayTime{from},
-// 			ChunkTables: config.PeriodicTableConfig{
-// 				Prefix: "cortex",
-// 				Period: 7 * 24 * time.Hour,
-// 			},
-// 			IndexTables: config.PeriodicTableConfig{
-// 				Prefix: "cortex_chunks",
-// 				Period: 7 * 24 * time.Hour,
-// 			},
-// 		}},
-// 	}
-// 	if err := s.Validate(); err != nil {
-// 		panic(err)
-// 	}
-// 	return s
-// }

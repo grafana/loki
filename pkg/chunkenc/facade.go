@@ -16,10 +16,10 @@ const GzipLogChunk = encoding.Encoding(128)
 const LogChunk = encoding.Encoding(129)
 
 func init() {
-	encoding.MustRegisterEncoding(GzipLogChunk, "GzipLogChunk", func() encoding.Chunk {
+	encoding.MustRegisterEncoding(GzipLogChunk, "GzipLogChunk", func() encoding.ChunkData {
 		return &Facade{}
 	})
-	encoding.MustRegisterEncoding(LogChunk, "LogChunk", func() encoding.Chunk {
+	encoding.MustRegisterEncoding(LogChunk, "LogChunk", func() encoding.ChunkData {
 		return &Facade{}
 	})
 }
@@ -29,11 +29,11 @@ type Facade struct {
 	c          Chunk
 	blockSize  int
 	targetSize int
-	encoding.Chunk
+	encoding.ChunkData
 }
 
 // NewFacade makes a new Facade.
-func NewFacade(c Chunk, blockSize, targetSize int) encoding.Chunk {
+func NewFacade(c Chunk, blockSize, targetSize int) encoding.ChunkData {
 	return &Facade{
 		c:          c,
 		blockSize:  blockSize,
@@ -86,7 +86,7 @@ func (f Facade) LokiChunk() Chunk {
 	return f.c
 }
 
-func (f Facade) Rebound(start, end model.Time) (encoding.Chunk, error) {
+func (f Facade) Rebound(start, end model.Time) (encoding.ChunkData, error) {
 	newChunk, err := f.c.Rebound(start.Time(), end.Time())
 	if err != nil {
 		return nil, err
@@ -97,7 +97,7 @@ func (f Facade) Rebound(start, end model.Time) (encoding.Chunk, error) {
 }
 
 // UncompressedSize is a helper function to hide the type assertion kludge when wanting the uncompressed size of the Cortex interface encoding.Chunk.
-func UncompressedSize(c encoding.Chunk) (int, bool) {
+func UncompressedSize(c encoding.ChunkData) (int, bool) {
 	f, ok := c.(*Facade)
 
 	if !ok || f.c == nil {

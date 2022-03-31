@@ -5,13 +5,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/chunk/index"
-	"github.com/grafana/loki/pkg/storage/chunk/testutils"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 	tableName = "test"
 )
 
-type storageClientTest func(*testing.T, index.IndexClient, chunk.Client)
+type storageClientTest func(*testing.T, index.IndexClient, client.Client)
 
 func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 	var fixtures []testutils.Fixture

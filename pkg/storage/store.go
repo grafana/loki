@@ -12,11 +12,8 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
@@ -49,18 +46,18 @@ type ChunkFilterer interface {
 }
 
 type store struct {
-	chunk.Store
+	ChunkStore
 	cfg          Config
 	chunkMetrics *ChunkMetrics
-	schemaCfg    SchemaConfig
+	schemaCfg    config.SchemaConfig
 
 	chunkFilterer RequestChunkFilterer
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
-func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, registerer prometheus.Registerer) (Store, error) {
+func NewStore(cfg Config, schemaCfg config.SchemaConfig, chunkStore ChunkStore, registerer prometheus.Registerer) (Store, error) {
 	if len(schemaCfg.Configs) != 0 {
-		if index := ActivePeriodConfig(schemaCfg.Configs); index != -1 && index < len(schemaCfg.Configs) {
+		if index := config.ActivePeriodConfig(schemaCfg.Configs); index != -1 && index < len(schemaCfg.Configs) {
 			indexTypeStats.Set(schemaCfg.Configs[index].IndexType)
 			objectTypeStats.Set(schemaCfg.Configs[index].ObjectType)
 			schemaStats.Set(schemaCfg.Configs[index].Schema)
@@ -68,21 +65,11 @@ func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, regist
 	}
 
 	return &store{
-		Store:        chunkStore,
+		ChunkStore:   chunkStore,
 		cfg:          cfg,
 		chunkMetrics: NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
 		schemaCfg:    schemaCfg,
 	}, nil
-}
-
-// NewTableClient creates a TableClient for managing tables for index/chunk store.
-// ToDo: Add support in Cortex for registering custom table client like index client.
-func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
-	if name == shipper.BoltDBShipperType {
-		name = "boltdb"
-		cfg.FSConfig = chunk_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
-	}
-	return storage.NewTableClient(name, cfg.Config, prometheus.DefaultRegisterer)
 }
 
 // decodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,
@@ -173,7 +160,7 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 	return lazyChunks, nil
 }
 
-func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+func (s *store) Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -201,7 +188,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 			return nil, err
 		}
 	}
-	return s.Store.GetSeries(ctx, userID, from, through, matchers...)
+	return s.ChunkStore.GetSeries(ctx, userID, from, through, matchers...)
 }
 
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
@@ -235,7 +222,7 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newLogBatchIterator(ctx, s.schemaCfg.SchemaConfig, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
+	return newLogBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
 }
 
 func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -267,15 +254,15 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newSampleBatchIterator(ctx, s.schemaCfg.SchemaConfig, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
+	return newSampleBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
 }
 
-func (s *store) GetSchemaConfigs() []chunk.PeriodConfig {
+func (s *store) GetSchemaConfigs() []config.PeriodConfig {
 	return s.schemaCfg.Configs
 }
 
-func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
-	filtered := make([]chunk.Chunk, 0, len(chunks))
+func filterChunksByTime(from, through model.Time, chunks []encoding.Chunk) []encoding.Chunk {
+	filtered := make([]encoding.Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
 		if chunk.Through < from || through < chunk.From {
 			continue
@@ -283,43 +270,4 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 		filtered = append(filtered, chunk)
 	}
 	return filtered
-}
-
-func RegisterCustomIndexClients(cfg *Config, cm storage.ClientMetrics, registerer prometheus.Registerer) {
-	// BoltDB Shipper is supposed to be run as a singleton.
-	// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
-	// in tests for creating multiple instances of it at a time.
-	var boltDBIndexClientWithShipper chunk.IndexClient
-
-	storage.RegisterIndexStore(shipper.BoltDBShipperType, func(limits storage.StoreLimits) (chunk.IndexClient, error) {
-		if boltDBIndexClientWithShipper != nil {
-			return boltDBIndexClientWithShipper, nil
-		}
-
-		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" {
-			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer)
-			if err != nil {
-				return nil, err
-			}
-
-			boltDBIndexClientWithShipper = gateway
-			return gateway, nil
-		}
-
-		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config, cm)
-		if err != nil {
-			return nil, err
-		}
-
-		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, registerer)
-
-		return boltDBIndexClientWithShipper, err
-	}, func() (client chunk.TableClient, e error) {
-		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config, cm)
-		if err != nil {
-			return nil, err
-		}
-
-		return shipper.NewBoltDBShipperTableClient(objectClient, cfg.BoltDBShipperConfig.SharedStoreKeyPrefix), nil
-	})
 }

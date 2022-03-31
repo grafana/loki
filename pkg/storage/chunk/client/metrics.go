@@ -15,7 +15,7 @@ type metricsChunkClient struct {
 	metrics chunkClientMetrics
 }
 
-func newMetricsChunkClient(client Client, metrics chunkClientMetrics) metricsChunkClient {
+func NewMetricsChunkClient(client Client, metrics chunkClientMetrics) metricsChunkClient {
 	return metricsChunkClient{
 		client:  client,
 		metrics: metrics,
@@ -29,7 +29,7 @@ type chunkClientMetrics struct {
 	chunksSizeFetchedPerUser *prometheus.CounterVec
 }
 
-func newChunkClientMetrics(reg prometheus.Registerer) chunkClientMetrics {
+func NewChunkClientMetrics(reg prometheus.Registerer) chunkClientMetrics {
 	return chunkClientMetrics{
 		chunksPutPerUser: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",

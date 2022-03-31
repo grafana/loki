@@ -1,44 +1,35 @@
-package chunk
+package stores
 
 import (
 	"context"
 	"errors"
 	"sort"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/chunk/index"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util"
 )
 
-type CacheGenNumLoader interface {
-	GetStoreCacheGenNumber(tenantIDs []string) string
-}
-
-type Index interface {
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error)
-	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error)
-	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
-	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
-}
-
-type ChunkWriter interface {
-	Put(ctx context.Context, chunks []Chunk) error
-	PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error
-}
-
 // Store for chunks.
-type ChunkStore interface {
-	ChunkWriter
+type Store interface {
+	Put(ctx context.Context, chunks []encoding.Chunk) error
+	PutOne(ctx context.Context, from, through model.Time, chunk encoding.Chunk) error
 	// GetChunkRefs returns the un-loaded chunks and the fetchers to be used to load them. You can load each slice of chunks ([]Chunk),
 	// using the corresponding Fetcher (fetchers[i].FetchChunks(ctx, chunks[i], ...)
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]encoding.Chunk, []*fetcher.Fetcher, error)
 	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
-	GetChunkFetcher(tm model.Time) *Fetcher
-
+	GetChunkFetcher(tm model.Time) *fetcher.Fetcher
 	Stop()
 }
 
@@ -49,52 +40,48 @@ type CompositeStore struct {
 }
 
 type compositeStore struct {
-	cacheGenNumLoader CacheGenNumLoader
-	stores            []compositeStoreEntry
-}
-
-type compositeStoreEntry struct {
-	start model.Time
-	Store
+	stores []*compositeStoreEntry
 }
 
 // NewCompositeStore creates a new Store which delegates to different stores depending
 // on time.
-func NewCompositeStore(cacheGenNumLoader CacheGenNumLoader) CompositeStore {
-	return CompositeStore{compositeStore{cacheGenNumLoader: cacheGenNumLoader}}
+func NewCompositeStore() CompositeStore {
+	return CompositeStore{compositeStore{}}
 }
 
 // AddPeriod adds the configuration for a period of time to the CompositeStore
-func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) error {
-	schema, err := cfg.CreateSchema()
+func (c *CompositeStore) AddPeriod(storeCfg config.ChunkStoreConfig, cfg config.PeriodConfig, idx index.IndexClient, chunks client.Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) error {
+	schema, err := index.CreateSchema(cfg)
 	if err != nil {
 		return err
 	}
-
-	return c.addSchema(storeCfg, cfg, schema, cfg.From.Time, index, chunks, limits, chunksCache, writeDedupeCache)
+	if storeCfg.CacheLookupsOlderThan != 0 {
+		schema = index.NewSchemaCaching(schema, time.Duration(storeCfg.CacheLookupsOlderThan))
+	}
+	return c.addSchema(storeCfg, cfg, schema, cfg.From.Time, idx, chunks, limits, chunksCache, writeDedupeCache)
 }
 
-func (c *CompositeStore) addSchema(storeCfg StoreConfig, period PeriodConfig, schema SeriesStoreSchema, start model.Time, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) error {
+func (c *CompositeStore) addSchema(storeCfg config.ChunkStoreConfig, period config.PeriodConfig, schema index.SeriesStoreSchema, start model.Time, idx index.IndexClient, chunks client.Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) error {
 	var (
 		err   error
 		store Store
 	)
 
 	switch s := schema.(type) {
-	case SeriesStoreSchema:
+	case index.SeriesStoreSchema:
 
-		store, err = newSeriesStore(storeCfg, SchemaConfig{Configs: []PeriodConfig{period}}, s, index, chunks, limits, chunksCache, writeDedupeCache)
+		store, err = newSeriesStore(storeCfg, config.SchemaConfig{Configs: []config.PeriodConfig{period}}, s, idx, chunks, limits, chunksCache, writeDedupeCache)
 	default:
 		err = errors.New("invalid schema type")
 	}
 	if err != nil {
 		return err
 	}
-	c.stores = append(c.stores, compositeStoreEntry{start: start, Store: store})
+	c.stores = append(c.stores, &compositeStoreEntry{start: start, ChunkStore: store})
 	return nil
 }
 
-func (c compositeStore) Put(ctx context.Context, chunks []Chunk) error {
+func (c compositeStore) Put(ctx context.Context, chunks []encoding.Chunk) error {
 	for _, chunk := range chunks {
 		err := c.forStores(ctx, chunk.UserID, chunk.From, chunk.Through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 			return store.PutOne(innerCtx, from, through, chunk)
@@ -106,19 +93,20 @@ func (c compositeStore) Put(ctx context.Context, chunks []Chunk) error {
 	return nil
 }
 
-func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
+func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, chunk encoding.Chunk) error {
 	return c.forStores(ctx, chunk.UserID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		return store.PutOne(innerCtx, from, through, chunk)
 	})
 }
 
 func (c compositeStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
+	// todo
 	return nil, nil
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
 func (c compositeStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
-	var result UniqueStrings
+	var result util.UniqueStrings
 	err := c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		labelValues, err := store.LabelValuesForMetricName(innerCtx, userID, from, through, metricName, labelName, matchers...)
 		if err != nil {
@@ -132,7 +120,7 @@ func (c compositeStore) LabelValuesForMetricName(ctx context.Context, userID str
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
 func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
-	var result UniqueStrings
+	var result util.UniqueStrings
 	err := c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		labelNames, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName)
 		if err != nil {
@@ -144,9 +132,9 @@ func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID stri
 	return result.Strings(), err
 }
 
-func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
-	chunkIDs := [][]Chunk{}
-	fetchers := []*Fetcher{}
+func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]encoding.Chunk, []*fetcher.Fetcher, error) {
+	chunkIDs := [][]encoding.Chunk{}
+	fetchers := []*fetcher.Fetcher{}
 	err := c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		ids, fetcher, err := store.GetChunkRefs(innerCtx, userID, from, through, matchers...)
 		if err != nil {
@@ -165,7 +153,7 @@ func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, t
 	return chunkIDs, fetchers, err
 }
 
-func (c compositeStore) GetChunkFetcher(tm model.Time) *Fetcher {
+func (c compositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	// find the schema with the lowest start _after_ tm
 	j := sort.Search(len(c.stores), func(j int) bool {
 		return c.stores[j].start > tm
@@ -191,8 +179,6 @@ func (c compositeStore) forStores(ctx context.Context, userID string, from, thro
 	if len(c.stores) == 0 {
 		return nil
 	}
-
-	ctx = c.injectCacheGen(ctx, []string{userID})
 
 	// first, find the schema with the highest start _before or at_ from
 	i := sort.Search(len(c.stores), func(i int) bool {
@@ -226,7 +212,7 @@ func (c compositeStore) forStores(ctx context.Context, userID string, from, thro
 		}
 
 		end := min(through, nextSchemaStarts-1)
-		err := callback(ctx, start, end, c.stores[i].Store)
+		err := callback(ctx, start, end, c.stores[i])
 		if err != nil {
 			return err
 		}
@@ -235,12 +221,4 @@ func (c compositeStore) forStores(ctx context.Context, userID string, from, thro
 	}
 
 	return nil
-}
-
-func (c compositeStore) injectCacheGen(ctx context.Context, tenantIDs []string) context.Context {
-	if c.cacheGenNumLoader == nil {
-		return ctx
-	}
-
-	return cache.InjectCacheGenNumber(ctx, c.cacheGenNumLoader.GetStoreCacheGenNumber(tenantIDs))
 }

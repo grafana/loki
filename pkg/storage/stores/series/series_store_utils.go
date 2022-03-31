@@ -1,7 +1,6 @@
 package series
 
 import (
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -9,8 +8,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk/config"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util"
 )
 
 func filterChunksByTime(from, through model.Time, chunks []encoding.Chunk) []encoding.Chunk {
@@ -36,7 +36,7 @@ func filterChunkRefsByTime(from, through model.Time, chunks []logproto.ChunkRef)
 }
 
 func labelNamesFromChunks(chunks []encoding.Chunk) []string {
-	var result UniqueStrings
+	var result util.UniqueStrings
 	for _, c := range chunks {
 		for _, l := range c.Metric {
 			result.Add(l.Name)
@@ -118,37 +118,6 @@ func nWayIntersectStrings(sets [][]string) []string {
 		)
 		return intersectStrings(left, right)
 	}
-}
-
-// UniqueStrings keeps a slice of unique strings.
-type UniqueStrings struct {
-	values map[string]struct{}
-	result []string
-}
-
-// NewUniqueStrings returns a UniqueStrings instance with a pre-allocated result buffer.
-func NewUniqueStrings(sizeHint int) UniqueStrings {
-	return UniqueStrings{result: make([]string, 0, sizeHint)}
-}
-
-// Add adds a new string, dropping duplicates.
-func (us *UniqueStrings) Add(strings ...string) {
-	for _, s := range strings {
-		if _, ok := us.values[s]; ok {
-			continue
-		}
-		if us.values == nil {
-			us.values = map[string]struct{}{}
-		}
-		us.values[s] = struct{}{}
-		us.result = append(us.result, s)
-	}
-}
-
-// Strings returns the sorted sliced of unique strings.
-func (us UniqueStrings) Strings() []string {
-	sort.Strings(us.result)
-	return us.result
 }
 
 // Bitmap used by func isRegexMetaCharacter to check whether a character needs to be escaped.

@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
@@ -129,7 +129,7 @@ func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []encod
 		},
 	}
 
-	fetcher, err := chunk.NewChunkFetcher(c, false, s, nil, 10, 100)
+	fetcher, err := fetcher.New(c, false, s, nil, 10, 100)
 	require.NoError(t, err)
 	defer fetcher.Stop()
 

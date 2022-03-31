@@ -42,4 +42,6 @@ type ChunkData interface {
 	Marshal(io.Writer) error
 	UnmarshalFromBuf([]byte) error
 	Encoding() Encoding
+	// Size returns the approximate length of the chunk in bytes.
+	Size() int
 }

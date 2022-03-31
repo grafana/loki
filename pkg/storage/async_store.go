@@ -26,15 +26,15 @@ type IngesterQuerier interface {
 // AsyncStore is meant to be used only in queriers or any other service other than ingesters.
 // It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {
-	Store
+	ChunkStore
 	scfg                 config.SchemaConfig
 	ingesterQuerier      IngesterQuerier
 	queryIngestersWithin time.Duration
 }
 
-func NewAsyncStore(store Store, scfg config.SchemaConfig, querier IngesterQuerier, queryIngestersWithin time.Duration) *AsyncStore {
+func NewAsyncStore(store ChunkStore, scfg config.SchemaConfig, querier IngesterQuerier, queryIngestersWithin time.Duration) *AsyncStore {
 	return &AsyncStore{
-		Store:                store,
+		ChunkStore:           store,
 		scfg:                 scfg,
 		ingesterQuerier:      querier,
 		queryIngestersWithin: queryIngestersWithin,
@@ -50,7 +50,7 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	var fetchers []*fetcher.Fetcher
 	go func() {
 		var err error
-		storeChunks, fetchers, err = a.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
+		storeChunks, fetchers, err = a.ChunkStore.GetChunkRefs(ctx, userID, from, through, matchers...)
 		errs <- err
 	}()
 
@@ -90,31 +90,31 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	return a.mergeIngesterAndStoreChunks(userID, storeChunks, fetchers, ingesterChunks)
 }
 
-func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*chunk.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]encoding.Chunk, fetchers []*fetcher.Fetcher, ingesterChunkIDs []string) ([][]encoding.Chunk, []*fetcher.Fetcher, error) {
 	ingesterChunkIDs = filterDuplicateChunks(a.scfg, storeChunks, ingesterChunkIDs)
 	level.Debug(util_log.Logger).Log("msg", "post-filtering ingester chunks", "count", len(ingesterChunkIDs))
 
-	fetcherToChunksGroupIdx := make(map[*chunk.Fetcher]int, len(fetchers))
+	fetcherToChunksGroupIdx := make(map[*fetcher.Fetcher]int, len(fetchers))
 
 	for i, fetcher := range fetchers {
 		fetcherToChunksGroupIdx[fetcher] = i
 	}
 
 	for _, chunkID := range ingesterChunkIDs {
-		chk, err := chunk.ParseExternalKey(userID, chunkID)
+		chk, err := encoding.ParseExternalKey(userID, chunkID)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		// ToDo(Sandeep) possible optimization: Keep the chunk fetcher reference handy after first call since it is expected to stay the same.
-		fetcher := a.Store.GetChunkFetcher(chk.Through)
+		fetcher := a.ChunkStore.GetChunkFetcher(chk.Through)
 		if fetcher == nil {
-			return nil, nil, fmt.Errorf("got a nil fetcher for chunk %s", a.scfg.ExternalKey(chk))
+			return nil, nil, fmt.Errorf("got a nil fetcher for chunk %s", a.scfg.ExternalKey(chk.ChunkRef))
 		}
 
 		if _, ok := fetcherToChunksGroupIdx[fetcher]; !ok {
 			fetchers = append(fetchers, fetcher)
-			storeChunks = append(storeChunks, []chunk.Chunk{})
+			storeChunks = append(storeChunks, []encoding.Chunk{})
 			fetcherToChunksGroupIdx[fetcher] = len(fetchers) - 1
 		}
 		chunksGroupIdx := fetcherToChunksGroupIdx[fetcher]
@@ -125,13 +125,13 @@ func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]
 	return storeChunks, fetchers, nil
 }
 
-func filterDuplicateChunks(scfg chunk.SchemaConfig, storeChunks [][]chunk.Chunk, ingesterChunkIDs []string) []string {
+func filterDuplicateChunks(scfg config.SchemaConfig, storeChunks [][]encoding.Chunk, ingesterChunkIDs []string) []string {
 	filteredChunkIDs := make([]string, 0, len(ingesterChunkIDs))
 	seen := make(map[string]struct{}, len(storeChunks))
 
 	for i := range storeChunks {
 		for j := range storeChunks[i] {
-			seen[scfg.ExternalKey(storeChunks[i][j])] = struct{}{}
+			seen[scfg.ExternalKey(storeChunks[i][j].ChunkRef)] = struct{}{}
 		}
 	}
 
