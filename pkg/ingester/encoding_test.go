@@ -35,7 +35,7 @@ func Test_Encoding_Series(t *testing.T) {
 		},
 	}
 
-	buf := record.encodeSeries(nil)
+	buf := record.EncodeSeries(nil)
 
 	decoded := recordPool.GetRecord()
 
@@ -131,7 +131,7 @@ func Test_Encoding_Entries(t *testing.T) {
 		},
 	} {
 		decoded := recordPool.GetRecord()
-		buf := tc.rec.encodeEntries(tc.version, nil)
+		buf := tc.rec.EncodeEntries(tc.version, nil)
 		err := decodeWALRecord(buf, decoded)
 		require.Nil(t, err)
 		require.Equal(t, tc.rec, decoded)
@@ -167,7 +167,7 @@ func Benchmark_EncodeEntries(b *testing.B) {
 	defer recordPool.PutBytes(buf)
 
 	for n := 0; n < b.N; n++ {
-		record.encodeEntries(CurrentEntriesRec, buf)
+		record.EncodeEntries(CurrentEntriesRec, buf)
 	}
 }
 
@@ -194,7 +194,7 @@ func Benchmark_DecodeWAL(b *testing.B) {
 		},
 	}
 
-	buf := record.encodeEntries(CurrentEntriesRec, nil)
+	buf := record.EncodeEntries(CurrentEntriesRec, nil)
 	rec := recordPool.GetRecord()
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -245,7 +245,6 @@ func Test_EncodingChunks(t *testing.T) {
 					conf: defaultIngesterTestConfig(t),
 				},
 			} {
-
 				t.Run(fmt.Sprintf("%v-%v-%s", f, close, tc.desc), func(t *testing.T) {
 					conf := tc.conf
 					c := chunkenc.NewMemChunk(chunkenc.EncGZIP, f, conf.BlockSize, conf.TargetChunkSize)
@@ -300,7 +299,6 @@ func Test_EncodingChunks(t *testing.T) {
 						require.Equal(t, matched, to)
 
 					}
-
 				})
 			}
 		}

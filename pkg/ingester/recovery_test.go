@@ -87,11 +87,11 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 
 	for _, rec := range recs {
 		if len(rec.Series) > 0 {
-			reader.xs = append(reader.xs, rec.encodeSeries(nil))
+			reader.xs = append(reader.xs, rec.EncodeSeries(nil))
 		}
 
 		if len(rec.RefEntries) > 0 {
-			reader.xs = append(reader.xs, rec.encodeEntries(CurrentEntriesRec, nil))
+			reader.xs = append(reader.xs, rec.EncodeEntries(CurrentEntriesRec, nil))
 		}
 	}
 

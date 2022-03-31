@@ -24,7 +24,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
-	"github.com/prometheus/prometheus/tsdb/wal"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
@@ -188,7 +187,7 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger lo
 
 	ctx, cancel := context.WithCancel(context.Background())
 	// todo segment size?
-	wal, err := wal.NewSize(log.With(logger, "component", "wal"), metrics.registerer, cfg.WAL.Dir, wal.DefaultSegmentSize*4, false)
+	wal, err := newWAL(cfg.WAL, metrics.registerer, log.With(logger, "component", "wal"))
 	if err != nil {
 		return nil, fmt.Errorf("could not start WAL: %w", err)
 	}
@@ -306,6 +305,8 @@ func (c *client) run() {
 			batch.add(e)
 
 		case <-maxWaitCheck.C:
+			// todo cut a segment and  read from the wal instead
+
 			// Send all batches whose max wait time has been reached
 			for tenantID, batch := range batches {
 				if batch.age() < c.cfg.BatchWait {
@@ -320,7 +321,7 @@ func (c *client) run() {
 }
 
 func (c *client) appendEntryToWAL(e api.Entry) error {
-	buf := make([]byte, 64)
+	buf := make([]byte, 1024)
 
 	r := &ingester.WALRecord{
 		Series:     make([]record.RefSeries, 0, 1),
@@ -338,7 +339,6 @@ func (c *client) appendEntryToWAL(e api.Entry) error {
 			Ref:    chunks.HeadSeriesRef(fp),
 		},
 	}
-	// todo think about the counter.
 	r.AddEntries(fp, 0, e.Entry)
 	c.wal.Log(r)
 

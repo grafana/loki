@@ -81,7 +81,7 @@ type RefEntries struct {
 	Entries []logproto.Entry
 }
 
-func (r *WALRecord) encodeSeries(b []byte) []byte {
+func (r *WALRecord) EncodeSeries(b []byte) []byte {
 	buf := encoding.EncWith(b)
 	buf.PutByte(byte(WALRecordSeries))
 	buf.PutUvarintStr(r.UserID)
@@ -95,7 +95,7 @@ func (r *WALRecord) encodeSeries(b []byte) []byte {
 	return encoded
 }
 
-func (r *WALRecord) encodeEntries(version RecordType, b []byte) []byte {
+func (r *WALRecord) EncodeEntries(version RecordType, b []byte) []byte {
 	buf := encoding.EncWith(b)
 	buf.PutByte(byte(version))
 	buf.PutUvarintStr(r.UserID)
