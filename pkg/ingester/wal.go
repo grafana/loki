@@ -115,7 +115,7 @@ func (w *walWrapper) Log(record *WALRecord) error {
 
 		// Always write series then entries.
 		if len(record.Series) > 0 {
-			buf = record.encodeSeries(buf)
+			buf = record.EncodeSeries(buf)
 			if err := w.wal.Log(buf); err != nil {
 				return err
 			}
@@ -124,7 +124,7 @@ func (w *walWrapper) Log(record *WALRecord) error {
 			buf = buf[:0]
 		}
 		if len(record.RefEntries) > 0 {
-			buf = record.encodeEntries(CurrentEntriesRec, buf)
+			buf = record.EncodeEntries(CurrentEntriesRec, buf)
 			if err := w.wal.Log(buf); err != nil {
 				return err
 			}
