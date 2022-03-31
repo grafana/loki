@@ -94,7 +94,7 @@ func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelReque
 
 	responses := make([]*logproto.LabelResponse, len(tenantIDs))
 	for i, id := range tenantIDs {
-		singleContext := user.InjectUserID(ctx, id)
+		singleContext := user.InjectOrgID(ctx, id)
 		resp, err := q.Querier.Label(singleContext, req)
 		if err != nil {
 			return nil, err
@@ -118,7 +118,7 @@ func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 
 	responses := make([]*logproto.SeriesResponse, len(tenantIDs))
 	for i, id := range tenantIDs {
-		singleContext := user.InjectUserID(ctx, id)
+		singleContext := user.InjectOrgID(ctx, id)
 		resp, err := q.Querier.Series(singleContext, req)
 		if err != nil {
 			return nil, err
