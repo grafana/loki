@@ -197,24 +197,33 @@ func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
 // BatchWrite implement chunk.IndexClient.
 func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	b := batch.(*writeBatch)
+	if len(b.entries) == 0 {
+		return nil
+	}
+	prepareStmts := make(map[string]*sql.Stmt, 0)
+	prepareSqls := make(map[string]string, 0)
 	for _, entry := range b.entries {
-		querySQL := fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)",
-			entry.TableName)
-		retries := backoff.New(ctx, s.cfg.BackoffConfig)
-		err := ctx.Err()
-		for retries.Ongoing() {
-			err = s.queryInstrumentation(ctx, querySQL, func() error {
-				_, err := s.writeSession.ExecContext(ctx, querySQL, entry.HashValue, entry.RangeValue, entry.Value)
-				if err != nil {
-					return err
-				}
-				return nil
-			})
-			if err == nil {
-				break
-			}
-			retries.Wait()
+		_, ok := prepareStmts[entry.TableName]
+		if ok {
+			continue
 		}
+		sqlStmt, sql, err := s.prepareStmt(ctx, entry.TableName)
+		if err != nil {
+			return err
+		}
+		prepareSqls[entry.TableName] = sql
+		prepareStmts[entry.TableName] = sqlStmt
+	}
+	defer func() {
+		for _, stmt := range prepareStmts {
+			stmt.Close()
+		}
+	}()
+
+	for _, entry := range b.entries {
+		querySQL := prepareSqls[entry.TableName]
+		stmt := prepareStmts[entry.TableName]
+		err := s.insertByPreStmt(ctx, entry, stmt, querySQL)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "avatica INSERT fail", "sql", querySQL, "err", err)
 			return errors.WithStack(err)
@@ -359,6 +368,57 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 		if !callback(query, b) {
 			return nil
 		}
+	}
+	return nil
+}
+
+func (s *StorageClient) prepareStmt(ctx context.Context, tableName string) (*sql.Stmt, string, error) {
+	querySQL := fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)",
+		tableName)
+	retries := backoff.New(ctx, s.cfg.BackoffConfig)
+	err := ctx.Err()
+	var stmt *sql.Stmt
+	for retries.Ongoing() {
+		err = s.queryInstrumentation(ctx, querySQL, func() error {
+			stmt, err = s.writeSession.PrepareContext(ctx, querySQL)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+		if err == nil {
+			break
+		}
+		retries.Wait()
+	}
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "avatica prepareStmt fail", "sql", querySQL, "err", err)
+		return nil, querySQL, errors.WithStack(err)
+	}
+	if stmt == nil {
+		return nil, querySQL, errors.New("prepareStmt fail,stmt is nil")
+	}
+	return stmt, querySQL, nil
+}
+
+func (s *StorageClient) insertByPreStmt(ctx context.Context, entry chunk.IndexEntry, stmt *sql.Stmt, querySQL string) error {
+	retries := backoff.New(ctx, s.cfg.BackoffConfig)
+	err := ctx.Err()
+	for retries.Ongoing() {
+		err = s.queryInstrumentation(ctx, querySQL, func() error {
+			_, err := stmt.ExecContext(ctx, entry.HashValue, entry.RangeValue, entry.Value)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+		if err == nil {
+			break
+		}
+		retries.Wait()
+	}
+	if err != nil {
+		return err
 	}
 	return nil
 }
