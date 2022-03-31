@@ -54,18 +54,7 @@ func stringifiedMatchers(matchers []*labels.Matcher) string {
 			b.WriteByte(' ')
 		}
 
-		b.WriteString(m.Name)
-		switch m.Type {
-		case labels.MatchEqual:
-			b.WriteByte('=')
-		case labels.MatchNotEqual:
-			b.WriteString("!=")
-		case labels.MatchRegexp:
-			b.WriteString("=~")
-		case labels.MatchNotRegexp:
-			b.WriteString("!~")
-		}
-		b.WriteString(m.Value)
+		b.WriteString(m.String())
 	}
 	b.WriteByte('}')
 
