@@ -49,8 +49,6 @@ func (i *CacheableIndex) Stop() {
 //
 // It uses as a key for the cache all parameters (userID, from, through, shard, matchers) separated by a slash (/).
 func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	const opName = "GetChunkRefs"
-
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
 		stringfiedShard := fmt.Sprint(shard)
 		keyMembers := []string{
@@ -79,7 +77,7 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 		return [][]byte{encodeBuf.Bytes()}, nil
 	}
 
-	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, shard, matchers...)
+	results, err := i.CacheableOp(ctx, "GetChunkRefs", mountKeyFn, fallbackFn, userID, from, through, shard, matchers...)
 	if err != nil {
 		return nil, errors.Wrap(err, "cacheable index call to cacheable op GetChunkRef")
 	}
@@ -102,8 +100,6 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 //
 // It uses as a key for the cache all parameters (userID, from, through, shard, matchers) separated by a slash (/).
 func (i *CacheableIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
-	const opName = "Series"
-
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
 		stringfiedShard := fmt.Sprint(shard)
 		keyMembers := []string{
@@ -133,7 +129,7 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 		return [][]byte{encodeBuf.Bytes()}, nil
 	}
 
-	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, shard, matchers...)
+	results, err := i.CacheableOp(ctx, "Series", mountKeyFn, fallbackFn, userID, from, through, shard, matchers...)
 	if err != nil {
 		return nil, errors.Wrap(err, "cacheable index call to cacheable op Series")
 	}
@@ -156,8 +152,6 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 //
 // It uses as a key for the cache only the matcher.
 func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	const opName = "LabelNames"
-
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
 		lmatchers, _ := toLabelMatchers(matchers)
 		return lmatchers.String()
@@ -179,7 +173,7 @@ func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, th
 		return [][]byte{encodeBuf.Bytes()}, nil
 	}
 
-	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, nil, matchers...)
+	results, err := i.CacheableOp(ctx, "LabelNames", mountKeyFn, fallbackFn, userID, from, through, nil, matchers...)
 	if err != nil {
 		return nil, errors.Wrap(err, "cacheable index call to cacheable op LabelNames")
 	}
@@ -203,8 +197,6 @@ func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, th
 //
 // It uses as a key for the cache only the matcher and the name parameter.
 func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	const opName = "LabelValues"
-
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
 		lmatchers, _ := toLabelMatchers(matchers)
 		return strings.Join([]string{name, lmatchers.String()}, sep)
@@ -225,7 +217,7 @@ func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, t
 		return [][]byte{encodeBuf.Bytes()}, nil
 	}
 
-	results, err := i.CacheableOp(ctx, opName, mountKeyFn, fallbackFn, userID, from, through, nil, matchers...)
+	results, err := i.CacheableOp(ctx, "LabelValues", mountKeyFn, fallbackFn, userID, from, through, nil, matchers...)
 	if err != nil {
 		return nil, errors.Wrap(err, "cacheable index call to cacheable op LabelValues")
 	}
