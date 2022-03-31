@@ -150,3 +150,7 @@ func (c *dqueClient) enqueuer() {
 		}
 	}
 }
+
+func (c *dqueClient) Name() string {
+	return ""
+}

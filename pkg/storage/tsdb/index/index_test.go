@@ -103,21 +103,9 @@ func (m mockIndex) Postings(name string, values ...string) (Postings, error) {
 	p := []Postings{}
 	for _, value := range values {
 		l := labels.Label{Name: name, Value: value}
-		p = append(p, m.SortedPostings(NewListPostings(m.postings[l])))
+		p = append(p, NewListPostings(m.postings[l]))
 	}
 	return Merge(p...), nil
-}
-
-func (m mockIndex) SortedPostings(p Postings) Postings {
-	ep, err := ExpandPostings(p)
-	if err != nil {
-		return ErrPostings(errors.Wrap(err, "expand postings"))
-	}
-
-	sort.Slice(ep, func(i, j int) bool {
-		return labels.Compare(m.series[ep[i]].l, m.series[ep[j]].l) < 0
-	})
-	return NewListPostings(ep)
 }
 
 func (m mockIndex) Series(ref storage.SeriesRef, lset *labels.Labels, chks *[]ChunkMeta) error {
@@ -190,14 +178,14 @@ func TestIndexRW_Postings(t *testing.T) {
 	ir, err := NewFileReader(fn)
 	require.NoError(t, err)
 
-	p, err := ir.Postings("a", "1")
+	p, err := ir.Postings("a", nil, "1")
 	require.NoError(t, err)
 
 	var l labels.Labels
 	var c []ChunkMeta
 
 	for i := 0; p.Next(); i++ {
-		err := ir.Series(p.At(), &l, &c)
+		_, err := ir.Series(p.At(), &l, &c)
 
 		require.NoError(t, err)
 		require.Equal(t, 0, len(c))
@@ -264,6 +252,10 @@ func TestPostingsMany(t *testing.T) {
 		require.NoError(t, iw.AddSymbol(s))
 	}
 
+	sort.Slice(series, func(i, j int) bool {
+		return series[i].Hash() < series[j].Hash()
+	})
+
 	for i, s := range series {
 		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s))
 	}
@@ -305,14 +297,15 @@ func TestPostingsMany(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		it, err := ir.Postings("i", c.in...)
+		it, err := ir.Postings("i", nil, c.in...)
 		require.NoError(t, err)
 
 		got := []string{}
 		var lbls labels.Labels
 		var metas []ChunkMeta
 		for it.Next() {
-			require.NoError(t, ir.Series(it.At(), &lbls, &metas))
+			_, err := ir.Series(it.At(), &lbls, &metas)
+			require.NoError(t, err)
 			got = append(got, lbls.Get("i"))
 		}
 		require.NoError(t, it.Err())
@@ -322,6 +315,12 @@ func TestPostingsMany(t *testing.T) {
 				exp = append(exp, e)
 			}
 		}
+
+		// sort expected values by label hash instead of lexicographically by labelset
+		sort.Slice(exp, func(i, j int) bool {
+			return labels.FromStrings("i", exp[i], "foo", "bar").Hash() < labels.FromStrings("i", exp[j], "foo", "bar").Hash()
+		})
+
 		require.Equal(t, exp, got, fmt.Sprintf("input: %v", c.in))
 	}
 }
@@ -332,8 +331,10 @@ func TestPersistence_index_e2e(t *testing.T) {
 	lbls, err := labels.ReadLabels(filepath.Join("..", "testdata", "20kseries.json"), 20000)
 	require.NoError(t, err)
 
-	// Sort labels as the index writer expects series in sorted order.
-	sort.Sort(labels.Slice(lbls))
+	// Sort labels as the index writer expects series in sorted order by fingerprint.
+	sort.Slice(lbls, func(i, j int) bool {
+		return lbls[i].Hash() < lbls[j].Hash()
+	})
 
 	symbols := map[string]struct{}{}
 	for _, lset := range lbls {
@@ -405,7 +406,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 	require.NoError(t, err)
 
 	for p := range mi.postings {
-		gotp, err := ir.Postings(p.Name, p.Value)
+		gotp, err := ir.Postings(p.Name, nil, p.Value)
 		require.NoError(t, err)
 
 		expp, err := mi.Postings(p.Name, p.Value)
@@ -419,7 +420,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 			ref := gotp.At()
 
-			err := ir.Series(ref, &lset, &chks)
+			_, err := ir.Series(ref, &lset, &chks)
 			require.NoError(t, err)
 
 			err = mi.Series(expp.At(), &explset, &expchks)

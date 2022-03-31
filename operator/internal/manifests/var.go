@@ -35,7 +35,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.4.1"
+	DefaultContainerImage = "docker.io/grafana/loki:2.4.2"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -243,7 +243,7 @@ func serviceMonitorEndpoint(portName, serviceName, namespace string, enableTLS b
 
 func lokiLivenessProbe() *corev1.Probe {
 	return &corev1.Probe{
-		Handler: corev1.Handler{
+		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
 				Path:   lokiLivenessPath,
 				Port:   intstr.FromInt(httpPort),
@@ -259,7 +259,7 @@ func lokiLivenessProbe() *corev1.Probe {
 
 func lokiReadinessProbe() *corev1.Probe {
 	return &corev1.Probe{
-		Handler: corev1.Handler{
+		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
 				Path:   lokiReadinessPath,
 				Port:   intstr.FromInt(httpPort),

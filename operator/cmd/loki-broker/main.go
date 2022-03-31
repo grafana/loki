@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ViaQ/logerr/log"
+	"github.com/go-logr/logr"
 	"github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
@@ -54,7 +55,7 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.StringVar(&c.writeToDir, "output.write-dir", "", "write each file to the specified directory.")
 }
 
-func (c *config) validateFlags() {
+func (c *config) validateFlags(log logr.Logger) {
 	if cfg.crFilepath == "" {
 		log.Info("-custom.resource.path flag is required")
 		os.Exit(1)
@@ -94,28 +95,29 @@ func (c *config) validateFlags() {
 var cfg *config
 
 func init() {
-	log.Init("loki-broker")
 	cfg = &config{}
 }
 
 func main() {
+	logger := log.NewLogger("loki-broker")
+
 	f := flag.NewFlagSet("", flag.ExitOnError)
 	cfg.registerFlags(f)
 	if err := f.Parse(os.Args[1:]); err != nil {
-		log.Error(err, "failed to parse flags")
+		logger.Error(err, "failed to parse flags")
 	}
 
-	cfg.validateFlags()
+	cfg.validateFlags(logger)
 
 	b, err := ioutil.ReadFile(cfg.crFilepath)
 	if err != nil {
-		log.Info("failed to read custom resource file", "path", cfg.crFilepath)
+		logger.Info("failed to read custom resource file", "path", cfg.crFilepath)
 		os.Exit(1)
 	}
 
 	ls := &v1beta1.LokiStack{}
 	if err = yaml.Unmarshal(b, ls); err != nil {
-		log.Error(err, "failed to unmarshal LokiStack CR", "path", cfg.crFilepath)
+		logger.Error(err, "failed to unmarshal LokiStack CR", "path", cfg.crFilepath)
 		os.Exit(1)
 	}
 
@@ -130,20 +132,20 @@ func main() {
 	}
 
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {
-		log.Error(optErr, "failed to conform options to build settings")
+		logger.Error(optErr, "failed to conform options to build settings")
 		os.Exit(1)
 	}
 
 	objects, err := manifests.BuildAll(opts)
 	if err != nil {
-		log.Error(err, "failed to build manifests")
+		logger.Error(err, "failed to build manifests")
 		os.Exit(1)
 	}
 
 	for _, o := range objects {
 		b, err := yaml.Marshal(o)
 		if err != nil {
-			log.Error(err, "failed to marshal manifest", "name", o.GetName(), "kind", o.GetObjectKind())
+			logger.Error(err, "failed to marshal manifest", "name", o.GetName(), "kind", o.GetObjectKind())
 			continue
 		}
 
@@ -151,7 +153,7 @@ func main() {
 			basename := fmt.Sprintf("%s-%s.yaml", o.GetObjectKind().GroupVersionKind().Kind, o.GetName())
 			fname := strings.ToLower(path.Join(cfg.writeToDir, basename))
 			if err := ioutil.WriteFile(fname, b, 0o644); err != nil {
-				log.Error(err, "failed to write file to directory", "path", fname)
+				logger.Error(err, "failed to write file to directory", "path", fname)
 				os.Exit(1)
 			}
 		} else {

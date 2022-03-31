@@ -21,6 +21,15 @@ func BuildPrometheusRule(opts Options) ([]client.Object, error) {
 
 // NewPrometheusRule creates a prometheus rule
 func NewPrometheusRule(opts Options) (*monitoringv1.PrometheusRule, error) {
+	alertOpts := alerts.Options{
+		RunbookURL: alerts.RunbookDefaultURL,
+	}
+
+	spec, err := alerts.Build(alertOpts)
+	if err != nil {
+		return nil, err
+	}
+
 	return &monitoringv1.PrometheusRule{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       monitoringv1.PrometheusRuleKind,
@@ -30,6 +39,6 @@ func NewPrometheusRule(opts Options) (*monitoringv1.PrometheusRule, error) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: PrometheusRuleName(opts.Name),
 		},
-		Spec: alerts.NewAlertsSpec(),
+		Spec: *spec,
 	}, nil
 }

@@ -134,6 +134,7 @@ type Client interface {
 	api.EntryHandler
 	// Stop goroutine sending batch of entries without retries.
 	StopNow()
+	Name() string
 }
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
@@ -334,12 +335,16 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					return
 				}
 				lblSet := make(prometheus.Labels)
-				for i := range lbls {
-					for _, lbl := range c.streamLagLabels {
+				for _, lbl := range c.streamLagLabels {
+					// label from streamLagLabels may not be found but we still need an empty value
+					// so that the prometheus client library doesn't panic on inconsistent label cardinality
+					value := ""
+					for i := range lbls {
 						if lbls[i].Name == lbl {
-							lblSet[lbl] = lbls[i].Value
+							value = lbls[i].Value
 						}
 					}
+					lblSet[lbl] = value
 				}
 				if lblSet != nil {
 					// always set host
@@ -449,4 +454,8 @@ func (c *client) processEntry(e api.Entry) (api.Entry, string) {
 func (c *client) UnregisterLatencyMetric(labels prometheus.Labels) {
 	labels[HostLabel] = c.cfg.URL.Host
 	c.metrics.streamLag.Delete(labels)
+}
+
+func (c *client) Name() string {
+	return c.name
 }

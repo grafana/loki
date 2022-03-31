@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
+	"github.com/ViaQ/logerr/log"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,6 +35,8 @@ tenants:
     cookieSecret: test789
 `)
 
+var logger = log.DefaultLogger()
+
 func TestGetTenantConfigMapData_ConfigMapExist(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
@@ -58,7 +61,7 @@ func TestGetTenantConfigMapData_ConfigMapExist(t *testing.T) {
 		return nil
 	}
 
-	ts := GetTenantConfigMapData(context.TODO(), k, r)
+	ts := GetTenantConfigMapData(context.TODO(), logger, k, r)
 	require.NotNil(t, ts)
 
 	expected := map[string]openshift.TenantData{
@@ -88,6 +91,6 @@ func TestGetTenantConfigMapData_ConfigMapNotExist(t *testing.T) {
 		return nil
 	}
 
-	ts := GetTenantConfigMapData(context.TODO(), k, r)
+	ts := GetTenantConfigMapData(context.TODO(), logger, k, r)
 	require.Nil(t, ts)
 }
