@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
@@ -45,6 +44,34 @@ func (i *CacheableIndex) Stop() {
 	i.Cache.Stop()
 }
 
+func stringifiedMatchers(matchers []*labels.Matcher) string {
+	b := strings.Builder{}
+
+	b.WriteByte('{')
+	for i, m := range matchers {
+		if i > 0 {
+			b.WriteByte(',')
+			b.WriteByte(' ')
+		}
+
+		b.WriteString(m.Name)
+		switch m.Type {
+		case labels.MatchEqual:
+			b.WriteByte('=')
+		case labels.MatchNotEqual:
+			b.WriteString("!=")
+		case labels.MatchRegexp:
+			b.WriteString("=~")
+		case labels.MatchNotRegexp:
+			b.WriteString("!~")
+		}
+		b.WriteString(m.Value)
+	}
+	b.WriteByte('}')
+
+	return b.String()
+}
+
 // GetChunkRefs is a cached implementation of GetChunkRefs.
 //
 // It uses as a key for the cache all parameters (userID, from, through, shard, matchers) separated by a colon (:).
@@ -55,8 +82,7 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 			userID, from.String(), through.String(), stringfiedShard,
 		}
 		if len(matchers) != 0 {
-			lmatchers, _ := toLabelMatchers(matchers)
-			keyMembers = append(keyMembers, lmatchers.String())
+			keyMembers = append(keyMembers, stringifiedMatchers(matchers))
 		}
 
 		return strings.Join(keyMembers, sep)
@@ -106,8 +132,7 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 			userID, from.String(), through.String(), stringfiedShard,
 		}
 		if len(matchers) != 0 {
-			lmatchers, _ := toLabelMatchers(matchers)
-			keyMembers = append(keyMembers, lmatchers.String())
+			keyMembers = append(keyMembers, stringifiedMatchers(matchers))
 		}
 
 		return strings.Join(keyMembers, sep)
@@ -153,8 +178,7 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 // It uses as a key for the cache only the matcher.
 func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
-		lmatchers, _ := toLabelMatchers(matchers)
-		return lmatchers.String()
+		return stringifiedMatchers(matchers)
 	}
 
 	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([][]byte, error) {
@@ -198,8 +222,7 @@ func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, th
 // It uses as a key for the cache only the matcher and the name parameter.
 func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
 	mountKeyFn := func(userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string {
-		lmatchers, _ := toLabelMatchers(matchers)
-		return strings.Join([]string{name, lmatchers.String()}, sep)
+		return strings.Join([]string{name, stringifiedMatchers(matchers)}, sep)
 	}
 
 	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([][]byte, error) {
@@ -240,38 +263,6 @@ func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, t
 type mountKeyFunc func(userID string, from model.Time, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) string
 
 type fallbackFunc func(ctx context.Context, userID string, from model.Time, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([][]byte, error)
-
-// toLabelMatchers materialize the given matchers as LabelMatchers.
-//
-// Using LabelMatchers is specially useful because it supports String().
-func toLabelMatchers(matchers []*labels.Matcher) (*client.LabelMatchers, error) {
-	pbMatchers := &client.LabelMatchers{
-		Matchers: make([]*client.LabelMatcher, 0, len(matchers)),
-	}
-
-	for _, m := range matchers {
-		var mType client.MatchType
-		switch m.Type {
-		case labels.MatchEqual:
-			mType = client.EQUAL
-		case labels.MatchNotEqual:
-			mType = client.NOT_EQUAL
-		case labels.MatchRegexp:
-			mType = client.REGEX_MATCH
-		case labels.MatchNotRegexp:
-			mType = client.REGEX_NO_MATCH
-		default:
-			return nil, errors.New("invalid matcher type")
-		}
-		pbMatchers.Matchers = append(pbMatchers.Matchers, &client.LabelMatcher{
-			Type:  mType,
-			Name:  m.Name,
-			Value: m.Value,
-		})
-	}
-
-	return pbMatchers, nil
-}
 
 // CacheableOp abstracts an operation that cache its results.
 //
