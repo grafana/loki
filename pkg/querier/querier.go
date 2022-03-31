@@ -14,12 +14,13 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/tenant"
 	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
