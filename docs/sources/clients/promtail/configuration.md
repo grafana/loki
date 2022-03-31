@@ -1776,7 +1776,7 @@ The optional `limit_config` block configures global limits for this instance of 
 
 # When true, exceeding the rate limit causes this instance of Promtail to discard
 # log lines, rather than sending them to Loki. When false, exceeding the rate limit
-# causes this instance of Promtail to hold off on sending the log lines.
+# causes this instance of Promtail to temporarily hold off on sending the log lines and retry later.
 [readline_rate_drop: <bool> | default = true]
 ```
 
