@@ -14,31 +14,31 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
 const userID = "1"
 
-func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]string, []encoding.Chunk) {
+func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]string, []chunk.Chunk) {
 	const chunkLen = 13 * 3600 // in seconds
 
 	// put a set of chunks, larger than background batch size, with varying timestamps and values
 	keys := []string{}
 	bufs := [][]byte{}
-	chunks := []encoding.Chunk{}
+	chunks := []chunk.Chunk{}
 	for i := 0; i < 111; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		promChunk := encoding.New()
+		promChunk := chunk.New()
 		nc, err := promChunk.Add(model.SamplePair{
 			Timestamp: ts,
 			Value:     model.SampleValue(i),
 		})
 		require.NoError(t, err)
 		require.Nil(t, nc)
-		c := encoding.NewChunk(
+		c := chunk.NewChunk(
 			userID,
 			model.Fingerprint(1),
 			labels.Labels{
@@ -59,7 +59,7 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 		// actual one (the one that will be fetched from the cache) we need to
 		// cleanup the chunk to avoid any internal references mismatch (ie. appender
 		// pointer).
-		cleanChunk := encoding.Chunk{
+		cleanChunk := chunk.Chunk{
 			ChunkRef: logproto.ChunkRef{
 				UserID:      c.UserID,
 				Fingerprint: c.Fingerprint,
@@ -67,9 +67,8 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 				Through:     c.Through,
 				Checksum:    c.Checksum,
 			},
-			ChecksumSet: c.ChecksumSet,
 		}
-		err = cleanChunk.Decode(encoding.NewDecodeContext(), buf)
+		err = cleanChunk.Decode(chunk.NewDecodeContext(), buf)
 		require.NoError(t, err)
 
 		keys = append(keys, scfg.ExternalKey(c.ChunkRef))
@@ -82,7 +81,7 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 	return keys, chunks
 }
 
-func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []encoding.Chunk) {
+func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []chunk.Chunk) {
 	for i := 0; i < 100; i++ {
 		index := rand.Intn(len(keys))
 		key := keys[index]
@@ -92,33 +91,33 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []en
 		require.Len(t, bufs, 1)
 		require.Len(t, missingKeys, 0)
 
-		c, err := encoding.ParseExternalKey(userID, found[0])
+		c, err := chunk.ParseExternalKey(userID, found[0])
 		require.NoError(t, err)
-		err = c.Decode(encoding.NewDecodeContext(), bufs[0])
+		err = c.Decode(chunk.NewDecodeContext(), bufs[0])
 		require.NoError(t, err)
 		require.Equal(t, chunks[index], c)
 	}
 }
 
-func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []encoding.Chunk) {
+func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []chunk.Chunk) {
 	// test getting them all
 	found, bufs, missingKeys, _ := cache.Fetch(context.Background(), keys)
 	require.Len(t, found, len(keys))
 	require.Len(t, bufs, len(keys))
 	require.Len(t, missingKeys, 0)
 
-	result := []encoding.Chunk{}
+	result := []chunk.Chunk{}
 	for i := range found {
-		c, err := encoding.ParseExternalKey(userID, found[i])
+		c, err := chunk.ParseExternalKey(userID, found[i])
 		require.NoError(t, err)
-		err = c.Decode(encoding.NewDecodeContext(), bufs[i])
+		err = c.Decode(chunk.NewDecodeContext(), bufs[i])
 		require.NoError(t, err)
 		result = append(result, c)
 	}
 	require.Equal(t, chunks, result)
 }
 
-func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []encoding.Chunk) {
+func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk.Chunk) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
@@ -141,7 +140,7 @@ func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []encod
 }
 
 type byExternalKey struct {
-	chunks []encoding.Chunk
+	chunks []chunk.Chunk
 	scfg   config.SchemaConfig
 }
 

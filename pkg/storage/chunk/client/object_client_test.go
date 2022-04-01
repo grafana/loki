@@ -45,7 +45,6 @@ func TestFSEncoder(t *testing.T) {
 			Fingerprint: uint64(456),
 			Checksum:    123,
 		},
-		ChecksumSet: true,
 	}
 
 	// chunk that resolves to v12
@@ -57,7 +56,6 @@ func TestFSEncoder(t *testing.T) {
 			Fingerprint: uint64(456),
 			Checksum:    123,
 		},
-		ChecksumSet: true,
 	}
 
 	for _, tc := range []struct {

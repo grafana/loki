@@ -35,24 +35,34 @@ type CompositeStore struct {
 }
 
 type compositeStore struct {
-	stores []*compositeStoreEntry
+	stores []compositeStoreEntry
 }
 
 // NewCompositeStore creates a new Store which delegates to different stores depending
 // on time.
-func NewCompositeStore(limits StoreLimits) CompositeStore {
-	return CompositeStore{compositeStore{}, limits}
+func NewCompositeStore(limits StoreLimits) *CompositeStore {
+	return &CompositeStore{compositeStore{}, limits}
 }
 
 func (c *CompositeStore) AddStore(start model.Time, fetcher *fetcher.Fetcher, index Index, writer ChunkWriter, stop func()) {
-	c.stores = append(c.stores, &compositeStoreEntry{
-		start:       start,
-		fetcher:     fetcher,
-		index:       index,
-		ChunkWriter: writer,
-		limits:      c.limits,
-		stop:        stop,
+	c.stores = append(c.stores, compositeStoreEntry{
+		start: start,
+		Store: &storeEntry{
+			fetcher:     fetcher,
+			index:       index,
+			ChunkWriter: writer,
+			limits:      c.limits,
+			stop:        stop,
+		},
 	})
+}
+
+func (c *CompositeStore) Stores() []Store {
+	var stores []Store
+	for _, store := range c.stores {
+		stores = append(stores, store.Store)
+	}
+	return stores
 }
 
 func (c compositeStore) Put(ctx context.Context, chunks []chunk.Chunk) error {

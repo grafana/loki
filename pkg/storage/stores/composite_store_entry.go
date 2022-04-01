@@ -38,16 +38,19 @@ type ChunkWriter interface {
 }
 
 type compositeStoreEntry struct {
-	start  model.Time
-	limits StoreLimits
+	start model.Time
+	Store
+}
 
+type storeEntry struct {
+	limits  StoreLimits
 	stop    func()
 	fetcher *fetcher.Fetcher
 	index   Index
 	ChunkWriter
 }
 
-func (c *compositeStoreEntry) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
@@ -73,12 +76,12 @@ func (c *compositeStoreEntry) GetChunkRefs(ctx context.Context, userID string, f
 	return [][]chunk.Chunk{chunks}, []*fetcher.Fetcher{c.fetcher}, err
 }
 
-func (c *compositeStoreEntry) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
+func (c *storeEntry) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
 	return c.index.GetSeries(ctx, userID, from, through, matchers...)
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *compositeStoreEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer log.Span.Finish()
 
@@ -93,7 +96,7 @@ func (c *compositeStoreEntry) LabelNamesForMetricName(ctx context.Context, userI
 	return c.index.LabelNamesForMetricName(ctx, userID, from, through, metricName)
 }
 
-func (c *compositeStoreEntry) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelValuesForMetricName")
 	defer log.Span.Finish()
 
@@ -107,7 +110,7 @@ func (c *compositeStoreEntry) LabelValuesForMetricName(ctx context.Context, user
 	return c.index.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
 }
 
-func (c *compositeStoreEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
+func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
 	//nolint:ineffassign,staticcheck //Leaving ctx even though we don't currently use it, we want to make it available for when we might need it and hopefully will ensure us using the correct context at that time
 
 	if *through < *from {
@@ -136,11 +139,11 @@ func (c *compositeStoreEntry) validateQueryTimeRange(ctx context.Context, userID
 	return false, nil
 }
 
-func (c *compositeStoreEntry) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
+func (c *storeEntry) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return c.fetcher
 }
 
-func (c *compositeStoreEntry) Stop() {
+func (c *storeEntry) Stop() {
 	if c.stop != nil {
 		c.stop()
 	}

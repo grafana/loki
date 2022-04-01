@@ -41,6 +41,7 @@ type Store interface {
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 	GetSchemaConfigs() []config.PeriodConfig
+	Stores() []stores.Store
 	SetChunkFilterer(chunkFilter RequestChunkFilterer)
 }
 
@@ -56,7 +57,7 @@ type ChunkFilterer interface {
 
 type store struct {
 	stores.Store
-	composite stores.CompositeStore
+	composite *stores.CompositeStore
 
 	cfg       Config
 	storeCfg  config.ChunkStoreConfig
@@ -149,6 +150,10 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	return s, nil
 }
 
+func (s *store) Stores() []stores.Store {
+	return s.composite.Stores()
+}
+
 func (s *store) init() error {
 	for _, p := range s.schemaCfg.Configs {
 		chunkClient, err := s.chunkClientForPeriod(p)
@@ -206,7 +211,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 	}
 
 	return series.NewWriter(f, s.schemaCfg, idx, schema, s.writeDedupeCache, s.storeCfg.DisableIndexDeduplication),
-		series.NewSeriesIndexStore(s.schemaCfg, schema, idx, f),
+		series.NewIndexStore(s.schemaCfg, schema, idx, f),
 		func() {
 			chunkClient.Stop()
 			f.Stop()

@@ -1,13 +1,13 @@
 package tests
 
 import (
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
 // ByKey allow you to sort chunks by ID
 type ByKey struct {
-	chunks []encoding.Chunk
+	chunks []chunk.Chunk
 	scfg   config.SchemaConfig
 }
 

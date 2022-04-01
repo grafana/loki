@@ -37,7 +37,7 @@ func (f CloserFunc) Close() error {
 
 // DefaultSchemaConfig returns default schema for use in test fixtures
 func DefaultSchemaConfig(kind string) config.SchemaConfig {
-	return defaultSchemaConfig(kind, "v9", model.Now().Add(-time.Hour*2))
+	return SchemaConfig(kind, "v9", model.Now().Add(-time.Hour*2))
 }
 
 // Setup a fixture with initial tables
@@ -71,7 +71,7 @@ func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from mode
 	keys := []string{}
 	chunks := []chunk.Chunk{}
 	for j := 0; j < batchSize; j++ {
-		chunk := dummyChunkFor(from, through, labels.Labels{
+		chunk := DummyChunkFor(from, through, labels.Labels{
 			{Name: model.MetricNameLabel, Value: "foo"},
 			{Name: "index", Value: strconv.Itoa(startIndex*batchSize + j)},
 		})
@@ -81,7 +81,7 @@ func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from mode
 	return keys, chunks, nil
 }
 
-func dummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
+func DummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
 	cs := chunk.New()
 
 	for ts := from; ts <= through; ts = ts.Add(15 * time.Second) {
@@ -107,12 +107,12 @@ func dummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
 	return chunk
 }
 
-func defaultSchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
+func SchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{{
 			IndexType: store,
 			Schema:    schema,
-			From:      config.DayTime{from},
+			From:      config.DayTime{Time: from},
 			ChunkTables: config.PeriodicTableConfig{
 				Prefix: "cortex",
 				Period: 7 * 24 * time.Hour,
@@ -128,48 +128,3 @@ func defaultSchemaConfig(store, schema string, from model.Time) config.SchemaCon
 	}
 	return s
 }
-
-// func SetupTestChunkStoreWithClients(indexClient index.IndexClient, chunksClient chunkclient.Client, tableClient index.TableClient) (chunk.Store, error) {
-// 	var (
-// 		tbmConfig index.TableManagerConfig
-// 		schemaCfg = chunk.DefaultSchemaConfig("", "v10", 0)
-// 	)
-// 	flagext.DefaultValues(&tbmConfig)
-// 	tableManager, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, tableClient, nil, nil, nil)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	err = tableManager.SyncTables(context.Background())
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	var limits validation.Limits
-// 	flagext.DefaultValues(&limits)
-// 	limits.MaxQueryLength = model.Duration(30 * 24 * time.Hour)
-// 	overrides, err := validation.NewOverrides(limits, nil)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	var storeCfg config.StoreConfig
-// 	flagext.DefaultValues(&storeCfg)
-
-// 	store := storage.NewCompositeStore(nil)
-// 	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], indexClient, chunksClient, overrides, cache.NewNoopCache(), cache.NewNoopCache())
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return store, nil
-// }
-
-// func SetupTestChunkStore() (storage.ChunkStore, error) {
-// 	storage := NewMockStorage()
-// 	return SetupTestChunkStoreWithClients(storage, storage, storage)
-// }
-
-// func SetupTestObjectStore() (chunkclient.ObjectClient, error) {
-// 	return NewMockStorage(), nil
-// }

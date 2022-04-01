@@ -100,9 +100,8 @@ func TestGrpcStore(t *testing.T) {
 					Value: "prometheus",
 				},
 			},
-			ChecksumSet: true,
-			Encoding:    chunk.Bigchunk,
-			Data:        chunk.New(),
+			Encoding: chunk.Bigchunk,
+			Data:     chunk.New(),
 		},
 	}
 	err = storageClient.PutChunks(context.Background(), putChunksTestData)
@@ -131,9 +130,8 @@ func TestGrpcStore(t *testing.T) {
 					Value: "prometheus",
 				},
 			},
-			ChecksumSet: true,
-			Encoding:    chunk.Bigchunk,
-			Data:        chunk.New(),
+			Encoding: chunk.Bigchunk,
+			Data:     chunk.New(),
 		},
 	}
 	_, err = storageClient.GetChunks(context.Background(), getChunksTestData)

@@ -39,8 +39,7 @@ func TestFactoryStop(t *testing.T) {
 
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
-	metrics := NewClientMetrics()
-	store, err := NewChunkStore(cfg, storeConfig, schemaConfig, limits, metrics, nil, nil, log.NewNopLogger())
+	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, cm, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	store.Stop()
@@ -79,8 +78,7 @@ func TestCassandraInMultipleSchemas(t *testing.T) {
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
-	metrics := NewClientMetrics()
-	store, err := NewChunkStore(cfg, storeConfig, schemaCfg, limits, metrics, nil, nil, log.NewNopLogger())
+	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, cm, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	store.Stop()
@@ -92,7 +90,7 @@ func DefaultSchemaConfig(store, schema string, from model.Time) config.SchemaCon
 		Configs: []config.PeriodConfig{{
 			IndexType: store,
 			Schema:    schema,
-			From:      config.DayTime{from},
+			From:      config.DayTime{Time: from},
 			ChunkTables: config.PeriodicTableConfig{
 				Prefix: "cortex",
 				Period: 7 * 24 * time.Hour,

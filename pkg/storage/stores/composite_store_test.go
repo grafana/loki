@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/stretchr/testify/require"
 
@@ -20,11 +20,11 @@ const userID = "1"
 
 type mockStore int
 
-func (m mockStore) Put(ctx context.Context, chunks []encoding.Chunk) error {
+func (m mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
-func (m mockStore) PutOne(ctx context.Context, from, through model.Time, chunk encoding.Chunk) error {
+func (m mockStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
 	return nil
 }
 
@@ -32,7 +32,7 @@ func (m mockStore) LabelValuesForMetricName(ctx context.Context, userID string, 
 	return nil, nil
 }
 
-func (m mockStore) GetChunkRefs(tx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]encoding.Chunk, []*fetcher.Fetcher, error) {
+func (m mockStore) GetChunkRefs(tx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
@@ -53,11 +53,11 @@ func (m mockStore) Stop() {}
 func TestCompositeStore(t *testing.T) {
 	type result struct {
 		from, through model.Time
-		store         ChunkStore
+		store         Store
 	}
-	collect := func(results *[]result) func(_ context.Context, from, through model.Time, store ChunkStore) error {
-		return func(_ context.Context, from, through model.Time, store ChunkStore) error {
-			*results = append(*results, result{from, through, store})
+	collect := func(results *[]result) func(_ context.Context, from, through model.Time, store Store) error {
+		return func(_ context.Context, from, through model.Time, store Store) error {
+			*results = append(*results, result{from, through, store.(compositeStoreEntry).Store})
 			return nil
 		}
 	}
@@ -263,22 +263,22 @@ func TestCompositeStore_GetChunkFetcher(t *testing.T) {
 		{
 			name:            "first store",
 			tm:              model.TimeFromUnix(10),
-			expectedFetcher: cs.stores[0].ChunkStore.(mockStoreGetChunkFetcher).chunkFetcher,
+			expectedFetcher: cs.stores[0].Store.(mockStoreGetChunkFetcher).chunkFetcher,
 		},
 		{
 			name:            "still first store",
 			tm:              model.TimeFromUnix(11),
-			expectedFetcher: cs.stores[0].ChunkStore.(mockStoreGetChunkFetcher).chunkFetcher,
+			expectedFetcher: cs.stores[0].Store.(mockStoreGetChunkFetcher).chunkFetcher,
 		},
 		{
 			name:            "second store",
 			tm:              model.TimeFromUnix(20),
-			expectedFetcher: cs.stores[1].ChunkStore.(mockStoreGetChunkFetcher).chunkFetcher,
+			expectedFetcher: cs.stores[1].Store.(mockStoreGetChunkFetcher).chunkFetcher,
 		},
 		{
 			name:            "still second store",
 			tm:              model.TimeFromUnix(21),
-			expectedFetcher: cs.stores[1].ChunkStore.(mockStoreGetChunkFetcher).chunkFetcher,
+			expectedFetcher: cs.stores[1].Store.(mockStoreGetChunkFetcher).chunkFetcher,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

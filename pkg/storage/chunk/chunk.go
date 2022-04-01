@@ -40,9 +40,6 @@ type Chunk struct {
 
 	Metric labels.Labels `json:"metric"`
 
-	// For old chunks, ChecksumSet will be false.
-	ChecksumSet bool `json:"-"`
-
 	// We never use Delta encoding (the zero value), so if this entry is
 	// missing, we default to DoubleDelta.
 	Encoding Encoding  `json:"encoding"`
@@ -139,7 +136,6 @@ func parseNewExternalKey(userID, key string) (Chunk, error) {
 			Through:     model.Time(through),
 			Checksum:    uint32(checksum),
 		},
-		ChecksumSet: true,
 	}, nil
 }
 
@@ -198,7 +194,6 @@ func parseNewerExternalKey(userID, key string) (Chunk, error) {
 			Through:     model.Time(through),
 			Checksum:    uint32(checksum),
 		},
-		ChecksumSet: true,
 	}, nil
 }
 
@@ -278,7 +273,6 @@ func (c *Chunk) EncodeTo(buf *bytes.Buffer) error {
 
 	// Now work out the checksum
 	c.encoded = buf.Bytes()
-	c.ChecksumSet = true
 	c.Checksum = crc32.Checksum(c.encoded, castagnoliTable)
 	return nil
 }
@@ -310,7 +304,7 @@ func NewDecodeContext() *DecodeContext {
 func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	// First, calculate the checksum of the chunk and confirm it matches
 	// what we expected.
-	if c.ChecksumSet && c.Checksum != crc32.Checksum(input, castagnoliTable) {
+	if c.Checksum != crc32.Checksum(input, castagnoliTable) {
 		return errors.WithStack(ErrInvalidChecksum)
 	}
 
@@ -336,12 +330,12 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	// Next, confirm the chunks matches what we expected.  Easiest way to do this
 	// is to compare what the decoded data thinks its external ID would be, but
 	// we don't write the checksum to s3, so we have to copy the checksum in.
-	if c.ChecksumSet {
-		tempMetadata.Checksum, tempMetadata.ChecksumSet = c.Checksum, c.ChecksumSet
-		if !equalByKey(*c, tempMetadata) {
-			return errors.WithStack(ErrWrongMetadata)
-		}
+
+	tempMetadata.Checksum = c.Checksum
+	if !equalByKey(*c, tempMetadata) {
+		return errors.WithStack(ErrWrongMetadata)
 	}
+
 	*c = tempMetadata
 
 	// Finally, unmarshal the actual chunk data.

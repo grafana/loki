@@ -1,9 +1,8 @@
-package series
+package series_test
 
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"reflect"
 	"sort"
 	"testing"
@@ -15,93 +14,92 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
+	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 type configFactory func() config.ChunkStoreConfig
 
-var schemas = []string{"v9", "v10", "v11", "v12"}
+const userID = "1"
 
-var stores = []struct {
-	name     string
-	configFn configFactory
-}{
-	{
-		name: "store",
-		configFn: func() config.ChunkStoreConfig {
-			var storeCfg config.ChunkStoreConfig
-			flagext.DefaultValues(&storeCfg)
-			return storeCfg
+var (
+	ctx     = user.InjectOrgID(context.Background(), userID)
+	schemas = []string{"v9", "v10", "v11", "v12"}
+	stores  = []struct {
+		name     string
+		configFn configFactory
+	}{
+		{
+			name: "store",
+			configFn: func() config.ChunkStoreConfig {
+				var storeCfg config.ChunkStoreConfig
+				flagext.DefaultValues(&storeCfg)
+				return storeCfg
+			},
 		},
-	},
-	{
-		name: "cached_store",
-		configFn: func() config.ChunkStoreConfig {
-			var storeCfg config.ChunkStoreConfig
-			flagext.DefaultValues(&storeCfg)
-			storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
-				MaxSizeItems: 500,
-			}, prometheus.NewRegistry(), log.NewNopLogger())
-			return storeCfg
+		{
+			name: "cached_store",
+			configFn: func() config.ChunkStoreConfig {
+				var storeCfg config.ChunkStoreConfig
+				flagext.DefaultValues(&storeCfg)
+				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
+					MaxSizeItems: 500,
+				}, prometheus.NewRegistry(), log.NewNopLogger())
+				return storeCfg
+			},
 		},
-	},
-}
+	}
+	cm = storage.NewClientMetrics()
+)
 
 // newTestStore creates a new Store for testing.
-func newTestChunkStore(t require.TestingT, schemaName string) (Store, SchemaConfig) {
+func newTestChunkStore(t require.TestingT, schemaName string) (storage.Store, config.SchemaConfig) {
 	var storeCfg config.ChunkStoreConfig
 	flagext.DefaultValues(&storeCfg)
 	return newTestChunkStoreConfig(t, schemaName, storeCfg)
 }
 
-func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg StoreConfig) (Store, SchemaConfig) {
-	schemaCfg := DefaultSchemaConfig("", schemaName, 0)
+func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg config.ChunkStoreConfig) (storage.Store, config.SchemaConfig) {
+	schemaCfg := testutils.SchemaConfig("", schemaName, 0)
+	schemaCfg.Configs[0].IndexType = "inmemory"
+	schemaCfg.Configs[0].ObjectType = "inmemory"
 
-	schema, err := schemaCfg.Configs[0].CreateSchema()
-	require.NoError(t, err)
-
-	return newTestChunkStoreConfigWithMockStorage(t, schemaCfg, schema, storeCfg), schemaCfg
+	return newTestChunkStoreConfigWithMockStorage(t, schemaCfg, storeCfg), schemaCfg
 }
 
-func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg SchemaConfig, schema SeriesStoreSchema, storeCfg StoreConfig) Store {
-	var tbmConfig TableManagerConfig
+func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg config.SchemaConfig, storeCfg config.ChunkStoreConfig) storage.Store {
+	testutils.ResetMockStorage()
+	var tbmConfig index.TableManagerConfig
 	err := schemaCfg.Validate()
 	require.NoError(t, err)
 	flagext.DefaultValues(&tbmConfig)
-	storage := NewMockStorage()
-	tableManager, err := NewTableManager(tbmConfig, schemaCfg, maxChunkAge, storage, nil, nil, nil)
+
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxQueryLength: model.Duration(30 * 24 * time.Hour),
+	}, nil)
 	require.NoError(t, err)
 
-	err = tableManager.SyncTables(context.Background())
+	store, err := storage.NewStore(storage.Config{}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger())
 	require.NoError(t, err)
-
-	var limits validation.Limits
-	flagext.DefaultValues(&limits)
-	limits.MaxQueryLength = model.Duration(30 * 24 * time.Hour)
-	overrides, err := validation.NewOverrides(limits, nil)
+	c := store.Stores()[0].GetChunkFetcher(0).Client().(chunkclient.MetricsChunkClient).Client.(*testutils.MockStorage)
+	tm, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, c, nil, nil, nil)
 	require.NoError(t, err)
-
-	reg := prometheus.NewRegistry()
-	logger := log.NewNopLogger()
-	chunksCache, err := cache.New(storeCfg.ChunkCacheConfig, reg, logger)
-	require.NoError(t, err)
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, reg, logger)
-	require.NoError(t, err)
-
-	store := NewCompositeStore(nil)
-	err = store.addSchema(storeCfg, schemaCfg.Configs[0], schema, schemaCfg.Configs[0].From.Time, storage, storage, overrides, chunksCache, writeDedupeCache)
-	require.NoError(t, err)
+	tm.SyncTables(context.Background())
 	return store
 }
 
 func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
-	ctx := context.Background()
 	now := model.Now()
 
 	fooMetric1 := labels.Labels{
@@ -172,7 +170,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
 
-					if err := store.Put(ctx, []Chunk{
+					if err := store.Put(ctx, []chunk.Chunk{
 						fooChunk1,
 						fooChunk2,
 						fooChunk3,
@@ -212,7 +210,6 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 }
 
 func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
-	ctx := context.Background()
 	now := model.Now()
 
 	fooMetric1 := labels.Labels{
@@ -272,7 +269,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 					store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
 
-					if err := store.Put(ctx, []Chunk{
+					if err := store.Put(ctx, []chunk.Chunk{
 						fooChunk1,
 						fooChunk2,
 						fooChunk3,
@@ -314,7 +311,6 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 
 // TestChunkStore_getMetricNameChunks tests if chunks are fetched correctly when we have the metric name
 func TestChunkStore_getMetricNameChunks(t *testing.T) {
-	ctx := context.Background()
 	now := model.Now()
 	chunk1 := dummyChunkFor(now, labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},
@@ -330,47 +326,47 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 
 	testCases := []struct {
 		query  string
-		expect []Chunk
+		expect []chunk.Chunk
 	}{
 		{
 			`foo`,
-			[]Chunk{chunk1, chunk2},
+			[]chunk.Chunk{chunk1, chunk2},
 		},
 		{
 			`foo{flip=""}`,
-			[]Chunk{chunk2},
+			[]chunk.Chunk{chunk2},
 		},
 		{
 			`foo{bar="baz"}`,
-			[]Chunk{chunk1},
+			[]chunk.Chunk{chunk1},
 		},
 		{
 			`foo{bar="beep"}`,
-			[]Chunk{chunk2},
+			[]chunk.Chunk{chunk2},
 		},
 		{
 			`foo{toms="code"}`,
-			[]Chunk{chunk1, chunk2},
+			[]chunk.Chunk{chunk1, chunk2},
 		},
 		{
 			`foo{bar!="baz"}`,
-			[]Chunk{chunk2},
+			[]chunk.Chunk{chunk2},
 		},
 		{
 			`foo{bar=~"beep|baz"}`,
-			[]Chunk{chunk1, chunk2},
+			[]chunk.Chunk{chunk1, chunk2},
 		},
 		{
 			`foo{bar=~"beeping|baz"}`,
-			[]Chunk{chunk1},
+			[]chunk.Chunk{chunk1},
 		},
 		{
 			`foo{toms="code", bar=~"beep|baz"}`,
-			[]Chunk{chunk1, chunk2},
+			[]chunk.Chunk{chunk1, chunk2},
 		},
 		{
 			`foo{toms="code", bar="baz"}`,
-			[]Chunk{chunk1},
+			[]chunk.Chunk{chunk1},
 		},
 	}
 	for _, schema := range schemas {
@@ -380,7 +376,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 			store, schemaCfg := newTestChunkStoreConfig(t, schema, storeCfg)
 			defer store.Stop()
 
-			if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
+			if err := store.Put(ctx, []chunk.Chunk{chunk1, chunk2}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -394,14 +390,16 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 
 					chunks, fetchers, err := store.GetChunkRefs(ctx, userID, now.Add(-time.Hour), now, matchers...)
 					require.NoError(t, err)
-					fetchedChunk := []Chunk{}
+					fetchedChunk := []chunk.Chunk{}
 					for _, f := range fetchers {
 						for _, cs := range chunks {
 							keys := make([]string, 0, len(cs))
-							sort.Slice(chunks, func(i, j int) bool { return schemaCfg.ExternalKey(cs[i]) < schemaCfg.ExternalKey(cs[j]) })
+							sort.Slice(chunks, func(i, j int) bool {
+								return schemaCfg.ExternalKey(cs[i].ChunkRef) < schemaCfg.ExternalKey(cs[j].ChunkRef)
+							})
 
 							for _, c := range cs {
-								keys = append(keys, schemaCfg.ExternalKey(c))
+								keys = append(keys, schemaCfg.ExternalKey(c.ChunkRef))
 							}
 							cks, err := f.FetchChunks(ctx, cs, keys)
 							if err != nil {
@@ -420,8 +418,15 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 						}
 					}
 
-					if !reflect.DeepEqual(tc.expect, fetchedChunk) {
-						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, fetchedChunk))
+					for i, c := range fetchedChunk {
+						require.Equal(t, tc.expect[i].ChunkRef, c.ChunkRef)
+						require.Equal(t, tc.expect[i].Metric, c.Metric)
+						require.Equal(t, tc.expect[i].Encoding, c.Encoding)
+						ee, err := tc.expect[i].Encoded()
+						require.NoError(t, err)
+						fe, err := c.Encoded()
+						require.NoError(t, err)
+						require.Equal(t, ee, fe)
 					}
 				})
 			}
@@ -432,204 +437,6 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 // nolint
 func mustNewLabelMatcher(matchType labels.MatchType, name string, value string) *labels.Matcher {
 	return labels.MustNewMatcher(matchType, name, value)
-}
-
-func TestChunkStoreRandom(t *testing.T) {
-	ctx := context.Background()
-
-	for _, schema := range schemas {
-		t.Run(schema, func(t *testing.T) {
-			store, schemaCfg := newTestChunkStore(t, schema)
-			defer store.Stop()
-
-			// put 100 chunks from 0 to 99
-			const chunkLen = 2 * 3600 // in seconds
-			for i := 0; i < 100; i++ {
-				ts := model.TimeFromUnix(int64(i * chunkLen))
-				ch := encoding.New()
-				nc, err := ch.Add(model.SamplePair{
-					Timestamp: ts,
-					Value:     model.SampleValue(float64(i)),
-				})
-				require.NoError(t, err)
-				require.Nil(t, nc)
-				chunk := NewChunk(
-					userID,
-					model.Fingerprint(1),
-					labels.Labels{
-						{Name: labels.MetricName, Value: "foo"},
-						{Name: "bar", Value: "baz"},
-					},
-					ch,
-					ts,
-					ts.Add(chunkLen*time.Second).Add(-1*time.Second),
-				)
-				err = chunk.Encode()
-				require.NoError(t, err)
-				err = store.Put(ctx, []Chunk{chunk})
-				require.NoError(t, err)
-			}
-
-			// pick two random numbers and do a query
-			for i := 0; i < 100; i++ {
-				start := rand.Int63n(99 * chunkLen)
-				end := start + 1 + rand.Int63n((99*chunkLen)-start)
-				assert.True(t, start < end)
-
-				startTime := model.TimeFromUnix(start)
-				endTime := model.TimeFromUnix(end)
-
-				matchers := []*labels.Matcher{
-					mustNewLabelMatcher(labels.MatchEqual, labels.MetricName, "foo"),
-					mustNewLabelMatcher(labels.MatchEqual, "bar", "baz"),
-				}
-				chunks, fetchers, err := store.GetChunkRefs(ctx, userID, startTime, endTime, matchers...)
-				require.NoError(t, err)
-				fetchedChunk := make([]Chunk, 0, len(chunks))
-				for _, f := range fetchers {
-					for _, cs := range chunks {
-						keys := make([]string, 0, len(cs))
-						sort.Slice(chunks, func(i, j int) bool { return schemaCfg.ExternalKey(cs[i]) < schemaCfg.ExternalKey(cs[j]) })
-
-						for _, c := range cs {
-							keys = append(keys, schemaCfg.ExternalKey(c))
-						}
-						cks, err := f.FetchChunks(ctx, cs, keys)
-						if err != nil {
-							t.Fatal(err)
-						}
-						fetchedChunk = append(fetchedChunk, cks...)
-					}
-				}
-
-				// We need to check that each chunk is in the time range
-				for _, chunk := range fetchedChunk {
-					assert.False(t, chunk.From.After(endTime))
-					assert.False(t, chunk.Through.Before(startTime))
-					samples, err := chunk.Samples(chunk.From, chunk.Through)
-					assert.NoError(t, err)
-					assert.Equal(t, 1, len(samples))
-					// TODO verify chunk contents
-				}
-
-				// And check we got all the chunks we want
-				numChunks := (end / chunkLen) - (start / chunkLen) + 1
-				assert.Equal(t, int(numChunks), len(fetchedChunk))
-			}
-		})
-	}
-}
-
-func TestChunkStoreLeastRead(t *testing.T) {
-	// Test we don't read too much from the index
-	ctx := context.Background()
-	store, schemaCfg := newTestChunkStore(t, "v12")
-	defer store.Stop()
-
-	// Put 24 chunks 1hr chunks in the store
-	const chunkLen = 60 // in seconds
-	for i := 0; i < 24; i++ {
-		ts := model.TimeFromUnix(int64(i * chunkLen))
-		ch := encoding.New()
-		nc, err := ch.Add(model.SamplePair{
-			Timestamp: ts,
-			Value:     model.SampleValue(float64(i)),
-		})
-		require.NoError(t, err)
-		require.Nil(t, nc)
-		chunk := NewChunk(
-			userID,
-			model.Fingerprint(1),
-			labels.Labels{
-				{Name: labels.MetricName, Value: "foo"},
-				{Name: "bar", Value: "baz"},
-			},
-			ch,
-			ts,
-			ts.Add(chunkLen*time.Second),
-		)
-		t.Logf("Loop %d", i)
-		err = chunk.Encode()
-		require.NoError(t, err)
-		err = store.Put(ctx, []Chunk{chunk})
-		require.NoError(t, err)
-	}
-
-	// pick a random numbers and do a query to end of row
-	for i := 1; i < 24; i++ {
-		start := int64(i * chunkLen)
-		end := int64(24 * chunkLen)
-		assert.True(t, start <= end)
-
-		startTime := model.TimeFromUnix(start)
-		endTime := model.TimeFromUnix(end)
-		matchers := []*labels.Matcher{
-			mustNewLabelMatcher(labels.MatchEqual, labels.MetricName, "foo"),
-			mustNewLabelMatcher(labels.MatchEqual, "bar", "baz"),
-		}
-
-		chunks, fetchers, err := store.GetChunkRefs(ctx, userID, startTime, endTime, matchers...)
-		require.NoError(t, err)
-		fetchedChunk := make([]Chunk, 0, len(chunks))
-		for _, f := range fetchers {
-			for _, cs := range chunks {
-				keys := make([]string, 0, len(cs))
-				sort.Slice(chunks, func(i, j int) bool { return schemaCfg.ExternalKey(cs[i]) < schemaCfg.ExternalKey(cs[j]) })
-
-				for _, c := range cs {
-					keys = append(keys, schemaCfg.ExternalKey(c))
-				}
-				cks, err := f.FetchChunks(ctx, cs, keys)
-				if err != nil {
-					t.Fatal(err)
-				}
-				fetchedChunk = append(fetchedChunk, cks...)
-			}
-		}
-
-		// We need to check that each chunk is in the time range
-		for _, chunk := range fetchedChunk {
-			assert.False(t, chunk.From.After(endTime))
-			assert.False(t, chunk.Through.Before(startTime))
-			samples, err := chunk.Samples(chunk.From, chunk.Through)
-			assert.NoError(t, err)
-			assert.Equal(t, 1, len(samples))
-		}
-
-		// And check we got all the chunks we want
-		numChunks := 24 - (start / chunkLen) + 1
-		assert.Equal(t, int(numChunks), len(fetchedChunk))
-	}
-}
-
-func TestIndexCachingWorks(t *testing.T) {
-	ctx := context.Background()
-	metric := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-	}
-	storeMaker := stores[1]
-	storeCfg := storeMaker.configFn()
-
-	store, _ := newTestChunkStoreConfig(t, "v9", storeCfg)
-	defer store.Stop()
-
-	storage := store.(CompositeStore).stores[0].Store.(*seriesStore).fetcher.storage.(*MockStorage)
-
-	fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), metric)
-	err := fooChunk1.Encode()
-	require.NoError(t, err)
-	err = store.Put(ctx, []Chunk{fooChunk1})
-	require.NoError(t, err)
-	n := storage.numIndexWrites
-
-	// Only one extra entry for the new chunk of same series.
-	fooChunk2 := dummyChunkFor(model.Time(0).Add(30*time.Second), metric)
-	err = fooChunk2.Encode()
-	require.NoError(t, err)
-	err = store.Put(ctx, []Chunk{fooChunk2})
-	require.NoError(t, err)
-	require.Equal(t, n+1, storage.numIndexWrites)
 }
 
 func BenchmarkIndexCaching(b *testing.B) {
@@ -645,7 +452,7 @@ func BenchmarkIndexCaching(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		err := store.Put(ctx, []Chunk{fooChunk1})
+		err := store.Put(ctx, []chunk.Chunk{fooChunk1})
 		require.NoError(b, err)
 	}
 }
@@ -698,117 +505,7 @@ func TestChunkStoreError(t *testing.T) {
 	}
 }
 
-func benchmarkParseIndexEntries(i int64, regex string, b *testing.B) {
-	b.ReportAllocs()
-	b.StopTimer()
-	ctx := context.Background()
-	entries := generateIndexEntries(i)
-	matcher, err := labels.NewMatcher(labels.MatchRegexp, "", regex)
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.StartTimer()
-	for n := 0; n < b.N; n++ {
-		keys, err := parseIndexEntries(ctx, entries, matcher)
-		if err != nil {
-			b.Fatal(err)
-		}
-		if regex == ".*" && len(keys) != len(entries)/2 {
-			b.Fatalf("expected keys:%d got:%d", len(entries)/2, len(keys))
-		}
-	}
-}
-
-func BenchmarkParseIndexEntries500(b *testing.B)   { benchmarkParseIndexEntries(500, ".*", b) }
-func BenchmarkParseIndexEntries2500(b *testing.B)  { benchmarkParseIndexEntries(2500, ".*", b) }
-func BenchmarkParseIndexEntries10000(b *testing.B) { benchmarkParseIndexEntries(10000, ".*", b) }
-func BenchmarkParseIndexEntries50000(b *testing.B) { benchmarkParseIndexEntries(50000, ".*", b) }
-
-func BenchmarkParseIndexEntriesRegexSet500(b *testing.B) {
-	benchmarkParseIndexEntries(500, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
-}
-
-func BenchmarkParseIndexEntriesRegexSet2500(b *testing.B) {
-	benchmarkParseIndexEntries(2500, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
-}
-
-func BenchmarkParseIndexEntriesRegexSet10000(b *testing.B) {
-	benchmarkParseIndexEntries(10000, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
-}
-
-func BenchmarkParseIndexEntriesRegexSet50000(b *testing.B) {
-	benchmarkParseIndexEntries(50000, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
-}
-
-func generateIndexEntries(n int64) []IndexEntry {
-	res := make([]IndexEntry, 0, n)
-	for i := n - 1; i >= 0; i-- {
-		labelValue := fmt.Sprintf("labelvalue%d", i%(n/2))
-		chunkID := fmt.Sprintf("chunkid%d", i%(n/2))
-		rangeValue := []byte{}
-		rangeValue = append(rangeValue, []byte("component1")...)
-		rangeValue = append(rangeValue, 0)
-		rangeValue = append(rangeValue, []byte(labelValue)...)
-		rangeValue = append(rangeValue, 0)
-		rangeValue = append(rangeValue, []byte(chunkID)...)
-		rangeValue = append(rangeValue, 0)
-		res = append(res, IndexEntry{
-			RangeValue: rangeValue,
-		})
-	}
-	return res
-}
-
-func TestDisableIndexDeduplication(t *testing.T) {
-	for i, disableIndexDeduplication := range []bool{
-		false, true,
-	} {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			ctx := context.Background()
-			metric := labels.Labels{
-				{Name: labels.MetricName, Value: "foo"},
-				{Name: "bar", Value: "baz"},
-			}
-			storeMaker := stores[0]
-			storeCfg := storeMaker.configFn()
-			storeCfg.ChunkCacheConfig.Cache = cache.NewFifoCache("chunk-cache", cache.FifoCacheConfig{
-				MaxSizeItems: 5,
-			}, prometheus.NewRegistry(), log.NewNopLogger())
-			storeCfg.DisableIndexDeduplication = disableIndexDeduplication
-
-			store, _ := newTestChunkStoreConfig(t, "v9", storeCfg)
-			defer store.Stop()
-
-			storage := store.(CompositeStore).stores[0].Store.(*seriesStore).fetcher.storage.(*MockStorage)
-
-			fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), metric)
-			err := fooChunk1.Encode()
-			require.NoError(t, err)
-			err = store.Put(ctx, []Chunk{fooChunk1})
-			require.NoError(t, err)
-			n := storage.numIndexWrites
-
-			// see if we have written the chunk to the store
-			require.Equal(t, 1, storage.numChunkWrites)
-
-			// Put the same chunk again
-			err = store.Put(ctx, []Chunk{fooChunk1})
-			require.NoError(t, err)
-
-			expectedTotalWrites := n
-			if disableIndexDeduplication {
-				expectedTotalWrites *= 2
-			}
-			require.Equal(t, expectedTotalWrites, storage.numIndexWrites)
-
-			// see if we deduped the chunk and the number of chunks we wrote is still 1
-			require.Equal(t, 1, storage.numChunkWrites)
-		})
-	}
-}
-
 func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
-	ctx := context.Background()
 	now := model.Now()
 
 	fooMetric1 := labels.Labels{
@@ -857,7 +554,7 @@ func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 					store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
 
-					if err := store.Put(ctx, []encoding.Chunk{
+					if err := store.Put(ctx, []chunk.Chunk{
 						fooChunk1,
 						fooChunk2,
 					}); err != nil {
@@ -877,4 +574,60 @@ func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 			}
 		}
 	}
+}
+
+func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) chunk.Chunk {
+	c, _ := chunk.NewForEncoding(chunk.Bigchunk)
+	chunkStart := now.Add(-time.Hour)
+
+	for i := 0; i < samples; i++ {
+		t := time.Duration(i) * 15 * time.Second
+		nc, err := c.Add(model.SamplePair{Timestamp: chunkStart.Add(t), Value: model.SampleValue(i)})
+		if err != nil {
+			panic(err)
+		}
+		if nc != nil {
+			panic("returned chunk was not nil")
+		}
+	}
+
+	chunk := chunk.NewChunk(
+		userID,
+		client.Fingerprint(metric),
+		metric,
+		c,
+		chunkStart,
+		now,
+	)
+	// Force checksum calculation.
+	err := chunk.Encode()
+	if err != nil {
+		panic(err)
+	}
+	return chunk
+}
+
+func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
+	return dummyChunkForEncoding(now, metric, 1)
+}
+
+// BenchmarkLabels is a real example from Kubernetes' embedded cAdvisor metrics, lightly obfuscated
+var BenchmarkLabels = labels.Labels{
+	{Name: model.MetricNameLabel, Value: "container_cpu_usage_seconds_total"},
+	{Name: "beta_kubernetes_io_arch", Value: "amd64"},
+	{Name: "beta_kubernetes_io_instance_type", Value: "c3.somesize"},
+	{Name: "beta_kubernetes_io_os", Value: "linux"},
+	{Name: "container_name", Value: "some-name"},
+	{Name: "cpu", Value: "cpu01"},
+	{Name: "failure_domain_beta_kubernetes_io_region", Value: "somewhere-1"},
+	{Name: "failure_domain_beta_kubernetes_io_zone", Value: "somewhere-1b"},
+	{Name: "id", Value: "/kubepods/burstable/pod6e91c467-e4c5-11e7-ace3-0a97ed59c75e/a3c8498918bd6866349fed5a6f8c643b77c91836427fb6327913276ebc6bde28"},
+	{Name: "image", Value: "registry/organisation/name@sha256:dca3d877a80008b45d71d7edc4fd2e44c0c8c8e7102ba5cbabec63a374d1d506"},
+	{Name: "instance", Value: "ip-111-11-1-11.ec2.internal"},
+	{Name: "job", Value: "kubernetes-cadvisor"},
+	{Name: "kubernetes_io_hostname", Value: "ip-111-11-1-11"},
+	{Name: "monitor", Value: "prod"},
+	{Name: "name", Value: "k8s_some-name_some-other-name-5j8s8_kube-system_6e91c467-e4c5-11e7-ace3-0a97ed59c75e_0"},
+	{Name: "namespace", Value: "kube-system"},
+	{Name: "pod_name", Value: "some-other-name-5j8s8"},
 }

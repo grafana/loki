@@ -9,15 +9,15 @@ import (
 )
 
 // takes a chunk client and exposes metrics for its operations.
-type metricsChunkClient struct {
-	client Client
+type MetricsChunkClient struct {
+	Client Client
 
 	metrics ChunkClientMetrics
 }
 
-func NewMetricsChunkClient(client Client, metrics ChunkClientMetrics) metricsChunkClient {
-	return metricsChunkClient{
-		client:  client,
+func NewMetricsChunkClient(client Client, metrics ChunkClientMetrics) MetricsChunkClient {
+	return MetricsChunkClient{
+		Client:  client,
 		metrics: metrics,
 	}
 }
@@ -54,12 +54,12 @@ func NewChunkClientMetrics(reg prometheus.Registerer) ChunkClientMetrics {
 	}
 }
 
-func (c metricsChunkClient) Stop() {
-	c.client.Stop()
+func (c MetricsChunkClient) Stop() {
+	c.Client.Stop()
 }
 
-func (c metricsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	if err := c.client.PutChunks(ctx, chunks); err != nil {
+func (c MetricsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+	if err := c.Client.PutChunks(ctx, chunks); err != nil {
 		return err
 	}
 
@@ -80,8 +80,8 @@ func (c metricsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk)
 	return nil
 }
 
-func (c metricsChunkClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	chks, err := c.client.GetChunks(ctx, chunks)
+func (c MetricsChunkClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+	chks, err := c.Client.GetChunks(ctx, chunks)
 	if err != nil {
 		return chks, err
 	}
@@ -104,10 +104,10 @@ func (c metricsChunkClient) GetChunks(ctx context.Context, chunks []chunk.Chunk)
 	return chks, nil
 }
 
-func (c metricsChunkClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
-	return c.client.DeleteChunk(ctx, userID, chunkID)
+func (c MetricsChunkClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+	return c.Client.DeleteChunk(ctx, userID, chunkID)
 }
 
-func (c metricsChunkClient) IsChunkNotFoundErr(err error) bool {
-	return c.client.IsChunkNotFoundErr(err)
+func (c MetricsChunkClient) IsChunkNotFoundErr(err error) bool {
+	return c.Client.IsChunkNotFoundErr(err)
 }

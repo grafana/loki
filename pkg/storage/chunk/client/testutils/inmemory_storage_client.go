@@ -55,21 +55,30 @@ type mockItem struct {
 	value      []byte
 }
 
+var singleton *MockStorage
+
+func ResetMockStorage() {
+	singleton = nil
+}
+
 // NewMockStorage creates a new MockStorage.
 func NewMockStorage() *MockStorage {
-	return &MockStorage{
-		schemaCfg: config.SchemaConfig{
-			Configs: []config.PeriodConfig{
-				{
-					From:      config.DayTime{Time: 0},
-					Schema:    "v11",
-					RowShards: 16,
+	if singleton == nil {
+		singleton = &MockStorage{
+			schemaCfg: config.SchemaConfig{
+				Configs: []config.PeriodConfig{
+					{
+						From:      config.DayTime{Time: 0},
+						Schema:    "v11",
+						RowShards: 16,
+					},
 				},
 			},
-		},
-		tables:  map[string]*mockTable{},
-		objects: map[string][]byte{},
+			tables:  map[string]*mockTable{},
+			objects: map[string][]byte{},
+		}
 	}
+	return singleton
 }
 
 func (m *MockStorage) GetSortedObjectKeys() []string {
