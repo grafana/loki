@@ -10,16 +10,17 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/util"
 )
 
 // storeMock is a mockable version of Loki's storage, used in querier unit tests
 // to control the behaviour of the store without really hitting any storage backend
 type storeMock struct {
-	ChunkStore
+	stores.Store
 	util.ExtendedMock
 }
 
@@ -27,9 +28,9 @@ func newStoreMock() *storeMock {
 	return &storeMock{}
 }
 
-func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]encoding.Chunk, []*fetcher.Fetcher, error) {
+func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	args := s.Called(ctx, userID, from, through, matchers)
-	return args.Get(0).([][]encoding.Chunk), args.Get(1).([]*fetcher.Fetcher), args.Error(2)
+	return args.Get(0).([][]chunk.Chunk), args.Get(1).([]*fetcher.Fetcher), args.Error(2)
 }
 
 func (s *storeMock) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
@@ -51,9 +52,9 @@ func (i *ingesterQuerierMock) GetChunkIDs(ctx context.Context, from, through mod
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func buildMockChunkRef(t *testing.T, num int) []encoding.Chunk {
+func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 	now := time.Now()
-	var chunks []encoding.Chunk
+	var chunks []chunk.Chunk
 
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
@@ -71,7 +72,7 @@ func buildMockChunkRef(t *testing.T, num int) []encoding.Chunk {
 			to:   now.Add(time.Duration(i+1) * time.Minute),
 		}))
 
-		chunkRef, err := encoding.ParseExternalKey(chk.UserID, s.ExternalKey(chk.ChunkRef))
+		chunkRef, err := chunk.ParseExternalKey(chk.UserID, s.ExternalKey(chk.ChunkRef))
 		require.NoError(t, err)
 
 		chunks = append(chunks, chunkRef)
@@ -105,11 +106,11 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 
 	for _, tc := range []struct {
 		name             string
-		storeChunks      [][]encoding.Chunk
+		storeChunks      [][]chunk.Chunk
 		storeFetcher     []*fetcher.Fetcher
 		ingesterChunkIDs []string
 		ingesterFetcher  *fetcher.Fetcher
-		expectedChunks   [][]encoding.Chunk
+		expectedChunks   [][]chunk.Chunk
 		expectedFetchers []*fetcher.Fetcher
 	}{
 		{
@@ -117,27 +118,27 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 		},
 		{
 			name:             "no chunks from ingester",
-			storeChunks:      [][]encoding.Chunk{testChunks},
+			storeChunks:      [][]chunk.Chunk{testChunks},
 			storeFetcher:     fetchers[0:1],
-			expectedChunks:   [][]encoding.Chunk{testChunks},
+			expectedChunks:   [][]chunk.Chunk{testChunks},
 			expectedFetchers: fetchers[0:1],
 		},
 		{
 			name:             "no chunks from querier",
 			ingesterChunkIDs: convertChunksToChunkIDs(s, testChunks),
 			ingesterFetcher:  fetchers[0],
-			expectedChunks:   [][]encoding.Chunk{testChunks},
+			expectedChunks:   [][]chunk.Chunk{testChunks},
 			expectedFetchers: fetchers[0:1],
 		},
 		{
 			name: "nothing duplicate",
-			storeChunks: [][]encoding.Chunk{
+			storeChunks: [][]chunk.Chunk{
 				testChunks[0:5],
 			},
 			storeFetcher:     fetchers[0:1],
 			ingesterChunkIDs: convertChunksToChunkIDs(s, testChunks[5:]),
 			ingesterFetcher:  fetchers[1],
-			expectedChunks: [][]encoding.Chunk{
+			expectedChunks: [][]chunk.Chunk{
 				testChunks[0:5],
 				testChunks[5:],
 			},
@@ -145,14 +146,14 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 		},
 		{
 			name: "duplicate chunks, different fetchers",
-			storeChunks: [][]encoding.Chunk{
+			storeChunks: [][]chunk.Chunk{
 				testChunks[0:5],
 				testChunks[5:],
 			},
 			storeFetcher:     fetchers[0:2],
 			ingesterChunkIDs: convertChunksToChunkIDs(s, testChunks[5:]),
 			ingesterFetcher:  fetchers[2],
-			expectedChunks: [][]encoding.Chunk{
+			expectedChunks: [][]chunk.Chunk{
 				testChunks[0:5],
 				testChunks[5:],
 			},
@@ -160,14 +161,14 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 		},
 		{
 			name: "different chunks, duplicate fetchers",
-			storeChunks: [][]encoding.Chunk{
+			storeChunks: [][]chunk.Chunk{
 				testChunks[0:2],
 				testChunks[2:5],
 			},
 			storeFetcher:     fetchers[0:2],
 			ingesterChunkIDs: convertChunksToChunkIDs(s, testChunks[5:]),
 			ingesterFetcher:  fetchers[1],
-			expectedChunks: [][]encoding.Chunk{
+			expectedChunks: [][]chunk.Chunk{
 				testChunks[0:2],
 				testChunks[2:],
 			},
@@ -175,14 +176,14 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 		},
 		{
 			name: "different chunks, different fetchers",
-			storeChunks: [][]encoding.Chunk{
+			storeChunks: [][]chunk.Chunk{
 				testChunks[0:2],
 				testChunks[2:5],
 			},
 			storeFetcher:     fetchers[0:2],
 			ingesterChunkIDs: convertChunksToChunkIDs(s, testChunks[5:]),
 			ingesterFetcher:  fetchers[2],
-			expectedChunks: [][]encoding.Chunk{
+			expectedChunks: [][]chunk.Chunk{
 				testChunks[0:2],
 				testChunks[2:5],
 				testChunks[5:],
@@ -191,13 +192,13 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 		},
 		{
 			name: "duplicate chunks from ingesters",
-			storeChunks: [][]encoding.Chunk{
+			storeChunks: [][]chunk.Chunk{
 				testChunks[0:5],
 			},
 			storeFetcher:     fetchers[0:1],
 			ingesterChunkIDs: convertChunksToChunkIDs(s, append(testChunks[5:], testChunks[5:]...)),
 			ingesterFetcher:  fetchers[0],
-			expectedChunks: [][]encoding.Chunk{
+			expectedChunks: [][]chunk.Chunk{
 				testChunks,
 			},
 			expectedFetchers: fetchers[0:1],
@@ -263,7 +264,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newStoreMock()
-			store.On("GetChunkRefs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]encoding.Chunk{}, []*fetcher.Fetcher{}, nil)
+			store.On("GetChunkRefs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*fetcher.Fetcher{}, nil)
 
 			ingesterQuerier := newIngesterQuerierMock()
 			ingesterQuerier.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
@@ -282,7 +283,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 	}
 }
 
-func convertChunksToChunkIDs(s config.SchemaConfig, chunks []encoding.Chunk) []string {
+func convertChunksToChunkIDs(s config.SchemaConfig, chunks []chunk.Chunk) []string {
 	var chunkIDs []string
 	for _, chk := range chunks {
 		chunkIDs = append(chunkIDs, s.ExternalKey(chk.ChunkRef))

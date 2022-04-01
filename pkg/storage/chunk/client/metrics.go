@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -12,25 +12,25 @@ import (
 type metricsChunkClient struct {
 	client Client
 
-	metrics chunkClientMetrics
+	metrics ChunkClientMetrics
 }
 
-func NewMetricsChunkClient(client Client, metrics chunkClientMetrics) metricsChunkClient {
+func NewMetricsChunkClient(client Client, metrics ChunkClientMetrics) metricsChunkClient {
 	return metricsChunkClient{
 		client:  client,
 		metrics: metrics,
 	}
 }
 
-type chunkClientMetrics struct {
+type ChunkClientMetrics struct {
 	chunksPutPerUser         *prometheus.CounterVec
 	chunksSizePutPerUser     *prometheus.CounterVec
 	chunksFetchedPerUser     *prometheus.CounterVec
 	chunksSizeFetchedPerUser *prometheus.CounterVec
 }
 
-func NewChunkClientMetrics(reg prometheus.Registerer) chunkClientMetrics {
-	return chunkClientMetrics{
+func NewChunkClientMetrics(reg prometheus.Registerer) ChunkClientMetrics {
+	return ChunkClientMetrics{
 		chunksPutPerUser: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "chunk_store_stored_chunks_total",
@@ -58,7 +58,7 @@ func (c metricsChunkClient) Stop() {
 	c.client.Stop()
 }
 
-func (c metricsChunkClient) PutChunks(ctx context.Context, chunks []encoding.Chunk) error {
+func (c metricsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	if err := c.client.PutChunks(ctx, chunks); err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func (c metricsChunkClient) PutChunks(ctx context.Context, chunks []encoding.Chu
 	return nil
 }
 
-func (c metricsChunkClient) GetChunks(ctx context.Context, chunks []encoding.Chunk) ([]encoding.Chunk, error) {
+func (c metricsChunkClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	chks, err := c.client.GetChunks(ctx, chunks)
 	if err != nil {
 		return chks, err

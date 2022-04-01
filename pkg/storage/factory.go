@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -23,9 +22,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -112,87 +110,6 @@ func (cfg *Config) Validate() error {
 		return errors.Wrap(err, "invalid boltdb-shipper config")
 	}
 	return nil
-}
-
-// NewStore makes the storage clients based on the configuration.
-func NewChunkStore(
-	cfg Config,
-	storeCfg config.ChunkStoreConfig,
-	schemaCfg config.SchemaConfig,
-	limits StoreLimits,
-	clientMetrics ClientMetrics,
-	reg prometheus.Registerer,
-	logger log.Logger,
-) (ChunkStore, error) {
-	chunkMetrics := client.NewChunkClientMetrics(reg)
-
-	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, reg, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, reg, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	chunkCacheCfg := storeCfg.ChunkCacheConfig
-	chunkCacheCfg.Prefix = "chunks"
-	chunksCache, err := cache.New(chunkCacheCfg, reg, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	// Cache is shared by multiple stores, which means they will try and Stop
-	// it more than once.  Wrap in a StopOnce to prevent this.
-	indexReadCache = cache.StopOnce(indexReadCache)
-	chunksCache = cache.StopOnce(chunksCache)
-	writeDedupeCache = cache.StopOnce(writeDedupeCache)
-
-	// Lets wrap all caches except chunksCache with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers.
-	// chunksCache is not wrapped because chunks content can't be anyways modified without changing its ID so there is no use of
-	// invalidating chunks cache. Also chunks can be fetched only by their ID found in index and we are anyways removing the index and invalidating index cache here.
-	indexReadCache = cache.NewCacheGenNumMiddleware(indexReadCache)
-	writeDedupeCache = cache.NewCacheGenNumMiddleware(writeDedupeCache)
-
-	err = schemaCfg.Load()
-	if err != nil {
-		return nil, errors.Wrap(err, "error loading schema config")
-	}
-	stores := stores.NewCompositeStore()
-
-	for _, s := range schemaCfg.Configs {
-		indexClientReg := prometheus.WrapRegistererWith(
-			prometheus.Labels{"component": "index-store-" + s.From.String()}, reg)
-
-		idx, err := NewIndexClient(s.IndexType, cfg, schemaCfg, limits, clientMetrics, indexClientReg)
-		if err != nil {
-			return nil, errors.Wrap(err, "error creating index client")
-		}
-		idx = index.NewCachingIndexClient(idx, indexReadCache, cfg.IndexCacheValidity, limits, logger, cfg.DisableBroadIndexQueries)
-
-		objectStoreType := s.ObjectType
-		if objectStoreType == "" {
-			objectStoreType = s.IndexType
-		}
-
-		chunkClientReg := prometheus.WrapRegistererWith(
-			prometheus.Labels{"component": "chunk-store-" + s.From.String()}, reg)
-
-		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg, clientMetrics, chunkClientReg)
-		if err != nil {
-			return nil, errors.Wrap(err, "error creating object client")
-		}
-
-		chunks = client.NewMetricsChunkClient(chunks, chunkMetrics)
-
-		err = stores.AddPeriod(storeCfg, s, idx, chunks, limits, chunksCache, writeDedupeCache)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return stores, nil
 }
 
 // NewIndexClient makes a new index client of the desired type.

@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -160,7 +160,7 @@ func lazyChunkWithBounds(from, through time.Time) *LazyChunk {
 	// In loki chunks are rounded when flushed fro nanoseconds to milliseconds.
 	fromM, throughM := util.RoundToMilliseconds(from, through)
 	return &LazyChunk{
-		Chunk: encoding.Chunk{
+		Chunk: chunk.Chunk{
 			ChunkRef: logproto.ChunkRef{
 				From:    fromM,
 				Through: throughM,

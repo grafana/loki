@@ -8,13 +8,13 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 )
 
-func filterChunksByTime(from, through model.Time, chunks []encoding.Chunk) []encoding.Chunk {
-	filtered := make([]encoding.Chunk, 0, len(chunks))
+func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
+	filtered := make([]chunk.Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
 		if chunk.Through < from || through < chunk.From {
 			continue
@@ -35,7 +35,7 @@ func filterChunkRefsByTime(from, through model.Time, chunks []logproto.ChunkRef)
 	return filtered
 }
 
-func labelNamesFromChunks(chunks []encoding.Chunk) []string {
+func labelNamesFromChunks(chunks []chunk.Chunk) []string {
 	var result util.UniqueStrings
 	for _, c := range chunks {
 		for _, l := range c.Metric {
@@ -45,8 +45,8 @@ func labelNamesFromChunks(chunks []encoding.Chunk) []string {
 	return result.Strings()
 }
 
-func filterChunksByUniqueFingerprint(s config.SchemaConfig, chunks []encoding.Chunk) ([]encoding.Chunk, []string) {
-	filtered := make([]encoding.Chunk, 0, len(chunks))
+func filterChunksByUniqueFingerprint(s config.SchemaConfig, chunks []chunk.Chunk) ([]chunk.Chunk, []string) {
+	filtered := make([]chunk.Chunk, 0, len(chunks))
 	keys := make([]string, 0, len(chunks))
 	uniqueFp := map[model.Fingerprint]struct{}{}
 
@@ -98,26 +98,6 @@ func intersectStrings(left, right []string) []string {
 		}
 	}
 	return result
-}
-
-//nolint:unused //Ignoring linting as this might be useful
-func nWayIntersectStrings(sets [][]string) []string {
-	l := len(sets)
-	switch l {
-	case 0:
-		return []string{}
-	case 1:
-		return sets[0]
-	case 2:
-		return intersectStrings(sets[0], sets[1])
-	default:
-		var (
-			split = l / 2
-			left  = nWayIntersectStrings(sets[:split])
-			right = nWayIntersectStrings(sets[split:])
-		)
-		return intersectStrings(left, right)
-	}
 }
 
 // Bitmap used by func isRegexMetaCharacter to check whether a character needs to be escaped.

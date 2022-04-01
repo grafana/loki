@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -106,7 +106,7 @@ func TestLoadTables(t *testing.T) {
 	require.True(t, !stat.IsDir())
 
 	for tableName, expectedIndex := range expectedTables {
-		testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 
@@ -137,7 +137,7 @@ func TestTableManager_BatchWrite(t *testing.T) {
 
 	for tableName, expectedIndex := range tc {
 		require.NoError(t, tm.tables[tableName].Snapshot())
-		testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 
@@ -157,14 +157,14 @@ func TestTableManager_QueryPages(t *testing.T) {
 		"table2": {start: 20, numRecords: 10},
 	}
 
-	var queries []chunk.IndexQuery
+	var queries []index.IndexQuery
 	writeBatch := boltIndexClient.NewWriteBatch()
 	for tableName, records := range tc {
 		testutil.AddRecordsToBatch(writeBatch, tableName, records.start, records.numRecords)
-		queries = append(queries, chunk.IndexQuery{TableName: tableName})
+		queries = append(queries, index.IndexQuery{TableName: tableName})
 	}
 
-	queries = append(queries, chunk.IndexQuery{TableName: "non-existent"})
+	queries = append(queries, index.IndexQuery{TableName: "non-existent"})
 
 	require.NoError(t, tm.BatchWrite(context.Background(), writeBatch))
 

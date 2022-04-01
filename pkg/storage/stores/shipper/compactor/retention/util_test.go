@@ -20,82 +20,81 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
-func dayFromTime(t model.Time) chunk.DayTime {
+func dayFromTime(t model.Time) config.DayTime {
 	parsed, err := time.Parse("2006-01-02", t.Time().In(time.UTC).Format("2006-01-02"))
 	if err != nil {
 		panic(err)
 	}
-	return chunk.DayTime{
+	return config.DayTime{
 		Time: model.TimeFromUnix(parsed.Unix()),
 	}
 }
 
 var (
 	start     = model.Now().Add(-30 * 24 * time.Hour)
-	schemaCfg = storage.SchemaConfig{
-		SchemaConfig: chunk.SchemaConfig{
-			// we want to test over all supported schema.
-			Configs: []chunk.PeriodConfig{
-				{
-					From:       dayFromTime(start),
-					IndexType:  "boltdb",
-					ObjectType: "filesystem",
-					Schema:     "v9",
-					IndexTables: chunk.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
-					RowShards: 16,
+	schemaCfg = config.SchemaConfig{
+		// we want to test over all supported schema.
+		Configs: []config.PeriodConfig{
+			{
+				From:       dayFromTime(start),
+				IndexType:  "boltdb",
+				ObjectType: "filesystem",
+				Schema:     "v9",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
 				},
-				{
-					From:       dayFromTime(start.Add(25 * time.Hour)),
-					IndexType:  "boltdb",
-					ObjectType: "filesystem",
-					Schema:     "v10",
-					IndexTables: chunk.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
-					RowShards: 16,
+				RowShards: 16,
+			},
+			{
+				From:       dayFromTime(start.Add(25 * time.Hour)),
+				IndexType:  "boltdb",
+				ObjectType: "filesystem",
+				Schema:     "v10",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
 				},
-				{
-					From:       dayFromTime(start.Add(73 * time.Hour)),
-					IndexType:  "boltdb",
-					ObjectType: "filesystem",
-					Schema:     "v11",
-					IndexTables: chunk.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
-					RowShards: 16,
+				RowShards: 16,
+			},
+			{
+				From:       dayFromTime(start.Add(73 * time.Hour)),
+				IndexType:  "boltdb",
+				ObjectType: "filesystem",
+				Schema:     "v11",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
 				},
-				{
-					From:       dayFromTime(start.Add(100 * time.Hour)),
-					IndexType:  "boltdb",
-					ObjectType: "filesystem",
-					Schema:     "v12",
-					IndexTables: chunk.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
-					RowShards: 16,
+				RowShards: 16,
+			},
+			{
+				From:       dayFromTime(start.Add(100 * time.Hour)),
+				IndexType:  "boltdb",
+				ObjectType: "filesystem",
+				Schema:     "v12",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
 				},
+				RowShards: 16,
 			},
 		},
 	}
 	allSchemas = []struct {
 		schema string
 		from   model.Time
-		config chunk.PeriodConfig
+		config config.PeriodConfig
 	}{
 		{"v9", schemaCfg.Configs[0].From.Time, schemaCfg.Configs[0]},
 		{"v10", schemaCfg.Configs[1].From.Time, schemaCfg.Configs[1]},
@@ -125,22 +124,22 @@ func newChunkEntry(userID, labels string, from, through model.Time) ChunkEntry {
 type testStore struct {
 	storage.Store
 	cfg                storage.Config
-	objectClient       chunk.ObjectClient
+	objectClient       client.ObjectClient
 	indexDir, chunkDir string
-	schemaCfg          storage.SchemaConfig
+	schemaCfg          config.SchemaConfig
 	t                  testing.TB
-	limits             chunk_storage.StoreLimits
-	clientMetrics      chunk_storage.ClientMetrics
+	limits             storage.StoreLimits
+	clientMetrics      storage.ClientMetrics
 }
 
 // testObjectClient is a testing object client
 type testObjectClient struct {
-	chunk.ObjectClient
+	client.ObjectClient
 	path string
 }
 
-func newTestObjectClient(path string, clientMetrics chunk_storage.ClientMetrics) chunk.ObjectClient {
-	c, err := chunk_storage.NewObjectClient("filesystem", chunk_storage.Config{
+func newTestObjectClient(path string, clientMetrics storage.ClientMetrics) client.ObjectClient {
+	c, err := storage.NewObjectClient("filesystem", storage.Config{
 		FSConfig: local.FSConfig{
 			Directory: path,
 		},
@@ -177,9 +176,9 @@ func (t *testStore) HasChunk(c chunk.Chunk) bool {
 
 	chunkIDs := make(map[string]struct{})
 	for _, chk := range chunks {
-		chunkIDs[t.schemaCfg.ExternalKey(chk)] = struct{}{}
+		chunkIDs[t.schemaCfg.ExternalKey(chk.ChunkRef)] = struct{}{}
 	}
-	return len(chunkIDs) == 1 && t.schemaCfg.ExternalKey(c) == t.schemaCfg.ExternalKey(chunks[0])
+	return len(chunkIDs) == 1 && t.schemaCfg.ExternalKey(c.ChunkRef) == t.schemaCfg.ExternalKey(chunks[0].ChunkRef)
 }
 
 func (t *testStore) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
@@ -195,10 +194,12 @@ func (t *testStore) GetChunks(userID string, from, through model.Time, metric la
 	for _, f := range fetchers {
 		for _, cs := range chunks {
 			keys := make([]string, 0, len(cs))
-			sort.Slice(chunks, func(i, j int) bool { return schemaCfg.ExternalKey(cs[i]) < schemaCfg.ExternalKey(cs[j]) })
+			sort.Slice(chunks, func(i, j int) bool {
+				return schemaCfg.ExternalKey(cs[i].ChunkRef) < schemaCfg.ExternalKey(cs[j].ChunkRef)
+			})
 
 			for _, c := range cs {
-				keys = append(keys, schemaCfg.ExternalKey(c))
+				keys = append(keys, schemaCfg.ExternalKey(c.ChunkRef))
 			}
 			cks, err := f.FetchChunks(ctx, cs, keys)
 			if err != nil {
@@ -220,28 +221,16 @@ func (t *testStore) GetChunks(userID string, from, through model.Time, metric la
 }
 
 func (t *testStore) open() {
-	chunkStore, err := chunk_storage.NewStore(
-		t.cfg.Config,
-		chunk.StoreConfig{},
-		schemaCfg.SchemaConfig,
-		t.limits,
-		t.clientMetrics,
-		nil,
-		nil,
-		util_log.Logger,
-	)
-	require.NoError(t.t, err)
-
-	store, err := storage.NewStore(t.cfg, schemaCfg, chunkStore, nil)
+	store, err := storage.NewStore(t.cfg, config.ChunkStoreConfig{}, schemaCfg, t.limits, t.clientMetrics, nil, util_log.Logger)
 	require.NoError(t.t, err)
 	t.Store = store
 }
 
-func newTestStore(t testing.TB, clientMetrics chunk_storage.ClientMetrics) *testStore {
+func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore {
 	t.Helper()
-	cfg := &ww.Config{}
-	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg, nil)
+	servercfg := &ww.Config{}
+	require.Nil(t, servercfg.LogLevel.Set("debug"))
+	util_log.InitLogger(servercfg, nil)
 	workdir := t.TempDir()
 	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")
@@ -258,18 +247,17 @@ func newTestStore(t testing.TB, clientMetrics chunk_storage.ClientMetrics) *test
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
-	require.NoError(t, schemaCfg.SchemaConfig.Validate())
+	require.NoError(t, schemaCfg.Validate())
 
-	config := storage.Config{
-		Config: chunk_storage.Config{
-			BoltDBConfig: local.BoltDBConfig{
-				Directory: indexDir,
-			},
-			FSConfig: local.FSConfig{
-				Directory: chunkDir,
-			},
-			MaxParallelGetChunk: 150,
+	cfg := storage.Config{
+		BoltDBConfig: local.BoltDBConfig{
+			Directory: indexDir,
 		},
+		FSConfig: local.FSConfig{
+			Directory: chunkDir,
+		},
+		MaxParallelGetChunk: 150,
+
 		BoltDBShipperConfig: shipper.Config{
 			ActiveIndexDirectory: indexDir,
 			SharedStoreType:      "filesystem",
@@ -279,19 +267,8 @@ func newTestStore(t testing.TB, clientMetrics chunk_storage.ClientMetrics) *test
 			Mode:                 shipper.ModeReadWrite,
 		},
 	}
-	chunkStore, err := chunk_storage.NewStore(
-		config.Config,
-		chunk.StoreConfig{},
-		schemaCfg.SchemaConfig,
-		limits,
-		clientMetrics,
-		nil,
-		nil,
-		util_log.Logger,
-	)
-	require.NoError(t, err)
 
-	store, err := storage.NewStore(config, schemaCfg, chunkStore, nil)
+	store, err := storage.NewStore(cfg, config.ChunkStoreConfig{}, schemaCfg, limits, clientMetrics, nil, util_log.Logger)
 	require.NoError(t, err)
 	return &testStore{
 		indexDir:      indexDir,
@@ -300,14 +277,14 @@ func newTestStore(t testing.TB, clientMetrics chunk_storage.ClientMetrics) *test
 		Store:         store,
 		schemaCfg:     schemaCfg,
 		objectClient:  newTestObjectClient(workdir, clientMetrics),
-		cfg:           config,
+		cfg:           cfg,
 		limits:        limits,
 		clientMetrics: clientMetrics,
 	}
 }
 
 func TestExtractIntervalFromTableName(t *testing.T) {
-	periodicTableConfig := chunk.PeriodicTableConfig{
+	periodicTableConfig := config.PeriodicTableConfig{
 		Prefix: "dummy",
 		Period: 24 * time.Hour,
 	}

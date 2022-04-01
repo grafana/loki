@@ -5,13 +5,32 @@ import (
 	"fmt"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
-	"github.com/grafana/loki/pkg/storage/chunk/index"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+)
+
+var (
+	dedupedChunksTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "chunk_store_deduped_chunks_total",
+		Help:      "Count of chunks which were not stored because they have already been stored by another replica.",
+	})
+
+	indexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "loki",
+		Name:      "chunk_store_index_entries_per_chunk",
+		Help:      "Number of entries written to storage per chunk.",
+		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
+	})
 )
 
 type IndexWriter interface {
@@ -31,10 +50,22 @@ type Writer struct {
 
 	indexWriter IndexWriter
 	schema      SchemaWrites
+	fetcher     *fetcher.Fetcher
+}
+
+func NewWriter(fetcher *fetcher.Fetcher, schemaCfg config.SchemaConfig, indexWriter IndexWriter, schema SchemaWrites, writeDedupeCache cache.Cache, disableIndexDeduplication bool) *Writer {
+	return &Writer{
+		writeDedupeCache:          writeDedupeCache,
+		schemaCfg:                 schemaCfg,
+		DisableIndexDeduplication: disableIndexDeduplication,
+		fetcher:                   fetcher,
+		indexWriter:               indexWriter,
+		schema:                    schema,
+	}
 }
 
 // Put implements Store
-func (c *Writer) Put(ctx context.Context, chunks []encoding.Chunk) error {
+func (c *Writer) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	for _, chunk := range chunks {
 		if err := c.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
 			return err
@@ -44,13 +75,13 @@ func (c *Writer) Put(ctx context.Context, chunks []encoding.Chunk) error {
 }
 
 // PutOne implements Store
-func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chunk encoding.Chunk) error {
+func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
 	defer log.Finish()
 	writeChunk := true
 
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
-	found, _, _, _ := c.fetcher.cache.Fetch(ctx, []string{c.schemaCfg.ExternalKey(chunk.ChunkRef)})
+	found, _, _, _ := c.fetcher.Cache().Fetch(ctx, []string{c.schemaCfg.ExternalKey(chk.ChunkRef)})
 
 	if len(found) > 0 {
 		writeChunk = false
@@ -64,17 +95,17 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chunk enc
 		return nil
 	}
 
-	chunks := []encoding.Chunk{chunk}
+	chunks := []chunk.Chunk{chk}
 
-	writeReqs, keysToCache, err := c.calculateIndexEntries(ctx, from, through, chunk)
+	writeReqs, keysToCache, err := c.calculateIndexEntries(ctx, from, through, chk)
 	if err != nil {
 		return err
 	}
 
-	if oic, ok := c.fetcher.storage.(ObjectAndIndexClient); ok {
+	if oic, ok := c.fetcher.Client().(client.ObjectAndIndexClient); ok {
 		chunks := chunks
 		if !writeChunk {
-			chunks = []encoding.Chunk{}
+			chunks = []chunk.Chunk{}
 		}
 		if err = oic.PutChunksAndIndex(ctx, chunks, writeReqs); err != nil {
 			return err
@@ -82,7 +113,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chunk enc
 	} else {
 		// chunk not found, write it.
 		if writeChunk {
-			err := c.fetcher.storage.PutChunks(ctx, chunks)
+			err := c.fetcher.Client().PutChunks(ctx, chunks)
 			if err != nil {
 				return err
 			}
@@ -94,7 +125,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chunk enc
 
 	// we already have the chunk in the cache so don't write it back to the cache.
 	if writeChunk {
-		if cacheErr := c.fetcher.writeBackCache(ctx, chunks); cacheErr != nil {
+		if cacheErr := c.fetcher.WriteBackCache(ctx, chunks); cacheErr != nil {
 			level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 		}
 	}
@@ -108,7 +139,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chunk enc
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
-func (c *Writer) calculateIndexEntries(ctx context.Context, from, through model.Time, chunk encoding.Chunk) (index.WriteBatch, []string, error) {
+func (c *Writer) calculateIndexEntries(ctx context.Context, from, through model.Time, chunk chunk.Chunk) (index.WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
 	entries := []index.IndexEntry{}
 

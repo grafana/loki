@@ -16,11 +16,12 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
 	loki_util "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -91,7 +92,7 @@ func newLazyInvalidChunk(stream logproto.Stream) *LazyChunk {
 	}
 }
 
-func newChunk(stream logproto.Stream) encoding.Chunk {
+func newChunk(stream logproto.Stream) chunk.Chunk {
 	lbs, err := syntax.ParseLabels(stream.Labels)
 	if err != nil {
 		panic(err)
@@ -107,7 +108,7 @@ func newChunk(stream logproto.Stream) encoding.Chunk {
 		_ = chk.Append(&e)
 	}
 	chk.Close()
-	c := encoding.NewChunk("fake", client.Fingerprint(lbs), lbs, chunkenc.NewFacade(chk, 0, 0), from, through)
+	c := chunk.NewChunk("fake", client.Fingerprint(lbs), lbs, chunkenc.NewFacade(chk, 0, 0), from, through)
 	// force the checksum creation
 	if err := c.Encode(); err != nil {
 		panic(err)
@@ -148,27 +149,27 @@ func newSampleQuery(query string, start, end time.Time) *logproto.SampleQueryReq
 
 type mockChunkStore struct {
 	schemas config.SchemaConfig
-	chunks  []encoding.Chunk
+	chunks  []chunk.Chunk
 	client  *mockChunkStoreClient
 }
 
 // mockChunkStore cannot implement both chunk.Store and chunk.Client,
 // since there is a conflict in signature for DeleteChunk method.
 var (
-	_ ChunkStore         = &mockChunkStore{}
+	_ stores.Store       = &mockChunkStore{}
 	_ chunkclient.Client = &mockChunkStoreClient{}
 )
 
 func newMockChunkStore(streams []*logproto.Stream) *mockChunkStore {
-	chunks := make([]encoding.Chunk, 0, len(streams))
+	chunks := make([]chunk.Chunk, 0, len(streams))
 	for _, s := range streams {
 		chunks = append(chunks, newChunk(*s))
 	}
 	return &mockChunkStore{schemas: config.SchemaConfig{}, chunks: chunks, client: &mockChunkStoreClient{chunks: chunks, scfg: config.SchemaConfig{}}}
 }
 
-func (m *mockChunkStore) Put(ctx context.Context, chunks []encoding.Chunk) error { return nil }
-func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, chunk encoding.Chunk) error {
+func (m *mockChunkStore) Put(ctx context.Context, chunks []chunk.Chunk) error { return nil }
+func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
 	return nil
 }
 
@@ -192,7 +193,7 @@ func (m *mockChunkStore) DeleteSeriesIDs(ctx context.Context, from, through mode
 	return nil
 }
 func (m *mockChunkStore) Stop() {}
-func (m *mockChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]encoding.Chunk, error) {
+func (m *mockChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	return nil, nil
 }
 
@@ -200,11 +201,11 @@ func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]encoding.Chunk, []*fetcher.Fetcher, error) {
-	refs := make([]encoding.Chunk, 0, len(m.chunks))
+func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+	refs := make([]chunk.Chunk, 0, len(m.chunks))
 	// transform real chunks into ref chunks.
 	for _, c := range m.chunks {
-		r, err := encoding.ParseExternalKey("fake", m.schemas.ExternalKey(c.ChunkRef))
+		r, err := chunk.ParseExternalKey("fake", m.schemas.ExternalKey(c.ChunkRef))
 		if err != nil {
 			panic(err)
 		}
@@ -220,11 +221,11 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 	if err != nil {
 		panic(err)
 	}
-	return [][]encoding.Chunk{refs}, []*fetcher.Fetcher{f}, nil
+	return [][]chunk.Chunk{refs}, []*fetcher.Fetcher{f}, nil
 }
 
 type mockChunkStoreClient struct {
-	chunks []encoding.Chunk
+	chunks []chunk.Chunk
 	scfg   config.SchemaConfig
 }
 
@@ -232,12 +233,12 @@ func (m mockChunkStoreClient) Stop() {
 	panic("implement me")
 }
 
-func (m mockChunkStoreClient) PutChunks(ctx context.Context, chunks []encoding.Chunk) error {
+func (m mockChunkStoreClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
-func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []encoding.Chunk) ([]encoding.Chunk, error) {
-	var res []encoding.Chunk
+func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+	var res []chunk.Chunk
 	for _, c := range chunks {
 		for _, sc := range m.chunks {
 			// only returns chunks requested using the external key

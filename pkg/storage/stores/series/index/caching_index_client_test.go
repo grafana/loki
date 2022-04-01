@@ -15,7 +15,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/index"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/validation"
 )
 

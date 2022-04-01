@@ -15,9 +15,9 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/tenant"
@@ -28,7 +28,7 @@ import (
 type IndexSet interface {
 	Init() error
 	Close()
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	MultiQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error
 	DropAllDBs() error
 	Err() error
 	LastUsedAt() time.Time
@@ -56,7 +56,8 @@ type indexSet struct {
 }
 
 func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet,
-	boltDBIndexClient BoltDBIndexClient, logger log.Logger, metrics *metrics) (IndexSet, error) {
+	boltDBIndexClient BoltDBIndexClient, logger log.Logger, metrics *metrics,
+) (IndexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -173,7 +174,7 @@ func (t *indexSet) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (t *indexSet) MultiQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err

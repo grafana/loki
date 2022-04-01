@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
@@ -36,7 +36,7 @@ func (s *StorageClient) Stop() {
 }
 
 // PutChunks implements chunk.ObjectClient.
-func (s *StorageClient) PutChunks(ctx context.Context, chunks []encoding.Chunk) error {
+func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	req := &PutChunksRequest{}
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
@@ -79,7 +79,7 @@ func (s *StorageClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
-func (s *StorageClient) GetChunks(ctx context.Context, input []encoding.Chunk) ([]encoding.Chunk, error) {
+func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
 	req := &GetChunksRequest{}
 	req.Chunks = []*Chunk{}
 	var err error
@@ -97,8 +97,8 @@ func (s *StorageClient) GetChunks(ctx context.Context, input []encoding.Chunk) (
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	var result []encoding.Chunk
-	decodeContext := encoding.NewDecodeContext()
+	var result []chunk.Chunk
+	decodeContext := chunk.NewDecodeContext()
 	for {
 		receivedChunks, err := streamer.Recv()
 		if err == io.EOF {
@@ -108,7 +108,7 @@ func (s *StorageClient) GetChunks(ctx context.Context, input []encoding.Chunk) (
 			return nil, errors.WithStack(err)
 		}
 		for _, chunkResponse := range receivedChunks.GetChunks() {
-			var c encoding.Chunk
+			var c chunk.Chunk
 			if chunkResponse != nil {
 				err = c.Decode(decodeContext, chunkResponse.Encoded)
 				if err != nil {

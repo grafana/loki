@@ -13,10 +13,10 @@ import (
 
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
-	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -359,7 +359,7 @@ func (m *MockStorage) query(ctx context.Context, query index.IndexQuery, callbac
 }
 
 // PutChunks implements StorageClient.
-func (m *MockStorage) PutChunks(_ context.Context, chunks []encoding.Chunk) error {
+func (m *MockStorage) PutChunks(_ context.Context, chunks []chunk.Chunk) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -380,7 +380,7 @@ func (m *MockStorage) PutChunks(_ context.Context, chunks []encoding.Chunk) erro
 }
 
 // GetChunks implements StorageClient.
-func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []encoding.Chunk) ([]encoding.Chunk, error) {
+func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []chunk.Chunk) ([]chunk.Chunk, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -388,8 +388,8 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []encoding.Chunk) 
 		return nil, errPermissionDenied
 	}
 
-	decodeContext := encoding.NewDecodeContext()
-	result := []encoding.Chunk{}
+	decodeContext := chunk.NewDecodeContext()
+	result := []chunk.Chunk{}
 	for _, chunk := range chunkSet {
 		key := m.schemaCfg.ExternalKey(chunk.ChunkRef)
 		buf, ok := m.objects[key]

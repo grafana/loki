@@ -13,8 +13,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -135,7 +135,7 @@ func (tm *TableManager) Stop() {
 	}
 }
 
-func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (tm *TableManager) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
 	queriesByTable := util.QueriesByTable(queries)
 	for tableName, queries := range queriesByTable {
 		err := tm.query(ctx, tableName, queries, callback)
@@ -147,7 +147,7 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQue
 	return nil
 }
 
-func (tm *TableManager) query(ctx context.Context, tableName string, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (tm *TableManager) query(ctx context.Context, tableName string, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	level.Debug(logger).Log("table-name", tableName)
 
@@ -320,7 +320,8 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 // findUsersInTableForQueryReadiness returns the users that needs their index to be query ready based on the tableNumber and
 // query readiness number provided per user
 func (tm *TableManager) findUsersInTableForQueryReadiness(tableNumber int64, usersWithIndexInTable []string,
-	queryReadinessNumByUserID map[string]int) []string {
+	queryReadinessNumByUserID map[string]int,
+) []string {
 	activeTableNumber := getActiveTableNumber()
 	usersToBeQueryReadyFor := []string{}
 

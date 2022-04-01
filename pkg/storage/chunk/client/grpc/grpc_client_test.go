@@ -8,10 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
-	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
-	"github.com/grafana/loki/pkg/storage/chunk/index"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 // This includes test for all RPCs in
@@ -78,7 +77,7 @@ func TestGrpcStore(t *testing.T) {
 	// rpc calls for storageClient
 	storageClient, _ := NewTestStorageClient(cfg, schemaCfg)
 
-	putChunksTestData := []encoding.Chunk{
+	putChunksTestData := []chunk.Chunk{
 		{
 			ChunkRef: logproto.ChunkRef{
 				Fingerprint: uint64(15993187966453505842),
@@ -102,14 +101,14 @@ func TestGrpcStore(t *testing.T) {
 				},
 			},
 			ChecksumSet: true,
-			Encoding:    encoding.Bigchunk,
-			Data:        prom_chunk.New(),
+			Encoding:    chunk.Bigchunk,
+			Data:        chunk.New(),
 		},
 	}
 	err = storageClient.PutChunks(context.Background(), putChunksTestData)
 	require.NoError(t, err)
 
-	getChunksTestData := []encoding.Chunk{
+	getChunksTestData := []chunk.Chunk{
 		{
 			ChunkRef: logproto.ChunkRef{
 				Fingerprint: uint64(15993187966453505842),
@@ -133,8 +132,8 @@ func TestGrpcStore(t *testing.T) {
 				},
 			},
 			ChecksumSet: true,
-			Encoding:    encoding.Bigchunk,
-			Data:        prom_chunk.New(),
+			Encoding:    chunk.Bigchunk,
+			Data:        chunk.New(),
 		},
 	}
 	_, err = storageClient.GetChunks(context.Background(), getChunksTestData)

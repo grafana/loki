@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	util_math "github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -14,15 +14,15 @@ import (
 const maxQueriesPerGoroutine = 100
 
 type TableQuerier interface {
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	MultiQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error
 }
 
 // QueriesByTable groups and returns queries by tables.
-func QueriesByTable(queries []chunk.IndexQuery) map[string][]chunk.IndexQuery {
-	queriesByTable := make(map[string][]chunk.IndexQuery)
+func QueriesByTable(queries []index.IndexQuery) map[string][]index.IndexQuery {
+	queriesByTable := make(map[string][]index.IndexQuery)
 	for _, query := range queries {
 		if _, ok := queriesByTable[query.TableName]; !ok {
-			queriesByTable[query.TableName] = []chunk.IndexQuery{}
+			queriesByTable[query.TableName] = []index.IndexQuery{}
 		}
 
 		queriesByTable[query.TableName] = append(queriesByTable[query.TableName], query)
@@ -31,7 +31,7 @@ func QueriesByTable(queries []chunk.IndexQuery) map[string][]chunk.IndexQuery {
 	return queriesByTable
 }
 
-func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
 	if len(queries) == 0 {
 		return nil
 	}
@@ -50,7 +50,7 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 
 	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
 		q := queries[i:util_math.Min(i+maxQueriesPerGoroutine, len(queries))]
-		go func(queries []chunk.IndexQuery) {
+		go func(queries []index.IndexQuery) {
 			errs <- tableQuerier.MultiQueries(ctx, queries, id.Callback)
 		}(q)
 	}
@@ -69,24 +69,24 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 // IndexDeduper should always be used on table level not the whole query level because it just looks at range values which can be repeated across tables
 // Cortex anyways dedupes entries across tables
 type IndexDeduper struct {
-	callback        chunk.QueryPagesCallback
+	callback        index.QueryPagesCallback
 	seenRangeValues map[string]map[string]struct{}
 	numEntriesSent  int
 	mtx             sync.RWMutex
 }
 
-func NewIndexDeduper(callback chunk.QueryPagesCallback) *IndexDeduper {
+func NewIndexDeduper(callback index.QueryPagesCallback) *IndexDeduper {
 	return &IndexDeduper{
 		callback:        callback,
 		seenRangeValues: map[string]map[string]struct{}{},
 	}
 }
 
-func (i *IndexDeduper) Callback(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+func (i *IndexDeduper) Callback(query index.IndexQuery, batch index.ReadBatchResult) bool {
 	return i.callback(query, &filteringBatch{
-		query:     query,
-		ReadBatch: batch,
-		isSeen:    i.isSeen,
+		query:           query,
+		ReadBatchResult: batch,
+		isSeen:          i.isSeen,
 	})
 }
 
@@ -125,22 +125,22 @@ func (i *IndexDeduper) isSeen(hashValue string, rangeValue []byte) bool {
 type isSeen func(hashValue string, rangeValue []byte) bool
 
 type filteringBatch struct {
-	query chunk.IndexQuery
-	chunk.ReadBatch
+	query index.IndexQuery
+	index.ReadBatchResult
 	isSeen isSeen
 }
 
-func (f *filteringBatch) Iterator() chunk.ReadBatchIterator {
+func (f *filteringBatch) Iterator() index.ReadBatchIterator {
 	return &filteringBatchIter{
 		query:             f.query,
-		ReadBatchIterator: f.ReadBatch.Iterator(),
+		ReadBatchIterator: f.ReadBatchResult.Iterator(),
 		isSeen:            f.isSeen,
 	}
 }
 
 type filteringBatchIter struct {
-	query chunk.IndexQuery
-	chunk.ReadBatchIterator
+	query index.IndexQuery
+	index.ReadBatchIterator
 	isSeen isSeen
 }
 

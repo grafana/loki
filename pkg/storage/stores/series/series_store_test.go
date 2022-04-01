@@ -20,11 +20,11 @@ import (
 	"github.com/weaveworks/common/test"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
-type configFactory func() StoreConfig
+type configFactory func() config.ChunkStoreConfig
 
 var schemas = []string{"v9", "v10", "v11", "v12"}
 
@@ -34,16 +34,16 @@ var stores = []struct {
 }{
 	{
 		name: "store",
-		configFn: func() StoreConfig {
-			var storeCfg StoreConfig
+		configFn: func() config.ChunkStoreConfig {
+			var storeCfg config.ChunkStoreConfig
 			flagext.DefaultValues(&storeCfg)
 			return storeCfg
 		},
 	},
 	{
 		name: "cached_store",
-		configFn: func() StoreConfig {
-			var storeCfg StoreConfig
+		configFn: func() config.ChunkStoreConfig {
+			var storeCfg config.ChunkStoreConfig
 			flagext.DefaultValues(&storeCfg)
 			storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
 				MaxSizeItems: 500,
@@ -55,7 +55,7 @@ var stores = []struct {
 
 // newTestStore creates a new Store for testing.
 func newTestChunkStore(t require.TestingT, schemaName string) (Store, SchemaConfig) {
-	var storeCfg StoreConfig
+	var storeCfg config.ChunkStoreConfig
 	flagext.DefaultValues(&storeCfg)
 	return newTestChunkStoreConfig(t, schemaName, storeCfg)
 }

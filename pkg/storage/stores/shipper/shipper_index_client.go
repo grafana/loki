@@ -17,10 +17,10 @@ import (
 
 	"github.com/grafana/loki/pkg/util/spanlogger"
 
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client/objectclient"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/chunk/index"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
@@ -95,7 +95,7 @@ type Shipper struct {
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(cfg Config, storageClient objectclient.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) (index.IndexClient, error) {
+func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) (index.IndexClient, error) {
 	shipper := Shipper{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
@@ -111,7 +111,7 @@ func NewShipper(cfg Config, storageClient objectclient.ObjectClient, limits down
 	return &shipper, nil
 }
 
-func (s *Shipper) init(storageClient objectclient.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) error {
+func (s *Shipper) init(storageClient client.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) error {
 	// When we run with target querier we don't have ActiveIndexDirectory set so using CacheLocation instead.
 	// Also it doesn't matter which directory we use since BoltDBIndexClient doesn't do anything with it but it is good to have a valid path.
 	boltdbIndexClientDir := s.cfg.ActiveIndexDirectory

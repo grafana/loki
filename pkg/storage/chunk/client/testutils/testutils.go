@@ -11,11 +11,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
-	promchunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
-	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 const (
@@ -68,9 +67,9 @@ func Setup(fixture Fixture, tableName string) (index.IndexClient, chunkclient.Cl
 }
 
 // CreateChunks creates some chunks for testing
-func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from model.Time, through model.Time) ([]string, []encoding.Chunk, error) {
+func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from model.Time, through model.Time) ([]string, []chunk.Chunk, error) {
 	keys := []string{}
-	chunks := []encoding.Chunk{}
+	chunks := []chunk.Chunk{}
 	for j := 0; j < batchSize; j++ {
 		chunk := dummyChunkFor(from, through, labels.Labels{
 			{Name: model.MetricNameLabel, Value: "foo"},
@@ -82,8 +81,8 @@ func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from mode
 	return keys, chunks, nil
 }
 
-func dummyChunkFor(from, through model.Time, metric labels.Labels) encoding.Chunk {
-	cs := promchunk.New()
+func dummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
+	cs := chunk.New()
 
 	for ts := from; ts <= through; ts = ts.Add(15 * time.Second) {
 		_, err := cs.Add(model.SamplePair{Timestamp: ts, Value: 0})
@@ -92,7 +91,7 @@ func dummyChunkFor(from, through model.Time, metric labels.Labels) encoding.Chun
 		}
 	}
 
-	chunk := encoding.NewChunk(
+	chunk := chunk.NewChunk(
 		userID,
 		client.Fingerprint(metric),
 		metric,

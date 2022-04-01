@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 )
 
 func TestIndexStorageClient(t *testing.T) {
@@ -28,7 +28,7 @@ func TestIndexStorageClient(t *testing.T) {
 	for tableName, files := range tablesToSetup {
 		require.NoError(t, util.EnsureDirectory(filepath.Join(tempDir, storageKeyPrefix, tableName)))
 		for _, file := range files {
-			err := ioutil.WriteFile(filepath.Join(tempDir, storageKeyPrefix, tableName, file), []byte(tableName+file), 0666)
+			err := ioutil.WriteFile(filepath.Join(tempDir, storageKeyPrefix, tableName, file), []byte(tableName+file), 0o666)
 			require.NoError(t, err)
 		}
 	}

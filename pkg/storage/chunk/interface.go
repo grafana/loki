@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package encoding
+package chunk
 
 import (
 	"io"
@@ -42,6 +42,10 @@ type ChunkData interface {
 	Marshal(io.Writer) error
 	UnmarshalFromBuf([]byte) error
 	Encoding() Encoding
+	// Rebound returns a smaller chunk that includes all samples between start and end (inclusive).
+	// We do not want to change existing Slice implementations because
+	// it is built specifically for query optimization and is a noop for some of the encodings.
+	Rebound(start, end model.Time) (ChunkData, error)
 	// Size returns the approximate length of the chunk in bytes.
 	Size() int
 }

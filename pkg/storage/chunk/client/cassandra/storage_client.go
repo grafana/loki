@@ -18,10 +18,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
-	"github.com/grafana/loki/pkg/storage/chunk/index"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -479,7 +479,7 @@ func NewObjectClient(cfg Config, schemaCfg config.SchemaConfig, registerer prome
 }
 
 // PutChunks implements chunk.ObjectClient.
-func (s *ObjectClient) PutChunks(ctx context.Context, chunks []encoding.Chunk) error {
+func (s *ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
 		if err != nil {
@@ -503,11 +503,11 @@ func (s *ObjectClient) PutChunks(ctx context.Context, chunks []encoding.Chunk) e
 }
 
 // GetChunks implements chunk.ObjectClient.
-func (s *ObjectClient) GetChunks(ctx context.Context, input []encoding.Chunk) ([]encoding.Chunk, error) {
+func (s *ObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
 	return util.GetParallelChunks(ctx, s.maxGetParallel, input, s.getChunk)
 }
 
-func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *encoding.DecodeContext, input encoding.Chunk) (encoding.Chunk, error) {
+func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
 	if s.querySemaphore != nil {
 		if err := s.querySemaphore.Acquire(ctx, 1); err != nil {
 			return input, err
@@ -530,7 +530,7 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *encoding.Dec
 }
 
 func (s *ObjectClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
-	chunkRef, err := encoding.ParseExternalKey(userID, chunkID)
+	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
 	if err != nil {
 		return err
 	}

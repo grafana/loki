@@ -22,8 +22,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -207,15 +207,7 @@ func getLocalStore(cm ClientMetrics) Store {
 		},
 	}
 
-	chunkStore, err := NewChunkStore(
-		storeConfig,
-		config.ChunkStoreConfig{},
-		schemaConfig, limits, cm, nil, nil, util_log.Logger)
-	if err != nil {
-		panic(err)
-	}
-
-	store, err := NewStore(storeConfig, schemaConfig, chunkStore, nil)
+	store, err := NewStore(storeConfig, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 	if err != nil {
 		panic(err)
 	}
@@ -385,7 +377,7 @@ func Test_store_SelectLogs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &store{
-				ChunkStore: storeFixture,
+				Store: storeFixture,
 				cfg: Config{
 					MaxChunkBatchSize: 10,
 				},
@@ -594,7 +586,7 @@ func Test_store_SelectSample(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &store{
-				ChunkStore: storeFixture,
+				Store: storeFixture,
 				cfg: Config{
 					MaxChunkBatchSize: 10,
 				},
@@ -630,7 +622,7 @@ func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 
 func Test_ChunkFilterer(t *testing.T) {
 	s := &store{
-		ChunkStore: storeFixture,
+		Store: storeFixture,
 		cfg: Config{
 			MaxChunkBatchSize: 10,
 		},
@@ -712,7 +704,7 @@ func Test_store_GetSeries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &store{
-				ChunkStore: storeFixture,
+				Store: storeFixture,
 				cfg: Config{
 					MaxChunkBatchSize: tt.batchSize,
 				},
@@ -826,18 +818,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		},
 	}
 
-	chunkStore, err := NewChunkStore(
-		cfg,
-		config.ChunkStoreConfig{},
-		schemaConfig,
-		limits,
-		cm,
-		nil,
-		nil,
-		util_log.Logger,
-	)
-	require.NoError(t, err)
-	store, err := NewStore(cfg, schemaConfig, chunkStore, nil)
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 	require.NoError(t, err)
 
 	// time ranges adding a chunk for each store and a chunk which overlaps both the stores
@@ -873,19 +854,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
 	store.Stop()
 
-	chunkStore, err = NewChunkStore(
-		cfg,
-		config.ChunkStoreConfig{},
-		schemaConfig,
-		limits,
-		cm,
-		nil,
-		nil,
-		util_log.Logger,
-	)
-	require.NoError(t, err)
-
-	store, err = NewStore(cfg, schemaConfig, chunkStore, nil)
+	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 	require.NoError(t, err)
 
 	defer store.Stop()
@@ -948,7 +917,7 @@ func timeToModelTime(t time.Time) model.Time {
 }
 
 func Test_OverlappingChunks(t *testing.T) {
-	chunks := []encoding.Chunk{
+	chunks := []chunk.Chunk{
 		newChunk(logproto.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []logproto.Entry{
@@ -965,7 +934,7 @@ func Test_OverlappingChunks(t *testing.T) {
 		}),
 	}
 	s := &store{
-		ChunkStore: &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}},
+		Store: &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}},
 		cfg: Config{
 			MaxChunkBatchSize: 10,
 		},
@@ -999,7 +968,7 @@ func Test_OverlappingChunks(t *testing.T) {
 func Test_GetSeries(t *testing.T) {
 	var (
 		store = &store{
-			ChunkStore: newMockChunkStore([]*logproto.Stream{
+			Store: newMockChunkStore([]*logproto.Stream{
 				{
 					Labels: `{foo="bar",buzz="boo"}`,
 					Entries: []logproto.Entry{

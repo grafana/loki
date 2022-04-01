@@ -9,9 +9,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -26,31 +27,31 @@ type IngesterQuerier interface {
 // AsyncStore is meant to be used only in queriers or any other service other than ingesters.
 // It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {
-	ChunkStore
+	stores.Store
 	scfg                 config.SchemaConfig
 	ingesterQuerier      IngesterQuerier
 	queryIngestersWithin time.Duration
 }
 
-func NewAsyncStore(store ChunkStore, scfg config.SchemaConfig, querier IngesterQuerier, queryIngestersWithin time.Duration) *AsyncStore {
+func NewAsyncStore(store stores.Store, scfg config.SchemaConfig, querier IngesterQuerier, queryIngestersWithin time.Duration) *AsyncStore {
 	return &AsyncStore{
-		ChunkStore:           store,
+		Store:                store,
 		scfg:                 scfg,
 		ingesterQuerier:      querier,
 		queryIngestersWithin: queryIngestersWithin,
 	}
 }
 
-func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]encoding.Chunk, []*fetcher.Fetcher, error) {
+func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	spanLogger := spanlogger.FromContext(ctx)
 
 	errs := make(chan error)
 
-	var storeChunks [][]encoding.Chunk
+	var storeChunks [][]chunk.Chunk
 	var fetchers []*fetcher.Fetcher
 	go func() {
 		var err error
-		storeChunks, fetchers, err = a.ChunkStore.GetChunkRefs(ctx, userID, from, through, matchers...)
+		storeChunks, fetchers, err = a.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
 		errs <- err
 	}()
 
@@ -90,7 +91,7 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	return a.mergeIngesterAndStoreChunks(userID, storeChunks, fetchers, ingesterChunks)
 }
 
-func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]encoding.Chunk, fetchers []*fetcher.Fetcher, ingesterChunkIDs []string) ([][]encoding.Chunk, []*fetcher.Fetcher, error) {
+func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*fetcher.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	ingesterChunkIDs = filterDuplicateChunks(a.scfg, storeChunks, ingesterChunkIDs)
 	level.Debug(util_log.Logger).Log("msg", "post-filtering ingester chunks", "count", len(ingesterChunkIDs))
 
@@ -101,20 +102,20 @@ func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]
 	}
 
 	for _, chunkID := range ingesterChunkIDs {
-		chk, err := encoding.ParseExternalKey(userID, chunkID)
+		chk, err := chunk.ParseExternalKey(userID, chunkID)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		// ToDo(Sandeep) possible optimization: Keep the chunk fetcher reference handy after first call since it is expected to stay the same.
-		fetcher := a.ChunkStore.GetChunkFetcher(chk.Through)
+		fetcher := a.Store.GetChunkFetcher(chk.Through)
 		if fetcher == nil {
 			return nil, nil, fmt.Errorf("got a nil fetcher for chunk %s", a.scfg.ExternalKey(chk.ChunkRef))
 		}
 
 		if _, ok := fetcherToChunksGroupIdx[fetcher]; !ok {
 			fetchers = append(fetchers, fetcher)
-			storeChunks = append(storeChunks, []encoding.Chunk{})
+			storeChunks = append(storeChunks, []chunk.Chunk{})
 			fetcherToChunksGroupIdx[fetcher] = len(fetchers) - 1
 		}
 		chunksGroupIdx := fetcherToChunksGroupIdx[fetcher]
@@ -125,7 +126,7 @@ func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]
 	return storeChunks, fetchers, nil
 }
 
-func filterDuplicateChunks(scfg config.SchemaConfig, storeChunks [][]encoding.Chunk, ingesterChunkIDs []string) []string {
+func filterDuplicateChunks(scfg config.SchemaConfig, storeChunks [][]chunk.Chunk, ingesterChunkIDs []string) []string {
 	filteredChunkIDs := make([]string, 0, len(ingesterChunkIDs))
 	seen := make(map[string]struct{}, len(storeChunks))
 

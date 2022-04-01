@@ -10,9 +10,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/stores/errors"
+	"github.com/grafana/loki/pkg/storage/errors"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -33,21 +33,21 @@ type Index interface {
 }
 
 type ChunkWriter interface {
-	Put(ctx context.Context, chunks []encoding.Chunk) error
-	PutOne(ctx context.Context, from, through model.Time, chunk encoding.Chunk) error
+	Put(ctx context.Context, chunks []chunk.Chunk) error
+	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
 }
 
 type compositeStoreEntry struct {
 	start  model.Time
 	limits StoreLimits
 
-	stop    []func()
+	stop    func()
 	fetcher *fetcher.Fetcher
 	index   Index
 	ChunkWriter
 }
 
-func (c *compositeStoreEntry) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]encoding.Chunk, []*fetcher.Fetcher, error) {
+func (c *compositeStoreEntry) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
@@ -63,14 +63,14 @@ func (c *compositeStoreEntry) GetChunkRefs(ctx context.Context, userID string, f
 
 	refs, err := c.index.GetChunkRefs(ctx, userID, from, through, allMatchers...)
 
-	chunks := make([]encoding.Chunk, len(refs))
+	chunks := make([]chunk.Chunk, len(refs))
 	for i, ref := range refs {
-		chunks[i] = encoding.Chunk{
+		chunks[i] = chunk.Chunk{
 			ChunkRef: ref,
 		}
 	}
 
-	return [][]encoding.Chunk{chunks}, []*fetcher.Fetcher{c.fetcher}, err
+	return [][]chunk.Chunk{chunks}, []*fetcher.Fetcher{c.fetcher}, err
 }
 
 func (c *compositeStoreEntry) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
@@ -141,7 +141,7 @@ func (c *compositeStoreEntry) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 }
 
 func (c *compositeStoreEntry) Stop() {
-	for _, stop := range c.stop {
-		stop()
+	if c.stop != nil {
+		c.stop()
 	}
 }

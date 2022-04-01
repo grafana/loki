@@ -15,7 +15,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -81,7 +81,7 @@ func (s *GatewayClient) Stop() {
 	s.conn.Close()
 }
 
-func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
 	if len(queries) <= maxQueriesPerGrpc {
 		return s.doQueries(ctx, queries, callback)
 	}
@@ -95,8 +95,8 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQue
 	})
 }
 
-func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
-	queryKeyQueryMap := make(map[string]chunk.IndexQuery, len(queries))
+func (s *GatewayClient) doQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+	queryKeyQueryMap := make(map[string]index.IndexQuery, len(queries))
 	gatewayQueries := make([]*indexgatewaypb.IndexQuery, 0, len(queries))
 
 	for _, query := range queries {
@@ -136,11 +136,11 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuer
 	return nil
 }
 
-func (s *GatewayClient) NewWriteBatch() chunk.WriteBatch {
+func (s *GatewayClient) NewWriteBatch() index.WriteBatch {
 	panic("unsupported")
 }
 
-func (s *GatewayClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+func (s *GatewayClient) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
 	panic("unsupported")
 }
 
@@ -148,7 +148,7 @@ type readBatch struct {
 	*indexgatewaypb.QueryIndexResponse
 }
 
-func (r *readBatch) Iterator() chunk.ReadBatchIterator {
+func (r *readBatch) Iterator() index.ReadBatchIterator {
 	return &grpcIter{
 		i:                  -1,
 		QueryIndexResponse: r.QueryIndexResponse,

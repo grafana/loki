@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
-	"github.com/grafana/loki/pkg/storage/chunk/index"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 var (
@@ -18,13 +18,13 @@ var (
 // Client is for storing and retrieving chunks.
 type Client interface {
 	Stop()
-	PutChunks(ctx context.Context, chunks []encoding.Chunk) error
-	GetChunks(ctx context.Context, chunks []encoding.Chunk) ([]encoding.Chunk, error)
+	PutChunks(ctx context.Context, chunks []chunk.Chunk) error
+	GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
 	DeleteChunk(ctx context.Context, userID, chunkID string) error
 	IsChunkNotFoundErr(err error) bool
 }
 
 // ObjectAndIndexClient allows optimisations where the same client handles both
 type ObjectAndIndexClient interface {
-	PutChunksAndIndex(ctx context.Context, chunks []encoding.Chunk, index index.WriteBatch) error
+	PutChunksAndIndex(ctx context.Context, chunks []chunk.Chunk, index index.WriteBatch) error
 }

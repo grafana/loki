@@ -5,21 +5,21 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 // GzipLogChunk is a cortex encoding type for our chunks.
 // Deprecated: the chunk encoding/compression format is inside the chunk data.
-const GzipLogChunk = encoding.Encoding(128)
+const GzipLogChunk = chunk.Encoding(128)
 
 // LogChunk is a cortex encoding type for our chunks.
-const LogChunk = encoding.Encoding(129)
+const LogChunk = chunk.Encoding(129)
 
 func init() {
-	encoding.MustRegisterEncoding(GzipLogChunk, "GzipLogChunk", func() encoding.ChunkData {
+	chunk.MustRegisterEncoding(GzipLogChunk, "GzipLogChunk", func() chunk.ChunkData {
 		return &Facade{}
 	})
-	encoding.MustRegisterEncoding(LogChunk, "LogChunk", func() encoding.ChunkData {
+	chunk.MustRegisterEncoding(LogChunk, "LogChunk", func() chunk.ChunkData {
 		return &Facade{}
 	})
 }
@@ -29,11 +29,11 @@ type Facade struct {
 	c          Chunk
 	blockSize  int
 	targetSize int
-	encoding.ChunkData
+	chunk.ChunkData
 }
 
 // NewFacade makes a new Facade.
-func NewFacade(c Chunk, blockSize, targetSize int) encoding.ChunkData {
+func NewFacade(c Chunk, blockSize, targetSize int) chunk.ChunkData {
 	return &Facade{
 		c:          c,
 		blockSize:  blockSize,
@@ -41,7 +41,7 @@ func NewFacade(c Chunk, blockSize, targetSize int) encoding.ChunkData {
 	}
 }
 
-// Marshal implements encoding.Chunk.
+// Marshal implements chunk.Chunk.
 func (f Facade) Marshal(w io.Writer) error {
 	if f.c == nil {
 		return nil
@@ -52,15 +52,15 @@ func (f Facade) Marshal(w io.Writer) error {
 	return nil
 }
 
-// UnmarshalFromBuf implements encoding.Chunk.
+// UnmarshalFromBuf implements chunk.Chunk.
 func (f *Facade) UnmarshalFromBuf(buf []byte) error {
 	var err error
 	f.c, err = NewByteChunk(buf, f.blockSize, f.targetSize)
 	return err
 }
 
-// Encoding implements encoding.Chunk.
-func (Facade) Encoding() encoding.Encoding {
+// Encoding implements chunk.Chunk.
+func (Facade) Encoding() chunk.Encoding {
 	return LogChunk
 }
 
@@ -86,7 +86,7 @@ func (f Facade) LokiChunk() Chunk {
 	return f.c
 }
 
-func (f Facade) Rebound(start, end model.Time) (encoding.ChunkData, error) {
+func (f Facade) Rebound(start, end model.Time) (chunk.ChunkData, error) {
 	newChunk, err := f.c.Rebound(start.Time(), end.Time())
 	if err != nil {
 		return nil, err
@@ -97,7 +97,7 @@ func (f Facade) Rebound(start, end model.Time) (encoding.ChunkData, error) {
 }
 
 // UncompressedSize is a helper function to hide the type assertion kludge when wanting the uncompressed size of the Cortex interface encoding.Chunk.
-func UncompressedSize(c encoding.ChunkData) (int, bool) {
+func UncompressedSize(c chunk.ChunkData) (int, bool) {
 	f, ok := c.(*Facade)
 
 	if !ok || f.c == nil {

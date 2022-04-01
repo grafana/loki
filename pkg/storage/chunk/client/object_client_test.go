@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
@@ -37,7 +37,7 @@ func TestFSEncoder(t *testing.T) {
 	}
 
 	// chunk that resolves to v11
-	oldChunk := encoding.Chunk{
+	oldChunk := chunk.Chunk{
 		ChunkRef: logproto.ChunkRef{
 			UserID:      "fake",
 			From:        MustParseDayTime("2020-01-02").Time,
@@ -49,7 +49,7 @@ func TestFSEncoder(t *testing.T) {
 	}
 
 	// chunk that resolves to v12
-	newChunk := encoding.Chunk{
+	newChunk := chunk.Chunk{
 		ChunkRef: logproto.ChunkRef{
 			UserID:      "fake",
 			From:        MustParseDayTime("2022-01-02").Time,
@@ -77,7 +77,7 @@ func TestFSEncoder(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			chk, err := encoding.ParseExternalKey("fake", tc.from)
+			chk, err := chunk.ParseExternalKey("fake", tc.from)
 			require.Nil(t, err)
 			require.Equal(t, tc.exp, FSEncoder(schema, chk))
 		})

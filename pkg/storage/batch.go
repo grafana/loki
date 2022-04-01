@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -702,7 +702,7 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 	for f, chunks := range chksByFetcher {
 		go func(fetcher *fetcher.Fetcher, chunks []*LazyChunk) {
 			keys := make([]string, 0, len(chunks))
-			chks := make([]encoding.Chunk, 0, len(chunks))
+			chks := make([]chunk.Chunk, 0, len(chunks))
 			index := make(map[string]*LazyChunk, len(chunks))
 
 			// FetchChunks requires chunks to be ordered by external key.
@@ -719,7 +719,7 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 			if err != nil {
 				level.Error(logger).Log("msg", "error fetching chunks", "err", err)
 				if isInvalidChunkError(err) {
-					level.Error(logger).Log("msg", "checksum of chunks does not match", "err", encoding.ErrInvalidChecksum)
+					level.Error(logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
 					errChan <- nil
 					return
 				}
@@ -758,7 +758,7 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 func isInvalidChunkError(err error) bool {
 	err = errors.Cause(err)
 	if err, ok := err.(promql.ErrStorage); ok {
-		return err.Err == encoding.ErrInvalidChecksum || err.Err == chunkenc.ErrInvalidChecksum
+		return err.Err == chunk.ErrInvalidChecksum || err.Err == chunkenc.ErrInvalidChecksum
 	}
 	return false
 }

@@ -2,7 +2,10 @@ package storage
 
 import (
 	"context"
+	"time"
 
+	"github.com/go-kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -12,8 +15,14 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/series"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
@@ -27,7 +36,7 @@ var (
 
 // Store is the Loki chunk store to retrieve and save chunks.
 type Store interface {
-	ChunkStore
+	stores.Store
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
@@ -46,16 +55,32 @@ type ChunkFilterer interface {
 }
 
 type store struct {
-	ChunkStore
-	cfg          Config
-	chunkMetrics *ChunkMetrics
-	schemaCfg    config.SchemaConfig
+	stores.Store
+	composite stores.CompositeStore
+
+	cfg       Config
+	storeCfg  config.ChunkStoreConfig
+	schemaCfg config.SchemaConfig
+
+	chunkMetrics       *ChunkMetrics
+	chunkClientMetrics client.ChunkClientMetrics
+	clientMetrics      ClientMetrics
+	registerer         prometheus.Registerer
+
+	indexReadCache   cache.Cache
+	chunksCache      cache.Cache
+	writeDedupeCache cache.Cache
+
+	limits StoreLimits
+	logger log.Logger
 
 	chunkFilterer RequestChunkFilterer
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
-func NewStore(cfg Config, schemaCfg config.SchemaConfig, chunkStore ChunkStore, registerer prometheus.Registerer) (Store, error) {
+func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.SchemaConfig,
+	limits StoreLimits, clientMetrics ClientMetrics, registerer prometheus.Registerer, logger log.Logger,
+) (Store, error) {
 	if len(schemaCfg.Configs) != 0 {
 		if index := config.ActivePeriodConfig(schemaCfg.Configs); index != -1 && index < len(schemaCfg.Configs) {
 			indexTypeStats.Set(schemaCfg.Configs[index].IndexType)
@@ -64,12 +89,130 @@ func NewStore(cfg Config, schemaCfg config.SchemaConfig, chunkStore ChunkStore, 
 		}
 	}
 
-	return &store{
-		ChunkStore:   chunkStore,
-		cfg:          cfg,
-		chunkMetrics: NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
-		schemaCfg:    schemaCfg,
-	}, nil
+	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	chunkCacheCfg := storeCfg.ChunkCacheConfig
+	chunkCacheCfg.Prefix = "chunks"
+	chunksCache, err := cache.New(chunkCacheCfg, registerer, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache is shared by multiple stores, which means they will try and Stop
+	// it more than once.  Wrap in a StopOnce to prevent this.
+	indexReadCache = cache.StopOnce(indexReadCache)
+	chunksCache = cache.StopOnce(chunksCache)
+	writeDedupeCache = cache.StopOnce(writeDedupeCache)
+
+	// Lets wrap all caches except chunksCache with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers.
+	// chunksCache is not wrapped because chunks content can't be anyways modified without changing its ID so there is no use of
+	// invalidating chunks cache. Also chunks can be fetched only by their ID found in index and we are anyways removing the index and invalidating index cache here.
+	indexReadCache = cache.NewCacheGenNumMiddleware(indexReadCache)
+	writeDedupeCache = cache.NewCacheGenNumMiddleware(writeDedupeCache)
+
+	err = schemaCfg.Load()
+	if err != nil {
+		return nil, errors.Wrap(err, "error loading schema config")
+	}
+	stores := stores.NewCompositeStore(limits)
+
+	s := &store{
+		Store:     stores,
+		composite: stores,
+		cfg:       cfg,
+		storeCfg:  storeCfg,
+		schemaCfg: schemaCfg,
+
+		chunkClientMetrics: client.NewChunkClientMetrics(registerer),
+		clientMetrics:      clientMetrics,
+		chunkMetrics:       NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
+		registerer:         registerer,
+
+		indexReadCache:   indexReadCache,
+		chunksCache:      chunksCache,
+		writeDedupeCache: writeDedupeCache,
+
+		logger: logger,
+		limits: limits,
+	}
+	if err := s.init(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *store) init() error {
+	for _, p := range s.schemaCfg.Configs {
+		chunkClient, err := s.chunkClientForPeriod(p)
+		if err != nil {
+			return err
+		}
+		f, err := fetcher.New(s.chunksCache, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize)
+		if err != nil {
+			return err
+		}
+
+		w, idx, stop, err := s.storeForPeriod(p, chunkClient, f)
+		if err != nil {
+			return err
+		}
+		s.composite.AddStore(p.From.Time, f, idx, w, stop)
+	}
+	return nil
+}
+
+func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, error) {
+	objectStoreType := p.ObjectType
+	if objectStoreType == "" {
+		objectStoreType = p.IndexType
+	}
+	chunkClientReg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": "chunk-store-" + p.From.String()}, s.registerer)
+
+	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, s.clientMetrics, chunkClientReg)
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating object client")
+	}
+
+	chunks = client.NewMetricsChunkClient(chunks, s.chunkClientMetrics)
+	return chunks, nil
+}
+
+func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, stores.Index, func(), error) {
+	// todo switch tsdb.
+
+	indexClientReg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": "index-store-" + p.From.String()}, s.registerer)
+
+	idx, err := NewIndexClient(p.IndexType, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, indexClientReg)
+	if err != nil {
+		return nil, nil, nil, errors.Wrap(err, "error creating index client")
+	}
+	idx = index.NewCachingIndexClient(idx, s.indexReadCache, s.cfg.IndexCacheValidity, s.limits, s.logger, s.cfg.DisableBroadIndexQueries)
+	schema, err := index.CreateSchema(p)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if s.storeCfg.CacheLookupsOlderThan != 0 {
+		schema = index.NewSchemaCaching(schema, time.Duration(s.storeCfg.CacheLookupsOlderThan))
+	}
+
+	return series.NewWriter(f, s.schemaCfg, idx, schema, s.writeDedupeCache, s.storeCfg.DisableIndexDeduplication),
+		series.NewSeriesIndexStore(s.schemaCfg, schema, idx, f),
+		func() {
+			chunkClient.Stop()
+			f.Stop()
+			idx.Stop()
+		},
+		nil
 }
 
 // decodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,
@@ -188,7 +331,7 @@ func (s *store) Series(ctx context.Context, req logql.SelectLogParams) ([]logpro
 			return nil, err
 		}
 	}
-	return s.ChunkStore.GetSeries(ctx, userID, from, through, matchers...)
+	return s.Store.GetSeries(ctx, userID, from, through, matchers...)
 }
 
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
@@ -261,8 +404,8 @@ func (s *store) GetSchemaConfigs() []config.PeriodConfig {
 	return s.schemaCfg.Configs
 }
 
-func filterChunksByTime(from, through model.Time, chunks []encoding.Chunk) []encoding.Chunk {
-	filtered := make([]encoding.Chunk, 0, len(chunks))
+func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
+	filtered := make([]chunk.Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
 		if chunk.Through < from || through < chunk.From {
 			continue

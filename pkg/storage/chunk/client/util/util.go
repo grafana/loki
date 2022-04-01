@@ -8,7 +8,7 @@ import (
 
 	ot "github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/storage/chunk/index"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/util/math"
 )
 

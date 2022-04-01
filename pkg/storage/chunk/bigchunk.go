@@ -1,4 +1,4 @@
-package encoding
+package chunk
 
 import (
 	"bytes"
@@ -83,6 +83,10 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 	b.appender = appender
 	b.remainingSamples = samplesPerChunk
 	return nil
+}
+
+func (b *bigchunk) Rebound(start, end model.Time) (ChunkData, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (b *bigchunk) Marshal(wio io.Writer) error {

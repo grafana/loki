@@ -13,7 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/index"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 var ctx = user.InjectOrgID(context.Background(), "1")

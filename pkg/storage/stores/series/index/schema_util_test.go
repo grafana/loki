@@ -103,7 +103,7 @@ func TestParseChunkTimeRangeValue(t *testing.T) {
 			"code", "2:1484661279394:1484664879394",
 		},
 	} {
-		chunkID, labelValue, err := parseChunkTimeRangeValue(c.encoded, nil)
+		chunkID, labelValue, err := ParseChunkTimeRangeValue(c.encoded, nil)
 		require.NoError(t, err)
 		assert.Equal(t, model.LabelValue(c.value), labelValue)
 		assert.Equal(t, c.chunkID, chunkID)

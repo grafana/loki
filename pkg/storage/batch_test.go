@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -19,7 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
@@ -1681,7 +1681,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 		cfg: Config{
 			MaxChunkBatchSize: 50,
 		},
-		ChunkStore: newMockChunkStore(newOverlappingStreams(200, 200)),
+		Store: newMockChunkStore(newOverlappingStreams(200, 200)),
 	}
 	b.ResetTimer()
 	statsCtx, ctx := stats.NewContext(user.InjectOrgID(context.Background(), "fake"))

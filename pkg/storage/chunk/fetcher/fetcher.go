@@ -6,8 +6,9 @@ import (
 	"sync"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -37,11 +38,6 @@ var (
 	})
 )
 
-type Client interface {
-	GetChunks(ctx context.Context, chunkSet []encoding.Chunk) ([]encoding.Chunk, error)
-	IsChunkNotFoundErr(err error) bool
-}
-
 const chunkDecodeParallelism = 16
 
 // Fetcher deals with fetching chunk contents from the cache/store,
@@ -49,7 +45,7 @@ const chunkDecodeParallelism = 16
 // chunks from the cache, in parallel.
 type Fetcher struct {
 	schema     config.SchemaConfig
-	storage    Client
+	storage    client.Client
 	cache      cache.Cache
 	cacheStubs bool
 
@@ -59,23 +55,23 @@ type Fetcher struct {
 	maxAsyncConcurrency int
 	maxAsyncBufferSize  int
 
-	asyncQueue chan []encoding.Chunk
+	asyncQueue chan []chunk.Chunk
 	stop       chan struct{}
 }
 
 type decodeRequest struct {
-	chunk     encoding.Chunk
+	chunk     chunk.Chunk
 	buf       []byte
 	responses chan decodeResponse
 }
 
 type decodeResponse struct {
-	chunk encoding.Chunk
+	chunk chunk.Chunk
 	err   error
 }
 
 // New makes a new ChunkFetcher.
-func New(cacher cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage Client, maxAsyncConcurrency int, maxAsyncBufferSize int) (*Fetcher, error) {
+func New(cacher cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, maxAsyncConcurrency int, maxAsyncBufferSize int) (*Fetcher, error) {
 	c := &Fetcher{
 		schema:              schema,
 		storage:             storage,
@@ -94,7 +90,7 @@ func New(cacher cache.Cache, cacheStubs bool, schema config.SchemaConfig, storag
 
 	// Start a number of goroutines - processing async operations - equal
 	// to the max concurrency we have.
-	c.asyncQueue = make(chan []encoding.Chunk, c.maxAsyncBufferSize)
+	c.asyncQueue = make(chan []chunk.Chunk, c.maxAsyncBufferSize)
 	for i := 0; i < c.maxAsyncConcurrency; i++ {
 		go c.asyncWriteBackCacheQueueProcessLoop()
 	}
@@ -102,7 +98,7 @@ func New(cacher cache.Cache, cacheStubs bool, schema config.SchemaConfig, storag
 	return c, nil
 }
 
-func (c *Fetcher) writeBackCacheAsync(fromStorage []encoding.Chunk) error {
+func (c *Fetcher) writeBackCacheAsync(fromStorage []chunk.Chunk) error {
 	select {
 	case c.asyncQueue <- fromStorage:
 		chunkFetcherCacheQueueEnqueue.Add(float64(len(fromStorage)))
@@ -117,7 +113,7 @@ func (c *Fetcher) asyncWriteBackCacheQueueProcessLoop() {
 		select {
 		case fromStorage := <-c.asyncQueue:
 			chunkFetcherCacheQueueDequeue.Add(float64(len(fromStorage)))
-			cacheErr := c.writeBackCache(context.Background(), fromStorage)
+			cacheErr := c.WriteBackCache(context.Background(), fromStorage)
 			if cacheErr != nil {
 				level.Warn(util_log.Logger).Log("msg", "could not write fetched chunks from storage into chunk cache", "err", cacheErr)
 			}
@@ -137,7 +133,7 @@ func (c *Fetcher) Stop() {
 
 func (c *Fetcher) worker() {
 	defer c.wait.Done()
-	decodeContext := encoding.NewDecodeContext()
+	decodeContext := chunk.NewDecodeContext()
 	for req := range c.decodeRequests {
 		err := req.chunk.Decode(decodeContext, req.buf)
 		if err != nil {
@@ -154,9 +150,13 @@ func (c *Fetcher) Cache() cache.Cache {
 	return c.cache
 }
 
+func (c *Fetcher) Client() client.Client {
+	return c.storage
+}
+
 // FetchChunks fetches a set of chunks from cache and store. Note that the keys passed in must be
 // lexicographically sorted, while the returned chunks are not in the same order as the passed in chunks.
-func (c *Fetcher) FetchChunks(ctx context.Context, chunks []encoding.Chunk, keys []string) ([]encoding.Chunk, error) {
+func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []string) ([]chunk.Chunk, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -173,7 +173,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []encoding.Chunk, keys
 		level.Warn(log).Log("msg", "error process response from cache", "err", err)
 	}
 
-	var fromStorage []encoding.Chunk
+	var fromStorage []chunk.Chunk
 	if len(missing) > 0 {
 		fromStorage, err = c.storage.GetChunks(ctx, missing)
 	}
@@ -195,7 +195,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []encoding.Chunk, keys
 	return allChunks, nil
 }
 
-func (c *Fetcher) writeBackCache(ctx context.Context, chunks []encoding.Chunk) error {
+func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) error {
 	keys := make([]string, 0, len(chunks))
 	bufs := make([][]byte, 0, len(chunks))
 	for i := range chunks {
@@ -222,11 +222,11 @@ func (c *Fetcher) writeBackCache(ctx context.Context, chunks []encoding.Chunk) e
 
 // ProcessCacheResponse decodes the chunks coming back from the cache, separating
 // hits and misses.
-func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []encoding.Chunk, keys []string, bufs [][]byte) ([]encoding.Chunk, []encoding.Chunk, error) {
+func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk, keys []string, bufs [][]byte) ([]chunk.Chunk, []chunk.Chunk, error) {
 	var (
 		requests  = make([]decodeRequest, 0, len(keys))
 		responses = make(chan decodeResponse)
-		missing   []encoding.Chunk
+		missing   []chunk.Chunk
 		logger    = util_log.WithContext(ctx, util_log.Logger)
 	)
 
@@ -263,7 +263,7 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []encoding.Ch
 
 	var (
 		err   error
-		found []encoding.Chunk
+		found []chunk.Chunk
 	)
 	for i := 0; i < len(requests); i++ {
 		response := <-responses
