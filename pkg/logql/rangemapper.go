@@ -299,6 +299,7 @@ var SplittableVectorOp = map[string]struct{}{
 	syntax.OpTypeMax:   {},
 	syntax.OpTypeMin:   {},
 	syntax.OpTypeAvg:   {},
+	syntax.OpTypeTopK:  {},
 }
 
 var SplittableRangeVectorOp = map[string]struct{}{
