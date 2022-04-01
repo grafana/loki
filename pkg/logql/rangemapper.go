@@ -26,7 +26,7 @@ func NewRangeVectorMapper(interval time.Duration) (RangeVectorMapper, error) {
 
 // Parse returns (noop, parsed expression, error)
 func (m RangeVectorMapper) Parse(query string) (bool, syntax.Expr, error) {
-	origExpr, err := syntax.ParseExpr(query)
+	origExpr, err := syntax.ParseSampleExpr(query)
 	if err != nil {
 		return true, nil, err
 	}
@@ -39,11 +39,15 @@ func (m RangeVectorMapper) Parse(query string) (bool, syntax.Expr, error) {
 	return origExpr.String() == modExpr.String(), modExpr, err
 }
 
-func (m RangeVectorMapper) Map(expr syntax.Expr, vectorAggrPushdown *syntax.VectorAggregationExpr) (syntax.SampleExpr, error) {
+func (m RangeVectorMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.VectorAggregationExpr) (syntax.SampleExpr, error) {
 	// immediately clone the passed expr to avoid mutating the original
-	expr, err := syntax.Clone(expr)
+	expr, err := clone(expr)
 	if err != nil {
 		return nil, err
+	}
+
+	if !isSplittableByRange(expr) {
+		return expr, nil
 	}
 
 	switch e := expr.(type) {
@@ -226,71 +230,67 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregation
 		return expr
 	}
 
-	if isSplittableByRange(expr) {
-		if expr.Grouping == nil && hasLabelExtractionStage(expr) {
-			return expr
-		}
-		switch expr.Operation {
-		case syntax.OpRangeTypeBytes, syntax.OpRangeTypeCount, syntax.OpRangeTypeSum:
-			var downstream syntax.SampleExpr = expr
-			if overrideDownstream != nil {
-				downstream = overrideDownstream
-			}
-			return &syntax.VectorAggregationExpr{
-				Left: m.mapConcatSampleExpr(downstream, rangeInterval),
-				Grouping: &syntax.Grouping{
-					Without: true,
-				},
-				Operation: syntax.OpTypeSum,
-			}
-		case syntax.OpRangeTypeMax:
-			grouping := expr.Grouping
-			if expr.Grouping == nil {
-				grouping = &syntax.Grouping{
-					Without: true,
-				}
-			}
-			var downstream syntax.SampleExpr = expr
-			if overrideDownstream != nil {
-				downstream = overrideDownstream
-			}
-			return &syntax.VectorAggregationExpr{
-				Left:      m.mapConcatSampleExpr(downstream, rangeInterval),
-				Grouping:  grouping,
-				Operation: syntax.OpTypeMax,
-			}
-		case syntax.OpRangeTypeMin:
-			grouping := expr.Grouping
-			if expr.Grouping == nil {
-				grouping = &syntax.Grouping{
-					Without: true,
-				}
-			}
-			var downstream syntax.SampleExpr = expr
-			if overrideDownstream != nil {
-				downstream = overrideDownstream
-			}
-			return &syntax.VectorAggregationExpr{
-				Left:      m.mapConcatSampleExpr(downstream, rangeInterval),
-				Grouping:  grouping,
-				Operation: syntax.OpTypeMin,
-			}
-		case syntax.OpRangeTypeRate:
-			return m.sumOverFullRange(expr, overrideDownstream, syntax.OpRangeTypeCount, rangeInterval)
-		case syntax.OpRangeTypeBytesRate:
-			return m.sumOverFullRange(expr, overrideDownstream, syntax.OpRangeTypeBytes, rangeInterval)
-		default:
-			// this should not be reachable. If an operation is splittable it should
-			// have an optimization listed
-			level.Warn(util_log.Logger).Log(
-				"msg", "unexpected range aggregation expression which appears shardable, ignoring",
-				"operation", expr.Operation,
-			)
-			return expr
-		}
+	if expr.Grouping == nil && hasLabelExtractionStage(expr) {
+		return expr
 	}
-
-	return expr
+	switch expr.Operation {
+	case syntax.OpRangeTypeBytes, syntax.OpRangeTypeCount, syntax.OpRangeTypeSum:
+		var downstream syntax.SampleExpr = expr
+		if overrideDownstream != nil {
+			downstream = overrideDownstream
+		}
+		return &syntax.VectorAggregationExpr{
+			Left: m.mapConcatSampleExpr(downstream, rangeInterval),
+			Grouping: &syntax.Grouping{
+				Without: true,
+			},
+			Operation: syntax.OpTypeSum,
+		}
+	case syntax.OpRangeTypeMax:
+		grouping := expr.Grouping
+		if expr.Grouping == nil {
+			grouping = &syntax.Grouping{
+				Without: true,
+			}
+		}
+		var downstream syntax.SampleExpr = expr
+		if overrideDownstream != nil {
+			downstream = overrideDownstream
+		}
+		return &syntax.VectorAggregationExpr{
+			Left:      m.mapConcatSampleExpr(downstream, rangeInterval),
+			Grouping:  grouping,
+			Operation: syntax.OpTypeMax,
+		}
+	case syntax.OpRangeTypeMin:
+		grouping := expr.Grouping
+		if expr.Grouping == nil {
+			grouping = &syntax.Grouping{
+				Without: true,
+			}
+		}
+		var downstream syntax.SampleExpr = expr
+		if overrideDownstream != nil {
+			downstream = overrideDownstream
+		}
+		return &syntax.VectorAggregationExpr{
+			Left:      m.mapConcatSampleExpr(downstream, rangeInterval),
+			Grouping:  grouping,
+			Operation: syntax.OpTypeMin,
+		}
+	case syntax.OpRangeTypeRate:
+		return m.sumOverFullRange(expr, overrideDownstream, syntax.OpRangeTypeCount, rangeInterval)
+	case syntax.OpRangeTypeBytesRate:
+		return m.sumOverFullRange(expr, overrideDownstream, syntax.OpRangeTypeBytes, rangeInterval)
+	default:
+		// this should not be reachable. If an operation is splittable it should
+		// have an optimization listed
+		level.Warn(util_log.Logger).Log(
+			"msg", "unexpected range aggregation expression which appears shardable, ignoring",
+			"operation", expr.Operation,
+		)
+		return expr
+	}
 }
 
 func isSplittableByRange(expr syntax.SampleExpr) bool {
@@ -310,11 +310,16 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 	}
 }
 
+func clone(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
+	return syntax.ParseSampleExpr(expr.String())
+}
+
 var SplittableVectorOp = map[string]struct{}{
 	syntax.OpTypeSum:   {},
 	syntax.OpTypeCount: {},
 	syntax.OpTypeMax:   {},
 	syntax.OpTypeMin:   {},
+	syntax.OpTypeAvg:   {},
 }
 
 var SplittableRangeVectorOp = map[string]struct{}{
