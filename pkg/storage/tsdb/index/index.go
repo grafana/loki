@@ -134,7 +134,7 @@ type Writer struct {
 	fingerprintOffsets fingerprintOffsets
 
 	// Hold last series to validate that clients insert new series in order.
-	lastSeries uint64
+	lastSeries labels.Labels
 	lastRef    storage.SeriesRef
 
 	crc32 hash.Hash
@@ -440,11 +440,13 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 	}
 
 	labelHash := lset.Hash()
-	if labelHash < w.lastSeries {
+	lastHash := w.lastSeries.Hash()
+	// Ensure series are sorted by the priorities: [`hash(labels)`, `labels`]
+	if (labelHash < lastHash && len(w.lastSeries) > 0) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
 		return errors.Errorf("out-of-order series added with label set %q", lset)
 	}
 
-	if ref < w.lastRef && w.lastSeries != uint64(0) {
+	if ref < w.lastRef && len(w.lastSeries) != 0 {
 		return errors.Errorf("series with reference greater than %d already added", ref)
 	}
 	// We add padding to 16 bytes to increase the addressable space we get through 4 byte
@@ -525,7 +527,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		return errors.Wrap(err, "write series data")
 	}
 
-	w.lastSeries = labelHash
+	w.lastSeries = append(w.lastSeries[:0], lset...)
 	w.lastRef = ref
 
 	if ref%fingerprintInterval == 0 {
