@@ -229,7 +229,9 @@ kubectl -n openshift-logging edit lokistack
 ```yaml
 limits:
     tenants:
-        4a5bb098-7caf-42ec-9b1a-8e1d979bfb95:
+        <TENANT_NAME>:
             IngestionLimits:
                 IngestionRate: 15
 ```
+
+where `<TENANT_NAME>` can be application, audit or infrastructure.
