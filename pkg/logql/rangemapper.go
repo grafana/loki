@@ -134,6 +134,24 @@ func (m RangeVectorMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, o
 	}
 }
 
+func (m RangeVectorMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregationExpr, vectorAggrPushdown *syntax.VectorAggregationExpr, op string, rangeInterval time.Duration) syntax.SampleExpr {
+	grouping := expr.Grouping
+	if expr.Grouping == nil {
+		grouping = &syntax.Grouping{
+			Without: true,
+		}
+	}
+	var downstream syntax.SampleExpr = expr
+	if vectorAggrPushdown != nil {
+		downstream = vectorAggrPushdown
+	}
+	return &syntax.VectorAggregationExpr{
+		Left:      m.mapConcatSampleExpr(downstream, rangeInterval),
+		Grouping:  grouping,
+		Operation: op,
+	}
+}
+
 // appendDownstream adds expression expr with a range interval 'interval' and offset 'offset'  to the downstreams list.
 // Returns the updated downstream ConcatSampleExpr.
 func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
@@ -220,7 +238,7 @@ func (m RangeVectorMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregati
 // contains the initial query which will be the downstream expression with a split range interval.
 // Example: `sum by (a) (bytes_over_time)`
 // Is mapped to `sum by (a) (sum without downstream<sum by (a) (bytes_over_time)>++downstream<sum by (a) (bytes_over_time)>++...)`
-func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, overrideDownstream *syntax.VectorAggregationExpr) syntax.SampleExpr {
+func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, vectorAggrPushdown *syntax.VectorAggregationExpr) syntax.SampleExpr {
 	rangeInterval := getRangeInterval(expr)
 
 	// in case the interval is smaller than the configured split interval,
@@ -234,53 +252,15 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregation
 	}
 	switch expr.Operation {
 	case syntax.OpRangeTypeBytes, syntax.OpRangeTypeCount, syntax.OpRangeTypeSum:
-		var downstream syntax.SampleExpr = expr
-		if overrideDownstream != nil {
-			downstream = overrideDownstream
-		}
-		return &syntax.VectorAggregationExpr{
-			Left: m.mapConcatSampleExpr(downstream, rangeInterval),
-			Grouping: &syntax.Grouping{
-				Without: true,
-			},
-			Operation: syntax.OpTypeSum,
-		}
+		return m.vectorAggrWithRangeDownstreams(expr, vectorAggrPushdown, syntax.OpTypeSum, rangeInterval)
 	case syntax.OpRangeTypeMax:
-		grouping := expr.Grouping
-		if expr.Grouping == nil {
-			grouping = &syntax.Grouping{
-				Without: true,
-			}
-		}
-		var downstream syntax.SampleExpr = expr
-		if overrideDownstream != nil {
-			downstream = overrideDownstream
-		}
-		return &syntax.VectorAggregationExpr{
-			Left:      m.mapConcatSampleExpr(downstream, rangeInterval),
-			Grouping:  grouping,
-			Operation: syntax.OpTypeMax,
-		}
+		return m.vectorAggrWithRangeDownstreams(expr, vectorAggrPushdown, syntax.OpTypeMax, rangeInterval)
 	case syntax.OpRangeTypeMin:
-		grouping := expr.Grouping
-		if expr.Grouping == nil {
-			grouping = &syntax.Grouping{
-				Without: true,
-			}
-		}
-		var downstream syntax.SampleExpr = expr
-		if overrideDownstream != nil {
-			downstream = overrideDownstream
-		}
-		return &syntax.VectorAggregationExpr{
-			Left:      m.mapConcatSampleExpr(downstream, rangeInterval),
-			Grouping:  grouping,
-			Operation: syntax.OpTypeMin,
-		}
+		return m.vectorAggrWithRangeDownstreams(expr, vectorAggrPushdown, syntax.OpTypeMin, rangeInterval)
 	case syntax.OpRangeTypeRate:
-		return m.sumOverFullRange(expr, overrideDownstream, syntax.OpRangeTypeCount, rangeInterval)
+		return m.sumOverFullRange(expr, vectorAggrPushdown, syntax.OpRangeTypeCount, rangeInterval)
 	case syntax.OpRangeTypeBytesRate:
-		return m.sumOverFullRange(expr, overrideDownstream, syntax.OpRangeTypeBytes, rangeInterval)
+		return m.sumOverFullRange(expr, vectorAggrPushdown, syntax.OpRangeTypeBytes, rangeInterval)
 	default:
 		// this should not be reachable. If an operation is splittable it should
 		// have an optimization listed
