@@ -134,12 +134,11 @@ func (m RangeVectorMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, o
 	}
 }
 
-// splitDownstreams adds expression expr with a range interval 'interval' and offset 'offset'  to the downstreams list.
+// appendDownstream adds expression expr with a range interval 'interval' and offset 'offset'  to the downstreams list.
 // Returns the updated downstream ConcatSampleExpr.
-func (m RangeVectorMapper) splitDownstreams(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
-	subExpr, _ := syntax.Clone(expr)
-	subSampleExpr := subExpr.(syntax.SampleExpr)
-	subSampleExpr.Walk(func(e interface{}) {
+func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
+	sampleExpr, _ := clone(expr)
+	sampleExpr.Walk(func(e interface{}) {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			concrete.Left.Interval = interval
@@ -150,7 +149,7 @@ func (m RangeVectorMapper) splitDownstreams(downstreams *ConcatSampleExpr, expr 
 	})
 	downstreams = &ConcatSampleExpr{
 		DownstreamSampleExpr: DownstreamSampleExpr{
-			SampleExpr: subSampleExpr,
+			SampleExpr: sampleExpr,
 		},
 		next: downstreams,
 	}
@@ -166,12 +165,12 @@ func (m RangeVectorMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInte
 
 	splitCount := int(rangeInterval / m.splitByInterval)
 	for interval = 0; interval < splitCount; interval++ {
-		downstreams = m.splitDownstreams(downstreams, expr, m.splitByInterval, time.Duration(interval)*m.splitByInterval)
+		downstreams = appendDownstream(downstreams, expr, m.splitByInterval, time.Duration(interval)*m.splitByInterval)
 	}
 	// Add the remainder offset interval
 	if rangeInterval%m.splitByInterval != 0 {
 		offset := time.Duration(interval) * m.splitByInterval
-		downstreams = m.splitDownstreams(downstreams, expr, rangeInterval-offset, offset)
+		downstreams = appendDownstream(downstreams, expr, rangeInterval-offset, offset)
 	}
 
 	if downstreams == nil {
@@ -195,13 +194,13 @@ func (m RangeVectorMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregati
 	// TODO: handle the case where an additional vector aggregation expression also has grouping.
 	//  Currently, it is sending the last inner expression grouping dowstream.
 	//  Which grouping should be sent downstream?
-	overrideDownstream := expr
-	if expr.Operation == syntax.OpTypeCount || expr.Grouping.Groups == nil {
-		overrideDownstream = nil
+	var vectorAggrPushdown *syntax.VectorAggregationExpr
+	if expr.Grouping != nil && expr.Grouping.Groups != nil && expr.Operation != syntax.OpTypeCount {
+		vectorAggrPushdown = expr
 	}
 
 	// Split the vector aggregation's inner expression
-	lhsMapped, err := m.Map(expr.Left, overrideDownstream)
+	lhsMapped, err := m.Map(expr.Left, vectorAggrPushdown)
 	if err != nil {
 		return nil, err
 	}
