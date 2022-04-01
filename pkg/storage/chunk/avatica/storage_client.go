@@ -200,8 +200,8 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	if len(b.entries) == 0 {
 		return nil
 	}
-	prepareStmts := make(map[string]*sql.Stmt, 0)
-	prepareSqls := make(map[string]string, 0)
+	prepareStmts := make(map[string]*sql.Stmt)
+	prepareSqls := make(map[string]string)
 	for _, entry := range b.entries {
 		_, ok := prepareStmts[entry.TableName]
 		if ok {
