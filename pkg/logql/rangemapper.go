@@ -52,7 +52,7 @@ func (m RangeVectorMapper) Map(expr syntax.Expr, vectorAggrPushdown *syntax.Vect
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, vectorAggrPushdown), nil
 	case *syntax.BinOpExpr:
-		lhsMapped, err := m.Map(e, vectorAggrPushdown)
+		lhsMapped, err := m.Map(e.SampleExpr, vectorAggrPushdown)
 		if err != nil {
 			return nil, err
 		}
