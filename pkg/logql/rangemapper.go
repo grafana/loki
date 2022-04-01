@@ -39,7 +39,7 @@ func (m RangeVectorMapper) Parse(query string) (bool, syntax.Expr, error) {
 	return origExpr.String() == modExpr.String(), modExpr, err
 }
 
-func (m RangeVectorMapper) Map(expr syntax.Expr, overrideDownstream *syntax.VectorAggregationExpr) (syntax.Expr, error) {
+func (m RangeVectorMapper) Map(expr syntax.Expr, vectorAggrPushdown *syntax.VectorAggregationExpr) (syntax.SampleExpr, error) {
 	// immediately clone the passed expr to avoid mutating the original
 	expr, err := syntax.Clone(expr)
 	if err != nil {
@@ -50,26 +50,18 @@ func (m RangeVectorMapper) Map(expr syntax.Expr, overrideDownstream *syntax.Vect
 	case *syntax.VectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e)
 	case *syntax.RangeAggregationExpr:
-		return m.mapRangeAggregationExpr(e, overrideDownstream), nil
+		return m.mapRangeAggregationExpr(e, vectorAggrPushdown), nil
 	case *syntax.BinOpExpr:
-		lhsMapped, err := m.Map(e.SampleExpr, overrideDownstream)
+		lhsMapped, err := m.Map(e, vectorAggrPushdown)
 		if err != nil {
 			return nil, err
 		}
-		rhsMapped, err := m.Map(e.RHS, overrideDownstream)
+		rhsMapped, err := m.Map(e.RHS, vectorAggrPushdown)
 		if err != nil {
 			return nil, err
 		}
-		lhsSampleExpr, ok := lhsMapped.(syntax.SampleExpr)
-		if !ok {
-			return nil, badASTMapping(lhsMapped)
-		}
-		rhsSampleExpr, ok := rhsMapped.(syntax.SampleExpr)
-		if !ok {
-			return nil, badASTMapping(rhsMapped)
-		}
-		e.SampleExpr = lhsSampleExpr
-		e.RHS = rhsSampleExpr
+		e.SampleExpr = lhsMapped
+		e.RHS = rhsMapped
 		return e, nil
 	default:
 		return nil, errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
@@ -204,18 +196,14 @@ func (m RangeVectorMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregati
 		overrideDownstream = nil
 	}
 
-	// Split the vector aggregation child node
-	subMapped, err := m.Map(expr.Left, overrideDownstream)
+	// Split the vector aggregation's inner expression
+	lhsMapped, err := m.Map(expr.Left, overrideDownstream)
 	if err != nil {
 		return nil, err
 	}
-	sampleExpr, ok := subMapped.(syntax.SampleExpr)
-	if !ok {
-		return nil, badASTMapping(subMapped)
-	}
 
 	return &syntax.VectorAggregationExpr{
-		Left:      sampleExpr,
+		Left:      lhsMapped,
 		Grouping:  expr.Grouping,
 		Params:    expr.Params,
 		Operation: expr.Operation,
