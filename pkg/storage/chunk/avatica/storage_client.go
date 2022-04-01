@@ -379,7 +379,7 @@ func (s *StorageClient) prepareStmt(ctx context.Context, tableName string) (*sql
 	err := ctx.Err()
 	var stmt *sql.Stmt
 	for retries.Ongoing() {
-		err = s.queryInstrumentation(ctx, querySQL, func() error {
+		err = s.queryInstrumentation(ctx, "PrepareForInsert "+querySQL, func() error {
 			stmt, err = s.writeSession.PrepareContext(ctx, querySQL)
 			if err != nil {
 				return err
