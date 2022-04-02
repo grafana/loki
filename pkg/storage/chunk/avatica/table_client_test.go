@@ -27,6 +27,7 @@ var cfg = Config{
 	10 * time.Minute,
 	time.Minute,
 	backoff.Config{},
+	false,
 }
 
 func TestTableClient_CreateTableQuery(t *testing.T) {

@@ -49,6 +49,7 @@ type Config struct {
 	ConnMaxLifetime  time.Duration  `yaml:"conn_max_lifetime"`
 	ConnMaxIdleTime  time.Duration  `yaml:"conn_max_idletime"`
 	BackoffConfig    backoff.Config `yaml:"backoff_config"`
+	PrepareStmt      bool           `yaml:"prepare_stmt"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -66,6 +67,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, "avatica.min-backoff", 100*time.Millisecond, "Minimum backoff time when avatica query")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, "avatica.max-backoff", 3*time.Second, "Maximum backoff time when s3 avatica query")
 	f.IntVar(&cfg.BackoffConfig.MaxRetries, "avatica.max-retries", 5, "Maximum number of times to retry when s3 avatica query")
+	f.BoolVar(&cfg.PrepareStmt, "avatica.prepare-stmt", false, "use prepare stmt when insert")
 }
 
 func (cfg *Config) Validate() error {
@@ -201,11 +203,6 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 		return nil
 	}
 
-	err := s.insertBatch(ctx, b.entries)
-	if err != nil {
-		return err
-	}
-
 	for _, entry := range b.deletes {
 		querySQL := fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
 			entry.TableName)
@@ -220,7 +217,37 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 			level.Error(util_log.Logger).Log("msg", "avatica DELETE fail", "sql", querySQL, "err", err)
 			return errors.WithStack(err)
 		}
+	}
 
+	if s.cfg.PrepareStmt {
+		err := s.insertBatchByPrepareStmt(ctx, b.entries)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	for _, entry := range b.entries {
+		querySQL := fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)",
+			entry.TableName)
+		retries := backoff.New(ctx, s.cfg.BackoffConfig)
+		err := ctx.Err()
+		for retries.Ongoing() {
+			err = s.queryInstrumentation(ctx, querySQL, func() error {
+				_, err := s.writeSession.ExecContext(ctx, querySQL, entry.HashValue, entry.RangeValue, entry.Value)
+				if err != nil {
+					return err
+				}
+				return nil
+			})
+			if err == nil {
+				break
+			}
+			retries.Wait()
+		}
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "avatica INSERT fail", "sql", querySQL, "err", err)
+			return errors.WithStack(err)
+		}
 	}
 
 	return nil
@@ -402,7 +429,7 @@ func (s *StorageClient) insertByPreStmt(ctx context.Context, entry chunk.IndexEn
 	return nil
 }
 
-func (s *StorageClient) insertBatch(ctx context.Context, entries []chunk.IndexEntry) error {
+func (s *StorageClient) insertBatchByPrepareStmt(ctx context.Context, entries []chunk.IndexEntry) error {
 	prepareStmts := make(map[string]*sql.Stmt)
 	prepareSqls := make(map[string]string)
 	var err error
