@@ -345,6 +345,9 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 			return nil
 		}
 	}
+	if rows.Err() != nil {
+		return errors.WithStack(rows.Err())
+	}
 	return nil
 }
 
