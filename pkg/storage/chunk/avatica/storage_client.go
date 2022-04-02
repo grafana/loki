@@ -200,34 +200,10 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	if len(b.entries) == 0 {
 		return nil
 	}
-	prepareStmts := make(map[string]*sql.Stmt)
-	prepareSqls := make(map[string]string)
-	for _, entry := range b.entries {
-		_, ok := prepareStmts[entry.TableName]
-		if ok {
-			continue
-		}
-		sqlStmt, sql, err := s.prepareStmt(ctx, entry.TableName)
-		if err != nil {
-			return err
-		}
-		prepareSqls[entry.TableName] = sql
-		prepareStmts[entry.TableName] = sqlStmt
-	}
-	defer func() {
-		for _, stmt := range prepareStmts {
-			stmt.Close()
-		}
-	}()
 
-	for _, entry := range b.entries {
-		querySQL := prepareSqls[entry.TableName]
-		stmt := prepareStmts[entry.TableName]
-		err := s.insertByPreStmt(ctx, entry, stmt, querySQL)
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "avatica INSERT fail", "sql", querySQL, "err", err)
-			return errors.WithStack(err)
-		}
+	err := s.insertBatch(ctx, b.entries)
+	if err != nil {
+		return err
 	}
 
 	for _, entry := range b.deletes {
@@ -416,6 +392,63 @@ func (s *StorageClient) insertByPreStmt(ctx context.Context, entry chunk.IndexEn
 			break
 		}
 		retries.Wait()
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *StorageClient) insertBatch(ctx context.Context, entries []chunk.IndexEntry) error {
+	prepareStmts := make(map[string]*sql.Stmt)
+	prepareSqls := make(map[string]string)
+	var err error
+	for _, entry := range entries {
+		_, ok := prepareStmts[entry.TableName]
+		if !ok {
+			sqlStmt, sql, prepareErr := s.prepareStmt(ctx, entry.TableName)
+			if prepareErr != nil {
+				level.Error(util_log.Logger).Log("msg", "avatica Prepare INSERT fail", "sql", sql, "err", prepareErr)
+				err = errors.WithStack(prepareErr)
+				break
+			}
+			prepareSqls[entry.TableName] = sql
+			prepareStmts[entry.TableName] = sqlStmt
+		}
+		querySQL := prepareSqls[entry.TableName]
+		stmt := prepareStmts[entry.TableName]
+		insertErr := s.insertByPreStmt(ctx, entry, stmt, querySQL)
+		if insertErr != nil {
+			level.Error(util_log.Logger).Log("msg", "avatica INSERT fail", "sql", querySQL, "err", insertErr)
+			err = errors.WithStack(insertErr)
+			break
+		}
+	}
+	//close connection first.do not return err
+	// support batching feature.
+	// doc :https://calcite.apache.org/avatica/docs/go_client_reference.html#batching
+	for tableName, stmt := range prepareStmts {
+		querySQL := prepareSqls[tableName]
+		retries := backoff.New(ctx, s.cfg.BackoffConfig)
+		closeErr := ctx.Err()
+		for retries.Ongoing() {
+			closeErr = s.queryInstrumentation(ctx, "BatchingForInsert "+querySQL, func() error {
+				closeErr := stmt.Close()
+				if closeErr != nil {
+					return closeErr
+				}
+				return nil
+			})
+			if closeErr == nil {
+				break
+			}
+			retries.Wait()
+		}
+		if closeErr != nil {
+			// do not return here ,make sure close all stmt connection.
+			level.Error(util_log.Logger).Log("msg", "avatica stmt close fail", "sql", querySQL, "err", closeErr)
+			err = errors.WithStack(closeErr)
+		}
 	}
 	if err != nil {
 		return err
