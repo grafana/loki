@@ -2030,7 +2030,7 @@ compacts index shards to more performant forms.
 # Can be one of "disabled", "whole-stream-deletion", "filter-only" or "filter-and-delete".
 # When set to (the default) value of "whole-stream-deletion" and if
 # retention_enabled is true then the Log Entry Deletion API is available
-# CLI flag: -boltdb.shipper.compactor.dletion-mode
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
 [deletion_mode: <string> | default = "whole-stream-deletion"]
 
 # The hash ring configuration used by compactors to elect a single instance for running compactions
