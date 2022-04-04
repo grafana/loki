@@ -255,6 +255,14 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 		}
 	}
 
+	if t.config.PrintStructuredData {
+		sb := strings.Builder{}
+		for _, lbl := range lb.Labels() {
+			sb.WriteString(fmt.Sprintf("%s=%s ", lbl.Name, lbl.Value))
+		}
+		level.Info(t.logger).Log("msg", "syslog structured data", "values", sb.String())
+	}
+
 	processed := relabel.Process(lb.Labels(), t.relabelConfig...)
 
 	filtered := make(model.LabelSet)

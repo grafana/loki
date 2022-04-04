@@ -184,6 +184,8 @@ type SyslogTargetConfig struct {
 	MaxMessageLength int `yaml:"max_message_length"`
 
 	TLSConfig promconfig.TLSConfig `yaml:"tls_config,omitempty"`
+
+	PrintStructuredData bool `yaml:"print_structured_data"`
 }
 
 // WindowsEventsTargetConfig describes a scrape config that listen for windows event logs.
