@@ -27,8 +27,6 @@ const (
 	StatusReceived  DeleteRequestStatus = "received"
 	StatusProcessed DeleteRequestStatus = "processed"
 
-	separator = "\000" // separator for series selectors in delete requests
-
 	deleteRequestID      indexType = "1"
 	deleteRequestDetails indexType = "2"
 
