@@ -215,7 +215,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 	c.indexStorageClient = shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
 	c.metrics = newMetrics(r)
 
-	if c.cfg.RetentionEnabled && c.deleteMode == deletion.WholeStreamDeletion {
+	if c.cfg.RetentionEnabled {
 		var encoder objectclient.KeyEncoder
 		if _, ok := objectClient.(*local.FSObjectClient); ok {
 			encoder = objectclient.FSEncoder
@@ -236,8 +236,10 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 			return err
 		}
 
-		c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
-		c.deleteRequestsManager = deletion.NewDeleteRequestsManager(c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, r)
+		if c.deleteMode == deletion.WholeStreamDeletion {
+			c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
+			c.deleteRequestsManager = deletion.NewDeleteRequestsManager(c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, r)
+		}
 
 		c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 
