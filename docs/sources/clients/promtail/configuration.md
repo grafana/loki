@@ -96,7 +96,7 @@ scrape_configs:
   - [<scrape_config>]
 
 # Configures global limits for this instance of Promtail
-[limit_config: <limit_config>]
+[limits_config: <limits_config>]
 
 # Configures how tailed targets will be watched.
 [target_config: <target_config>]
@@ -1759,9 +1759,9 @@ scrape_configs:
         target_label: 'container'
 ```
 
-## limit_config
+## limits_config
 
-The optional `limit_config` block configures global limits for this instance of Promtail.
+The optional `limits_config` block configures global limits for this instance of Promtail.
 
 ```yaml
 # When true, enforces rate limiting on this instance of Promtail.
