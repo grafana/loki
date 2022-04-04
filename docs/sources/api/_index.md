@@ -69,6 +69,9 @@ These endpoints are exposed by the ruler:
 
 These endpoints are exposed by the compactor:
 - [`GET /compactor/ring`](#get-compactorring)
+- [`POST /loki/api/v1/delete`](#post-lokiapiv1delete)
+- [`GET /loki/api/v1/delete`](#get-lokiapiv1delete)
+- [`DELETE /loki/api/v1/delete`](#delete-lokiapiv1delete)
 
 A [list of clients](../clients) can be found in the clients documentation.
 
@@ -797,10 +800,6 @@ In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the
 
 Displays a web page with the distributor hash ring status, including the state, healthy and last heartbeat time of each distributor.
 
-### `GET /compactor/ring`
-
-Displays a web page with the compactor hash ring status, including the state, healthy and last heartbeat time of each compactor.
-
 ## `GET /metrics`
 
 `/metrics` exposes Prometheus metrics. See
@@ -1094,3 +1093,21 @@ GET /prometheus/api/v1/alerts
 Prometheus-compatible rules endpoint to list all active alerts.
 
 For more information, please check out the Prometheus [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) documentation.
+
+## Compactor
+
+### `GET /compactor/ring`
+
+Displays a web page with the compactor hash ring status, including the state, healthy and last heartbeat time of each compactor.
+
+### `POST /loki/api/v1/delete`
+
+Create a new delete request. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-log-entry-deletion).
+
+### `GET /loki/api/v1/delete`
+
+List all existing delete requests. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#list-delete-requests).
+
+### `DELETE /loki/api/v1/delete`
+
+Remove a delete request. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-cancellation-of-a-delete-request).
