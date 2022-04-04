@@ -27,9 +27,10 @@ type StoreLimits interface {
 
 type Index interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error)
-	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error)
+	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 }
 
 type ChunkWriter interface {
@@ -76,8 +77,12 @@ func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, thro
 	return [][]chunk.Chunk{chunks}, []*fetcher.Fetcher{c.fetcher}, err
 }
 
-func (c *storeEntry) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
+func (c *storeEntry) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	return c.index.GetSeries(ctx, userID, from, through, matchers...)
+}
+
+func (c *storeEntry) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	c.index.SetChunkFilterer(chunkFilter)
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.

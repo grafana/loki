@@ -7,7 +7,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/util"
@@ -20,10 +19,11 @@ type Store interface {
 	// GetChunkRefs returns the un-loaded chunks and the fetchers to be used to load them. You can load each slice of chunks ([]Chunk),
 	// using the corresponding Fetcher (fetchers[i].FetchChunks(ctx, chunks[i], ...)
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
-	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error)
+	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
 	GetChunkFetcher(tm model.Time) *fetcher.Fetcher
+	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 	Stop()
 }
 
@@ -83,9 +83,32 @@ func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, ch
 	})
 }
 
-func (c compositeStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
-	// todo
-	return nil, nil
+func (c compositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	for _, store := range c.stores {
+		store.Store.SetChunkFilterer(chunkFilter)
+	}
+}
+
+func (c compositeStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	var results []labels.Labels
+	found := map[uint64]struct{}{}
+	err := c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+		series, err := store.GetSeries(innerCtx, userID, from, through, matchers...)
+		if err != nil {
+			return err
+		}
+		for _, s := range series {
+			if _, ok := found[s.Hash()]; !ok {
+				results = append(results, s)
+				found[s.Hash()] = struct{}{}
+			}
+		}
+		return nil
+	})
+	sort.Slice(results, func(i, j int) bool {
+		return labels.Compare(results[i], results[j]) < 0
+	})
+	return results, err
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.

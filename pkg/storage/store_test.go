@@ -612,7 +612,7 @@ func Test_store_SelectSample(t *testing.T) {
 
 type fakeChunkFilterer struct{}
 
-func (f fakeChunkFilterer) ForRequest(ctx context.Context) ChunkFilterer {
+func (f fakeChunkFilterer) ForRequest(ctx context.Context) chunk.ChunkFilterer {
 	return f
 }
 

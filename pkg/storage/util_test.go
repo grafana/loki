@@ -151,6 +151,7 @@ type mockChunkStore struct {
 	schemas config.SchemaConfig
 	chunks  []chunk.Chunk
 	client  *mockChunkStoreClient
+	f       chunk.RequestChunkFilterer
 }
 
 // mockChunkStore cannot implement both chunk.Store and chunk.Client,
@@ -173,8 +174,28 @@ func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, c
 	return nil
 }
 
-func (m *mockChunkStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
-	return nil, nil
+func (m *mockChunkStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	result := make([]labels.Labels, 0, len(m.chunks))
+	unique := map[uint64]struct{}{}
+	for _, c := range m.chunks {
+		if _, ok := unique[c.Fingerprint]; !ok {
+			l := c.Metric.WithoutLabels(labels.MetricName)
+			if m.f != nil {
+				if m.f.ForRequest(ctx).ShouldFilter(l) {
+					continue
+				}
+			}
+			for _, m := range matchers {
+				if !m.Matches(l.Get(m.Name)) {
+					continue
+				}
+			}
+			result = append(result, l)
+			unique[c.Fingerprint] = struct{}{}
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return labels.Compare(result[i], result[j]) < 0 })
+	return result, nil
 }
 
 func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
@@ -183,6 +204,10 @@ func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, userID st
 
 func (m *mockChunkStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	return nil, nil
+}
+
+func (m *mockChunkStore) SetChunkFilterer(f chunk.RequestChunkFilterer) {
+	m.f = f
 }
 
 func (m *mockChunkStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {

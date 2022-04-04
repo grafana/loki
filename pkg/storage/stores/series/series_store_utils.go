@@ -61,6 +61,24 @@ func filterChunksByUniqueFingerprint(s config.SchemaConfig, chunks []chunk.Chunk
 	return filtered, keys
 }
 
+func filterChunkRefsByUniqueFingerprint(s config.SchemaConfig, chunks []logproto.ChunkRef) ([]chunk.Chunk, []string) {
+	filtered := make([]chunk.Chunk, 0, len(chunks))
+	keys := make([]string, 0, len(chunks))
+	uniqueFp := map[model.Fingerprint]struct{}{}
+
+	for _, c := range chunks {
+		if _, ok := uniqueFp[c.FingerprintModel()]; ok {
+			continue
+		}
+		filtered = append(filtered, chunk.Chunk{
+			ChunkRef: c,
+		})
+		keys = append(keys, s.ExternalKey(c))
+		uniqueFp[c.FingerprintModel()] = struct{}{}
+	}
+	return filtered, keys
+}
+
 func uniqueStrings(cs []string) []string {
 	if len(cs) == 0 {
 		return []string{}

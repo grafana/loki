@@ -22,7 +22,6 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -92,8 +91,7 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg config
 
 	store, err := storage.NewStore(storage.Config{}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger())
 	require.NoError(t, err)
-	c := store.Stores()[0].GetChunkFetcher(0).Client().(chunkclient.MetricsChunkClient).Client.(*testutils.MockStorage)
-	tm, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, c, nil, nil, nil)
+	tm, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, testutils.NewMockStorage(), nil, nil, nil)
 	require.NoError(t, err)
 	tm.SyncTables(context.Background())
 	return store

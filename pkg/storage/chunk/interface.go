@@ -17,9 +17,11 @@
 package chunk
 
 import (
+	"context"
 	"io"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	errs "github.com/weaveworks/common/errors"
 )
 
@@ -48,4 +50,14 @@ type ChunkData interface {
 	Rebound(start, end model.Time) (ChunkData, error)
 	// Size returns the approximate length of the chunk in bytes.
 	Size() int
+}
+
+// RequestChunkFilterer creates ChunkFilterer for a given request context.
+type RequestChunkFilterer interface {
+	ForRequest(ctx context.Context) ChunkFilterer
+}
+
+// ChunkFilterer filters chunks based on the metric.
+type ChunkFilterer interface {
+	ShouldFilter(metric labels.Labels) bool
 }

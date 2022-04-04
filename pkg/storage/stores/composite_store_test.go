@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/stretchr/testify/require"
@@ -32,11 +31,13 @@ func (m mockStore) LabelValuesForMetricName(ctx context.Context, userID string, 
 	return nil, nil
 }
 
+func (m mockStore) SetChunkFilterer(f chunk.RequestChunkFilterer) {}
+
 func (m mockStore) GetChunkRefs(tx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
-func (m mockStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
+func (m mockStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	return nil, nil
 }
 

@@ -58,18 +58,21 @@ type chunkFetcher interface {
 }
 
 type IndexStore struct {
-	schema    index.SeriesStoreSchema
-	index     index.IndexClient
-	schemaCfg config.SchemaConfig
-	fetcher   chunkFetcher
+	schema         index.SeriesStoreSchema
+	index          index.IndexClient
+	schemaCfg      config.SchemaConfig
+	fetcher        chunkFetcher
+	chunkFilterer  chunk.RequestChunkFilterer
+	chunkBatchSize int
 }
 
-func NewIndexStore(schemaCfg config.SchemaConfig, schema index.SeriesStoreSchema, index index.IndexClient, fetcher chunkFetcher) *IndexStore {
+func NewIndexStore(schemaCfg config.SchemaConfig, schema index.SeriesStoreSchema, index index.IndexClient, fetcher chunkFetcher, chunkBatchSize int) *IndexStore {
 	return &IndexStore{
-		schema:    schema,
-		index:     index,
-		schemaCfg: schemaCfg,
-		fetcher:   fetcher,
+		schema:         schema,
+		index:          index,
+		schemaCfg:      schemaCfg,
+		fetcher:        fetcher,
+		chunkBatchSize: chunkBatchSize,
 	}
 }
 
@@ -116,77 +119,85 @@ func (c *IndexStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	return chunks, nil
 }
 
-func (c *IndexStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.SeriesIdentifier, error) {
-	_, err := c.GetChunkRefs(ctx, userID, from, through, matchers...)
+func (c *IndexStore) SetChunkFilterer(f chunk.RequestChunkFilterer) {
+	c.chunkFilterer = f
+}
+
+type chunkGroup struct {
+	chunks []chunk.Chunk
+	keys   []string
+}
+
+func (c chunkGroup) Len() int { return len(c.chunks) }
+func (c chunkGroup) Swap(i, j int) {
+	c.chunks[i], c.chunks[j] = c.chunks[j], c.chunks[i]
+	c.keys[i], c.keys[j] = c.keys[j], c.keys[i]
+}
+func (c chunkGroup) Less(i, j int) bool { return c.keys[i] < c.keys[j] }
+
+func (c *IndexStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	chks, err := c.GetChunkRefs(ctx, userID, from, through, matchers...)
 	if err != nil {
 		return nil, err
 	}
-	// todo
+
 	// download one per series and merge
 	// group chunks by series
-	// chunksBySeries := partitionBySeriesChunks(lazyChunks)
+	chunksBySeries, keys := filterChunkRefsByUniqueFingerprint(c.schemaCfg, chks)
 
-	// firstChunksPerSeries := make([]*LazyChunk, 0, len(chunksBySeries))
+	results := make([]labels.Labels, 0, len(chunksBySeries))
 
-	// // discard all but one chunk per series
-	// for _, chks := range chunksBySeries {
-	// 	firstChunksPerSeries = append(firstChunksPerSeries, chks[0][0])
-	// }
+	// bound concurrency
+	groups := make([]chunkGroup, 0, len(chunksBySeries)/c.chunkBatchSize+1)
 
-	// results := make(logproto.SeriesIdentifiers, 0, len(firstChunksPerSeries))
+	split := c.chunkBatchSize
+	if len(chunksBySeries) < split {
+		split = len(chunksBySeries)
+	}
 
-	// // bound concurrency
-	// groups := make([][]*LazyChunk, 0, len(firstChunksPerSeries)/s.cfg.MaxChunkBatchSize+1)
+	var chunkFilterer chunk.ChunkFilterer
+	if c.chunkFilterer != nil {
+		chunkFilterer = c.chunkFilterer.ForRequest(ctx)
+	}
 
-	// split := s.cfg.MaxChunkBatchSize
-	// if len(firstChunksPerSeries) < split {
-	// 	split = len(firstChunksPerSeries)
-	// }
+	for split > 0 {
+		groups = append(groups, chunkGroup{chunksBySeries[:split], keys[:split]})
+		chunksBySeries = chunksBySeries[split:]
+		keys = keys[split:]
+		if len(chunksBySeries) < split {
+			split = len(chunksBySeries)
+		}
+	}
 
-	// var chunkFilterer ChunkFilterer
-	// if s.chunkFilterer != nil {
-	// 	chunkFilterer = s.chunkFilterer.ForRequest(ctx)
-	// }
+	for _, group := range groups {
+		sort.Sort(group)
+		chunks, err := c.fetcher.FetchChunks(ctx, group.chunks, group.keys)
+		if err != nil {
+			return nil, err
+		}
 
-	// for split > 0 {
-	// 	groups = append(groups, firstChunksPerSeries[:split])
-	// 	firstChunksPerSeries = firstChunksPerSeries[split:]
-	// 	if len(firstChunksPerSeries) < split {
-	// 		split = len(firstChunksPerSeries)
-	// 	}
-	// }
+	outer:
+		for _, chk := range chunks {
+			for _, matcher := range matchers {
+				if matcher.Name == astmapper.ShardLabel || matcher.Name == labels.MetricName {
+					continue
+				}
+				if !matcher.Matches(chk.Metric.Get(matcher.Name)) {
+					continue outer
+				}
+			}
 
-	// for _, group := range groups {
-	// 	err = fetchLazyChunks(ctx, s.schemaCfg.SchemaConfig, group)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
+			if chunkFilterer != nil && chunkFilterer.ShouldFilter(chk.Metric) {
+				continue outer
+			}
 
-	// outer:
-	// 	for _, chk := range group {
-	// 		for _, matcher := range matchers {
-	// 			if matcher.Name == astmapper.ShardLabel || matcher.Name == labels.MetricName {
-	// 				continue
-	// 			}
-	// 			if !matcher.Matches(chk.Chunk.Metric.Get(matcher.Name)) {
-	// 				continue outer
-	// 			}
-	// 		}
-
-	// 		if chunkFilterer != nil && chunkFilterer.ShouldFilter(chk.Chunk.Metric) {
-	// 			continue outer
-	// 		}
-
-	// 		m := chk.Chunk.Metric.Map()
-	// 		delete(m, labels.MetricName)
-	// 		results = append(results, logproto.SeriesIdentifier{
-	// 			Labels: m,
-	// 		})
-	// 	}
-	// }
-	// sort.Sort(results)
-	// return results, nil
-	return nil, nil
+			results = append(results, chk.Metric.WithoutLabels(labels.MetricName))
+		}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return labels.Compare(results[i], results[j]) < 0
+	})
+	return results, nil
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
