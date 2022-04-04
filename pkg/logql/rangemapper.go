@@ -31,6 +31,10 @@ func (m RangeVectorMapper) Parse(query string) (bool, syntax.Expr, error) {
 		return true, nil, err
 	}
 
+	if !isSplittableByRange(origExpr) {
+		return true, origExpr, nil
+	}
+
 	modExpr, err := m.Map(origExpr, nil)
 	if err != nil {
 		return true, nil, err
@@ -44,10 +48,6 @@ func (m RangeVectorMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *synta
 	expr, err := clone(expr)
 	if err != nil {
 		return nil, err
-	}
-
-	if !isSplittableByRange(expr) {
-		return expr, nil
 	}
 
 	switch e := expr.(type) {
@@ -278,9 +278,9 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 		_, ok := SplittableVectorOp[e.Operation]
 		return ok && isSplittableByRange(e.Left)
 	case *syntax.BinOpExpr:
-		return true
+		return isSplittableByRange(e.SampleExpr) && isSplittableByRange(e.RHS)
 	case *syntax.LabelReplaceExpr:
-		return true
+		return isSplittableByRange(e.Left)
 	case *syntax.RangeAggregationExpr:
 		_, ok := SplittableRangeVectorOp[e.Operation]
 		return ok
