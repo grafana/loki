@@ -2513,6 +2513,14 @@ This way, one doesn't have to replicate configuration in multiple places.
 The `analytics` block configures the reporting of Loki analytics to grafana.com
 
 ```yaml
+# By default, Loki will send anonymous but uniquely identifiable usage and configuration analytics to Grafana Labs.
+# Stats are sent to https://stats.grafana.org/
+#
+# Stats are very helpful for us to better understand how Loki is used, and what performance for most users is like.
+# This helps us prioritize features and documentation.
+# For more information on what's sent look at https://github.com/grafana/loki/blob/main/pkg/usagestats/stats.go
+# Check out the buildReport method to see what goes into a report.
+#
 # When true, enables usage reporting.
 # CLI flag: -reporting.enabled
 [reporting_enabled: <boolean>: default = true]
