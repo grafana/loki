@@ -1106,7 +1106,7 @@ Create a new delete request. More details can be found in the [logs deletion doc
 
 ### `GET /loki/api/v1/delete`
 
-List all existing delete requests. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#list-delete-requests).
+List the existing delete requests for the tenant specified in the `x-scope-orgid` header. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#list-delete-requests).
 
 ### `DELETE /loki/api/v1/delete`
 
