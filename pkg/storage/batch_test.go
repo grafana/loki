@@ -1200,7 +1200,6 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
-
 						{
 							Timestamp: time.Unix(2, 0),
 							Line:      "2",
@@ -1253,18 +1252,17 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(1, 0),
-							Line:      "1",
+							Line:      "2",
 						},
 						{
 							Timestamp: time.Unix(1, 0),
-							Line:      "2",
+							Line:      "1",
 						},
 					},
 				}),
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
-
 						{
 							Timestamp: time.Unix(1, 0),
 							Line:      "2",
@@ -1282,12 +1280,12 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: time.Unix(1, 0).UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      xxhash.Sum64String("2"),
 							Value:     1.,
 						},
 						{
 							Timestamp: time.Unix(1, 0).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      xxhash.Sum64String("1"),
 							Value:     1.,
 						},
 					},

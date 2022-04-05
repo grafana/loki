@@ -71,11 +71,11 @@ func TestIterator(t *testing.T) {
 		// Test dedupe of entries with the same timestamp but different entries.
 		{
 			iterator: NewMergeEntryIterator(context.Background(), []EntryIterator{
-				mkStreamIterator(offset(0, constant(0)), defaultLabels),
-				mkStreamIterator(offset(0, constant(0)), defaultLabels),
-				mkStreamIterator(offset(testSize, constant(0)), defaultLabels),
+				mkStreamIterator(identity, defaultLabels),
+				mkStreamIterator(identity, defaultLabels),
+				mkStreamIterator(offset(testSize, identity), defaultLabels),
 			}, logproto.FORWARD),
-			generator: constant(0),
+			generator: identity,
 			length:    2 * testSize,
 			labels:    defaultLabels,
 		},
