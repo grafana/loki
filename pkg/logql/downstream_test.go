@@ -241,6 +241,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 		// Multi vector aggregator layer queries
 		{`sum(max(bytes_over_time({a=~".+"}[3s])))`, time.Second},
+		{`sum(min by (a)(max(sum by (b) (count_over_time({a=~".+"} [2s])))))`, time.Second},
 
 		// Non-splittable vector aggregators
 		// TODO: Fix topk

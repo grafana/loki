@@ -239,13 +239,14 @@ func (m RangeMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 		return expr, nil
 	}
 
-	// Optimization: if the vector aggregator has grouping, the downstream expression can also have the grouping
-	// in order to reduce the label sets. Does not work with count operation.
-	// TODO: handle the case where an additional vector aggregation expression also has grouping.
-	//  Currently, it is sending the last inner expression grouping dowstream.
+	// In order to minimize the amount of streams on the downstream query,
+	// we can push down the outer vector aggregation to the downstream query.
+	// This does not work for `count()` and `topk()`, though.
+	// We also do not want to push down, if the inner expression is a binary operation.
+	// TODO: Currently, it is sending the last inner expression grouping dowstream.
 	//  Which grouping should be sent downstream?
 	var vectorAggrPushdown *syntax.VectorAggregationExpr
-	if expr.Grouping != nil && expr.Grouping.Groups != nil && expr.Operation != syntax.OpTypeCount {
+	if _, ok := expr.Left.(*syntax.BinOpExpr); !ok && expr.Operation != syntax.OpTypeCount && expr.Operation != syntax.OpTypeTopK {
 		vectorAggrPushdown = expr
 	}
 
