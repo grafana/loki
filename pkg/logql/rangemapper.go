@@ -30,21 +30,21 @@ var splittableRangeVectorOp = map[string]struct{}{
 	syntax.OpRangeTypeMin:       {},
 }
 
-type RangeVectorMapper struct {
+type RangeMapper struct {
 	splitByInterval time.Duration
 }
 
-func NewRangeVectorMapper(interval time.Duration) (RangeVectorMapper, error) {
+func NewRangeMapper(interval time.Duration) (RangeMapper, error) {
 	if interval <= 0 {
-		return RangeVectorMapper{}, fmt.Errorf("cannot create RangeVectorMapper with <=0 splitByInterval. Received %s", interval)
+		return RangeMapper{}, fmt.Errorf("cannot create RangeMapper with splitByInterval <= 0; got %s", interval)
 	}
-	return RangeVectorMapper{
+	return RangeMapper{
 		splitByInterval: interval,
 	}, nil
 }
 
 // Parse returns (noop, parsed expression, error)
-func (m RangeVectorMapper) Parse(query string) (bool, syntax.Expr, error) {
+func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
 	origExpr, err := syntax.ParseSampleExpr(query)
 	if err != nil {
 		return true, nil, err
@@ -62,7 +62,7 @@ func (m RangeVectorMapper) Parse(query string) (bool, syntax.Expr, error) {
 	return origExpr.String() == modExpr.String(), modExpr, err
 }
 
-func (m RangeVectorMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.VectorAggregationExpr) (syntax.SampleExpr, error) {
+func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.VectorAggregationExpr) (syntax.SampleExpr, error) {
 	// immediately clone the passed expr to avoid mutating the original
 	expr, err := clone(expr)
 	if err != nil {
@@ -129,7 +129,7 @@ func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 // Example:
 // rate({app="foo"}[2m])
 // => (sum without (count_over_time({app="foo"}[1m]) ++ count_over_time({app="foo"}[1m]) offset 1m) / 120)
-func (m RangeVectorMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrideDownstream *syntax.VectorAggregationExpr, operation string, rangeInterval time.Duration) syntax.SampleExpr {
+func (m RangeMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrideDownstream *syntax.VectorAggregationExpr, operation string, rangeInterval time.Duration) syntax.SampleExpr {
 	var downstreamExpr syntax.SampleExpr = &syntax.RangeAggregationExpr{
 		Left:      expr.Left,
 		Operation: operation,
@@ -165,7 +165,7 @@ func (m RangeVectorMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, o
 // => min without (bytes_over_time({job="bar"} [1m]) ++ bytes_over_time({job="bar"} [1m] offset 1m))
 // min by (app) (bytes_over_time({job="bar"} [2m])
 // => min without (min by (app) (bytes_over_time({job="bar"} [1m])) ++ min by (app) (bytes_over_time({job="bar"} [1m] offset 1m)))
-func (m RangeVectorMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregationExpr, vectorAggrPushdown *syntax.VectorAggregationExpr, op string, rangeInterval time.Duration) syntax.SampleExpr {
+func (m RangeMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregationExpr, vectorAggrPushdown *syntax.VectorAggregationExpr, op string, rangeInterval time.Duration) syntax.SampleExpr {
 	grouping := expr.Grouping
 	if expr.Grouping == nil {
 		grouping = &syntax.Grouping{
@@ -208,7 +208,7 @@ func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, int
 // mapConcatSampleExpr transform expr in multiple downstream subexpressions split by offset range interval
 // rangeInterval should be greater than m.splitByInterval, otherwise the resultant expression
 // will have an unnecessary aggregation operation
-func (m RangeVectorMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration) syntax.SampleExpr {
+func (m RangeMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration) syntax.SampleExpr {
 	interval := 0
 	splitCount := int(rangeInterval / m.splitByInterval)
 
@@ -229,7 +229,7 @@ func (m RangeVectorMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInte
 	return downstreams
 }
 
-func (m RangeVectorMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr) (syntax.SampleExpr, error) {
+func (m RangeMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr) (syntax.SampleExpr, error) {
 	rangeInterval := getRangeInterval(expr)
 
 	// in case the interval is smaller than the configured split interval,
@@ -270,7 +270,7 @@ func (m RangeVectorMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregati
 // contains the initial query which will be the downstream expression with a split range interval.
 // Example: `sum by (a) (bytes_over_time)`
 // Is mapped to `sum by (a) (sum without downstream<sum by (a) (bytes_over_time)>++downstream<sum by (a) (bytes_over_time)>++...)`
-func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, vectorAggrPushdown *syntax.VectorAggregationExpr) syntax.SampleExpr {
+func (m RangeMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, vectorAggrPushdown *syntax.VectorAggregationExpr) syntax.SampleExpr {
 	rangeInterval := getRangeInterval(expr)
 
 	// in case the interval is smaller than the configured split interval,
@@ -296,10 +296,10 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregation
 	case syntax.OpRangeTypeBytesRate:
 		return m.sumOverFullRange(expr, vectorAggrPushdown, syntax.OpRangeTypeBytes, rangeInterval)
 	default:
-		// this should not be reachable. If an operation is splittable it should
-		// have an optimization listed
+		// this should not be reachable.
+		// If an operation is splittable it should have an optimization listed.
 		level.Warn(util_log.Logger).Log(
-			"msg", "unexpected range aggregation expression which appears shardable, ignoring",
+			"msg", "unexpected range aggregation expression",
 			"operation", expr.Operation,
 		)
 		return expr
