@@ -139,7 +139,13 @@ func (h sampleIteratorHeap) Less(i, j int) bool {
 	s1, s2 := h.its[i].Sample(), h.its[j].Sample()
 	if s1.Timestamp == s2.Timestamp {
 		if h.its[i].StreamHash() == 0 {
+			if h.its[i].Labels() == h.its[j].Labels() {
+				return s1.Hash < s2.Hash
+			}
 			return h.its[i].Labels() < h.its[j].Labels()
+		}
+		if h.its[i].StreamHash() == h.its[j].StreamHash() {
+			return s1.Hash < s2.Hash
 		}
 		return h.its[i].StreamHash() < h.its[j].StreamHash()
 	}

@@ -795,6 +795,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			for j := 0; j < int(streamCount); j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
+					require.Equal(t, jsonLine(i, k), it.Entry().Line)
 					require.Equal(t, i, it.Entry().Timestamp.UnixNano())
 				}
 			}
@@ -822,6 +823,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			for j := 0; j < int(streamCount); j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
+					require.Equal(t, jsonLine(i, k), it.Entry().Line)
 					require.Equal(t, i, it.Entry().Timestamp.UnixNano())
 				}
 			}

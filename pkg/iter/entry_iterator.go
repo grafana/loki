@@ -81,6 +81,9 @@ type iteratorSortHeap struct {
 func (h iteratorSortHeap) Less(i, j int) bool {
 	t1, t2 := h.iteratorHeap[i].Entry().Timestamp.UnixNano(), h.iteratorHeap[j].Entry().Timestamp.UnixNano()
 	if t1 == t2 {
+		if h.iteratorHeap[i].StreamHash() == h.iteratorHeap[j].StreamHash() {
+			return h.iteratorHeap[i].Entry().Line < h.iteratorHeap[j].Entry().Line
+		}
 		return h.iteratorHeap[i].StreamHash() < h.iteratorHeap[j].StreamHash()
 	}
 	if h.byAscendingTime {
@@ -323,31 +326,27 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 }
 
 func (i *entrySortIterator) lessByIndex(k, j int) bool {
-	t1, t2 := i.is[k].Entry().Timestamp.UnixNano(), i.is[j].Entry().Timestamp.UnixNano()
+	return lessByIterator(i.is[k], i.is[j], i.byAscendingTime)
+}
+
+func lessByIterator(e1, e2 EntryIterator, byAscendingTime bool) bool {
+	t1, t2 := e1.Entry().Timestamp.UnixNano(), e2.Entry().Timestamp.UnixNano()
 	if t1 == t2 {
 		// The underlying stream hash may not be available, such as when merging LokiResponses in the
 		// frontend which were sharded. Prefer to use the underlying stream hash when available,
 		// which is needed in deduping code, but defer to label sorting when it's not present.
-		if i.is[k].StreamHash() == 0 {
-			return i.is[k].Labels() < i.is[j].Labels()
+		if e1.StreamHash() == 0 {
+			if e1.Labels() == e2.Labels() {
+				return e1.Entry().Line < e2.Entry().Line
+			}
+			return e1.Labels() < e2.Labels()
 		}
-		return i.is[k].StreamHash() < i.is[j].StreamHash()
-	}
-	if i.byAscendingTime {
-		return t1 < t2
-	}
-	return t1 > t2
-}
-
-func (i *entrySortIterator) lessByValue(t1 int64, l1 uint64, lb string, index int) bool {
-	t2 := i.is[index].Entry().Timestamp.UnixNano()
-	if t1 == t2 {
-		if l1 == 0 {
-			return lb < i.is[index].Labels()
+		if e1.StreamHash() == e2.StreamHash() {
+			return e1.Entry().Line < e2.Entry().Line
 		}
-		return l1 < i.is[index].StreamHash()
+		return e1.StreamHash() < e2.StreamHash()
 	}
-	if i.byAscendingTime {
+	if byAscendingTime {
 		return t1 < t2
 	}
 	return t1 > t2
@@ -378,18 +377,15 @@ func (i *entrySortIterator) init() {
 
 func (i *entrySortIterator) fix() {
 	head := i.is[0]
-	t1 := head.Entry().Timestamp.UnixNano()
-	l1 := head.StreamHash()
-	lb := head.Labels()
 
 	// shortcut
-	if len(i.is) <= 1 || i.lessByValue(t1, l1, lb, 1) {
+	if len(i.is) <= 1 || lessByIterator(head, i.is[1], i.byAscendingTime) {
 		return
 	}
 
 	// First element is out of place. So we reposition it.
 	i.is = i.is[1:] // drop head
-	index := sort.Search(len(i.is), func(in int) bool { return i.lessByValue(t1, l1, lb, in) })
+	index := sort.Search(len(i.is), func(in int) bool { return lessByIterator(head, i.is[in], i.byAscendingTime) })
 
 	if index == len(i.is) {
 		i.is = append(i.is, head)
