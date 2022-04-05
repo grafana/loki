@@ -11,6 +11,25 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+var splittableVectorOp = map[string]struct{}{
+	syntax.OpTypeSum:   {},
+	syntax.OpTypeCount: {},
+	syntax.OpTypeMax:   {},
+	syntax.OpTypeMin:   {},
+	syntax.OpTypeAvg:   {},
+	syntax.OpTypeTopK:  {},
+}
+
+var splittableRangeVectorOp = map[string]struct{}{
+	syntax.OpRangeTypeRate:      {},
+	syntax.OpRangeTypeBytesRate: {},
+	syntax.OpRangeTypeBytes:     {},
+	syntax.OpRangeTypeCount:     {},
+	syntax.OpRangeTypeSum:       {},
+	syntax.OpRangeTypeMax:       {},
+	syntax.OpRangeTypeMin:       {},
+}
+
 type RangeVectorMapper struct {
 	splitByInterval time.Duration
 }
@@ -73,6 +92,8 @@ func (m RangeVectorMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *synta
 }
 
 // getRangeInterval returns the interval in the range vector
+// Note that this function must not be called with a BinOpExpr as argument
+// as it returns only the range of the RHS.
 // Example: expression `count_over_time({app="foo"}[10m])` returns 10m
 func getRangeInterval(expr syntax.SampleExpr) time.Duration {
 	var rangeInterval time.Duration
@@ -86,12 +107,14 @@ func getRangeInterval(expr syntax.SampleExpr) time.Duration {
 }
 
 // hasLabelExtractionStage returns true if an expression contains a stage for label extraction,
-// such as `| json` or `| logfmt`
+// such as `| json` or `| logfmt`, that would result in an exploding amount of series in downstream queries.
 func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 	found := false
 	expr.Walk(func(e interface{}) {
 		switch concrete := e.(type) {
 		case *syntax.LabelParserExpr:
+			// It will **not** return true for `regexp`, `unpack` and `pattern`, since these label extraction
+			// stages can control how many labels, and therefore the resulting amount of series, are extracted.
 			if concrete.Op == syntax.OpParserTypeJSON || concrete.Op == syntax.OpParserTypeLogfmt {
 				found = true
 			}
@@ -100,8 +123,8 @@ func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 	return found
 }
 
-// sumOverFullRange returns an expression that sum up individual downstream queries by preserving labels
-// and dividing it by the full range in seconds to calculate a rate value
+// sumOverFullRange returns an expression that sums up individual downstream queries (with preserving labels)
+// and dividing it by the full range in seconds to calculate a rate value.
 // The operation defines the range aggregation operation of the downstream queries.
 // Example:
 // rate({app="foo"}[2m])
@@ -134,6 +157,14 @@ func (m RangeVectorMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, o
 	}
 }
 
+// vectorAggrWithRangeDownstreams returns an expression that aggregates a concat sample expression of multiple range
+// aggregations. If a vector aggregation is pushed down, the downstream queries of the concat sample expression are
+// wrapped in the vector aggregation of the parent node.
+// Example:
+// min(bytes_over_time({job="bar"} [2m])
+// => min without (bytes_over_time({job="bar"} [1m]) ++ bytes_over_time({job="bar"} [1m] offset 1m))
+// min by (app) (bytes_over_time({job="bar"} [2m])
+// => min without (min by (app) (bytes_over_time({job="bar"} [1m])) ++ min by (app) (bytes_over_time({job="bar"} [1m] offset 1m)))
 func (m RangeVectorMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregationExpr, vectorAggrPushdown *syntax.VectorAggregationExpr, op string, rangeInterval time.Duration) syntax.SampleExpr {
 	grouping := expr.Grouping
 	if expr.Grouping == nil {
@@ -178,10 +209,14 @@ func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, int
 // rangeInterval should be greater than m.splitByInterval, otherwise the resultant expression
 // will have an unnecessary aggregation operation
 func (m RangeVectorMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration) syntax.SampleExpr {
-	var downstreams *ConcatSampleExpr
 	interval := 0
-
 	splitCount := int(rangeInterval / m.splitByInterval)
+
+	if splitCount == 0 {
+		return expr
+	}
+
+	var downstreams *ConcatSampleExpr
 	for interval = 0; interval < splitCount; interval++ {
 		downstreams = appendDownstream(downstreams, expr, m.splitByInterval, time.Duration(interval)*m.splitByInterval)
 	}
@@ -191,9 +226,6 @@ func (m RangeVectorMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInte
 		downstreams = appendDownstream(downstreams, expr, rangeInterval-offset, offset)
 	}
 
-	if downstreams == nil {
-		return expr
-	}
 	return downstreams
 }
 
@@ -247,6 +279,8 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregation
 		return expr
 	}
 
+	// We cannot execute downstream queries that would potentially produce a huge amount of series
+	// and therefore would very likely fail.
 	if expr.Grouping == nil && hasLabelExtractionStage(expr) {
 		return expr
 	}
@@ -272,42 +306,26 @@ func (m RangeVectorMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregation
 	}
 }
 
+// isSplittableByRange returns whether it is possible to optimize the given sample expression
 func isSplittableByRange(expr syntax.SampleExpr) bool {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
-		_, ok := SplittableVectorOp[e.Operation]
+		_, ok := splittableVectorOp[e.Operation]
 		return ok && isSplittableByRange(e.Left)
 	case *syntax.BinOpExpr:
 		return isSplittableByRange(e.SampleExpr) && isSplittableByRange(e.RHS)
 	case *syntax.LabelReplaceExpr:
 		return isSplittableByRange(e.Left)
 	case *syntax.RangeAggregationExpr:
-		_, ok := SplittableRangeVectorOp[e.Operation]
+		_, ok := splittableRangeVectorOp[e.Operation]
 		return ok
 	default:
 		return false
 	}
 }
 
+// clone returns a copy of the given sample expression
+// This is needed whenever we want to modify the existing query tree.
 func clone(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 	return syntax.ParseSampleExpr(expr.String())
-}
-
-var SplittableVectorOp = map[string]struct{}{
-	syntax.OpTypeSum:   {},
-	syntax.OpTypeCount: {},
-	syntax.OpTypeMax:   {},
-	syntax.OpTypeMin:   {},
-	syntax.OpTypeAvg:   {},
-	syntax.OpTypeTopK:  {},
-}
-
-var SplittableRangeVectorOp = map[string]struct{}{
-	syntax.OpRangeTypeRate:      {},
-	syntax.OpRangeTypeBytesRate: {},
-	syntax.OpRangeTypeBytes:     {},
-	syntax.OpRangeTypeCount:     {},
-	syntax.OpRangeTypeSum:       {},
-	syntax.OpRangeTypeMax:       {},
-	syntax.OpRangeTypeMin:       {},
 }

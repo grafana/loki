@@ -267,8 +267,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			// Downstream engine - split by range
 			rangeMapper, err := NewRangeVectorMapper(tc.splitByInterval)
 			require.Nil(t, err)
-			_, rangeExpr, err := rangeMapper.Parse(tc.query)
+			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
 			require.Nil(t, err)
+
+			require.False(t, noop, "downstream engine cannot execute noop")
 
 			rangeQry := downstreamEngine.Query(params, rangeExpr)
 			rangeRes, err := rangeQry.Exec(ctx)
