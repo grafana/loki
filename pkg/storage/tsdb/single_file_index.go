@@ -133,3 +133,7 @@ func (i *TSDBIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, na
 	}
 	return labelValuesWithMatchers(i.reader, name, matchers...)
 }
+
+func (i *TSDBIndex) Checksum() uint32 {
+	return i.reader.Checksum()
+}

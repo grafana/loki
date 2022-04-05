@@ -16,13 +16,9 @@ type MultiIndex struct {
 	indices []*TSDBIndex
 }
 
-func NewMultiIndex(indices ...*TSDBIndex) (Index, error) {
-	if len(indices) == 0 {
-		return nil, errors.New("must supply at least one index")
-	}
-
-	if len(indices) == 1 {
-		return indices[0], nil
+func NewMultiIndex(indices ...*TSDBIndex) (*MultiIndex, error) {
+	if len(indices) < 2 {
+		return nil, errors.New("must supply at least two indices")
 	}
 
 	sort.Slice(indices, func(i, j int) bool {
