@@ -13,10 +13,10 @@ import (
 )
 
 type MultiIndex struct {
-	indices []Index
+	indices []*TSDBIndex
 }
 
-func NewMultiIndex(indices ...Index) (Index, error) {
+func NewMultiIndex(indices ...*TSDBIndex) (Index, error) {
 	if len(indices) == 0 {
 		return nil, errors.New("must supply at least one index")
 	}
@@ -55,7 +55,7 @@ func (i *MultiIndex) Bounds() (model.Time, model.Time) {
 	return lowest, highest
 }
 
-func (i *MultiIndex) forIndices(ctx context.Context, from, through model.Time, fn func(context.Context, Index) (interface{}, error)) ([]interface{}, error) {
+func (i *MultiIndex) forIndices(ctx context.Context, from, through model.Time, fn func(context.Context, *TSDBIndex) (interface{}, error)) ([]interface{}, error) {
 	queryBounds := newBounds(from, through)
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -98,7 +98,7 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 	}
 	res = res[:0]
 
-	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
+	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
 		return idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
 	})
 
@@ -134,7 +134,7 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 	}
 	res = res[:0]
 
-	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
+	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
 		return idx.Series(ctx, userID, from, through, nil, shard, matchers...)
 	})
 
@@ -161,7 +161,7 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 }
 
 func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
+	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
 		return idx.LabelNames(ctx, userID, from, through, matchers...)
 	})
 
@@ -198,7 +198,7 @@ func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, throug
 }
 
 func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
+	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
 		return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 	})
 
