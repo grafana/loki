@@ -239,13 +239,13 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 		if c.deleteMode == deletion.WholeStreamDeletion {
 			c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
 			c.deleteRequestsManager = deletion.NewDeleteRequestsManager(c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, r)
-		}
 
-		c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
+			c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 
-		c.tableMarker, err = retention.NewMarker(retentionWorkDir, schemaConfig, c.expirationChecker, chunkClient, r)
-		if err != nil {
-			return err
+			c.tableMarker, err = retention.NewMarker(retentionWorkDir, schemaConfig, c.expirationChecker, chunkClient, r)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -303,7 +303,9 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 func (c *Compactor) loop(ctx context.Context) error {
 	if c.cfg.RetentionEnabled {
 		defer c.deleteRequestsStore.Stop()
-		defer c.deleteRequestsManager.Stop()
+		if c.deleteRequestsManager != nil {
+			defer c.deleteRequestsManager.Stop()
+		}
 	}
 
 	syncTicker := time.NewTicker(c.ringPollPeriod)
