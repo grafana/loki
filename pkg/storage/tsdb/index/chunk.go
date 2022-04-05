@@ -51,7 +51,7 @@ func (c ChunkMetas) finalize() ChunkMetas {
 		return c
 	}
 
-	var res ChunkMetas
+	res := PoolChunkMetas.Get()
 	lastDuplicate := -1
 	prior := c[0]
 
@@ -68,11 +68,14 @@ func (c ChunkMetas) finalize() ChunkMetas {
 	// no duplicates were found, short circuit
 	// by returning unmodified underlying slice
 	if len(res) == 0 {
+		PoolChunkMetas.Put(res) // release unused slice to pool
 		return c
 	}
 
 	// otherwise, append any remaining values
 	res = append(res, c[lastDuplicate+1:]...)
+	// release self to pool; res will be returned instead
+	PoolChunkMetas.Put(c)
 	return res
 
 }
