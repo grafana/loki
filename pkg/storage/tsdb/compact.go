@@ -25,13 +25,17 @@ func NewCompactor(tenant string) *Compactor {
 }
 
 func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res Identifier, err error) {
-	// TODO(owen-d): optimize fast path when there's only one index file.
-	b := index.NewBuilder()
+	// No need to compact a single index file
+	if len(indices) == 1 {
+		return indices[0].Identifier(c.tenant), nil
+	}
 
+	b := index.NewBuilder()
 	multi, err := NewMultiIndex(indices...)
 	if err != nil {
 		return res, err
 	}
+
 	lower, upper := inclusiveBounds(multi)
 
 	// Instead of using the MultiIndex.forIndices helper, we loop over each sub-index manually.
@@ -76,26 +80,16 @@ func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res Ide
 	checksum := idx.Checksum()
 	idx.Close()
 
-	// bucket/tenant/index-bounds-checksum.tsdb
-	dst := filepath.Join(
-		c.tenant,
-		fmt.Sprintf(
-			"%s-%d-%d-%x.tsdb",
-			index.IndexFilename,
-			lower,
-			upper,
-			checksum,
-		),
-	)
-
-	if err := os.Rename(tmpPath, dst); err != nil {
-		return res, err
-	}
-
-	return Identifier{
+	dst := Identifier{
 		Tenant:   c.tenant,
 		From:     lower,
 		Through:  upper,
 		Checksum: checksum,
-	}, nil
+	}
+
+	if err := os.Rename(tmpPath, dst.String()); err != nil {
+		return res, err
+	}
+
+	return dst, nil
 }

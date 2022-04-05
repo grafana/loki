@@ -2,6 +2,8 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -15,6 +17,19 @@ type Identifier struct {
 	Tenant        string
 	From, Through model.Time
 	Checksum      uint32
+}
+
+func (i Identifier) String() string {
+	return filepath.Join(
+		i.Tenant,
+		fmt.Sprintf(
+			"%s-%d-%d-%x.tsdb",
+			index.IndexFilename,
+			i.From,
+			i.Through,
+			i.Checksum,
+		),
+	)
 }
 
 // nolint
@@ -148,4 +163,14 @@ func (i *TSDBIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, na
 
 func (i *TSDBIndex) Checksum() uint32 {
 	return i.reader.Checksum()
+}
+
+func (i *TSDBIndex) Identifier(tenant string) Identifier {
+	lower, upper := i.Bounds()
+	return Identifier{
+		Tenant:   tenant,
+		From:     lower,
+		Through:  upper,
+		Checksum: i.Checksum(),
+	}
 }
