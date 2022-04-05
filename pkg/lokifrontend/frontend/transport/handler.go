@@ -17,19 +17,26 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/httpgrpc/server"
 
 	"github.com/grafana/dskit/tenant"
 
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
 	StatusClientClosedRequest = 499
 	ServiceTimingHeaderName   = "Server-Timing"
+)
+
+var (
+	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
+	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
+	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
 )
 
 // Config for a Handler.
@@ -220,11 +227,17 @@ func formatQueryString(queryString url.Values) (fields []interface{}) {
 }
 
 func writeError(w http.ResponseWriter, err error) {
-	if util.IsRequestBodyTooLarge(err) {
-		serverutil.JSONError(w, http.StatusRequestEntityTooLarge, "http: request body too large")
-		return
+	switch err {
+	case context.Canceled:
+		err = errCanceled
+	case context.DeadlineExceeded:
+		err = errDeadlineExceeded
+	default:
+		if util.IsRequestBodyTooLarge(err) {
+			err = errRequestEntityTooLarge
+		}
 	}
-	serverutil.WriteError(err, w)
+	server.WriteError(w, err)
 }
 
 func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.Stats) {

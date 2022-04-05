@@ -84,22 +84,6 @@ Meanwhile, the legacy format is a string in the following format:
    [ ANNOTATIONS <label set> ]
 ```
 
-#### Error responses from API
-
-The body of HTTP error responses from API endpoints changed from plain text to
-JSON. The `Content-Type` header was previously already set incorrectly to
-`application/json`. Therefore returning JSON fixes this inconsistency.
-
-The response body has the following schema:
-
-```json
-{
-  "code": <http status code>,
-  "message": "<error message>",
-  "status": "error"
-}
-```
-
 #### Changes to default configuration values
 
 * `parallelise_shardable_queries` under the `query_range` config now defaults to `true`.
