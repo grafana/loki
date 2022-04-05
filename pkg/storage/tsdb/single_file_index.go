@@ -2,8 +2,6 @@ package tsdb
 
 import (
 	"context"
-	"fmt"
-	"path/filepath"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -11,25 +9,18 @@ import (
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
-// Identifier has all the information needed to resolve a TSDB index
-// Notably this abstracts away OS path separators, etc.
-type Identifier struct {
-	Tenant        string
-	From, Through model.Time
-	Checksum      uint32
+func LoadTSDBIdentifier(dir string, id index.Identifier) (*TSDBIndex, error) {
+	return LoadTSDB(id.Combine(dir))
 }
 
-func (i Identifier) String() string {
-	return filepath.Join(
-		i.Tenant,
-		fmt.Sprintf(
-			"%s-%d-%d-%x.tsdb",
-			index.IndexFilename,
-			i.From,
-			i.Through,
-			i.Checksum,
-		),
-	)
+func LoadTSDB(name string) (*TSDBIndex, error) {
+	reader, err := index.NewFileReader(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewTSDBIndex(reader), nil
+
 }
 
 // nolint
@@ -165,9 +156,9 @@ func (i *TSDBIndex) Checksum() uint32 {
 	return i.reader.Checksum()
 }
 
-func (i *TSDBIndex) Identifier(tenant string) Identifier {
+func (i *TSDBIndex) Identifier(tenant string) index.Identifier {
 	lower, upper := i.Bounds()
-	return Identifier{
+	return index.Identifier{
 		Tenant:   tenant,
 		From:     lower,
 		Through:  upper,
