@@ -743,6 +743,10 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
 
+# Chunk delimiter to build the blobID
+# CLI flag: -<prefix>.azure.chunk-delimiter
+[chunk_delimiter: <string> | default = "-"]
+
 # Preallocated buffer size for downloads.
 # CLI flag: -<prefix>.azure.download-buffer-size
 [download_buffer_size: <int> | default = 512000]
