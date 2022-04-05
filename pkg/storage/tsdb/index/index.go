@@ -50,7 +50,7 @@ const (
 	// FormatV2 represents 2 version of index.
 	FormatV2 = 2
 
-	indexFilename = "index"
+	IndexFilename = "index"
 
 	// store every 1024 series' fingerprints in the fingerprint offsets table
 	fingerprintInterval = 1 << 10

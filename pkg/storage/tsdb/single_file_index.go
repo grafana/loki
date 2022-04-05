@@ -38,8 +38,8 @@ func (i *TSDBIndex) forSeries(
 	}
 
 	var ls labels.Labels
-	chks := chunkMetasPool.Get()
-	defer chunkMetasPool.Put(chks)
+	chks := ChunkMetasPool.Get()
+	defer ChunkMetasPool.Put(chks)
 
 	for p.Next() {
 		hash, err := i.reader.Series(p.At(), &ls, &chks)

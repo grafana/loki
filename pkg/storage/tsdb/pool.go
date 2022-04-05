@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	chunkMetasPool index.PoolChunkMetas // private, internal pkg use only
+	ChunkMetasPool = index.ChunkMetasPool // re-exporting
 	SeriesPool     PoolSeries
 	ChunkRefsPool  PoolChunkRefs
 )
