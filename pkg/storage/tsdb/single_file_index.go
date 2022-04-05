@@ -9,6 +9,14 @@ import (
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
+// Identifier has all the information needed to resolve a TSDB index
+// Notably this abstracts away OS path separators, etc.
+type Identifier struct {
+	Tenant        string
+	From, Through model.Time
+	Checksum      uint32
+}
+
 // nolint
 type TSDBIndex struct {
 	reader IndexReader
@@ -18,6 +26,10 @@ func NewTSDBIndex(reader IndexReader) *TSDBIndex {
 	return &TSDBIndex{
 		reader: reader,
 	}
+}
+
+func (i *TSDBIndex) Close() error {
+	return i.reader.Close()
 }
 
 func (i *TSDBIndex) Bounds() (model.Time, model.Time) {

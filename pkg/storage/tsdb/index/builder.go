@@ -2,8 +2,10 @@ package index
 
 import (
 	"context"
+	"path/filepath"
 	"sort"
 
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 )
@@ -40,6 +42,13 @@ func (b *Builder) AddSeries(ls labels.Labels, chks []ChunkMeta) {
 }
 
 func (b *Builder) Build(ctx context.Context, dir string) error {
+	// Ensure the parent dir exists (i.e. <bucket>/<tenant>/)
+	if parent := filepath.Dir(dir); parent != "" {
+		if err := chunk_util.EnsureDirectory(parent); err != nil {
+			return err
+		}
+	}
+
 	writer, err := NewWriter(ctx, dir)
 	if err != nil {
 		return err
