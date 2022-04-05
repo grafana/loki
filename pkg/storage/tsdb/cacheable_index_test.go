@@ -104,6 +104,11 @@ func TestCacheableIndex(t *testing.T) {
 			},
 		}
 		require.Equal(t, expected, refs)
+
+		// call again to ensure we get the same result
+		refs, err = cacheableIndex.GetChunkRefs(context.Background(), "fake", 1, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		require.NoError(t, err)
+		require.Equal(t, expected, refs)
 	})
 
 	t.Run("GetChunkRefsSharded", func(t *testing.T) {
@@ -118,6 +123,19 @@ func TestCacheableIndex(t *testing.T) {
 			Of:    2,
 		}
 		shardedRefs, err := cacheableIndex.GetChunkRefs(context.Background(), "fake", 1, 5, nil, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+
+		require.NoError(t, err)
+
+		require.Equal(t, []ChunkRef{{
+			User:        "fake",
+			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+			Start:       1,
+			End:         10,
+			Checksum:    3,
+		}}, shardedRefs)
+
+		// call again to ensure we get the same result
+		shardedRefs, err = cacheableIndex.GetChunkRefs(context.Background(), "fake", 1, 5, nil, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 
 		require.NoError(t, err)
 
@@ -147,6 +165,12 @@ func TestCacheableIndex(t *testing.T) {
 			},
 		}
 		require.Equal(t, expected, xs)
+
+		// call again to ensure we get the same result
+		xs, err = cacheableIndex.Series(context.Background(), "fake", 8, 9, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		require.NoError(t, err)
+
+		require.Equal(t, expected, xs)
 	})
 
 	t.Run("LabelNames", func(t *testing.T) {
@@ -160,6 +184,12 @@ func TestCacheableIndex(t *testing.T) {
 		xs, err := cacheableIndex.LabelNames(context.Background(), "fake", 8, 10)
 		require.Nil(t, err)
 		expected := []string{"bazz", "bonk", "foo"}
+
+		require.Equal(t, expected, xs)
+
+		// call again to ensure we get the same result
+		xs, err = cacheableIndex.LabelNames(context.Background(), "fake", 8, 10)
+		require.Nil(t, err)
 
 		require.Equal(t, expected, xs)
 	})
@@ -177,6 +207,12 @@ func TestCacheableIndex(t *testing.T) {
 		expected := []string{"bazz", "foo"}
 
 		require.Equal(t, expected, xs)
+
+		// call again to ensure we get the same result
+		xs, err = cacheableIndex.LabelNames(context.Background(), "fake", 8, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
+		require.NoError(t, err)
+
+		require.Equal(t, expected, xs)
 	})
 
 	t.Run("LabelValues", func(t *testing.T) {
@@ -192,6 +228,11 @@ func TestCacheableIndex(t *testing.T) {
 
 		require.Equal(t, expected, xs)
 
+		// call again to ensure we get the same result
+		xs, err = cacheableIndex.LabelValues(context.Background(), "fake", 1, 2, "bazz")
+		require.Nil(t, err)
+
+		require.Equal(t, expected, xs)
 	})
 
 	t.Run("LabelValuesWithMatchers", func(t *testing.T) {
@@ -204,6 +245,12 @@ func TestCacheableIndex(t *testing.T) {
 		xs, err := cacheableIndex.LabelValues(context.Background(), "fake", 1, 2, "bazz", labels.MustNewMatcher(labels.MatchEqual, "bonk", "borb"))
 		require.Nil(t, err)
 		expected := []string{"bozz"}
+
+		require.Equal(t, expected, xs)
+
+		// call again to ensure we get the same result
+		xs, err = cacheableIndex.LabelValues(context.Background(), "fake", 1, 2, "bazz", labels.MustNewMatcher(labels.MatchEqual, "bonk", "borb"))
+		require.Nil(t, err)
 
 		require.Equal(t, expected, xs)
 	})
@@ -235,7 +282,6 @@ func TestCacheableIndex(t *testing.T) {
 	})
 
 	t.Run("CacheError", func(t *testing.T) {
-		// cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		cache := NewMockFailCache()
 		defer cache.Stop()
 		l := log.NewNopLogger()
@@ -247,18 +293,6 @@ func TestCacheableIndex(t *testing.T) {
 		expected := []string{"bozz"}
 
 		require.Equal(t, expected, xs)
-
-		// // At this point we should have a cache miss.
-		// require.Equal(t, testutil.ToFloat64(cacheableIndex.m.cacheMisses), float64(1))
-		// require.Equal(t, testutil.ToFloat64(cacheableIndex.m.cacheHits), float64(0))
-
-		// xs, err = cacheableIndex.LabelValues(context.Background(), "fake", 1, 2, "bazz", labels.MustNewMatcher(labels.MatchEqual, "bonk", "borb"))
-		// require.Nil(t, err)
-		// require.Equal(t, expected, xs)
-
-		// // Now we should have a cache hit.
-		// require.Equal(t, testutil.ToFloat64(cacheableIndex.m.cacheHits), float64(1))
-		// require.Equal(t, testutil.ToFloat64(cacheableIndex.m.cacheMisses), float64(1))
 	})
 }
 
