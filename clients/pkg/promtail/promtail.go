@@ -59,8 +59,8 @@ func New(cfg config.Config, dryRun bool, reg prometheus.Registerer, opts ...Opti
 
 	cfg.Setup()
 
-	if cfg.LimitConfig.ReadlineRateEnabled {
-		stages.SetReadLineRateLimiter(cfg.LimitConfig.ReadlineRate, cfg.LimitConfig.ReadlineBurst, cfg.LimitConfig.ReadlineRateDrop)
+	if cfg.LimitsConfig.ReadlineRateEnabled {
+		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
 	}
 	var err error
 	if dryRun {

@@ -17,6 +17,6 @@ scrape_configs:
       job: varlogs
       __path__: /var/log/*log
 
-limit_config:
+limits_config:
   readline_rate: 100
   readline_burst: 200
