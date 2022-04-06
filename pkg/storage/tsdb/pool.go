@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	ChunkMetasPool = index.ChunkMetasPool // re-exporting
+	ChunkMetasPool = &index.ChunkMetasPool // re-exporting
 	SeriesPool     PoolSeries
 	ChunkRefsPool  PoolChunkRefs
 )
