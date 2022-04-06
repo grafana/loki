@@ -502,12 +502,19 @@ func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBu
 }
 
 type SyslogParser struct {
-	maxMessageLength int
-	lbs              *LabelsBuilder
+	lbs      *LabelsBuilder
+	ntParser syslog.Parser // nontransparent parser
+	ocParser syslog.Parser // octetcounting parser
+	reader   *bytes.Reader
 }
 
 func NewSyslogParser() *SyslogParser {
-	return &SyslogParser{maxMessageLength: 1 << 12}
+	p := &SyslogParser{
+		reader: bytes.NewReader([]byte{}),
+	}
+	p.ntParser = nontransparent.NewParser(syslog.WithListener(p.handleMessage))
+	p.ocParser = octetcounting.NewParser(syslog.WithListener(p.handleMessage))
+	return p
 }
 
 func (l *SyslogParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -515,18 +522,12 @@ func (l *SyslogParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		return line, true
 	}
 	l.lbs = lbs
-	b := line[0]
-	r := bytes.NewReader(line)
-	if b == '<' {
-		nontransparent.NewParser(
-			syslog.WithListener(l.handleMessage),
-			syslog.WithMaxMessageLength(len(line)),
-		).Parse(r)
-	} else if b >= '0' && b <= '9' {
-		octetcounting.NewParser(
-			syslog.WithListener(l.handleMessage),
-			syslog.WithMaxMessageLength(len(line)),
-		).Parse(r)
+	l.reader.Reset(line)
+
+	if line[0] == '<' {
+		l.ntParser.Parse(l.reader)
+	} else if line[0] >= '0' && line[0] <= '9' {
+		l.ocParser.Parse(l.reader)
 	} else {
 		return line, false
 	}
