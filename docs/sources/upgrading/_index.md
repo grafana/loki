@@ -19,8 +19,8 @@ If possible try to stay current and do sequential updates. If you want to skip v
 Using docker you can check changes between 2 versions of Loki with a command like this:
 
 ```
-export OLD_LOKI=2.3.0
-export NEW_LOKI=2.4.1
+export OLD_LOKI=2.4.2
+export NEW_LOKI=2.5.0
 export CONFIG_FILE=loki-local-config.yaml
 diff --color=always --side-by-side <(docker run --rm -t -v "${PWD}":/config grafana/loki:${OLD_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') <(docker run --rm -t -v "${PWD}":/config grafana/loki:${NEW_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') | less -R
 ```
