@@ -13,17 +13,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/tenant"
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
-	original := tenant.DefaultResolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-	defer tenant.WithDefaultResolver(original)
 
 	for _, tc := range []struct {
 		desc      string
@@ -82,9 +81,7 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 }
 
 func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
-	original := tenant.DefaultResolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-	defer tenant.WithDefaultResolver(original)
 
 	for _, tc := range []struct {
 		desc      string
@@ -208,4 +205,153 @@ func (it mockEntryIterator) Error() error {
 
 func (it mockEntryIterator) Close() error {
 	return nil
+}
+
+func TestMultiTenantQuerier_Label(t *testing.T) {
+	start := time.Unix(0, 0)
+	end := time.Unix(10, 0)
+
+	mockLabelRequest := func(name string) *logproto.LabelRequest {
+		return &logproto.LabelRequest{
+			Name:   name,
+			Values: true,
+			Start:  &start,
+			End:    &end,
+		}
+	}
+
+	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+	for _, tc := range []struct {
+		desc           string
+		name           string
+		orgID          string
+		expectedLabels []string
+	}{
+		{
+			desc:           "test label request for multiple tenants",
+			name:           "test",
+			orgID:          "1|2",
+			expectedLabels: []string{"test"},
+		},
+		{
+			desc:           "test label request for a single tenant",
+			name:           "test",
+			orgID:          "1",
+			expectedLabels: []string{"test"},
+		},
+		{
+			desc:           "defaultTenantLabel label request for multiple tenants",
+			name:           defaultTenantLabel,
+			orgID:          "1|2",
+			expectedLabels: []string{"1", "2"},
+		},
+		{
+			desc:           "defaultTenantLabel label request for a single tenant",
+			name:           defaultTenantLabel,
+			orgID:          "1",
+			expectedLabels: []string{"1"},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			querier := newQuerierMock()
+			querier.On("Label", mock.Anything, mock.Anything).Return(mockLabelResponse([]string{"test"}), nil)
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			resp, err := multiTenantQuerier.Label(ctx, mockLabelRequest(tc.name))
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedLabels, resp.GetValues())
+		})
+	}
+}
+
+func TestMultiTenantQuerierSeries(t *testing.T) {
+	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+	for _, tc := range []struct {
+		desc           string
+		orgID          string
+		expectedSeries []logproto.SeriesIdentifier
+	}{
+		{
+			desc:  "two tenantIDs",
+			orgID: "1|2",
+			expectedSeries: []logproto.SeriesIdentifier{
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "2"}},
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "3"}},
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "4"}},
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "5"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "2"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "3"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "4"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "5"}},
+			},
+		},
+		{
+			desc:  "three tenantIDs",
+			orgID: "1|2|3",
+			expectedSeries: []logproto.SeriesIdentifier{
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "2"}},
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "3"}},
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "4"}},
+				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "5"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "2"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "3"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "4"}},
+				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "5"}},
+				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "2"}},
+				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "3"}},
+				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "4"}},
+				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "5"}},
+			},
+		},
+		{
+			desc:  "single tenantID; behaves like a normal `Series` call",
+			orgID: "2",
+			expectedSeries: []logproto.SeriesIdentifier{
+				{Labels: map[string]string{"a": "1", "b": "2"}},
+				{Labels: map[string]string{"a": "1", "b": "3"}},
+				{Labels: map[string]string{"a": "1", "b": "4"}},
+				{Labels: map[string]string{"a": "1", "b": "5"}},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			querier := newQuerierMock()
+			querier.On("Series", mock.Anything, mock.Anything).Return(func() *logproto.SeriesResponse { return mockSeriesResponse() }, nil)
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			resp, err := multiTenantQuerier.Series(ctx, mockSeriesRequest())
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedSeries, resp.GetSeries())
+		})
+	}
+}
+
+func mockSeriesRequest() *logproto.SeriesRequest {
+	return &logproto.SeriesRequest{
+		Start: time.Unix(0, 0),
+		End:   time.Unix(10, 0),
+	}
+}
+
+func mockSeriesResponse() *logproto.SeriesResponse {
+	return &logproto.SeriesResponse{
+		Series: []logproto.SeriesIdentifier{
+			{
+				Labels: map[string]string{"a": "1", "b": "2"},
+			},
+			{
+				Labels: map[string]string{"a": "1", "b": "3"},
+			},
+			{
+				Labels: map[string]string{"a": "1", "b": "4"},
+			},
+			{
+				Labels: map[string]string{"a": "1", "b": "5"},
+			},
+		},
+	}
 }

@@ -10,8 +10,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
-	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"

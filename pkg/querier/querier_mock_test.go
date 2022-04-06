@@ -464,11 +464,13 @@ func (q *querierMock) SelectSamples(ctx context.Context, params logql.SelectSamp
 }
 
 func (q *querierMock) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	return nil, errors.New("querierMock.Label() has not been mocked")
+	args := q.Called(ctx, req)
+	return args.Get(0).(*logproto.LabelResponse), args.Error(1)
 }
 
 func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	return nil, errors.New("querierMock.Series() has not been mocked")
+	args := q.Called(ctx, req)
+	return args.Get(0).(func() *logproto.SeriesResponse)(), args.Error(1)
 }
 
 func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {

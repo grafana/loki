@@ -20,6 +20,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/index"
@@ -32,7 +34,6 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	errUtil "github.com/grafana/loki/pkg/util"
@@ -110,7 +111,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 0, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "")
-	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")

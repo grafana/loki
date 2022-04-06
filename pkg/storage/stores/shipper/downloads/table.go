@@ -14,10 +14,11 @@ import (
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
