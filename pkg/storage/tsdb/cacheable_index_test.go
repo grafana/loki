@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -62,7 +64,9 @@ func TestCacheableIndex(t *testing.T) {
 	t.Run("GetChunkRefs", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(idx, cache)
+
+		nm := NewCacheMetrics(nil)
+		cacheableIndex := NewCacheableIndex(idx, cache, nm)
 
 		refs, err := cacheableIndex.GetChunkRefs(context.Background(), "fake", 1, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.NoError(t, err)
@@ -103,7 +107,8 @@ func TestCacheableIndex(t *testing.T) {
 	t.Run("GetChunkRefsSharded", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(idx, cache)
+		nm := NewCacheMetrics(nil)
+		cacheableIndex := NewCacheableIndex(idx, cache, nm)
 
 		shard := index.ShardAnnotation{
 			Shard: 1,
@@ -125,7 +130,8 @@ func TestCacheableIndex(t *testing.T) {
 	t.Run("Series", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(idx, cache)
+		nm := NewCacheMetrics(nil)
+		cacheableIndex := NewCacheableIndex(idx, cache, nm)
 
 		xs, err := cacheableIndex.Series(context.Background(), "fake", 8, 9, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.NoError(t, err)
@@ -142,7 +148,8 @@ func TestCacheableIndex(t *testing.T) {
 	t.Run("LabelNames", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(idx, cache)
+		nm := NewCacheMetrics(nil)
+		cacheableIndex := NewCacheableIndex(idx, cache, nm)
 
 		// request data at the end of the tsdb range, but it should return all labels present
 		xs, err := cacheableIndex.LabelNames(context.Background(), "fake", 8, 10)
@@ -155,7 +162,8 @@ func TestCacheableIndex(t *testing.T) {
 	t.Run("LabelNamesWithMatchers", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(idx, cache)
+		nm := NewCacheMetrics(nil)
+		cacheableIndex := NewCacheableIndex(idx, cache, nm)
 
 		// request data at the end of the tsdb range, but it should return all labels present
 		xs, err := cacheableIndex.LabelNames(context.Background(), "fake", 8, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
@@ -168,7 +176,8 @@ func TestCacheableIndex(t *testing.T) {
 	t.Run("LabelValues", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(idx, cache)
+		nm := NewCacheMetrics(nil)
+		cacheableIndex := NewCacheableIndex(idx, cache, nm)
 
 		xs, err := cacheableIndex.LabelValues(context.Background(), "fake", 1, 2, "bazz")
 		require.Nil(t, err)
@@ -181,12 +190,38 @@ func TestCacheableIndex(t *testing.T) {
 	t.Run("LabelValuesWithMatchers", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
-		cacheableIndex := NewCacheableIndex(idx, cache)
+		nm := NewCacheMetrics(nil)
+		cacheableIndex := NewCacheableIndex(idx, cache, nm)
 
 		xs, err := cacheableIndex.LabelValues(context.Background(), "fake", 1, 2, "bazz", labels.MustNewMatcher(labels.MatchEqual, "bonk", "borb"))
 		require.Nil(t, err)
 		expected := []string{"bozz"}
 
 		require.Equal(t, expected, xs)
+	})
+
+	t.Run("Metrics", func(t *testing.T) {
+		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
+		defer cache.Stop()
+		m := NewCacheMetrics(prometheus.DefaultRegisterer)
+		cacheableIndex := NewCacheableIndex(idx, cache, m)
+
+		xs, err := cacheableIndex.LabelValues(context.Background(), "fake", 1, 2, "bazz", labels.MustNewMatcher(labels.MatchEqual, "bonk", "borb"))
+		require.Nil(t, err)
+		expected := []string{"bozz"}
+
+		require.Equal(t, expected, xs)
+
+		// At this point we should have a cache miss.
+		require.Equal(t, testutil.ToFloat64(cacheableIndex.m.cacheMisses), float64(1))
+		require.Equal(t, testutil.ToFloat64(cacheableIndex.m.cacheHits), float64(0))
+
+		xs, err = cacheableIndex.LabelValues(context.Background(), "fake", 1, 2, "bazz", labels.MustNewMatcher(labels.MatchEqual, "bonk", "borb"))
+		require.Nil(t, err)
+		require.Equal(t, expected, xs)
+
+		// Now we should have a cache hit.
+		require.Equal(t, testutil.ToFloat64(cacheableIndex.m.cacheHits), float64(1))
+		require.Equal(t, testutil.ToFloat64(cacheableIndex.m.cacheMisses), float64(1))
 	})
 }

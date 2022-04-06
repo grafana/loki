@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -27,15 +28,88 @@ type CacheableIndex struct {
 
 	// Cache is a cache implementation used to store TSDB operation results.
 	cache.Cache
+
+	m CacheableIndexMetrics
+}
+
+type CacheableIndexMetrics struct {
+	cacheDecodeErrs prometheus.Counter
+	cacheEncodeErrs prometheus.Counter
+	cacheHits       prometheus.Counter
+	cacheMisses     prometheus.Counter
+	cacheGets       prometheus.Counter
+	cacheGetErrors  prometheus.Counter
+	cachePuts       prometheus.Counter
+	cachePutErrors  prometheus.Counter
+}
+
+func NewCacheMetrics(reg prometheus.Registerer) CacheableIndexMetrics {
+	// we may want these metrics to contain the tenant/user id
+	m := CacheableIndexMetrics{
+		cacheDecodeErrs: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "tsdb_index_cache_decode_errors_total",
+			Help:      "The number of cache decode errors for the tsdb index cache.",
+		}),
+		cacheEncodeErrs: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "tsdb_index_cache_encode_errors_total",
+			Help:      "The number of errors for the tsdb index cache while encoding the body.",
+		}),
+		cacheHits: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "tsdb_index_cache_hits_total",
+			Help:      "The number of cache hits for the tsdb index cache.",
+		}),
+		cacheMisses: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "tsdb_index_cache_misses_total",
+			Help:      "The number of cache misses for the tsdb index cache.",
+		}),
+		cacheGets: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "tsdb_index_cache_gets_total",
+			Help:      "The number of gets for the tsdb index cache.",
+		}),
+		cacheGetErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "tsdb_index_cache_get_errors_total",
+			Help:      "The number of gets for the tsdb index cache that failed.",
+		}),
+		cachePuts: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "tsdb_index_cache_puts_total",
+			Help:      "The number of puts for the tsdb index cache.",
+		}),
+		cachePutErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "tsdb_index_cache_put_errors_total",
+			Help:      "The number of puts for the tsdb index cache that failed.",
+		}),
+	}
+
+	if reg != nil {
+		reg.MustRegister(m.cacheDecodeErrs)
+		reg.MustRegister(m.cacheHits)
+		reg.MustRegister(m.cacheMisses)
+		reg.MustRegister(m.cacheGets)
+		reg.MustRegister(m.cacheGetErrors)
+		reg.MustRegister(m.cachePuts)
+		reg.MustRegister(m.cachePutErrors)
+		reg.MustRegister(m.cacheEncodeErrs)
+	}
+
+	return m
 }
 
 // NewCacheableIndex instantiate a new cacheable index given an index and a cache implementation.
 //
 // It assumes the cache is ready to be used.
-func NewCacheableIndex(index *TSDBIndex, cache cache.Cache) CacheableIndex {
+func NewCacheableIndex(index *TSDBIndex, cache cache.Cache, m CacheableIndexMetrics) CacheableIndex {
 	return CacheableIndex{
 		Index: index,
 		Cache: cache,
+		m:     m,
 	}
 }
 
@@ -91,6 +165,7 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 		var encodeBuf bytes.Buffer
 		enc := gob.NewEncoder(&encodeBuf)
 		if err := enc.Encode(series); err != nil {
+			i.m.cacheEncodeErrs.Inc()
 			return nil, errors.Wrap(err, "GetChunkRefs encoding")
 		}
 
@@ -107,6 +182,7 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 		decoderBuf := bytes.NewBuffer(val)
 		dec := gob.NewDecoder(decoderBuf)
 		if err := dec.Decode(&values); err != nil {
+			i.m.cacheDecodeErrs.Inc()
 			return nil, errors.Wrap(err, "cacheable index GetChunkRef decoding")
 		}
 
@@ -129,6 +205,7 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 		var encodeBuf bytes.Buffer
 		enc := gob.NewEncoder(&encodeBuf)
 		if err := enc.Encode(series); err != nil {
+			i.m.cacheEncodeErrs.Inc()
 			return nil, errors.Wrap(err, "Series encoding")
 
 		}
@@ -146,6 +223,7 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 		decoderBuf := bytes.NewBuffer(val)
 		dec := gob.NewDecoder(decoderBuf)
 		if err := dec.Decode(&values); err != nil {
+			i.m.cacheDecodeErrs.Inc()
 			return nil, errors.Wrap(err, "cacheable index Series decoding")
 		}
 
@@ -169,6 +247,7 @@ func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, th
 		enc := gob.NewEncoder(&encodeBuf)
 
 		if err := enc.Encode(names); err != nil {
+			i.m.cacheEncodeErrs.Inc()
 			return nil, errors.Wrap(err, "LabelNames encoding")
 		}
 
@@ -186,6 +265,7 @@ func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, th
 		decoderBuf := bytes.NewBuffer(val)
 		dec := gob.NewDecoder(decoderBuf)
 		if err := dec.Decode(&values); err != nil {
+			i.m.cacheDecodeErrs.Inc()
 			return nil, errors.Wrap(err, "cacheable index LabelNames decoding")
 		}
 
@@ -208,6 +288,7 @@ func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, t
 		var encodeBuf bytes.Buffer
 		enc := gob.NewEncoder(&encodeBuf)
 		if err := enc.Encode(names); err != nil {
+			i.m.cacheEncodeErrs.Inc()
 			return nil, errors.Wrap(err, "LabelValues encoding")
 		}
 
@@ -225,6 +306,7 @@ func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, t
 		decoderBuf := bytes.NewBuffer(val)
 		dec := gob.NewDecoder(decoderBuf)
 		if err := dec.Decode(&values); err != nil {
+			i.m.cacheDecodeErrs.Inc()
 			return nil, errors.Wrap(err, "cacheable index LabelValues decoding")
 		}
 
@@ -252,9 +334,14 @@ func (i *CacheableIndex) CacheableOp(ctx context.Context, opName string, keyFn m
 
 	// fetch data from cache.
 	_ /* hits */, response, misses, err := i.Cache.Fetch(ctx, keys)
+	i.m.cacheGets.Inc()
 	if err != nil {
+		i.m.cacheGetErrors.Inc()
 		return nil, errors.Wrap(err, "cacheable op cache fetch")
 	}
+
+	i.m.cacheHits.Add(float64(len(response)))
+	i.m.cacheMisses.Add(float64(len(misses)))
 
 	res = append(res, response...)
 
@@ -265,8 +352,9 @@ func (i *CacheableIndex) CacheableOp(ctx context.Context, opName string, keyFn m
 			return nil, errors.Wrap(err, "fallback call")
 		}
 		res = append(res, result...)
-
+		i.m.cachePuts.Inc()
 		if err := i.Cache.Store(ctx, []string{miss}, result); err != nil {
+			i.m.cachePutErrors.Inc()
 			return nil, errors.Wrap(err, "cacheable op cache store")
 		}
 	}
