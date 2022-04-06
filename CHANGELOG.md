@@ -1,5 +1,6 @@
-## Main
+## 2.5.0 (2022/04/06)
 
+* [5051](https://github.com/grafana/loki/pull/5051) **liguozhong**: New promtail pipeline: Promtail Rate Limit stage.
 * [5780](https://github.com/grafana/loki/pull/5780) **simonswine**: Update alpine image to 3.15.4.
 * [5715](https://github.com/grafana/loki/pull/5715) **chaudum** Add option to push RFC5424 syslog messages from Promtail in syslog scrape target.
 * [5696](https://github.com/grafana/loki/pull/5696) **paullryan** don't block scraping of new logs from cloudflare within promtail if an error is received from cloudflare about too early logs.
