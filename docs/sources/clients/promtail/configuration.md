@@ -95,6 +95,9 @@ clients:
 scrape_configs:
   - [<scrape_config>]
 
+# Configures global limits for this instance of Promtail
+[limits_config: <limits_config>]
+
 # Configures how tailed targets will be watched.
 [target_config: <target_config>]
 
@@ -1756,6 +1759,26 @@ scrape_configs:
         target_label: 'container'
 ```
 
+## limits_config
+
+The optional `limits_config` block configures global limits for this instance of Promtail.
+
+```yaml
+# When true, enforces rate limiting on this instance of Promtail.
+[readline_rate_enabled: <bool> | default = false]
+
+# The rate limit in log lines per second that this instance of Promtail may push to Loki.
+[readline_rate: <int> | default = 10000]
+
+# The cap in the quantity of burst lines that this instance of Promtail may push
+# to Loki.
+[readline_burst: <int> | default = 10000]
+
+# When true, exceeding the rate limit causes this instance of Promtail to discard
+# log lines, rather than sending them to Loki. When false, exceeding the rate limit
+# causes this instance of Promtail to temporarily hold off on sending the log lines and retry later.
+[readline_rate_drop: <bool> | default = true]
+```
 
 ## target_config
 

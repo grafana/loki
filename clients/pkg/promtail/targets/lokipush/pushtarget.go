@@ -37,7 +37,6 @@ type PushTarget struct {
 	relabelConfig []*relabel.Config
 	jobName       string
 	server        *server.Server
-	registerer    prometheus.Registerer
 }
 
 func NewPushTarget(logger log.Logger,
@@ -45,7 +44,6 @@ func NewPushTarget(logger log.Logger,
 	relabel []*relabel.Config,
 	jobName string,
 	config *scrapeconfig.PushTargetConfig,
-	reg prometheus.Registerer,
 ) (*PushTarget, error) {
 
 	pt := &PushTarget{
@@ -54,7 +52,6 @@ func NewPushTarget(logger log.Logger,
 		relabelConfig: relabel,
 		jobName:       jobName,
 		config:        config,
-		registerer:    reg,
 	}
 
 	// Bit of a chicken and egg problem trying to register the defaults and apply overrides from the loaded config.
@@ -92,7 +89,9 @@ func (t *PushTarget) run() error {
 	// We don't want the /debug and /metrics endpoints running
 	t.config.Server.RegisterInstrumentation = false
 
-	util_log.InitLogger(&t.config.Server, t.registerer)
+	// The logger registers a metric which will cause a duplicate registry panic unless we provide an empty registry
+	// The metric created is for counting log lines and isn't likely to be missed.
+	util_log.InitLogger(&t.config.Server, prometheus.NewRegistry())
 
 	srv, err := server.New(t.config.Server)
 	if err != nil {
