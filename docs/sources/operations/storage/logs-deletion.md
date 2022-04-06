@@ -34,7 +34,7 @@ PUT /loki/api/v1/delete
 
 Query parameters:
 
-* `query[]=<series_selector>`: query argument that identifies the streams from which to delete. One `query[]` argument must be provided.
+* `query=<series_selector>`: query argument that identifies the streams from which to delete.
 * `start=<rfc3339 | unix_timestamp>`: A timestamp that identifies the start of the time window within which entries will be deleted. If not specified, defaults to 0, the Unix Epoch time.
 * `end=<rfc3339 | unix_timestamp>`: A timestamp that identifies the end of the time window within which entries will be deleted. If not specified, defaults to the current time.
 
