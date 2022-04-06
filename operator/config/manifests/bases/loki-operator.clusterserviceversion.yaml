@@ -16,12 +16,13 @@ metadata:
       Loki is a memory intensive application.  The initial
       set of OCP nodes may not be large enough to support the Loki stack.  Additional OCP nodes must be added
       to the OCP cluster if you desire to run with the recommended (or better) memory.
-    olm.skipRange: '>=4.6.0-0 <5.4.0'
+    olm.skipRange: '>=5.4.0-0 <5.5.0'
     operatorframework.io/cluster-monitoring: "true"
-    operatorframework.io/suggested-namespace: openshift-logging
+    operatorframework.io/suggested-namespace: openshift-operators-redhat
     support: AOS Cluster Logging
   labels:
     operatorframework.io/arch.amd64: supported
+    operatorframework.io/arch.arm64: supported
     operatorframework.io/arch.ppc64le: supported
     operatorframework.io/arch.s390x: supported
   name: loki-operator.v0.0.0
@@ -219,10 +220,18 @@ spec:
         path: storage
       - description: Name of a secret in the namespace configured for object storage
           secrets.
-        displayName: Object Storage Secret
+        displayName: Object Storage Secret Name
         path: storage.secret.name
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:Secret
+      - description: Type of object storage that should be used
+        displayName: Object Storage Secret Type
+        path: storage.secret.type
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:azure
+        - urn:alm:descriptor:com.tectonic.ui:select:gcs
+        - urn:alm:descriptor:com.tectonic.ui:select:s3
+        - urn:alm:descriptor:com.tectonic.ui:select:swift
       - description: Storage class name defines the storage class for ingester/querier
           PVCs.
         displayName: Storage Class Name
@@ -431,6 +440,7 @@ spec:
   - email: loki-operator-team@googlegroups.com
     name: Grafana Loki SIG Operator
   maturity: alpha
+  minKubeVersion: 1.21.1
   provider:
     name: Grafana.com
   version: 0.0.0

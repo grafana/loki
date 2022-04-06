@@ -200,6 +200,58 @@ func Test_CloudflareTargetError(t *testing.T) {
 	require.Equal(t, newEnd, end.UnixNano())
 }
 
+func Test_CloudflareTargetError168h(t *testing.T) {
+	var (
+		w      = log.NewSyncWriter(os.Stderr)
+		logger = log.NewLogfmtLogger(w)
+		cfg    = &scrapeconfig.CloudflareConfig{
+			APIToken:  "foo",
+			ZoneID:    "bar",
+			Labels:    model.LabelSet{"job": "cloudflare"},
+			PullRange: model.Duration(time.Minute),
+		}
+		end      = time.Unix(0, time.Hour.Nanoseconds())
+		client   = fake.New(func() {})
+		cfClient = newFakeCloudflareClient()
+	)
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Second,
+		PositionsFile: t.TempDir() + "/positions.yml",
+	})
+	// retries as fast as possible.
+	defaultBackoff.MinBackoff = 0
+	defaultBackoff.MaxBackoff = 0
+
+	// set our end time to be the last time we have a position
+	ps.Put(positions.CursorKey(cfg.ZoneID), end.UnixNano())
+	require.NoError(t, err)
+
+	// setup errors for all retries
+	cfClient.On("LogpullReceived", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("HTTP status 400: bad query: error parsing time: invalid time range: too early: logs older than 168h0m0s are not available"))
+	// replace the client.
+	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
+		return cfClient, nil
+	}
+
+	ta, err := NewTarget(NewMetrics(prometheus.NewRegistry()), logger, client, ps, cfg)
+	require.NoError(t, err)
+	require.True(t, ta.Ready())
+
+	// wait for the target to be stopped.
+	require.Eventually(t, func() bool {
+		return cfClient.CallCount() >= 5
+	}, 5*time.Second, 100*time.Millisecond)
+
+	require.Len(t, client.Received(), 0)
+	require.GreaterOrEqual(t, cfClient.CallCount(), 5)
+	ta.Stop()
+	ps.Stop()
+
+	// Make sure we move on from the save the last position.
+	newEnd, _ := ps.Get(positions.CursorKey(cfg.ZoneID))
+	require.Greater(t, newEnd, end.UnixNano())
+}
+
 func Test_validateConfig(t *testing.T) {
 	tests := []struct {
 		in      *scrapeconfig.CloudflareConfig
@@ -251,26 +303,26 @@ func Test_splitRequests(t *testing.T) {
 	tests := []struct {
 		start time.Time
 		end   time.Time
-		want  []interface{}
+		want  []pullRequest
 	}{
 		// perfectly divisible
 		{
 			time.Unix(0, 0),
 			time.Unix(0, int64(time.Minute)),
-			[]interface{}{
-				pullRequest{start: time.Unix(0, 0), end: time.Unix(0, int64(time.Minute/3))},
-				pullRequest{start: time.Unix(0, int64(time.Minute/3)), end: time.Unix(0, int64(time.Minute*2/3))},
-				pullRequest{start: time.Unix(0, int64(time.Minute*2/3)), end: time.Unix(0, int64(time.Minute))},
+			[]pullRequest{
+				{start: time.Unix(0, 0), end: time.Unix(0, int64(time.Minute/3))},
+				{start: time.Unix(0, int64(time.Minute/3)), end: time.Unix(0, int64(time.Minute*2/3))},
+				{start: time.Unix(0, int64(time.Minute*2/3)), end: time.Unix(0, int64(time.Minute))},
 			},
 		},
 		// not divisible
 		{
 			time.Unix(0, 0),
 			time.Unix(0, int64(time.Minute+1)),
-			[]interface{}{
-				pullRequest{start: time.Unix(0, 0), end: time.Unix(0, int64(time.Minute/3))},
-				pullRequest{start: time.Unix(0, int64(time.Minute/3)), end: time.Unix(0, int64(time.Minute*2/3))},
-				pullRequest{start: time.Unix(0, int64(time.Minute*2/3)), end: time.Unix(0, int64(time.Minute+1))},
+			[]pullRequest{
+				{start: time.Unix(0, 0), end: time.Unix(0, int64(time.Minute/3))},
+				{start: time.Unix(0, int64(time.Minute/3)), end: time.Unix(0, int64(time.Minute*2/3))},
+				{start: time.Unix(0, int64(time.Minute*2/3)), end: time.Unix(0, int64(time.Minute+1))},
 			},
 		},
 	}
@@ -279,11 +331,11 @@ func Test_splitRequests(t *testing.T) {
 			got := splitRequests(tt.start, tt.end, 3)
 			if !assert.Equal(t, tt.want, got) {
 				for i := range got {
-					if !assert.Equal(t, tt.want[i].(pullRequest).start, got[i].(pullRequest).start) {
-						t.Logf("expected i:%d start: %d , got: %d", i, tt.want[i].(pullRequest).start.UnixNano(), got[i].(pullRequest).start.UnixNano())
+					if !assert.Equal(t, tt.want[i].start, got[i].start) {
+						t.Logf("expected i:%d start: %d , got: %d", i, tt.want[i].start.UnixNano(), got[i].start.UnixNano())
 					}
-					if !assert.Equal(t, tt.want[i].(pullRequest).end, got[i].(pullRequest).end) {
-						t.Logf("expected i:%d end: %d , got: %d", i, tt.want[i].(pullRequest).end.UnixNano(), got[i].(pullRequest).end.UnixNano())
+					if !assert.Equal(t, tt.want[i].end, got[i].end) {
+						t.Logf("expected i:%d end: %d , got: %d", i, tt.want[i].end.UnixNano(), got[i].end.UnixNano())
 					}
 				}
 			}

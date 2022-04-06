@@ -1,4 +1,3 @@
-
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -89,6 +88,7 @@ rules:
 - apiGroups:
   - monitoring.coreos.com
   resources:
+  - prometheusrules
   - servicemonitors
   verbs:
   - create
@@ -111,6 +111,8 @@ rules:
   resources:
   - clusterrolebindings
   - clusterroles
+  - rolebindings
+  - roles
   verbs:
   - create
   - delete

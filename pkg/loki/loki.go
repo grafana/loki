@@ -45,6 +45,7 @@ import (
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -79,6 +80,7 @@ type Config struct {
 	Tracing          tracing.Config           `yaml:"tracing"`
 	CompactorConfig  compactor.Config         `yaml:"compactor,omitempty"`
 	QueryScheduler   scheduler.Config         `yaml:"query_scheduler"`
+	UsageReport      usagestats.Config        `yaml:"analytics"`
 }
 
 // RegisterFlags registers flag.
@@ -115,6 +117,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
+	c.UsageReport.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -174,7 +177,7 @@ func (c *Config) Validate() error {
 		return errors.Wrap(err, "invalid limits config")
 	}
 	if err := c.Worker.Validate(util_log.Logger); err != nil {
-		return errors.Wrap(err, "invalid storage config")
+		return errors.Wrap(err, "invalid frontend-worker config")
 	}
 	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid boltdb-shipper config")
@@ -231,7 +234,8 @@ type Loki struct {
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
 	Ingester                 ingester.Interface
-	Querier                  *querier.Querier
+	Querier                  querier.Querier
+	querierAPI               *querier.QuerierAPI
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
 	tableManager             *chunk.TableManager
@@ -245,6 +249,7 @@ type Loki struct {
 	compactor                *compactor.Compactor
 	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
+	usageReport              *usagestats.Reporter
 
 	clientMetrics chunk_storage.ClientMetrics
 
@@ -257,7 +262,7 @@ func New(cfg Config) (*Loki, error) {
 		Cfg:           cfg,
 		clientMetrics: chunk_storage.NewClientMetrics(),
 	}
-
+	usagestats.Edition("oss")
 	loki.setupAuthMiddleware()
 	loki.setupGRPCRecoveryMiddleware()
 	if err := loki.setupModuleManager(); err != nil {
@@ -338,7 +343,6 @@ func (t *Loki) Run(opts RunOpts) error {
 
 	t.serviceMap = serviceMap
 	t.Server.HTTP.Path("/services").Methods("GET").Handler(http.HandlerFunc(t.servicesHandler))
-	t.Server.HTTP.NotFoundHandler = http.HandlerFunc(serverutil.NotFoundHandler)
 
 	// get all services, create service manager and tell it to start
 	var servs []services.Service
@@ -481,6 +485,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
+	mm.RegisterModule(UsageReport, t.initUsageReport)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -489,20 +494,21 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
+		UsageReport:              {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
 		Store:                    {Overrides},
-		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs},
+		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware},
-		QueryScheduler:           {Server, Overrides, MemberlistKV},
-		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
-		TableManager:             {Server},
-		Compactor:                {Server, Overrides, MemberlistKV},
-		IndexGateway:             {Server},
+		QueryFrontend:            {QueryFrontendTripperware, UsageReport},
+		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
+		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
+		TableManager:             {Server, UsageReport},
+		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
+		IndexGateway:             {Server, Overrides, UsageReport},
 		IngesterQuerier:          {Ring},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},
@@ -534,6 +540,12 @@ func (t *Loki) setupModuleManager() error {
 
 	t.deps = deps
 	t.ModuleManager = mm
+
+	if t.isModuleActive(Ingester) {
+		if err := mm.AddDependency(UsageReport, Ring); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

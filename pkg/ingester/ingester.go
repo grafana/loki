@@ -20,18 +20,21 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	errUtil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -45,12 +48,18 @@ const (
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
 // attempted.
-var ErrReadOnly = errors.New("Ingester is shutting down")
+var (
+	ErrReadOnly = errors.New("Ingester is shutting down")
 
-var flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
-	Name: "cortex_ingester_flush_queue_length",
-	Help: "The total number of series pending in the flush queue.",
-})
+	flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_ingester_flush_queue_length",
+		Help: "The total number of series pending in the flush queue.",
+	})
+	compressionStats   = usagestats.NewString("ingester_compression")
+	targetSizeStats    = usagestats.NewInt("ingester_target_size_bytes")
+	walStats           = usagestats.NewString("ingester_wal")
+	activeTenantsStats = usagestats.NewInt("ingester_active_tenants")
+)
 
 // Config for an ingester.
 type Config struct {
@@ -90,17 +99,19 @@ type Config struct {
 	Wrapper Wrapper `yaml:"-"`
 
 	IndexShards int `yaml:"index_shards"`
+
+	MaxDroppedStreams int `yaml:"max_dropped_streams"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.LifecyclerConfig.RegisterFlags(f)
+	cfg.LifecyclerConfig.RegisterFlags(f, util_log.Logger)
 	cfg.WAL.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 0, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "")
-	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
@@ -113,6 +124,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
 	f.BoolVar(&cfg.AutoForgetUnhealthy, "ingester.autoforget-unhealthy", false, "Enable to remove unhealthy ingesters from the ring after `ring.kvstore.heartbeat_timeout`")
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
+	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing")
 }
 
 func (cfg *Config) Validate() error {
@@ -212,7 +224,12 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
-
+	compressionStats.Set(cfg.ChunkEncoding)
+	targetSizeStats.Set(int64(cfg.TargetChunkSize))
+	walStats.Set("disabled")
+	if cfg.WAL.Enabled {
+		walStats.Set("enabled")
+	}
 	metrics := newIngesterMetrics(registerer)
 
 	i := &Ingester{
@@ -546,6 +563,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) *instance {
 	if !ok {
 		inst = newInstance(&i.cfg, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
 		i.instances[instanceID] = inst
+		activeTenantsStats.Set(int64(len(i.instances)))
 	}
 	return inst
 }
@@ -661,7 +679,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 	// parse the request
 	start, end := errUtil.RoundToMilliseconds(reqStart, req.End)
-	matchers, err := logql.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -811,7 +829,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	}
 
 	instance := i.GetOrCreateInstance(instanceID)
-	tailer, err := newTailer(instanceID, req.Query, queryServer)
+	tailer, err := newTailer(instanceID, req.Query, queryServer, i.cfg.MaxDroppedStreams)
 	if err != nil {
 		return err
 	}

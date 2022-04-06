@@ -1,0 +1,42 @@
+---
+groups:
+- name: logging_loki.alerts
+  rules:
+  - alert: LokiRequestErrors
+    annotations:
+      message: |-
+        {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
+      summary: "At least 10% of requests are responded by 5xx server errors."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
+    expr: |
+      sum(
+          rate(
+              loki_request_duration_seconds_count{status_code=~"5.."}[1m]
+          )
+      ) by (namespace, job, route)
+      /
+      sum(
+          rate(
+              loki_request_duration_seconds_count[1m]
+          )
+      ) by (namespace, job, route)
+      * 100
+      > 10
+    for: 15m
+    labels:
+      severity: critical
+  - alert: LokiRequestPanics
+    annotations:
+      message: |-
+        {{ $labels.job }} is experiencing an increase of {{ $value }} panics.
+      summary: "A panic was triggered."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Request-Panics"
+    expr: |
+      sum(
+          increase(
+              loki_panic_total[10m]
+          )
+      ) by (namespace, job)
+      > 0
+    labels:
+        severity: critical

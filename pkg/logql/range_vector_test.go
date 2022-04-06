@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/promql"
-	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 var samples = []logproto.Sample{
@@ -29,19 +29,21 @@ var samples = []logproto.Sample{
 }
 
 var (
-	labelFoo, _ = promql_parser.ParseMetric("{app=\"foo\"}")
-	labelBar, _ = promql_parser.ParseMetric("{app=\"bar\"}")
+	labelFoo, _ = syntax.ParseLabels("{app=\"foo\"}")
+	labelBar, _ = syntax.ParseLabels("{app=\"bar\"}")
 )
 
 func newSampleIterator() iter.SampleIterator {
 	return iter.NewSortSampleIterator([]iter.SampleIterator{
 		iter.NewSeriesIterator(logproto.Series{
-			Labels:  labelFoo.String(),
-			Samples: samples,
+			Labels:     labelFoo.String(),
+			Samples:    samples,
+			StreamHash: labelFoo.Hash(),
 		}),
 		iter.NewSeriesIterator(logproto.Series{
-			Labels:  labelBar.String(),
-			Samples: samples,
+			Labels:     labelBar.String(),
+			Samples:    samples,
+			StreamHash: labelBar.Hash(),
 		}),
 	})
 }

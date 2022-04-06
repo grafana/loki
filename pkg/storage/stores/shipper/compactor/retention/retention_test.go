@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -155,7 +156,7 @@ func Test_Retention(t *testing.T) {
 			marker, err := NewMarker(workDir, store.schemaCfg, expiration, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
-				_, _, err := marker.MarkForDelete(context.Background(), table.name, table.DB)
+				_, _, err := marker.MarkForDelete(context.Background(), table.name, "", table.DB, util_log.Logger)
 				require.Nil(t, err)
 				table.Close()
 
@@ -212,7 +213,7 @@ func Test_EmptyTable(t *testing.T) {
 	tables := store.indexTables()
 	require.Len(t, tables, 1)
 	err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
-		it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
+		it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
 		require.NoError(t, err)
 		empty, _, err := markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
 			NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
@@ -230,7 +231,7 @@ func Test_EmptyTable(t *testing.T) {
 		bucket, err := tx.CreateBucket(local.IndexBucketName)
 		require.NoError(t, err)
 
-		it, err := newChunkIndexIterator(bucket, schema.config)
+		it, err := NewChunkIndexIterator(bucket, schema.config)
 		require.NoError(t, err)
 		_, _, err = markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
 			NewExpirationChecker(&fakeLimits{}), nil)
@@ -389,7 +390,7 @@ func TestChunkRewriter(t *testing.T) {
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{tt.chunk}))
 			store.Stop()
 
-			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.Base64Encoder, schemaCfg.SchemaConfig)
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.FSEncoder, schemaCfg.SchemaConfig)
 			for _, indexTable := range store.indexTables() {
 				err := indexTable.DB.Update(func(tx *bbolt.Tx) error {
 					bucket := tx.Bucket(local.IndexBucketName)
@@ -668,12 +669,12 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			tables := store.indexTables()
 			require.Len(t, tables, len(tc.expectedDeletedSeries))
 
-			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.Base64Encoder, schemaCfg.SchemaConfig)
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.FSEncoder, schemaCfg.SchemaConfig)
 
 			for i, table := range tables {
 				seriesCleanRecorder := newSeriesCleanRecorder()
 				err := table.DB.Update(func(tx *bbolt.Tx) error {
-					it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
+					it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
 					require.NoError(t, err)
 
 					cr, err := newChunkRewriter(chunkClient, schema.config, table.name, tx.Bucket(local.IndexBucketName))
@@ -722,7 +723,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 
 	for i, table := range tables {
 		err := table.DB.Update(func(tx *bbolt.Tx) error {
-			it, err := newChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
+			it, err := NewChunkIndexIterator(tx.Bucket(local.IndexBucketName), schema.config)
 			require.NoError(t, err)
 			empty, _, err := markforDelete(context.Background(), table.name, noopWriter{}, it, noopCleaner{},
 				NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil)

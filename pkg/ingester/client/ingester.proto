@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package ingesterpb;
 
-option go_package = "client";
+option go_package = "github.com/grafana/loki/pkg/ingester/client";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "pkg/logproto/metrics.proto";
@@ -120,7 +120,7 @@ message MetricsMetadataResponse {
 message TimeSeriesChunk {
   string from_ingester_id = 1;
   string user_id = 2;
-  repeated logproto.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
+  repeated logproto.LegacyLabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
 }
 

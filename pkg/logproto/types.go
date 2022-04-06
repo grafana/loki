@@ -4,6 +4,8 @@ import (
 	fmt "fmt"
 	io "io"
 	"time"
+
+	"github.com/prometheus/common/model"
 )
 
 // Stream contains a unique labels set as a string and a set of entries for it.
@@ -12,6 +14,7 @@ import (
 type Stream struct {
 	Labels  string  `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
 	Entries []Entry `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
+	Hash    uint64  `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
 }
 
 // Entry is a log entry with a timestamp.
@@ -40,6 +43,11 @@ func (m *Stream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.Hash != 0 {
+		i = encodeVarintLogproto(dAtA, i, m.Hash)
+		i--
+		dAtA[i] = 0x18
+	}
 	if len(m.Entries) > 0 {
 		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -197,6 +205,25 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Hash", wireType)
+			}
+			m.Hash = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Hash |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipLogproto(dAtA[iNdEx:])
@@ -357,6 +384,9 @@ func (m *Stream) Size() (n int) {
 			n += 1 + l + sovLogproto(uint64(l))
 		}
 	}
+	if m.Hash != 0 {
+		n += 1 + sovLogproto(m.Hash)
+	}
 	return n
 }
 
@@ -405,7 +435,7 @@ func (m *Stream) Equal(that interface{}) bool {
 			return false
 		}
 	}
-	return true
+	return m.Hash == that1.Hash
 }
 
 func (m *Entry) Equal(that interface{}) bool {
@@ -434,4 +464,8 @@ func (m *Entry) Equal(that interface{}) bool {
 		return false
 	}
 	return true
+}
+
+func (c *ChunkRef) FingerprintModel() model.Fingerprint {
+	return model.Fingerprint(c.Fingerprint)
 }

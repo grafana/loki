@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -57,7 +58,7 @@ type indexStoreFactories struct {
 }
 
 // IndexClientFactoryFunc defines signature of function which creates chunk.IndexClient for managing index in index store
-type IndexClientFactoryFunc func() (chunk.IndexClient, error)
+type IndexClientFactoryFunc func(limits StoreLimits) (chunk.IndexClient, error)
 
 // TableClientFactoryFunc defines signature of function which creates chunk.TableClient for managing tables in index store
 type TableClientFactoryFunc func() (chunk.TableClient, error)
@@ -72,6 +73,7 @@ func RegisterIndexStore(name string, indexClientFactory IndexClientFactoryFunc, 
 
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
+	downloads.Limits
 	CardinalityLimit(userID string) int
 	MaxChunksPerQueryFromStore(userID string) int
 	MaxQueryLength(userID string) time.Duration
@@ -212,7 +214,7 @@ func NewStore(
 		indexClientReg := prometheus.WrapRegistererWith(
 			prometheus.Labels{"component": "index-store-" + s.From.String()}, reg)
 
-		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, indexClientReg)
+		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, limits, indexClientReg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
@@ -243,10 +245,10 @@ func NewStore(
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (chunk.IndexClient, error) {
+func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, limits StoreLimits, registerer prometheus.Registerer) (chunk.IndexClient, error) {
 	if indexClientFactory, ok := customIndexStores[name]; ok {
 		if indexClientFactory.indexClientFactoryFunc != nil {
-			return indexClientFactory.indexClientFactoryFunc()
+			return indexClientFactory.indexClientFactoryFunc(limits)
 		}
 	}
 
@@ -330,7 +332,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, clien
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClientWithMaxParallel(store, objectclient.Base64Encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+		return objectclient.NewClientWithMaxParallel(store, objectclient.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:

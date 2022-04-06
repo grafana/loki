@@ -27,8 +27,6 @@ const (
 	StatusReceived  DeleteRequestStatus = "received"
 	StatusProcessed DeleteRequestStatus = "processed"
 
-	separator = "\000" // separator for series selectors in delete requests
-
 	deleteRequestID      indexType = "1"
 	deleteRequestDetails indexType = "2"
 
@@ -39,7 +37,7 @@ const (
 var ErrDeleteRequestNotFound = errors.New("could not find matching delete request")
 
 type DeleteRequestsStore interface {
-	AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error
+	AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, query string) error
 	GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error)
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
 	UpdateStatus(ctx context.Context, userID, requestID string, newStatus DeleteRequestStatus) error
@@ -63,19 +61,23 @@ func NewDeleteStore(workingDirectory string, indexStorageClient storage.Client) 
 	return &deleteRequestsStore{indexClient: indexClient}, nil
 }
 
+func NewDeleteStoreFromIndexClient(ic chunk.IndexClient) DeleteRequestsStore {
+	return &deleteRequestsStore{ic}
+}
+
 func (ds *deleteRequestsStore) Stop() {
 	ds.indexClient.Stop()
 }
 
 // AddDeleteRequest creates entries for a new delete request.
-func (ds *deleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error {
-	_, err := ds.addDeleteRequest(ctx, userID, model.Now(), startTime, endTime, selectors)
+func (ds *deleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, query string) error {
+	_, err := ds.addDeleteRequest(ctx, userID, model.Now(), startTime, endTime, query)
 	return err
 }
 
 // addDeleteRequest is also used for tests to create delete requests with different createdAt time.
-func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID string, createdAt, startTime, endTime model.Time, selectors []string) ([]byte, error) {
-	requestID := generateUniqueID(userID, selectors)
+func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID string, createdAt, startTime, endTime model.Time, query string) ([]byte, error) {
+	requestID := generateUniqueID(userID, query)
 
 	for {
 		_, err := ds.GetDeleteRequest(ctx, userID, string(requestID))
@@ -88,7 +90,7 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 
 		// we have a collision here, lets recreate a new requestID and check for collision
 		time.Sleep(time.Millisecond)
-		requestID = generateUniqueID(userID, selectors)
+		requestID = generateUniqueID(userID, query)
 	}
 
 	// userID, requestID
@@ -99,10 +101,10 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 	writeBatch := ds.indexClient.NewWriteBatch()
 	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(StatusReceived))
 
-	// Add another entry with additional details like creation time, time range of delete request and selectors in value
+	// Add another entry with additional details like creation time, time range of delete request and the logQL requests in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(createdAt), int64(startTime), int64(endTime))
 	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
-		[]byte(rangeValue), []byte(strings.Join(selectors, separator)))
+		[]byte(rangeValue), []byte(query))
 
 	err := ds.indexClient.BatchWrite(ctx, writeBatch)
 	if err != nil {
@@ -199,7 +201,11 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 				return false
 			}
 
-			deleteRequest.Selectors = strings.Split(string(itr.Value()), separator)
+			err = deleteRequest.SetQuery(string(itr.Value()))
+			if err != nil {
+				parseError = err
+				return false
+			}
 			deleteRequests[i] = deleteRequest
 
 			return true
@@ -259,7 +265,7 @@ func parseDeleteRequestTimestamps(rangeValue []byte, deleteRequest DeleteRequest
 }
 
 // An id is useful in managing delete requests
-func generateUniqueID(orgID string, selectors []string) []byte {
+func generateUniqueID(orgID string, query string) []byte {
 	uniqueID := fnv.New32()
 	_, _ = uniqueID.Write([]byte(orgID))
 
@@ -267,9 +273,7 @@ func generateUniqueID(orgID string, selectors []string) []byte {
 	binary.LittleEndian.PutUint64(timeNow, uint64(time.Now().UnixNano()))
 	_, _ = uniqueID.Write(timeNow)
 
-	for _, selector := range selectors {
-		_, _ = uniqueID.Write([]byte(selector))
-	}
+	_, _ = uniqueID.Write([]byte(query))
 
 	return encodeUniqueID(uniqueID.Sum32())
 }

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 
 	"github.com/pkg/errors"
@@ -420,7 +421,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	ctx := context.Background()
 
 	inst := newInstance(&Config{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
-	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil)
+	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil, 10)
 	require.NoError(b, err)
 	for i := 0; i < 10000; i++ {
 		require.NoError(b, inst.Push(ctx, &logproto.PushRequest{
@@ -592,7 +593,7 @@ func Test_ChunkFilter(t *testing.T) {
 
 	for it.Next() {
 		require.NoError(t, it.Error())
-		lbs, err := logql.ParseLabels(it.Labels())
+		lbs, err := syntax.ParseLabels(it.Labels())
 		require.NoError(t, err)
 		require.NotEqual(t, "dispatcher", lbs.Get("log_stream"))
 	}

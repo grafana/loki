@@ -29,14 +29,6 @@ func TestCrossComponentValidation(t *testing.T) {
 					SchemaConfig: chunk.SchemaConfig{
 						Configs: []chunk.PeriodConfig{
 							{
-								// zero should not error
-								RowShards: 0,
-								Schema:    "v6",
-								From: chunk.DayTime{
-									Time: model.Now().Add(-48 * time.Hour),
-								},
-							},
-							{
 								RowShards: 16,
 								Schema:    "v11",
 								From: chunk.DayTime{

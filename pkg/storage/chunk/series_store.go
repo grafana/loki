@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-kit/log/level"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -92,54 +91,6 @@ func newSeriesStore(cfg StoreConfig, scfg SchemaConfig, schema SeriesStoreSchema
 		schema:           schema,
 		writeDedupeCache: writeDedupeCache,
 	}, nil
-}
-
-// Get implements Store
-func (c *seriesStore) Get(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([]Chunk, error) {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.Get")
-	defer log.Span.Finish()
-	level.Debug(log).Log("from", from, "through", through, "matchers", len(allMatchers))
-
-	chks, fetchers, err := c.GetChunkRefs(ctx, userID, from, through, allMatchers...)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(chks) == 0 {
-		// Shortcut
-		return nil, nil
-	}
-
-	chunks := chks[0]
-	fetcher := fetchers[0]
-	// Protect ourselves against OOMing.
-	maxChunksPerQuery := c.limits.MaxChunksPerQueryFromStore(userID)
-	if maxChunksPerQuery > 0 && len(chunks) > maxChunksPerQuery {
-		err := QueryError(fmt.Sprintf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunks), maxChunksPerQuery))
-		level.Error(log).Log("err", err)
-		return nil, err
-	}
-
-	// Now fetch the actual chunk data from Memcache / S3
-	keys := keysFromChunks(c.baseStore.schemaCfg, chunks)
-	allChunks, err := fetcher.FetchChunks(ctx, chunks, keys)
-	if err != nil {
-		level.Error(log).Log("msg", "FetchChunks", "err", err)
-		return nil, err
-	}
-
-	// inject artificial __cortex_shard__ labels if present in the query. GetChunkRefs guarantees any chunk refs match the shard.
-	shard, _, err := astmapper.ShardFromMatchers(allMatchers)
-	if err != nil {
-		return nil, err
-	}
-	if shard != nil {
-		injectShardLabels(allChunks, *shard)
-	}
-
-	// Filter out chunks based on the empty matchers in the query.
-	filteredChunks := filterChunksByMatchers(allChunks, allMatchers)
-	return filteredChunks, nil
 }
 
 func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
@@ -228,6 +179,7 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string
 
 	return labelNames, nil
 }
+
 func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelValuesForMetricName")
 	defer log.Span.Finish()
@@ -580,66 +532,4 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 	}
 
 	return result, missing, nil
-}
-
-func injectShardLabels(chunks []Chunk, shard astmapper.ShardAnnotation) {
-	for i, chunk := range chunks {
-		b := labels.NewBuilder(chunk.Metric)
-		l := shard.Label()
-		b.Set(l.Name, l.Value)
-		chunk.Metric = b.Labels()
-		chunks[i] = chunk
-	}
-}
-
-func (c *seriesStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
-	metricName := metric.Get(model.MetricNameLabel)
-	if metricName == "" {
-		return ErrMetricNameLabelMissing
-	}
-
-	chunkWriteEntries, err := c.schema.GetChunkWriteEntries(from, through, userID, metricName, metric, chunkID)
-	if err != nil {
-		return errors.Wrapf(err, "when getting chunk index entries to delete for chunkID=%s", chunkID)
-	}
-
-	return c.deleteChunk(ctx, userID, chunkID, metric, chunkWriteEntries, partiallyDeletedInterval, func(chunk Chunk) error {
-		return c.PutOne(ctx, chunk.From, chunk.Through, chunk)
-	})
-}
-
-func (c *seriesStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
-	entries, err := c.schema.GetSeriesDeleteEntries(from, through, userID, metric, func(userID, seriesID string, from, through model.Time) (b bool, e error) {
-		return c.hasChunksForInterval(ctx, userID, seriesID, from, through)
-	})
-	if err != nil {
-		return err
-	}
-
-	batch := c.index.NewWriteBatch()
-	for i := range entries {
-		batch.Delete(entries[i].TableName, entries[i].HashValue, entries[i].RangeValue)
-	}
-
-	return c.index.BatchWrite(ctx, batch)
-}
-
-func (c *seriesStore) hasChunksForInterval(ctx context.Context, userID, seriesID string, from, through model.Time) (bool, error) {
-	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, []string{seriesID})
-	if err != nil {
-		return false, err
-	}
-
-	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
-	if err != nil {
-		return false, err
-	}
-
-	for _, chunk := range chunks {
-		if intervalsOverlap(model.Interval{Start: from, End: through}, model.Interval{Start: chunk.From, End: chunk.Through}) {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }

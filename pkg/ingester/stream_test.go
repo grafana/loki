@@ -407,7 +407,7 @@ func Benchmark_PushStream(b *testing.B) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	s := newStream(&Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NilMetrics)
-	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{})
+	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
 	require.NoError(b, err)
 
 	go t.loop()

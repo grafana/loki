@@ -19,11 +19,9 @@ import (
 )
 
 const (
-	secondsInHour      = int64(time.Hour / time.Second)
-	secondsInDay       = int64(24 * time.Hour / time.Second)
-	millisecondsInHour = int64(time.Hour / time.Millisecond)
-	millisecondsInDay  = int64(24 * time.Hour / time.Millisecond)
-	v12                = "v12"
+	secondsInDay      = int64(24 * time.Hour / time.Second)
+	millisecondsInDay = int64(24 * time.Hour / time.Millisecond)
+	v12               = "v12"
 )
 
 var (
@@ -180,7 +178,7 @@ func validateChunks(cfg PeriodConfig) error {
 
 // CreateSchema returns the schema defined by the PeriodConfig
 func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
-	buckets, bucketsPeriod := cfg.createBucketsFunc()
+	buckets, bucketsPeriod := cfg.dailyBuckets, 24*time.Hour
 
 	// Ensure the tables period is a multiple of the bucket period
 	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%bucketsPeriod != 0 {
@@ -192,18 +190,6 @@ func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
 	}
 
 	switch cfg.Schema {
-	case "v1":
-		return newStoreSchema(buckets, originalEntries{}), nil
-	case "v2":
-		return newStoreSchema(buckets, originalEntries{}), nil
-	case "v3":
-		return newStoreSchema(buckets, base64Entries{originalEntries{}}), nil
-	case "v4":
-		return newStoreSchema(buckets, labelNameInHashKeyEntries{}), nil
-	case "v5":
-		return newStoreSchema(buckets, v5Entries{}), nil
-	case "v6":
-		return newStoreSchema(buckets, v6Entries{}), nil
 	case "v9":
 		return newSeriesStoreSchema(buckets, v9Entries{}), nil
 	case "v10", "v11", v12:
@@ -221,15 +207,6 @@ func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
 		}
 	default:
 		return nil, errInvalidSchemaVersion
-	}
-}
-
-func (cfg PeriodConfig) createBucketsFunc() (schemaBucketsFunc, time.Duration) {
-	switch cfg.Schema {
-	case "v1":
-		return cfg.hourlyBuckets, 1 * time.Hour
-	default:
-		return cfg.dailyBuckets, 24 * time.Hour
 	}
 }
 
@@ -271,27 +248,6 @@ type Bucket struct {
 	tableName  string
 	hashKey    string
 	bucketSize uint32 // helps with deletion of series ids in series store. Size in milliseconds.
-}
-
-func (cfg *PeriodConfig) hourlyBuckets(from, through model.Time, userID string) []Bucket {
-	var (
-		fromHour    = from.Unix() / secondsInHour
-		throughHour = through.Unix() / secondsInHour
-		result      = []Bucket{}
-	)
-
-	for i := fromHour; i <= throughHour; i++ {
-		relativeFrom := math.Max64(0, int64(from)-(i*millisecondsInHour))
-		relativeThrough := math.Min64(millisecondsInHour, int64(through)-(i*millisecondsInHour))
-		result = append(result, Bucket{
-			from:       uint32(relativeFrom),
-			through:    uint32(relativeThrough),
-			tableName:  cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInHour)),
-			hashKey:    fmt.Sprintf("%s:%d", userID, i),
-			bucketSize: uint32(millisecondsInHour), // helps with deletion of series ids in series store
-		})
-	}
-	return result
 }
 
 func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) []Bucket {
@@ -504,6 +460,14 @@ func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
 	}
 }
 
+// VersionForChunk will return the schema version associated with the `From` timestamp of a chunk.
+// The schema and chunk must be valid+compatible as the errors are not checked.
+func (cfg SchemaConfig) VersionForChunk(c Chunk) int {
+	p, _ := cfg.SchemaForTime(c.From)
+	v, _ := p.VersionAsInt()
+	return v
+}
+
 // pre-checksum
 func (cfg SchemaConfig) legacyExternalKey(chunk Chunk) string {
 	// This is the inverse of chunk.parseLegacyExternalKey, with "<user id>/" prepended.
@@ -514,10 +478,10 @@ func (cfg SchemaConfig) legacyExternalKey(chunk Chunk) string {
 // post-checksum
 func (cfg SchemaConfig) newExternalKey(chunk Chunk) string {
 	// This is the inverse of chunk.parseNewExternalKey.
-	return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+	return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, chunk.Fingerprint, int64(chunk.From), int64(chunk.Through), chunk.Checksum)
 }
 
 // v12+
 func (cfg SchemaConfig) newerExternalKey(chunk Chunk) string {
-	return fmt.Sprintf("%s/%x/%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+	return fmt.Sprintf("%s/%x/%x:%x:%x", chunk.UserID, chunk.Fingerprint, int64(chunk.From), int64(chunk.Through), chunk.Checksum)
 }

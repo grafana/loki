@@ -82,9 +82,9 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
 						LokiStackName:        "lokistack-ocp",
-						GatewayName:          "lokistack-gateway-lokistack-ocp",
-						GatewayNamespace:     "stack-ns",
-						GatewaySvcName:       "lokistack-gateway-http-lokistack-ocp",
+						LokiStackNamespace:   "stack-ns",
+						GatewayName:          "lokistack-ocp-gateway",
+						GatewaySvcName:       "lokistack-ocp-gateway-http",
 						GatewaySvcTargetPort: "public",
 						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
 					},
@@ -92,19 +92,19 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						{
 							TenantName:     "application",
 							TenantID:       "",
-							ServiceAccount: "lokistack-gateway-lokistack-ocp",
+							ServiceAccount: "lokistack-ocp-gateway",
 							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/application/callback",
 						},
 						{
 							TenantName:     "infrastructure",
 							TenantID:       "",
-							ServiceAccount: "lokistack-gateway-lokistack-ocp",
+							ServiceAccount: "lokistack-ocp-gateway",
 							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/infrastructure/callback",
 						},
 						{
 							TenantName:     "audit",
 							TenantID:       "",
-							ServiceAccount: "lokistack-gateway-lokistack-ocp",
+							ServiceAccount: "lokistack-ocp-gateway",
 							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/audit/callback",
 						},
 					},
@@ -200,12 +200,13 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Args: []string{
 										"--log.level=warn",
 										"--opa.package=lokistack",
+										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
-										`--openshift.mappings=application=loki.openshift.io`,
-										`--openshift.mappings=infrastructure=loki.openshift.io`,
-										`--openshift.mappings=audit=loki.openshift.io`,
+										`--openshift.mappings=application=loki.grafana.com`,
+										`--openshift.mappings=infrastructure=loki.grafana.com`,
+										`--openshift.mappings=audit=loki.grafana.com`,
 									},
 									Ports: []corev1.ContainerPort{
 										{
@@ -220,7 +221,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										},
 									},
 									LivenessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/live",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -232,7 +233,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										FailureThreshold: 10,
 									},
 									ReadinessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/ready",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -293,14 +294,15 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Args: []string{
 										"--log.level=warn",
 										"--opa.package=lokistack",
+										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
 										"--tls.internal.server.cert-file=/var/run/tls/tls.crt",
 										"--tls.internal.server.key-file=/var/run/tls/tls.key",
-										`--openshift.mappings=application=loki.openshift.io`,
-										`--openshift.mappings=infrastructure=loki.openshift.io`,
-										`--openshift.mappings=audit=loki.openshift.io`,
+										`--openshift.mappings=application=loki.grafana.com`,
+										`--openshift.mappings=infrastructure=loki.grafana.com`,
+										`--openshift.mappings=audit=loki.grafana.com`,
 									},
 									Ports: []corev1.ContainerPort{
 										{
@@ -315,7 +317,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										},
 									},
 									LivenessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/live",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -327,7 +329,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										FailureThreshold: 10,
 									},
 									ReadinessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/ready",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -430,14 +432,15 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Args: []string{
 										"--log.level=warn",
 										"--opa.package=lokistack",
+										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
 										"--tls.internal.server.cert-file=/var/run/tls/tls.crt",
 										"--tls.internal.server.key-file=/var/run/tls/tls.key",
-										`--openshift.mappings=application=loki.openshift.io`,
-										`--openshift.mappings=infrastructure=loki.openshift.io`,
-										`--openshift.mappings=audit=loki.openshift.io`,
+										`--openshift.mappings=application=loki.grafana.com`,
+										`--openshift.mappings=infrastructure=loki.grafana.com`,
+										`--openshift.mappings=audit=loki.grafana.com`,
 									},
 									Ports: []corev1.ContainerPort{
 										{
@@ -452,7 +455,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										},
 									},
 									LivenessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/live",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -464,7 +467,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										FailureThreshold: 10,
 									},
 									ReadinessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/ready",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),

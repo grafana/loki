@@ -4,15 +4,17 @@ import (
 	"context"
 	"sync"
 
+	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	util_math "github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const maxQueriesPerGoroutine = 100
 
 type TableQuerier interface {
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
+	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
 }
 
 // QueriesByTable groups and returns queries by tables.
@@ -29,10 +31,18 @@ func QueriesByTable(queries []chunk.IndexQuery) map[string][]chunk.IndexQuery {
 	return queriesByTable
 }
 
-func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+	if len(queries) == 0 {
+		return nil
+	}
 	errs := make(chan error)
 
 	id := NewIndexDeduper(callback)
+	defer func() {
+		logger := spanlogger.FromContext(ctx)
+		level.Debug(logger).Log("msg", "done processing index queries", "table-name", queries[0].TableName,
+			"query-count", len(queries), "num-entries-sent", id.numEntriesSent)
+	}()
 
 	if len(queries) <= maxQueriesPerGoroutine {
 		return tableQuerier.MultiQueries(ctx, queries, id.Callback)
@@ -59,12 +69,13 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 // IndexDeduper should always be used on table level not the whole query level because it just looks at range values which can be repeated across tables
 // Cortex anyways dedupes entries across tables
 type IndexDeduper struct {
-	callback        chunk_util.Callback
+	callback        chunk.QueryPagesCallback
 	seenRangeValues map[string]map[string]struct{}
+	numEntriesSent  int
 	mtx             sync.RWMutex
 }
 
-func NewIndexDeduper(callback chunk_util.Callback) *IndexDeduper {
+func NewIndexDeduper(callback chunk.QueryPagesCallback) *IndexDeduper {
 	return &IndexDeduper{
 		callback:        callback,
 		seenRangeValues: map[string]map[string]struct{}{},
@@ -107,6 +118,7 @@ func (i *IndexDeduper) isSeen(hashValue string, rangeValue []byte) bool {
 
 	// add the rangeValue
 	i.seenRangeValues[hashValue][rangeValueStr] = struct{}{}
+	i.numEntriesSent++
 	return false
 }
 

@@ -4,6 +4,7 @@ import (
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // Options is a set of configuration values to use when building manifests such as resource sizes, etc.
@@ -21,20 +22,11 @@ type Options struct {
 	Stack                lokiv1beta1.LokiStackSpec
 	ResourceRequirements internal.ComponentResources
 
-	ObjectStorage ObjectStorage
+	ObjectStorage storage.Options
 
 	OpenShiftOptions openshift.Options
 	TenantSecrets    []*TenantSecrets
 	TenantConfigMap  map[string]openshift.TenantData
-}
-
-// ObjectStorage for storage config.
-type ObjectStorage struct {
-	Endpoint        string
-	Region          string
-	Buckets         string
-	AccessKeyID     string
-	AccessKeySecret string
 }
 
 // FeatureFlags contains flags that activate various features
@@ -42,6 +34,7 @@ type FeatureFlags struct {
 	EnableCertificateSigningService bool
 	EnableServiceMonitors           bool
 	EnableTLSServiceMonitorConfig   bool
+	EnablePrometheusAlerts          bool
 	EnableGateway                   bool
 	EnableGatewayRoute              bool
 }

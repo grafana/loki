@@ -86,6 +86,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
   namespaceMatcher()::
     'cluster=~"$cluster", namespace=~"$namespace"',
+
+  containerLabelMatcher(containerName)::
+    'label_name=~"%s.*"' % containerName,
+
   logPanel(title, selector, datasource='$logs'):: {
     title: title,
     type: 'logs',
@@ -223,4 +227,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
         overrides: [],
       },
     },
+
+  containerDiskSpaceUtilizationPanel(title, containerName)::
+    $.panel(title) +
+    $.queryPanel('max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{%s} / kubelet_volume_stats_capacity_bytes{%s}) and count by(persistentvolumeclaim) (kube_persistentvolumeclaim_labels{%s,%s})' % [$.namespaceMatcher(), $.namespaceMatcher(), $.namespaceMatcher(), $.containerLabelMatcher(containerName)], '{{persistentvolumeclaim}}') +
+    { yaxes: $.yaxes('percentunit') },
 }

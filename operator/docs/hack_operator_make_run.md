@@ -54,7 +54,7 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
   ```console
   kubectl rollout status deployment/<DEPLOYMENT_NAME>  
   ```
-    
+
   where `<DEPLOYMENT_NAME>` is the name of the deployment and can be found using:
 
   ```console  
@@ -62,19 +62,19 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
   ```
 
   Confirm that all are up and running for `statefulsets` using:
-  
+
   ```console
   kubectl rollout status statefulset/<STATEFULSET_NAME>
   ```
-  
+
   where `<STATEFULSET_NAME>` is the name of the statefulset and can be found using:
-  
+
   ```console
   kubectl get statefulsets
   ```
-  
+
 * If you make some changes to the operator's code, then just stop the operator locally using `CTRL + C`, update the code and rerun the operator locally:
-  
+
   ```console
   make run
   ```
@@ -92,7 +92,7 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
   ```console
   make uninstall
   ```
-  
+
 * Cleanup the minio deployment using:
 
   ```console
@@ -120,7 +120,7 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
   ```console
   kubectl get crd lokistacks.loki.grafana.com
   ```
-  
+
 * Create the `openshift-logging` namespace in the cluster:
 
   ```console
@@ -130,16 +130,14 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
 * Now you need to create a storage secret for the operator. This can be done using:
 
   ```console
-  make olm-deploy-example-storage-secret
+  ./hack/deploy-aws-storage-secret.sh <BUCKET_NAME>
   ```
 
-  OR
+  This secret will be available in `openshift-logging` namespace. You can check the `hack/deploy-aws-storage-secret.sh` file to check the content of the secret. By default, the script will pull credential information using the `aws` cli. However, these values can be overwritten. For example:
 
   ```console
-  ./hack/deploy-example-secret.sh openshift-logging
+  REGION=us-west-1 ./hack/deploy-aws-storage-secret.sh <BUCKET_NAME>
   ```
-
-  This secret will be available in openshift-logging namespace. You can check the `hack/deploy-example-secret.sh` file to check the content of the secret.
 
 * Once the object storage secret is created, you can now create a LokiStack instance:
 
@@ -178,7 +176,7 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
   ```console
   kubectl -n openshift-logging get statefulsets
   ```
-  
+
 * If you want `lokistack-gateway` component [1] to be deployed then you need to create a gateway secret [2] for the operator. This can be done using:
 
   ```code
@@ -187,13 +185,13 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
     --from-literal=clientSecret="<CLIENT_SECRET>" \
     --from-literal=issuerCAPath="<ISSUER_CA_PATH>"
   ```
-  
+
 * Now create a LokiStack instance using:
 
   ```console
   kubectl -n openshift-logging apply -f hack/lokistack_gateway_dev.yaml
   ```
-  
+
 * Edit the [main file](https://github.com/grafana/loki/blob/master/operator/main.go) to set the flag values to `true` and rerun the operator using:
 
   ```console

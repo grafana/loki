@@ -3,6 +3,7 @@ package iter
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"math/rand"
 	"testing"
 	"time"
@@ -120,9 +121,9 @@ func TestIteratorMultipleLabels(t *testing.T) {
 			length: testSize * 2,
 			labels: func(i int64) string {
 				if i%2 == 0 {
-					return "{foobar: \"baz1\"}"
+					return "{foobar: \"baz2\"}"
 				}
-				return "{foobar: \"baz2\"}"
+				return "{foobar: \"baz1\"}"
 			},
 		},
 
@@ -138,9 +139,9 @@ func TestIteratorMultipleLabels(t *testing.T) {
 			length: testSize * 2,
 			labels: func(i int64) string {
 				if i/testSize == 0 {
-					return "{foobar: \"baz1\"}"
+					return "{foobar: \"baz2\"}"
 				}
-				return "{foobar: \"baz2\"}"
+				return "{foobar: \"baz1\"}"
 			},
 		},
 	} {
@@ -202,7 +203,14 @@ func mkStreamIterator(f generator, labels string) EntryIterator {
 	return NewStreamIterator(logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
+		Hash:    hashLabels(labels),
 	})
+}
+
+func hashLabels(lbs string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(lbs))
+	return h.Sum64()
 }
 
 func identity(i int64) logproto.Entry {
@@ -237,6 +245,7 @@ func inverse(g generator) generator {
 func TestMergeIteratorDeduplication(t *testing.T) {
 	foo := logproto.Stream{
 		Labels: `{app="foo"}`,
+		Hash:   hashLabels(`{app="foo"}`),
 		Entries: []logproto.Entry{
 			{Timestamp: time.Unix(0, 1), Line: "1"},
 			{Timestamp: time.Unix(0, 2), Line: "2"},
@@ -245,6 +254,7 @@ func TestMergeIteratorDeduplication(t *testing.T) {
 	}
 	bar := logproto.Stream{
 		Labels: `{app="bar"}`,
+		Hash:   hashLabels(`{app="bar"}`),
 		Entries: []logproto.Entry{
 			{Timestamp: time.Unix(0, 1), Line: "1"},
 			{Timestamp: time.Unix(0, 2), Line: "2"},
@@ -294,6 +304,54 @@ func TestMergeIteratorDeduplication(t *testing.T) {
 		mustReverseStreamIterator(NewStreamIterator(foo)),
 	}, logproto.BACKWARD)
 	assertIt(it, true, len(foo.Entries))
+}
+
+func TestMergeIteratorWithoutLabels(t *testing.T) {
+	foo := logproto.Stream{
+		Labels: ``,
+		Hash:   hashLabels(`{app="foo"}`),
+		Entries: []logproto.Entry{
+			{Timestamp: time.Unix(0, 1), Line: "1"},
+			{Timestamp: time.Unix(0, 2), Line: "2"},
+			{Timestamp: time.Unix(0, 3), Line: "3"},
+		},
+	}
+	bar := logproto.Stream{
+		Labels: `{some="other"}`,
+		Hash:   hashLabels(`{app="bar"}`),
+		Entries: []logproto.Entry{
+			{Timestamp: time.Unix(0, 1), Line: "1"},
+			{Timestamp: time.Unix(0, 2), Line: "2"},
+			{Timestamp: time.Unix(0, 3), Line: "3"},
+		},
+	}
+
+	// forward iteration
+	it := NewMergeEntryIterator(context.Background(), []EntryIterator{
+		NewStreamIterator(foo),
+		NewStreamIterator(bar),
+		NewStreamIterator(foo),
+		NewStreamIterator(bar),
+		NewStreamIterator(foo),
+		NewStreamIterator(bar),
+		NewStreamIterator(foo),
+	}, logproto.FORWARD)
+
+	for i := 0; i < 3; i++ {
+
+		require.True(t, it.Next())
+		require.NoError(t, it.Error())
+		require.Equal(t, bar.Labels, it.Labels())
+		require.Equal(t, bar.Entries[i], it.Entry())
+
+		require.True(t, it.Next())
+		require.NoError(t, it.Error())
+		require.Equal(t, foo.Labels, it.Labels())
+		require.Equal(t, foo.Entries[i], it.Entry())
+
+	}
+	require.False(t, it.Next())
+	require.NoError(t, it.Error())
 }
 
 func mustReverseStreamIterator(it EntryIterator) EntryIterator {
@@ -615,6 +673,7 @@ type CloseTestingIterator struct {
 func (i *CloseTestingIterator) Next() bool            { return true }
 func (i *CloseTestingIterator) Entry() logproto.Entry { return i.e }
 func (i *CloseTestingIterator) Labels() string        { return "" }
+func (i *CloseTestingIterator) StreamHash() uint64    { return 0 }
 func (i *CloseTestingIterator) Error() error          { return nil }
 func (i *CloseTestingIterator) Close() error {
 	i.closed.Store(true)
@@ -623,7 +682,7 @@ func (i *CloseTestingIterator) Close() error {
 
 func TestNonOverlappingClose(t *testing.T) {
 	a, b := &CloseTestingIterator{}, &CloseTestingIterator{}
-	itr := NewNonOverlappingIterator([]EntryIterator{a, b}, "")
+	itr := NewNonOverlappingIterator([]EntryIterator{a, b})
 
 	// Ensure both itr.cur and itr.iterators are non nil
 	itr.Next()
@@ -676,6 +735,7 @@ func BenchmarkSortIterator(b *testing.B) {
 	})
 
 	b.Run("sort", func(b *testing.B) {
+		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			b.StopTimer()

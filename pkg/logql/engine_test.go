@@ -20,6 +20,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -2365,25 +2366,33 @@ type logData struct {
 
 type generator func(i int64) logData
 
-func newStream(n int64, f generator, labels string) logproto.Stream {
+func newStream(n int64, f generator, lbsString string) logproto.Stream {
+	labels, err := syntax.ParseLabels(lbsString)
+	if err != nil {
+		panic(err)
+	}
 	entries := []logproto.Entry{}
 	for i := int64(0); i < n; i++ {
 		entries = append(entries, f(i).Entry)
 	}
 	return logproto.Stream{
 		Entries: entries,
-		Labels:  labels,
+		Labels:  labels.String(),
 	}
 }
 
-func newSeries(n int64, f generator, labels string) logproto.Series {
+func newSeries(n int64, f generator, lbsString string) logproto.Series {
+	labels, err := syntax.ParseLabels(lbsString)
+	if err != nil {
+		panic(err)
+	}
 	samples := []logproto.Sample{}
 	for i := int64(0); i < n; i++ {
 		samples = append(samples, f(i).Sample)
 	}
 	return logproto.Series{
 		Samples: samples,
-		Labels:  labels,
+		Labels:  labels.String(),
 	}
 }
 
@@ -2532,6 +2541,8 @@ func (errorIterator) Next() bool { return false }
 func (errorIterator) Error() error { return ErrMock }
 
 func (errorIterator) Labels() string { return "" }
+
+func (errorIterator) StreamHash() uint64 { return 0 }
 
 func (errorIterator) Entry() logproto.Entry { return logproto.Entry{} }
 

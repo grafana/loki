@@ -5,7 +5,9 @@ import (
 	"fmt"
 	logger "log"
 	"sort"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
@@ -132,7 +134,7 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Seri
 				var found bool
 				s, found = resBySeries[lbs.String()]
 				if !found {
-					s = &logproto.Series{Labels: lbs.String()}
+					s = &logproto.Series{Labels: lbs.String(), StreamHash: exs.BaseLabels().Hash()}
 					resBySeries[lbs.String()] = s
 				}
 				s.Samples = append(s.Samples, logproto.Sample{
@@ -264,6 +266,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (stream
 		}
 
 		stream.Labels = ls.String()
+		stream.Hash = ls.Hash()
 		streams = append(streams, stream)
 	}
 	return streams
@@ -276,4 +279,13 @@ func mustParseLabels(s string) labels.Labels {
 	}
 
 	return labels
+}
+
+func removeWhiteSpace(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == ' ' || unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
 }

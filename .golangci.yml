@@ -74,6 +74,7 @@ linters:
     - unused
     - typecheck
     - depguard
+    - exportloopref
 
 issues:
   exclude:

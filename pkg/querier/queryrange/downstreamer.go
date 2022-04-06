@@ -3,7 +3,6 @@ package queryrange
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
@@ -18,7 +17,7 @@ import (
 )
 
 const (
-	DefaultDownstreamConcurrency = 32
+	DefaultDownstreamConcurrency = 128
 )
 
 type DownstreamHandler struct {
@@ -26,7 +25,7 @@ type DownstreamHandler struct {
 }
 
 func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebase.Request {
-	if params.Start() == params.End() {
+	if params.Start().Equal(params.End()) {
 		return &LokiInstantRequest{
 			Query:     params.Query(),
 			Limit:     params.Limit(),
@@ -39,7 +38,8 @@ func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebas
 	return &LokiRequest{
 		Query:     params.Query(),
 		Limit:     params.Limit(),
-		Step:      int64(params.Step() / time.Millisecond),
+		Step:      params.Step().Milliseconds(),
+		Interval:  params.Interval().Milliseconds(),
 		StartTs:   params.Start(),
 		EndTs:     params.End(),
 		Direction: params.Direction(),
@@ -48,6 +48,12 @@ func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebas
 	}
 }
 
+// Note: After the introduction of the LimitedRoundTripper,
+// bounding concurrency in the downstreamer is mostly redundant
+// The reason we don't remove it is to prevent malicious queries
+// from creating an unreasonably large number of goroutines, such as
+// the case of a query like `a / a / a / a / a ..etc`, which could try
+// to shard each leg, quickly dispatching an unreasonable number of goroutines.
 func (h DownstreamHandler) Downstreamer() logql.Downstreamer {
 	p := DefaultDownstreamConcurrency
 	locks := make(chan struct{}, p)
@@ -157,7 +163,7 @@ func sampleStreamToMatrix(streams []queryrangebase.SampleStream) parser.Value {
 		x.Points = make([]promql.Point, 0, len(stream.Samples))
 		for _, sample := range stream.Samples {
 			x.Points = append(x.Points, promql.Point{
-				T: sample.Timestamp,
+				T: sample.TimestampMs,
 				V: sample.Value,
 			})
 		}
@@ -177,7 +183,7 @@ func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 		}
 
 		x.Point = promql.Point{
-			T: stream.Samples[0].Timestamp,
+			T: stream.Samples[0].TimestampMs,
 			V: stream.Samples[0].Value,
 		}
 

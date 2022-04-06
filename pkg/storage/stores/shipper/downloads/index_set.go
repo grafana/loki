@@ -15,12 +15,13 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -28,7 +29,7 @@ import (
 type IndexSet interface {
 	Init() error
 	Close()
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
+	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
 	DropAllDBs() error
 	Err() error
 	LastUsedAt() time.Time
@@ -96,13 +97,13 @@ func (t *indexSet) Init() (err error) {
 
 	defer func() {
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to initialize table %s, cleaning it up", t.tableName), "err", err)
+			level.Error(t.logger).Log("msg", "failed to initialize table, cleaning it up", "err", err)
 			t.err = err
 
 			// cleaning up files due to error to avoid returning invalid results.
 			for fileName := range t.dbs {
 				if err := t.cleanupDB(fileName); err != nil {
-					level.Error(util_log.Logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
+					level.Error(t.logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
 				}
 			}
 		}
@@ -110,13 +111,12 @@ func (t *indexSet) Init() (err error) {
 		t.dbsMtx.markReady()
 	}()
 
-	startTime := time.Now()
-
 	filesInfo, err := ioutil.ReadDir(t.cacheLocation)
 	if err != nil {
 		return err
 	}
 
+	// open all the locally present files first to avoid downloading them again during sync operation below.
 	for _, fileInfo := range filesInfo {
 		if fileInfo.IsDir() {
 			continue
@@ -147,9 +147,6 @@ func (t *indexSet) Init() (err error) {
 		return
 	}
 
-	duration := time.Since(startTime).Seconds()
-	t.metrics.tablesDownloadDurationSeconds.add(t.tableName, duration)
-
 	level.Debug(logger).Log("msg", "finished syncing files")
 
 	return
@@ -177,7 +174,7 @@ func (t *indexSet) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
@@ -198,7 +195,7 @@ func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery,
 	t.lastUsedAt = time.Now()
 
 	logger := util_log.WithContext(ctx, t.logger)
-	level.Debug(logger).Log("table-name", t.tableName, "query-count", len(queries))
+	level.Debug(logger).Log("query-count", len(queries), "dbs-count", len(t.dbs))
 
 	for name, db := range t.dbs {
 		err := db.View(func(tx *bbolt.Tx) error {
@@ -283,7 +280,7 @@ func (t *indexSet) Sync(ctx context.Context) (err error) {
 
 // sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
 func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.tableName))
+	level.Debug(t.logger).Log("msg", "syncing index files")
 
 	defer func() {
 		status := statusSuccess
@@ -298,7 +295,7 @@ func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
 		return err
 	}
 
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("updates for table %s. toDownload: %s, toDelete: %s", t.tableName, toDownload, toDelete))
+	level.Debug(t.logger).Log("msg", "index sync updates", "toDownload", fmt.Sprint(toDownload), "toDelete", fmt.Sprint(toDelete))
 
 	downloadedFiles, err := t.doConcurrentDownload(ctx, toDownload)
 	if err != nil {
@@ -390,13 +387,8 @@ func (t *indexSet) doConcurrentDownload(ctx context.Context, files []storage.Ind
 	downloadedFiles := make([]string, 0, len(files))
 	downloadedFilesMtx := sync.Mutex{}
 
-	jobs := make([]interface{}, len(files))
-	for i := 0; i < len(files); i++ {
-		jobs[i] = i
-	}
-
-	err := concurrency.ForEach(ctx, jobs, maxDownloadConcurrency, func(ctx context.Context, job interface{}) error {
-		fileName := files[job.(int)].Name
+	err := concurrency.ForEachJob(ctx, len(files), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
+		fileName := files[idx].Name
 		err := t.downloadFileFromStorage(ctx, fileName, t.cacheLocation)
 		if err != nil {
 			if t.baseIndexSet.IsFileNotFoundErr(err) {
@@ -412,7 +404,6 @@ func (t *indexSet) doConcurrentDownload(ctx context.Context, files []storage.Ind
 
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}

@@ -24,7 +24,8 @@ func TestLazyChunkIterator(t *testing.T) {
 	}{
 		{
 			newLazyChunk(logproto.Stream{
-				Labels: fooLabelsWithName,
+				Labels: fooLabelsWithName.String(),
+				Hash:   fooLabelsWithName.Hash(),
 				Entries: []logproto.Entry{
 					{
 						Timestamp: from,
@@ -34,7 +35,8 @@ func TestLazyChunkIterator(t *testing.T) {
 			}),
 			[]logproto.Stream{
 				{
-					Labels: fooLabels,
+					Labels: fooLabels.String(),
+					Hash:   fooLabels.Hash(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -159,8 +161,10 @@ func lazyChunkWithBounds(from, through time.Time) *LazyChunk {
 	fromM, throughM := util.RoundToMilliseconds(from, through)
 	return &LazyChunk{
 		Chunk: chunk.Chunk{
-			From:    fromM,
-			Through: throughM,
+			ChunkRef: logproto.ChunkRef{
+				From:    fromM,
+				Through: throughM,
+			},
 		},
 	}
 }

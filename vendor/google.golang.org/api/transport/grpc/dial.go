@@ -31,6 +31,9 @@ import (
 	_ "google.golang.org/grpc/balancer/grpclb"
 )
 
+// Check env to disable DirectPath traffic.
+const disableDirectPath = "GOOGLE_CLOUD_DISABLE_DIRECT_PATH"
+
 // Check env to decide if using google-c2p resolver for DirectPath traffic.
 const enableDirectPathXds = "GOOGLE_CLOUD_ENABLE_DIRECT_PATH_XDS"
 
@@ -140,7 +143,7 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 		}
 
 		// Attempt Direct Path:
-		if o.EnableDirectPath && checkDirectPathEndPoint(endpoint) && isTokenSourceDirectPathCompatible(creds.TokenSource, o) && metadata.OnGCE() {
+		if isDirectPathEnabled(endpoint, o) && isTokenSourceDirectPathCompatible(creds.TokenSource, o) && metadata.OnGCE() {
 			grpcOpts = []grpc.DialOption{
 				grpc.WithCredentialsBundle(grpcgoogle.NewDefaultCredentialsWithOptions(grpcgoogle.DefaultCredentialsOptions{oauth.TokenSource{creds.TokenSource}}))}
 			if timeoutDialerOption != nil {
@@ -151,9 +154,9 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 			if grpc.Version >= "1.42" && strings.EqualFold(os.Getenv(enableDirectPathXds), "true") {
 				// google-c2p resolver target must not have a port number
 				if addr, _, err := net.SplitHostPort(endpoint); err == nil {
-					endpoint = "google-c2p:///" + addr
+					endpoint = "google-c2p-experimental:///" + addr
 				} else {
-					endpoint = "google-c2p:///" + endpoint
+					endpoint = "google-c2p-experimental:///" + endpoint
 				}
 			} else {
 				if !strings.HasPrefix(endpoint, "dns:///") {
@@ -232,6 +235,19 @@ func (ts grpcTokenSource) GetRequestMetadata(ctx context.Context, uri ...string)
 		metadata["X-goog-request-reason"] = ts.requestReason
 	}
 	return metadata, nil
+}
+
+func isDirectPathEnabled(endpoint string, o *internal.DialSettings) bool {
+	if !o.EnableDirectPath {
+		return false
+	}
+	if !checkDirectPathEndPoint(endpoint) {
+		return false
+	}
+	if strings.EqualFold(os.Getenv(disableDirectPath), "true") {
+		return false
+	}
+	return true
 }
 
 func isTokenSourceDirectPathCompatible(ts oauth2.TokenSource, o *internal.DialSettings) bool {

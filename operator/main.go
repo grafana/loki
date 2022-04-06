@@ -6,7 +6,9 @@ import (
 	"net/http/pprof"
 	"os"
 
+	"github.com/ViaQ/logerr/kverrors"
 	"github.com/ViaQ/logerr/log"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -46,6 +48,7 @@ func main() {
 		enableTLSServiceMonitors bool
 		enableGateway            bool
 		enableGatewayRoute       bool
+		enablePrometheusAlerts   bool
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -62,10 +65,16 @@ func main() {
 		"Enables the manifest creation for the entire lokistack-gateway.")
 	flag.BoolVar(&enableGatewayRoute, "with-lokistack-gateway-route", false,
 		"Enables the usage of Route for the lokistack-gateway instead of Ingress (OCP Only!)")
+	flag.BoolVar(&enablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts")
 	flag.Parse()
 
-	log.Init("loki-operator")
-	ctrl.SetLogger(log.GetLogger())
+	logger := log.NewLogger("loki-operator")
+	ctrl.SetLogger(logger)
+
+	if enablePrometheusAlerts && !enableServiceMonitors {
+		logger.Error(kverrors.New("-with-prometheus-alerts flag requires -with-service-monitors"), "")
+		os.Exit(1)
+	}
 
 	if enableServiceMonitors || enableTLSServiceMonitors {
 		utilruntime.Must(monitoringv1.AddToScheme(scheme))
@@ -88,7 +97,7 @@ func main() {
 		LeaderElectionID:       "e3716011.grafana.com",
 	})
 	if err != nil {
-		log.Error(err, "unable to start manager")
+		logger.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
@@ -96,43 +105,44 @@ func main() {
 		EnableCertificateSigningService: enableCertSigning,
 		EnableServiceMonitors:           enableServiceMonitors,
 		EnableTLSServiceMonitorConfig:   enableTLSServiceMonitors,
+		EnablePrometheusAlerts:          enablePrometheusAlerts,
 		EnableGateway:                   enableGateway,
 		EnableGatewayRoute:              enableGatewayRoute,
 	}
 
 	if err = (&controllers.LokiStackReconciler{
 		Client: mgr.GetClient(),
-		Log:    log.WithName("controllers").WithName("LokiStack"),
+		Log:    logger.WithName("controllers").WithName("LokiStack"),
 		Scheme: mgr.GetScheme(),
 		Flags:  featureFlags,
 	}).SetupWithManager(mgr); err != nil {
-		log.Error(err, "unable to create controller", "controller", "LokiStack")
+		logger.Error(err, "unable to create controller", "controller", "LokiStack")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
 
 	if err = mgr.AddHealthzCheck("health", healthz.Ping); err != nil {
-		log.Error(err, "unable to set up health check")
+		logger.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
 	if err = mgr.AddReadyzCheck("check", healthz.Ping); err != nil {
-		log.Error(err, "unable to set up ready check")
+		logger.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
 
-	log.Info("registering metrics")
+	logger.Info("registering metrics")
 	metrics.RegisterMetricCollectors()
 
-	log.Info("Registering profiling endpoints.")
+	logger.Info("Registering profiling endpoints.")
 	err = registerProfiler(mgr)
 	if err != nil {
-		log.Error(err, "failed to register extra pprof handler")
+		logger.Error(err, "failed to register extra pprof handler")
 		os.Exit(1)
 	}
 
-	log.Info("starting manager")
+	logger.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		log.Error(err, "problem running manager")
+		logger.Error(err, "problem running manager")
 		os.Exit(1)
 	}
 }

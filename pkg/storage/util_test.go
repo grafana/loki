@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -23,8 +23,8 @@ import (
 )
 
 var (
-	fooLabelsWithName = "{foo=\"bar\", __name__=\"logs\"}"
-	fooLabels         = "{foo=\"bar\"}"
+	fooLabelsWithName = labels.Labels{{Name: "foo", Value: "bar"}, {Name: "__name__", Value: "logs"}}
+	fooLabels         = labels.Labels{{Name: "foo", Value: "bar"}}
 )
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
@@ -89,7 +89,7 @@ func newLazyInvalidChunk(stream logproto.Stream) *LazyChunk {
 }
 
 func newChunk(stream logproto.Stream) chunk.Chunk {
-	lbs, err := logql.ParseLabels(stream.Labels)
+	lbs, err := syntax.ParseLabels(stream.Labels)
 	if err != nil {
 		panic(err)
 	}
@@ -113,7 +113,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 }
 
 func newMatchers(matchers string) []*labels.Matcher {
-	res, err := logql.ParseMatchers(matchers)
+	res, err := syntax.ParseMatchers(matchers)
 	if err != nil {
 		panic(err)
 	}

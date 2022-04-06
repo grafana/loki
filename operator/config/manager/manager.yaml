@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: controller-manager
+  labels:
+    control-plane: controller-manager
 spec:
   selector:
     matchLabels:
@@ -9,6 +11,8 @@ spec:
   replicas: 1
   template:
     metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
       labels:
         name: loki-operator-controller-manager
     spec:
@@ -35,4 +39,6 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
+      nodeSelector:
+        kubernetes.io/os: linux
       terminationGracePeriodSeconds: 10

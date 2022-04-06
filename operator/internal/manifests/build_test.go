@@ -281,6 +281,58 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 	}
 }
 
+func TestBuildAll_WithFeatureFlags_EnablePrometheusAlerts(t *testing.T) {
+	type test struct {
+		desc         string
+		BuildOptions Options
+	}
+	table := []test{
+		{
+			desc: "no alerts created",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1beta1.LokiStackSpec{
+					Size: lokiv1beta1.SizeOneXSmall,
+				},
+				Flags: FeatureFlags{
+					EnableServiceMonitors:  false,
+					EnablePrometheusAlerts: false,
+				},
+			},
+		},
+		{
+			desc: "alerts created",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1beta1.LokiStackSpec{
+					Size: lokiv1beta1.SizeOneXSmall,
+				},
+				Flags: FeatureFlags{
+					EnableServiceMonitors:  true,
+					EnablePrometheusAlerts: true,
+				},
+			},
+		},
+	}
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.desc, func(t *testing.T) {
+			t.Parallel()
+			err := ApplyDefaultSettings(&tst.BuildOptions)
+			require.NoError(t, err)
+			objects, buildErr := BuildAll(tst.BuildOptions)
+			require.NoError(t, buildErr)
+			if tst.BuildOptions.Flags.EnableGateway {
+				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
+			} else {
+				require.False(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
+			}
+		})
+	}
+}
+
 func serviceMonitorCount(objects []client.Object) int {
 	monitors := 0
 	for _, obj := range objects {

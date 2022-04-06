@@ -816,7 +816,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 
 		var it iter.EntryIterator
 		if ordered {
-			it = iter.NewNonOverlappingIterator(blockItrs, "")
+			it = iter.NewNonOverlappingIterator(blockItrs)
 		} else {
 			it = iter.NewSortEntryIterator(blockItrs, direction)
 		}
@@ -849,7 +849,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	}
 
 	if ordered {
-		return iter.NewNonOverlappingIterator(blockItrs, ""), nil
+		return iter.NewNonOverlappingIterator(blockItrs), nil
 	}
 	return iter.NewSortEntryIterator(blockItrs, direction), nil
 }
@@ -884,7 +884,7 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 
 	var it iter.SampleIterator
 	if ordered {
-		it = iter.NewNonOverlappingSampleIterator(its, "")
+		it = iter.NewNonOverlappingSampleIterator(its)
 	} else {
 		it = iter.NewSortSampleIterator(its)
 	}
@@ -911,8 +911,8 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 
 // Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
 func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
-	// add a nanosecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), start, end.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
+	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
 		return nil, err
 	}
@@ -998,8 +998,8 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	// but the tradeoff is that queries to near-realtime data would be much lower than
 	// cutting of blocks.
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
-	streams := map[uint64]*logproto.Stream{}
-
+	streams := map[string]*logproto.Stream{}
+	baseHash := pipeline.BaseLabels().Hash()
 	process := func(e entry) {
 		// apply time filtering
 		if e.t < mint || e.t >= maxt {
@@ -1011,12 +1011,13 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		var stream *logproto.Stream
-		lhash := parsedLbs.Hash()
-		if stream, ok = streams[lhash]; !ok {
+		labels := parsedLbs.Labels().String()
+		if stream, ok = streams[labels]; !ok {
 			stream = &logproto.Stream{
-				Labels: parsedLbs.String(),
+				Labels: labels,
+				Hash:   baseHash,
 			}
-			streams[lhash] = stream
+			streams[labels] = stream
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
 			Timestamp: time.Unix(0, e.t),
@@ -1050,28 +1051,34 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 	}
 	stats := stats.FromContext(ctx)
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
-	series := map[uint64]*logproto.Series{}
+	series := map[string]*logproto.Series{}
+	baseHash := extractor.BaseLabels().Hash()
+
 	for _, e := range hb.entries {
 		stats.AddHeadChunkBytes(int64(len(e.s)))
 		value, parsedLabels, ok := extractor.ProcessString(e.s)
 		if !ok {
 			continue
 		}
-		var found bool
-		var s *logproto.Series
-		lhash := parsedLabels.Hash()
-		if s, found = series[lhash]; !found {
+		var (
+			found bool
+			s     *logproto.Series
+		)
+
+		lbs := parsedLabels.String()
+		if s, found = series[lbs]; !found {
 			s = &logproto.Series{
-				Labels:  parsedLabels.String(),
-				Samples: SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+				Labels:     lbs,
+				Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+				StreamHash: baseHash,
 			}
-			series[lhash] = s
+			series[lbs] = s
 		}
-		h := xxhash.Sum64(unsafeGetBytes(e.s))
+
 		s.Samples = append(s.Samples, logproto.Sample{
 			Timestamp: e.t,
 			Value:     value,
-			Hash:      h,
+			Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
 		})
 	}
 
@@ -1252,6 +1259,8 @@ func (e *entryBufferedIterator) Entry() logproto.Entry {
 
 func (e *entryBufferedIterator) Labels() string { return e.currLabels.String() }
 
+func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabels().Hash() }
+
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
 		newLine, lbs, ok := e.pipeline.Process(e.currLine)
@@ -1298,6 +1307,8 @@ func (e *sampleBufferedIterator) Next() bool {
 	return false
 }
 func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() }
+
+func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
 
 func (e *sampleBufferedIterator) Sample() logproto.Sample {
 	return e.cur

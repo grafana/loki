@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -47,6 +48,8 @@ var (
 
 		Buckets: prometheus.ExponentialBuckets(5, 2, 6),
 	})
+
+	chunkCreatedStats = usagestats.NewCounter("ingester_chunk_created")
 )
 
 var ErrEntriesExist = errors.New("duplicate push - entries already exist")
@@ -203,6 +206,7 @@ func (s *stream) Push(
 			chunk: s.NewChunk(),
 		})
 		chunksCreatedTotal.Inc()
+		chunkCreatedStats.Inc(1)
 	}
 
 	var storedEntries []logproto.Entry
@@ -379,6 +383,7 @@ func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
 	samplesPerChunk.Observe(float64(chunk.chunk.Size()))
 	blocksPerChunk.Observe(float64(chunk.chunk.BlockCount()))
 	chunksCreatedTotal.Inc()
+	chunkCreatedStats.Inc(1)
 
 	s.chunks = append(s.chunks, chunkDesc{
 		chunk: s.NewChunk(),
@@ -468,7 +473,7 @@ func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, th
 	}
 
 	if ordered {
-		return iter.NewNonOverlappingIterator(iterators, ""), nil
+		return iter.NewNonOverlappingIterator(iterators), nil
 	}
 	return iter.NewSortEntryIterator(iterators, direction), nil
 }
@@ -505,7 +510,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 	}
 
 	if ordered {
-		return iter.NewNonOverlappingSampleIterator(iterators, ""), nil
+		return iter.NewNonOverlappingSampleIterator(iterators), nil
 	}
 	return iter.NewSortSampleIterator(iterators), nil
 }

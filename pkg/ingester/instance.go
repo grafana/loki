@@ -22,10 +22,12 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
@@ -53,6 +55,8 @@ var (
 		Name:      "ingester_streams_removed_total",
 		Help:      "The total number of streams removed per tenant.",
 	}, []string{"tenant"})
+
+	streamsCountStats = usagestats.NewInt("ingester_streams_count")
 )
 
 type instance struct {
@@ -217,7 +221,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
 	}
 
-	labels, err := logql.ParseLabels(pushReqStream.Labels)
+	labels, err := syntax.ParseLabels(pushReqStream.Labels)
 	if err != nil {
 		if i.configs.LogStreamCreation(i.instanceID) {
 			level.Debug(util_log.Logger).Log(
@@ -248,6 +252,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
+	streamsCountStats.Add(1)
 
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
@@ -288,6 +293,7 @@ func (i *instance) removeStream(s *stream) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
+		streamsCountStats.Add(-1)
 	}
 }
 

@@ -3,12 +3,12 @@ package log
 import (
 	"bytes"
 	"fmt"
-	"regexp"
 	"strings"
 	"text/template"
 	"text/template/parse"
 
 	"github.com/Masterminds/sprig/v3"
+	"github.com/grafana/regexp"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 )

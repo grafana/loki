@@ -52,6 +52,7 @@ var emptyStats = `"stats": {
 		"execTime": 0,
 		"linesProcessedPerSecond": 0,
 		"queueTime": 0,
+		"subqueries": 0,
 		"totalBytesProcessed":0,
 		"totalLinesProcessed":0
 	}
@@ -75,18 +76,18 @@ func Test_encodePromResponse(t *testing.T) {
 								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "bar"},
 								},
-								Samples: []logproto.Sample{
-									{Value: 1, Timestamp: 1000},
-									{Value: 1, Timestamp: 2000},
+								Samples: []logproto.LegacySample{
+									{Value: 1, TimestampMs: 1000},
+									{Value: 1, TimestampMs: 2000},
 								},
 							},
 							{
 								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "buzz"},
 								},
-								Samples: []logproto.Sample{
-									{Value: 4, Timestamp: 1000},
-									{Value: 5, Timestamp: 2000},
+								Samples: []logproto.LegacySample{
+									{Value: 4, TimestampMs: 1000},
+									{Value: 5, TimestampMs: 2000},
 								},
 							},
 						},
@@ -123,16 +124,16 @@ func Test_encodePromResponse(t *testing.T) {
 								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "bar"},
 								},
-								Samples: []logproto.Sample{
-									{Value: 1, Timestamp: 1000},
+								Samples: []logproto.LegacySample{
+									{Value: 1, TimestampMs: 1000},
 								},
 							},
 							{
 								Labels: []logproto.LabelAdapter{
 									{Name: "foo", Value: "buzz"},
 								},
-								Samples: []logproto.Sample{
-									{Value: 4, Timestamp: 1000},
+								Samples: []logproto.LegacySample{
+									{Value: 4, TimestampMs: 1000},
 								},
 							},
 						},

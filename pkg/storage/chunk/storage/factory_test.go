@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 func TestFactoryStop(t *testing.T) {
@@ -29,7 +29,8 @@ func TestFactoryStop(t *testing.T) {
 		{
 			From:      chunk.DayTime{Time: model.Time(0)},
 			IndexType: "inmemory",
-			Schema:    "v3",
+			Schema:    "v11",
+			RowShards: 16,
 		},
 		{
 			From:      chunk.DayTime{Time: model.Time(1)},
@@ -95,7 +96,7 @@ func TestCustomIndexClient(t *testing.T) {
 		{
 			indexClientName: "boltdb",
 			indexClientFactories: indexStoreFactories{
-				indexClientFactoryFunc: func() (client chunk.IndexClient, e error) {
+				indexClientFactoryFunc: func(_ StoreLimits) (client chunk.IndexClient, e error) {
 					return newBoltDBCustomIndexClient(cfg.BoltDBConfig)
 				},
 			},
@@ -115,7 +116,7 @@ func TestCustomIndexClient(t *testing.T) {
 		{
 			indexClientName: "boltdb",
 			indexClientFactories: indexStoreFactories{
-				indexClientFactoryFunc: func() (client chunk.IndexClient, e error) {
+				indexClientFactoryFunc: func(_ StoreLimits) (client chunk.IndexClient, e error) {
 					return newBoltDBCustomIndexClient(cfg.BoltDBConfig)
 				},
 				tableClientFactoryFunc: func() (client chunk.TableClient, e error) {
@@ -134,7 +135,7 @@ func TestCustomIndexClient(t *testing.T) {
 			RegisterIndexStore(tc.indexClientName, tc.indexClientFactories.indexClientFactoryFunc, tc.indexClientFactories.tableClientFactoryFunc)
 		}
 
-		indexClient, err := NewIndexClient(tc.indexClientName, cfg, schemaCfg, nil)
+		indexClient, err := NewIndexClient(tc.indexClientName, cfg, schemaCfg, nil, nil)
 		if tc.errorExpected {
 			require.Error(t, err)
 		} else {

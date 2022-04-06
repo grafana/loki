@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
@@ -34,245 +35,247 @@ type indexSetState struct {
 }
 
 func TestTable_Compaction(t *testing.T) {
-	numUsers := 5
+	for _, numUsers := range []int{uploadIndexSetsConcurrency / 2, uploadIndexSetsConcurrency, uploadIndexSetsConcurrency * 2} {
+		t.Run(fmt.Sprintf("numUsers=%d", numUsers), func(t *testing.T) {
+			for _, tc := range []struct {
+				numUnCompactedCommonDBs  int
+				numUnCompactedPerUserDBs int
+				numCompactedDBs          int
 
-	for _, tc := range []struct {
-		numUnCompactedCommonDBs  int
-		numUnCompactedPerUserDBs int
-		numCompactedDBs          int
+				shouldInitializeCommonIndexSet bool
+				commonIndexSetState            *indexSetState
 
-		shouldInitializeCommonIndexSet bool
-		commonIndexSetState            *indexSetState
-
-		shouldInitializeUserIndexSet bool
-		userIndexSetState            *indexSetState
-	}{
-		{},
-		{
-			numCompactedDBs: 1,
-		},
-		{
-			numCompactedDBs: 2,
-			commonIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-			userIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		{
-			numUnCompactedCommonDBs: 1,
-			commonIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		{
-			numUnCompactedCommonDBs: 10,
-			commonIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		{
-			numUnCompactedCommonDBs: 10,
-			numCompactedDBs:         1,
-			commonIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		{
-			numUnCompactedCommonDBs: 10,
-			numCompactedDBs:         2,
-			commonIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-			userIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		{
-			numUnCompactedPerUserDBs: 1,
-			commonIndexSetState: &indexSetState{
-				removeSourceObjects: true,
-			},
-			userIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		{
-			numUnCompactedPerUserDBs: 1,
-			numCompactedDBs:          1,
-			commonIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-			userIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		{
-			numUnCompactedPerUserDBs: 1,
-			numCompactedDBs:          2,
-			commonIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-			userIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		{
-			numUnCompactedPerUserDBs: 10,
-			commonIndexSetState: &indexSetState{
-				removeSourceObjects: true,
-			},
-			userIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		{
-			numUnCompactedCommonDBs:  10,
-			numUnCompactedPerUserDBs: 10,
-			commonIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-			userIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		{
-			numUnCompactedCommonDBs:  10,
-			numUnCompactedPerUserDBs: 10,
-			numCompactedDBs:          1,
-			commonIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-			userIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-		{
-			numUnCompactedCommonDBs:  10,
-			numUnCompactedPerUserDBs: 10,
-			numCompactedDBs:          2,
-			commonIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-			userIndexSetState: &indexSetState{
-				uploadCompactedDB:   true,
-				removeSourceObjects: true,
-			},
-		},
-	} {
-		commonDBsConfig := testutil.DBsConfig{
-			NumCompactedDBs:   tc.numCompactedDBs,
-			NumUnCompactedDBs: tc.numUnCompactedCommonDBs,
-		}
-		perUserDBsConfig := testutil.PerUserDBsConfig{
-			DBsConfig: testutil.DBsConfig{
-				NumCompactedDBs:   tc.numCompactedDBs,
-				NumUnCompactedDBs: tc.numUnCompactedPerUserDBs,
-			},
-			NumUsers: numUsers,
-		}
-
-		t.Run(fmt.Sprintf("%s ; %s", commonDBsConfig.String(), perUserDBsConfig.String()), func(t *testing.T) {
-			tempDir := t.TempDir()
-
-			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-			tablePathInStorage := filepath.Join(objectStoragePath, tableName)
-			tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
-
-			testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
-			testutil.SetupTable(t, filepath.Join(objectStoragePath, fmt.Sprintf("%s-copy", tableName)), commonDBsConfig, perUserDBsConfig)
-
-			// do the compaction
-			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
-			require.NoError(t, err)
-
-			table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-				nil, nil)
-			require.NoError(t, err)
-
-			require.NoError(t, table.compact(false))
-
-			numUserIndexSets, numCommonIndexSets := 0, 0
-			for _, is := range table.indexSets {
-				if is.baseIndexSet.IsUserBasedIndexSet() {
-					require.Equal(t, tc.userIndexSetState.uploadCompactedDB, is.uploadCompactedDB)
-					require.Equal(t, tc.userIndexSetState.removeSourceObjects, is.removeSourceObjects)
-					numUserIndexSets++
-				} else {
-					require.Equal(t, tc.commonIndexSetState.uploadCompactedDB, is.uploadCompactedDB)
-					require.Equal(t, tc.commonIndexSetState.removeSourceObjects, is.removeSourceObjects)
-					numCommonIndexSets++
+				shouldInitializeUserIndexSet bool
+				userIndexSetState            *indexSetState
+			}{
+				{},
+				{
+					numCompactedDBs: 1,
+				},
+				{
+					numCompactedDBs: 2,
+					commonIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+					userIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+				{
+					numUnCompactedCommonDBs: 1,
+					commonIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+				{
+					numUnCompactedCommonDBs: 10,
+					commonIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+				{
+					numUnCompactedCommonDBs: 10,
+					numCompactedDBs:         1,
+					commonIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+				{
+					numUnCompactedCommonDBs: 10,
+					numCompactedDBs:         2,
+					commonIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+					userIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+				{
+					numUnCompactedPerUserDBs: 1,
+					commonIndexSetState: &indexSetState{
+						removeSourceObjects: true,
+					},
+					userIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+				{
+					numUnCompactedPerUserDBs: 1,
+					numCompactedDBs:          1,
+					commonIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+					userIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+				{
+					numUnCompactedPerUserDBs: 1,
+					numCompactedDBs:          2,
+					commonIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+					userIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+				{
+					numUnCompactedPerUserDBs: 10,
+					commonIndexSetState: &indexSetState{
+						removeSourceObjects: true,
+					},
+					userIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+				{
+					numUnCompactedCommonDBs:  10,
+					numUnCompactedPerUserDBs: 10,
+					commonIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+					userIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+				{
+					numUnCompactedCommonDBs:  10,
+					numUnCompactedPerUserDBs: 10,
+					numCompactedDBs:          1,
+					commonIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+					userIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+				{
+					numUnCompactedCommonDBs:  10,
+					numUnCompactedPerUserDBs: 10,
+					numCompactedDBs:          2,
+					commonIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+					userIndexSetState: &indexSetState{
+						uploadCompactedDB:   true,
+						removeSourceObjects: true,
+					},
+				},
+			} {
+				commonDBsConfig := testutil.DBsConfig{
+					NumCompactedDBs:   tc.numCompactedDBs,
+					NumUnCompactedDBs: tc.numUnCompactedCommonDBs,
 				}
-				require.False(t, is.compactedDBRecreated)
-			}
+				perUserDBsConfig := testutil.PerUserDBsConfig{
+					DBsConfig: testutil.DBsConfig{
+						NumCompactedDBs:   tc.numCompactedDBs,
+						NumUnCompactedDBs: tc.numUnCompactedPerUserDBs,
+					},
+					NumUsers: numUsers,
+				}
 
-			if tc.commonIndexSetState != nil {
-				require.Equal(t, 1, numCommonIndexSets)
-			} else {
-				require.Equal(t, 0, numCommonIndexSets)
-			}
+				t.Run(fmt.Sprintf("%s ; %s", commonDBsConfig.String(), perUserDBsConfig.String()), func(t *testing.T) {
+					tempDir := t.TempDir()
 
-			if tc.userIndexSetState != nil {
-				require.Equal(t, numUsers, numUserIndexSets)
-			} else {
-				require.Equal(t, 0, numUserIndexSets)
-			}
+					objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+					tablePathInStorage := filepath.Join(objectStoragePath, tableName)
+					tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
 
-			// verify the state in the storage after compaction.
-			expectedNumCommonDBs := 0
-			if (commonDBsConfig.NumUnCompactedDBs + commonDBsConfig.NumCompactedDBs) > 0 {
-				expectedNumCommonDBs = 1
-			}
-			numExpectedUsers := 0
-			if (perUserDBsConfig.NumUnCompactedDBs + perUserDBsConfig.NumCompactedDBs) > 0 {
-				numExpectedUsers = numUsers
-			}
-			validateTable(t, tablePathInStorage, expectedNumCommonDBs, numExpectedUsers, func(filename string) {
-				require.True(t, strings.HasSuffix(filename, ".gz"))
-			})
+					testutil.SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
+					testutil.SetupTable(t, filepath.Join(objectStoragePath, fmt.Sprintf("%s-copy", tableName)), commonDBsConfig, perUserDBsConfig)
 
-			// verify we have all the kvs in compacted db which were there in source dbs.
-			compareCompactedTable(t, tablePathInStorage, filepath.Join(objectStoragePath, "test-copy"))
+					// do the compaction
+					objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+					require.NoError(t, err)
 
-			// running compaction again should not do anything.
-			table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-				nil, nil)
-			require.NoError(t, err)
+					table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
+						nil, nil)
+					require.NoError(t, err)
 
-			require.NoError(t, table.compact(false))
+					require.NoError(t, table.compact(false))
 
-			for _, is := range table.indexSets {
-				require.False(t, is.uploadCompactedDB)
-				require.False(t, is.removeSourceObjects)
-				require.False(t, is.compactedDBRecreated)
+					numUserIndexSets, numCommonIndexSets := 0, 0
+					for _, is := range table.indexSets {
+						if is.baseIndexSet.IsUserBasedIndexSet() {
+							require.Equal(t, tc.userIndexSetState.uploadCompactedDB, is.uploadCompactedDB)
+							require.Equal(t, tc.userIndexSetState.removeSourceObjects, is.removeSourceObjects)
+							numUserIndexSets++
+						} else {
+							require.Equal(t, tc.commonIndexSetState.uploadCompactedDB, is.uploadCompactedDB)
+							require.Equal(t, tc.commonIndexSetState.removeSourceObjects, is.removeSourceObjects)
+							numCommonIndexSets++
+						}
+						require.False(t, is.compactedDBRecreated)
+					}
+
+					if tc.commonIndexSetState != nil {
+						require.Equal(t, 1, numCommonIndexSets)
+					} else {
+						require.Equal(t, 0, numCommonIndexSets)
+					}
+
+					if tc.userIndexSetState != nil {
+						require.Equal(t, numUsers, numUserIndexSets)
+					} else {
+						require.Equal(t, 0, numUserIndexSets)
+					}
+
+					// verify the state in the storage after compaction.
+					expectedNumCommonDBs := 0
+					if (commonDBsConfig.NumUnCompactedDBs + commonDBsConfig.NumCompactedDBs) > 0 {
+						expectedNumCommonDBs = 1
+					}
+					numExpectedUsers := 0
+					if (perUserDBsConfig.NumUnCompactedDBs + perUserDBsConfig.NumCompactedDBs) > 0 {
+						numExpectedUsers = numUsers
+					}
+					validateTable(t, tablePathInStorage, expectedNumCommonDBs, numExpectedUsers, func(filename string) {
+						require.True(t, strings.HasSuffix(filename, ".gz"))
+					})
+
+					// verify we have all the kvs in compacted db which were there in source dbs.
+					compareCompactedTable(t, tablePathInStorage, filepath.Join(objectStoragePath, "test-copy"))
+
+					// running compaction again should not do anything.
+					table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
+						nil, nil)
+					require.NoError(t, err)
+
+					require.NoError(t, table.compact(false))
+
+					for _, is := range table.indexSets {
+						require.False(t, is.uploadCompactedDB)
+						require.False(t, is.removeSourceObjects)
+						require.False(t, is.compactedDBRecreated)
+					}
+				})
 			}
 		})
 	}
 }
 
-type TableMarkerFunc func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error)
+type TableMarkerFunc func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error)
 
-func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
-	return t(ctx, tableName, db)
+func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
+	return t(ctx, tableName, userID, db, logger)
 }
 
 type IntervalMayHaveExpiredChunksFunc func(interval model.Interval, userID string) bool
@@ -309,7 +312,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 					require.True(t, os.IsNotExist(err))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 					return true, true, nil
 				}),
 			},
@@ -321,7 +324,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					})
 					compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 					return false, true, nil
 				}),
 			},
@@ -333,7 +336,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					})
 					compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 					return false, false, nil
 				}),
 			},
@@ -554,7 +557,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, false, nil
 			}),
 			expectedIndexSetState: indexSetState{
@@ -571,7 +574,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, false, nil
 			}),
 			compactedDBMtime: time.Now().Add(-recreateCompactedDBOlderThan / 2),
@@ -585,7 +588,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, true, nil
 			}),
 			expectedIndexSetState: indexSetState{
@@ -599,7 +602,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 				require.True(t, os.IsNotExist(err))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return true, true, nil
 			}),
 			expectedIndexSetState: indexSetState{
@@ -616,7 +619,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 				return false, false, nil
 			}),
 			compactedDBMtime:          time.Now().Add(-(recreateCompactedDBOlderThan + time.Minute)),

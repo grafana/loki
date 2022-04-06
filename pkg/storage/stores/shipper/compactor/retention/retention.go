@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -32,7 +33,7 @@ var errNoChunksFound = errors.New("no chunks found in table, please check if the
 
 type TableMarker interface {
 	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.
-	MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error)
+	MarkForDelete(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error)
 }
 
 type Marker struct {
@@ -58,16 +59,16 @@ func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration 
 }
 
 // MarkForDelete marks all chunks expired for a given table.
-func (t *Marker) MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 	start := time.Now()
 	status := statusSuccess
 	defer func() {
 		t.markerMetrics.tableProcessedDurationSeconds.WithLabelValues(tableName, status).Observe(time.Since(start).Seconds())
-		level.Debug(util_log.Logger).Log("msg", "finished to process table", "table", tableName, "duration", time.Since(start))
+		level.Debug(logger).Log("msg", "finished to process table", "duration", time.Since(start))
 	}()
-	level.Debug(util_log.Logger).Log("msg", "starting to process table", "table", tableName)
+	level.Debug(logger).Log("msg", "starting to process table")
 
-	empty, modified, err := t.markTable(ctx, tableName, db)
+	empty, modified, err := t.markTable(ctx, tableName, userID, db)
 	if err != nil {
 		status = statusFailure
 		return false, false, err
@@ -75,7 +76,7 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName string, db *bbolt.
 	return empty, modified, nil
 }
 
-func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+func (t *Marker) markTable(ctx context.Context, tableName, userID string, db *bbolt.DB) (bool, bool, error) {
 	schemaCfg, ok := schemaPeriodForTable(t.config, tableName)
 	if !ok {
 		return false, false, fmt.Errorf("could not find schema for table: %s", tableName)
@@ -93,7 +94,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 			return nil
 		}
 
-		chunkIt, err := newChunkIndexIterator(bucket, schemaCfg)
+		chunkIt, err := NewChunkIndexIterator(bucket, schemaCfg)
 		if err != nil {
 			return fmt.Errorf("failed to create chunk index iterator: %w", err)
 		}
@@ -119,14 +120,14 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 		return false, false, err
 	}
 	if empty {
-		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionDeleted).Inc()
+		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, userID, tableActionDeleted).Inc()
 		return empty, true, nil
 	}
 	if !modified {
-		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionNone).Inc()
+		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, userID, tableActionNone).Inc()
 		return empty, modified, nil
 	}
-	t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionModified).Inc()
+	t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, userID, tableActionModified).Inc()
 	return empty, modified, nil
 }
 
@@ -152,7 +153,7 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 			if len(nonDeletedIntervals) > 0 {
 				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, nonDeletedIntervals)
 				if err != nil {
-					return false, false, err
+					return false, false, fmt.Errorf("failed to rewrite chunk %s for interval %s with error %s", c.ChunkID, nonDeletedIntervals, err)
 				}
 
 				if wroteChunks {
@@ -340,7 +341,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 		}
 
 		newChunk := chunk.NewChunk(
-			userID, chks[0].Fingerprint, chks[0].Metric,
+			userID, chks[0].FingerprintModel(), chks[0].Metric,
 			facade,
 			interval.Start,
 			interval.End,
