@@ -980,9 +980,9 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			`sum(count_over_time({app="foo"}[3m]) * count(sum_over_time({app="foo"} | unwrap bar [5m])))`,
 			`sum(
 				(sum without(
-					   downstream<sum(count_over_time({app="foo"}[1m] offset 2m0s)), shard=<nil>>
-					++ downstream<sum(count_over_time({app="foo"}[1m] offset 1m0s)), shard=<nil>>
-					++ downstream<sum(count_over_time({app="foo"}[1m])), shard=<nil>>
+					   downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+					++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+					++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
 				) *
 				count (
 					sum without(
