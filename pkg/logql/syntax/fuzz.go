@@ -1,7 +1,7 @@
 //go:build gofuzz
 // +build gofuzz
 
-package logql
+package syntax
 
 func FuzzParseExpr(data []byte) int {
 	_, err := ParseExpr(string(data))
