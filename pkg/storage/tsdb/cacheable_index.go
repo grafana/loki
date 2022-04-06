@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -29,7 +31,8 @@ type CacheableIndex struct {
 	// Cache is a cache implementation used to store TSDB operation results.
 	cache.Cache
 
-	m CacheableIndexMetrics
+	m      CacheableIndexMetrics
+	logger log.Logger
 }
 
 type CacheableIndexMetrics struct {
@@ -105,11 +108,12 @@ func NewCacheMetrics(reg prometheus.Registerer) CacheableIndexMetrics {
 // NewCacheableIndex instantiate a new cacheable index given an index and a cache implementation.
 //
 // It assumes the cache is ready to be used.
-func NewCacheableIndex(index *TSDBIndex, cache cache.Cache, m CacheableIndexMetrics) CacheableIndex {
+func NewCacheableIndex(l log.Logger, index *TSDBIndex, cache cache.Cache, m CacheableIndexMetrics) CacheableIndex {
 	return CacheableIndex{
-		Index: index,
-		Cache: cache,
-		m:     m,
+		Index:  index,
+		Cache:  cache,
+		m:      m,
+		logger: l,
 	}
 }
 
@@ -329,6 +333,7 @@ func (i *CacheableIndex) CacheableOp(ctx context.Context, opName string, keyFn m
 	userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([][]byte, error) {
 	var res [][]byte
 
+	// TODO: opName is not used in key function, but function header comment says that it is?
 	key := keyFn(userID, from, through, shard, matchers...)
 	keys := []string{key}
 
@@ -337,13 +342,18 @@ func (i *CacheableIndex) CacheableOp(ctx context.Context, opName string, keyFn m
 	i.m.cacheGets.Inc()
 	if err != nil {
 		i.m.cacheGetErrors.Inc()
-		return nil, errors.Wrap(err, "cacheable op cache fetch")
+		level.Warn(i.logger).Log("msg", "cache fetch failed for operation", "operation", opName, "error", err)
 	}
 
 	i.m.cacheHits.Add(float64(len(response)))
 	i.m.cacheMisses.Add(float64(len(misses)))
 
 	res = append(res, response...)
+
+	// It's possible that the cache call failed entirely, and so we need to look for all keys
+	if len(response) == 0 && len(misses) == 0 {
+		misses = keys
+	}
 
 	// fill misses and populate cache with them.
 	for _, miss := range misses {
