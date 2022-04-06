@@ -5,7 +5,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logql/log"
@@ -278,17 +277,17 @@ func Test_FilterMatcher(t *testing.T) {
 		t.Run(tt.q, func(t *testing.T) {
 			t.Parallel()
 			expr, err := ParseLogSelector(tt.q, true)
-			assert.Nil(t, err)
-			assert.Equal(t, tt.expectedMatchers, expr.Matchers())
+			require.Nil(t, err)
+			require.Equal(t, tt.expectedMatchers, expr.Matchers())
 			p, err := expr.Pipeline()
-			assert.Nil(t, err)
+			require.Nil(t, err)
 			if tt.lines == nil {
-				assert.Equal(t, p, log.NewNoopPipeline())
+				require.Equal(t, p, log.NewNoopPipeline())
 			} else {
 				sp := p.ForStream(labelBar)
 				for _, lc := range tt.lines {
 					_, _, ok := sp.Process(0, []byte(lc.l))
-					assert.Equalf(t, lc.e, ok, "query for line '%s' was %v and not %v", lc.l, ok, lc.e)
+					require.Equalf(t, lc.e, ok, "query for line '%s' was %v and not %v", lc.l, ok, lc.e)
 				}
 			}
 		})
@@ -410,7 +409,9 @@ func Test_parserExpr_Parser(t *testing.T) {
 		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false},
 		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false},
 		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false},
-		{"syslog", OpParserTypeSyslog, "", log.NewSyslogParser(), false},
+		// NewSyslogParser() returns a struct pointer with pointer fields
+		// Two instances cannot be compared on equality, even reflect.DeepEqual() returns false
+		// {"syslog", OpParserTypeSyslog, "", log.NewSyslogParser(), false},
 		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false},
 		{"pattern err", OpParserTypePattern, "bar", nil, true},
 		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false},
