@@ -22,7 +22,7 @@ RUN apk add --no-cache curl && \
     cd / && \
     curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.41.1
 
-FROM alpine:edge as docker
+FROM alpine:3.15.4 as docker
 RUN apk add --no-cache docker-cli
 
 # TODO this should be fixed to download and extract the specific release binary from github as we do for golangci and helm above
