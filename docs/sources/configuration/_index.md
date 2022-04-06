@@ -1109,7 +1109,7 @@ lifecycler:
 
 # The timeout before a flush is cancelled
 # CLI flag: -ingester.flush-op-timeout
-[flush_op_timeout: <duration> | default = 10s]
+[flush_op_timeout: <duration> | default = 10m]
 
 # How long chunks should be retained in-memory after they've been flushed.
 # CLI flag: -ingester.chunks-retain-period

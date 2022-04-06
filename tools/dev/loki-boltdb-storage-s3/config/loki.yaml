@@ -37,7 +37,7 @@ ingester:
     chunk_idle_period: 15m
     chunk_retain_period: 6m
     chunk_target_size: 1.572864e+06
-    flush_op_timeout: 30s
+    flush_op_timeout: 10m
     lifecycler:
         heartbeat_period: 10s
         interface_names:
