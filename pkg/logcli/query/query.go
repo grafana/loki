@@ -12,6 +12,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/generationnumber"
+
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 
@@ -265,7 +267,7 @@ func cacheGenNumLoader(conf *loki.Config, overrides *validation.Overrides) (chun
 		deleteStore = deletion.NewDeleteStoreFromIndexClient(indexClient)
 	}
 
-	return deletion.NewGenNumberLoader(deleteStore, prometheus.DefaultRegisterer), nil
+	return generationnumber.NewGenNumberLoader(deleteStore, prometheus.DefaultRegisterer), nil
 }
 
 // SetInstant makes the Query an instant type

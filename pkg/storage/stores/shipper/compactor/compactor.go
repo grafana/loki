@@ -229,7 +229,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 			return err
 		}
 
-		if c.deleteMode == deletion.WholeStreamDeletion {
+		if c.deleteMode != deletion.Disabled {
 			deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
 			c.deleteRequestsStore, err = deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)

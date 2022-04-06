@@ -9,7 +9,7 @@ import (
 	"os"
 	rt "runtime"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/generationnumber"
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
@@ -252,7 +252,7 @@ type Loki struct {
 	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
 	usageReport              *usagestats.Reporter
-	cacheGenNumLoader        *deletion.GenNumberLoader
+	cacheGenNumLoader        *generationnumber.GenNumberLoader
 
 	clientMetrics chunk_storage.ClientMetrics
 
@@ -489,7 +489,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(UsageReport, t.initUsageReport)
-	mm.RegisterModule(CacheGenNumberLoader, t.initCacheGenNumberLoader, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -503,10 +502,10 @@ func (t *Loki) setupModuleManager() error {
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
-		Store:                    {Overrides, CacheGenNumberLoader},
+		Store:                    {Overrides},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport},
-		QueryFrontendTripperware: {Server, Overrides, TenantConfigs, CacheGenNumberLoader},
+		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, UsageReport},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
@@ -517,7 +516,6 @@ func (t *Loki) setupModuleManager() error {
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},
 		Write:                    {Ingester, Distributor},
-		CacheGenNumberLoader:     {Overrides},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, or read.

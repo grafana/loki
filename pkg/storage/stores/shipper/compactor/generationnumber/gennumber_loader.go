@@ -1,4 +1,4 @@
-package deletion
+package generationnumber
 
 import (
 	"context"
@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/go-kit/log/level"
 
@@ -28,10 +26,7 @@ type GenNumberLoader struct {
 
 type genNumberGetter interface {
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
-}
-
-type genLoaderMetrics struct {
-	cacheGenLoadFailures prometheus.Counter
+	Source() string
 }
 
 func NewGenNumberLoader(g genNumberGetter, registerer prometheus.Registerer) *GenNumberLoader {
@@ -47,16 +42,6 @@ func NewGenNumberLoader(g genNumberGetter, registerer prometheus.Registerer) *Ge
 	go l.loop()
 
 	return l
-}
-
-func newGenLoaderMetrics(r prometheus.Registerer) *genLoaderMetrics {
-	return &genLoaderMetrics{
-		cacheGenLoadFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "delete_cache_gen_load_failures_total",
-			Help:      "Total number of failures while loading cache generation number using gen number loader",
-		}),
-	}
 }
 
 func (l *GenNumberLoader) loop() {
@@ -151,7 +136,7 @@ func (l *GenNumberLoader) getCacheGenNumber(userID string) string {
 	genNumber, err := l.numberGetter.GetCacheGenerationNumber(context.Background(), userID)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error loading cache generation numbers", "err", err)
-		l.metrics.cacheGenLoadFailures.Inc()
+		l.metrics.cacheGenLoadFailures.WithLabelValues(l.numberGetter.Source()).Inc()
 		return ""
 	}
 
@@ -170,4 +155,8 @@ type noopNumberGetter struct{}
 
 func (g *noopNumberGetter) GetCacheGenerationNumber(_ context.Context, _ string) (string, error) {
 	return "", nil
+}
+
+func (g *noopNumberGetter) Source() string {
+	return ""
 }

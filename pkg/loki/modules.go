@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/generationnumber"
+
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/NYTimes/gziphandler"
@@ -89,7 +91,6 @@ const (
 	Read                     string = "read"
 	Write                    string = "write"
 	UsageReport              string = "usage-report"
-	CacheGenNumberLoader     string = "cache-gen-number-loader"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -414,6 +415,11 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
+	deleteStore, err := t.deleteRequestsStore()
+	if err != nil {
+		return nil, err
+	}
+
 	chunkStore, err := chunk_storage.NewStore(
 		t.Cfg.StorageConfig.Config,
 		t.Cfg.ChunkStoreConfig.StoreConfig,
@@ -421,7 +427,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		t.overrides,
 		t.clientMetrics,
 		prometheus.DefaultRegisterer,
-		t.cacheGenNumLoader,
+		generationnumber.NewGenNumberLoader(deleteStore, prometheus.DefaultRegisterer),
 		util_log.Logger,
 	)
 	if err != nil {
@@ -487,12 +493,17 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { ret
 func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
+	genNumberGetter, err := t.frontendGenerationNumberGetter()
+	if err != nil {
+		return nil, err
+	}
+
 	tripperware, stopper, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.overrides,
 		t.Cfg.SchemaConfig.SchemaConfig,
-		t.cacheGenNumLoader,
+		generationnumber.NewGenNumberLoader(genNumberGetter, prometheus.DefaultRegisterer),
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -502,6 +513,29 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	t.QueryFrontEndTripperware = tripperware
 
 	return services.NewIdleService(nil, nil), nil
+}
+
+func (t *Loki) frontendGenerationNumberGetter() (generationnumber.CacheGenClient, error) {
+	filteringEnabled, err := deletion.FilteringEnabled(t.Cfg.CompactorConfig.DeletionMode)
+	if err != nil {
+		return nil, err
+	}
+
+	if !filteringEnabled {
+		return deletion.NewNoOpDeleteRequestsStore(), nil
+	}
+
+	compactorAddress := t.Cfg.Frontend.CompactorAddress
+	if t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read) {
+		// In single binary or read modes, this module depends on Server
+		compactorAddress = fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort)
+	}
+
+	if compactorAddress == "" {
+		return nil, errors.New("query filtering for deletes requires 'compactor_address' to be configured")
+	}
+
+	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second}), nil
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
@@ -760,11 +794,12 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 
-	// TODO: update this when the other deletion modes are available
-	if t.Cfg.CompactorConfig.RetentionEnabled && t.compactor.DeleteMode() == deletion.WholeStreamDeletion {
+	if t.Cfg.CompactorConfig.RetentionEnabled && t.compactor.DeleteMode() != deletion.Disabled {
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler)))
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler)))
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler)))
+
+		t.Server.HTTP.Path("/loki/api/v1/generation_numbers").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler)))
 	}
 
 	return t.compactor, nil
@@ -831,21 +866,6 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 	}
 	t.usageReport = ur
 	return ur, nil
-}
-
-func (t *Loki) initCacheGenNumberLoader() (_ services.Service, err error) {
-	level.Debug(util_log.Logger).Log("msg", "initializing cache generation number generator")
-
-	deleteStore, err := t.deleteRequestsStore()
-	if err != nil {
-		return nil, err
-	}
-	t.cacheGenNumLoader = deletion.NewGenNumberLoader(deleteStore, prometheus.DefaultRegisterer)
-
-	return services.NewIdleService(nil, func(_ error) error {
-		deleteStore.Stop()
-		return nil
-	}), nil
 }
 
 func (t *Loki) deleteRequestsStore() (deletion.DeleteRequestsStore, error) {
