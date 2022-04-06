@@ -10,11 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// no file error
-// single file passthrough
-// multi file works
-// multi file dedupes
-
 func TestCompactor(t *testing.T) {
 	for _, tc := range []struct {
 		desc  string
@@ -83,6 +78,263 @@ func TestCompactor(t *testing.T) {
 					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
 					Start:       2,
 					End:         5,
+					Checksum:    2,
+				},
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+					Start:       1,
+					End:         10,
+					Checksum:    3,
+				},
+			},
+		},
+		{
+			desc: "multi file",
+			err:  false,
+			input: [][]LoadableSeries{
+				{
+					{
+						Labels: mustParseLabels(`{foo="bar"}`),
+						Chunks: []index.ChunkMeta{
+							{
+								MinTime:  0,
+								MaxTime:  3,
+								Checksum: 0,
+							},
+							{
+								MinTime:  1,
+								MaxTime:  4,
+								Checksum: 1,
+							},
+							{
+								MinTime:  2,
+								MaxTime:  5,
+								Checksum: 2,
+							},
+						},
+					},
+					{
+						Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+						Chunks: []index.ChunkMeta{
+							{
+								MinTime:  1,
+								MaxTime:  10,
+								Checksum: 3,
+							},
+						},
+					},
+				},
+				{
+					{
+						Labels: mustParseLabels(`{foo="bar", a="b"}`),
+						Chunks: []index.ChunkMeta{
+							{
+								MinTime:  10,
+								MaxTime:  11,
+								Checksum: 0,
+							},
+							{
+								MinTime:  11,
+								MaxTime:  14,
+								Checksum: 1,
+							},
+							{
+								MinTime:  12,
+								MaxTime:  15,
+								Checksum: 2,
+							},
+						},
+					},
+				},
+			},
+			exp: []ChunkRef{
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Start:       0,
+					End:         3,
+					Checksum:    0,
+				},
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Start:       1,
+					End:         4,
+					Checksum:    1,
+				},
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Start:       2,
+					End:         5,
+					Checksum:    2,
+				},
+
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Start:       10,
+					End:         11,
+					Checksum:    0,
+				},
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Start:       11,
+					End:         14,
+					Checksum:    1,
+				},
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Start:       12,
+					End:         15,
+					Checksum:    2,
+				},
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+					Start:       1,
+					End:         10,
+					Checksum:    3,
+				},
+			},
+		},
+		{
+			desc: "multi file dedupe",
+			err:  false,
+			input: [][]LoadableSeries{
+				{
+					{
+						Labels: mustParseLabels(`{foo="bar"}`),
+						Chunks: []index.ChunkMeta{
+							{
+								MinTime:  0,
+								MaxTime:  3,
+								Checksum: 0,
+							},
+							{
+								MinTime:  1,
+								MaxTime:  4,
+								Checksum: 1,
+							},
+							{
+								MinTime:  2,
+								MaxTime:  5,
+								Checksum: 2,
+							},
+						},
+					},
+					{
+						Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+						Chunks: []index.ChunkMeta{
+							{
+								MinTime:  1,
+								MaxTime:  10,
+								Checksum: 3,
+							},
+						},
+					},
+				},
+				// duplicate of first index
+				{
+					{
+						Labels: mustParseLabels(`{foo="bar"}`),
+						Chunks: []index.ChunkMeta{
+							{
+								MinTime:  0,
+								MaxTime:  3,
+								Checksum: 0,
+							},
+							{
+								MinTime:  1,
+								MaxTime:  4,
+								Checksum: 1,
+							},
+							{
+								MinTime:  2,
+								MaxTime:  5,
+								Checksum: 2,
+							},
+						},
+					},
+					{
+						Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+						Chunks: []index.ChunkMeta{
+							{
+								MinTime:  1,
+								MaxTime:  10,
+								Checksum: 3,
+							},
+						},
+					},
+				},
+				{
+					{
+						Labels: mustParseLabels(`{foo="bar", a="b"}`),
+						Chunks: []index.ChunkMeta{
+							{
+								MinTime:  10,
+								MaxTime:  11,
+								Checksum: 0,
+							},
+							{
+								MinTime:  11,
+								MaxTime:  14,
+								Checksum: 1,
+							},
+							{
+								MinTime:  12,
+								MaxTime:  15,
+								Checksum: 2,
+							},
+						},
+					},
+				},
+			},
+			exp: []ChunkRef{
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Start:       0,
+					End:         3,
+					Checksum:    0,
+				},
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Start:       1,
+					End:         4,
+					Checksum:    1,
+				},
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Start:       2,
+					End:         5,
+					Checksum:    2,
+				},
+
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Start:       10,
+					End:         11,
+					Checksum:    0,
+				},
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Start:       11,
+					End:         14,
+					Checksum:    1,
+				},
+				{
+					User:        "fake",
+					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Start:       12,
+					End:         15,
 					Checksum:    2,
 				},
 				{
