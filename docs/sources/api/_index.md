@@ -1102,7 +1102,7 @@ Displays a web page with the compactor hash ring status, including the state, he
 
 ### `POST /loki/api/v1/delete`
 
-Create a new delete request. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-log-entry-deletion).
+Create a new delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-log-entry-deletion).
 
 ### `GET /loki/api/v1/delete`
 
@@ -1110,4 +1110,4 @@ List the existing delete requests for the authenticated tenant. More details can
 
 ### `DELETE /loki/api/v1/delete`
 
-Remove a delete request. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-cancellation-of-a-delete-request).
+Remove a delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-cancellation-of-a-delete-request).
