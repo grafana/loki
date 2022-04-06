@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -29,7 +28,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 				"err", err,
 			)
 		}
-		serverutil.JSONError(w, http.StatusBadRequest, err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -65,7 +64,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 				"err", body,
 			)
 		}
-		serverutil.JSONError(w, int(resp.Code), body)
+		http.Error(w, body, int(resp.Code))
 	} else {
 		if d.tenantConfigs.LogPushRequest(userID) {
 			level.Debug(logger).Log(
@@ -74,7 +73,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 				"err", err.Error(),
 			)
 		}
-		serverutil.JSONError(w, http.StatusInternalServerError, err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
