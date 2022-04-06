@@ -68,7 +68,7 @@ type Config struct {
 	RetentionEnabled          bool            `yaml:"retention_enabled"`
 	RetentionDeleteDelay      time.Duration   `yaml:"retention_delete_delay"`
 	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
-	DeletionMode              string          `yaml:"deletion_enabled"`
+	DeletionMode              string          `yaml:"deletion_mode"`
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
