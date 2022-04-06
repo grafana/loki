@@ -44,7 +44,7 @@ URL encode the `query` parameter. This sample form of a cURL command URL encodes
 
 ```
 curl -g -X POST \
-  'http://127.0.0.1:3100/loki/api/v1/delete?query[]={foo="bar"}&start=1591616227&end=1591619692' \
+  'http://127.0.0.1:3100/loki/api/v1/delete?query={foo="bar"}&start=1591616227&end=1591619692' \
   -H 'x-scope-orgid: 1'
 ```
 
