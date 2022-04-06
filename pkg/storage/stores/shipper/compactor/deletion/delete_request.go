@@ -19,7 +19,7 @@ type DeleteRequest struct {
 	matchers []*labels.Matcher `json:"-"`
 }
 
-func (d *DeleteRequest) AddQuery(logQL string) error {
+func (d *DeleteRequest) SetQuery(logQL string) error {
 	d.Query = logQL
 	matchers, err := parseDeletionQuery(logQL)
 	if err != nil {

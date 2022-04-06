@@ -70,7 +70,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 		)
 		require.NoError(t, err)
 		user1ExpectedRequests[i].RequestID = string(requestID)
-		require.NoError(t, user1ExpectedRequests[i].AddQuery(user1ExpectedRequests[i].Query))
+		require.NoError(t, user1ExpectedRequests[i].SetQuery(user1ExpectedRequests[i].Query))
 
 		requestID, err = testDeleteRequestsStore.(*deleteRequestsStore).addDeleteRequest(
 			context.Background(),
@@ -82,7 +82,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 		)
 		require.NoError(t, err)
 		user2ExpectedRequests[i].RequestID = string(requestID)
-		require.NoError(t, user2ExpectedRequests[i].AddQuery(user2ExpectedRequests[i].Query))
+		require.NoError(t, user2ExpectedRequests[i].SetQuery(user2ExpectedRequests[i].Query))
 	}
 
 	// get all requests with StatusReceived and see if they have expected values
