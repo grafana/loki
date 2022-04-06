@@ -40,7 +40,7 @@ Query parameters:
 
 A 204 response indicates success.
 
-URL encode the `query[]` parameter. This sample form of a cURL command URL encodes `query[]={foo="bar"}`:
+URL encode the `query` parameter. This sample form of a cURL command URL encodes `query={foo="bar"}`:
 
 ```
 curl -g -X POST \
