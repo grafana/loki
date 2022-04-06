@@ -8,10 +8,11 @@ import (
 	"path/filepath"
 	"sort"
 
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
 // Identifier has all the information needed to resolve a TSDB index
