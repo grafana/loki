@@ -9,6 +9,20 @@ import (
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
+func LoadTSDBIdentifier(dir string, id index.Identifier) (*TSDBIndex, error) {
+	return LoadTSDB(id.FilePath(dir))
+}
+
+func LoadTSDB(name string) (*TSDBIndex, error) {
+	reader, err := index.NewFileReader(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewTSDBIndex(reader), nil
+
+}
+
 // nolint
 type TSDBIndex struct {
 	reader IndexReader
@@ -18,6 +32,10 @@ func NewTSDBIndex(reader IndexReader) *TSDBIndex {
 	return &TSDBIndex{
 		reader: reader,
 	}
+}
+
+func (i *TSDBIndex) Close() error {
+	return i.reader.Close()
 }
 
 func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
@@ -38,8 +56,8 @@ func (i *TSDBIndex) forSeries(
 	}
 
 	var ls labels.Labels
-	chks := chunkMetasPool.Get()
-	defer chunkMetasPool.Put(chks)
+	chks := ChunkMetasPool.Get()
+	defer ChunkMetasPool.Put(chks)
 
 	for p.Next() {
 		hash, err := i.reader.Series(p.At(), &ls, &chks)
@@ -132,4 +150,18 @@ func (i *TSDBIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, na
 		return i.reader.LabelValues(name)
 	}
 	return labelValuesWithMatchers(i.reader, name, matchers...)
+}
+
+func (i *TSDBIndex) Checksum() uint32 {
+	return i.reader.Checksum()
+}
+
+func (i *TSDBIndex) Identifier(tenant string) index.Identifier {
+	lower, upper := i.Bounds()
+	return index.Identifier{
+		Tenant:   tenant,
+		From:     lower,
+		Through:  upper,
+		Checksum: i.Checksum(),
+	}
 }

@@ -50,7 +50,7 @@ const (
 	// FormatV2 represents 2 version of index.
 	FormatV2 = 2
 
-	indexFilename = "index"
+	IndexFilename = "index"
 
 	// store every 1024 series' fingerprints in the fingerprint offsets table
 	fingerprintInterval = 1 << 10
@@ -157,6 +157,7 @@ type TOC struct {
 // Metadata is TSDB-level metadata
 type Metadata struct {
 	From, Through int64
+	Checksum      uint32
 }
 
 func (m *Metadata) EnsureBounds(from, through int64) {
@@ -196,8 +197,9 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 		PostingsTable:      d.Be64(),
 		FingerprintOffsets: d.Be64(),
 		Metadata: Metadata{
-			From:    d.Be64int64(),
-			Through: d.Be64int64(),
+			From:     d.Be64int64(),
+			Through:  d.Be64int64(),
+			Checksum: expCRC,
 		},
 	}, nil
 }
@@ -1548,6 +1550,10 @@ func (r *Reader) lookupSymbol(o uint32) (string, error) {
 
 func (r *Reader) Bounds() (int64, int64) {
 	return r.toc.Metadata.From, r.toc.Metadata.Through
+}
+
+func (r *Reader) Checksum() uint32 {
+	return r.toc.Metadata.Checksum
 }
 
 // Symbols returns an iterator over the symbols that exist within the index.
