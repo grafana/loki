@@ -938,6 +938,7 @@ steps:
 trigger:
   event:
   - push
+  - tag
   ref:
     include:
     - refs/heads/main
@@ -973,6 +974,7 @@ steps:
 trigger:
   event:
   - push
+  - tag
   ref:
     include:
     - refs/heads/main
@@ -1101,6 +1103,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 70252f32b40ca530ac9c8013f1991ddaba11c459d4b3e5eaae0d6cf10aa19617
+hmac: 20f2dd84e89dff07703d4a7c84c0b0d267b6082745025804bc91a26c4a180779
 
 ...
