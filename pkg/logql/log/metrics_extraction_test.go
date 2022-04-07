@@ -146,11 +146,13 @@ func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {
 func TestNewLineSampleExtractor(t *testing.T) {
 	se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, false)
 	require.NoError(t, err)
+
 	lbs := labels.Labels{
 		{Name: "namespace", Value: "dev"},
 		{Name: "cluster", Value: "us-central1"},
 	}
 	sort.Sort(lbs)
+
 	sse := se.ForStream(lbs)
 	f, l, ok := sse.Process(0, []byte(`foo`))
 	require.True(t, ok)
@@ -162,16 +164,16 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	require.Equal(t, 1., f)
 	assertLabelResult(t, lbs, l)
 
-	filter := mustFilter(NewFilter("foo", labels.MatchEqual)).ToStage()
+	stage := mustFilter(NewFilter("foo", labels.MatchEqual)).ToStage()
+	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{stage}, []string{"namespace"}, false, false)
 	require.NoError(t, err)
 
-	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{filter}, []string{"namespace"}, false, false)
-	require.NoError(t, err)
 	sse = se.ForStream(lbs)
 	f, l, ok = sse.Process(0, []byte(`foo`))
 	require.True(t, ok)
 	require.Equal(t, 3., f)
 	assertLabelResult(t, labels.Labels{labels.Label{Name: "namespace", Value: "dev"}}, l)
+
 	sse = se.ForStream(lbs)
 	_, _, ok = sse.Process(0, []byte(`nope`))
 	require.False(t, ok)
@@ -190,9 +192,11 @@ func TestFilteringSampleExtractor(t *testing.T) {
 		labels labels.Labels
 		ok     bool
 	}{
-		{"it doesn't fall in the timerange", 1, "line", labels.Labels{{Name: "baz", Value: "foo"}}, true},
+		{"it is before the timerange", 6, "line", labels.Labels{{Name: "baz", Value: "foo"}}, true},
+		{"it is before the timerange", 1, "line", labels.Labels{{Name: "baz", Value: "foo"}}, true},
 		{"it doesn't match the filter", 3, "all good", labels.Labels{{Name: "baz", Value: "foo"}}, true},
 		{"it doesn't match all the selectors", 3, "line", labels.Labels{{Name: "foo", Value: "bar"}}, true},
+		{"it doesn't match any selectors", 3, "line", labels.Labels{{Name: "beep", Value: "boop"}}, true},
 		{"it matches all selectors", 3, "line", labels.Labels{{Name: "foo", Value: "bar"}, {Name: "bar", Value: "baz"}}, false},
 		{"it tries all the filters", 5, "line", labels.Labels{{Name: "baz", Value: "foo"}}, false},
 	}
@@ -214,6 +218,7 @@ func newStubExtractor() *stubExtractor {
 	}
 }
 
+// A stub always returns the same data
 type stubExtractor struct {
 	sp *stubStreamExtractor
 }
@@ -222,6 +227,7 @@ func (p *stubExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
 	return p.sp
 }
 
+// A stub always returns the same data
 type stubStreamExtractor struct{}
 
 func (p *stubStreamExtractor) BaseLabels() LabelsResult {

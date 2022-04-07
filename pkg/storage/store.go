@@ -7,8 +7,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/deletion"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -29,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/deletion"
 )
 
 var (

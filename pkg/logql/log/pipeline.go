@@ -160,7 +160,7 @@ func (p *streamPipeline) BaseLabels() LabelsResult { return p.builder.currentRes
 
 // PipelineFilter contains a set of matchers and a pipeline that, when matched,
 // causes an entry from a log stream to be skipped. Matching entries must also
-// fall between 'start' and 'end'
+// fall between 'start' and 'end', inclusive
 type PipelineFilter struct {
 	Start    int64
 	End      int64
@@ -235,7 +235,7 @@ func (sp *filteringStreamPipeline) Process(ts int64, line []byte) ([]byte, Label
 		}
 
 		_, _, skip := filter.pipeline.Process(ts, line)
-		if skip { //When the filter matches, don't run the next step
+		if skip { // When the filter matches, don't run the next step
 			return nil, nil, false
 		}
 	}
@@ -250,7 +250,7 @@ func (sp *filteringStreamPipeline) ProcessString(ts int64, line string) (string,
 		}
 
 		_, _, skip := filter.pipeline.ProcessString(ts, line)
-		if skip { //When the filter matches, don't run the next step
+		if skip { // When the filter matches, don't run the next step
 			return "", nil, false
 		}
 	}

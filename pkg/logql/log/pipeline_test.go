@@ -57,25 +57,27 @@ func TestFilteringPipeline(t *testing.T) {
 	}, newStubPipeline())
 
 	tt := []struct {
-		name   string
-		ts     int64
-		line   string
-		labels labels.Labels
-		ok     bool
+		name              string
+		ts                int64
+		line              string
+		inputStreamLabels labels.Labels
+		ok                bool
 	}{
-		{"it doesn't fall in the timerange", 1, "line", labels.Labels{{Name: "baz", Value: "foo"}}, true},
+		{"it is before the timerange", 1, "line", labels.Labels{{Name: "baz", Value: "foo"}}, true},
+		{"it is after the timerange", 6, "line", labels.Labels{{Name: "baz", Value: "foo"}}, true},
 		{"it doesn't match the filter", 3, "all good", labels.Labels{{Name: "baz", Value: "foo"}}, true},
 		{"it doesn't match all the selectors", 3, "line", labels.Labels{{Name: "foo", Value: "bar"}}, true},
+		{"it doesn't match any selectors", 3, "line", labels.Labels{{Name: "beep", Value: "boop"}}, true},
 		{"it matches all selectors", 3, "line", labels.Labels{{Name: "foo", Value: "bar"}, {Name: "bar", Value: "baz"}}, false},
 		{"it tries all the filters", 5, "line", labels.Labels{{Name: "baz", Value: "foo"}}, false},
 	}
 
 	for _, test := range tt {
 		t.Run(test.name, func(t *testing.T) {
-			_, _, ok := p.ForStream(test.labels).Process(test.ts, []byte(test.line))
+			_, _, ok := p.ForStream(test.inputStreamLabels).Process(test.ts, []byte(test.line))
 			require.Equal(t, test.ok, ok)
 
-			_, _, ok = p.ForStream(test.labels).ProcessString(test.ts, test.line)
+			_, _, ok = p.ForStream(test.inputStreamLabels).ProcessString(test.ts, test.line)
 			require.Equal(t, test.ok, ok)
 		})
 	}
@@ -101,6 +103,7 @@ func newStubPipeline() *stubPipeline {
 	}
 }
 
+// A stub always returns the same data
 type stubPipeline struct {
 	sp *stubStreamPipeline
 }
@@ -109,6 +112,7 @@ func (p *stubPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	return p.sp
 }
 
+// A stub always returns the same data
 type stubStreamPipeline struct{}
 
 func (p *stubStreamPipeline) BaseLabels() LabelsResult {
