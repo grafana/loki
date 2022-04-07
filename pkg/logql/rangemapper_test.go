@@ -54,9 +54,8 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
-		expr       string
-		expected   string
-		expectNoop bool
+		expr     string
+		expected string
 	}{
 		// Range vector aggregators
 		{
@@ -66,7 +65,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<bytes_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
 				++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
 			)`,
-			false,
 		},
 		{
 			`count_over_time({app="foo"}[3m])`,
@@ -75,7 +73,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
 				++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
 			)`,
-			false,
 		},
 		{
 			`sum_over_time({app="foo"} | unwrap bar [3m])`,
@@ -84,7 +81,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 1m0s), shard=<nil>>
 				++ downstream<sum_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
 			)`,
-			false,
 		},
 		{
 			`max_over_time({app="foo"} | unwrap bar [3m])`,
@@ -93,7 +89,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<max_over_time({app="foo"} | unwrap bar [1m] offset 1m0s), shard=<nil>>
 				++ downstream<max_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
 			)`,
-			false,
 		},
 		{
 			`max_over_time({app="foo"} | json | unwrap bar [3m]) by (bar)`,
@@ -102,7 +97,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<max_over_time({app="foo"} | json | unwrap bar [1m] offset 1m0s) by (bar), shard=<nil>>
 				++ downstream<max_over_time({app="foo"} | json | unwrap bar [1m]) by (bar), shard=<nil>>
 			)`,
-			false,
 		},
 		{
 			`max_over_time({app="foo"} | unwrap bar [3m]) by (baz)`,
@@ -111,7 +105,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<max_over_time({app="foo"} | unwrap bar [1m] offset 1m0s) by (baz), shard=<nil>>
 				++ downstream<max_over_time({app="foo"} | unwrap bar [1m]) by (baz), shard=<nil>>
 			)`,
-			false,
 		},
 		{
 			`min_over_time({app="foo"} | unwrap bar [3m])`,
@@ -120,7 +113,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<min_over_time({app="foo"} | unwrap bar [1m] offset 1m0s), shard=<nil>>
 				++ downstream<min_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
 			)`,
-			false,
 		},
 		{
 			`min_over_time({app="foo"} | unwrap bar [3m]) by (baz)`,
@@ -129,7 +121,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<min_over_time({app="foo"} | unwrap bar [1m] offset 1m0s) by (baz), shard=<nil>>
 				++ downstream<min_over_time({app="foo"} | unwrap bar [1m]) by (baz), shard=<nil>>
 			)`,
-			false,
 		},
 		{
 			`rate({app="foo"}[3m])`,
@@ -138,7 +129,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
 				++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
 			) / 180)`,
-			false,
 		},
 		{
 			`bytes_rate({app="foo"}[3m])`,
@@ -147,7 +137,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<bytes_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
 				++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
 			) / 180)`,
-			false,
 		},
 
 		// Vector aggregator - sum
@@ -160,7 +149,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum(bytes_over_time({app="foo"}[1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum(count_over_time({app="foo"}[3m]))`,
@@ -171,7 +159,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum(count_over_time({app="foo"}[1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum(sum_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -182,7 +169,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum(sum_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum(max_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -193,7 +179,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum(max_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum(max_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -204,7 +189,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum(max_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum(min_over_time({app="foo"}  | unwrap bar [3m]))`,
@@ -215,7 +199,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum(min_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum(min_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -226,7 +209,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum(min_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum(rate({app="foo"}[3m]))`,
@@ -237,7 +219,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum(count_over_time({app="foo"}[1m])), shard=<nil>>
 				) / 180)
 			)`,
-			false,
 		},
 		{
 			`sum(bytes_rate({app="foo"}[3m]))`,
@@ -248,7 +229,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum(bytes_over_time({app="foo"}[1m])), shard=<nil>>
 				) / 180)
 			)`,
-			false,
 		},
 
 		// Vector aggregator - sum by
@@ -261,7 +241,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum by (baz) (bytes_over_time({app="foo"} [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum by (baz) (count_over_time({app="foo"}[3m]))`,
@@ -272,7 +251,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum by (baz) (count_over_time({app="foo"} [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum by (baz) (sum_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -283,7 +261,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum by (baz) (sum_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum by (baz) (max_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -294,7 +271,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum by (baz) (max_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum by (baz) (max_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -305,7 +281,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum by (baz) (max_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum by (baz) (min_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -316,7 +291,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum by (baz) (min_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum by (baz) (min_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -327,7 +301,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum by (baz) (min_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`sum by (baz) (rate({app="foo"}[3m]))`,
@@ -338,7 +311,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 						++ downstream<sum by (baz) (count_over_time({app="foo"}[1m])), shard=<nil>>
 					) / 180)
 				)`,
-			false,
 		},
 		{
 			`sum by (baz) (bytes_rate({app="foo"}[3m]))`,
@@ -349,7 +321,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 						++ downstream<sum by (baz) (bytes_over_time({app="foo"}[1m])), shard=<nil>>
 					) / 180)
 				)`,
-			false,
 		},
 
 		// Vector aggregator - count
@@ -362,7 +333,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count(count_over_time({app="foo"}[3m]))`,
@@ -373,7 +343,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count(sum_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -384,7 +353,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count(max_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -395,7 +363,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count(max_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -406,7 +373,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max_over_time({app="foo"} | unwrap bar [1m]) by (baz), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count(min_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -417,7 +383,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count(min_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -428,7 +393,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min_over_time({app="foo"} | unwrap bar [1m]) by (baz), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count(rate({app="foo"}[3m]))`,
@@ -439,7 +403,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
 				) / 180)
 			)`,
-			false,
 		},
 		{
 			`count(bytes_rate({app="foo"}[3m]))`,
@@ -450,7 +413,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
 				) / 180)
 			)`,
-			false,
 		},
 
 		// Vector aggregator - count by
@@ -463,7 +425,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count by (baz) (count_over_time({app="foo"}[3m]))`,
@@ -474,7 +435,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count by (baz) (sum_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -485,7 +445,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<sum_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count by (baz) (max_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -496,7 +455,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count by (baz) (max_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -507,7 +465,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max_over_time({app="foo"} | unwrap bar [1m]) by (baz), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count by (baz) (min_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -518,7 +475,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count by (baz) (min_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -529,7 +485,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min_over_time({app="foo"} | unwrap bar [1m]) by (baz), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`count by (baz) (rate({app="foo"}[3m]))`,
@@ -540,7 +495,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 						++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
 					) / 180)
 				)`,
-			false,
 		},
 		{
 			`count by (baz) (bytes_rate({app="foo"}[3m]))`,
@@ -551,7 +505,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 						++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
 					) / 180)
 				)`,
-			false,
 		},
 
 		// Vector aggregator - max
@@ -564,7 +517,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max(bytes_over_time({app="foo"}[1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max(count_over_time({app="foo"}[3m]))`,
@@ -575,7 +527,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max(count_over_time({app="foo"}[1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max(sum_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -586,7 +537,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max(sum_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max(max_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -597,7 +547,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max(max_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max(max_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -608,7 +557,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max(max_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max(min_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -619,7 +567,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max(min_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max(min_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -630,7 +577,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max(min_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max(rate({app="foo"}[3m]))`,
@@ -641,7 +587,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max(count_over_time({app="foo"}[1m])), shard=<nil>>
 				) / 180)
 			)`,
-			false,
 		},
 		{
 			`max(bytes_rate({app="foo"}[3m]))`,
@@ -652,7 +597,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max(bytes_over_time({app="foo"}[1m])), shard=<nil>>
 				) / 180)
 			)`,
-			false,
 		},
 
 		// Vector aggregator - max by
@@ -665,7 +609,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max by (baz) (bytes_over_time({app="foo"}[1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max by (baz) (count_over_time({app="foo"}[3m]))`,
@@ -676,7 +619,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max by (baz) (count_over_time({app="foo"}[1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max by (baz) (sum_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -687,7 +629,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max by (baz) (sum_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max by (baz) (max_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -698,7 +639,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max by (baz) (max_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max by (baz) (max_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -709,7 +649,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max by (baz) (max_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max by (baz) (min_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -720,7 +659,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max by (baz) (min_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max by (baz) (min_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -731,7 +669,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<max by (baz) (min_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`max by (baz) (rate({app="foo"}[3m]))`,
@@ -742,7 +679,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 						++ downstream<max by (baz) (count_over_time({app="foo"}[1m])), shard=<nil>>
 					) / 180)
 				)`,
-			false,
 		},
 		{
 			`max by (baz) (bytes_rate({app="foo"}[3m]))`,
@@ -753,7 +689,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 						++ downstream<max by (baz) (bytes_over_time({app="foo"}[1m])), shard=<nil>>
 					) / 180)
 				)`,
-			false,
 		},
 
 		// Vector aggregator - min
@@ -766,7 +701,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min(bytes_over_time({app="foo"}[1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min(count_over_time({app="foo"}[3m]))`,
@@ -777,7 +711,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min(count_over_time({app="foo"}[1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min(sum_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -788,7 +721,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min(sum_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min(max_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -799,7 +731,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min(max_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min(max_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -810,7 +741,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min(max_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min(min_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -821,7 +751,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min(min_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min(min_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -832,7 +761,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min(min_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min(rate({app="foo"}[3m]))`,
@@ -843,7 +771,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min(count_over_time({app="foo"}[1m])), shard=<nil>>
 				) / 180)
 			)`,
-			false,
 		},
 		{
 			`min(bytes_rate({app="foo"}[3m]))`,
@@ -854,7 +781,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min(bytes_over_time({app="foo"}[1m])), shard=<nil>>
 				) / 180)
 			)`,
-			false,
 		},
 
 		// Vector aggregator - min by
@@ -867,7 +793,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min by (baz) (bytes_over_time({app="foo"}[1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min by (baz) (count_over_time({app="foo"}[3m]))`,
@@ -878,7 +803,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min by (baz) (count_over_time({app="foo"}[1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min by (baz) (sum_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -889,7 +813,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min by (baz) (sum_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min by (baz) (max_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -900,7 +823,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min by (baz) (max_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min by (baz) (max_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -911,7 +833,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min by (baz) (max_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min by (baz) (min_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -922,7 +843,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min by (baz) (min_over_time({app="foo"} | unwrap bar [1m])), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min by (baz) (min_over_time({app="foo"} | unwrap bar [3m]) by (baz))`,
@@ -933,7 +853,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<min by (baz) (min_over_time({app="foo"} | unwrap bar [1m]) by (baz)), shard=<nil>>
 				)
 			)`,
-			false,
 		},
 		{
 			`min by (baz) (rate({app="foo"}[3m]))`,
@@ -944,7 +863,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 						++ downstream<min by (baz) (count_over_time({app="foo"}[1m])), shard=<nil>>
 					) / 180)
 				)`,
-			false,
 		},
 		{
 			`min by (baz) (bytes_rate({app="foo"}[3m]))`,
@@ -955,7 +873,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 						++ downstream<min by (baz) (bytes_over_time({app="foo"}[1m])), shard=<nil>>
 					) / 180)
 				)`,
-			false,
 		},
 
 		// Binary operations
@@ -974,7 +891,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
 			))
 			`,
-			false,
 		},
 		{
 			`sum(count_over_time({app="foo"}[3m]) * count(sum_over_time({app="foo"} | unwrap bar [5m])))`,
@@ -995,7 +911,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				))
 			)
 			`,
-			false,
 		},
 		{
 			`sum by (app) (bytes_rate({app="foo"}[3m])) / sum by (app) (rate({app="foo"}[3m]))`,
@@ -1016,7 +931,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					) / 180)
 				)
 			)`,
-			false,
 		},
 
 		// Multi vector aggregator layer queries
@@ -1032,7 +946,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				)
 			)
 			`,
-			false,
 		},
 
 		// Non-splittable vector aggregators - should go deeper in the AST
@@ -1045,78 +958,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
 				)
 			)`,
-			false,
-		},
-		// Non-splittable range vector aggregators
-		{
-			`quantile_over_time(0.95, {app="foo"} | unwrap bar[3m])`,
-			`quantile_over_time(0.95, {app="foo"} | unwrap bar[3m])`,
-			true,
-		},
-		{
-			`sum(avg_over_time({app="foo"} | unwrap bar[3m]))`,
-			`sum(avg_over_time({app="foo"} | unwrap bar[3m]))`,
-			true,
-		},
-
-		// should be noop if range interval is slower or equal to split interval (1m)
-		{
-			`bytes_over_time({app="foo"}[1m])`,
-			`bytes_over_time({app="foo"}[1m])`,
-			true,
-		},
-
-		// should be noop if inner range aggregation includes a stage for label extraction such as `| json` or `| logfmt`
-		// because otherwise the downstream queries would result in too many series
-		{
-			`sum(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`sum(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			true,
-		},
-		{
-			`sum(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`sum(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			true,
-		},
-		{
-			`sum(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`sum(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			true,
-		},
-		{
-			`min(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`min(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			true,
-		},
-		{
-			`min(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`min(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			true,
-		},
-		{
-			`min(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`min(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			true,
-		},
-		{
-			`max(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`max(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			true,
-		},
-		{
-			`max(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`max(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			true,
-		},
-		{
-			`max(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`max(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			true,
-		},
-		{
-			`max_over_time({app="foo"} | json | unwrap bar [3m])`,
-			`max_over_time({app="foo"} | json | unwrap bar [3m])`,
-			true,
 		},
 	} {
 		tc := tc
@@ -1124,8 +965,86 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			t.Parallel()
 			noop, mappedExpr, err := rvm.Parse(tc.expr)
 			require.NoError(t, err)
+			require.False(t, noop)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
-			require.Equal(t, tc.expectNoop, noop)
+		})
+	}
+}
+
+func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
+	rvm, err := NewRangeMapper(time.Minute)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		expr     string
+		expected string
+	}{
+		// Non-splittable range vector aggregators
+		{
+			`quantile_over_time(0.95, {app="foo"} | unwrap bar[3m])`,
+			`quantile_over_time(0.95, {app="foo"} | unwrap bar[3m])`,
+		},
+		{
+			`sum(avg_over_time({app="foo"} | unwrap bar[3m]))`,
+			`sum(avg_over_time({app="foo"} | unwrap bar[3m]))`,
+		},
+
+		// should be noop if range interval is slower or equal to split interval (1m)
+		{
+			`bytes_over_time({app="foo"}[1m])`,
+			`bytes_over_time({app="foo"}[1m])`,
+		},
+
+		// should be noop if inner range aggregation includes a stage for label extraction such as `| json` or `| logfmt`
+		// because otherwise the downstream queries would result in too many series
+		{
+			`sum(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`sum(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+		},
+		{
+			`sum(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`sum(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+		},
+		{
+			`sum(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`sum(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+		},
+		{
+			`min(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`min(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+		},
+		{
+			`min(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`min(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+		},
+		{
+			`min(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`min(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+		},
+		{
+			`max(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`max(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+		},
+		{
+			`max(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`max(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+		},
+		{
+			`max(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`max(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+		},
+		{
+			`max_over_time({app="foo"} | json | unwrap bar [3m])`,
+			`max_over_time({app="foo"} | json | unwrap bar [3m])`,
+		},
+	} {
+		tc := tc
+		t.Run(tc.expr, func(t *testing.T) {
+			t.Parallel()
+			noop, mappedExpr, err := rvm.Parse(tc.expr)
+			require.NoError(t, err)
+			require.True(t, noop)
+			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
 		})
 	}
 }
