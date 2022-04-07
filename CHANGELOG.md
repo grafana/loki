@@ -71,10 +71,203 @@
 * [5077](https://github.com/grafana/loki/pull/5077) **trevorwhitney**: Change some default values for better out-of-the-box performance
 * [5204](https://github.com/grafana/loki/pull/5204) **trevorwhitney**: Default `max_outstanding_per_tenant` to `2048`
 * [5253](https://github.com/grafana/loki/pull/5253) **Juneezee**: refactor: use `T.TempDir` to create temporary test directory
+## Unreleased
+
+### All Changes
+
+#### Loki
+
+##### Enhancements
+
+##### Fixes
+* [5685](https://github.com/grafana/loki/pull/5685) **chaudum**: Assert that push values tuples consist of string values
+##### Changes
+* [5777](https://github.com/grafana/loki/pull/5777) **tatchiuleung**: storage: make Azure blobID chunk delimiter configurable
+* [5650](https://github.com/grafana/loki/pull/5650) **cyriltovena**: Remove more chunkstore and schema version below v9
+* [5643](https://github.com/grafana/loki/pull/5643) **simonswine**: Introduce a ChunkRef type as part of logproto
+#### Promtail
+
+##### Enhancements
+* [5715](https://github.com/grafana/loki/pull/5715) **chaudum**: Allow promtail to push RFC5424 formatted syslog messages
+##### Fixes
+
+##### Changes
+* [5686](https://github.com/grafana/loki/pull/5686) **ssncferreira**: Move promtail StreamLagLabels config to upper level config.Config
+#### Fluent Bit
+* [5711](https://github.com/grafana/loki/pull/5711) **MichelHollands**: Update fluent-bit output name
+
+#### Loki Canary
+* [5568](https://github.com/grafana/loki/pull/5568) **afayngelerindbx**: canary: Adds locking to prevent multiple concurrent invocations of `confirmMissing` from clobbering each other
+### Notes
+
+This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
+
+Check the history of the branch FIXME.
+
+### Dependencies
+
+* Go Version:     FIXME
+
+# 2.5.0 (2022/04/07)
+
+Release notes for 2.5.0 can be found on the [release notes page](https://grafana.com/docs/loki/latest/release-notes/v2-5/)
+
+### All Changes
+
+Here is a list of all significant changes, in the past we have included all changes 
+but with over 500 PR's merged since the last release we decided to curate the list
+to include only the most relevant.
+
+#### Loki
+
+##### Enhancements
+* [5542](https://github.com/grafana/loki/pull/5542) **bboreham**: regexp filter: use modified package with optimisations
+* [5318](https://github.com/grafana/loki/pull/5318) **jeschkies**: Speed up `EntrySortIterator` by 20%.
+* [5317](https://github.com/grafana/loki/pull/5317) **owen-d**: Logql/parallel binop
 * [5315](https://github.com/grafana/loki/pull/5315) **bboreham**: filters: use faster regexp package
-* [5393](https://github.com/grafana/loki/pull/5393) **sandeepsukhani**: jsonnet: move boltdb-shipper configs set as compactor args to yaml config
+* [5311](https://github.com/grafana/loki/pull/5311) **vlad-diachenko**: Removed redundant memory allocations in parsers
+* [5291](https://github.com/grafana/loki/pull/5291) **owen-d**: less opaque chunk keys on fs with v12
+* [5275](https://github.com/grafana/loki/pull/5275) **SasSwart**: Parse duration expressions in accordance with promql
+* [5249](https://github.com/grafana/loki/pull/5249) **3JIou-home**: Push: add deflate compression in post requests
+* [5160](https://github.com/grafana/loki/pull/5160) **sandeepsukhani**: add objects list caching for boltdb-shipper index store to reduce object storage list api calls
+* [5148](https://github.com/grafana/loki/pull/5148) **chaudum**: Auto-expire old items from FIFO cache
+* [5093](https://github.com/grafana/loki/pull/5093) **liguozhong**: [enhancement] querier : Add "query_memory_only" to make loki have option to rely only on memory availability.
+* [5078](https://github.com/grafana/loki/pull/5078) **ssncferreira**: Loki: Implement custom /config handler (#4785)
+* [5054](https://github.com/grafana/loki/pull/5054) **JordanRushing**: new v12 schema optimized to better handle S3 prefix rate limits
+* [5013](https://github.com/grafana/loki/pull/5013) **liguozhong**: [new feature] logql: extrapolate unwrapped rate function
+* [4947](https://github.com/grafana/loki/pull/4947) **siavashs**: Support Redis Cluster Configuration Endpoint
+* [4938](https://github.com/grafana/loki/pull/4938) **DylanGuedes**: Add distributor ring page
+* [4879](https://github.com/grafana/loki/pull/4879) **cyriltovena**: LogQL: add __line__ function to | line_format template
+* [4858](https://github.com/grafana/loki/pull/4858) **sandy2008**: feat(): add ManagedIdentity in Azure Blob Storage
+* [4826](https://github.com/grafana/loki/pull/4826) **cyriltovena**: Adds the ability to hedge storage requests.
+* [4785](https://github.com/grafana/loki/pull/4785) **DylanGuedes**: Loki: Print current config by calling /config
+* [4775](https://github.com/grafana/loki/pull/4775) **jeschkies**: Make `*` and `+` non-greedy to double regex filter speed.
+* [4769](https://github.com/grafana/loki/pull/4769) **cyriltovena**: Improve LogQL format stages requireLabel
+* [4731](https://github.com/grafana/loki/pull/4731) **cyriltovena**: Improve heap iterators.
+* [4394](https://github.com/grafana/loki/pull/4394) **cyriltovena**: Improve case insensitive search to avoid allocations.
+
+
+##### Fixes
+
+* [5768](https://github.com/grafana/loki/pull/5768) **slim-bean**: Loki: Increase flush_op_timeout default from 10s to 10m
+* [5761](https://github.com/grafana/loki/pull/5761) **slim-bean**: Promtil: Fix a panic when using the loki push api target.
+* [5622](https://github.com/grafana/loki/pull/5622) **chaudum**: Preserve interval parameter when splitting queries by time
+* [5541](https://github.com/grafana/loki/pull/5541) **bboreham**: Queries: update package to reject very deeply nested regexps which could crash Loki
+* [5527](https://github.com/grafana/loki/pull/5527) **liguozhong**: [bugfix] fix nil pointer
+* [5474](https://github.com/grafana/loki/pull/5474) **cyriltovena**: Disable sharding of count/avg when labels are mutated
+* [5472](https://github.com/grafana/loki/pull/5472) **MasslessParticle**: Fix potential deadlock in the table manager
+* [5444](https://github.com/grafana/loki/pull/5444) **cyriltovena**: Do not insert missing point when sharding
+* [5425](https://github.com/grafana/loki/pull/5425) **cyriltovena**: Do not use WaitGroup context for StepEvaluator
+* [5423](https://github.com/grafana/loki/pull/5423) **cyriltovena**: Correctly sets hash value for headblock iterator
+* [5418](https://github.com/grafana/loki/pull/5418) **RangerCD**: Fix two remote_timeout configs in ingester_client block
+* [5413](https://github.com/grafana/loki/pull/5413) **MasslessParticle**: Fix a deadlock in the Azure Blob client
+* [5399](https://github.com/grafana/loki/pull/5399) **MasslessParticle**: Fix Azure issue where 404 not recognized
+* [5362](https://github.com/grafana/loki/pull/5362) **gotjosh**: Ruler: Rule group not found API message
+* [5342](https://github.com/grafana/loki/pull/5342) **sandeepsukhani**: Fix apply retention issue
+* [5334](https://github.com/grafana/loki/pull/5334) **kavirajk**: Makes `tailer.droppedStreams` slice bounded.
+* [5324](https://github.com/grafana/loki/pull/5324) **owen-d**: Release entryBufferPool once
+* [5303](https://github.com/grafana/loki/pull/5303) **owen-d**: Better logic for when to shard wrt disabled lookback
+* [5298](https://github.com/grafana/loki/pull/5298) **sandeepsukhani**: fix a panic in index-gateway caused by double closing of a channel
+* [5297](https://github.com/grafana/loki/pull/5297) **vlad-diachenko**: Changed logic of handling RPC error with code Cancelled
+* [5289](https://github.com/grafana/loki/pull/5289) **cyriltovena**: Fixes log deduplication when mutating Labels using LogQL
+* [5261](https://github.com/grafana/loki/pull/5261) **sandeepsukhani**: use default retention period to check user index may have expired chunks when user does not have custom retention
+* [5234](https://github.com/grafana/loki/pull/5234) **RangerCD**: Ignore missing stream while querying from ingester
+* [5168](https://github.com/grafana/loki/pull/5168) **kavirajk**: Add `nil` check for Ruler BasicAuth config.
+* [5144](https://github.com/grafana/loki/pull/5144) **dannykopping**: Ruler: Fix remote write basic auth credentials
+* [5113](https://github.com/grafana/loki/pull/5113) **kavirajk**: Fix cancel issue between Query Frontend and Query Schdeduler
+* [5080](https://github.com/grafana/loki/pull/5080) **kavirajk**: Handle `context` cancellation in some of the `querier` downstream requests
+* [5075](https://github.com/grafana/loki/pull/5075) **cyriltovena**: Fixes a possible cancellation issue in the frontend
+* [5063](https://github.com/grafana/loki/pull/5063) **cyriltovena**: Fix deadlock in disconnecting querier
+* [5060](https://github.com/grafana/loki/pull/5060) **cyriltovena**: Fix race conditions in frontend_scheduler_worker.
+* [5006](https://github.com/grafana/loki/pull/5006) **sandeepsukhani**: fix splitting of queries when step is larger than split interval
+* [4904](https://github.com/grafana/loki/pull/4904) **bboreham**: ingester: use consistent set of instances to avoid panic
+* [4902](https://github.com/grafana/loki/pull/4902) **cyriltovena**: Fixes 500 when query is outside of max_query_lookback
+* [4828](https://github.com/grafana/loki/pull/4828) **chaudum**: Set correct `Content-Type` header in query response
+* [4761](https://github.com/grafana/loki/pull/4761) **slim-bean**: Loki: Set querier worker max concurrent regardless of run configuration.
+* [4741](https://github.com/grafana/loki/pull/4741) **sandeepsukhani**: index cleanup fixes while applying retention
+
+##### Changes
+* [5544](https://github.com/grafana/loki/pull/5544) **ssncferreira**: Update vectorAggEvaluator to fail for expressions without grouping
+* [5543](https://github.com/grafana/loki/pull/5543) **cyriltovena**: update loki go version to 1.17.8
 * [5450](https://github.com/grafana/loki/pull/5450) **BenoitKnecht**: pkg/ruler/base: Add external_labels option
-* [5484](https://github.com/grafana/loki/pull/5450) **sandeepsukhani**: Add support for per user index query readiness with limits overrides
+* [5435](https://github.com/grafana/loki/pull/5435) **slim-bean**: set match_max_concurrent true by default
+* [5361](https://github.com/grafana/loki/pull/5361) **cyriltovena**: Add usage report into Loki.
+* [5243](https://github.com/grafana/loki/pull/5243) **owen-d**: Refactor/remove global splitby
+* [5229](https://github.com/grafana/loki/pull/5229) **chaudum**: Return early if push payload does not contain data
+* [5217](https://github.com/grafana/loki/pull/5217) **sandeepsukhani**: step align start and end time of the original query while splitting it
+* [5204](https://github.com/grafana/loki/pull/5204) **trevorwhitney**: Default max_outstanding_per_tenant to 2048
+* [5181](https://github.com/grafana/loki/pull/5181) **sandeepsukhani**: align metric queries by step and other queries by split interval
+* [5178](https://github.com/grafana/loki/pull/5178) **liguozhong**: Handle `context` cancellation in some of the `querier` store.index-cache-read.
+* [5172](https://github.com/grafana/loki/pull/5172) **cyriltovena**: Avoid splitting large range vector aggregation.
+* [5125](https://github.com/grafana/loki/pull/5125) **sasagarw**: Remove split-queries-by-interval validation
+* [5091](https://github.com/grafana/loki/pull/5091) **owen-d**: better defaults for flush queue parallelism
+* [5083](https://github.com/grafana/loki/pull/5083) **liguozhong**: [enhancement] querier cache: WriteBackCache should be off query path
+* [5081](https://github.com/grafana/loki/pull/5081) **SasSwart**: Add the option to configure memory ballast for Loki
+* [5077](https://github.com/grafana/loki/pull/5077) **trevorwhitney**: improve default config values
+* [5067](https://github.com/grafana/loki/pull/5067) **cstyan**: Add an egress bytes total metric to the azure client.
+* [5026](https://github.com/grafana/loki/pull/5026) **sandeepsukhani**: compactor changes for building per user index files in boltdb shipper
+* [5023](https://github.com/grafana/loki/pull/5023) **ssncferreira**: Move querier.split-queries-by-interval to a per-tenant configuration
+* [5022](https://github.com/grafana/loki/pull/5022) **owen-d**: adds instrumentation to azure object client
+* [4942](https://github.com/grafana/loki/pull/4942) **cyriltovena**: Allow to disable http2 for GCS.
+* [4891](https://github.com/grafana/loki/pull/4891) **liguozhong**: [optimization] cache prometheus : fix "loki_cache_request_duration_seconds_bucket" ‘status_code’ label always equals "200"
+* [4737](https://github.com/grafana/loki/pull/4737) **owen-d**: ensures components with required SRV lookups use the correct port
+* [4736](https://github.com/grafana/loki/pull/4736) **sandeepsukhani**: allow applying retention at different interval than compaction with a config
+* [4656](https://github.com/grafana/loki/pull/4656) **ssncferreira**: Fix dskit/ring metric with 'cortex_' prefix
+
+
+#### Promtail
+
+##### Enhancements
+* [5359](https://github.com/grafana/loki/pull/5359) **JBSchami**: Lambda-promtail: Enhance lambda-promtail to support adding extra labels from an environment variable value
+* [5290](https://github.com/grafana/loki/pull/5290) **ssncferreira**: Update promtail to support duration string formats
+* [5051](https://github.com/grafana/loki/pull/5051) **liguozhong**: [new] promtail pipeline:  Promtail Rate Limit stage #5048
+* [5031](https://github.com/grafana/loki/pull/5031) **liguozhong**: [new] promtail: add readline rate limit
+* [4911](https://github.com/grafana/loki/pull/4911) **jeschkies**: Provide Docker target and discovery in Promtail.
+* [4813](https://github.com/grafana/loki/pull/4813) **cyriltovena**: Promtail pull cloudflare logs
+* [4744](https://github.com/grafana/loki/pull/4744) **cyriltovena**: Add GELF support for Promtail.
+* [4663](https://github.com/grafana/loki/pull/4663) **taisho6339**: Add SASL&mTLS authentication support for Kafka in Promtail
+
+##### Fixes
+* [5497](https://github.com/grafana/loki/pull/5497) **MasslessParticle**: Fix orphaned metrics in the file tailer
+* [5409](https://github.com/grafana/loki/pull/5409) **ldb**: promtail/targets/syslog: Enable best effort parsing for Syslog messages
+* [5246](https://github.com/grafana/loki/pull/5246) **rsteneteg**: Promtail: skip glob search if filetarget path is an existing file and not a directory
+* [5238](https://github.com/grafana/loki/pull/5238) **littlepangdi**: Promtail: fix TargetManager.run() not exit after stop is called
+* [4874](https://github.com/grafana/loki/pull/4874) **Alan01252**: Promtail: Fix replace missing adjacent capture groups
+* [4832](https://github.com/grafana/loki/pull/4832) **taisho6339**: Use http prefix path correctly in promtail
+* [4716](https://github.com/grafana/loki/pull/4716) **cyriltovena**: Fixes Promtail User-Agent.
+* [5698](https://github.com/grafana/loki/pull/5698) **paullryan**: Promtail: Fix retry/stop when erroring for out of cloudflare retention range (e.g. over 168 hours old)
+
+##### Changes
+* [5377](https://github.com/grafana/loki/pull/5377) **slim-bean**: Promtail: Remove promtail_log_entries_bytes_bucket histogram
+* [5266](https://github.com/grafana/loki/pull/5266) **jeschkies**: Write Promtail position file atomically.
+* [4794](https://github.com/grafana/loki/pull/4794) **taisho6339**: Aggregate inotify watcher to file target manager
+* [4745](https://github.com/grafana/loki/pull/4745) **taisho6339**: Expose Kafka message key in labels
+
+#### Logcli
+* [5477](https://github.com/grafana/loki/pull/5477) **atomic77**: logcli: Remove port from TLS server name when provided in --addr
+* [4667](https://github.com/grafana/loki/pull/4667) **jeschkies**: Package logcli as rpm and deb.
+* [4606](https://github.com/grafana/loki/pull/4606) **kavirajk**: Execute Loki queries on raw log data piped to stdin
+
+#### Lambda-Promtail
+* [5065](https://github.com/grafana/loki/pull/5065) **AndreZiviani**: lambda-promtail: Add ability to ingest logs from S3
+
+#### Fluent Bit
+* [5223](https://github.com/grafana/loki/pull/5223) **cyriltovena**: fluent-bit: Attempt to unmarshal nested json.
+
+#### FluentD
+* [5107](https://github.com/grafana/loki/pull/5107) **chaudum**: fluentd: Fix bug that caused lines to be dropped when containing non utf-8 characters
+* [5163](https://github.com/grafana/loki/pull/5163) **chaudum**: Fix encoding error in fluentd client
+
+### Notes
+
+This release was created from a branch starting at commit 614912181e6f3988b2b22791053278cfb64e169c but it may also contain backported changes from main.
+
+Check the history of the branch `release-2.5.x`.
+
+### Dependencies
+
+* Go Version:     1.17.8
+
 
 # 2.4.1 (2021/11/07)
 
