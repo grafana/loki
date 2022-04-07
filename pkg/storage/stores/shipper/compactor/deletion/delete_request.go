@@ -3,22 +3,30 @@ package deletion
 import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
 
-// DeleteRequest holds all the details about a delete request.
 type DeleteRequest struct {
 	RequestID string              `json:"request_id"`
 	StartTime model.Time          `json:"start_time"`
 	EndTime   model.Time          `json:"end_time"`
-	Selectors []string            `json:"selectors"`
+	Query     string              `json:"query"`
 	Status    DeleteRequestStatus `json:"status"`
 	CreatedAt model.Time          `json:"created_at"`
 
-	UserID   string              `json:"-"`
-	Matchers [][]*labels.Matcher `json:"-"`
+	UserID   string            `json:"-"`
+	matchers []*labels.Matcher `json:"-"`
+}
+
+func (d *DeleteRequest) SetQuery(logQL string) error {
+	d.Query = logQL
+	matchers, err := parseDeletionQuery(logQL)
+	if err != nil {
+		return err
+	}
+	d.matchers = matchers
+	return nil
 }
 
 func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []model.Interval) {
@@ -36,26 +44,7 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []model.Int
 		return false, nil
 	}
 
-	matchers := make([][]*labels.Matcher, len(d.Selectors))
-	var err error
-
-	for j, selector := range d.Selectors {
-		matchers[j], err = parser.ParseMetricSelector(selector)
-
-		if err != nil {
-			return false, nil
-		}
-	}
-
-	matches := false
-	for _, matchers := range matchers {
-		if labels.Selector(matchers).Matches(entry.Labels) {
-			matches = true
-			break
-		}
-	}
-
-	if !matches {
+	if !labels.Selector(d.matchers).Matches(entry.Labels) {
 		return false, nil
 	}
 
