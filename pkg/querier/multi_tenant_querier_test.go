@@ -27,12 +27,14 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
+		selector  string
 		expLabels []string
 		expLines  []string
 	}{
 		{
 			"two tenants",
 			"1|2",
+			`{type="test"}`,
 			[]string{
 				`{__tenant_id__="1", type="test"}`,
 				`{__tenant_id__="1", type="test"}`,
@@ -42,8 +44,29 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 			[]string{"line 1", "line 2", "line 1", "line 2"},
 		},
 		{
+			"two tenants with selector",
+			"1|2",
+			`{type="test", __tenant_id__="1"}`,
+			[]string{
+				`{__tenant_id__="1", type="test"}`,
+				`{__tenant_id__="1", type="test"}`,
+			},
+			[]string{"line 1", "line 2", "line 1", "line 2"},
+		},
+		{
+			"two tenants with selector and pipeline filter",
+			"1|2",
+			`{type="test", __tenant_id__!="2"} | logfmt | some_lable="foobar"`,
+			[]string{
+				`{__tenant_id__="1", type="test"}`,
+				`{__tenant_id__="1", type="test"}`,
+			},
+			[]string{"line 1", "line 2", "line 1", "line 2"},
+		},
+		{
 			"one tenant",
 			"1",
+			`{type="test"}`,
 			[]string{
 				`{type="test"}`,
 				`{type="test"}`,
@@ -59,7 +82,7 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 			params := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
-				Selector:  `{type="test"}`,
+				Selector:  tc.selector,
 				Direction: logproto.BACKWARD,
 				Limit:     0,
 				Shards:    nil,
@@ -86,11 +109,13 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
+		selector  string
 		expLabels []string
 	}{
 		{
 			"two tenants",
 			"1|2",
+			`count_over_time({foo="bar"}[1m]) > 10`,
 			[]string{
 				`{__tenant_id__="1", app="foo"}`,
 				`{__tenant_id__="2", app="foo"}`,
@@ -103,8 +128,20 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 			},
 		},
 		{
+			"two tenants with selector",
+			"1|2",
+			`count_over_time({foo="bar", __tenant_id__="1"}[1m]) > 10`,
+			[]string{
+				`{__tenant_id__="1", app="foo"}`,
+				`{__tenant_id__="1", app="bar"}`,
+				`{__tenant_id__="1", app="foo"}`,
+				`{__tenant_id__="1", app="bar"}`,
+			},
+		},
+		{
 			"one tenant",
 			"1",
+			`count_over_time({foo="bar"}[1m]) > 10`,
 			[]string{
 				`{app="foo"}`,
 				`{app="bar"}`,
@@ -120,7 +157,9 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
 
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
-			params := logql.SelectSampleParams{}
+			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+				Selector:  tc.selector,
+			}}
 			iter, err := multiTenantQuerier.SelectSamples(ctx, params)
 			require.NoError(t, err)
 
