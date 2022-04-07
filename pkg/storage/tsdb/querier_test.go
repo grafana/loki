@@ -91,7 +91,7 @@ func TestQueryIndex(t *testing.T) {
 	dst, err := b.Build(context.Background(), dir, "fake")
 	require.Nil(t, err)
 
-	reader, err := index.NewFileReader(dst.Combine(dir))
+	reader, err := index.NewFileReader(dst.FilePath(dir))
 	require.Nil(t, err)
 
 	p, err := PostingsForMatchers(reader, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))

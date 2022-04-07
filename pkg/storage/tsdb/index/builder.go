@@ -36,7 +36,7 @@ func (i Identifier) String() string {
 	)
 }
 
-func (i Identifier) Combine(parentDir string) string {
+func (i Identifier) FilePath(parentDir string) string {
 	return filepath.Join(parentDir, i.String())
 }
 
@@ -159,7 +159,7 @@ func (b *Builder) Build(ctx context.Context, dir, tenant string) (id Identifier,
 		}
 	}()
 
-	dst := id.Combine(dir)
+	dst := id.FilePath(dir)
 
 	if err := os.Rename(tmpPath, dst); err != nil {
 		return id, err

@@ -10,7 +10,7 @@ import (
 )
 
 func LoadTSDBIdentifier(dir string, id index.Identifier) (*TSDBIndex, error) {
-	return LoadTSDB(id.Combine(dir))
+	return LoadTSDB(id.FilePath(dir))
 }
 
 func LoadTSDB(name string) (*TSDBIndex, error) {

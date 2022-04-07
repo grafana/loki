@@ -24,7 +24,7 @@ func BuildIndex(t *testing.T, dir, tenant string, cases []LoadableSeries) *TSDBI
 
 	dst, err := b.Build(context.Background(), dir, tenant)
 	require.Nil(t, err)
-	location := dst.Combine(dir)
+	location := dst.FilePath(dir)
 
 	idx, err := LoadTSDB(location)
 	require.Nil(t, err)
