@@ -704,7 +704,7 @@ func Test_store_GetSeries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &store{
-				Store: storeFixture,
+				Store: newMockChunkStore(streamsFixture),
 				cfg: Config{
 					MaxChunkBatchSize: tt.batchSize,
 				},
@@ -1024,40 +1024,12 @@ func Test_GetSeries(t *testing.T) {
 			expectedSeries,
 		},
 		{
-			"all series with sharding",
-			logql.SelectLogParams{
-				QueryRequest: &logproto.QueryRequest{
-					Selector: ``,
-					Start:    time.Unix(0, 0),
-					End:      time.Unix(0, 10),
-					Shards:   []string{astmapper.ShardAnnotation{Shard: 1, Of: 16}.String()},
-				},
-			},
-			expectedSeries,
-		},
-		{
 			"selected series",
 			logql.SelectLogParams{
 				QueryRequest: &logproto.QueryRequest{
 					Selector: `{buzz=~".oo"}`,
 					Start:    time.Unix(0, 0),
 					End:      time.Unix(0, 10),
-				},
-			},
-			[]logproto.SeriesIdentifier{
-				{
-					Labels: map[string]string{"foo": "bar", "buzz": "boo"},
-				},
-			},
-		},
-		{
-			"selected series with sharding",
-			logql.SelectLogParams{
-				QueryRequest: &logproto.QueryRequest{
-					Selector: `{buzz=~".oo"}`,
-					Start:    time.Unix(0, 0),
-					End:      time.Unix(0, 10),
-					Shards:   []string{astmapper.ShardAnnotation{Shard: 1, Of: 16}.String()},
 				},
 			},
 			[]logproto.SeriesIdentifier{

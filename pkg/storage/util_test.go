@@ -177,19 +177,21 @@ func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, c
 func (m *mockChunkStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	result := make([]labels.Labels, 0, len(m.chunks))
 	unique := map[uint64]struct{}{}
+Outer:
 	for _, c := range m.chunks {
 		if _, ok := unique[c.Fingerprint]; !ok {
+			for _, m := range matchers {
+				if !m.Matches(c.Metric.Get(m.Name)) {
+					continue Outer
+				}
+			}
 			l := c.Metric.WithoutLabels(labels.MetricName)
 			if m.f != nil {
 				if m.f.ForRequest(ctx).ShouldFilter(l) {
 					continue
 				}
 			}
-			for _, m := range matchers {
-				if !m.Matches(l.Get(m.Name)) {
-					continue
-				}
-			}
+
 			result = append(result, l)
 			unique[c.Fingerprint] = struct{}{}
 		}

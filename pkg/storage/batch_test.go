@@ -10,7 +10,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -1607,7 +1606,7 @@ func Test_IsInvalidChunkError(t *testing.T) {
 	}{
 		{
 			"invalid chunk cheksum error from cortex",
-			promql.ErrStorage{Err: encoding.ErrInvalidChecksum},
+			promql.ErrStorage{Err: chunkenc.ErrInvalidChecksum},
 			true,
 		},
 		{
