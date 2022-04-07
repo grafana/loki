@@ -19,10 +19,15 @@ import (
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
-	userID, _ := tenant.TenantID(r.Context())
-	req, err := push.ParseRequest(logger, userID, r, d.tenantsRetention)
+	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
-		if d.tenantConfigs.LogPushRequest(userID) {
+		level.Warn(logger).Log("msg", "error getting tenant id", "err", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention)
+	if err != nil {
+		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", http.StatusBadRequest,
@@ -33,7 +38,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if d.tenantConfigs.LogPushRequestStreams(userID) {
+	if d.tenantConfigs.LogPushRequestStreams(tenantID) {
 		var sb strings.Builder
 		for _, s := range req.Streams {
 			sb.WriteString(s.Labels)
@@ -46,7 +51,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err = d.Push(r.Context(), req)
 	if err == nil {
-		if d.tenantConfigs.LogPushRequest(userID) {
+		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request successful",
 			)
@@ -58,7 +63,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
 		body := string(resp.Body)
-		if d.tenantConfigs.LogPushRequest(userID) {
+		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", resp.Code,
@@ -67,7 +72,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, body, int(resp.Code))
 	} else {
-		if d.tenantConfigs.LogPushRequest(userID) {
+		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", http.StatusInternalServerError,

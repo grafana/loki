@@ -205,6 +205,12 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
 	}
 
+	// If the querier module is not part of this process we need to check if multi-tenant queries are enabled.
+	// If the querier module is part of this process the querier module will configure everything.
+	if !t.Cfg.isModuleEnabled(Querier) && t.Cfg.Querier.MultiTenantQueriesEnabled {
+		tenant.WithDefaultResolver(tenant.NewMultiResolver())
+	}
+
 	pushHandler := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
