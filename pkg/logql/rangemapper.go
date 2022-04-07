@@ -209,20 +209,20 @@ func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, int
 // rangeInterval should be greater than m.splitByInterval, otherwise the resultant expression
 // will have an unnecessary aggregation operation
 func (m RangeMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration) syntax.SampleExpr {
-	interval := 0
 	splitCount := int(rangeInterval / m.splitByInterval)
 
 	if splitCount == 0 {
 		return expr
 	}
 
+	var split int
 	var downstreams *ConcatSampleExpr
-	for interval = 0; interval < splitCount; interval++ {
-		downstreams = appendDownstream(downstreams, expr, m.splitByInterval, time.Duration(interval)*m.splitByInterval)
+	for split = 0; split < splitCount; split++ {
+		downstreams = appendDownstream(downstreams, expr, m.splitByInterval, time.Duration(split)*m.splitByInterval)
 	}
 	// Add the remainder offset interval
 	if rangeInterval%m.splitByInterval != 0 {
-		offset := time.Duration(interval) * m.splitByInterval
+		offset := time.Duration(split) * m.splitByInterval
 		downstreams = appendDownstream(downstreams, expr, rangeInterval-offset, offset)
 	}
 
