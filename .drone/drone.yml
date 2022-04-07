@@ -28,6 +28,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 workspace:
   base: /src
   path: loki
@@ -96,6 +97,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 workspace:
   base: /src
   path: loki
@@ -113,6 +115,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 workspace:
   base: /src
   path: loki
@@ -243,6 +246,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -370,6 +374,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -497,6 +502,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -552,6 +558,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -607,6 +614,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -662,6 +670,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -718,6 +727,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -774,6 +784,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -830,6 +841,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -886,6 +898,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - docker-amd64
@@ -1000,6 +1013,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -1059,6 +1073,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 get:
   name: pat
@@ -1103,6 +1118,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 20f2dd84e89dff07703d4a7c84c0b0d267b6082745025804bc91a26c4a180779
+hmac: a96f66baa9057be9437904081ef78fa7c1584d855ba1c90d22a0bcb4eb0881f7
 
 ...
