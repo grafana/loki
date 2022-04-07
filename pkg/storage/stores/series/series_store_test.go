@@ -89,11 +89,11 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg config
 	}, nil)
 	require.NoError(t, err)
 
-	store, err := storage.NewStore(storage.Config{}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger())
+	store, err := storage.NewStore(storage.Config{MaxChunkBatchSize: 1}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger())
 	require.NoError(t, err)
 	tm, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, testutils.NewMockStorage(), nil, nil, nil)
 	require.NoError(t, err)
-	tm.SyncTables(context.Background())
+	_ = tm.SyncTables(context.Background())
 	return store
 }
 
@@ -428,6 +428,166 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 					}
 				})
 			}
+		}
+	}
+}
+
+func Test_GetSeries(t *testing.T) {
+	now := model.Now()
+	ch1lbs := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "flip", Value: "flop"},
+		{Name: "toms", Value: "code"},
+	}
+	chunk1 := dummyChunkFor(now, ch1lbs)
+	ch2lbs := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "beep"},
+		{Name: "toms", Value: "code"},
+	}
+	chunk2 := dummyChunkFor(now, ch2lbs)
+
+	testCases := []struct {
+		query  string
+		expect []labels.Labels
+	}{
+		{
+			`foo`,
+			[]labels.Labels{
+				ch1lbs.WithoutLabels(labels.MetricName),
+				ch2lbs.WithoutLabels(labels.MetricName),
+			},
+		},
+		{
+			`foo{flip=""}`,
+			[]labels.Labels{ch2lbs.WithoutLabels(labels.MetricName)},
+		},
+		{
+			`foo{bar="baz"}`,
+			[]labels.Labels{ch1lbs.WithoutLabels(labels.MetricName)},
+		},
+		{
+			`foo{bar="beep"}`,
+			[]labels.Labels{ch2lbs.WithoutLabels(labels.MetricName)},
+		},
+		{
+			`foo{toms="code"}`,
+			[]labels.Labels{
+				ch1lbs.WithoutLabels(labels.MetricName),
+				ch2lbs.WithoutLabels(labels.MetricName),
+			},
+		},
+		{
+			`foo{bar!="baz"}`,
+			[]labels.Labels{ch2lbs.WithoutLabels(labels.MetricName)},
+		},
+		{
+			`foo{bar=~"beep|baz"}`,
+			[]labels.Labels{
+				ch1lbs.WithoutLabels(labels.MetricName),
+				ch2lbs.WithoutLabels(labels.MetricName),
+			},
+		},
+		{
+			`foo{bar=~"beeping|baz"}`,
+			[]labels.Labels{ch1lbs.WithoutLabels(labels.MetricName)},
+		},
+		{
+			`foo{toms="code", bar=~"beep|baz"}`,
+			[]labels.Labels{
+				ch1lbs.WithoutLabels(labels.MetricName),
+				ch2lbs.WithoutLabels(labels.MetricName),
+			},
+		},
+		{
+			`foo{toms="code", bar="baz"}`,
+			[]labels.Labels{ch1lbs.WithoutLabels(labels.MetricName)},
+		},
+		{
+			`foo{__cortex_shard__="0_of_16"}`,
+			[]labels.Labels{ch1lbs.WithoutLabels(labels.MetricName)},
+		},
+	}
+	for _, schema := range schemas {
+		for _, storeCase := range stores {
+			storeCfg := storeCase.configFn()
+
+			store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
+			defer store.Stop()
+
+			if err := store.Put(ctx, []chunk.Chunk{chunk1, chunk2}); err != nil {
+				t.Fatal(err)
+			}
+
+			for _, tc := range testCases {
+				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
+					t.Log("========= Running query", tc.query, "with schema", schema)
+					matchers, err := parser.ParseMetricSelector(tc.query)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					res, err := store.GetSeries(ctx, userID, now.Add(-time.Hour), now, matchers...)
+					require.NoError(t, err)
+					require.Equal(t, tc.expect, res)
+				})
+			}
+		}
+	}
+}
+
+func Test_GetSeriesShard(t *testing.T) {
+	now := model.Now()
+	ch1lbs := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "flip", Value: "flop"},
+		{Name: "toms", Value: "code"},
+	}
+	chunk1 := dummyChunkFor(now, ch1lbs)
+	ch2lbs := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "beep"},
+		{Name: "toms", Value: "code"},
+	}
+	chunk2 := dummyChunkFor(now, ch2lbs)
+
+	testCases := []struct {
+		query  string
+		expect []labels.Labels
+	}{
+		{
+			`foo{__cortex_shard__="6_of_16"}`,
+			[]labels.Labels{ch2lbs.WithoutLabels(labels.MetricName)},
+		},
+		{
+			`foo{__cortex_shard__="8_of_16"}`,
+			[]labels.Labels{ch1lbs.WithoutLabels(labels.MetricName)},
+		},
+	}
+	for _, storeCase := range stores {
+		storeCfg := storeCase.configFn()
+
+		store, _ := newTestChunkStoreConfig(t, "v12", storeCfg)
+		defer store.Stop()
+
+		if err := store.Put(ctx, []chunk.Chunk{chunk1, chunk2}); err != nil {
+			t.Fatal(err)
+		}
+
+		for _, tc := range testCases {
+			t.Run(fmt.Sprintf("%s / %s / %s", tc.query, "v12", storeCase.name), func(t *testing.T) {
+				t.Log("========= Running query", tc.query, "with schema", "v12")
+				matchers, err := parser.ParseMetricSelector(tc.query)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				res, err := store.GetSeries(ctx, userID, now.Add(-time.Hour), now, matchers...)
+				require.NoError(t, err)
+				require.Equal(t, tc.expect, res)
+			})
 		}
 	}
 }
