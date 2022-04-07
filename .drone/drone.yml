@@ -28,6 +28,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 workspace:
   base: /src
   path: loki
@@ -96,6 +97,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 workspace:
   base: /src
   path: loki
@@ -113,6 +115,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 workspace:
   base: /src
   path: loki
@@ -263,6 +266,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -390,6 +394,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -517,6 +522,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -572,6 +578,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -627,6 +634,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -682,6 +690,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -738,6 +747,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -794,6 +804,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -850,6 +861,64 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
+---
+depends_on:
+- check
+kind: pipeline
+name: querytee-amd64
+platform:
+  arch: amd64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  - echo ",main" >> .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-querytee-image
+  settings:
+    dockerfile: cmd/querytee/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-query-tee
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-querytee-image
+  settings:
+    dockerfile: cmd/querytee/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-query-tee
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
+  - tag
 ---
 depends_on:
 - docker-amd64
@@ -964,6 +1033,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -1023,6 +1093,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 get:
   name: pat
@@ -1067,6 +1138,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 20f2dd84e89dff07703d4a7c84c0b0d267b6082745025804bc91a26c4a180779
+hmac: a96f66baa9057be9437904081ef78fa7c1584d855ba1c90d22a0bcb4eb0881f7
 
 ...
