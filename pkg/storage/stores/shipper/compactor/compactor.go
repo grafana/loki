@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
@@ -237,7 +238,12 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 				return err
 			}
 			c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
-			c.deleteRequestsManager = deletion.NewDeleteRequestsManager(c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, r)
+			c.deleteRequestsManager = deletion.NewDeleteRequestsManager(
+				c.deleteRequestsStore,
+				c.cfg.DeleteRequestCancelPeriod,
+				r,
+				c.deleteMode,
+			)
 			c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 		} else {
 			c.expirationChecker = newExpirationChecker(
@@ -567,9 +573,9 @@ func newExpirationChecker(retentionExpiryChecker, deletionExpiryChecker retentio
 	return &expirationChecker{retentionExpiryChecker, deletionExpiryChecker}
 }
 
-func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []model.Interval) {
-	if expired, nonDeletedIntervals := e.retentionExpiryChecker.Expired(ref, now); expired {
-		return expired, nonDeletedIntervals
+func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []model.Interval, encoding.FilterFunc) {
+	if expired, nonDeletedIntervals, filterFunc := e.retentionExpiryChecker.Expired(ref, now); expired {
+		return expired, nonDeletedIntervals, filterFunc
 	}
 
 	return e.deletionExpiryChecker.Expired(ref, now)

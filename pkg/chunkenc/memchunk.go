@@ -949,7 +949,7 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 
 // Filter returns a new chunk with logs matching the filter removed.
 // Returns ErrSliceNoDataInRange if everything is filtered out.
-func (c *MemChunk) Filter(shouldFilter func(string) bool) (Chunk, error) {
+func (c *MemChunk) Filter(shouldFilter FilterFunc) (Chunk, error) {
 	from, to := c.Bounds()
 	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
 	itr, err := c.Iterator(context.Background(), from, to.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
@@ -971,7 +971,6 @@ func (c *MemChunk) Filter(shouldFilter func(string) bool) (Chunk, error) {
 
 	for itr.Next() {
 		entry := itr.Entry()
-		fmt.Printf("Filtering: %v\n", entry.Line)
 		if shouldFilter(entry.Line) {
 			continue
 		}

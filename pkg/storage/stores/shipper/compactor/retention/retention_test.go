@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
@@ -401,7 +402,7 @@ func TestChunkRewriter(t *testing.T) {
 					cr, err := newChunkRewriter(chunkClient, store.schemaCfg.SchemaConfig.Configs[0], indexTable.name, bucket)
 					require.NoError(t, err)
 
-					wroteChunks, err := cr.rewriteChunk(context.Background(), entryFromChunk(store.schemaCfg.SchemaConfig, tt.chunk), tt.rewriteIntervals)
+					wroteChunks, err := cr.rewriteChunk(context.Background(), entryFromChunk(store.schemaCfg.SchemaConfig, tt.chunk), tt.rewriteIntervals, nil)
 					require.NoError(t, err)
 					if len(tt.rewriteIntervals) == 0 {
 						require.False(t, wroteChunks)
@@ -463,9 +464,9 @@ func newMockExpirationChecker(chunksExpiry map[string]chunkExpiry) mockExpiratio
 	return mockExpirationChecker{chunksExpiry: chunksExpiry}
 }
 
-func (m mockExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval) {
+func (m mockExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval, encoding.FilterFunc) {
 	ce := m.chunksExpiry[string(ref.ChunkID)]
-	return ce.isExpired, ce.nonDeletedIntervals
+	return ce.isExpired, ce.nonDeletedIntervals, nil
 }
 
 func (m mockExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {

@@ -67,6 +67,11 @@ func (c *dumbChunk) Utilization() float64 {
 	return float64(len(c.entries)) / float64(tmpNumEntries)
 }
 
+// Filter implements Chunk.
+func (c *dumbChunk) Filter(shouldFilter FilterFunc) (Chunk, error) {
+	return nil, nil
+}
+
 func (c *dumbChunk) Encoding() Encoding { return EncNone }
 
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,

@@ -149,9 +149,9 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 		seriesMap.Add(c.SeriesID, c.UserID, c.Labels)
 
 		// see if the chunk is deleted completely or partially
-		if expired, nonDeletedIntervals := expiration.Expired(c, now); expired {
+		if expired, nonDeletedIntervals, filterFunc := expiration.Expired(c, now); expired {
 			if len(nonDeletedIntervals) > 0 {
-				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, nonDeletedIntervals)
+				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, nonDeletedIntervals, filterFunc)
 				if err != nil {
 					return false, false, fmt.Errorf("failed to rewrite chunk %s for interval %s with error %s", c.ChunkID, nonDeletedIntervals, err)
 				}
@@ -161,6 +161,10 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 					empty = false
 					seriesMap.MarkSeriesNotDeleted(c.SeriesID, c.UserID)
 				}
+			}
+
+			if filterFunc != nil {
+				// use filterFunc on chunk
 			}
 
 			if err := chunkIt.Delete(); err != nil {
@@ -309,7 +313,7 @@ func newChunkRewriter(chunkClient chunk.Client, schemaCfg chunk.PeriodConfig,
 	}, nil
 }
 
-func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, intervals []model.Interval) (bool, error) {
+func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, intervals []model.Interval, filterFunc func(string) bool) (bool, error) {
 	userID := unsafeGetString(ce.UserID)
 	chunkID := unsafeGetString(ce.ChunkID)
 
@@ -328,6 +332,62 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 	}
 
 	wroteChunks := false
+
+	if filterFunc != nil {
+		newChunkData, err := chks[0].Data.Filter(filterFunc)
+		if err != nil {
+			return false, err
+		}
+
+		facade, ok := newChunkData.(*chunkenc.Facade)
+		if !ok {
+			return false, errors.New("invalid chunk type")
+		}
+
+		unixStart, unixEnd := facade.LokiChunk().Bounds()
+		start := model.TimeFromUnix(unixStart.Unix())
+		end := model.TimeFromUnix(unixEnd.Unix())
+
+		newChunk := chunk.NewChunk(
+			userID, chks[0].FingerprintModel(), chks[0].Metric,
+			facade,
+			start,
+			end,
+		)
+
+		err = newChunk.Encode()
+		if err != nil {
+			return false, err
+		}
+
+		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(start, end, userID, "logs", newChunk.Metric, c.scfg.ExternalKey(newChunk))
+		if err != nil {
+			return false, err
+		}
+
+		uploadChunk := false
+
+		for _, entry := range entries {
+			// write an entry only if it belongs to this table
+			if entry.TableName == c.tableName {
+				key := entry.HashValue + separator + string(entry.RangeValue)
+				if err := c.bucket.Put([]byte(key), nil); err != nil {
+					return false, err
+				}
+				uploadChunk = true
+			}
+		}
+
+		// upload chunk only if an entry was written
+		if uploadChunk {
+			err = c.chunkClient.PutChunks(ctx, []chunk.Chunk{newChunk})
+			if err != nil {
+				return false, err
+			}
+			wroteChunks = true
+		}
+		return wroteChunks, nil
+	}
 
 	for _, interval := range intervals {
 		newChunkData, err := chks[0].Data.Rebound(interval.Start, interval.End)

@@ -107,6 +107,8 @@ func SupportedEncoding() string {
 	return sb.String()
 }
 
+type FilterFunc func(string) bool
+
 // Chunk is the interface for the compressed logs chunk format.
 type Chunk interface {
 	Bounds() (time.Time, time.Time)
@@ -128,6 +130,7 @@ type Chunk interface {
 	Close() error
 	Encoding() Encoding
 	Rebound(start, end time.Time) (Chunk, error)
+	Filter(shouldFilter FilterFunc) (Chunk, error)
 }
 
 // Block is a chunk block.

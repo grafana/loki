@@ -214,6 +214,10 @@ func (b *bigchunk) Rebound(start, end model.Time) (Chunk, error) {
 	return reboundChunk(b, start, end)
 }
 
+func (b *bigchunk) Filter(shouldFilter FilterFunc) (Chunk, error) {
+	return nil, errors.New("not implemented")
+}
+
 type writer struct {
 	io.Writer
 }

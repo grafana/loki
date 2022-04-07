@@ -8,12 +8,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 type ExpirationChecker interface {
-	Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval)
+	Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval, encoding.FilterFunc)
 	IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool
 	MarkPhaseStarted()
 	MarkPhaseFailed()
@@ -40,10 +41,10 @@ func NewExpirationChecker(limits Limits) ExpirationChecker {
 }
 
 // Expired tells if a ref chunk is expired based on retention rules.
-func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval) {
+func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval, encoding.FilterFunc) {
 	userID := unsafeGetString(ref.UserID)
 	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
-	return now.Sub(ref.Through) > period, nil
+	return now.Sub(ref.Through) > period, nil, nil
 }
 
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.
@@ -88,8 +89,8 @@ func NeverExpiringExpirationChecker(limits Limits) ExpirationChecker {
 
 type neverExpiringExpirationChecker struct{}
 
-func (e *neverExpiringExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval) {
-	return false, nil
+func (e *neverExpiringExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval, encoding.FilterFunc) {
+	return false, nil, nil
 }
 func (e *neverExpiringExpirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
 	return false

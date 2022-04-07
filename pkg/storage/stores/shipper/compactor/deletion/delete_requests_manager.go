@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -31,14 +32,16 @@ type DeleteRequestsManager struct {
 	metrics                    *deleteRequestsManagerMetrics
 	wg                         sync.WaitGroup
 	done                       chan struct{}
+	deletionMode               Mode
 }
 
-func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer) *DeleteRequestsManager {
+func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer, mode Mode) *DeleteRequestsManager {
 	dm := &DeleteRequestsManager{
 		deleteRequestsStore:       store,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
 		metrics:                   newDeleteRequestsManagerMetrics(registerer),
 		done:                      make(chan struct{}),
+		deletionMode:              mode,
 	}
 
 	go dm.loop()
@@ -123,12 +126,25 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 	return nil
 }
 
-func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, []model.Interval) {
+func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, []model.Interval, encoding.FilterFunc) {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
 	if len(d.deleteRequestsToProcess) == 0 {
-		return false, nil
+		return false, nil, nil
+	}
+
+	if d.deletionMode == FilterAndDelete {
+		// TODO Create a FilterFunc
+		// for _, deleteRequest := range d.deleteRequestsToProcess {
+		// deleteRequest.matchers
+		// }
+
+		f := func(string) bool {
+			return true
+		}
+
+		return true, nil, f
 	}
 
 	d.chunkIntervalsToRetain = d.chunkIntervalsToRetain[:0]
@@ -154,16 +170,16 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		d.chunkIntervalsToRetain = rebuiltIntervals
 		if len(d.chunkIntervalsToRetain) == 0 {
 			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
-			return true, nil
+			return true, nil, nil
 		}
 	}
 
 	if len(d.chunkIntervalsToRetain) == 1 && d.chunkIntervalsToRetain[0].Start == ref.From && d.chunkIntervalsToRetain[0].End == ref.Through {
-		return false, nil
+		return false, nil, nil
 	}
 
 	d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
-	return true, d.chunkIntervalsToRetain
+	return true, d.chunkIntervalsToRetain, nil
 }
 
 func (d *DeleteRequestsManager) MarkPhaseStarted() {

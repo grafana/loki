@@ -83,6 +83,10 @@ func (p *prometheusXorChunk) Rebound(from, to model.Time) (Chunk, error) {
 	return nil, errors.New("Rebound not supported by PrometheusXorChunk")
 }
 
+func (p *prometheusXorChunk) Filter(shouldFilter FilterFunc) (Chunk, error) {
+	return nil, errors.New("Filter not supported by PrometheusXorChunk")
+}
+
 func (p *prometheusXorChunk) Len() int {
 	if p.chunk == nil {
 		return 0

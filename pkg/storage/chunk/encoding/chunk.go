@@ -37,6 +37,8 @@ const (
 
 var errChunkBoundsExceeded = errors.New("attempted access outside of chunk boundaries")
 
+type FilterFunc func(string) bool
+
 // Chunk is the interface for all chunks. Chunks are generally not
 // goroutine-safe.
 type Chunk interface {
@@ -62,6 +64,8 @@ type Chunk interface {
 	// We do not want to change existing Slice implementations because
 	// it is built specifically for query optimization and is a noop for some of the encodings.
 	Rebound(start, end model.Time) (Chunk, error)
+
+	Filter(shouldFilter FilterFunc) (Chunk, error)
 
 	// Len returns the number of samples in the chunk.  Implementations may be
 	// expensive.
