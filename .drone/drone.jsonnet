@@ -25,7 +25,7 @@ local pipeline(name) = {
   kind: 'pipeline',
   name: name,
   steps: [],
-  trigger: { event: ['push', 'pull_request'] },
+  trigger: { event: ['push', 'pull_request', 'tag'] },
 };
 
 local secret(name, vault_path, vault_key) = {
