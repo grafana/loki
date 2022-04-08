@@ -792,7 +792,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.BACKWARD)
 
 		for i := requests - 1; i >= 0; i-- {
-			for j := 0; j < int(streamCount); j++ {
+			for j := 0; j < streamCount; j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
 					require.Equal(t, int64(i), it.Entry().Timestamp.UnixNano())
@@ -819,7 +819,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.FORWARD)
 
 		for i := 0; i < requests; i++ {
-			for j := 0; j < int(streamCount); j++ {
+			for j := 0; j < streamCount; j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
 					require.Equal(t, int64(i), it.Entry().Timestamp.UnixNano())
@@ -843,7 +843,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 
 		for i := 0; i < requests; i++ {
-			for j := 0; j < int(streamCount); j++ {
+			for j := 0; j < streamCount; j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
 					require.Equal(t, float64(1), it.Sample().Value)
