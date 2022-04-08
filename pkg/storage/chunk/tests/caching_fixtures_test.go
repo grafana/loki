@@ -22,7 +22,7 @@ type fixture struct {
 }
 
 func (f fixture) Name() string { return "caching-store" }
-func (f fixture) Clients() (index.IndexClient, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
+func (f fixture) Clients() (index.Client, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
 	limits, err := defaultLimits()
 	if err != nil {
 		return nil, nil, nil, config.SchemaConfig{}, nil, err

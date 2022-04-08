@@ -143,22 +143,22 @@ func Test_CreateTable_BoltdbRW(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure file content is not modified
-	entry := index.IndexQuery{
+	entry := index.Query{
 		TableName: tableName,
 		HashValue: fmt.Sprintf("hash%s", "test"),
 	}
-	var have []index.IndexEntry
-	err = indexClient.query(context.Background(), entry, func(_ index.IndexQuery, read index.ReadBatchResult) bool {
+	var have []index.Entry
+	err = indexClient.query(context.Background(), entry, func(_ index.Query, read index.ReadBatchResult) bool {
 		iter := read.Iterator()
 		for iter.Next() {
-			have = append(have, index.IndexEntry{
+			have = append(have, index.Entry{
 				RangeValue: iter.RangeValue(),
 			})
 		}
 		return true
 	})
 	require.NoError(t, err)
-	require.Equal(t, []index.IndexEntry{
+	require.Equal(t, []index.Entry{
 		{RangeValue: []byte(fmt.Sprintf("range%s", "value"))},
 	}, have)
 }
@@ -232,14 +232,14 @@ func TestBoltDB_Writes(t *testing.T) {
 			require.Equal(t, tc.err, indexClient.BatchWrite(context.Background(), batch))
 
 			// verifying test writes by querying
-			var have []index.IndexEntry
-			err = indexClient.query(context.Background(), index.IndexQuery{
+			var have []index.Entry
+			err = indexClient.query(context.Background(), index.Query{
 				TableName: tableName,
 				HashValue: "hash",
-			}, func(_ index.IndexQuery, read index.ReadBatchResult) bool {
+			}, func(_ index.Query, read index.ReadBatchResult) bool {
 				iter := read.Iterator()
 				for iter.Next() {
-					have = append(have, index.IndexEntry{
+					have = append(have, index.Entry{
 						RangeValue: iter.RangeValue(),
 						Value:      iter.Value(),
 					})
@@ -251,7 +251,7 @@ func TestBoltDB_Writes(t *testing.T) {
 			require.Len(t, have, len(tc.valuesAfterWrites))
 
 			for i, value := range tc.valuesAfterWrites {
-				require.Equal(t, index.IndexEntry{
+				require.Equal(t, index.Entry{
 					RangeValue: []byte(value),
 					Value:      []byte(value),
 				}, have[i])

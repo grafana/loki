@@ -33,7 +33,7 @@ type deleteRequestsTable struct {
 
 const deleteRequestsIndexFileName = DeleteRequestsTableName + ".gz"
 
-func newDeleteRequestsTable(workingDirectory string, indexStorageClient storage.Client) (index.IndexClient, error) {
+func newDeleteRequestsTable(workingDirectory string, indexStorageClient storage.Client) (index.Client, error) {
 	dbPath := filepath.Join(workingDirectory, DeleteRequestsTableName, DeleteRequestsTableName)
 	boltdbIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: filepath.Dir(dbPath)})
 	if err != nil {
@@ -180,7 +180,7 @@ func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch index.WriteB
 	return nil
 }
 
-func (t *deleteRequestsTable) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (t *deleteRequestsTable) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	for _, query := range queries {
 		if err := t.boltdbIndexClient.QueryDB(ctx, t.db, local.IndexBucketName, query, callback); err != nil {
 			return err

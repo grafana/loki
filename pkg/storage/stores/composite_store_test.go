@@ -6,16 +6,14 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/stretchr/testify/require"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
-)
 
-const userID = "1"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+)
 
 type mockStore int
 
@@ -170,7 +168,7 @@ func TestCompositeStore(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			have := []result{}
-			err := tc.cs.forStores(context.Background(), userID, model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), collect(&have))
+			err := tc.cs.forStores(context.Background(), model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), collect(&have))
 			require.NoError(t, err)
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong stores - %s", test.Diff(tc.want, have))

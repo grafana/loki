@@ -16,14 +16,14 @@ import (
 
 type fixture struct {
 	name    string
-	clients func() (index.IndexClient, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error)
+	clients func() (index.Client, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error)
 }
 
 func (f fixture) Name() string {
 	return f.name
 }
 
-func (f fixture) Clients() (index.IndexClient, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
+func (f fixture) Clients() (index.Client, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
 	return f.clients()
 }
 
@@ -31,7 +31,7 @@ func (f fixture) Clients() (index.IndexClient, client.Client, index.TableClient,
 var Fixtures = []testutils.Fixture{
 	fixture{
 		name: "S3 chunks",
-		clients: func() (index.IndexClient, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
+		clients: func() (index.Client, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
 			schemaConfig := testutils.DefaultSchemaConfig("s3")
 			dynamoDB := newMockDynamoDB(0, 0)
 			table := &dynamoTableClient{
@@ -65,7 +65,7 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 	return fixture{
 		name: fmt.Sprintf("DynamoDB chunks provisionedErr=%d, ChunkGangSize=%d, ChunkGetMaxParallelism=%d",
 			provisionedErr, gangsize, maxParallelism),
-		clients: func() (index.IndexClient, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
+		clients: func() (index.Client, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
 			dynamoDB := newMockDynamoDB(0, provisionedErr)
 			schemaCfg := testutils.DefaultSchemaConfig("aws")
 			table := &dynamoTableClient{

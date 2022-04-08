@@ -40,7 +40,7 @@ func (f *fixture) Name() string {
 }
 
 func (f *fixture) Clients() (
-	iClient index.IndexClient, cClient client.Client, tClient index.TableClient,
+	iClient index.Client, cClient client.Client, tClient index.TableClient,
 	schemaConfig config.SchemaConfig, closer io.Closer, err error,
 ) {
 	f.btsrv, err = bttest.NewServer("localhost:0")

@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 // Refer to https://github.com/prometheus/prometheus/issues/2651.
@@ -95,8 +96,8 @@ func BenchmarkParseIndexEntriesRegexSet50000(b *testing.B) {
 	benchmarkParseIndexEntries(50000, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
 }
 
-func generateIndexEntries(n int64) []index.IndexEntry {
-	res := make([]index.IndexEntry, 0, n)
+func generateIndexEntries(n int64) []index.Entry {
+	res := make([]index.Entry, 0, n)
 	for i := n - 1; i >= 0; i-- {
 		labelValue := fmt.Sprintf("labelvalue%d", i%(n/2))
 		chunkID := fmt.Sprintf("chunkid%d", i%(n/2))
@@ -107,7 +108,7 @@ func generateIndexEntries(n int64) []index.IndexEntry {
 		rangeValue = append(rangeValue, 0)
 		rangeValue = append(rangeValue, []byte(chunkID)...)
 		rangeValue = append(rangeValue, 0)
-		res = append(res, index.IndexEntry{
+		res = append(res, index.Entry{
 			RangeValue: rangeValue,
 		})
 	}

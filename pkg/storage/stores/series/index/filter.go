@@ -6,7 +6,7 @@ import "bytes"
 // useful for the cache and Bigtable backend, which only ever fetches the whole
 // row.
 func QueryFilter(callback QueryPagesCallback) QueryPagesCallback {
-	return func(query IndexQuery, batch ReadBatchResult) bool {
+	return func(query Query, batch ReadBatchResult) bool {
 		return callback(query, &filteringBatch{
 			query:           query,
 			ReadBatchResult: batch,
@@ -15,7 +15,7 @@ func QueryFilter(callback QueryPagesCallback) QueryPagesCallback {
 }
 
 type filteringBatch struct {
-	query IndexQuery
+	query Query
 	ReadBatchResult
 }
 
@@ -27,7 +27,7 @@ func (f filteringBatch) Iterator() ReadBatchIterator {
 }
 
 type filteringBatchIter struct {
-	query IndexQuery
+	query Query
 	ReadBatchIterator
 }
 

@@ -117,7 +117,7 @@ type dynamoDBStorageClient struct {
 }
 
 // NewDynamoDBIndexClient makes a new DynamoDB-backed IndexClient.
-func NewDynamoDBIndexClient(cfg DynamoDBConfig, schemaCfg config.SchemaConfig, reg prometheus.Registerer) (index.IndexClient, error) {
+func NewDynamoDBIndexClient(cfg DynamoDBConfig, schemaCfg config.SchemaConfig, reg prometheus.Registerer) (index.Client, error) {
 	return newDynamoDBStorageClient(cfg, schemaCfg, reg)
 }
 
@@ -250,11 +250,11 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input index.Write
 }
 
 // QueryPages implements chunk.IndexClient.
-func (a dynamoDBStorageClient) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (a dynamoDBStorageClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	return client_util.DoParallelQueries(ctx, a.query, queries, callback)
 }
 
-func (a dynamoDBStorageClient) query(ctx context.Context, query index.IndexQuery, callback index.QueryPagesCallback) error {
+func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(query.TableName),
 		KeyConditions: map[string]*dynamodb.Condition{

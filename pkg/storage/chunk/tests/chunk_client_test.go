@@ -20,7 +20,7 @@ import (
 )
 
 func TestChunksBasic(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, _ index.IndexClient, client client.Client) {
+	forAllFixtures(t, func(t *testing.T, _ index.Client, client client.Client) {
 		s := config.SchemaConfig{
 			Configs: []config.PeriodConfig{
 				{

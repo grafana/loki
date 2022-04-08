@@ -44,13 +44,13 @@ const (
 
 type encoding struct {
 	Name string
-	New  func() ChunkData
+	New  func() Data
 }
 
 var encodings = map[Encoding]encoding{
 	Bigchunk: {
 		Name: "Bigchunk",
-		New: func() ChunkData {
+		New: func() Data {
 			return newBigchunk()
 		},
 	},
@@ -82,7 +82,7 @@ func (e *Encoding) Set(s string) error {
 
 // New creates a new chunk according to the encoding set by the
 // DefaultEncoding flag.
-func New() ChunkData {
+func New() Data {
 	chunk, err := NewForEncoding(DefaultEncoding)
 	if err != nil {
 		panic(err)
@@ -91,7 +91,7 @@ func New() ChunkData {
 }
 
 // NewForEncoding allows configuring what chunk type you want
-func NewForEncoding(encoding Encoding) (ChunkData, error) {
+func NewForEncoding(encoding Encoding) (Data, error) {
 	enc, ok := encodings[encoding]
 	if !ok {
 		return nil, fmt.Errorf("unknown chunk encoding: %v", encoding)
@@ -102,7 +102,7 @@ func NewForEncoding(encoding Encoding) (ChunkData, error) {
 
 // MustRegisterEncoding add a new chunk encoding.  There is no locking, so this
 // must be called in init().
-func MustRegisterEncoding(enc Encoding, name string, f func() ChunkData) {
+func MustRegisterEncoding(enc Encoding, name string, f func() Data) {
 	_, ok := encodings[enc]
 	if ok {
 		panic("double register encoding")

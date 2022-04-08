@@ -6,6 +6,12 @@ import (
 	"sync"
 
 	"github.com/go-kit/log/level"
+	jsoniter "github.com/json-iterator/go"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -16,11 +22,6 @@ import (
 	"github.com/grafana/loki/pkg/util/extract"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
-	jsoniter "github.com/json-iterator/go"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 var (
@@ -59,14 +60,14 @@ type chunkFetcher interface {
 
 type IndexStore struct {
 	schema         index.SeriesStoreSchema
-	index          index.IndexClient
+	index          index.Client
 	schemaCfg      config.SchemaConfig
 	fetcher        chunkFetcher
 	chunkFilterer  chunk.RequestChunkFilterer
 	chunkBatchSize int
 }
 
-func NewIndexStore(schemaCfg config.SchemaConfig, schema index.SeriesStoreSchema, index index.IndexClient, fetcher chunkFetcher, chunkBatchSize int) *IndexStore {
+func NewIndexStore(schemaCfg config.SchemaConfig, schema index.SeriesStoreSchema, index index.Client, fetcher chunkFetcher, chunkBatchSize int) *IndexStore {
 	return &IndexStore{
 		schema:         schema,
 		index:          index,
@@ -155,7 +156,7 @@ func (c *IndexStore) GetSeries(ctx context.Context, userID string, from, through
 		split = len(chunksBySeries)
 	}
 
-	var chunkFilterer chunk.ChunkFilterer
+	var chunkFilterer chunk.Filterer
 	if c.chunkFilterer != nil {
 		chunkFilterer = c.chunkFilterer.ForRequest(ctx)
 	}
@@ -383,14 +384,14 @@ func (c *IndexStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from,
 }
 
 func (c *IndexStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
-	return c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []index.IndexQuery) []index.IndexQuery {
+	return c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []index.Query) []index.Query {
 		return c.schema.FilterReadQueries(queries, shard)
 	})
 }
 
-func (c *IndexStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]index.IndexQuery) []index.IndexQuery) ([]string, error) {
+func (c *IndexStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]index.Query) []index.Query) ([]string, error) {
 	var err error
-	var queries []index.IndexQuery
+	var queries []index.Query
 	var labelName string
 	if matcher == nil {
 		queries, err = c.schema.GetReadQueriesForMetric(from, through, userID, metricName)
@@ -436,7 +437,7 @@ func (c *IndexStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thr
 	return ids, nil
 }
 
-func parseIndexEntries(_ context.Context, entries []index.IndexEntry, matcher *labels.Matcher) ([]string, error) {
+func parseIndexEntries(_ context.Context, entries []index.Entry, matcher *labels.Matcher) ([]string, error) {
 	// Nothing to do if there are no entries.
 	if len(entries) == 0 {
 		return nil, nil
@@ -481,19 +482,19 @@ func parseIndexEntries(_ context.Context, entries []index.IndexEntry, matcher *l
 	return result, nil
 }
 
-func (c *IndexStore) lookupEntriesByQueries(ctx context.Context, queries []index.IndexQuery) ([]index.IndexEntry, error) {
+func (c *IndexStore) lookupEntriesByQueries(ctx context.Context, queries []index.Query) ([]index.Entry, error) {
 	// Nothing to do if there are no queries.
 	if len(queries) == 0 {
 		return nil, nil
 	}
 
 	var lock sync.Mutex
-	var entries []index.IndexEntry
-	err := c.index.QueryPages(ctx, queries, func(query index.IndexQuery, resp index.ReadBatchResult) bool {
+	var entries []index.Entry
+	err := c.index.QueryPages(ctx, queries, func(query index.Query, resp index.ReadBatchResult) bool {
 		iter := resp.Iterator()
 		lock.Lock()
 		for iter.Next() {
-			entries = append(entries, index.IndexEntry{
+			entries = append(entries, index.Entry{
 				TableName:  query.TableName,
 				HashValue:  query.HashValue,
 				RangeValue: iter.RangeValue(),
@@ -514,7 +515,7 @@ func (c *IndexStore) lookupLabelNamesBySeries(ctx context.Context, from, through
 	defer log.Span.Finish()
 
 	level.Debug(log).Log("seriesIDs", len(seriesIDs))
-	queries := make([]index.IndexQuery, 0, len(seriesIDs))
+	queries := make([]index.Query, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
 		qs, err := c.schema.GetLabelNamesForSeries(from, through, userID, []byte(seriesID))
 		if err != nil {
@@ -577,7 +578,7 @@ func (c *IndexStore) lookupLabelNamesByChunks(ctx context.Context, from, through
 }
 
 func (c *IndexStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
-	queries := make([]index.IndexQuery, 0, len(seriesIDs))
+	queries := make([]index.Query, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
 		qs, err := c.schema.GetChunksForSeries(from, through, userID, []byte(seriesID))
 		if err != nil {

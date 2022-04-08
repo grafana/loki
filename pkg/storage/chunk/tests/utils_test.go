@@ -19,7 +19,7 @@ const (
 	tableName = "test"
 )
 
-type storageClientTest func(*testing.T, index.IndexClient, client.Client)
+type storageClientTest func(*testing.T, index.Client, client.Client)
 
 func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 	var fixtures []testutils.Fixture

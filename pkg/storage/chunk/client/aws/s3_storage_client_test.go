@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 )
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)

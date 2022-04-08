@@ -5,6 +5,11 @@ import (
 	"fmt"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -12,10 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 var (
@@ -39,8 +40,8 @@ type IndexWriter interface {
 }
 
 type SchemaWrites interface {
-	GetChunkWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]index.IndexEntry, error)
-	GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]string, [][]index.IndexEntry, error)
+	GetChunkWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]index.Entry, error)
+	GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]string, [][]index.Entry, error)
 }
 
 type Writer struct {
@@ -141,7 +142,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
 func (c *Writer) calculateIndexEntries(ctx context.Context, from, through model.Time, chunk chunk.Chunk) (index.WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
-	entries := []index.IndexEntry{}
+	entries := []index.Entry{}
 
 	metricName := chunk.Metric.Get(labels.MetricName)
 	if metricName == "" {

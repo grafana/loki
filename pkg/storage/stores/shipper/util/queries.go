@@ -14,15 +14,15 @@ import (
 const maxQueriesPerGoroutine = 100
 
 type TableQuerier interface {
-	MultiQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error
+	MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 }
 
 // QueriesByTable groups and returns queries by tables.
-func QueriesByTable(queries []index.IndexQuery) map[string][]index.IndexQuery {
-	queriesByTable := make(map[string][]index.IndexQuery)
+func QueriesByTable(queries []index.Query) map[string][]index.Query {
+	queriesByTable := make(map[string][]index.Query)
 	for _, query := range queries {
 		if _, ok := queriesByTable[query.TableName]; !ok {
-			queriesByTable[query.TableName] = []index.IndexQuery{}
+			queriesByTable[query.TableName] = []index.Query{}
 		}
 
 		queriesByTable[query.TableName] = append(queriesByTable[query.TableName], query)
@@ -31,7 +31,7 @@ func QueriesByTable(queries []index.IndexQuery) map[string][]index.IndexQuery {
 	return queriesByTable
 }
 
-func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []index.Query, callback index.QueryPagesCallback) error {
 	if len(queries) == 0 {
 		return nil
 	}
@@ -50,7 +50,7 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 
 	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
 		q := queries[i:util_math.Min(i+maxQueriesPerGoroutine, len(queries))]
-		go func(queries []index.IndexQuery) {
+		go func(queries []index.Query) {
 			errs <- tableQuerier.MultiQueries(ctx, queries, id.Callback)
 		}(q)
 	}
@@ -82,7 +82,7 @@ func NewIndexDeduper(callback index.QueryPagesCallback) *IndexDeduper {
 	}
 }
 
-func (i *IndexDeduper) Callback(query index.IndexQuery, batch index.ReadBatchResult) bool {
+func (i *IndexDeduper) Callback(query index.Query, batch index.ReadBatchResult) bool {
 	return i.callback(query, &filteringBatch{
 		query:           query,
 		ReadBatchResult: batch,
@@ -125,7 +125,7 @@ func (i *IndexDeduper) isSeen(hashValue string, rangeValue []byte) bool {
 type isSeen func(hashValue string, rangeValue []byte) bool
 
 type filteringBatch struct {
-	query index.IndexQuery
+	query index.Query
 	index.ReadBatchResult
 	isSeen isSeen
 }
@@ -139,7 +139,7 @@ func (f *filteringBatch) Iterator() index.ReadBatchIterator {
 }
 
 type filteringBatchIter struct {
-	query index.IndexQuery
+	query index.Query
 	index.ReadBatchIterator
 	isSeen isSeen
 }

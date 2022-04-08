@@ -67,7 +67,7 @@ func (c *CompositeStore) Stores() []Store {
 
 func (c compositeStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	for _, chunk := range chunks {
-		err := c.forStores(ctx, chunk.UserID, chunk.From, chunk.Through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+		err := c.forStores(ctx, chunk.From, chunk.Through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 			return store.PutOne(innerCtx, from, through, chunk)
 		})
 		if err != nil {
@@ -78,7 +78,7 @@ func (c compositeStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 }
 
 func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
-	return c.forStores(ctx, chunk.UserID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+	return c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		return store.PutOne(innerCtx, from, through, chunk)
 	})
 }
@@ -92,7 +92,7 @@ func (c compositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 func (c compositeStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	var results []labels.Labels
 	found := map[uint64]struct{}{}
-	err := c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		series, err := store.GetSeries(innerCtx, userID, from, through, matchers...)
 		if err != nil {
 			return err
@@ -114,7 +114,7 @@ func (c compositeStore) GetSeries(ctx context.Context, userID string, from, thro
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
 func (c compositeStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	var result util.UniqueStrings
-	err := c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		labelValues, err := store.LabelValuesForMetricName(innerCtx, userID, from, through, metricName, labelName, matchers...)
 		if err != nil {
 			return err
@@ -128,7 +128,7 @@ func (c compositeStore) LabelValuesForMetricName(ctx context.Context, userID str
 // LabelNamesForMetricName retrieves all label names for a metric name.
 func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	var result util.UniqueStrings
-	err := c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		labelNames, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName)
 		if err != nil {
 			return err
@@ -142,7 +142,7 @@ func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID stri
 func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	chunkIDs := [][]chunk.Chunk{}
 	fetchers := []*fetcher.Fetcher{}
-	err := c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		ids, fetcher, err := store.GetChunkRefs(innerCtx, userID, from, through, matchers...)
 		if err != nil {
 			return err
@@ -182,7 +182,7 @@ func (c compositeStore) Stop() {
 	}
 }
 
-func (c compositeStore) forStores(ctx context.Context, userID string, from, through model.Time, callback func(innerCtx context.Context, from, through model.Time, store Store) error) error {
+func (c compositeStore) forStores(ctx context.Context, from, through model.Time, callback func(innerCtx context.Context, from, through model.Time, store Store) error) error {
 	if len(c.stores) == 0 {
 		return nil
 	}

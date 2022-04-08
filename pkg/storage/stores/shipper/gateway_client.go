@@ -81,7 +81,7 @@ func (s *GatewayClient) Stop() {
 	s.conn.Close()
 }
 
-func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	if len(queries) <= maxQueriesPerGrpc {
 		return s.doQueries(ctx, queries, callback)
 	}
@@ -95,8 +95,8 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.IndexQue
 	})
 }
 
-func (s *GatewayClient) doQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
-	queryKeyQueryMap := make(map[string]index.IndexQuery, len(queries))
+func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+	queryKeyQueryMap := make(map[string]index.Query, len(queries))
 	gatewayQueries := make([]*indexgatewaypb.IndexQuery, 0, len(queries))
 
 	for _, query := range queries {

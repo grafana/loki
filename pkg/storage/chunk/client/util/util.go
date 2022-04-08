@@ -13,7 +13,7 @@ import (
 )
 
 // DoSingleQuery is the interface for indexes that don't support batching yet.
-type DoSingleQuery func(context.Context, index.IndexQuery, index.QueryPagesCallback) error
+type DoSingleQuery func(context.Context, index.Query, index.QueryPagesCallback) error
 
 // QueryParallelism is the maximum number of subqueries run in
 // parallel per higher-level query
@@ -22,14 +22,14 @@ var QueryParallelism = 100
 // DoParallelQueries translates between our interface for query batching,
 // and indexes that don't yet support batching.
 func DoParallelQueries(
-	ctx context.Context, doSingleQuery DoSingleQuery, queries []index.IndexQuery,
+	ctx context.Context, doSingleQuery DoSingleQuery, queries []index.Query,
 	callback index.QueryPagesCallback,
 ) error {
 	if len(queries) == 1 {
 		return doSingleQuery(ctx, queries[0], callback)
 	}
 
-	queue := make(chan index.IndexQuery)
+	queue := make(chan index.Query)
 	incomingErrors := make(chan error)
 	n := math.Min(len(queries), QueryParallelism)
 	// Run n parallel goroutines fetching queries from the queue

@@ -75,7 +75,7 @@ type storageClientV1 struct {
 }
 
 // NewStorageClientV1 returns a new v1 StorageClient.
-func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg config.SchemaConfig) (index.IndexClient, error) {
+func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg config.SchemaConfig) (index.Client, error) {
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
 	if err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func newStorageClientV1(cfg Config, schemaCfg config.SchemaConfig, client *bigta
 }
 
 // NewStorageClientColumnKey returns a new v2 StorageClient.
-func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg config.SchemaConfig) (index.IndexClient, error) {
+func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg config.SchemaConfig) (index.Client, error) {
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
 	if err != nil {
 		return nil, err
@@ -216,7 +216,7 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch index.Wri
 	return nil
 }
 
-func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages")
 	defer sp.Finish()
 
@@ -227,7 +227,7 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []index
 
 	type tableQuery struct {
 		name    string
-		queries map[string]index.IndexQuery
+		queries map[string]index.Query
 		rows    bigtable.RowList
 	}
 
@@ -237,7 +237,7 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []index
 		if !ok {
 			tq = tableQuery{
 				name:    query.TableName,
-				queries: map[string]index.IndexQuery{},
+				queries: map[string]index.Query{},
 			}
 		}
 		hashKey, _ := s.keysFn(query.HashValue, nil)
@@ -324,11 +324,11 @@ func (c *columnKeyIterator) Value() []byte {
 	return c.items[c.i].Value
 }
 
-func (s *storageClientV1) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (s *storageClientV1) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	return util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *storageClientV1) query(ctx context.Context, query index.IndexQuery, callback index.QueryPagesCallback) error {
+func (s *storageClientV1) query(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
 	const null = string('\xff')
 
 	log, ctx := spanlogger.New(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})

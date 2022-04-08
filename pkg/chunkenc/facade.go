@@ -16,10 +16,10 @@ const GzipLogChunk = chunk.Encoding(128)
 const LogChunk = chunk.Encoding(129)
 
 func init() {
-	chunk.MustRegisterEncoding(GzipLogChunk, "GzipLogChunk", func() chunk.ChunkData {
+	chunk.MustRegisterEncoding(GzipLogChunk, "GzipLogChunk", func() chunk.Data {
 		return &Facade{}
 	})
-	chunk.MustRegisterEncoding(LogChunk, "LogChunk", func() chunk.ChunkData {
+	chunk.MustRegisterEncoding(LogChunk, "LogChunk", func() chunk.Data {
 		return &Facade{}
 	})
 }
@@ -29,11 +29,11 @@ type Facade struct {
 	c          Chunk
 	blockSize  int
 	targetSize int
-	chunk.ChunkData
+	chunk.Data
 }
 
 // NewFacade makes a new Facade.
-func NewFacade(c Chunk, blockSize, targetSize int) chunk.ChunkData {
+func NewFacade(c Chunk, blockSize, targetSize int) chunk.Data {
 	return &Facade{
 		c:          c,
 		blockSize:  blockSize,
@@ -86,7 +86,7 @@ func (f Facade) LokiChunk() Chunk {
 	return f.c
 }
 
-func (f Facade) Rebound(start, end model.Time) (chunk.ChunkData, error) {
+func (f Facade) Rebound(start, end model.Time) (chunk.Data, error) {
 	newChunk, err := f.c.Rebound(start.Time(), end.Time())
 	if err != nil {
 		return nil, err
@@ -97,7 +97,7 @@ func (f Facade) Rebound(start, end model.Time) (chunk.ChunkData, error) {
 }
 
 // UncompressedSize is a helper function to hide the type assertion kludge when wanting the uncompressed size of the Cortex interface encoding.Chunk.
-func UncompressedSize(c chunk.ChunkData) (int, bool) {
+func UncompressedSize(c chunk.Data) (int, bool) {
 	f, ok := c.(*Facade)
 
 	if !ok || f.c == nil {

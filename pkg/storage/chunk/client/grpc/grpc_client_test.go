@@ -145,11 +145,11 @@ func TestGrpcStore(t *testing.T) {
 	err = storageClient.BatchWrite(context.Background(), writeBatchTestData)
 	require.NoError(t, err)
 
-	queries := []index.IndexQuery{
+	queries := []index.Query{
 		{TableName: "table", HashValue: "foo"},
 	}
 	results := 0
-	err = storageClient.QueryPages(context.Background(), queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+	err = storageClient.QueryPages(context.Background(), queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++

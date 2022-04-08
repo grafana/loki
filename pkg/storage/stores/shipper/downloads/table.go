@@ -29,12 +29,12 @@ const (
 )
 
 type BoltDBIndexClient interface {
-	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.IndexQuery, callback index.QueryPagesCallback) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error
 }
 
 type Table interface {
 	Close()
-	MultiQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error
+	MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 	DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error)
 	Sync(ctx context.Context) error
 	EnsureQueryReadiness(ctx context.Context, userIDs []string) error
@@ -151,7 +151,7 @@ func (t *table) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *table) MultiQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (t *table) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err

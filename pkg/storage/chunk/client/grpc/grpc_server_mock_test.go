@@ -7,10 +7,11 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 type server struct {

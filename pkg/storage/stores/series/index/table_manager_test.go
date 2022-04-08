@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/mtime"
+
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 const (
@@ -129,13 +130,13 @@ func TestTableManager(t *testing.T) {
 	cfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From: config.DayTime{model.TimeFromUnix(baseTableStart.Unix())},
+				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: baseTableName,
 				},
 			},
 			{
-				From: config.DayTime{model.TimeFromUnix(weeklyTableStart.Unix())},
+				From: config.DayTime{Time: model.TimeFromUnix(weeklyTableStart.Unix())},
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: tablePrefix,
 					Period: tablePeriod,
@@ -147,7 +148,7 @@ func TestTableManager(t *testing.T) {
 				},
 			},
 			{
-				From: config.DayTime{model.TimeFromUnix(weeklyTable2Start.Unix())},
+				From: config.DayTime{Time: model.TimeFromUnix(weeklyTable2Start.Unix())},
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: table2Prefix,
 					Period: tablePeriod,
@@ -334,13 +335,13 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 	cfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From: config.DayTime{model.TimeFromUnix(baseTableStart.Unix())},
+				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: baseTableName,
 				},
 			},
 			{
-				From: config.DayTime{model.TimeFromUnix(weeklyTableStart.Unix())},
+				From: config.DayTime{Time: model.TimeFromUnix(weeklyTableStart.Unix())},
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: tablePrefix,
 					Period: tablePeriod,
@@ -428,13 +429,13 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 	cfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From: config.DayTime{model.TimeFromUnix(baseTableStart.Unix())},
+				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: baseTableName,
 				},
 			},
 			{
-				From: config.DayTime{model.TimeFromUnix(weeklyTableStart.Unix())},
+				From: config.DayTime{Time: model.TimeFromUnix(weeklyTableStart.Unix())},
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: tablePrefix,
 					Period: tablePeriod,
@@ -603,7 +604,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 	cfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From: config.DayTime{model.TimeFromUnix(baseTableStart.Unix())},
+				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: tablePrefix,
 					Period: tablePeriod,
@@ -741,7 +742,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 
 	// Verify that with a retention period of zero no tables outside the configs 'From' range are removed
 	tableManager.cfg.RetentionPeriod = 0
-	tableManager.schemaCfg.Configs[0].From = config.DayTime{model.TimeFromUnix(baseTableStart.Add(tablePeriod).Unix())}
+	tableManager.schemaCfg.Configs[0].From = config.DayTime{Time: model.TimeFromUnix(baseTableStart.Add(tablePeriod).Unix())}
 	// Retention > 0 will prevent older tables from being created so we need to create the old tables manually for the test
 	err = client.CreateTable(context.Background(), config.TableDesc{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig})
 	require.NoError(t, err)

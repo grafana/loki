@@ -27,7 +27,7 @@ func (f *fixture) Name() string {
 	return f.name
 }
 
-func (f *fixture) Clients() (index.IndexClient, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
+func (f *fixture) Clients() (index.Client, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 	cfg.Addresses = f.addresses

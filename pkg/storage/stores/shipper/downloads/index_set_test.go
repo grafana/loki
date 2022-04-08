@@ -42,7 +42,7 @@ func TestIndexSet_Init(t *testing.T) {
 	checkIndexSet := func() {
 		indexSet, stopFunc := buildTestIndexSet(t, userID, tempDir)
 		require.Len(t, indexSet.dbs, len(testDBs))
-		testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{}}, indexSet, 0, len(testDBs)*10)
+		testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, indexSet, 0, len(testDBs)*10)
 		stopFunc()
 	}
 
@@ -112,7 +112,7 @@ func TestIndexSet_doConcurrentDownload(t *testing.T) {
 			if tc > 0 {
 				require.Len(t, indexSet.dbs, tc)
 			}
-			testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{}}, indexSet, 0, tc*10)
+			testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, indexSet, 0, tc*10)
 		})
 	}
 }

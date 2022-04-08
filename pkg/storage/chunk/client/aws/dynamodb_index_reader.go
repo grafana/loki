@@ -31,7 +31,7 @@ type dynamodbIndexReader struct {
 }
 
 // NewDynamoDBIndexReader returns an object that can scan an entire index table
-func NewDynamoDBIndexReader(cfg DynamoDBConfig, schemaCfg config.SchemaConfig, reg prometheus.Registerer, l gklog.Logger, rowsRead prometheus.Counter) (index.IndexReader, error) {
+func NewDynamoDBIndexReader(cfg DynamoDBConfig, schemaCfg config.SchemaConfig, reg prometheus.Registerer, l gklog.Logger, rowsRead prometheus.Counter) (index.Reader, error) {
 	client, err := newDynamoDBStorageClient(cfg, schemaCfg, reg)
 	if err != nil {
 		return nil, err
@@ -71,7 +71,7 @@ type sha256Set struct {
 
 // ReadIndexEntries reads the whole of a table on multiple goroutines in parallel.
 // Entries for the same HashValue and RangeValue should be passed to the same processor.
-func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName string, processors []index.IndexEntryProcessor) error {
+func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName string, processors []index.EntryProcessor) error {
 	projection := hashKey + "," + rangeKey
 
 	sm := &seriesMap{ // new map per table
@@ -117,7 +117,7 @@ func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 	return nil
 }
 
-func (r *dynamodbIndexReader) processPage(ctx context.Context, sm *seriesMap, processor index.IndexEntryProcessor, tableName string, page *dynamodb.ScanOutput) {
+func (r *dynamodbIndexReader) processPage(ctx context.Context, sm *seriesMap, processor index.EntryProcessor, tableName string, page *dynamodb.ScanOutput) {
 	for _, item := range page.Items {
 		r.rowsRead.Inc()
 		rangeValue := item[rangeKey].B
@@ -177,7 +177,7 @@ func decodeBase64(dst []byte, value string) error {
 	return nil
 }
 
-func (r *dynamodbIndexReader) queryChunkEntriesForSeries(ctx context.Context, processor index.IndexEntryProcessor, tableName, queryHashKey string) error {
+func (r *dynamodbIndexReader) queryChunkEntriesForSeries(ctx context.Context, processor index.EntryProcessor, tableName, queryHashKey string) error {
 	// DynamoDB query which just says "all rows with hashKey X"
 	// This is hard-coded for schema v9
 	input := &dynamodb.QueryInput{
@@ -203,7 +203,7 @@ func (r *dynamodbIndexReader) queryChunkEntriesForSeries(ctx context.Context, pr
 		}
 
 		for _, item := range output.Items {
-			err := processor.ProcessIndexEntry(index.IndexEntry{
+			err := processor.ProcessIndexEntry(index.Entry{
 				TableName:  tableName,
 				HashValue:  aws.StringValue(item[hashKey].S),
 				RangeValue: item[rangeKey].B,

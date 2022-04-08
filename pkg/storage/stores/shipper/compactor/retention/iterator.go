@@ -104,8 +104,7 @@ type seriesCleaner struct {
 }
 
 func newSeriesCleaner(bucket *bbolt.Bucket, config config.PeriodConfig, tableName string) *seriesCleaner {
-	baseSchema, _ := index.CreateSchema(config)
-	schema := baseSchema.(index.SeriesStoreSchema)
+	schema, _ := index.CreateSchema(config)
 	var shards map[uint32]string
 
 	if config.RowShards != 0 {

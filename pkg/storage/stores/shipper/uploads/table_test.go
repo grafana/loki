@@ -122,7 +122,7 @@ func TestLoadTable(t *testing.T) {
 	require.NoError(t, table.Snapshot())
 
 	// query the loaded table to see if it has right data.
-	testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{}}, table, 0, 40)
+	testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 0, 40)
 }
 
 func TestTable_Write(t *testing.T) {
@@ -180,12 +180,12 @@ func TestTable_Write(t *testing.T) {
 					require.NoError(t, table.Snapshot())
 
 					// test that the table has current + previous records
-					testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{}}, table, 0, (i+1)*10)
+					testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 0, (i+1)*10)
 					bucketToQuery := local.IndexBucketName
 					if withPerTenantBucket {
 						bucketToQuery = []byte(userID)
 					}
-					testutil.TestSingleDBQuery(t, index.IndexQuery{}, db, bucketToQuery, boltIndexClient, i*10, 10)
+					testutil.TestSingleDBQuery(t, index.Query{}, db, bucketToQuery, boltIndexClient, i*10, 10)
 				})
 			}
 		})
@@ -533,9 +533,9 @@ func TestTable_MultiQueries(t *testing.T) {
 	require.NoError(t, table.Snapshot())
 
 	// build queries each looking for specific value from all the dbs
-	var queries []index.IndexQuery
+	var queries []index.Query
 	for i := 5; i < 35; i++ {
-		queries = append(queries, index.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
+		queries = append(queries, index.Query{ValueEqual: []byte(strconv.Itoa(i))})
 	}
 
 	// querying data for user1 should return both data from common index and user1's index

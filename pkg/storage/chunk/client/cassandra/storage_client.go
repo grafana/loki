@@ -92,6 +92,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.TableOptions, "cassandra.table-options", "", "Table options used to create index or chunk tables. This value is used as plain text in the table `WITH` like this, \"CREATE TABLE <generated_by_cortex> (...) WITH <cassandra.table-options>\". For details, see https://cortexmetrics.io/docs/production/cassandra. By default it will use the default table options of your Cassandra cluster.")
 }
 
+// nolint: revive
 func (cfg *Config) Validate() error {
 	if cfg.Password.Value != "" && cfg.PasswordFile != "" {
 		return errors.Errorf("The password and password_file config options are mutually exclusive.")
@@ -297,8 +298,8 @@ func (s *StorageClient) Stop() {
 // Cassandra batching isn't really useful in this case, its more to do multiple
 // atomic writes.  Therefore we just do a bunch of writes in parallel.
 type writeBatch struct {
-	entries []index.IndexEntry
-	deletes []index.IndexEntry
+	entries []index.Entry
+	deletes []index.Entry
 }
 
 // NewWriteBatch implement chunk.IndexClient.
@@ -307,7 +308,7 @@ func (s *StorageClient) NewWriteBatch() index.WriteBatch {
 }
 
 func (b *writeBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	b.entries = append(b.entries, index.IndexEntry{
+	b.entries = append(b.entries, index.Entry{
 		TableName:  tableName,
 		HashValue:  hashValue,
 		RangeValue: rangeValue,
@@ -316,7 +317,7 @@ func (b *writeBatch) Add(tableName, hashValue string, rangeValue []byte, value [
 }
 
 func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	b.deletes = append(b.deletes, index.IndexEntry{
+	b.deletes = append(b.deletes, index.Entry{
 		TableName:  tableName,
 		HashValue:  hashValue,
 		RangeValue: rangeValue,
@@ -347,11 +348,11 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch index.WriteBatch) 
 }
 
 // QueryPages implement chunk.IndexClient.
-func (s *StorageClient) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (s *StorageClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	return util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *StorageClient) query(ctx context.Context, query index.IndexQuery, callback index.QueryPagesCallback) error {
+func (s *StorageClient) query(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
 	if s.querySemaphore != nil {
 		if err := s.querySemaphore.Acquire(ctx, 1); err != nil {
 			return err

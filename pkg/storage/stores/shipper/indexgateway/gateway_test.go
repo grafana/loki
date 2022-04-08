@@ -70,11 +70,11 @@ func (m *mockQueryIndexServer) Context() context.Context {
 }
 
 type mockIndexClient struct {
-	index.IndexClient
+	index.Client
 	response *mockBatch
 }
 
-func (m mockIndexClient) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (m mockIndexClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	for _, query := range queries {
 		callback(query, m.response)
 	}
@@ -111,7 +111,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 	gateway := gateway{}
 	responseSizes := []int{0, 99, maxIndexEntriesPerResponse, 2 * maxIndexEntriesPerResponse, 5*maxIndexEntriesPerResponse - 1}
 	for i, responseSize := range responseSizes {
-		query := index.IndexQuery{
+		query := index.Query{
 			TableName:        fmt.Sprintf("%s%d", tableNamePrefix, i),
 			HashValue:        fmt.Sprintf("%s%d", hashValuePrefix, i),
 			RangeValuePrefix: []byte(fmt.Sprintf("%s%d", rangeValuePrefixPrefix, i)),

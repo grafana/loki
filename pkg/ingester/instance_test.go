@@ -537,7 +537,7 @@ func Test_Iterator(t *testing.T) {
 
 type testFilter struct{}
 
-func (t *testFilter) ForRequest(ctx context.Context) chunk.ChunkFilterer {
+func (t *testFilter) ForRequest(ctx context.Context) chunk.Filterer {
 	return t
 }
 

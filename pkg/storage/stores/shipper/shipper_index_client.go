@@ -45,7 +45,7 @@ const (
 )
 
 type boltDBIndexClient interface {
-	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.IndexQuery, callback index.QueryPagesCallback) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error
 	NewWriteBatch() index.WriteBatch
 	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 	Stop()
@@ -95,7 +95,7 @@ type Shipper struct {
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) (index.IndexClient, error) {
+func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) (index.Client, error) {
 	shipper := Shipper{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
@@ -223,7 +223,7 @@ func (s *Shipper) BatchWrite(ctx context.Context, batch index.WriteBatch) error 
 	})
 }
 
-func (s *Shipper) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (s *Shipper) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	return instrument.CollectedRequest(ctx, "Shipper.Query", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
 		spanLogger := spanlogger.FromContext(ctx)
 

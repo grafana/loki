@@ -40,7 +40,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 		tempDir := t.TempDir()
 		objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 
-		var queries []index.IndexQuery
+		var queries []index.Query
 		for i, name := range []string{"table1", "table2"} {
 			testutil.SetupTable(t, filepath.Join(objectStoragePath, name), testutil.DBsConfig{
 				NumUnCompactedDBs: 5,
@@ -52,7 +52,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 				},
 				NumUsers: 1,
 			})
-			queries = append(queries, index.IndexQuery{TableName: name})
+			queries = append(queries, index.Query{TableName: name})
 		}
 
 		tableManager, stopFunc := buildTestTableManager(t, tempDir)
@@ -300,7 +300,7 @@ type mockTable struct {
 
 func (m *mockTable) Close() {}
 
-func (m *mockTable) MultiQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (m *mockTable) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	return nil
 }
 

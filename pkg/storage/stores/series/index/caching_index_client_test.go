@@ -9,11 +9,11 @@ import (
 	"unsafe"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/validation"
@@ -24,12 +24,12 @@ var ctx = user.InjectOrgID(context.Background(), "1")
 const sep = "\xff"
 
 type mockStore struct {
-	index.IndexClient
-	queries []index.IndexQuery
+	index.Client
+	queries []index.Query
 	results index.ReadBatchResult
 }
 
-func (m *mockStore) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (m *mockStore) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	for _, query := range queries {
 		callback(query, m.results)
 	}
@@ -40,7 +40,7 @@ func (m *mockStore) QueryPages(ctx context.Context, queries []index.IndexQuery, 
 func TestCachingStorageClientBasic(t *testing.T) {
 	store := &mockStore{
 		results: index.ReadBatch{
-			Entries: []index.Entry{{
+			Entries: []index.CacheEntry{{
 				Column: []byte("foo"),
 				Value:  []byte("bar"),
 			}},
@@ -51,18 +51,18 @@ func TestCachingStorageClientBasic(t *testing.T) {
 	logger := log.NewNopLogger()
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger)
 	client := index.NewCachingIndexClient(store, cache, 1*time.Second, limits, logger, false)
-	queries := []index.IndexQuery{{
+	queries := []index.Query{{
 		TableName: "table",
 		HashValue: "baz",
 	}}
-	err = client.QueryPages(ctx, queries, func(_ index.IndexQuery, _ index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, _ index.ReadBatchResult) bool {
 		return true
 	})
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, len(store.queries))
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
-	err = client.QueryPages(ctx, queries, func(_ index.IndexQuery, _ index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, _ index.ReadBatchResult) bool {
 		return true
 	})
 	require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestCachingStorageClientBasic(t *testing.T) {
 func TestTempCachingStorageClient(t *testing.T) {
 	store := &mockStore{
 		results: index.ReadBatch{
-			Entries: []index.Entry{{
+			Entries: []index.CacheEntry{{
 				Column: []byte("foo"),
 				Value:  []byte("bar"),
 			}},
@@ -83,13 +83,13 @@ func TestTempCachingStorageClient(t *testing.T) {
 	logger := log.NewNopLogger()
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger)
 	client := index.NewCachingIndexClient(store, cache, 100*time.Millisecond, limits, logger, false)
-	queries := []index.IndexQuery{
+	queries := []index.Query{
 		{TableName: "table", HashValue: "foo"},
 		{TableName: "table", HashValue: "bar"},
 		{TableName: "table", HashValue: "baz"},
 	}
 	results := 0
-	err = client.QueryPages(ctx, queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -102,7 +102,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = 0
-	err = client.QueryPages(ctx, queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -116,7 +116,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 	// If we do the query after validity, it should see the queries.
 	time.Sleep(100 * time.Millisecond)
 	results = 0
-	err = client.QueryPages(ctx, queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -131,7 +131,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 func TestPermCachingStorageClient(t *testing.T) {
 	store := &mockStore{
 		results: index.ReadBatch{
-			Entries: []index.Entry{{
+			Entries: []index.CacheEntry{{
 				Column: []byte("foo"),
 				Value:  []byte("bar"),
 			}},
@@ -142,13 +142,13 @@ func TestPermCachingStorageClient(t *testing.T) {
 	logger := log.NewNopLogger()
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger)
 	client := index.NewCachingIndexClient(store, cache, 100*time.Millisecond, limits, logger, false)
-	queries := []index.IndexQuery{
+	queries := []index.Query{
 		{TableName: "table", HashValue: "foo", Immutable: true},
 		{TableName: "table", HashValue: "bar", Immutable: true},
 		{TableName: "table", HashValue: "baz", Immutable: true},
 	}
 	results := 0
-	err = client.QueryPages(ctx, queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -161,7 +161,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = 0
-	err = client.QueryPages(ctx, queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -175,7 +175,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 	// If we do the query after validity, it still shouldn't see the queries.
 	time.Sleep(200 * time.Millisecond)
 	results = 0
-	err = client.QueryPages(ctx, queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -194,8 +194,8 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	logger := log.NewNopLogger()
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger)
 	client := index.NewCachingIndexClient(store, cache, 1*time.Second, limits, logger, false)
-	queries := []index.IndexQuery{{TableName: "table", HashValue: "foo"}}
-	err = client.QueryPages(ctx, queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+	queries := []index.Query{{TableName: "table", HashValue: "foo"}}
+	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		assert.False(t, batch.Iterator().Next())
 		return true
 	})
@@ -203,7 +203,7 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	assert.EqualValues(t, 1, len(store.queries))
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
-	err = client.QueryPages(ctx, queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		assert.False(t, batch.Iterator().Next())
 		return true
 	})
@@ -216,7 +216,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 	// two results, as we cache entire rows.
 	store := &mockStore{
 		results: index.ReadBatch{
-			Entries: []index.Entry{
+			Entries: []index.CacheEntry{
 				{
 					Column: []byte("bar"),
 					Value:  []byte("bar"),
@@ -233,16 +233,16 @@ func TestCachingStorageClientCollision(t *testing.T) {
 	logger := log.NewNopLogger()
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger)
 	client := index.NewCachingIndexClient(store, cache, 1*time.Second, limits, logger, false)
-	queries := []index.IndexQuery{
+	queries := []index.Query{
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("baz")},
 	}
 
 	var results index.ReadBatch
-	err = client.QueryPages(ctx, queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
-			results.Entries = append(results.Entries, index.Entry{
+			results.Entries = append(results.Entries, index.CacheEntry{
 				Column: iter.RangeValue(),
 				Value:  iter.Value(),
 			})
@@ -255,10 +255,10 @@ func TestCachingStorageClientCollision(t *testing.T) {
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = index.ReadBatch{}
-	err = client.QueryPages(ctx, queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
-			results.Entries = append(results.Entries, index.Entry{
+			results.Entries = append(results.Entries, index.CacheEntry{
 				Column: iter.RangeValue(),
 				Value:  iter.Value(),
 			})
@@ -280,7 +280,7 @@ func (m *mockCache) Store(ctx context.Context, keys []string, buf [][]byte) erro
 	return m.Cache.Store(ctx, keys, buf)
 }
 
-func buildQueryKey(q index.IndexQuery) string {
+func buildQueryKey(q index.Query) string {
 	ret := q.TableName + sep + q.HashValue
 
 	if len(q.RangeValuePrefix) != 0 {
@@ -297,37 +297,37 @@ func buildQueryKey(q index.IndexQuery) string {
 func TestCachingStorageClientStoreQueries(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		queries []index.IndexQuery
+		queries []index.Query
 
-		expectedStoreQueriesWithoutBroadQueriesDisabled []index.IndexQuery
-		expectedStoreQueriesWithBroadQueriesDisabled    []index.IndexQuery
+		expectedStoreQueriesWithoutBroadQueriesDisabled []index.Query
+		expectedStoreQueriesWithBroadQueriesDisabled    []index.Query
 	}{
 		{
 			name: "TableName-HashValue queries",
-			queries: []index.IndexQuery{
+			queries: []index.Query{
 				{TableName: "table", HashValue: "foo"},
 				{TableName: "table", HashValue: "bar"},
 			},
-			expectedStoreQueriesWithoutBroadQueriesDisabled: []index.IndexQuery{
+			expectedStoreQueriesWithoutBroadQueriesDisabled: []index.Query{
 				{TableName: "table", HashValue: "foo"},
 				{TableName: "table", HashValue: "bar"},
 			},
-			expectedStoreQueriesWithBroadQueriesDisabled: []index.IndexQuery{
+			expectedStoreQueriesWithBroadQueriesDisabled: []index.Query{
 				{TableName: "table", HashValue: "foo"},
 				{TableName: "table", HashValue: "bar"},
 			},
 		},
 		{
 			name: "TableName-HashValue-RangeValuePrefix queries",
-			queries: []index.IndexQuery{
+			queries: []index.Query{
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("baz")},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("taz")},
 			},
-			expectedStoreQueriesWithoutBroadQueriesDisabled: []index.IndexQuery{
+			expectedStoreQueriesWithoutBroadQueriesDisabled: []index.Query{
 				{TableName: "table", HashValue: "foo"},
 			},
-			expectedStoreQueriesWithBroadQueriesDisabled: []index.IndexQuery{
+			expectedStoreQueriesWithBroadQueriesDisabled: []index.Query{
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("baz")},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("taz")},
@@ -335,15 +335,15 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 		},
 		{
 			name: "TableName-HashValue-RangeValuePrefix-ValueEqual queries",
-			queries: []index.IndexQuery{
+			queries: []index.Query{
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar"), ValueEqual: []byte("one")},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("baz"), ValueEqual: []byte("two")},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("taz"), ValueEqual: []byte("three")},
 			},
-			expectedStoreQueriesWithoutBroadQueriesDisabled: []index.IndexQuery{
+			expectedStoreQueriesWithoutBroadQueriesDisabled: []index.Query{
 				{TableName: "table", HashValue: "foo"},
 			},
-			expectedStoreQueriesWithBroadQueriesDisabled: []index.IndexQuery{
+			expectedStoreQueriesWithBroadQueriesDisabled: []index.Query{
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar"), ValueEqual: []byte("one")},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("baz"), ValueEqual: []byte("two")},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("taz"), ValueEqual: []byte("three")},
@@ -351,20 +351,20 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 		},
 		{
 			name: "TableName-HashValue-RangeValueStart queries",
-			queries: []index.IndexQuery{
+			queries: []index.Query{
 				{TableName: "table", HashValue: "foo", RangeValueStart: []byte("bar")},
 				{TableName: "table", HashValue: "foo", RangeValueStart: []byte("baz")},
 			},
-			expectedStoreQueriesWithoutBroadQueriesDisabled: []index.IndexQuery{
+			expectedStoreQueriesWithoutBroadQueriesDisabled: []index.Query{
 				{TableName: "table", HashValue: "foo"},
 			},
-			expectedStoreQueriesWithBroadQueriesDisabled: []index.IndexQuery{
+			expectedStoreQueriesWithBroadQueriesDisabled: []index.Query{
 				{TableName: "table", HashValue: "foo"},
 			},
 		},
 		{
 			name: "Duplicate queries",
-			queries: []index.IndexQuery{
+			queries: []index.Query{
 				{TableName: "table", HashValue: "foo"},
 				{TableName: "table", HashValue: "foo"},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
@@ -372,10 +372,10 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar"), ValueEqual: []byte("one")},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar"), ValueEqual: []byte("one")},
 			},
-			expectedStoreQueriesWithoutBroadQueriesDisabled: []index.IndexQuery{
+			expectedStoreQueriesWithoutBroadQueriesDisabled: []index.Query{
 				{TableName: "table", HashValue: "foo"},
 			},
-			expectedStoreQueriesWithBroadQueriesDisabled: []index.IndexQuery{
+			expectedStoreQueriesWithBroadQueriesDisabled: []index.Query{
 				{TableName: "table", HashValue: "foo"},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
 				{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar"), ValueEqual: []byte("one")},
@@ -395,7 +395,7 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 
 				store := &mockStore{
 					results: index.ReadBatch{
-						Entries: []index.Entry{
+						Entries: []index.CacheEntry{
 							{
 								Column: []byte("bar"),
 								Value:  []byte("bar"),
@@ -414,9 +414,9 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 					Cache: cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger),
 				}
 				client := index.NewCachingIndexClient(store, cache, 1*time.Second, limits, logger, disableBroadQueries)
-				var callbackQueries []index.IndexQuery
+				var callbackQueries []index.Query
 
-				err = client.QueryPages(ctx, tc.queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+				err = client.QueryPages(ctx, tc.queries, func(query index.Query, batch index.ReadBatchResult) bool {
 					callbackQueries = append(callbackQueries, query)
 					return true
 				})
@@ -442,7 +442,7 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 
 				callbackQueries = callbackQueries[:0]
 				// If we do the query to the cache again, the underlying store shouldn't see it.
-				err = client.QueryPages(ctx, tc.queries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+				err = client.QueryPages(ctx, tc.queries, func(query index.Query, batch index.ReadBatchResult) bool {
 					callbackQueries = append(callbackQueries, query)
 					return true
 				})

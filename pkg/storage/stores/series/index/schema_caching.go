@@ -20,7 +20,7 @@ func NewSchemaCaching(schema SeriesStoreSchema, cacheOlderThan time.Duration) Se
 	}
 }
 
-func (s *schemaCaching) GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error) {
+func (s *schemaCaching) GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]Query, error) {
 	queries, err := s.SeriesStoreSchema.GetReadQueriesForMetric(from, through, userID, metricName)
 	if err != nil {
 		return nil, err
@@ -28,7 +28,7 @@ func (s *schemaCaching) GetReadQueriesForMetric(from, through model.Time, userID
 	return s.setImmutability(from, through, queries), nil
 }
 
-func (s *schemaCaching) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error) {
+func (s *schemaCaching) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]Query, error) {
 	queries, err := s.SeriesStoreSchema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
 	if err != nil {
 		return nil, err
@@ -36,7 +36,7 @@ func (s *schemaCaching) GetReadQueriesForMetricLabel(from, through model.Time, u
 	return s.setImmutability(from, through, queries), nil
 }
 
-func (s *schemaCaching) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error) {
+func (s *schemaCaching) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]Query, error) {
 	queries, err := s.SeriesStoreSchema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, labelName, labelValue)
 	if err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ func (s *schemaCaching) GetReadQueriesForMetricLabelValue(from, through model.Ti
 }
 
 // If the query resulted in series IDs, use this method to find chunks.
-func (s *schemaCaching) GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
+func (s *schemaCaching) GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]Query, error) {
 	queries, err := s.SeriesStoreSchema.GetChunksForSeries(from, through, userID, seriesID)
 	if err != nil {
 		return nil, err
@@ -53,7 +53,7 @@ func (s *schemaCaching) GetChunksForSeries(from, through model.Time, userID stri
 	return s.setImmutability(from, through, queries), nil
 }
 
-func (s *schemaCaching) GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
+func (s *schemaCaching) GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]Query, error) {
 	queries, err := s.SeriesStoreSchema.GetLabelNamesForSeries(from, through, userID, seriesID)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func (s *schemaCaching) GetLabelNamesForSeries(from, through model.Time, userID 
 	return s.setImmutability(from, through, queries), nil
 }
 
-func (s *schemaCaching) setImmutability(_, through model.Time, queries []IndexQuery) []IndexQuery {
+func (s *schemaCaching) setImmutability(_, through model.Time, queries []Query) []Query {
 	cacheBefore := model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix())
 
 	// If the entire query is cacheable then cache it.

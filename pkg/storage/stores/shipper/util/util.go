@@ -225,7 +225,7 @@ func ValidateSharedStoreKeyPrefix(prefix string) error {
 	return nil
 }
 
-func QueryKey(q index.IndexQuery) string {
+func QueryKey(q index.Query) string {
 	ret := q.TableName + sep + q.HashValue
 
 	if len(q.RangeValuePrefix) != 0 {

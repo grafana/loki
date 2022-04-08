@@ -118,7 +118,7 @@ func TestDailyBuckets(t *testing.T) {
 	}
 }
 
-type ByHashRangeKey []IndexEntry
+type ByHashRangeKey []Entry
 
 func (a ByHashRangeKey) Len() int      { return len(a) }
 func (a ByHashRangeKey) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
@@ -203,9 +203,9 @@ func BenchmarkEncodeLabelsString(b *testing.B) {
 }
 
 func TestV10IndexQueries(t *testing.T) {
-	fromShards := func(n int) (res []IndexQuery) {
+	fromShards := func(n int) (res []Query) {
 		for i := 0; i < n; i++ {
-			res = append(res, IndexQuery{
+			res = append(res, Query{
 				TableName:       "tbl",
 				HashValue:       fmt.Sprintf("%02d:%s:%s:%s", i, "hash", "metric", "label"),
 				RangeValueStart: []byte(fmt.Sprint(i)),
@@ -217,9 +217,9 @@ func TestV10IndexQueries(t *testing.T) {
 
 	testExprs := []struct {
 		name     string
-		queries  []IndexQuery
+		queries  []Query
 		shard    *astmapper.ShardAnnotation
-		expected []IndexQuery
+		expected []Query
 	}{
 		{
 			name:     "passthrough when no shard specified",
@@ -241,7 +241,7 @@ func TestV10IndexQueries(t *testing.T) {
 			shard: &astmapper.ShardAnnotation{
 				Shard: 1,
 			},
-			expected: []IndexQuery{fromShards(2)[1]},
+			expected: []Query{fromShards(2)[1]},
 		},
 	}
 

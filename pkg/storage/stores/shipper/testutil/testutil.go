@@ -46,10 +46,10 @@ func AddRecordsToBatch(batch index.WriteBatch, tableName string, start, numRecor
 }
 
 type SingleTableQuerier interface {
-	MultiQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error
+	MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 }
 
-func TestSingleTableQuery(t *testing.T, userID string, queries []index.IndexQuery, querier SingleTableQuerier, start, numRecords int) {
+func TestSingleTableQuery(t *testing.T, userID string, queries []index.Query, querier SingleTableQuerier, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
@@ -62,10 +62,10 @@ func TestSingleTableQuery(t *testing.T, userID string, queries []index.IndexQuer
 }
 
 type SingleDBQuerier interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query index.IndexQuery, callback index.QueryPagesCallback) error
+	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query index.Query, callback index.QueryPagesCallback) error
 }
 
-func TestSingleDBQuery(t *testing.T, query index.IndexQuery, db *bbolt.DB, bucketName []byte, querier SingleDBQuerier, start, numRecords int) {
+func TestSingleDBQuery(t *testing.T, query index.Query, db *bbolt.DB, bucketName []byte, querier SingleDBQuerier, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
@@ -78,10 +78,10 @@ func TestSingleDBQuery(t *testing.T, query index.IndexQuery, db *bbolt.DB, bucke
 }
 
 type MultiTableQuerier interface {
-	QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error
+	QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 }
 
-func TestMultiTableQuery(t *testing.T, userID string, queries []index.IndexQuery, querier MultiTableQuerier, start, numRecords int) {
+func TestMultiTableQuery(t *testing.T, userID string, queries []index.Query, querier MultiTableQuerier, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
@@ -96,7 +96,7 @@ func TestMultiTableQuery(t *testing.T, userID string, queries []index.IndexQuery
 func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) index.QueryPagesCallback {
 	t.Helper()
 	recordsMtx := sync.Mutex{}
-	return func(query index.IndexQuery, batch index.ReadBatchResult) (shouldContinue bool) {
+	return func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {
 			require.Equal(t, itr.RangeValue(), itr.Value())

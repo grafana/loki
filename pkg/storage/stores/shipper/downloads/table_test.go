@@ -84,12 +84,12 @@ func buildTestTable(t *testing.T, path string) (*table, *local.BoltIndexClient, 
 
 type mockIndexSet struct {
 	IndexSet
-	queriesDone []index.IndexQuery
+	queriesDone []index.Query
 	failQueries bool
 	lastUsedAt  time.Time
 }
 
-func (m *mockIndexSet) MultiQueries(_ context.Context, queries []index.IndexQuery, _ index.QueryPagesCallback) error {
+func (m *mockIndexSet) MultiQueries(_ context.Context, queries []index.Query, _ index.QueryPagesCallback) error {
 	m.queriesDone = append(m.queriesDone, queries...)
 	return nil
 }
@@ -142,9 +142,9 @@ func TestTable_MultiQueries(t *testing.T) {
 				table.indexSets[userID] = &mockIndexSet{failQueries: tc.withError}
 			}
 
-			var testQueries []index.IndexQuery
+			var testQueries []index.Query
 			for i := 0; i < 5; i++ {
-				testQueries = append(testQueries, index.IndexQuery{
+				testQueries = append(testQueries, index.Query{
 					TableName:        "test-table",
 					HashValue:        fmt.Sprint(i),
 					RangeValuePrefix: []byte(fmt.Sprintf("range-value-prefix-%d", i)),
@@ -153,7 +153,7 @@ func TestTable_MultiQueries(t *testing.T) {
 				})
 			}
 
-			err := table.MultiQueries(user.InjectOrgID(context.Background(), tc.queryWithUserID), testQueries, func(query index.IndexQuery, batch index.ReadBatchResult) bool {
+			err := table.MultiQueries(user.InjectOrgID(context.Background(), tc.queryWithUserID), testQueries, func(query index.Query, batch index.ReadBatchResult) bool {
 				return true
 			})
 			if tc.withError {
@@ -204,9 +204,9 @@ func TestTable_MultiQueries_Response(t *testing.T) {
 	}()
 
 	// build queries each looking for specific value from all the dbs
-	var queries []index.IndexQuery
+	var queries []index.Query
 	for i := 0; i < 1000; i++ {
-		queries = append(queries, index.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
+		queries = append(queries, index.Query{ValueEqual: []byte(strconv.Itoa(i))})
 	}
 
 	// run the queries concurrently
@@ -373,7 +373,7 @@ func TestTable_Sync(t *testing.T) {
 	table.storageClient = newStorageClientWithFakeObjectsInList(table.storageClient)
 
 	// query table to see it has expected records setup
-	testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{}}, table, 0, 20)
+	testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 0, 20)
 
 	// add a sleep since we are updating a file and CI is sometimes too fast to create a difference in mtime of files
 	time.Sleep(time.Second)
@@ -386,7 +386,7 @@ func TestTable_Sync(t *testing.T) {
 	require.NoError(t, table.Sync(context.Background()))
 
 	// query and verify table has expected records from new db and the records from deleted db are gone
-	testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{}}, table, 10, 20)
+	testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 10, 20)
 
 	// verify files in cache where dbs for the table are synced to double check.
 	expectedFilesInDir := map[string]struct{}{
@@ -478,9 +478,9 @@ func TestTable_QueryResponse(t *testing.T) {
 	}()
 
 	// build queries each looking for specific value from all the dbs
-	var queries []index.IndexQuery
+	var queries []index.Query
 	for i := 5; i < 35; i++ {
-		queries = append(queries, index.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
+		queries = append(queries, index.Query{ValueEqual: []byte(strconv.Itoa(i))})
 	}
 
 	// Query the table with user id which has user specific index as well.
@@ -530,7 +530,7 @@ func TestLoadTable(t *testing.T) {
 	require.NotNil(t, table)
 
 	// query the loaded table to see if it has right data.
-	testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{}}, table, 0, 20)
+	testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 0, 20)
 
 	// close the table to test reloading of table with already having files in the cache dir.
 	table.Close()
@@ -572,7 +572,7 @@ func TestLoadTable(t *testing.T) {
 	defer table.Close()
 
 	// query the loaded table to see if it has right data.
-	testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{}}, table, 0, 40)
+	testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 0, 40)
 }
 
 func ensureIndexSetExistsInTable(t *testing.T, table *table, indexSetName string) {

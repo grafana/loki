@@ -42,15 +42,15 @@ type Chunk struct {
 
 	// We never use Delta encoding (the zero value), so if this entry is
 	// missing, we default to DoubleDelta.
-	Encoding Encoding  `json:"encoding"`
-	Data     ChunkData `json:"-"`
+	Encoding Encoding `json:"encoding"`
+	Data     Data     `json:"-"`
 
 	// The encoded version of the chunk, held so we don't need to re-encode it
 	encoded []byte
 }
 
 // NewChunk creates a new chunk
-func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c ChunkData, from, through model.Time) Chunk {
+func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c Data, from, through model.Time) Chunk {
 	return Chunk{
 		ChunkRef: logproto.ChunkRef{
 			Fingerprint: uint64(fp),

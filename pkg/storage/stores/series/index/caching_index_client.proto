@@ -7,13 +7,13 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
-message Entry {
+message CacheEntry {
     bytes Column = 1 [(gogoproto.customtype) = "Bytes", (gogoproto.nullable) = false];
     bytes Value = 2 [(gogoproto.customtype) = "Bytes", (gogoproto.nullable) = false];
 }
 
 message ReadBatch {
-    repeated Entry entries = 1 [(gogoproto.nullable) = false];
+    repeated CacheEntry entries = 1 [(gogoproto.nullable) = false];
     string key = 2;
 
     // The time at which the key expires.

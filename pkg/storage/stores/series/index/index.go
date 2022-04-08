@@ -5,10 +5,10 @@ import (
 )
 
 // QueryPagesCallback from an IndexQuery.
-type QueryPagesCallback func(IndexQuery, ReadBatchResult) bool
+type QueryPagesCallback func(Query, ReadBatchResult) bool
 
-// IndexClient is a client for the storage of the index (e.g. DynamoDB or Bigtable).
-type IndexClient interface {
+// Client is a client for the storage of the index (e.g. DynamoDB or Bigtable).
+type Client interface {
 	Stop()
 
 	// For the write path.
@@ -16,7 +16,7 @@ type IndexClient interface {
 	BatchWrite(context.Context, WriteBatch) error
 
 	// For the read path.
-	QueryPages(ctx context.Context, queries []IndexQuery, callback QueryPagesCallback) error
+	QueryPages(ctx context.Context, queries []Query, callback QueryPagesCallback) error
 }
 
 // ReadBatchResult represents the results of a QueryPages.
@@ -37,8 +37,8 @@ type WriteBatch interface {
 	Delete(tableName, hashValue string, rangeValue []byte)
 }
 
-// IndexQuery describes a query for entries
-type IndexQuery struct {
+// Query describes a query for entries
+type Query struct {
 	TableName string
 	HashValue string
 
@@ -58,8 +58,8 @@ type IndexQuery struct {
 	Immutable bool
 }
 
-// IndexEntry describes an entry in the chunk index
-type IndexEntry struct {
+// Entry describes an entry in the chunk index
+type Entry struct {
 	TableName string
 	HashValue string
 

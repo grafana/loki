@@ -24,7 +24,7 @@ const (
 // Fixture type for per-backend testing.
 type Fixture interface {
 	Name() string
-	Clients() (index.IndexClient, chunkclient.Client, index.TableClient, config.SchemaConfig, io.Closer, error)
+	Clients() (index.Client, chunkclient.Client, index.TableClient, config.SchemaConfig, io.Closer, error)
 }
 
 // CloserFunc is to io.Closer as http.HandlerFunc is to http.Handler.
@@ -41,7 +41,7 @@ func DefaultSchemaConfig(kind string) config.SchemaConfig {
 }
 
 // Setup a fixture with initial tables
-func Setup(fixture Fixture, tableName string) (index.IndexClient, chunkclient.Client, io.Closer, error) {
+func Setup(fixture Fixture, tableName string) (index.Client, chunkclient.Client, io.Closer, error) {
 	var tbmConfig index.TableManagerConfig
 	flagext.DefaultValues(&tbmConfig)
 	indexClient, chunkClient, tableClient, schemaConfig, closer, err := fixture.Clients()

@@ -24,7 +24,7 @@ func (f *fixture) Name() string {
 }
 
 func (f *fixture) Clients() (
-	indexClient index.IndexClient, chunkClient client.Client, tableClient index.TableClient,
+	indexClient index.Client, chunkClient client.Client, tableClient index.TableClient,
 	schemaConfig config.SchemaConfig, closer io.Closer, err error,
 ) {
 	f.dirname, err = ioutil.TempDir(os.TempDir(), "boltdb")

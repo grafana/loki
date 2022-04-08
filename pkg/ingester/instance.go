@@ -515,7 +515,7 @@ func (i *instance) numStreams() int {
 // forAllStreams will execute a function for all streams in the instance.
 // It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forAllStreams(ctx context.Context, fn func(*stream) error) error {
-	var chunkFilter chunk.ChunkFilterer
+	var chunkFilter chunk.Filterer
 	if i.chunkFilter != nil {
 		chunkFilter = i.chunkFilter.ForRequest(ctx)
 	}
@@ -549,7 +549,7 @@ func (i *instance) forMatchingStreams(
 	if err != nil {
 		return err
 	}
-	var chunkFilter chunk.ChunkFilterer
+	var chunkFilter chunk.Filterer
 	if i.chunkFilter != nil {
 		chunkFilter = i.chunkFilter.ForRequest(ctx)
 	}
@@ -600,7 +600,7 @@ func (i *instance) addTailersToNewStream(stream *stream) {
 		if t.isClosed() {
 			continue
 		}
-		var chunkFilter chunk.ChunkFilterer
+		var chunkFilter chunk.Filterer
 		if i.chunkFilter != nil {
 			chunkFilter = i.chunkFilter.ForRequest(t.conn.Context())
 		}

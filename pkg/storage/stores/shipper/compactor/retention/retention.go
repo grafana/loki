@@ -293,14 +293,9 @@ type chunkRewriter struct {
 func newChunkRewriter(chunkClient client.Client, schemaCfg config.PeriodConfig,
 	tableName string, bucket *bbolt.Bucket,
 ) (*chunkRewriter, error) {
-	schema, err := index.CreateSchema(schemaCfg)
+	seriesStoreSchema, err := index.CreateSchema(schemaCfg)
 	if err != nil {
 		return nil, err
-	}
-
-	seriesStoreSchema, ok := schema.(index.SeriesStoreSchema)
-	if !ok {
-		return nil, errors.New("invalid schema")
 	}
 
 	return &chunkRewriter{

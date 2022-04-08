@@ -20,9 +20,6 @@ import (
 )
 
 const (
-	secondsInDay      = int64(24 * time.Hour / time.Second)
-	millisecondsInDay = int64(24 * time.Hour / time.Millisecond)
-	v12               = "v12"
 	// Supported storage clients
 
 	StorageTypeAWS            = "aws"

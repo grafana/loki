@@ -33,21 +33,21 @@ const (
 	ErrSliceChunkOverflow = errs.Error("slicing should not overflow a chunk")
 )
 
-// ChunkData is the interface for all chunks. Chunks are generally not
+// Data is the interface for all chunks. Chunks are generally not
 // goroutine-safe.
-type ChunkData interface {
+type Data interface {
 	// Add adds a SamplePair to the chunks, performs any necessary
 	// re-encoding, and creates any necessary overflow chunk.
 	// The returned Chunk is the overflow chunk if it was created.
 	// The returned Chunk is nil if the sample got appended to the same chunk.
-	Add(sample model.SamplePair) (ChunkData, error)
+	Add(sample model.SamplePair) (Data, error)
 	Marshal(io.Writer) error
 	UnmarshalFromBuf([]byte) error
 	Encoding() Encoding
 	// Rebound returns a smaller chunk that includes all samples between start and end (inclusive).
 	// We do not want to change existing Slice implementations because
 	// it is built specifically for query optimization and is a noop for some of the encodings.
-	Rebound(start, end model.Time) (ChunkData, error)
+	Rebound(start, end model.Time) (Data, error)
 	// Size returns the approximate length of the chunk in bytes.
 	Size() int
 	Utilization() float64
@@ -55,10 +55,10 @@ type ChunkData interface {
 
 // RequestChunkFilterer creates ChunkFilterer for a given request context.
 type RequestChunkFilterer interface {
-	ForRequest(ctx context.Context) ChunkFilterer
+	ForRequest(ctx context.Context) Filterer
 }
 
-// ChunkFilterer filters chunks based on the metric.
-type ChunkFilterer interface {
+// Filterer filters chunks based on the metric.
+type Filterer interface {
 	ShouldFilter(metric labels.Labels) bool
 }

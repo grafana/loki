@@ -32,7 +32,7 @@ import (
 // BoltDB Shipper is supposed to be run as a singleton.
 // This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
 // in tests for creating multiple instances of it at a time.
-var boltDBIndexClientWithShipper index.IndexClient
+var boltDBIndexClientWithShipper index.Client
 
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
@@ -113,7 +113,7 @@ func (cfg *Config) Validate() error {
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, registerer prometheus.Registerer) (index.IndexClient, error) {
+func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, registerer prometheus.Registerer) (index.Client, error) {
 	switch name {
 	case config.StorageTypeInMemory:
 		store := testutils.NewMockStorage()

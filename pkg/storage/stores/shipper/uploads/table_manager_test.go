@@ -106,7 +106,7 @@ func TestLoadTables(t *testing.T) {
 	require.True(t, !stat.IsDir())
 
 	for tableName, expectedIndex := range expectedTables {
-		testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		testutil.TestSingleTableQuery(t, userID, []index.Query{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 
@@ -137,7 +137,7 @@ func TestTableManager_BatchWrite(t *testing.T) {
 
 	for tableName, expectedIndex := range tc {
 		require.NoError(t, tm.tables[tableName].Snapshot())
-		testutil.TestSingleTableQuery(t, userID, []index.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		testutil.TestSingleTableQuery(t, userID, []index.Query{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 
@@ -157,14 +157,14 @@ func TestTableManager_QueryPages(t *testing.T) {
 		"table2": {start: 20, numRecords: 10},
 	}
 
-	var queries []index.IndexQuery
+	var queries []index.Query
 	writeBatch := boltIndexClient.NewWriteBatch()
 	for tableName, records := range tc {
 		testutil.AddRecordsToBatch(writeBatch, tableName, records.start, records.numRecords)
-		queries = append(queries, index.IndexQuery{TableName: tableName})
+		queries = append(queries, index.Query{TableName: tableName})
 	}
 
-	queries = append(queries, index.IndexQuery{TableName: "non-existent"})
+	queries = append(queries, index.Query{TableName: "non-existent"})
 
 	require.NoError(t, tm.BatchWrite(context.Background(), writeBatch))
 

@@ -4,9 +4,9 @@ import (
 	"context"
 )
 
-// IndexEntryProcessor receives index entries from a table.
-type IndexEntryProcessor interface {
-	ProcessIndexEntry(indexEntry IndexEntry) error
+// EntryProcessor receives index entries from a table.
+type EntryProcessor interface {
+	ProcessIndexEntry(indexEntry Entry) error
 
 	// Will this user be accepted by the processor?
 	AcceptUser(user string) bool
@@ -15,8 +15,8 @@ type IndexEntryProcessor interface {
 	Flush() error
 }
 
-// IndexReader parses index entries and passes them to the IndexEntryProcessor.
-type IndexReader interface {
+// Reader parses index entries and passes them to the IndexEntryProcessor.
+type Reader interface {
 	IndexTableNames(ctx context.Context) ([]string, error)
 
 	// Reads a single table from index, and passes individual index entries to the processors.
@@ -29,5 +29,5 @@ type IndexReader interface {
 	// as soon as new Hash and Range differ from last IndexEntry.
 	//
 	// Index entries passed to the same processor arrive sorted by HashValue and RangeValue.
-	ReadIndexEntries(ctx context.Context, table string, processors []IndexEntryProcessor) error
+	ReadIndexEntries(ctx context.Context, table string, processors []EntryProcessor) error
 }

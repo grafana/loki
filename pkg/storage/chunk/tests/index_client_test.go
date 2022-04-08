@@ -19,7 +19,7 @@ import (
 var ctx = user.InjectOrgID(context.Background(), "1")
 
 func TestIndexBasic(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, client index.IndexClient, _ client.Client) {
+	forAllFixtures(t, func(t *testing.T, client index.Client, _ client.Client) {
 		// Write out 30 entries, into different hash and range values.
 		batch := client.NewWriteBatch()
 		for i := 0; i < 30; i++ {
@@ -30,31 +30,31 @@ func TestIndexBasic(t *testing.T) {
 
 		// Make sure we get back the correct entries by hash value.
 		for i := 0; i < 30; i++ {
-			entries := []index.IndexQuery{
+			entries := []index.Query{
 				{
 					TableName: tableName,
 					HashValue: fmt.Sprintf("hash%d", i),
 				},
 			}
-			var have []index.IndexEntry
-			err := client.QueryPages(ctx, entries, func(_ index.IndexQuery, read index.ReadBatchResult) bool {
+			var have []index.Entry
+			err := client.QueryPages(ctx, entries, func(_ index.Query, read index.ReadBatchResult) bool {
 				iter := read.Iterator()
 				for iter.Next() {
-					have = append(have, index.IndexEntry{
+					have = append(have, index.Entry{
 						RangeValue: iter.RangeValue(),
 					})
 				}
 				return true
 			})
 			require.NoError(t, err)
-			require.Equal(t, []index.IndexEntry{
+			require.Equal(t, []index.Entry{
 				{RangeValue: []byte(fmt.Sprintf("range%d", i))},
 			}, have)
 		}
 	})
 }
 
-var entries = []index.IndexEntry{
+var entries = []index.Entry{
 	{
 		TableName:  tableName,
 		HashValue:  "foo",
@@ -106,7 +106,7 @@ var entries = []index.IndexEntry{
 }
 
 func TestQueryPages(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, client index.IndexClient, _ client.Client) {
+	forAllFixtures(t, func(t *testing.T, client index.Client, _ client.Client) {
 		batch := client.NewWriteBatch()
 		for _, entry := range entries {
 			batch.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
@@ -117,60 +117,60 @@ func TestQueryPages(t *testing.T) {
 
 		tests := []struct {
 			name   string
-			query  index.IndexQuery
+			query  index.Query
 			repeat bool
-			want   []index.IndexEntry
+			want   []index.Entry
 		}{
 			{
 				"check HashValue only",
-				index.IndexQuery{
+				index.Query{
 					TableName: tableName,
 					HashValue: "flip",
 				},
 				false,
-				[]index.IndexEntry{entries[5], entries[6], entries[7]},
+				[]index.Entry{entries[5], entries[6], entries[7]},
 			},
 			{
 				"check RangeValueStart",
-				index.IndexQuery{
+				index.Query{
 					TableName:       tableName,
 					HashValue:       "foo",
 					RangeValueStart: []byte("bar:2"),
 				},
 				false,
-				[]index.IndexEntry{entries[1], entries[2], entries[3], entries[4]},
+				[]index.Entry{entries[1], entries[2], entries[3], entries[4]},
 			},
 			{
 				"check RangeValuePrefix",
-				index.IndexQuery{
+				index.Query{
 					TableName:        tableName,
 					HashValue:        "foo",
 					RangeValuePrefix: []byte("baz:"),
 				},
 				false,
-				[]index.IndexEntry{entries[3], entries[4]},
+				[]index.Entry{entries[3], entries[4]},
 			},
 			{
 				"check ValueEqual",
-				index.IndexQuery{
+				index.Query{
 					TableName:        tableName,
 					HashValue:        "foo",
 					RangeValuePrefix: []byte("bar"),
 					ValueEqual:       []byte("20"),
 				},
 				false,
-				[]index.IndexEntry{entries[1]},
+				[]index.Entry{entries[1]},
 			},
 			{
 				"check retry logic",
-				index.IndexQuery{
+				index.Query{
 					TableName:        tableName,
 					HashValue:        "foo",
 					RangeValuePrefix: []byte("bar"),
 					ValueEqual:       []byte("20"),
 				},
 				true,
-				[]index.IndexEntry{entries[1]},
+				[]index.Entry{entries[1]},
 			},
 		}
 
@@ -178,11 +178,11 @@ func TestQueryPages(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				run := true
 				for run {
-					var have []index.IndexEntry
-					err = client.QueryPages(ctx, []index.IndexQuery{tt.query}, func(_ index.IndexQuery, read index.ReadBatchResult) bool {
+					var have []index.Entry
+					err = client.QueryPages(ctx, []index.Query{tt.query}, func(_ index.Query, read index.ReadBatchResult) bool {
 						iter := read.Iterator()
 						for iter.Next() {
-							have = append(have, index.IndexEntry{
+							have = append(have, index.Entry{
 								TableName:  tt.query.TableName,
 								HashValue:  tt.query.HashValue,
 								RangeValue: iter.RangeValue(),
@@ -206,7 +206,7 @@ func TestQueryPages(t *testing.T) {
 }
 
 func TestCardinalityLimit(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, client index.IndexClient, _ client.Client) {
+	forAllFixtures(t, func(t *testing.T, client index.Client, _ client.Client) {
 		limits, err := defaultLimits()
 		require.NoError(t, err)
 
@@ -219,10 +219,10 @@ func TestCardinalityLimit(t *testing.T) {
 		require.NoError(t, err)
 
 		var have int
-		err = client.QueryPages(ctx, []index.IndexQuery{{
+		err = client.QueryPages(ctx, []index.Query{{
 			TableName: tableName,
 			HashValue: "bar",
-		}}, func(_ index.IndexQuery, read index.ReadBatchResult) bool {
+		}}, func(_ index.Query, read index.ReadBatchResult) bool {
 			iter := read.Iterator()
 			for iter.Next() {
 				have++

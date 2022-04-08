@@ -50,7 +50,7 @@ type DeleteRequestsStore interface {
 
 // deleteRequestsStore provides all the methods required to manage lifecycle of delete request and things related to it.
 type deleteRequestsStore struct {
-	indexClient index.IndexClient
+	indexClient index.Client
 }
 
 // NewDeleteStore creates a store for managing delete requests.
@@ -63,7 +63,7 @@ func NewDeleteStore(workingDirectory string, indexStorageClient storage.Client) 
 	return &deleteRequestsStore{indexClient: indexClient}, nil
 }
 
-func NewDeleteStoreFromIndexClient(ic index.IndexClient) DeleteRequestsStore {
+func NewDeleteStoreFromIndexClient(ic index.Client) DeleteRequestsStore {
 	return &deleteRequestsStore{ic}
 }
 
@@ -118,7 +118,7 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 
 // GetDeleteRequestsByStatus returns all delete requests for given status.
 func (ds *deleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
-	return ds.queryDeleteRequests(ctx, index.IndexQuery{
+	return ds.queryDeleteRequests(ctx, index.Query{
 		TableName:  DeleteRequestsTableName,
 		HashValue:  string(deleteRequestID),
 		ValueEqual: []byte(status),
@@ -127,7 +127,7 @@ func (ds *deleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, st
 
 // GetAllDeleteRequestsForUser returns all delete requests for a user.
 func (ds *deleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
-	return ds.queryDeleteRequests(ctx, index.IndexQuery{
+	return ds.queryDeleteRequests(ctx, index.Query{
 		TableName:        DeleteRequestsTableName,
 		HashValue:        string(deleteRequestID),
 		RangeValuePrefix: []byte(userID),
@@ -148,7 +148,7 @@ func (ds *deleteRequestsStore) UpdateStatus(ctx context.Context, userID, request
 func (ds *deleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error) {
 	userIDAndRequestID := fmt.Sprintf("%s:%s", userID, requestID)
 
-	deleteRequests, err := ds.queryDeleteRequests(ctx, index.IndexQuery{
+	deleteRequests, err := ds.queryDeleteRequests(ctx, index.Query{
 		TableName:        DeleteRequestsTableName,
 		HashValue:        string(deleteRequestID),
 		RangeValuePrefix: []byte(userIDAndRequestID),
@@ -164,10 +164,10 @@ func (ds *deleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, req
 	return &deleteRequests[0], nil
 }
 
-func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQuery index.IndexQuery) ([]DeleteRequest, error) {
+func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQuery index.Query) ([]DeleteRequest, error) {
 	deleteRequests := []DeleteRequest{}
 	// No need to lock inside the callback since we run a single index query.
-	err := ds.indexClient.QueryPages(ctx, []index.IndexQuery{deleteQuery}, func(query index.IndexQuery, batch index.ReadBatchResult) (shouldContinue bool) {
+	err := ds.indexClient.QueryPages(ctx, []index.Query{deleteQuery}, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {
 			userID, requestID := splitUserIDAndRequestID(string(itr.RangeValue()))
@@ -185,7 +185,7 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 	}
 
 	for i, deleteRequest := range deleteRequests {
-		deleteRequestQuery := []index.IndexQuery{
+		deleteRequestQuery := []index.Query{
 			{
 				TableName: DeleteRequestsTableName,
 				HashValue: fmt.Sprintf("%s:%s:%s", deleteRequestDetails, deleteRequest.UserID, deleteRequest.RequestID),
@@ -193,7 +193,7 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 		}
 
 		var parseError error
-		err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(query index.IndexQuery, batch index.ReadBatchResult) (shouldContinue bool) {
+		err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 			itr := batch.Iterator()
 			itr.Next()
 

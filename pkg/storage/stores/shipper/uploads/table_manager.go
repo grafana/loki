@@ -92,7 +92,7 @@ func (tm *TableManager) Stop() {
 	tm.uploadTables(context.Background(), true)
 }
 
-func (tm *TableManager) QueryPages(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (tm *TableManager) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	queriesByTable := util.QueriesByTable(queries)
 	for tableName, queries := range queriesByTable {
 		err := tm.query(ctx, tableName, queries, callback)
@@ -104,7 +104,7 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []index.IndexQue
 	return nil
 }
 
-func (tm *TableManager) query(ctx context.Context, tableName string, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (tm *TableManager) query(ctx context.Context, tableName string, queries []index.Query, callback index.QueryPagesCallback) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 

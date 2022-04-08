@@ -32,7 +32,7 @@ func newBigchunk() *bigchunk {
 	return &bigchunk{}
 }
 
-func (b *bigchunk) Add(sample model.SamplePair) (ChunkData, error) {
+func (b *bigchunk) Add(sample model.SamplePair) (Data, error) {
 	if b.remainingSamples == 0 {
 		if bigchunkSizeCapBytes > 0 && b.Size() > bigchunkSizeCapBytes {
 			return addToOverflowChunk(sample)
@@ -85,7 +85,7 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 	return nil
 }
 
-func (b *bigchunk) Rebound(start, end model.Time) (ChunkData, error) {
+func (b *bigchunk) Rebound(start, end model.Time) (Data, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -175,7 +175,7 @@ func (b *bigchunk) Size() int {
 	return sum
 }
 
-func (b *bigchunk) Slice(start, end model.Time) ChunkData {
+func (b *bigchunk) Slice(start, end model.Time) Data {
 	i, j := 0, len(b.chunks)
 	for k := 0; k < len(b.chunks); k++ {
 		if b.chunks[k].start <= int64(start) {
@@ -228,7 +228,7 @@ func (r *reader) ReadBytes(count int) ([]byte, error) {
 // addToOverflowChunk is a utility function that creates a new chunk as overflow
 // chunk, adds the provided sample to it, and returns a chunk slice containing
 // the provided old chunk followed by the new overflow chunk.
-func addToOverflowChunk(s model.SamplePair) (ChunkData, error) {
+func addToOverflowChunk(s model.SamplePair) (Data, error) {
 	overflowChunk := New()
 	_, err := overflowChunk.(*bigchunk).Add(s)
 	if err != nil {

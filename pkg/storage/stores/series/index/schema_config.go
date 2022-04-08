@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/math"
-	"github.com/prometheus/common/model"
 )
 
 const (
@@ -17,21 +18,9 @@ const (
 )
 
 var (
-	errInvalidSchemaVersion     = errors.New("invalid schema version")
-	errInvalidTablePeriod       = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
-	errConfigFileNotSet         = errors.New("schema config file needs to be set")
-	errConfigChunkPrefixNotSet  = errors.New("schema config for chunks is missing the 'prefix' setting")
-	errSchemaIncreasingFromTime = errors.New("from time in schemas must be distinct and in increasing order")
+	errInvalidSchemaVersion = errors.New("invalid schema version")
+	errInvalidTablePeriod   = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
 )
-
-func defaultRowShards(schema string) uint32 {
-	switch schema {
-	case "v1", "v2", "v3", "v4", "v5", "v6", "v9":
-		return 0
-	default:
-		return 16
-	}
-}
 
 // CreateSchema returns the schema defined by the PeriodConfig
 func CreateSchema(cfg config.PeriodConfig) (SeriesStoreSchema, error) {

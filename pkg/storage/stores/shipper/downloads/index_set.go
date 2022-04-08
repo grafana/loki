@@ -28,7 +28,7 @@ import (
 type IndexSet interface {
 	Init() error
 	Close()
-	MultiQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error
+	MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 	DropAllDBs() error
 	Err() error
 	LastUsedAt() time.Time
@@ -174,7 +174,7 @@ func (t *indexSet) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *indexSet) MultiQueries(ctx context.Context, queries []index.IndexQuery, callback index.QueryPagesCallback) error {
+func (t *indexSet) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
