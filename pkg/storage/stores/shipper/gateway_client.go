@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/rand"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -234,6 +235,11 @@ func (s *GatewayClient) ringModeDoQueries(ctx context.Context, gatewayQueries []
 	}
 
 	addrs := rs.GetAddresses()
+	// shuffle addresses to make sure we don't always access the same Index Gateway instances in sequence for same tenant.
+	rand.Shuffle(len(addrs), func(i, j int) {
+		addrs[i], addrs[j] = addrs[j], addrs[i]
+	})
+
 	for _, addr := range addrs {
 		genericClient, err := s.pool.GetClientFor(addr)
 		if err != nil {
