@@ -236,8 +236,11 @@ dist: clean
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
 packages: dist
+	mkdir -p dist/tmp
+	unzip dist/logcli-linux-amd64.zip -d dist/tmp
 	nfpm package -f tools/nfpm.yaml -p rpm -t dist/
 	nfpm package -f tools/nfpm.yaml -p deb -t dist/
+	rm -rf dist/tmp
 
 publish: packages
 	./tools/release

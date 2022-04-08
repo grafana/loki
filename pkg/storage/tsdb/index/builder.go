@@ -2,11 +2,43 @@ package index
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
+	"os"
+	"path/filepath"
 	"sort"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
+
+// Identifier has all the information needed to resolve a TSDB index
+// Notably this abstracts away OS path separators, etc.
+type Identifier struct {
+	Tenant        string
+	From, Through model.Time
+	Checksum      uint32
+}
+
+func (i Identifier) String() string {
+	return filepath.Join(
+		i.Tenant,
+		fmt.Sprintf(
+			"%s-%d-%d-%x.tsdb",
+			IndexFilename,
+			i.From,
+			i.Through,
+			i.Checksum,
+		),
+	)
+}
+
+func (i Identifier) FilePath(parentDir string) string {
+	return filepath.Join(parentDir, i.String())
+}
 
 // Builder is a helper used to create tsdb indices.
 // It can accept streams in any order and will create the tsdb
@@ -39,10 +71,23 @@ func (b *Builder) AddSeries(ls labels.Labels, chks []ChunkMeta) {
 	s.chunks = append(s.chunks, chks...)
 }
 
-func (b *Builder) Build(ctx context.Context, dir string) error {
-	writer, err := NewWriter(ctx, dir)
+func (b *Builder) Build(ctx context.Context, dir, tenant string) (id Identifier, err error) {
+	// Ensure the parent dir exists (i.e. index/<bucket>/<tenant>/)
+	parent := filepath.Join(dir, tenant)
+	if parent != "" {
+		if err := chunk_util.EnsureDirectory(parent); err != nil {
+			return id, err
+		}
+	}
+
+	// First write tenant/index-bounds-random.staging
+	rng := rand.Int63()
+	name := fmt.Sprintf("%s-%x.staging", IndexFilename, rng)
+	tmpPath := filepath.Join(parent, name)
+
+	writer, err := NewWriter(ctx, tmpPath)
 	if err != nil {
-		return err
+		return id, err
 	}
 	// TODO(owen-d): multithread
 
@@ -77,16 +122,49 @@ func (b *Builder) Build(ctx context.Context, dir string) error {
 	// Add symbols
 	for _, symbol := range symbols {
 		if err := writer.AddSymbol(symbol); err != nil {
-			return err
+			return id, err
 		}
 	}
 
 	// Add series
 	for i, s := range streams {
 		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.chunks.finalize()...); err != nil {
-			return err
+			return id, err
 		}
 	}
 
-	return writer.Close()
+	if err := writer.Close(); err != nil {
+		return id, err
+	}
+
+	reader, err := NewFileReader(tmpPath)
+	if err != nil {
+		return id, err
+	}
+
+	from, through := reader.Bounds()
+
+	// load the newly compacted index to grab checksum, promptly close
+	id = Identifier{
+		Tenant:   tenant,
+		From:     model.Time(from),
+		Through:  model.Time(through),
+		Checksum: reader.Checksum(),
+	}
+
+	reader.Close()
+	defer func() {
+		if err != nil {
+			os.RemoveAll(tmpPath)
+		}
+	}()
+
+	dst := id.FilePath(dir)
+
+	if err := os.Rename(tmpPath, dst); err != nil {
+		return id, err
+	}
+
+	return id, nil
+
 }
