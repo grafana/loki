@@ -795,7 +795,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			for j := 0; j < int(streamCount); j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
-					require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+					require.Equal(t, int64(i), it.Entry().Timestamp.UnixNano())
 				}
 			}
 		}
@@ -822,7 +822,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			for j := 0; j < int(streamCount); j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
-					require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+					require.Equal(t, int64(i), it.Entry().Timestamp.UnixNano())
 				}
 			}
 		}
@@ -847,7 +847,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
 					require.Equal(t, float64(1), it.Sample().Value)
-					require.Equal(t, i, it.Sample().Timestamp)
+					require.Equal(t, int64(i), it.Sample().Timestamp)
 				}
 			}
 		}
@@ -872,7 +872,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
 					require.Equal(t, float64(1), it.Sample().Value)
-					require.Equal(t, i, it.Sample().Timestamp)
+					require.Equal(t, int64(i), it.Sample().Timestamp)
 				}
 			}
 		}
