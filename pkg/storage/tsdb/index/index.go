@@ -50,7 +50,7 @@ const (
 	// FormatV2 represents 2 version of index.
 	FormatV2 = 2
 
-	indexFilename = "index"
+	IndexFilename = "index"
 
 	// store every 1024 series' fingerprints in the fingerprint offsets table
 	fingerprintInterval = 1 << 10
@@ -134,7 +134,7 @@ type Writer struct {
 	fingerprintOffsets fingerprintOffsets
 
 	// Hold last series to validate that clients insert new series in order.
-	lastSeries uint64
+	lastSeries labels.Labels
 	lastRef    storage.SeriesRef
 
 	crc32 hash.Hash
@@ -157,6 +157,7 @@ type TOC struct {
 // Metadata is TSDB-level metadata
 type Metadata struct {
 	From, Through int64
+	Checksum      uint32
 }
 
 func (m *Metadata) EnsureBounds(from, through int64) {
@@ -196,8 +197,9 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 		PostingsTable:      d.Be64(),
 		FingerprintOffsets: d.Be64(),
 		Metadata: Metadata{
-			From:    d.Be64int64(),
-			Through: d.Be64int64(),
+			From:     d.Be64int64(),
+			Through:  d.Be64int64(),
+			Checksum: expCRC,
 		},
 	}, nil
 }
@@ -440,11 +442,13 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 	}
 
 	labelHash := lset.Hash()
-	if labelHash < w.lastSeries {
+	lastHash := w.lastSeries.Hash()
+	// Ensure series are sorted by the priorities: [`hash(labels)`, `labels`]
+	if (labelHash < lastHash && len(w.lastSeries) > 0) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
 		return errors.Errorf("out-of-order series added with label set %q", lset)
 	}
 
-	if ref < w.lastRef && w.lastSeries != uint64(0) {
+	if ref < w.lastRef && len(w.lastSeries) != 0 {
 		return errors.Errorf("series with reference greater than %d already added", ref)
 	}
 	// We add padding to 16 bytes to increase the addressable space we get through 4 byte
@@ -525,7 +529,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		return errors.Wrap(err, "write series data")
 	}
 
-	w.lastSeries = labelHash
+	w.lastSeries = append(w.lastSeries[:0], lset...)
 	w.lastRef = ref
 
 	if ref%fingerprintInterval == 0 {
@@ -1546,6 +1550,10 @@ func (r *Reader) lookupSymbol(o uint32) (string, error) {
 
 func (r *Reader) Bounds() (int64, int64) {
 	return r.toc.Metadata.From, r.toc.Metadata.Through
+}
+
+func (r *Reader) Checksum() uint32 {
+	return r.toc.Metadata.Checksum
 }
 
 // Symbols returns an iterator over the symbols that exist within the index.

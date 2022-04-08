@@ -1,5 +1,7 @@
 ## Main
 
+- [5748](https://github.com/grafana/loki/pull/5748) **Red-GV**: Update Prometheus go client to 12.1
+- [5739](https://github.com/grafana/loki/pull/5739) **sasagarw**: Change UUIDs to tenant name in doc
 - [5729](https://github.com/grafana/loki/pull/5729) **periklis**: Add missing label matcher for openshift logging tenant mode (OpenShift)
 - [5691](https://github.com/grafana/loki/pull/5691) **sasagarw**: Fix immediate reset of degraded condition
 - [5704](https://github.com/grafana/loki/pull/5704) **xperimental**: Update operator-sdk to 1.18.1

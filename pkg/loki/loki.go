@@ -347,7 +347,6 @@ func (t *Loki) Run(opts RunOpts) error {
 
 	t.serviceMap = serviceMap
 	t.Server.HTTP.Path("/services").Methods("GET").Handler(http.HandlerFunc(t.servicesHandler))
-	t.Server.HTTP.NotFoundHandler = http.HandlerFunc(serverutil.NotFoundHandler)
 
 	// get all services, create service manager and tell it to start
 	var servs []services.Service

@@ -71,10 +71,13 @@ func gcsInstrumentation(ctx context.Context, scope string, insecure bool, http2 
 		customTransport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
 		customTransport.ForceAttemptHTTP2 = false
 	}
+	transportOptions := []option.ClientOption{option.WithScopes(scope)}
 	if insecure {
 		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		// When using `insecure` (testing only), we add a fake API key as well to skip credential chain lookups.
+		transportOptions = append(transportOptions, option.WithAPIKey("insecure"))
 	}
-	transport, err := google_http.NewTransport(ctx, customTransport, option.WithScopes(scope))
+	transport, err := google_http.NewTransport(ctx, customTransport, transportOptions...)
 	if err != nil {
 		return nil, err
 	}
