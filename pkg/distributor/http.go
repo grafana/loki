@@ -21,7 +21,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
-		level.Warn(logger).Log("msg", "error getting tenant id", "err", err)
+		level.Error(logger).Log("msg", "error getting tenant id", "err", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
