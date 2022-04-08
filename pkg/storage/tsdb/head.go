@@ -78,9 +78,19 @@ func NewHead(tenant string, metrics *HeadMetrics, logger log.Logger) *Head {
 	}
 }
 
+// MinTime returns the lowest time bound on visible data in the head.
+func (h *Head) MinTime() int64 {
+	return h.minTime.Load()
+}
+
+// MaxTime returns the highest timestamp seen in data of the head.
+func (h *Head) MaxTime() int64 {
+	return h.maxTime.Load()
+}
+
 func (h *Head) updateMinMaxTime(mint, maxt int64) {
 	for {
-		lt := h.minTime.Load()
+		lt := h.MinTime()
 		if mint >= lt {
 			break
 		}
@@ -89,7 +99,7 @@ func (h *Head) updateMinMaxTime(mint, maxt int64) {
 		}
 	}
 	for {
-		ht := h.maxTime.Load()
+		ht := h.MaxTime()
 		if maxt <= ht {
 			break
 		}
