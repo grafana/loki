@@ -16,12 +16,13 @@ import (
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -227,15 +228,18 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []index.Query, callba
 }
 
 func (lt *Table) getOrAddDB(name string) (*bbolt.DB, error) {
+	lt.dbsMtx.RLock()
+	db, ok := lt.dbs[name]
+	lt.dbsMtx.RUnlock()
+
+	if ok {
+		return db, nil
+	}
+
 	lt.dbsMtx.Lock()
 	defer lt.dbsMtx.Unlock()
 
-	var (
-		db  *bbolt.DB
-		err error
-		ok  bool
-	)
-
+	var err error
 	db, ok = lt.dbs[name]
 	if !ok {
 		db, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(lt.path, name))

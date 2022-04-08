@@ -166,3 +166,196 @@ func TestLegacyLabelPairCompatibilityUnmarshalling(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqualValues(t, expectedLabelPair, incompatibleLabelPair)
 }
+
+func TestMergeLabelResponses(t *testing.T) {
+	for _, tc := range []struct {
+		desc      string
+		responses []*LabelResponse
+		expected  []*LabelResponse
+		err       error
+	}{
+		{
+			desc: "merge two label responses",
+			responses: []*LabelResponse{
+				{Values: []string{"test"}},
+				{Values: []string{"test2"}},
+			},
+			expected: []*LabelResponse{
+				{Values: []string{"test", "test2"}},
+			},
+		},
+		{
+			desc: "merge three label responses",
+			responses: []*LabelResponse{
+				{Values: []string{"test"}},
+				{Values: []string{"test2"}},
+				{Values: []string{"test3"}},
+			},
+			expected: []*LabelResponse{
+				{Values: []string{"test", "test2", "test3"}},
+			},
+		},
+		{
+			desc: "merge three label responses with one non-unique",
+			responses: []*LabelResponse{
+				{Values: []string{"test"}},
+				{Values: []string{"test"}},
+				{Values: []string{"test2"}},
+				{Values: []string{"test3"}},
+			},
+			expected: []*LabelResponse{
+				{Values: []string{"test", "test2", "test3"}},
+			},
+		},
+		{
+			desc: "merge one and expect one",
+			responses: []*LabelResponse{
+				{Values: []string{"test"}},
+			},
+			expected: []*LabelResponse{
+				{Values: []string{"test"}},
+			},
+		},
+		{
+			desc:      "merge empty and expect empty",
+			responses: []*LabelResponse{},
+			expected:  []*LabelResponse{},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			merged, err := MergeLabelResponses(tc.responses)
+			if err != nil {
+				require.Equal(t, tc.err, err)
+			} else if len(tc.expected) == 0 {
+				require.Empty(t, merged)
+			} else {
+				require.ElementsMatch(t, tc.expected[0].Values, merged.Values)
+			}
+		})
+	}
+}
+
+func TestMergeSeriesResponses(t *testing.T) {
+	mockSeriesResponse := func(series []map[string]string) *SeriesResponse {
+		resp := &SeriesResponse{}
+		for _, s := range series {
+			resp.Series = append(resp.Series, SeriesIdentifier{
+				Labels: s,
+			})
+		}
+		return resp
+	}
+
+	for _, tc := range []struct {
+		desc      string
+		responses []*SeriesResponse
+		expected  []*SeriesResponse
+		err       error
+	}{
+		{
+			desc: "merge one series response and expect one",
+			responses: []*SeriesResponse{
+				{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
+			},
+			expected: []*SeriesResponse{
+				mockSeriesResponse([]map[string]string{{"test": "test"}}),
+			},
+		},
+		{
+			desc: "merge two series responses",
+			responses: []*SeriesResponse{
+				{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
+				{Series: []SeriesIdentifier{{Labels: map[string]string{"test2": "test2"}}}},
+			},
+			expected: []*SeriesResponse{
+				mockSeriesResponse([]map[string]string{{"test": "test"}, {"test2": "test2"}}),
+			},
+		},
+		{
+			desc: "merge three series responses",
+			responses: []*SeriesResponse{
+				{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
+				{Series: []SeriesIdentifier{{Labels: map[string]string{"test2": "test2"}}}},
+				{Series: []SeriesIdentifier{{Labels: map[string]string{"test3": "test3"}}}},
+			},
+			expected: []*SeriesResponse{
+				mockSeriesResponse([]map[string]string{{"test": "test"}, {"test2": "test2"}, {"test3": "test3"}}),
+			},
+		},
+		{
+			desc:      "merge empty and expect empty",
+			responses: []*SeriesResponse{},
+			expected:  []*SeriesResponse{},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			merged, err := MergeSeriesResponses(tc.responses)
+			if err != nil {
+				require.Equal(t, tc.err, err)
+			} else if len(tc.expected) == 0 {
+				require.Empty(t, merged)
+			} else {
+				require.ElementsMatch(t, tc.expected[0].Series, merged.Series)
+			}
+		})
+	}
+}
+
+func benchmarkMergeLabelResponses(b *testing.B, responses []*LabelResponse) {
+	b.ReportAllocs()
+	for n := 0; n < b.N; n++ {
+		MergeLabelResponses(responses) //nolint:errcheck
+	}
+}
+
+func benchmarkMergeSeriesResponses(b *testing.B, responses []*SeriesResponse) {
+	b.ReportAllocs()
+	for n := 0; n < b.N; n++ {
+		MergeSeriesResponses(responses) //nolint:errcheck
+	}
+}
+
+func BenchmarkMergeALabelResponse(b *testing.B) {
+	response := []*LabelResponse{{Values: []string{"test"}}}
+	benchmarkMergeLabelResponses(b, response)
+}
+
+func BenchmarkMergeASeriesResponse(b *testing.B) {
+	response := []*SeriesResponse{{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}}}
+	benchmarkMergeSeriesResponses(b, response)
+}
+
+func BenchmarkMergeSomeLabelResponses(b *testing.B) {
+	responses := []*LabelResponse{
+		{Values: []string{"test"}},
+		{Values: []string{"test2"}},
+		{Values: []string{"test3"}},
+	}
+	benchmarkMergeLabelResponses(b, responses)
+}
+
+func BenchmarkMergeSomeSeriesResponses(b *testing.B) {
+	responses := []*SeriesResponse{
+		{Series: []SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}},
+		{Series: []SeriesIdentifier{{Labels: map[string]string{"test2": "test2"}}}},
+		{Series: []SeriesIdentifier{{Labels: map[string]string{"test3": "test3"}}}},
+	}
+	benchmarkMergeSeriesResponses(b, responses)
+}
+
+func BenchmarkMergeManyLabelResponses(b *testing.B) {
+	responses := []*LabelResponse{}
+	for i := 0; i < 20; i++ {
+		responses = append(responses, &LabelResponse{Values: []string{fmt.Sprintf("test%d", i)}})
+	}
+	benchmarkMergeLabelResponses(b, responses)
+}
+
+func BenchmarkMergeManySeriesResponses(b *testing.B) {
+	responses := []*SeriesResponse{}
+	for i := 0; i < 20; i++ {
+		test := fmt.Sprintf("test%d", i)
+		responses = append(responses, &SeriesResponse{Series: []SeriesIdentifier{{Labels: map[string]string{test: test}}}})
+	}
+	benchmarkMergeSeriesResponses(b, responses)
+}

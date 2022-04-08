@@ -740,11 +740,11 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 
 	delGetter := &mockDeleteGettter{
 		results: []deletion.DeleteRequest{
-			{Selectors: []string{`0`}, StartTime: 0, EndTime: 100},
-			{Selectors: []string{`1`}, StartTime: 200, EndTime: 400},
-			{Selectors: []string{`2`}, StartTime: 400, EndTime: 500},
-			{Selectors: []string{`3`}, StartTime: 500, EndTime: 700},
-			{Selectors: []string{`4`}, StartTime: 700, EndTime: 900},
+			{Query: `0`, StartTime: 0, EndTime: 100},
+			{Query: `1`, StartTime: 200, EndTime: 400},
+			{Query: `2`, StartTime: 400, EndTime: 500},
+			{Query: `3`, StartTime: 500, EndTime: 700},
+			{Query: `4`, StartTime: 700, EndTime: 900},
 		},
 	}
 
@@ -802,11 +802,11 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 
 	delGetter := &mockDeleteGettter{
 		results: []deletion.DeleteRequest{
-			{Selectors: []string{`0`}, StartTime: 0, EndTime: 100},
-			{Selectors: []string{`1`}, StartTime: 200, EndTime: 400},
-			{Selectors: []string{`2`}, StartTime: 400, EndTime: 500},
-			{Selectors: []string{`3`}, StartTime: 500, EndTime: 700},
-			{Selectors: []string{`4`}, StartTime: 700, EndTime: 900},
+			{Query: `0`, StartTime: 0, EndTime: 100},
+			{Query: `1`, StartTime: 200, EndTime: 400},
+			{Query: `2`, StartTime: 400, EndTime: 500},
+			{Query: `3`, StartTime: 500, EndTime: 700},
+			{Query: `4`, StartTime: 700, EndTime: 900},
 		},
 	}
 

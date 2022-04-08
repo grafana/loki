@@ -66,7 +66,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
 				},
 				ReadinessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
+					ProbeHandler: corev1.ProbeHandler{
 						HTTPGet: &corev1.HTTPGetAction{
 							// The frontend will only return ready once a querier has connected to it.
 							// Because the service used for connecting the querier to the frontend only lists ready

@@ -18,7 +18,7 @@ import (
 
 var (
 	source = flag.String("source", "", "the source boltdb file")
-	dest   = flag.String("dest", "", "the dest tsdb file")
+	dest   = flag.String("dest", "", "the dest tsdb dir")
 	// Hardcode a periodconfig for convenience as the boltdb iterator needs one
 	// NB: must match the index file you're reading from
 	periodConfig = func() config.PeriodConfig {
@@ -95,7 +95,7 @@ func main() {
 	}
 
 	log.Println("writing index")
-	if err := builder.Build(context.Background(), *dest); err != nil {
+	if _, err := builder.Build(context.Background(), *dest, "fake"); err != nil {
 		panic(err)
 	}
 }

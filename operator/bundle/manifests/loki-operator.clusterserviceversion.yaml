@@ -11,7 +11,6 @@ metadata:
             "name": "lokistack-sample"
           },
           "spec": {
-            "replicationFactor": 2,
             "size": "1x.small",
             "storage": {
               "secret": {
@@ -596,6 +595,8 @@ spec:
           strategy: {}
           template:
             metadata:
+              annotations:
+                kubectl.kubernetes.io/default-container: manager
               labels:
                 app.kubernetes.io/instance: loki-operator-v0.0.1
                 app.kubernetes.io/managed-by: operator-lifecycle-manager
@@ -616,7 +617,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.4.1
+                  value: quay.io/openshift-logging/loki:v2.4.2
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -648,7 +649,7 @@ spec:
                 - --logtostderr=true
                 - --tls-cert-file=/var/run/secrets/serving-cert/tls.crt
                 - --tls-private-key-file=/var/run/secrets/serving-cert/tls.key
-                - --v=2
+                - --v=0
                 image: quay.io/openshift/origin-kube-rbac-proxy:latest
                 name: kube-rbac-proxy
                 ports:
@@ -714,4 +715,11 @@ spec:
   minKubeVersion: 1.21.1
   provider:
     name: Grafana.com
+  relatedImages:
+  - image: quay.io/observatorium/opa-openshift:latest
+    name: opa
+  - image: quay.io/openshift-logging/loki:v2.4.2
+    name: loki
+  - image: quay.io/observatorium/api:latest
+    name: gateway
   version: 0.0.1

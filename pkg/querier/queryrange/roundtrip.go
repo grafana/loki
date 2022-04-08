@@ -11,12 +11,13 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -477,6 +478,7 @@ func NewInstantMetricTripperware(
 
 	if cfg.ShardedQueries {
 		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewSplitByRangeMiddleware(log, limits, nil),
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,

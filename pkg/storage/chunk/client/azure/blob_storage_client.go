@@ -85,6 +85,7 @@ type BlobStorageConfig struct {
 	Environment        string         `yaml:"environment"`
 	ContainerName      string         `yaml:"container_name"`
 	AccountName        string         `yaml:"account_name"`
+	ChunkDelimiter     string         `yaml:"chunk_delimiter"`
 	AccountKey         flagext.Secret `yaml:"account_key"`
 	DownloadBufferSize int            `yaml:"download_buffer_size"`
 	UploadBufferSize   int            `yaml:"upload_buffer_size"`
@@ -106,6 +107,7 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.StringVar(&c.Environment, prefix+"azure.environment", azureGlobal, fmt.Sprintf("Azure Cloud environment. Supported values are: %s.", strings.Join(supportedEnvironments, ", ")))
 	f.StringVar(&c.ContainerName, prefix+"azure.container-name", "cortex", "Name of the blob container used to store chunks. This container must be created before running cortex.")
 	f.StringVar(&c.AccountName, prefix+"azure.account-name", "", "The Microsoft Azure account name to be used")
+	f.StringVar(&c.ChunkDelimiter, prefix+"azure.chunk-delimiter", "-", "Chunk delimiter for blob ID to be used")
 	f.Var(&c.AccountKey, prefix+"azure.account-key", "The Microsoft Azure account key to use.")
 	f.DurationVar(&c.RequestTimeout, prefix+"azure.request-timeout", 30*time.Second, "Timeout for requests made against azure blob storage.")
 	f.IntVar(&c.DownloadBufferSize, prefix+"azure.download-buffer-size", 512000, "Preallocated buffer size for downloads.")
@@ -251,7 +253,7 @@ func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io
 }
 
 func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobURL, error) {
-	blobID = strings.Replace(blobID, ":", "-", -1)
+	blobID = strings.Replace(blobID, ":", b.cfg.ChunkDelimiter, -1)
 
 	// generate url for new chunk blob
 	u, err := url.Parse(fmt.Sprintf(b.selectBlobURLFmt(), b.cfg.AccountName, b.cfg.ContainerName, blobID))

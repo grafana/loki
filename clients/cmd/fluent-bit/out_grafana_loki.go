@@ -16,8 +16,9 @@ import (
 	_ "github.com/grafana/loki/pkg/util/build"
 )
 import (
-	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/clients/pkg/promtail/client"
 )
 
 var (

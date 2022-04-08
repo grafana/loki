@@ -258,10 +258,11 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			},
 		},
 	} {
+		tcCopy := tc
 		t.Run(tc.name, func(t *testing.T) {
 			resetTables()
 			tableManager.cfg.QueryReadyNumDays = tc.queryReadyNumDaysCfg
-			tableManager.cfg.Limits = &tc.queryReadinessLimits
+			tableManager.cfg.Limits = &tcCopy.queryReadinessLimits
 			require.NoError(t, tableManager.ensureQueryReadiness(context.Background()))
 
 			for name, table := range tableManager.tables {

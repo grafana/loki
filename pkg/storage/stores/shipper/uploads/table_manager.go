@@ -105,15 +105,19 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []index.Query, c
 }
 
 func (tm *TableManager) query(ctx context.Context, tableName string, queries []index.Query, callback index.QueryPagesCallback) error {
-	tm.tablesMtx.RLock()
-	defer tm.tablesMtx.RUnlock()
-
-	table, ok := tm.tables[tableName]
+	table, ok := tm.getTable(tableName)
 	if !ok {
 		return nil
 	}
 
 	return util.DoParallelQueries(ctx, table, queries, callback)
+}
+
+func (tm *TableManager) getTable(tableName string) (*Table, bool) {
+	tm.tablesMtx.RLock()
+	defer tm.tablesMtx.RUnlock()
+	table, ok := tm.tables[tableName]
+	return table, ok
 }
 
 func (tm *TableManager) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
@@ -138,9 +142,7 @@ func (tm *TableManager) BatchWrite(ctx context.Context, batch index.WriteBatch) 
 }
 
 func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
-	tm.tablesMtx.RLock()
-	table, ok := tm.tables[tableName]
-	tm.tablesMtx.RUnlock()
+	table, ok := tm.getTable(tableName)
 
 	if !ok {
 		tm.tablesMtx.Lock()
