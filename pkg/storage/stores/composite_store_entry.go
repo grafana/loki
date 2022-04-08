@@ -30,6 +30,9 @@ type Index interface {
 	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+	// SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
+	// This is only used for GetSeries implementation.
+	// Todo we might want to pass it as a parameter to GetSeries instead.
 	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 }
 
