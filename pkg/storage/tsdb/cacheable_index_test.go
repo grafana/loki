@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -76,28 +75,28 @@ func TestCacheableIndex(t *testing.T) {
 		expected := []ChunkRef{
 			{
 				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+				Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 				Start:       0,
 				End:         3,
 				Checksum:    0,
 			},
 			{
 				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+				Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 				Start:       1,
 				End:         4,
 				Checksum:    1,
 			},
 			{
 				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+				Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 				Start:       2,
 				End:         5,
 				Checksum:    2,
 			},
 			{
 				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+				Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash())},
 				Start:       1,
 				End:         10,
 				Checksum:    3,
@@ -111,7 +110,7 @@ func TestCacheableIndex(t *testing.T) {
 		require.Equal(t, expected, refs)
 	})
 
-	t.Run("GetChunkRefsSharded", func(t *testing.T) {
+	t.Run("ASDF", func(t *testing.T) {
 		cache := cache.NewFifoCache(t.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
 		defer cache.Stop()
 		l := log.NewNopLogger()
@@ -128,7 +127,7 @@ func TestCacheableIndex(t *testing.T) {
 
 		require.Equal(t, []ChunkRef{{
 			User:        "fake",
-			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+			Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash())},
 			Start:       1,
 			End:         10,
 			Checksum:    3,
@@ -141,7 +140,7 @@ func TestCacheableIndex(t *testing.T) {
 
 		require.Equal(t, []ChunkRef{{
 			User:        "fake",
-			Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+			Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash())},
 			Start:       1,
 			End:         10,
 			Checksum:    3,
@@ -160,14 +159,36 @@ func TestCacheableIndex(t *testing.T) {
 
 		expected := []Series{
 			{
-				Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+				Labels:      labelsToLabelsProto(mustParseLabels(`{foo="bar", bazz="buzz"}`), nil),
+				Fingerprint: Fingerprint{int64(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash())},
 			},
 		}
 		require.Equal(t, expected, xs)
 
 		// call again to ensure we get the same result
 		xs, err = cacheableIndex.Series(context.Background(), "fake", 8, 9, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		require.NoError(t, err)
+
+		require.Equal(t, expected, xs)
+
+		expected = []Series{
+			{
+				Labels:      labelsToLabelsProto(mustParseLabels(`{foo="bar"}`), nil),
+				Fingerprint: Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
+			},
+			{
+				Labels:      labelsToLabelsProto(mustParseLabels(`{foo="bar", bazz="buzz"}`), nil),
+				Fingerprint: Fingerprint{int64(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash())},
+			},
+		}
+		// See if we get the right result for two series
+		xs, err = cacheableIndex.Series(context.Background(), "fake", 0, 10, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		require.NoError(t, err)
+
+		require.Equal(t, expected, xs)
+
+		// And confirm the cached result is correct.
+		xs, err = cacheableIndex.Series(context.Background(), "fake", 0, 10, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.NoError(t, err)
 
 		require.Equal(t, expected, xs)

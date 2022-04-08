@@ -9,27 +9,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
 
-type Series struct {
-	Labels      labels.Labels
-	Fingerprint model.Fingerprint
-}
-
-type ChunkRef struct {
-	User        string
-	Fingerprint model.Fingerprint
-	Start, End  model.Time
-	Checksum    uint32
-}
-
-// Compares by (Start, End)
-// Assumes User is equivalent
-func (r ChunkRef) Less(x ChunkRef) bool {
-	if r.Start != x.Start {
-		return r.Start < x.Start
-	}
-	return r.End <= x.End
-}
-
 type Index interface {
 	Bounded
 	// GetChunkRefs accepts an optional []ChunkRef argument.

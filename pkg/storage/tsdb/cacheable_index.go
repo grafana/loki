@@ -3,12 +3,13 @@ package tsdb
 import (
 	"bytes"
 	"context"
-	"encoding/gob"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -160,20 +161,18 @@ func (i *CacheableIndex) buildCacheKey(userID string, from, through model.Time, 
 //
 // It uses as a key for the cache all parameters (userID, from, through, shard, matchers) separated by a colon (:).
 func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([]ChunkRef, [][]byte, error) {
+	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([]ChunkRef, []byte, error) {
 		chunks, err := i.Index.GetChunkRefs(ctx, userID, from, through, res, shard, matcher...)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "call to GetChunkRefs")
 		}
 
-		var encodeBuf bytes.Buffer
-		enc := gob.NewEncoder(&encodeBuf)
-		if err := enc.Encode(chunks); err != nil {
-			i.m.cacheEncodeErrs.Inc()
-			return nil, nil, errors.Wrap(err, "GetChunkRefs encoding")
+		buf, err := proto.Marshal(&ChunkRefs{chunks})
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "Series encoding")
 		}
 
-		return chunks, [][]byte{encodeBuf.Bytes()}, nil
+		return chunks, buf, nil
 	}
 
 	key := i.buildCacheKey(userID, from, through, shard, matchers...)
@@ -185,16 +184,16 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 	}
 
 	// Turn the cache result into the right type
-	var values []ChunkRef
+	// TODO: Callum, is this even any faster to encode/decode than using gob since with a slice of protobuf types we likely
+	// have to do similar run time calculations on the size of each struct in the slice of protobuf structs that is ChunkRefs
+	var value ChunkRefs
 	for _, val := range response {
-		decoderBuf := bytes.NewBuffer(val)
-		dec := gob.NewDecoder(decoderBuf)
-		if err := dec.Decode(&values); err != nil {
-			i.m.cacheDecodeErrs.Inc()
+		err := proto.Unmarshal(val, &value)
+		if err != nil {
 			return nil, errors.Wrap(err, "cacheable index Series decoding")
 		}
 
-		res = append(res, values...)
+		res = append(res, value.Refs...)
 	}
 
 	// fill misses and populate cache with them.
@@ -205,7 +204,7 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 		}
 		res = append(res, result...)
 
-		if err := i.Cache.Store(ctx, []string{miss}, resultBytes); err != nil {
+		if err := i.Cache.Store(ctx, []string{miss}, [][]byte{resultBytes}); err != nil {
 			return nil, errors.Wrap(err, "cache store failed in Series")
 		}
 	}
@@ -217,20 +216,18 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 //
 // It uses as a key for the cache all parameters (userID, from, through, shard, matchers) separated by a colon (:).
 func (i *CacheableIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
-	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([]Series, [][]byte, error) {
+	fallbackFn := func(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matcher ...*labels.Matcher) ([]Series, []byte, error) {
 		series, err := i.Index.Series(ctx, userID, from, through, res, shard, matcher...)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "call to Series")
 		}
 
-		var encodeBuf bytes.Buffer
-		enc := gob.NewEncoder(&encodeBuf)
-		if err := enc.Encode(series); err != nil {
+		buf, err := proto.Marshal(&MutliSeries{series})
+		if err != nil {
 			return nil, nil, errors.Wrap(err, "Series encoding")
-
 		}
 
-		return series, [][]byte{encodeBuf.Bytes()}, nil
+		return series, buf, nil
 	}
 
 	key := i.buildCacheKey(userID, from, through, shard, matchers...)
@@ -242,15 +239,14 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 	}
 
 	// Turn the cache result into the right type
-	var values []Series
+	var value MutliSeries
 	for _, val := range response {
-		decoderBuf := bytes.NewBuffer(val)
-		dec := gob.NewDecoder(decoderBuf)
-		if err := dec.Decode(&values); err != nil {
+		err := proto.Unmarshal(val, &value)
+		if err != nil {
 			return nil, errors.Wrap(err, "cacheable index Series decoding")
 		}
 
-		res = append(res, values...)
+		res = append(res, value.Series...)
 	}
 
 	// fill misses and populate cache with them.
@@ -260,8 +256,7 @@ func (i *CacheableIndex) Series(ctx context.Context, userID string, from, throug
 			return nil, errors.Wrap(err, "fallback call failed in Series")
 		}
 		res = append(res, result...)
-
-		if err := i.Cache.Store(ctx, []string{miss}, resultBytes); err != nil {
+		if err := i.Cache.Store(ctx, []string{miss}, [][]byte{resultBytes}); err != nil {
 			return nil, errors.Wrap(err, "cache store failed in Series")
 		}
 	}
@@ -280,13 +275,9 @@ func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, th
 		}
 
 		var encodeBuf bytes.Buffer
-		enc := gob.NewEncoder(&encodeBuf)
-
-		if err := enc.Encode(names); err != nil {
-			i.m.cacheEncodeErrs.Inc()
-			return nil, nil, errors.Wrap(err, "LabelNames encoding")
+		for _, n := range names {
+			encodeBuf.WriteString(n + ",")
 		}
-
 		return names, [][]byte{encodeBuf.Bytes()}, nil
 	}
 
@@ -299,17 +290,24 @@ func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, th
 	}
 
 	// Turn the cache result into the right type
-	var values []string
 	var res []string
+	var value string
+	var err error
 	for _, val := range response {
 		decoderBuf := bytes.NewBuffer(val)
-		dec := gob.NewDecoder(decoderBuf)
-		if err := dec.Decode(&values); err != nil {
-			i.m.cacheDecodeErrs.Inc()
-			return nil, errors.Wrap(err, "cacheable index LabelNames decoding")
-		}
+		for {
+			value, err = decoderBuf.ReadString(',')
+			value, _, _ = strings.Cut(value, ",")
+			if err != nil && err != io.EOF {
+				i.m.cacheDecodeErrs.Inc()
+				return nil, errors.Wrap(err, "cacheable index LabelNames decoding")
+			}
+			if err == io.EOF {
+				break
+			}
 
-		res = append(res, values...)
+			res = append(res, value)
+		}
 	}
 
 	// fill misses and populate cache with them.
@@ -339,12 +337,9 @@ func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, t
 		}
 
 		var encodeBuf bytes.Buffer
-		enc := gob.NewEncoder(&encodeBuf)
-		if err := enc.Encode(names); err != nil {
-			i.m.cacheEncodeErrs.Inc()
-			return nil, nil, errors.Wrap(err, "LabelValues encoding")
+		for _, n := range names {
+			encodeBuf.WriteString(n + ",")
 		}
-
 		return names, [][]byte{encodeBuf.Bytes()}, nil
 	}
 
@@ -358,16 +353,23 @@ func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, t
 
 	// Turn the cache result into the right type
 	var res []string
-	var values []string
+	var value string
+	var err error
 	for _, val := range response {
 		decoderBuf := bytes.NewBuffer(val)
-		dec := gob.NewDecoder(decoderBuf)
-		if err := dec.Decode(&values); err != nil {
-			i.m.cacheDecodeErrs.Inc()
-			return nil, errors.Wrap(err, "cacheable index LabelValues decoding")
-		}
+		for {
+			value, err = decoderBuf.ReadString(',')
+			value, _, _ = strings.Cut(value, ",")
+			if err != nil && err != io.EOF {
+				i.m.cacheDecodeErrs.Inc()
+				return nil, errors.Wrap(err, "cacheable index LabelValues decoding")
+			}
+			if err == io.EOF {
+				break
+			}
 
-		res = append(res, values...)
+			res = append(res, value)
+		}
 	}
 
 	// fill misses and populate cache with them.
@@ -400,4 +402,22 @@ func (i *CacheableIndex) cacheFetch(ctx context.Context, cacheKeys []string) ([]
 	i.m.cacheMisses.Add(float64(len(misses)))
 
 	return found, response, misses
+}
+
+// labelsToLabelsProto transforms labels into proto labels. The buffer slice
+// will be used to avoid allocations if it is big enough to store the labels.
+// TODO: Callum, this is copied from prometheus and some of the proto definitions I've added
+// are copied as well, is there a nice way to not do this (ie import some proto + define new types using those imported types)
+func labelsToLabelsProto(labels labels.Labels, buf []Label) Labels {
+	result := buf[:0]
+	if cap(buf) < len(labels) {
+		result = make([]Label, 0, len(labels))
+	}
+	for _, l := range labels {
+		result = append(result, Label{
+			Name:  l.Name,
+			Value: l.Value,
+		})
+	}
+	return Labels{result}
 }

@@ -106,19 +106,21 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 		return nil, err
 	}
 
-	// keep track of duplicates
-	seen := make(map[ChunkRef]struct{})
+	// keep track of duplicates, can't use the struct now that is a protobuf type
+	seen := make(map[string]struct{})
 
 	// TODO(owen-d): Do this more efficiently,
 	// not all indices overlap each other
+	var key string
 	for _, group := range groups {
 		g := group.([]ChunkRef)
 		for _, ref := range g {
-			_, ok := seen[ref]
+			key = ref.String()
+			_, ok := seen[key]
 			if ok {
 				continue
 			}
-			seen[ref] = struct{}{}
+			seen[key] = struct{}{}
 			res = append(res, ref)
 		}
 		ChunkRefsPool.Put(g)
@@ -142,7 +144,7 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 		return nil, err
 	}
 
-	seen := make(map[model.Fingerprint]struct{})
+	seen := make(map[Fingerprint]struct{})
 
 	for _, x := range groups {
 		seriesSet := x.([]Series)
