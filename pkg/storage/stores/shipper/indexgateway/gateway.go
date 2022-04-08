@@ -33,13 +33,6 @@ const (
 
 	// RingKey is the name of the key used to register the different Index Gateway instances in the key-value store.
 	RingKey = "index-gateway"
-
-	// RingReplicationFactor is the number of instances that will be assigned a ring value, defining redundance.
-	//
-	// Whenever the store queries the ring key-value store for the Index Gateway instance responsible for tenant X,
-	// multiple Index Gateway instances are expected to be returned as Index Gateway might be busy/locked for specific
-	// reasons (this is assured by the spikey behavior of Index Gateway latencies).
-	RingReplicationFactor = 3
 )
 
 type IndexQuerier interface {
@@ -100,7 +93,7 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 			return nil, errors.Wrap(err, "index gateway create ring lifecycler")
 		}
 
-		ringCfg := cfg.Ring.ToRingConfig(RingReplicationFactor)
+		ringCfg := cfg.Ring.ToRingConfig(cfg.Ring.ReplicationFactor)
 		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), log)
 		if err != nil {
 			return nil, errors.Wrap(err, "index gateway create ring client")

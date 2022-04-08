@@ -1363,10 +1363,38 @@ func Test_replicationFactor(t *testing.T) {
   join_members:
     - foo.bar.example.com
 common:
-  replication_factor: 1`
+  replication_factor: 2`
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)
-		assert.Equal(t, 1, config.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor)
+		assert.Equal(t, 2, config.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor)
+		assert.Equal(t, 2, config.IndexGateway.Ring.ReplicationFactor)
+	})
+}
+
+func Test_IndexGatewayRingReplicationFactor(t *testing.T) {
+	t.Run("default replication factor is 3", func(t *testing.T) {
+		const emptyConfigString = `---
+server:
+  http_listen_port: 80`
+		config, _, err := configWrapperFromYAML(t, emptyConfigString, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, 3, config.IndexGateway.Ring.ReplicationFactor)
+	})
+
+	t.Run("explicit replication factor for the index gateway should override all other definitions", func(t *testing.T) {
+		yamlContent := `ingester:
+  lifecycler:
+    ring:
+      replication_factor: 15
+common:
+  replication_factor: 30
+index_gateway:
+  ring:
+    replication_factor: 7`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, 7, config.IndexGateway.Ring.ReplicationFactor)
 	})
 }
 

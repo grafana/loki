@@ -47,6 +47,26 @@ const (
 	RingMode Mode = "ring"
 )
 
+// RingCfg is a wrapper for our Index Gateway ring configuration plus the replication factor.
+type RingCfg struct {
+	// InternalRingCfg configures the Index Gateway ring.
+	loki_util.RingConfig `yaml:",inline"`
+
+	// ReplicationFactor defines how many Index Gateway instances are assigned to each tenant.
+	//
+	// If the replication factor is higher than the number of instances, the ring is considered not ready.
+	// Whenever the store queries the ring key-value store for the Index Gateway instance responsible for tenant X,
+	// multiple Index Gateway instances are expected to be returned as Index Gateway might be busy/locked for specific
+	// reasons (this is assured by the spikey behavior of Index Gateway latencies).
+	ReplicationFactor int `yaml:"replication_factor"`
+}
+
+// RegisterFlagsWithPrefix register all Index Gateway flags related to its ring but with a proper store prefix to avoid conflicts.
+func (cfg *RingCfg) RegisterFlags(prefix, storePrefix string, f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix(prefix, storePrefix, f)
+	f.IntVar(&cfg.ReplicationFactor, "replication-factor", 3, "how many index gateway instances are assigned to each tenant")
+}
+
 // Config configures an Index Gateway server.
 type Config struct {
 	// Mode configures in which mode the client will be running when querying and communicating with an Index Gateway instance.
@@ -56,11 +76,11 @@ type Config struct {
 	//
 	// In case it isn't explicitly set, it follows the same behavior of the other rings (ex: using the common configuration
 	// section and the ingester configuration by default).
-	Ring loki_util.RingConfig `yaml:"ring,omitempty"`
+	Ring RingCfg `yaml:"ring,omitempty"`
 }
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.Ring.RegisterFlagsWithPrefix("index-gateway.", "collectors/", f)
+	cfg.Ring.RegisterFlags("index-gateway.", "collectors/", f)
 	f.StringVar((*string)(&cfg.Mode), "index-gateway.mode", SimpleMode.String(), "mode in which the index gateway client will be running")
 }
