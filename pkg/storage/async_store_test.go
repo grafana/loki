@@ -13,14 +13,13 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/util"
 )
 
 // storeMock is a mockable version of Loki's storage, used in querier unit tests
 // to control the behaviour of the store without really hitting any storage backend
 type storeMock struct {
-	stores.Store
+	Store
 	util.ExtendedMock
 }
 

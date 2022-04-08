@@ -8,14 +8,13 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 // FromChunks converts []client.Chunk to []chunk.Chunk.
 func FromChunks(userID string, metric labels.Labels, in []client.Chunk) ([]chunk.Chunk, error) {
 	out := make([]chunk.Chunk, 0, len(in))
 	for _, i := range in {
-		o, err := prom_chunk.NewForEncoding(prom_chunk.Encoding(byte(i.Encoding)))
+		o, err := chunk.NewForEncoding(chunk.Encoding(byte(i.Encoding)))
 		if err != nil {
 			return nil, err
 		}
@@ -42,7 +41,7 @@ func ToChunks(in []chunk.Chunk) ([]client.Chunk, error) {
 			Encoding:         int32(i.Data.Encoding()),
 		}
 
-		buf := bytes.NewBuffer(make([]byte, 0, prom_chunk.ChunkLen))
+		buf := bytes.NewBuffer(make([]byte, 0, 1024))
 		if err := i.Data.Marshal(buf); err != nil {
 			return nil, err
 		}

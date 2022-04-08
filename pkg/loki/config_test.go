@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -25,15 +24,13 @@ func TestCrossComponentValidation(t *testing.T) {
 				Ingester: ingester.Config{
 					IndexShards: 32,
 				},
-				SchemaConfig: storage.SchemaConfig{
-					SchemaConfig: chunk.SchemaConfig{
-						Configs: []chunk.PeriodConfig{
-							{
-								RowShards: 16,
-								Schema:    "v11",
-								From: chunk.DayTime{
-									Time: model.Now(),
-								},
+				SchemaConfig: config.SchemaConfig{
+					Configs: []config.PeriodConfig{
+						{
+							RowShards: 16,
+							Schema:    "v11",
+							From: config.DayTime{
+								Time: model.Now(),
 							},
 						},
 					},
@@ -47,22 +44,20 @@ func TestCrossComponentValidation(t *testing.T) {
 				Ingester: ingester.Config{
 					IndexShards: 32,
 				},
-				SchemaConfig: storage.SchemaConfig{
-					SchemaConfig: chunk.SchemaConfig{
-						Configs: []chunk.PeriodConfig{
-							{
-								RowShards: 16,
-								Schema:    "v11",
-								From: chunk.DayTime{
-									Time: model.Now().Add(-48 * time.Hour),
-								},
+				SchemaConfig: config.SchemaConfig{
+					Configs: []config.PeriodConfig{
+						{
+							RowShards: 16,
+							Schema:    "v11",
+							From: config.DayTime{
+								Time: model.Now().Add(-48 * time.Hour),
 							},
-							{
-								RowShards: 17,
-								Schema:    "v11",
-								From: chunk.DayTime{
-									Time: model.Now(),
-								},
+						},
+						{
+							RowShards: 17,
+							Schema:    "v11",
+							From: config.DayTime{
+								Time: model.Now(),
 							},
 						},
 					},

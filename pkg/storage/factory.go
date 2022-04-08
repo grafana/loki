@@ -267,14 +267,14 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 // 	return storage.NewTableClient(name, cfg.Config, prometheus.DefaultRegisterer)
 // }
 
-// // NewBucketClient makes a new bucket client based on the configuration.
-// func NewBucketClient(storageConfig config.Config) (index.BucketClient, error) {
-// 	if storageConfig.FSConfig.Directory != "" {
-// 		return local.NewFSObjectClient(storageConfig.FSConfig)
-// 	}
+// NewBucketClient makes a new bucket client based on the configuration.
+func NewBucketClient(storageConfig Config) (index.BucketClient, error) {
+	if storageConfig.FSConfig.Directory != "" {
+		return local.NewFSObjectClient(storageConfig.FSConfig)
+	}
 
-// 	return nil, nil
-// }
+	return nil, nil
+}
 
 type ClientMetrics struct {
 	AzureMetrics azure.BlobStorageMetrics

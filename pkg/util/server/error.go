@@ -7,17 +7,15 @@ import (
 	"fmt"
 	"net/http"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	storage_errors "github.com/grafana/loki/pkg/storage/errors"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // StatusClientClosedRequest is the status code for when a client request cancellation of an http request
@@ -51,7 +49,7 @@ func JSONError(w http.ResponseWriter, code int, message string, args ...interfac
 // WriteError write a go error with the correct status code.
 func WriteError(err error, w http.ResponseWriter) {
 	var (
-		queryErr chunk.QueryError
+		queryErr storage_errors.QueryError
 		promErr  promql.ErrStorage
 	)
 

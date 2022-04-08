@@ -45,9 +45,9 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/hedging"
-	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
+	loki_storage "github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -182,7 +182,7 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 	}
 }
 
-func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetrics chunk_storage.ClientMetrics, rulerAddrMap map[string]*Ruler) *Ruler {
+func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetrics loki_storage.ClientMetrics, rulerAddrMap map[string]*Ruler) *Ruler {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, q)
 	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
@@ -205,7 +205,7 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 }
 
 func newTestRuler(t *testing.T, rulerConfig Config) *Ruler {
-	m := chunk_storage.NewClientMetrics()
+	m := loki_storage.NewClientMetrics()
 	defer m.Unregister()
 	ruler := buildRuler(t, rulerConfig, nil, m, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
@@ -373,7 +373,7 @@ func TestGetRules(t *testing.T) {
 						Mock: kvStore,
 					},
 				}
-				m := chunk_storage.NewClientMetrics()
+				m := loki_storage.NewClientMetrics()
 				defer m.Unregister()
 				r := buildRuler(t, cfg, nil, m, rulerAddrMap)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
@@ -877,7 +877,7 @@ func TestSharding(t *testing.T) {
 					DisabledTenants:  tc.disabledUsers,
 				}
 
-				m := chunk_storage.NewClientMetrics()
+				m := loki_storage.NewClientMetrics()
 				defer m.Unregister()
 				r := buildRuler(t, cfg, nil, m, nil)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
@@ -1057,10 +1057,10 @@ func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, r *Ruler, userID strin
 	}
 }
 
-func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockStorage, rulestore.RuleStore) {
-	obj := chunk.NewMockStorage()
+func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*testutils.MockStorage, rulestore.RuleStore) {
+	obj := testutils.NewMockStorage()
 	rs := objectclient.NewRuleStore(obj, 5, log.NewNopLogger())
-
+	testutils.ResetMockStorage()
 	// "upload" rule groups
 	for _, key := range ruleGroups {
 		desc := rulespb.ToProto(key.user, key.namespace, rulefmt.RuleGroup{Name: key.group})
@@ -1228,7 +1228,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	downAtActiveAtTime := currentTime.Add(time.Minute * -25)
 	downAtActiveSec := downAtActiveAtTime.Unix()
 
-	m := chunk_storage.NewClientMetrics()
+	m := loki_storage.NewClientMetrics()
 	defer m.Unregister()
 	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
 	r := buildRuler(t, rulerCfg, &fakeQuerier{

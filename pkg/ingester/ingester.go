@@ -31,7 +31,8 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
@@ -93,7 +94,7 @@ type Config struct {
 
 	WAL WALConfig `yaml:"wal,omitempty"`
 
-	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
+	ChunkFilterer chunk.RequestChunkFilterer `yaml:"-"`
 	// Optional wrapper that can be used to modify the behaviour of the ingester
 	Wrapper Wrapper `yaml:"-"`
 
@@ -157,8 +158,8 @@ type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
-	GetSchemaConfigs() []chunk.PeriodConfig
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
+	GetSchemaConfigs() []config.PeriodConfig
 }
 
 // Interface is an interface for the Ingester
@@ -191,7 +192,7 @@ type Ingester struct {
 	lifecyclerWatcher *services.FailureWatcher
 
 	store           ChunkStore
-	periodicConfigs []chunk.PeriodConfig
+	periodicConfigs []config.PeriodConfig
 
 	loopDone    sync.WaitGroup
 	loopQuit    chan struct{}
@@ -215,7 +216,7 @@ type Ingester struct {
 
 	wal WAL
 
-	chunkFilter storage.RequestChunkFilterer
+	chunkFilter chunk.RequestChunkFilterer
 }
 
 // New makes a new Ingester.
@@ -287,7 +288,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	return i, nil
 }
 
-func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
+func (i *Ingester) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
 }
 
@@ -646,14 +647,14 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 // max look back is limited to from time of boltdb-shipper config.
 // It considers previous periodic config's from time if that also has index type set to boltdb-shipper.
 func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
-	activePeriodicConfigIndex := storage.ActivePeriodConfig(i.periodicConfigs)
+	activePeriodicConfigIndex := config.ActivePeriodConfig(i.periodicConfigs)
 	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
-	if activePeriodicConfig.IndexType != shipper.BoltDBShipperType {
+	if activePeriodicConfig.IndexType != config.BoltDBShipperType {
 		return 0
 	}
 
 	startTime := activePeriodicConfig.From
-	if activePeriodicConfigIndex != 0 && i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == shipper.BoltDBShipperType {
+	if activePeriodicConfigIndex != 0 && i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.BoltDBShipperType {
 		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
 	}
 
@@ -690,7 +691,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	// todo (Callum) ingester should maybe store the whole schema config?
-	s := chunk.SchemaConfig{
+	s := config.SchemaConfig{
 		Configs: i.periodicConfigs,
 	}
 
@@ -698,7 +699,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	resp := logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
 	for _, chunks := range chunksGroups {
 		for _, chk := range chunks {
-			resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk))
+			resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk.ChunkRef))
 		}
 	}
 
@@ -728,10 +729,9 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return resp, nil
 	}
 
-	// Only continue if the store is a chunk.Store
-	var cs chunk.Store
+	var cs storage.Store
 	var ok bool
-	if cs, ok = i.store.(chunk.Store); !ok {
+	if cs, ok = i.store.(storage.Store); !ok {
 		return resp, nil
 	}
 

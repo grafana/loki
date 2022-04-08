@@ -50,6 +50,7 @@ type ChunkData interface {
 	Rebound(start, end model.Time) (ChunkData, error)
 	// Size returns the approximate length of the chunk in bytes.
 	Size() int
+	Utilization() float64
 }
 
 // RequestChunkFilterer creates ChunkFilterer for a given request context.
