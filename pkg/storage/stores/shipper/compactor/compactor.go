@@ -18,11 +18,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	loki_storage "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/shipper/storage"
@@ -132,7 +132,7 @@ type Compactor struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, clientMetrics storage.ClientMetrics, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig config.SchemaConfig, limits retention.Limits, clientMetrics storage.ClientMetrics, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -202,7 +202,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	return compactor, nil
 }
 
-func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, clientMetrics storage.ClientMetrics, r prometheus.Registerer) error {
+func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.SchemaConfig, limits retention.Limits, clientMetrics storage.ClientMetrics, r prometheus.Registerer) error {
 	objectClient, err := storage.NewObjectClient(c.cfg.SharedStoreType, storageConfig, clientMetrics)
 	if err != nil {
 		return err
@@ -216,12 +216,12 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 	c.metrics = newMetrics(r)
 
 	if c.cfg.RetentionEnabled {
-		var encoder objectclient.KeyEncoder
+		var encoder client.KeyEncoder
 		if _, ok := objectClient.(*local.FSObjectClient); ok {
-			encoder = objectclient.FSEncoder
+			encoder = client.FSEncoder
 		}
 
-		chunkClient := objectclient.NewClient(objectClient, encoder, schemaConfig.SchemaConfig)
+		chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
 
 		retentionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "retention")
 		c.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)

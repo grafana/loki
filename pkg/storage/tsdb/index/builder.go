@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 )
 
 // Identifier has all the information needed to resolve a TSDB index
@@ -166,5 +166,4 @@ func (b *Builder) Build(ctx context.Context, dir, tenant string) (id Identifier,
 	}
 
 	return id, nil
-
 }

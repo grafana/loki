@@ -7,7 +7,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 var (
@@ -37,7 +38,7 @@ type chunkIndexIterator struct {
 	labelsMapper *seriesLabelsMapper
 }
 
-func NewChunkIndexIterator(bucket *bbolt.Bucket, config chunk.PeriodConfig) (ChunkEntryIterator, error) {
+func NewChunkIndexIterator(bucket *bbolt.Bucket, config config.PeriodConfig) (ChunkEntryIterator, error) {
 	labelsMapper, err := newSeriesLabelsMapper(bucket, config)
 	if err != nil {
 		return nil, err
@@ -96,15 +97,14 @@ type seriesCleaner struct {
 	tableInterval model.Interval
 	shards        map[uint32]string
 	bucket        *bbolt.Bucket
-	config        chunk.PeriodConfig
-	schema        chunk.SeriesStoreSchema
+	config        config.PeriodConfig
+	schema        index.SeriesStoreSchema
 
 	buf []byte
 }
 
-func newSeriesCleaner(bucket *bbolt.Bucket, config chunk.PeriodConfig, tableName string) *seriesCleaner {
-	baseSchema, _ := config.CreateSchema()
-	schema := baseSchema.(chunk.SeriesStoreSchema)
+func newSeriesCleaner(bucket *bbolt.Bucket, config config.PeriodConfig, tableName string) *seriesCleaner {
+	schema, _ := index.CreateSchema(config)
 	var shards map[uint32]string
 
 	if config.RowShards != 0 {

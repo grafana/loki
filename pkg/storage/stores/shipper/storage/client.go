@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 )
 
 const delimiter = "/"
@@ -40,7 +40,7 @@ type Client interface {
 }
 
 type indexStorageClient struct {
-	objectClient chunk.ObjectClient
+	objectClient client.ObjectClient
 }
 
 type IndexFile struct {
@@ -48,7 +48,7 @@ type IndexFile struct {
 	ModifiedAt time.Time
 }
 
-func NewIndexStorageClient(origObjectClient chunk.ObjectClient, storagePrefix string) Client {
+func NewIndexStorageClient(origObjectClient client.ObjectClient, storagePrefix string) Client {
 	objectClient := newPrefixedObjectClient(origObjectClient, storagePrefix)
 	if _, ok := origObjectClient.(*local.FSObjectClient); !ok {
 		objectClient = newCachedObjectClient(objectClient)

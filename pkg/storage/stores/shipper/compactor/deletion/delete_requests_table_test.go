@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -40,7 +40,7 @@ func TestDeleteRequestsTable(t *testing.T) {
 	require.NoError(t, testDeleteRequestsTable.BatchWrite(context.Background(), batch))
 
 	// see if right records were written
-	testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, testDeleteRequestsTable.db, local.IndexBucketName, testDeleteRequestsTable.boltdbIndexClient, 0, 10)
+	testutil.TestSingleDBQuery(t, index.Query{}, testDeleteRequestsTable.db, local.IndexBucketName, testDeleteRequestsTable.boltdbIndexClient, 0, 10)
 
 	// upload the file to the storage
 	require.NoError(t, testDeleteRequestsTable.uploadFile())
@@ -73,7 +73,7 @@ func TestDeleteRequestsTable(t *testing.T) {
 	require.NotEmpty(t, testDeleteRequestsTable.dbPath)
 
 	// validate records in local db
-	testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, testDeleteRequestsTable.db, local.IndexBucketName, testDeleteRequestsTable.boltdbIndexClient, 0, 20)
+	testutil.TestSingleDBQuery(t, index.Query{}, testDeleteRequestsTable.db, local.IndexBucketName, testDeleteRequestsTable.boltdbIndexClient, 0, 20)
 }
 
 func checkRecordsInStorage(t *testing.T, storageFilePath string, start, numRecords int) {
@@ -93,5 +93,5 @@ func checkRecordsInStorage(t *testing.T, storageFilePath string, start, numRecor
 
 	defer boltdbIndexClient.Stop()
 
-	testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, tempDB, local.IndexBucketName, boltdbIndexClient, start, numRecords)
+	testutil.TestSingleDBQuery(t, index.Query{}, tempDB, local.IndexBucketName, boltdbIndexClient, start, numRecords)
 }
