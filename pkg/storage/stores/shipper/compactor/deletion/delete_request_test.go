@@ -29,7 +29,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 
 	type resp struct {
 		isDeleted           bool
-		nonDeletedIntervals []model.Interval
+		nonDeletedIntervals []retention.IntervalFilter
 	}
 
 	for _, tc := range []struct {
@@ -60,10 +60,12 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				nonDeletedIntervals: []model.Interval{
+				nonDeletedIntervals: []retention.IntervalFilter{
 					{
-						Start: now.Add(-2*time.Hour) + 1,
-						End:   now.Add(-time.Hour),
+						Interval: model.Interval{
+							Start: now.Add(-2*time.Hour) + 1,
+							End:   now.Add(-time.Hour),
+						},
 					},
 				},
 			},
@@ -78,10 +80,12 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				nonDeletedIntervals: []model.Interval{
+				nonDeletedIntervals: []retention.IntervalFilter{
 					{
-						Start: now.Add(-3 * time.Hour),
-						End:   now.Add(-2*time.Hour) - 1,
+						Interval: model.Interval{
+							Start: now.Add(-3 * time.Hour),
+							End:   now.Add(-2*time.Hour) - 1,
+						},
 					},
 				},
 			},
@@ -96,10 +100,12 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				nonDeletedIntervals: []model.Interval{
+				nonDeletedIntervals: []retention.IntervalFilter{
 					{
-						Start: now.Add(-3 * time.Hour),
-						End:   now.Add(-2*time.Hour) - 1,
+						Interval: model.Interval{
+							Start: now.Add(-3 * time.Hour),
+							End:   now.Add(-2*time.Hour) - 1,
+						},
 					},
 				},
 			},
@@ -114,14 +120,18 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				nonDeletedIntervals: []model.Interval{
+				nonDeletedIntervals: []retention.IntervalFilter{
 					{
-						Start: now.Add(-3 * time.Hour),
-						End:   now.Add(-(2*time.Hour + 30*time.Minute)) - 1,
+						Interval: model.Interval{
+							Start: now.Add(-3 * time.Hour),
+							End:   now.Add(-(2*time.Hour + 30*time.Minute)) - 1,
+						},
 					},
 					{
-						Start: now.Add(-(time.Hour + 30*time.Minute)) + 1,
-						End:   now.Add(-time.Hour),
+						Interval: model.Interval{
+							Start: now.Add(-(time.Hour + 30*time.Minute)) + 1,
+							End:   now.Add(-time.Hour),
+						},
 					},
 				},
 			},
