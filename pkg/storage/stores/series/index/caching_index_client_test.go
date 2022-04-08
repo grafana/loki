@@ -188,7 +188,11 @@ func TestPermCachingStorageClient(t *testing.T) {
 }
 
 func TestCachingStorageClientEmptyResponse(t *testing.T) {
-	store := &mockStore{}
+	store := &mockStore{
+		results: index.ReadBatch{
+			Entries: []index.CacheEntry{},
+		},
+	}
 	limits, err := defaultLimits()
 	require.NoError(t, err)
 	logger := log.NewNopLogger()

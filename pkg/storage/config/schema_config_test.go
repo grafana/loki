@@ -107,10 +107,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 		expected *SchemaConfig
 		err      error
 	}{
-		"should pass the default config (ie. used cortex runs with a target not requiring the schema config)": {
-			config: &SchemaConfig{},
-			err:    nil,
-		},
 		"should fail on index table period not multiple of 24h for schema v10": {
 			config: &SchemaConfig{
 				Configs: []PeriodConfig{

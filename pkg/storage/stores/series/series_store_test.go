@@ -504,10 +504,6 @@ func Test_GetSeries(t *testing.T) {
 			`foo{toms="code", bar="baz"}`,
 			[]labels.Labels{ch1lbs.WithoutLabels(labels.MetricName)},
 		},
-		{
-			`foo{__cortex_shard__="0_of_16"}`,
-			[]labels.Labels{ch1lbs.WithoutLabels(labels.MetricName)},
-		},
 	}
 	for _, schema := range schemas {
 		for _, storeCase := range stores {

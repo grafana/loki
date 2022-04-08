@@ -250,18 +250,26 @@ func (cfg PeriodConfig) validate() error {
 	}
 
 	// Ensure the tables period is a multiple of the bucket period
-	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%24*time.Hour != 0 {
+	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%(24*time.Hour) != 0 {
 		return errInvalidTablePeriod
 	}
 
-	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%24*time.Hour != 0 {
+	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%(24*time.Hour) != 0 {
 		return errInvalidTablePeriod
 	}
 	v, err := cfg.VersionAsInt()
 	if err != nil {
 		return err
 	}
-	if v < 9 || v > 12 {
+
+	switch v {
+	case 10, 11, 12:
+		if cfg.RowShards == 0 {
+			return fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
+		}
+	case 9:
+		return nil
+	default:
 		return errInvalidSchemaVersion
 	}
 	return nil
