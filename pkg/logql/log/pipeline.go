@@ -204,10 +204,8 @@ func (p *filteringPipeline) ForStream(labels labels.Labels) StreamPipeline {
 
 func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
 	for _, m := range matchers {
-		for _, l := range labels {
-			if m.Name == l.Name && !m.Matches(l.Value) {
-				return false
-			}
+		if !m.Matches(labels.Get(m.Name)) {
+			return false
 		}
 	}
 	return true
