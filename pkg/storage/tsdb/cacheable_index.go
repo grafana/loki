@@ -424,7 +424,7 @@ func labelsToLabelsProto(labels labels.Labels, buf []Label) Labels {
 // cutStr is a temporary implementation copy of strings.Cut.
 //
 // strings.Cut was added in Go v1.18, but since Loki hasn't migrated to it,
-// we could use a forked copy of the new Cut method.
+// we are using a forked copy of the new Cut method.
 // Source code reference: https://github.com/golang/go/issues/46336
 func cutStr(s, sep string) (before, after string, found bool) {
 	if i := strings.Index(s, sep); i >= 0 {
