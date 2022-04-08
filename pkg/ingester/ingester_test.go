@@ -868,7 +868,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 
 		for i := 0; i < requests; i++ {
-			for j := 0; j < int(streamCount); j++ {
+			for j := 0; j < streamCount; j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
 					require.Equal(t, float64(1), it.Sample().Value)
