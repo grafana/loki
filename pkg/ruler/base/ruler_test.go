@@ -50,7 +50,6 @@ import (
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/util"
 )
 
