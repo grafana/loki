@@ -150,7 +150,7 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 
 		// see if the chunk is deleted completely or partially
 		if expired, nonDeletedIntervals, filterFunc := expiration.Expired(c, now); expired {
-			if len(nonDeletedIntervals) > 0 {
+			if len(nonDeletedIntervals) > 0 || filterFunc != nil {
 				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, nonDeletedIntervals, filterFunc)
 				if err != nil {
 					return false, false, fmt.Errorf("failed to rewrite chunk %s for interval %s with error %s", c.ChunkID, nonDeletedIntervals, err)
@@ -161,10 +161,6 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 					empty = false
 					seriesMap.MarkSeriesNotDeleted(c.SeriesID, c.UserID)
 				}
-			}
-
-			if filterFunc != nil {
-				// use filterFunc on chunk
 			}
 
 			if err := chunkIt.Delete(); err != nil {

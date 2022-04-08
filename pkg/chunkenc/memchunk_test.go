@@ -1281,7 +1281,7 @@ func TestMemChunk_Filter(t *testing.T) {
 			require.NoError(t, err)
 			originalChunkSamples := 0
 			for originalChunkItr.Next() {
-				originalChunkSamples += 1
+				originalChunkSamples++
 			}
 			require.Equal(t, tc.nrMatching+tc.nrNotMatching, originalChunkSamples)
 
@@ -1290,7 +1290,7 @@ func TestMemChunk_Filter(t *testing.T) {
 			require.NoError(t, err)
 			newChunkSamples := 0
 			for newChunkItr.Next() {
-				newChunkSamples += 1
+				newChunkSamples++
 			}
 			require.Equal(t, tc.nrNotMatching, newChunkSamples)
 		})
