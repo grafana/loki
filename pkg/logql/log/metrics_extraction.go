@@ -80,7 +80,7 @@ type streamLineSampleExtractor struct {
 	builder *LabelsBuilder
 }
 
-func (l *streamLineSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (l *streamLineSampleExtractor) Process(_ int64, line []byte) (float64, LabelsResult, bool) {
 	// short circuit.
 	if l.Stage == NoopStage {
 		return l.LineExtractor(line), l.builder.GroupedLabels(), true
@@ -168,7 +168,7 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 	return res
 }
 
-func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (l *streamLabelSampleExtractor) Process(_ int64, line []byte) (float64, LabelsResult, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
 	line, ok := l.preStage.Process(line, l.builder)
