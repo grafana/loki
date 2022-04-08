@@ -61,7 +61,7 @@ func New(cfg config.Config, metrics *client.Metrics, dryRun bool, opts ...Option
 		o(promtail)
 	}
 
-	cfg.Setup()
+	cfg.Setup(promtail.logger)
 
 	if cfg.LimitsConfig.ReadlineRateEnabled {
 		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
