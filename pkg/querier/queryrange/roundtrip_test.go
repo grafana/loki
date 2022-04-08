@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	testTime   = time.Date(2019, 12, 0o2, 11, 10, 10, 10, time.UTC)
+	testTime   = time.Date(2019, 12, 2, 11, 10, 10, 10, time.UTC)
 	testConfig = Config{queryrangebase.Config{
 		AlignQueriesWithStep: true,
 		MaxRetries:           3,
