@@ -104,11 +104,16 @@ type mergeEntryIterator struct {
 		heap.Interface
 		Peek() EntryIterator
 	}
-	is         []EntryIterator
+	is []EntryIterator
+	// pushBuffer contains the list of iterators that needs to be pushed to the heap
+	// This is to avoid allocations.
+	pushBuffer []EntryIterator
 	prefetched bool
 	stats      *stats.Context
 
-	tuples    []tuple
+	// buffer of entries to be returned by Next()
+	// We buffer entries with the same timestamp to correctly dedupe them.
+	buffer    []entryWithLabels
 	currEntry entryWithLabels
 	errs      []error
 }
@@ -128,7 +133,8 @@ func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction lo
 		panic("bad direction")
 	}
 
-	result.tuples = make([]tuple, 0, len(is))
+	result.buffer = make([]entryWithLabels, 0, len(is))
+	result.pushBuffer = make([]EntryIterator, 0, len(is))
 	return result
 }
 
@@ -172,13 +178,16 @@ func (i *mergeEntryIterator) Push(ei EntryIterator) {
 	i.requeue(ei, false)
 }
 
-type tuple struct {
-	logproto.Entry
-	EntryIterator
-}
-
+// Next pop iterators from the heap until it finds an entry with a different timestamp or stream hash.
+// For each iterators we also buffer entries with the current timestamp and stream hash deduping as we loop.
+// If the iterator is not fully exhausted, it is pushed back to the heap.
 func (i *mergeEntryIterator) Next() bool {
 	i.prefetch()
+
+	if len(i.buffer) != 0 {
+		i.nextFromBuffer()
+		return true
+	}
 
 	if i.heap.Len() == 0 {
 		return false
@@ -186,7 +195,7 @@ func (i *mergeEntryIterator) Next() bool {
 
 	// shortcut for the last iterator.
 	if i.heap.Len() == 1 {
-		i.currEntry.entry = i.heap.Peek().Entry()
+		i.currEntry.Entry = i.heap.Peek().Entry()
 		i.currEntry.labels = i.heap.Peek().Labels()
 		i.currEntry.streamHash = i.heap.Peek().StreamHash()
 
@@ -200,55 +209,81 @@ func (i *mergeEntryIterator) Next() bool {
 	// preserve their original order. We look at all the top entries in the
 	// heap with the same timestamp, and pop the ones whose common value
 	// occurs most often.
+Outer:
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
 		entry := next.Entry()
-		if len(i.tuples) > 0 && (i.tuples[0].StreamHash() != next.StreamHash() || !i.tuples[0].Timestamp.Equal(entry.Timestamp)) {
+		if len(i.buffer) > 0 &&
+			(i.buffer[0].streamHash != next.StreamHash() ||
+				!i.buffer[0].Entry.Timestamp.Equal(entry.Timestamp)) {
 			break
 		}
 
 		heap.Pop(i.heap)
-		i.tuples = append(i.tuples, tuple{
-			Entry:         entry,
-			EntryIterator: next,
-		})
-	}
-
-	// shortcut if we have a single tuple.
-	if len(i.tuples) == 1 {
-		i.currEntry.entry = i.tuples[0].Entry
-		i.currEntry.labels = i.tuples[0].Labels()
-		i.currEntry.streamHash = i.tuples[0].StreamHash()
-		i.requeue(i.tuples[0].EntryIterator, false)
-		i.tuples = i.tuples[:0]
-		return true
-	}
-
-	// Find in tuples which entry occurs most often which, due to quorum based
-	// replication, is guaranteed to be the correct next entry.
-	t := i.tuples[0]
-	i.currEntry.entry = t.Entry
-	i.currEntry.labels = t.Labels()
-	i.currEntry.streamHash = i.tuples[0].StreamHash()
-
-	// Requeue the iterators, advancing them if they were consumed.
-	for j := range i.tuples {
-		if i.tuples[j].Line != i.currEntry.entry.Line {
-			i.requeue(i.tuples[j].EntryIterator, true)
-			continue
+		previous := i.buffer
+		var dupe bool
+		for _, t := range previous {
+			if t.Entry.Line == entry.Line {
+				i.stats.AddDuplicates(1)
+				dupe = true
+				break
+			}
 		}
-		// we count as duplicates only if the tuple is not the one (t) used to fill the current entry
-		if i.tuples[j] != t {
-			i.stats.AddDuplicates(1)
+		if !dupe {
+			i.buffer = append(i.buffer, entryWithLabels{
+				Entry:      entry,
+				labels:     next.Labels(),
+				streamHash: next.StreamHash(),
+			})
 		}
-		i.requeue(i.tuples[j].EntryIterator, false)
+	inner:
+		for {
+			if !next.Next() {
+				continue Outer
+			}
+			entry := next.Entry()
+			if next.StreamHash() != i.buffer[0].streamHash ||
+				!entry.Timestamp.Equal(i.buffer[0].Entry.Timestamp) {
+				break
+			}
+			for _, t := range previous {
+				if t.Entry.Line == entry.Line {
+					i.stats.AddDuplicates(1)
+					continue inner
+				}
+			}
+			i.buffer = append(i.buffer, entryWithLabels{
+				Entry:      entry,
+				labels:     next.Labels(),
+				streamHash: next.StreamHash(),
+			})
+		}
+		i.pushBuffer = append(i.pushBuffer, next)
 	}
-	i.tuples = i.tuples[:0]
+
+	for _, ei := range i.pushBuffer {
+		heap.Push(i.heap, ei)
+	}
+	i.pushBuffer = i.pushBuffer[:0]
+
+	i.nextFromBuffer()
+
 	return true
 }
 
+func (i *mergeEntryIterator) nextFromBuffer() {
+	i.currEntry.Entry = i.buffer[0].Entry
+	i.currEntry.labels = i.buffer[0].labels
+	i.currEntry.streamHash = i.buffer[0].streamHash
+	if len(i.buffer) == 1 {
+		i.buffer = i.buffer[:0]
+		return
+	}
+	i.buffer = i.buffer[1:]
+}
+
 func (i *mergeEntryIterator) Entry() logproto.Entry {
-	return i.currEntry.entry
+	return i.currEntry.Entry
 }
 
 func (i *mergeEntryIterator) Labels() string {
@@ -274,7 +309,7 @@ func (i *mergeEntryIterator) Close() error {
 			return err
 		}
 	}
-	i.tuples = nil
+	i.buffer = nil
 	return nil
 }
 
@@ -407,7 +442,7 @@ func (i *entrySortIterator) Next() bool {
 	}
 
 	next := i.is[0]
-	i.currEntry.entry = next.Entry()
+	i.currEntry.Entry = next.Entry()
 	i.currEntry.labels = next.Labels()
 	i.currEntry.streamHash = next.StreamHash()
 	// if the top iterator is empty, we remove it.
@@ -428,7 +463,7 @@ func (i *entrySortIterator) Next() bool {
 }
 
 func (i *entrySortIterator) Entry() logproto.Entry {
-	return i.currEntry.entry
+	return i.currEntry.Entry
 }
 
 func (i *entrySortIterator) Labels() string {
@@ -632,7 +667,7 @@ func (i *timeRangedIterator) Next() bool {
 }
 
 type entryWithLabels struct {
-	entry      logproto.Entry
+	logproto.Entry
 	labels     string
 	streamHash uint64
 }
@@ -687,7 +722,7 @@ func (i *reverseIterator) Next() bool {
 }
 
 func (i *reverseIterator) Entry() logproto.Entry {
-	return i.cur.entry
+	return i.cur.Entry
 }
 
 func (i *reverseIterator) Labels() string {
@@ -762,7 +797,7 @@ func (i *reverseEntryIterator) Next() bool {
 }
 
 func (i *reverseEntryIterator) Entry() logproto.Entry {
-	return i.cur.entry
+	return i.cur.Entry
 }
 
 func (i *reverseEntryIterator) Labels() string {
@@ -854,11 +889,11 @@ func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
 	next := &entryWithLabels{}
 	if iter.Next() {
 		cache = &entryWithLabels{
-			entry:      iter.Entry(),
+			Entry:      iter.Entry(),
 			labels:     iter.Labels(),
 			streamHash: iter.StreamHash(),
 		}
-		next.entry = cache.entry
+		next.Entry = cache.Entry
 		next.labels = cache.labels
 	}
 	return &peekingEntryIterator{
@@ -871,7 +906,7 @@ func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
 // Next implements `EntryIterator`
 func (it *peekingEntryIterator) Next() bool {
 	if it.cache != nil {
-		it.next.entry = it.cache.entry
+		it.next.Entry = it.cache.Entry
 		it.next.labels = it.cache.labels
 		it.next.streamHash = it.cache.streamHash
 		it.cacheNext()
@@ -883,7 +918,7 @@ func (it *peekingEntryIterator) Next() bool {
 // cacheNext caches the next element if it exists.
 func (it *peekingEntryIterator) cacheNext() {
 	if it.iter.Next() {
-		it.cache.entry = it.iter.Entry()
+		it.cache.Entry = it.iter.Entry()
 		it.cache.labels = it.iter.Labels()
 		it.cache.streamHash = it.iter.StreamHash()
 		return
@@ -895,7 +930,7 @@ func (it *peekingEntryIterator) cacheNext() {
 // Peek implements `PeekingEntryIterator`
 func (it *peekingEntryIterator) Peek() (string, logproto.Entry, bool) {
 	if it.cache != nil {
-		return it.cache.labels, it.cache.entry, true
+		return it.cache.labels, it.cache.Entry, true
 	}
 	return "", logproto.Entry{}, false
 }
@@ -918,7 +953,7 @@ func (it *peekingEntryIterator) StreamHash() uint64 {
 // Entry implements `EntryIterator`
 func (it *peekingEntryIterator) Entry() logproto.Entry {
 	if it.next != nil {
-		return it.next.entry
+		return it.next.Entry
 	}
 	return logproto.Entry{}
 }
