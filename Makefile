@@ -252,7 +252,7 @@ publish: packages
 # To run this efficiently on your workstation, run this from the root dir:
 # docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.17.0 lint
 lint:
-	GO111MODULE=on GOGC=10 golangci-lint run -v
+	GO111MODULE=on golangci-lint run -v
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
 ########
@@ -260,7 +260,7 @@ lint:
 ########
 
 test: all
-	GOGC=10 $(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
+	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
 
 #########
 # Clean #
