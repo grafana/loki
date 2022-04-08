@@ -1,7 +1,7 @@
 //go:build gofuzz
 // +build gofuzz
 
-package logql
+package syntax
 
 import (
 	"io/ioutil"

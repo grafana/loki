@@ -122,7 +122,7 @@ func (m mockIndex) Series(ref storage.SeriesRef, lset *labels.Labels, chks *[]Ch
 func TestIndexRW_Create_Open(t *testing.T) {
 	dir := t.TempDir()
 
-	fn := filepath.Join(dir, indexFilename)
+	fn := filepath.Join(dir, IndexFilename)
 
 	// An empty index must still result in a readable file.
 	iw, err := NewWriter(context.Background(), fn)
@@ -147,7 +147,7 @@ func TestIndexRW_Create_Open(t *testing.T) {
 func TestIndexRW_Postings(t *testing.T) {
 	dir := t.TempDir()
 
-	fn := filepath.Join(dir, indexFilename)
+	fn := filepath.Join(dir, IndexFilename)
 
 	iw, err := NewWriter(context.Background(), fn)
 	require.NoError(t, err)
@@ -227,7 +227,7 @@ func TestIndexRW_Postings(t *testing.T) {
 func TestPostingsMany(t *testing.T) {
 	dir := t.TempDir()
 
-	fn := filepath.Join(dir, indexFilename)
+	fn := filepath.Join(dir, IndexFilename)
 
 	iw, err := NewWriter(context.Background(), fn)
 	require.NoError(t, err)
@@ -363,7 +363,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 		})
 	}
 
-	iw, err := NewWriter(context.Background(), filepath.Join(dir, indexFilename))
+	iw, err := NewWriter(context.Background(), filepath.Join(dir, IndexFilename))
 	require.NoError(t, err)
 
 	syms := []string{}
@@ -402,7 +402,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 	err = iw.Close()
 	require.NoError(t, err)
 
-	ir, err := NewFileReader(filepath.Join(dir, indexFilename))
+	ir, err := NewFileReader(filepath.Join(dir, IndexFilename))
 	require.NoError(t, err)
 
 	for p := range mi.postings {

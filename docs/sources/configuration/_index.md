@@ -743,6 +743,10 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
 
+# Chunk delimiter to build the blobID
+# CLI flag: -<prefix>.azure.chunk-delimiter
+[chunk_delimiter: <string> | default = "-"]
+
 # Preallocated buffer size for downloads.
 # CLI flag: -<prefix>.azure.download-buffer-size
 [download_buffer_size: <int> | default = 512000]
@@ -1109,7 +1113,7 @@ lifecycler:
 
 # The timeout before a flush is cancelled
 # CLI flag: -ingester.flush-op-timeout
-[flush_op_timeout: <duration> | default = 10s]
+[flush_op_timeout: <duration> | default = 10m]
 
 # How long chunks should be retained in-memory after they've been flushed.
 # CLI flag: -ingester.chunks-retain-period
@@ -2531,6 +2535,15 @@ This way, one doesn't have to replicate configuration in multiple places.
 The `analytics` block configures the reporting of Loki analytics to grafana.com
 
 ```yaml
+# By default, Loki will send anonymous, but uniquely-identifiable usage and configuration
+# analytics to Grafana Labs. These statistics are sent to https://stats.grafana.org/
+#
+# Statistics help us better understand how Loki is used, and they show us performance
+# levels for most users. This helps us prioritize features and documentation.
+# For more information on what's sent, look at
+# https://github.com/grafana/loki/blob/main/pkg/usagestats/stats.go
+# Refer to the buildReport method to see what goes into a report.
+#
 # When true, enables usage reporting.
 # CLI flag: -reporting.enabled
 [reporting_enabled: <boolean>: default = true]

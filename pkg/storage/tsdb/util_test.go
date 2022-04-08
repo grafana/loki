@@ -15,18 +15,18 @@ type LoadableSeries struct {
 	Chunks index.ChunkMetas
 }
 
-func BuildIndex(t *testing.T, cases []LoadableSeries) *TSDBIndex {
-	dir := t.TempDir()
+func BuildIndex(t *testing.T, dir, tenant string, cases []LoadableSeries) *TSDBIndex {
 	b := index.NewBuilder()
 
 	for _, s := range cases {
 		b.AddSeries(s.Labels, s.Chunks)
 	}
 
-	require.Nil(t, b.Build(context.Background(), dir))
-
-	reader, err := index.NewFileReader(dir)
+	dst, err := b.Build(context.Background(), dir, tenant)
 	require.Nil(t, err)
+	location := dst.FilePath(dir)
 
-	return NewTSDBIndex(reader)
+	idx, err := LoadTSDB(location)
+	require.Nil(t, err)
+	return idx
 }

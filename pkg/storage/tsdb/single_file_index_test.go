@@ -55,7 +55,7 @@ func TestSingleIdx(t *testing.T) {
 		},
 	}
 
-	idx := BuildIndex(t, cases)
+	idx := BuildIndex(t, t.TempDir(), "fake", cases)
 
 	t.Run("GetChunkRefs", func(t *testing.T) {
 		refs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
