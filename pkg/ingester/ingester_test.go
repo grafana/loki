@@ -749,8 +749,8 @@ func Test_DedupeIngester(t *testing.T) {
 
 func Test_DedupeIngesterParser(t *testing.T) {
 	var (
-		requests      = int64(100)
-		streamCount   = int64(10)
+		requests      = 100
+		streamCount   = 10
 		streams       []labels.Labels
 		ingesterCount = 30
 
@@ -765,13 +765,13 @@ func Test_DedupeIngesterParser(t *testing.T) {
 	ingesterSet, closer := createIngesterSets(t, ingesterConfig, ingesterCount)
 	defer closer()
 
-	for i := int64(0); i < streamCount; i++ {
+	for i := 0; i < streamCount; i++ {
 		streams = append(streams, labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i)))
 	}
 
-	for i := int64(0); i < requests; i++ {
+	for i := 0; i < requests; i++ {
 		for _, ing := range ingesterSet {
-			_, err := ing.Push(ctx, buildPushJSONRequest(i, streams))
+			_, err := ing.Push(ctx, buildPushJSONRequest(int64(i), streams))
 			require.NoError(t, err)
 		}
 	}
@@ -782,7 +782,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			stream, err := client.Query(ctx, &logproto.QueryRequest{
 				Selector:  `{foo="bar"} | json`,
 				Start:     time.Unix(0, 0),
-				End:       time.Unix(0, requests+1),
+				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
 				Direction: logproto.BACKWARD,
 			})
@@ -809,7 +809,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			stream, err := client.Query(ctx, &logproto.QueryRequest{
 				Selector:  `{foo="bar"} | json`, // making it difficult to dedupe by removing uncommon label.
 				Start:     time.Unix(0, 0),
-				End:       time.Unix(0, requests+1),
+				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
 				Direction: logproto.FORWARD,
 			})
@@ -818,7 +818,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 		}
 		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.FORWARD)
 
-		for i := int64(0); i < requests; i++ {
+		for i := 0; i < requests; i++ {
 			for j := 0; j < int(streamCount); j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
@@ -835,14 +835,14 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			stream, err := client.QuerySample(ctx, &logproto.SampleQueryRequest{
 				Selector: `rate({foo="bar"} | json [1m])`,
 				Start:    time.Unix(0, 0),
-				End:      time.Unix(0, requests+1),
+				End:      time.Unix(0, int64(requests+1)),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
 		}
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 
-		for i := int64(0); i < requests; i++ {
+		for i := 0; i < requests; i++ {
 			for j := 0; j < int(streamCount); j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
@@ -860,14 +860,14 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			stream, err := client.QuerySample(ctx, &logproto.SampleQueryRequest{
 				Selector: `sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`,
 				Start:    time.Unix(0, 0),
-				End:      time.Unix(0, requests+1),
+				End:      time.Unix(0, int64(requests+1)),
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
 		}
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 
-		for i := int64(0); i < requests; i++ {
+		for i := 0; i < requests; i++ {
 			for j := 0; j < int(streamCount); j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())

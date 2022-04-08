@@ -303,17 +303,13 @@ Outer:
 }
 
 func (i *mergeSampleIterator) nextFromBuffer() {
-	if len(i.buffer) == 1 {
-		i.curr.Sample = i.buffer[0].Sample
-		i.curr.labels = i.buffer[0].labels
-		i.curr.streamHash = i.buffer[0].streamHash
-		i.buffer = i.buffer[:0]
-		return
-	}
-
 	i.curr.Sample = i.buffer[0].Sample
 	i.curr.labels = i.buffer[0].labels
 	i.curr.streamHash = i.buffer[0].streamHash
+	if len(i.buffer) == 1 {
+		i.buffer = i.buffer[:0]
+		return
+	}
 	i.buffer = i.buffer[1:]
 }
 

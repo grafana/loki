@@ -178,6 +178,9 @@ func (i *mergeEntryIterator) Push(ei EntryIterator) {
 	i.requeue(ei, false)
 }
 
+// Next pop iterators from the heap until it finds an entry with a different timestamp or stream hash.
+// For each iterators we also buffer entries with the current timestamp and stream hash deduping as we loop.
+// If the iterator is not fully exhausted, it is pushed back to the heap.
 func (i *mergeEntryIterator) Next() bool {
 	i.prefetch()
 
@@ -269,17 +272,13 @@ Outer:
 }
 
 func (i *mergeEntryIterator) nextFromBuffer() {
-	if len(i.buffer) == 1 {
-		i.currEntry.Entry = i.buffer[0].Entry
-		i.currEntry.labels = i.buffer[0].labels
-		i.currEntry.streamHash = i.buffer[0].streamHash
-		i.buffer = i.buffer[:0]
-		return
-	}
-
 	i.currEntry.Entry = i.buffer[0].Entry
 	i.currEntry.labels = i.buffer[0].labels
 	i.currEntry.streamHash = i.buffer[0].streamHash
+	if len(i.buffer) == 1 {
+		i.buffer = i.buffer[:0]
+		return
+	}
 	i.buffer = i.buffer[1:]
 }
 
