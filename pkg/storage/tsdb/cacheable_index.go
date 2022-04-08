@@ -188,8 +188,7 @@ func (i *CacheableIndex) GetChunkRefs(ctx context.Context, userID string, from, 
 	// have to do similar run time calculations on the size of each struct in the slice of protobuf structs that is ChunkRefs
 	var value ChunkRefs
 	for _, val := range response {
-		err := proto.Unmarshal(val, &value)
-		if err != nil {
+		if err := proto.Unmarshal(val, &value); err != nil {
 			return nil, errors.Wrap(err, "cacheable index Series decoding")
 		}
 
@@ -297,7 +296,7 @@ func (i *CacheableIndex) LabelNames(ctx context.Context, userID string, from, th
 		decoderBuf := bytes.NewBuffer(val)
 		for {
 			value, err = decoderBuf.ReadString(',')
-			value, _, _ = strings.Cut(value, ",")
+			value, _, _ = cutStr(value, ",")
 			if err != nil && err != io.EOF {
 				i.m.cacheDecodeErrs.Inc()
 				return nil, errors.Wrap(err, "cacheable index LabelNames decoding")
@@ -359,7 +358,7 @@ func (i *CacheableIndex) LabelValues(ctx context.Context, userID string, from, t
 		decoderBuf := bytes.NewBuffer(val)
 		for {
 			value, err = decoderBuf.ReadString(',')
-			value, _, _ = strings.Cut(value, ",")
+			value, _, _ = cutStr(value, ",")
 			if err != nil && err != io.EOF {
 				i.m.cacheDecodeErrs.Inc()
 				return nil, errors.Wrap(err, "cacheable index LabelValues decoding")
@@ -420,4 +419,16 @@ func labelsToLabelsProto(labels labels.Labels, buf []Label) Labels {
 		})
 	}
 	return Labels{result}
+}
+
+// cutStr is a temporary implementation copy of strings.Cut.
+//
+// strings.Cut was added in Go v1.18, but since Loki hasn't migrated to it,
+// we could use a forked copy of the new Cut method.
+// Source code reference: https://github.com/golang/go/issues/46336
+func cutStr(s, sep string) (before, after string, found bool) {
+	if i := strings.Index(s, sep); i >= 0 {
+		return s[:i], s[i+len(sep):], true
+	}
+	return s, "", false
 }
