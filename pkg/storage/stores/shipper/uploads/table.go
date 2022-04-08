@@ -226,15 +226,18 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 }
 
 func (lt *Table) getOrAddDB(name string) (*bbolt.DB, error) {
+	lt.dbsMtx.RLock()
+	db, ok := lt.dbs[name]
+	lt.dbsMtx.RUnlock()
+
+	if ok {
+		return db, nil
+	}
+
 	lt.dbsMtx.Lock()
 	defer lt.dbsMtx.Unlock()
 
-	var (
-		db  *bbolt.DB
-		err error
-		ok  bool
-	)
-
+	var err error
 	db, ok = lt.dbs[name]
 	if !ok {
 		db, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(lt.path, name))
