@@ -330,11 +330,10 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 	wroteChunks := false
 
 	for _, intervalFilter := range intervalFilters {
-		chk := chks[0].Data
 		start := intervalFilter.Interval.Start
 		end := intervalFilter.Interval.End
 
-		newChunkData, err := chk.ReboundAndFilter(start, end, intervalFilter.Filter)
+		newChunkData, err := chks[0].Data.ReboundAndFilter(start, end, intervalFilter.Filter)
 		if err != nil {
 			return false, err
 		}
