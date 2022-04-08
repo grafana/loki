@@ -237,17 +237,18 @@ func (lt *Table) getOrAddDB(name string) (*bbolt.DB, error) {
 	lt.dbsMtx.Lock()
 	defer lt.dbsMtx.Unlock()
 
-	var err error
 	db, ok = lt.dbs[name]
-	if !ok {
-		db, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(lt.path, name))
-		if err != nil {
-			return nil, err
-		}
-
-		lt.dbs[name] = db
+	if ok {
 		return db, nil
 	}
+
+	var err error
+	db, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(lt.path, name))
+	if err != nil {
+		return nil, err
+	}
+
+	lt.dbs[name] = db
 
 	return db, nil
 }

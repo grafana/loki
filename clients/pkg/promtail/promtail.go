@@ -114,6 +114,9 @@ func (p *Promtail) Client() client.Client {
 func (p *Promtail) Shutdown() {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
+	if p.stopped {
+		return
+	}
 	p.stopped = true
 	if p.server != nil {
 		p.server.Shutdown()
