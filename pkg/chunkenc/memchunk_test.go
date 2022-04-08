@@ -1139,7 +1139,7 @@ func Test_HeadIteratorReverse(t *testing.T) {
 	}
 }
 
-func TestMemChunk_Rebound(t *testing.T) {
+func TestMemChunk_ReboundAndFilter_without_filter(t *testing.T) {
 	chkFrom := time.Unix(0, 0)
 	chkThrough := chkFrom.Add(time.Hour)
 	originalChunk := buildTestMemChunk(t, chkFrom, chkThrough)
@@ -1187,7 +1187,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			newChunk, err := originalChunk.Rebound(tc.sliceFrom, tc.sliceTo)
+			newChunk, err := originalChunk.ReboundAndFilter(tc.sliceFrom, tc.sliceTo, nil)
 			if tc.err != nil {
 				require.Equal(t, tc.err, err)
 				return
@@ -1231,7 +1231,7 @@ func buildTestMemChunk(t *testing.T, from, through time.Time) *MemChunk {
 	return chk
 }
 
-func TestMemChunk_Filter(t *testing.T) {
+func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 	chkFrom := time.Unix(1, 0) // headBlock.Append treats 0 as not set so we have use something later
 	chkFromPlus5 := chkFrom.Add(5 * time.Second)
 	chkThrough := chkFrom.Add(10 * time.Second)
@@ -1269,7 +1269,7 @@ func TestMemChunk_Filter(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			originalChunk := buildFilterableTestMemChunk(t, chkFrom, chkThrough, tc.matchingSliceFrom, tc.matchingSliceTo)
-			newChunk, err := originalChunk.Filter(filterFunc)
+			newChunk, err := originalChunk.ReboundAndFilter(chkFrom, chkThrough, filterFunc)
 			if tc.err != nil {
 				require.Equal(t, tc.err, err)
 				return

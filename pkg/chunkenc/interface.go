@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 // Errors returned by the chunk interface.
@@ -107,8 +108,6 @@ func SupportedEncoding() string {
 	return sb.String()
 }
 
-type FilterFunc func(string) bool
-
 // Chunk is the interface for the compressed logs chunk format.
 type Chunk interface {
 	Bounds() (time.Time, time.Time)
@@ -129,8 +128,7 @@ type Chunk interface {
 	CompressedSize() int
 	Close() error
 	Encoding() Encoding
-	Rebound(start, end time.Time) (Chunk, error)
-	Filter(shouldFilter FilterFunc) (Chunk, error)
+	ReboundAndFilter(start, end time.Time, filter encoding.FilterFunc) (Chunk, error)
 }
 
 // Block is a chunk block.

@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/common/model"
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
@@ -573,9 +572,9 @@ func newExpirationChecker(retentionExpiryChecker, deletionExpiryChecker retentio
 	return &expirationChecker{retentionExpiryChecker, deletionExpiryChecker}
 }
 
-func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []model.Interval, encoding.FilterFunc) {
-	if expired, nonDeletedIntervals, filterFunc := e.retentionExpiryChecker.Expired(ref, now); expired {
-		return expired, nonDeletedIntervals, filterFunc
+func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []retention.IntervalFilter) {
+	if expired, nonDeletedIntervals := e.retentionExpiryChecker.Expired(ref, now); expired {
+		return expired, nonDeletedIntervals
 	}
 
 	return e.deletionExpiryChecker.Expired(ref, now)

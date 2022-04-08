@@ -713,7 +713,7 @@ func (c *MemChunk) reorder() error {
 
 	// Otherwise, we need to rebuild the blocks
 	from, to := c.Bounds()
-	newC, err := c.Rebound(from, to)
+	newC, err := c.ReboundAndFilter(from, to, nil)
 	if err != nil {
 		return err
 	}
@@ -910,7 +910,7 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 }
 
 // Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
-func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
+func (c *MemChunk) ReboundAndFilter(start, end time.Time, filter encoding.FilterFunc) (Chunk, error) {
 	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
 	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
@@ -931,47 +931,7 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 
 	for itr.Next() {
 		entry := itr.Entry()
-		if err := newChunk.Append(&entry); err != nil {
-			return nil, err
-		}
-	}
-
-	if newChunk.Size() == 0 {
-		return nil, encoding.ErrSliceNoDataInRange
-	}
-
-	if err := newChunk.Close(); err != nil {
-		return nil, err
-	}
-
-	return newChunk, nil
-}
-
-// Filter returns a new chunk with logs matching the filter removed.
-// Returns ErrSliceNoDataInRange if everything is filtered out.
-func (c *MemChunk) Filter(shouldFilter FilterFunc) (Chunk, error) {
-	from, to := c.Bounds()
-	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), from, to.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
-	if err != nil {
-		return nil, err
-	}
-
-	var newChunk *MemChunk
-	// as close as possible, respect the block/target sizes specified. However,
-	// if the blockSize is not set, use reasonable defaults.
-	if c.blockSize > 0 {
-		newChunk = NewMemChunk(c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
-	} else {
-		// Using defaultBlockSize for target block size.
-		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
-		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-		newChunk = NewMemChunk(c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
-	}
-
-	for itr.Next() {
-		entry := itr.Entry()
-		if shouldFilter(entry.Line) {
+		if filter != nil && filter(entry.Line) {
 			continue
 		}
 		if err := newChunk.Append(&entry); err != nil {

@@ -29,7 +29,9 @@ func (d *DeleteRequest) SetQuery(logQL string) error {
 	return nil
 }
 
-func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []model.Interval) {
+// IsDeleted checks if the given ChunkEntry will be deleted by this DeleteRequest.
+// It also returns the intervals of the ChunkEntry that will be deleted.
+func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention.IntervalFilter) {
 	if d.UserID != unsafeGetString(entry.UserID) {
 		return false, nil
 	}
@@ -52,21 +54,29 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []model.Int
 		return true, nil
 	}
 
-	intervals := make([]model.Interval, 0, 2)
+	intervals := make([]retention.IntervalFilter, 0, 2)
+
+	// Add filter
 
 	if d.StartTime > entry.From {
-		intervals = append(intervals, model.Interval{
-			Start: entry.From,
-			End:   d.StartTime - 1,
+		intervals = append(intervals, retention.IntervalFilter{
+			Interval: model.Interval{
+				Start: entry.From,
+				End:   d.StartTime - 1,
+			},
 		})
 	}
 
 	if d.EndTime < entry.Through {
-		intervals = append(intervals, model.Interval{
-			Start: d.EndTime + 1,
-			End:   entry.Through,
+		intervals = append(intervals, retention.IntervalFilter{
+			Interval: model.Interval{
+				Start: d.EndTime + 1,
+				End:   entry.Through,
+			},
 		})
 	}
+
+	// TODO: Add filter
 
 	return true, intervals
 }

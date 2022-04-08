@@ -86,8 +86,8 @@ func (f Facade) LokiChunk() Chunk {
 	return f.c
 }
 
-func (f Facade) Rebound(start, end model.Time) (encoding.Chunk, error) {
-	newChunk, err := f.c.Rebound(start.Time(), end.Time())
+func (f Facade) ReboundAndFilter(start, end model.Time, filter encoding.FilterFunc) (encoding.Chunk, error) {
+	newChunk, err := f.c.ReboundAndFilter(start.Time(), end.Time(), filter)
 	if err != nil {
 		return nil, err
 	}

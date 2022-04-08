@@ -210,12 +210,8 @@ func (b *bigchunk) Slice(start, end model.Time) Chunk {
 	}
 }
 
-func (b *bigchunk) Rebound(start, end model.Time) (Chunk, error) {
+func (b *bigchunk) ReboundAndFilter(start, end model.Time, filter FilterFunc) (Chunk, error) {
 	return reboundChunk(b, start, end)
-}
-
-func (b *bigchunk) Filter(shouldFilter FilterFunc) (Chunk, error) {
-	return nil, errors.New("not implemented")
 }
 
 type writer struct {

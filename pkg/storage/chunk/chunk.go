@@ -422,7 +422,7 @@ func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
 		return nil, ErrSliceOutOfRange
 	}
 
-	pc, err := c.Data.Rebound(from, through)
+	pc, err := c.Data.ReboundAndFilter(from, through, nil)
 	if err != nil {
 		return nil, err
 	}

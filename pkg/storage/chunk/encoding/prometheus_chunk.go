@@ -79,12 +79,8 @@ func (p *prometheusXorChunk) Slice(_, _ model.Time) Chunk {
 	return p
 }
 
-func (p *prometheusXorChunk) Rebound(from, to model.Time) (Chunk, error) {
+func (p *prometheusXorChunk) ReboundAndFilter(from, to model.Time, filter FilterFunc) (Chunk, error) {
 	return nil, errors.New("Rebound not supported by PrometheusXorChunk")
-}
-
-func (p *prometheusXorChunk) Filter(shouldFilter FilterFunc) (Chunk, error) {
-	return nil, errors.New("Filter not supported by PrometheusXorChunk")
 }
 
 func (p *prometheusXorChunk) Len() int {

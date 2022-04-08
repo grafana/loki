@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 const (
@@ -68,7 +69,7 @@ func (c *dumbChunk) Utilization() float64 {
 }
 
 // Filter implements Chunk.
-func (c *dumbChunk) Filter(shouldFilter FilterFunc) (Chunk, error) {
+func (c *dumbChunk) Filter(shouldFilter encoding.FilterFunc) (Chunk, error) {
 	return nil, nil
 }
 
@@ -127,7 +128,7 @@ func (c *dumbChunk) Close() error {
 	return nil
 }
 
-func (c *dumbChunk) Rebound(start, end time.Time) (Chunk, error) {
+func (c *dumbChunk) ReboundAndFilter(start, end time.Time, filter encoding.FilterFunc) (Chunk, error) {
 	return nil, nil
 }
 

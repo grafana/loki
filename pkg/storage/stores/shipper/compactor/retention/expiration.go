@@ -13,8 +13,13 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
+type IntervalFilter struct {
+	Interval model.Interval
+	Filter   encoding.FilterFunc
+}
+
 type ExpirationChecker interface {
-	Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval, encoding.FilterFunc)
+	Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter)
 	IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool
 	MarkPhaseStarted()
 	MarkPhaseFailed()
@@ -41,10 +46,10 @@ func NewExpirationChecker(limits Limits) ExpirationChecker {
 }
 
 // Expired tells if a ref chunk is expired based on retention rules.
-func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval, encoding.FilterFunc) {
+func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter) {
 	userID := unsafeGetString(ref.UserID)
 	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
-	return now.Sub(ref.Through) > period, nil, nil
+	return now.Sub(ref.Through) > period, nil
 }
 
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.
@@ -89,8 +94,8 @@ func NeverExpiringExpirationChecker(limits Limits) ExpirationChecker {
 
 type neverExpiringExpirationChecker struct{}
 
-func (e *neverExpiringExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval, encoding.FilterFunc) {
-	return false, nil, nil
+func (e *neverExpiringExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter) {
+	return false, nil
 }
 func (e *neverExpiringExpirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
 	return false

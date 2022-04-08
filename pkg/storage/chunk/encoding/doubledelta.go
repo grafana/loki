@@ -18,7 +18,6 @@ package encoding
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -234,12 +233,8 @@ func (c *doubleDeltaEncodedChunk) Slice(_, _ model.Time) Chunk {
 	return c
 }
 
-func (c *doubleDeltaEncodedChunk) Rebound(start, end model.Time) (Chunk, error) {
+func (c *doubleDeltaEncodedChunk) ReboundAndFilter(start, end model.Time, filter FilterFunc) (Chunk, error) {
 	return reboundChunk(c, start, end)
-}
-
-func (c *doubleDeltaEncodedChunk) Filter(shouldFilter FilterFunc) (Chunk, error) {
-	return nil, errors.New("not implemented")
 }
 
 // Marshal implements chunk.

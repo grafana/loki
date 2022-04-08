@@ -258,7 +258,7 @@ func testChunkRebound(t *testing.T, encoding Encoding, samples int) {
 		t.Run(tc.name, func(t *testing.T) {
 			originalChunk := mkChunk(t, encoding, samples)
 
-			newChunk, err := originalChunk.Rebound(tc.sliceFrom, tc.sliceTo)
+			newChunk, err := originalChunk.ReboundAndFilter(tc.sliceFrom, tc.sliceTo, nil)
 			if tc.err != nil {
 				require.Equal(t, tc.err, err)
 				return
