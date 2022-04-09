@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/grpc"
@@ -44,16 +45,17 @@ type StoreLimits interface {
 
 // Config chooses which storage client to use.
 type Config struct {
-	AWSStorageConfig       aws.StorageConfig       `yaml:"aws"`
-	AzureStorageConfig     azure.BlobStorageConfig `yaml:"azure"`
-	GCPStorageConfig       gcp.Config              `yaml:"bigtable"`
-	GCSConfig              gcp.GCSConfig           `yaml:"gcs"`
-	CassandraStorageConfig cassandra.Config        `yaml:"cassandra"`
-	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
-	FSConfig               local.FSConfig          `yaml:"filesystem"`
-	Swift                  openstack.SwiftConfig   `yaml:"swift"`
-	GrpcConfig             grpc.Config             `yaml:"grpc_store"`
-	Hedging                hedging.Config          `yaml:"hedging"`
+	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
+	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
+	BosStorageConfig       baidubce.BosStorageConfig `yaml:"bos"`
+	GCPStorageConfig       gcp.Config                `yaml:"bigtable"`
+	GCSConfig              gcp.GCSConfig             `yaml:"gcs"`
+	CassandraStorageConfig cassandra.Config          `yaml:"cassandra"`
+	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb"`
+	FSConfig               local.FSConfig            `yaml:"filesystem"`
+	Swift                  openstack.SwiftConfig     `yaml:"swift"`
+	GrpcConfig             grpc.Config               `yaml:"grpc_store"`
+	Hedging                hedging.Config            `yaml:"hedging"`
 
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
@@ -69,6 +71,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.AzureStorageConfig.RegisterFlags(f)
+	cfg.BosStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
@@ -102,6 +105,9 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.AzureStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Azure Storage config")
+	}
+	if err := cfg.BosStorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Baidu BOS config")
 	}
 	if err := cfg.AWSStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid AWS Storage config")
@@ -193,6 +199,12 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 			return nil, err
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+	case config.StorageTypeBos:
+		c, err := baidubce.NewBosObjectStorage(&cfg.BosStorageConfig)
+		if err != nil {
+			return nil, err
+		}
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxChunkBatchSize, schemaCfg), nil
 	case config.StorageTypeGCP:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
@@ -305,6 +317,8 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		return testutils.NewMockStorage(), nil
 	case config.StorageTypeFileSystem:
 		return local.NewFSObjectClient(cfg.FSConfig)
+	case config.StorageTypeBos:
+		return baidubce.NewBosObjectStorage(&cfg.BosStorageConfig)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS, config.StorageTypeAzure, config.StorageTypeFileSystem)
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
@@ -65,6 +66,9 @@ func (cfg *RuleStoreConfig) Validate() error {
 	}
 	if err := cfg.S3.Validate(); err != nil {
 		return errors.Wrap(err, "invalid S3 Storage config")
+	}
+	if err := cfg.BOS.Validate(); err != nil {
+		return errors.Wrap(err, "invalid BOS Storage config")
 	}
 	return nil
 }

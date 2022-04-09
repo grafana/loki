@@ -417,6 +417,16 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
+	if !reflect.DeepEqual(cfg.Common.Storage.Bos, defaults.StorageConfig.BosStorageConfig) {
+		configsFound++
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "bos"
+			r.Ruler.StoreConfig.BOS = r.Common.Storage.Bos
+			r.StorageConfig.BosStorageConfig = r.Common.Storage.Bos
+			r.CompactorConfig.SharedStoreType = config.StorageTypeBos
+		}
+	}
+
 	if !reflect.DeepEqual(cfg.Common.Storage.Swift, defaults.StorageConfig.Swift) {
 		configsFound++
 

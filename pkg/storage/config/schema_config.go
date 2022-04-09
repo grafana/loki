@@ -25,6 +25,7 @@ const (
 	StorageTypeAWS            = "aws"
 	StorageTypeAWSDynamo      = "aws-dynamo"
 	StorageTypeAzure          = "azure"
+	StorageTypeBos            = "bos"
 	StorageTypeBoltDB         = "boltdb"
 	StorageTypeCassandra      = "cassandra"
 	StorageTypeInMemory       = "inmemory"

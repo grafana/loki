@@ -110,6 +110,8 @@ require (
 	k8s.io/klog v1.0.0
 )
 
+require github.com/baidubce/bce-sdk-go v0.9.81
+
 require (
 	cloud.google.com/go v0.100.2 // indirect
 	cloud.google.com/go/compute v1.3.0 // indirect

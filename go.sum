@@ -285,8 +285,6 @@ github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.8.1/go.mod h1:CM+19rL1+4dFWnO
 github.com/aws/smithy-go v1.8.0/go.mod h1:SObp3lf9smib00L/v3U2eAKG8FyQ7iLrJnQiAmR5n+E=
 github.com/baidubce/bce-sdk-go v0.9.81 h1:n8KfThLG9fvGv3A+RtTt/jKhg/FPPRpo+iNnS2r+iPI=
 github.com/baidubce/bce-sdk-go v0.9.81/go.mod h1:zbYJMQwE4IZuyrJiFO8tO8NbtYiKTFTbwh4eIsqjVdg=
-github.com/baidubce/bce-sdk-go v0.9.106 h1:yC04NJdGkjsjLkZZ/BEmetcY5WVnWmAK7gr0LXCWpG8=
-github.com/baidubce/bce-sdk-go v0.9.106/go.mod h1:zbYJMQwE4IZuyrJiFO8tO8NbtYiKTFTbwh4eIsqjVdg=
 github.com/beevik/ntp v0.2.0/go.mod h1:hIHWr+l3+/clUnF44zdK+CWW7fO8dR5cIylAQ76NRpg=
 github.com/benbjohnson/clock v1.0.3/go.mod h1:bGMdMPoPVvcYyt1gHDf4J2KE153Yf9BuiUKYMaxlTDM=
 github.com/benbjohnson/clock v1.1.0 h1:Q92kusRqC1XV2MjkWETPvjJVqKetz1OzxZB7mHJLju8=
