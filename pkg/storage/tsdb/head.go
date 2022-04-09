@@ -6,7 +6,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"go.uber.org/atomic"
@@ -40,10 +40,17 @@ guaranteeing we maintain querying consistency for the entire data lifecycle.
 */
 
 // TODO(owen-d)
-type HeadMetrics struct{}
+type HeadMetrics struct {
+	seriesNotFound prometheus.Counter
+}
 
 func NewHeadMetrics(r prometheus.Registerer) *HeadMetrics {
-	return &HeadMetrics{}
+	return &HeadMetrics{
+		seriesNotFound: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_head_series_not_found_total",
+			Help: "Total number of requests for series that were not found.",
+		}),
+	}
 }
 
 type Head struct {
@@ -226,7 +233,7 @@ type memSeries struct {
 	sync.RWMutex
 	ref  uint64 // The unique reference within a *Head
 	ls   labels.Labels
-	fp   model.Fingerprint
+	fp   uint64
 	chks index.ChunkMetas
 }
 
@@ -234,6 +241,6 @@ func newMemSeries(ref uint64, ls labels.Labels) *memSeries {
 	return &memSeries{
 		ref: ref,
 		ls:  ls,
-		fp:  model.Fingerprint(ls.Hash()),
+		fp:  ls.Hash(),
 	}
 }
