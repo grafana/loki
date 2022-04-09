@@ -7,15 +7,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -32,18 +35,18 @@ var errNoChunksFound = errors.New("no chunks found in table, please check if the
 
 type TableMarker interface {
 	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.
-	MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error)
+	MarkForDelete(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error)
 }
 
 type Marker struct {
 	workingDirectory string
-	config           storage.SchemaConfig
+	config           config.SchemaConfig
 	expiration       ExpirationChecker
 	markerMetrics    *markerMetrics
-	chunkClient      chunk.Client
+	chunkClient      client.Client
 }
 
-func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration ExpirationChecker, chunkClient chunk.Client, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(workingDirectory string, config config.SchemaConfig, expiration ExpirationChecker, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
 	if err := validatePeriods(config); err != nil {
 		return nil, err
 	}
@@ -58,16 +61,16 @@ func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration 
 }
 
 // MarkForDelete marks all chunks expired for a given table.
-func (t *Marker) MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, db *bbolt.DB, logger log.Logger) (bool, bool, error) {
 	start := time.Now()
 	status := statusSuccess
 	defer func() {
 		t.markerMetrics.tableProcessedDurationSeconds.WithLabelValues(tableName, status).Observe(time.Since(start).Seconds())
-		level.Debug(util_log.Logger).Log("msg", "finished to process table", "table", tableName, "duration", time.Since(start))
+		level.Debug(logger).Log("msg", "finished to process table", "duration", time.Since(start))
 	}()
-	level.Debug(util_log.Logger).Log("msg", "starting to process table", "table", tableName)
+	level.Debug(logger).Log("msg", "starting to process table")
 
-	empty, modified, err := t.markTable(ctx, tableName, db)
+	empty, modified, err := t.markTable(ctx, tableName, userID, db)
 	if err != nil {
 		status = statusFailure
 		return false, false, err
@@ -75,7 +78,7 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName string, db *bbolt.
 	return empty, modified, nil
 }
 
-func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+func (t *Marker) markTable(ctx context.Context, tableName, userID string, db *bbolt.DB) (bool, bool, error) {
 	schemaCfg, ok := schemaPeriodForTable(t.config, tableName)
 	if !ok {
 		return false, false, fmt.Errorf("could not find schema for table: %s", tableName)
@@ -93,7 +96,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 			return nil
 		}
 
-		chunkIt, err := newChunkIndexIterator(bucket, schemaCfg)
+		chunkIt, err := NewChunkIndexIterator(bucket, schemaCfg)
 		if err != nil {
 			return fmt.Errorf("failed to create chunk index iterator: %w", err)
 		}
@@ -119,14 +122,14 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 		return false, false, err
 	}
 	if empty {
-		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionDeleted).Inc()
+		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, userID, tableActionDeleted).Inc()
 		return empty, true, nil
 	}
 	if !modified {
-		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionNone).Inc()
+		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, userID, tableActionNone).Inc()
 		return empty, modified, nil
 	}
-	t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionModified).Inc()
+	t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, userID, tableActionModified).Inc()
 	return empty, modified, nil
 }
 
@@ -279,31 +282,27 @@ func (s *Sweeper) Stop() {
 }
 
 type chunkRewriter struct {
-	chunkClient chunk.Client
+	chunkClient client.Client
 	tableName   string
 	bucket      *bbolt.Bucket
-	scfg        chunk.SchemaConfig
+	scfg        config.SchemaConfig
 
-	seriesStoreSchema chunk.SeriesStoreSchema
+	seriesStoreSchema index.SeriesStoreSchema
 }
 
-func newChunkRewriter(chunkClient chunk.Client, schemaCfg chunk.PeriodConfig,
-	tableName string, bucket *bbolt.Bucket) (*chunkRewriter, error) {
-	schema, err := schemaCfg.CreateSchema()
+func newChunkRewriter(chunkClient client.Client, schemaCfg config.PeriodConfig,
+	tableName string, bucket *bbolt.Bucket,
+) (*chunkRewriter, error) {
+	seriesStoreSchema, err := index.CreateSchema(schemaCfg)
 	if err != nil {
 		return nil, err
-	}
-
-	seriesStoreSchema, ok := schema.(chunk.SeriesStoreSchema)
-	if !ok {
-		return nil, errors.New("invalid schema")
 	}
 
 	return &chunkRewriter{
 		chunkClient:       chunkClient,
 		tableName:         tableName,
 		bucket:            bucket,
-		scfg:              chunk.SchemaConfig{Configs: []chunk.PeriodConfig{schemaCfg}},
+		scfg:              config.SchemaConfig{Configs: []config.PeriodConfig{schemaCfg}},
 		seriesStoreSchema: seriesStoreSchema,
 	}, nil
 }
@@ -340,7 +339,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 		}
 
 		newChunk := chunk.NewChunk(
-			userID, chks[0].Fingerprint, chks[0].Metric,
+			userID, chks[0].FingerprintModel(), chks[0].Metric,
 			facade,
 			interval.Start,
 			interval.End,
@@ -351,7 +350,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 			return false, err
 		}
 
-		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(interval.Start, interval.End, userID, "logs", newChunk.Metric, c.scfg.ExternalKey(newChunk))
+		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(interval.Start, interval.End, userID, "logs", newChunk.Metric, c.scfg.ExternalKey(newChunk.ChunkRef))
 		if err != nil {
 			return false, err
 		}

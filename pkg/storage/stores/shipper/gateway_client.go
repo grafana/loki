@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,15 +15,17 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
 
-const maxQueriesPerGoroutine = 100
+const (
+	maxQueriesPerGrpc      = 100
+	maxConcurrentGrpcCalls = 10
+)
 
 type IndexGatewayClientConfig struct {
 	Address          string            `yaml:"server_address,omitempty"`
@@ -78,29 +81,22 @@ func (s *GatewayClient) Stop() {
 	s.conn.Close()
 }
 
-func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
-	errs := make(chan error)
-
-	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
-		q := queries[i:util_math.Min(i+maxQueriesPerGoroutine, len(queries))]
-		go func(queries []chunk.IndexQuery) {
-			errs <- s.doQueries(ctx, queries, callback)
-		}(q)
+func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+	if len(queries) <= maxQueriesPerGrpc {
+		return s.doQueries(ctx, queries, callback)
 	}
 
-	var lastErr error
-	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
-		err := <-errs
-		if err != nil {
-			lastErr = err
-		}
+	jobsCount := len(queries) / maxQueriesPerGrpc
+	if len(queries)%maxQueriesPerGrpc != 0 {
+		jobsCount++
 	}
-
-	return lastErr
+	return concurrency.ForEachJob(ctx, jobsCount, maxConcurrentGrpcCalls, func(ctx context.Context, idx int) error {
+		return s.doQueries(ctx, queries[idx*maxQueriesPerGrpc:util_math.Min((idx+1)*maxQueriesPerGrpc, len(queries))], callback)
+	})
 }
 
-func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback util.Callback) error {
-	queryKeyQueryMap := make(map[string]chunk.IndexQuery, len(queries))
+func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+	queryKeyQueryMap := make(map[string]index.Query, len(queries))
 	gatewayQueries := make([]*indexgatewaypb.IndexQuery, 0, len(queries))
 
 	for _, query := range queries {
@@ -140,11 +136,11 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuer
 	return nil
 }
 
-func (s *GatewayClient) NewWriteBatch() chunk.WriteBatch {
+func (s *GatewayClient) NewWriteBatch() index.WriteBatch {
 	panic("unsupported")
 }
 
-func (s *GatewayClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+func (s *GatewayClient) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
 	panic("unsupported")
 }
 
@@ -152,7 +148,7 @@ type readBatch struct {
 	*indexgatewaypb.QueryIndexResponse
 }
 
-func (r *readBatch) Iterator() chunk.ReadBatchIterator {
+func (r *readBatch) Iterator() index.ReadBatchIterator {
 	return &grpcIter{
 		i:                  -1,
 		QueryIndexResponse: r.QueryIndexResponse,

@@ -46,7 +46,7 @@ type Promtail struct {
 }
 
 // New makes a new Promtail.
-func New(cfg config.Config, dryRun bool, reg prometheus.Registerer, opts ...Option) (*Promtail, error) {
+func New(cfg config.Config, metrics *client.Metrics, dryRun bool, opts ...Option) (*Promtail, error) {
 	// Initialize promtail with some defaults and allow the options to override
 	// them.
 	promtail := &Promtail{
@@ -54,23 +54,27 @@ func New(cfg config.Config, dryRun bool, reg prometheus.Registerer, opts ...Opti
 		reg:    prometheus.DefaultRegisterer,
 	}
 	for _, o := range opts {
+		// todo (callum) I don't understand why I needed to add this check
+		if o == nil {
+			continue
+		}
 		o(promtail)
 	}
 
 	cfg.Setup()
 
-	if cfg.LimitConfig.ReadlineRateEnabled {
-		stages.SetReadLineRateLimiter(cfg.LimitConfig.ReadlineRate, cfg.LimitConfig.ReadlineBurst, cfg.LimitConfig.ReadlineRateDrop)
+	if cfg.LimitsConfig.ReadlineRateEnabled {
+		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
 	}
 	var err error
 	if dryRun {
-		promtail.client, err = client.NewLogger(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfigs...)
+		promtail.client, err = client.NewLogger(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		promtail.client, err = client.NewMulti(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfigs...)
+		promtail.client, err = client.NewMulti(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
@@ -110,6 +114,9 @@ func (p *Promtail) Client() client.Client {
 func (p *Promtail) Shutdown() {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
+	if p.stopped {
+		return
+	}
 	p.stopped = true
 	if p.server != nil {
 		p.server.Shutdown()

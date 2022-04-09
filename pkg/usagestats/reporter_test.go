@@ -14,27 +14,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 )
-
-var metrics = storage.NewClientMetrics()
 
 func Test_LeaderElection(t *testing.T) {
 	stabilityCheckInterval = 100 * time.Millisecond
 
 	result := make(chan *ClusterSeed, 10)
-	objectClient, err := storage.NewObjectClient(storage.StorageTypeFileSystem, storage.Config{
-		FSConfig: local.FSConfig{
-			Directory: t.TempDir(),
-		},
-	}, metrics)
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: t.TempDir(),
+	})
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		go func() {
-			r, err := NewReporter(Config{Leader: true}, kv.Config{
+			r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
 				Store: "inmemory",
-			}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
+			}, objectClient, log.NewLogfmtLogger(os.Stdout), nil)
 			require.NoError(t, err)
 			r.init(context.Background())
 			result <- r.cluster
@@ -42,9 +37,9 @@ func Test_LeaderElection(t *testing.T) {
 	}
 	for i := 0; i < 7; i++ {
 		go func() {
-			r, err := NewReporter(Config{Leader: false}, kv.Config{
+			r, err := NewReporter(Config{Leader: false, Enabled: true}, kv.Config{
 				Store: "inmemory",
-			}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
+			}, objectClient, log.NewLogfmtLogger(os.Stdout), nil)
 			require.NoError(t, err)
 			r.init(context.Background())
 			result <- r.cluster
@@ -61,7 +56,7 @@ func Test_LeaderElection(t *testing.T) {
 	for _, uid := range UID {
 		require.Equal(t, first, uid)
 	}
-	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, JSONCodec, prometheus.DefaultRegisterer, log.NewLogfmtLogger(os.Stdout))
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, JSONCodec, nil, log.NewLogfmtLogger(os.Stdout))
 	require.NoError(t, err)
 	// verify that the ID found is also correctly stored in the kv store and not overridden by another leader.
 	data, err := kvClient.Get(context.Background(), seedKey)
@@ -86,14 +81,12 @@ func Test_ReportLoop(t *testing.T) {
 	}))
 	usageStatsURL = server.URL
 
-	objectClient, err := storage.NewObjectClient(storage.StorageTypeFileSystem, storage.Config{
-		FSConfig: local.FSConfig{
-			Directory: t.TempDir(),
-		},
-	}, metrics)
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: t.TempDir(),
+	})
 	require.NoError(t, err)
 
-	r, err := NewReporter(Config{Leader: true}, kv.Config{
+	r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
 		Store: "inmemory",
 	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
@@ -149,14 +142,12 @@ func Test_NextReport(t *testing.T) {
 }
 
 func TestWrongKV(t *testing.T) {
-	objectClient, err := storage.NewObjectClient(storage.StorageTypeFileSystem, storage.Config{
-		FSConfig: local.FSConfig{
-			Directory: t.TempDir(),
-		},
-	}, metrics)
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: t.TempDir(),
+	})
 	require.NoError(t, err)
 
-	r, err := NewReporter(Config{Leader: true}, kv.Config{
+	r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
 		Store: "",
 	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)

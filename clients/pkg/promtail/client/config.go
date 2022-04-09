@@ -21,8 +21,9 @@ const (
 	Timeout        = 10 * time.Second
 )
 
-// Config describes configuration for a HTTP pusher client.
+// Config describes configuration for an HTTP pusher client.
 type Config struct {
+	Name      string `yaml:"name,omitempty"`
 	URL       flagext.URLValue
 	BatchWait time.Duration
 	BatchSize int
@@ -38,6 +39,7 @@ type Config struct {
 	// single tenant mode)
 	TenantID string `yaml:"tenant_id"`
 
+	// deprecated use StreamLagLabels from config.Config instead
 	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels"`
 }
 
@@ -55,9 +57,6 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&c.ExternalLabels, prefix+"client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2)")
 
 	f.StringVar(&c.TenantID, prefix+"client.tenant-id", "", "Tenant ID to use when pushing logs to Loki.")
-
-	c.StreamLagLabels = []string{"filename"}
-	f.Var(&c.StreamLagLabels, prefix+"client.stream-lag-labels", "Comma-separated list of labels to use when calculating stream lag")
 }
 
 // RegisterFlags registers flags.
@@ -80,10 +79,9 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 				MaxRetries: MaxRetries,
 				MinBackoff: MinBackoff,
 			},
-			BatchSize:       BatchSize,
-			BatchWait:       BatchWait,
-			Timeout:         Timeout,
-			StreamLagLabels: []string{"filename"},
+			BatchSize: BatchSize,
+			BatchWait: BatchWait,
+			Timeout:   Timeout,
 		}
 	}
 

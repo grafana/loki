@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/prometheus/common/model"
 	"net/url"
 	"os"
 	"strconv"
@@ -20,17 +21,20 @@ const (
 	contentType = "application/x-protobuf"
 
 	maxErrMsgLen = 1024
+
+	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. "
 )
 
 var (
-	writeAddress       *url.URL
-	username, password string
-	keepStream         bool
-	batchSize          int
-	s3Clients          map[string]*s3.Client
+	writeAddress                       *url.URL
+	username, password, extraLabelsRaw string
+	keepStream                         bool
+	batchSize                          int
+	s3Clients                          map[string]*s3.Client
+	extraLabels                        model.LabelSet
 )
 
-func init() {
+func setupArguments() {
 	addr := os.Getenv("WRITE_ADDRESS")
 	if addr == "" {
 		panic(errors.New("required environmental variable WRITE_ADDRESS not present, format: https://<hostname>/loki/api/v1/push"))
@@ -44,9 +48,14 @@ func init() {
 
 	fmt.Println("write address: ", writeAddress.String())
 
+	extraLabelsRaw = os.Getenv("EXTRA_LABELS")
+	extraLabels, err = parseExtraLabels(extraLabelsRaw)
+	if err != nil {
+		panic(err)
+	}
+
 	username = os.Getenv("USERNAME")
 	password = os.Getenv("PASSWORD")
-
 	// If either username or password is set then both must be.
 	if (username != "" && password == "") || (username == "" && password != "") {
 		panic("both username and password must be set if either one is set")
@@ -66,6 +75,32 @@ func init() {
 	}
 
 	s3Clients = make(map[string]*s3.Client)
+}
+
+func parseExtraLabels(extraLabelsRaw string) (model.LabelSet, error) {
+	var extractedLabels = model.LabelSet{}
+	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
+
+	if len(extraLabelsRaw) < 1 {
+		return extractedLabels, nil
+	}
+
+	if len(extraLabelsSplit)%2 != 0 {
+		return nil, fmt.Errorf(invalidExtraLabelsError)
+	}
+	for i := 0; i < len(extraLabelsSplit); i += 2 {
+		extractedLabels[model.LabelName("__extra_"+extraLabelsSplit[i])] = model.LabelValue(extraLabelsSplit[i+1])
+	}
+	err := extractedLabels.Validate()
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("extra labels:", extractedLabels)
+	return extractedLabels, nil
+}
+
+func applyExtraLabels(labels model.LabelSet) model.LabelSet {
+	return labels.Merge(extraLabels)
 }
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {
@@ -95,7 +130,7 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 func handler(ctx context.Context, ev map[string]interface{}) error {
 	event, err := checkEventType(ev)
 	if err != nil {
-		fmt.Println("invalid event: %s", ev)
+		fmt.Printf("invalid event: %s\n", ev)
 		return err
 	}
 
@@ -110,5 +145,6 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 }
 
 func main() {
+	setupArguments()
 	lambda.Start(handler)
 }

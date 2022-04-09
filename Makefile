@@ -5,29 +5,12 @@
 .PHONY: fluentd-image, fluentd-push, fluentd-test
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
-.PHONY: benchmark-store, drone, check-mod
+.PHONY: benchmark-store, drone, check-drone-drift, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
 
 SHELL = /usr/bin/env bash
-
-# Empty value = no -mod parameter is used.
-# If not empty, GOMOD is passed to -mod= parameter.
-# In Go 1.13, "readonly" and "vendor" are accepted.
-# In Go 1.14, "readonly", "vendor" and "mod" values are accepted.
-# If no value is specified, defaults to "vendor".
-#
-# Can be used from command line by using "GOMOD= make" (empty = no -mod parameter), or "GOMOD=vendor make" (default).
-
-GOMOD ?= vendor
-ifeq ($(strip $(GOMOD)),) # Is empty?
-	MOD_FLAG=
-	GOLANGCI_ARG=
-else
-	MOD_FLAG=-mod=$(GOMOD)
-	GOLANGCI_ARG=--modules-download-mode=$(GOMOD)
-endif
 
 GOTEST ?= go test
 
@@ -42,7 +25,9 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.19.0
+
+# ensure you run `make drone` after changing this
+BUILD_IMAGE_VERSION := 0.20.1
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -57,20 +42,16 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 # 'make: Entering directory '/src/loki' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
-# These are all the application files, they are included in the various binary rules as dependencies
-# to make sure binaries are rebuilt if any source files change.
-APP_GO_FILES := $(shell find . $(DONT_FIND) -name .y.go -prune -o -name .pb.go -prune -o -name cmd -prune -o -type f -name '*.go' -print)
-
 # Build flags
 VPREFIX := github.com/grafana/loki/pkg/util/build
 GO_LDFLAGS   := -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-GO_FLAGS     := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
-DYN_GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
+GO_FLAGS     := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo
+DYN_GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
 # the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
 # Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
-DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
-DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
+DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo
+DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
 # Docker mount flag, ignored on native docker host. see (https://docs.docker.com/docker-for-mac/osxfs-caching/#delegated)
 MOUNT_FLAGS := :delegated
 
@@ -146,47 +127,49 @@ check-generated-files: yacc ragel protos clients/pkg/promtail/server/ui/assets_v
 ##########
 # Logcli #
 ##########
-
-logcli: yacc ragel cmd/logcli/logcli
+.PHONY: cmd/logcli/logcli
+logcli: cmd/logcli/logcli
 
 logcli-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
 
-cmd/logcli/logcli: $(APP_GO_FILES) cmd/logcli/main.go
-	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+cmd/logcli/logcli:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
 	$(NETGO_CHECK)
 
 ########
 # Loki #
 ########
-
+.PHONY: cmd/loki/loki cmd/loki/loki-debug
 loki: cmd/loki/loki
 loki-debug: cmd/loki/loki-debug
 
-cmd/loki/loki: $(APP_GO_FILES) cmd/loki/main.go
+cmd/loki/loki:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
+cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 ###############
 # Loki-Canary #
 ###############
-
+.PHONY: cmd/loki-canary/loki-canary
 loki-canary: cmd/loki-canary/loki-canary
 
-cmd/loki-canary/loki-canary: $(APP_GO_FILES) cmd/loki-canary/main.go
+cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 #################
 # Loki-QueryTee #
 #################
+.PHONY: cmd/querytee/querytee
+loki-querytee: cmd/querytee/querytee
 
-loki-querytee: $(APP_GO_FILES) cmd/querytee/main.go
-	CGO_ENABLED=0 go build $(GO_FLAGS) -o ./cmd/querytee/$@ ./cmd/querytee/
+cmd/querytee/querytee:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 ############
@@ -207,9 +190,9 @@ PROMTAIL_GO_FLAGS = $(DYN_GO_FLAGS)
 PROMTAIL_DEBUG_GO_FLAGS = $(DYN_DEBUG_GO_FLAGS)
 endif
 endif
-
-promtail: yacc ragel clients/cmd/promtail/promtail
-promtail-debug: yacc ragel clients/cmd/promtail/promtail-debug
+.PHONY: clients/cmd/promtail/promtail clients/cmd/promtail/promtail-debug
+promtail: clients/cmd/promtail/promtail
+promtail-debug: clients/cmd/promtail/promtail-debug
 
 promtail-clean-assets:
 	rm -rf clients/pkg/promtail/server/ui/assets_vfsdata.go
@@ -217,23 +200,23 @@ promtail-clean-assets:
 # Rule to generate promtail static assets file
 $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	@echo ">> writing assets"
-	GOFLAGS="$(MOD_FLAG)" GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
+	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
 
-clients/cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) clients/cmd/promtail/main.go
+clients/cmd/promtail/promtail:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-clients/cmd/promtail/promtail-debug: $(APP_GO_FILES) clients/pkg/promtail/server/ui/assets_vfsdata.go clients/cmd/promtail/main.go
+clients/cmd/promtail/promtail-debug:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 ###############
 # Migrate #
 ###############
-
+.PHONY: cmd/migrate/migrate
 migrate: cmd/migrate/migrate
 
-cmd/migrate/migrate: $(APP_GO_FILES) cmd/migrate/main.go
+cmd/migrate/migrate:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -253,8 +236,11 @@ dist: clean
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
 packages: dist
+	mkdir -p dist/tmp
+	unzip dist/logcli-linux-amd64.zip -d dist/tmp
 	nfpm package -f tools/nfpm.yaml -p rpm -t dist/
 	nfpm package -f tools/nfpm.yaml -p deb -t dist/
+	rm -rf dist/tmp
 
 publish: packages
 	./tools/release
@@ -266,7 +252,7 @@ publish: packages
 # To run this efficiently on your workstation, run this from the root dir:
 # docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.17.0 lint
 lint:
-	GO111MODULE=on GOGC=10 golangci-lint run -v $(GOLANGCI_ARG)
+	GO111MODULE=on golangci-lint run -v
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
 ########
@@ -274,7 +260,7 @@ lint:
 ########
 
 test: all
-	GOGC=10 $(GOTEST) -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./...
+	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
 
 #########
 # Clean #
@@ -295,7 +281,7 @@ clean:
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
 	rm -rf cmd/migrate/migrate
-	go clean $(MOD_FLAG) ./...
+	go clean ./...
 
 #########
 # YACCs #
@@ -397,7 +383,7 @@ docker-driver: docker-driver-clean
 	$(build-rootfs)
 	docker plugin create $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH) clients/cmd/docker-driver
 
-clients/cmd/docker-driver/docker-driver: $(APP_GO_FILES)
+clients/cmd/docker-driver/docker-driver:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -540,11 +526,11 @@ loki-canary-push: loki-canary-image-cross
 
 # loki-querytee
 loki-querytee-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
 loki-querytee-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
 loki-querytee-push: loki-querytee-image-cross
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG)
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 
 # migrate-image
 migrate-image:
@@ -569,8 +555,8 @@ endif
 ########
 
 benchmark-store:
-	go run $(MOD_FLAG) ./pkg/storage/hack/main.go
-	$(GOTEST) $(MOD_FLAG) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
+	go run ./pkg/storage/hack/main.go
+	$(GOTEST) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
 
 # regenerate drone yaml
 drone:
@@ -586,8 +572,11 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	drone jsonnet --stream --format -V __build-image-version=$(BUILD_IMAGE_VERSION) --source .drone/drone.jsonnet --target .drone/drone.yml
 	drone lint .drone/drone.yml --trusted
-	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN"
+	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN. These values can be found on your [drone account](http://drone.grafana.net/account) page."
 endif
+
+check-drone-drift:
+	./tools/check-drone-drift.sh main
 
 
 # support go modules
@@ -654,7 +643,7 @@ endif
 # this will run the fuzzing using /tmp/testcase and save benchmark locally.
 test-fuzz:
 	$(GOTEST) -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
-	  -run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s
+	  -run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql/syntax -v -count=1 -timeout=0s
 
 format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \

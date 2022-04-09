@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -298,7 +299,7 @@ func TestInstanceDownstream(t *testing.T) {
 		1000,
 		nil,
 	)
-	expr, err := logql.ParseExpr(`{foo="bar"}`)
+	expr, err := syntax.ParseExpr(`{foo="bar"}`)
 	require.Nil(t, err)
 
 	expectedResp := func() *LokiResponse {
@@ -374,5 +375,4 @@ func TestCancelWhileWaitingResponse(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond,
 		"The parent context calling the Downstreamer For method was canceled "+
 			"but the For method did not return as expected.")
-
 }

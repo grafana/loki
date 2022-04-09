@@ -95,8 +95,14 @@ clients:
 scrape_configs:
   - [<scrape_config>]
 
+# Configures global limits for this instance of Promtail
+[limits_config: <limits_config>]
+
 # Configures how tailed targets will be watched.
 [target_config: <target_config>]
+
+# Configures additional promtail configurations.
+[options: <options_config>]
 ```
 
 ## server
@@ -156,7 +162,7 @@ The `server` block configures Promtail's behavior as an HTTP server:
 
 ## clients
 
-The `clients` block configures how Promtail connects to an instance of
+The `clients` block configures how Promtail connects to instances of
 Loki:
 
 ```yaml
@@ -273,12 +279,6 @@ external_labels:
 
 # Maximum time to wait for a server to respond to a request
 [timeout: <duration> | default = 10s]
-
-# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
-# The default value is "filename". A "host" label is always included.
-# The stream lag metric indicates which streams are falling behind on writes to Loki;
-# be mindful about using too many labels, as it can increase cardinality.
-[stream_lag_labels: <string> | default = "filename"]
 ```
 
 ## positions
@@ -1759,6 +1759,26 @@ scrape_configs:
         target_label: 'container'
 ```
 
+## limits_config
+
+The optional `limits_config` block configures global limits for this instance of Promtail.
+
+```yaml
+# When true, enforces rate limiting on this instance of Promtail.
+[readline_rate_enabled: <bool> | default = false]
+
+# The rate limit in log lines per second that this instance of Promtail may push to Loki.
+[readline_rate: <int> | default = 10000]
+
+# The cap in the quantity of burst lines that this instance of Promtail may push
+# to Loki.
+[readline_burst: <int> | default = 10000]
+
+# When true, exceeding the rate limit causes this instance of Promtail to discard
+# log lines, rather than sending them to Loki. When false, exceeding the rate limit
+# causes this instance of Promtail to temporarily hold off on sending the log lines and retry later.
+[readline_rate_drop: <bool> | default = true]
+```
 
 ## target_config
 
@@ -1769,6 +1789,16 @@ targets.
 # Period to resync directories being watched and files being tailed to discover
 # new ones or stop watching removed ones.
 sync_period: "10s"
+```
+
+## options_config
+
+```yaml
+# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
+# The default value is "filename". A "host" label is always included.
+# The stream lag metric indicates which streams are falling behind on writes to Loki;
+# be mindful about using too many labels, as it can increase cardinality.
+[stream_lag_labels: <string> | default = "filename"]
 ```
 
 ## Example Docker Config

@@ -8,16 +8,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 type mockTableQuerier struct {
 	sync.Mutex
-	queries map[string]chunk.IndexQuery
+	queries map[string]index.Query
 }
 
-func (m *mockTableQuerier) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (m *mockTableQuerier) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	m.Lock()
 	defer m.Unlock()
 
@@ -33,7 +32,7 @@ func (m *mockTableQuerier) hasQueries(t *testing.T, count int) {
 	for i := 0; i < count; i++ {
 		idx := strconv.Itoa(i)
 
-		require.Equal(t, m.queries[idx], chunk.IndexQuery{
+		require.Equal(t, m.queries[idx], index.Query{
 			HashValue:  idx,
 			ValueEqual: []byte(idx),
 		})
@@ -62,10 +61,10 @@ func TestDoParallelQueries(t *testing.T) {
 			queries := buildQueries(tc.queryCount)
 
 			tableQuerier := mockTableQuerier{
-				queries: map[string]chunk.IndexQuery{},
+				queries: map[string]index.Query{},
 			}
 
-			err := DoParallelQueries(context.Background(), &tableQuerier, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+			err := DoParallelQueries(context.Background(), &tableQuerier, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 				return false
 			})
 			require.NoError(t, err)
@@ -75,11 +74,11 @@ func TestDoParallelQueries(t *testing.T) {
 	}
 }
 
-func buildQueries(n int) []chunk.IndexQuery {
-	queries := make([]chunk.IndexQuery, 0, n)
+func buildQueries(n int) []index.Query {
+	queries := make([]index.Query, 0, n)
 	for i := 0; i < n; i++ {
 		idx := strconv.Itoa(i)
-		queries = append(queries, chunk.IndexQuery{
+		queries = append(queries, index.Query{
 			HashValue:  idx,
 			ValueEqual: []byte(idx),
 		})
@@ -159,7 +158,7 @@ func TestIndexDeduper(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			actualValues := map[string][][]byte{}
-			deduper := NewIndexDeduper(func(query chunk.IndexQuery, readBatch chunk.ReadBatch) bool {
+			deduper := NewIndexDeduper(func(query index.Query, readBatch index.ReadBatchResult) bool {
 				itr := readBatch.Iterator()
 				for itr.Next() {
 					actualValues[query.HashValue] = append(actualValues[query.HashValue], itr.RangeValue())
@@ -168,7 +167,7 @@ func TestIndexDeduper(t *testing.T) {
 			})
 
 			for _, batch := range tc.batches {
-				deduper.Callback(chunk.IndexQuery{HashValue: batch.hashValue}, batch)
+				deduper.Callback(index.Query{HashValue: batch.hashValue}, batch)
 			}
 
 			require.Equal(t, tc.expectedValues, actualValues)
@@ -181,7 +180,7 @@ type batch struct {
 	rangeValues [][]byte
 }
 
-func (b batch) Iterator() chunk.ReadBatchIterator {
+func (b batch) Iterator() index.ReadBatchIterator {
 	return &batchIterator{
 		rangeValues: b.rangeValues,
 	}

@@ -161,8 +161,10 @@ func lazyChunkWithBounds(from, through time.Time) *LazyChunk {
 	fromM, throughM := util.RoundToMilliseconds(from, through)
 	return &LazyChunk{
 		Chunk: chunk.Chunk{
-			From:    fromM,
-			Through: throughM,
+			ChunkRef: logproto.ChunkRef{
+				From:    fromM,
+				Through: throughM,
+			},
 		},
 	}
 }

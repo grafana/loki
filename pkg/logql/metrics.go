@@ -5,11 +5,13 @@ import (
 	"strings"
 
 	"github.com/dustin/go-humanize"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -72,9 +74,9 @@ var (
 	linePerSecondLogUsage    = usagestats.NewStatistics("query_log_lines_per_second")
 )
 
-func RecordMetrics(ctx context.Context, p Params, status string, stats logql_stats.Result, result promql_parser.Value) {
+func RecordMetrics(ctx context.Context, log log.Logger, p Params, status string, stats logql_stats.Result, result promql_parser.Value) {
 	var (
-		logger        = util_log.WithContext(ctx, util_log.Logger)
+		logger        = util_log.WithContext(ctx, log)
 		rt            = string(GetRangeType(p))
 		latencyType   = latencyTypeFast
 		returnedLines = 0
@@ -112,6 +114,7 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats logql_sta
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
+		"subqueries", stats.Summary.Subqueries,
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
@@ -146,14 +149,14 @@ func recordUsageStats(queryType string, stats logql_stats.Result) {
 }
 
 func QueryType(query string) (string, error) {
-	expr, err := ParseExpr(query)
+	expr, err := syntax.ParseExpr(query)
 	if err != nil {
 		return "", err
 	}
 	switch e := expr.(type) {
-	case SampleExpr:
+	case syntax.SampleExpr:
 		return QueryTypeMetric, nil
-	case LogSelectorExpr:
+	case syntax.LogSelectorExpr:
 		if e.HasFilter() {
 			return QueryTypeFilter, nil
 		}

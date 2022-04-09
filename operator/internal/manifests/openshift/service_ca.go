@@ -20,7 +20,7 @@ func BuildServiceCAConfigMap(opts Options) *corev1.ConfigMap {
 			},
 			Labels:    opts.BuildOpts.Labels,
 			Name:      serviceCABundleName(opts),
-			Namespace: opts.BuildOpts.GatewayNamespace,
+			Namespace: opts.BuildOpts.LokiStackNamespace,
 		},
 	}
 }

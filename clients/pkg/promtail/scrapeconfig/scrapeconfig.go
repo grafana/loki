@@ -180,6 +180,10 @@ type SyslogTargetConfig struct {
 	// timestamp if it's set.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 
+	// UseRFC5424Message defines whether the full RFC5424 formatted syslog
+	// message should be pushed to Loki
+	UseRFC5424Message bool `yaml:"use_rfc5424_message"`
+
 	// MaxMessageLength sets the maximum limit to the length of syslog messages
 	MaxMessageLength int `yaml:"max_message_length"`
 

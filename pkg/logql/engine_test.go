@@ -20,6 +20,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -2366,7 +2367,7 @@ type logData struct {
 type generator func(i int64) logData
 
 func newStream(n int64, f generator, lbsString string) logproto.Stream {
-	labels, err := ParseLabels(lbsString)
+	labels, err := syntax.ParseLabels(lbsString)
 	if err != nil {
 		panic(err)
 	}
@@ -2381,7 +2382,7 @@ func newStream(n int64, f generator, lbsString string) logproto.Stream {
 }
 
 func newSeries(n int64, f generator, lbsString string) logproto.Series {
-	labels, err := ParseLabels(lbsString)
+	labels, err := syntax.ParseLabels(lbsString)
 	if err != nil {
 		panic(err)
 	}

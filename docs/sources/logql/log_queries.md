@@ -242,7 +242,7 @@ It will evaluate first `duration >= 20ms or method="GET"`. To evaluate first `me
 
 > Label filter expressions are the only expression allowed after the unwrap expression. This is mainly to allow filtering errors from the metric extraction.
 
-Label filter expressions have support matching IP addresses. See [Matching IP addresses](ip/) for details.
+Label filter expressions have support matching IP addresses. See [Matching IP addresses](../ip/) for details.
 
 ### Parser expression
 

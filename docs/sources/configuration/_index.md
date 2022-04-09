@@ -166,7 +166,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [common: <common>]
 
 # Configuration for usage report
-[usage_report: <usage_report>]
+[analytics: <analytics>]
 ```
 
 ## server
@@ -295,6 +295,10 @@ The `querier` block configures the Loki Querier.
 # useful for running a standalone querier pool opearting only against stored data.
 # CLI flag: -querier.query-store-only
 [query_store_only: <boolean> | default = false]
+
+# Allow queries for multiple tenants.
+# CLI flag: -querier.multi-tenant-queries-enabled
+[multi_tenant_queries_enabled: <boolean> | default = false]
 
 # Configuration options for the LogQL engine.
 engine:
@@ -426,6 +430,10 @@ The `ruler` block configures the Loki ruler.
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
 [external_url: <url> | default = ]
+
+# Labels to add to all alerts
+external_labels:
+  [<labelname>: <labelvalue> ...]
 
 ruler_client:
   # Path to the client certificate file, which will be used for authenticating
@@ -704,7 +712,7 @@ ring:
 
   # Name of network interface to read addresses from.
   # CLI flag: -<prefix>.instance-interface-names
-  [instance_interface_names: <list of string> | default = [eth0 en0]]
+  [instance_interface_names: <list of string> | default = [<private network interfaces>]]
 
   # The number of tokens the lifecycler will generate and put into the ring if
   # it joined without transferring tokens from another lifecycler.
@@ -734,6 +742,10 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # The Microsoft Azure account key to use.
 # CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
+
+# Chunk delimiter to build the blobID
+# CLI flag: -<prefix>.azure.chunk-delimiter
+[chunk_delimiter: <string> | default = "-"]
 
 # Preallocated buffer size for downloads.
 # CLI flag: -<prefix>.azure.download-buffer-size
@@ -971,7 +983,7 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.
 # CLI flag: -querier.worker-match-max-concurrent
-[match_max_concurrent: <boolean> | default = false]
+[match_max_concurrent: <boolean> | default = true]
 
 # How often to query the frontend_address DNS to resolve frontend addresses.
 # Also used to determine how often to poll the scheduler-ring for addresses if configured.
@@ -1006,10 +1018,11 @@ pool_config:
   # How quickly a dead client will be removed after it has been detected
   # to disappear. Set this to a value to allow time for a secondary
   # health check to recover the missing client.
-  [remotetimeout: <duration>]
+  # CLI flag: -ingester.client.healthcheck-timeout
+  [remote_timeout: <duration> | default = 1s]
 
 # The remote request timeout on the client side.
-# CLI flag: -ingester.client.healthcheck-timeout
+# CLI flag: -ingester.client.timeout
 [remote_timeout: <duration> | default = 5s]
 
 # Configures how the gRPC connection to ingesters work as a client
@@ -1079,7 +1092,7 @@ lifecycler:
   # CLI flag: -ingester.lifecycler.interface
   interface_names:
 
-    - [<string> ... | default = ["eth0", "en0"]]
+    - [<string> ... | default = [<private network interfaces>]]
 
   # Duration to sleep before exiting to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
@@ -1100,7 +1113,7 @@ lifecycler:
 
 # The timeout before a flush is cancelled
 # CLI flag: -ingester.flush-op-timeout
-[flush_op_timeout: <duration> | default = 10s]
+[flush_op_timeout: <duration> | default = 10m]
 
 # How long chunks should be retained in-memory after they've been flushed.
 # CLI flag: -ingester.chunks-retain-period
@@ -2483,7 +2496,7 @@ This way, one doesn't have to replicate configuration in multiple places.
 # If "instance_interface_names" under the common ring section is configured,
 # this common "instance_interface_names" is only applied to the frontend, but not for
 # ring related components (ex: distributor, ruler, etc).
-[instance_interface_names: <list of string>]
+[instance_interface_names: <list of string> | default = [<private network interfaces>]]
 
 # A common address used by Loki components to advertise their address.
 # If a more specific "instance_addr" is set, this is ignored.
@@ -2499,14 +2512,23 @@ This way, one doesn't have to replicate configuration in multiple places.
 [ring: <ring>]
 ```
 
-## usage_report
+## analytics
 
-This block allow to configure usage report of Loki to grafana.com
+The `analytics` block configures the reporting of Loki analytics to grafana.com
 
 ```yaml
-# Whether or not usage report should be disabled.
-# CLI flag: -usage-report.disabled
-[disabled: <boolean>: default = false]
+# By default, Loki will send anonymous, but uniquely-identifiable usage and configuration
+# analytics to Grafana Labs. These statistics are sent to https://stats.grafana.org/
+#
+# Statistics help us better understand how Loki is used, and they show us performance
+# levels for most users. This helps us prioritize features and documentation.
+# For more information on what's sent, look at
+# https://github.com/grafana/loki/blob/main/pkg/usagestats/stats.go
+# Refer to the buildReport method to see what goes into a report.
+#
+# When true, enables usage reporting.
+# CLI flag: -reporting.enabled
+[reporting_enabled: <boolean>: default = true]
 ```
 
 ### storage
@@ -2609,7 +2631,7 @@ kvstore:
 
 # Name of network interface to read addresses from.
 # CLI flag: -<prefix>.instance-interface-names
-[instance_interface_names: <list of string> | default = [eth0 en0]]
+[instance_interface_names: <list of string> | default = [<private network interfaces>]]
 
 # IP address to advertise in the ring.
 # CLI flag: -<prefix>.instance-addr

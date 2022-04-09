@@ -8,6 +8,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 )
@@ -284,6 +285,10 @@ func ParseShard(input string) (parsed ShardAnnotation, err error) {
 type ShardAnnotation struct {
 	Shard int
 	Of    int
+}
+
+func (shard ShardAnnotation) Match(fp model.Fingerprint) bool {
+	return uint64(fp)%uint64(shard.Of) == uint64(shard.Shard)
 }
 
 // String encodes a shardAnnotation into a label value

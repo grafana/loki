@@ -19,6 +19,9 @@ The Terraform deployment also takes in an array of log group and bucket names, a
 
 There's also a flag to keep the log stream label when propagating the logs from Cloudwatch, which defaults to false. This can be helpful when the cardinality is too large, such as the case of a log stream per lambda invocation.
 
+Additionally, an environment variable can be configured to add extra lables to the logs streamed by lambda-protmail.
+These extra labels will take the form `__extra_<name>=<value>`
+
 In an effort to make deployment of lambda-promtail as simple as possible, we've created a [public ECR repo](https://gallery.ecr.aws/grafana/lambda-promtail) to publish our builds of lambda-promtail. Users are still able to clone this repo, make their own modifications to the Go code, and upload their own image to their own ECR repo if they wish.
 
 ### Examples
@@ -36,6 +39,8 @@ provider "aws" {
 ```
 
 To keep the log group label add `-var "keep_stream=true"`.
+
+To add extra labels add `-var 'extra_labels="name1,value1,name2,value2"'`
 
 Note that the creation of subscription filter on Cloudwatch in the provided Terraform file only accepts an array of log group names, it does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so, or having lambda-promtail write to Promtail and using [pipeline stages](https://grafana.com/docs/loki/latest/clients/promtail/stages/drop/).
 
@@ -55,6 +60,8 @@ MainLambdaPromtailSubscriptionFilter:
 ```
 
 To keep the log group label add `ParameterKey=KeepStream,ParameterValue=true`.
+
+To add extra labels, include `ParameterKey=ExtraLabels,ParameterValue="name1,value1,name2,value2"`
 
 To modify an already created CloudFormation stack you need to use [update-stack](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/update-stack.html).
 
@@ -78,7 +85,7 @@ This workflow allows ingesting AWS loadbalancer logs stored on S3 to Loki.
 
 ## Propagated Labels
 
-Incoming logs can have three special labels assigned to them which can be used in [relabeling](../promtail/configuration/#relabel_config) or later stages in a Promtail [pipeline](../promtail/pipelines/):
+Incoming logs can have six special labels assigned to them which can be used in [relabeling](../promtail/configuration/#relabel_config) or later stages in a Promtail [pipeline](../promtail/pipelines/):
 
 - `__aws_log_type`: Where this log came from (Cloudwatch or S3).
 - `__aws_cloudwatch_log_group`: The associated Cloudwatch Log Group for this log.

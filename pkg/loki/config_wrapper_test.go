@@ -10,18 +10,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/netutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/storage/chunk/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/azure"
-	"github.com/grafana/loki/pkg/storage/chunk/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
@@ -72,8 +74,8 @@ func Test_ApplyDynamicConfig(t *testing.T) {
 		return config, defaults
 	}
 
-	//the unmarshaller overwrites default values with 0s when a completely empty
-	//config file is passed, so our "empty" config has some non-relevant config in it
+	// the unmarshaller overwrites default values with 0s when a completely empty
+	// config file is passed, so our "empty" config has some non-relevant config in it
 	const emptyConfigString = `---
 server:
   http_listen_port: 80`
@@ -190,8 +192,8 @@ memberlist:
 	})
 
 	t.Run("common object store config", func(t *testing.T) {
-		//config file structure
-		//common:
+		// config file structure
+		// common:
 		//  storage:
 		//    azure: azure.BlobStorageConfig
 		//    gcs: gcp.GCSConfig
@@ -277,13 +279,13 @@ memberlist:
 					"idle connection timeout should equal default value")
 			}
 
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
@@ -312,12 +314,12 @@ memberlist:
 				assert.Equal(t, true, actual.EnableOpenCensus, "should get default value for unspecified oc config")
 			}
 
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
@@ -362,13 +364,13 @@ memberlist:
 				assert.Equal(t, 10*time.Minute, actual.MaxRetryDelay)
 			}
 
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
@@ -427,13 +429,13 @@ memberlist:
 					"unspecified connection timeout should get default value")
 			}
 
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
@@ -454,13 +456,13 @@ memberlist:
 			assert.Equal(t, "/tmp/rules", config.Ruler.StoreConfig.Local.Directory)
 			assert.Equal(t, "/tmp/chunks", config.StorageConfig.FSConfig.Directory)
 
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
@@ -490,12 +492,12 @@ ruler:
 			assert.Equal(t, "abc123", config.Ruler.StoreConfig.S3.AccessKeyID)
 			assert.Equal(t, "def789", config.Ruler.StoreConfig.S3.SecretAccessKey)
 
-			//should be set by common config
+			// should be set by common config
 			assert.EqualValues(t, "foobar", config.StorageConfig.GCSConfig.BucketName)
 			assert.EqualValues(t, 27, config.StorageConfig.GCSConfig.ChunkBufferSize)
 			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
 
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 		})
 
@@ -520,12 +522,12 @@ storage_config:
 			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.S3Config.AccessKeyID)
 			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.S3Config.SecretAccessKey)
 
-			//should be set by common config
+			// should be set by common config
 			assert.EqualValues(t, "foobar", config.Ruler.StoreConfig.GCS.BucketName)
 			assert.EqualValues(t, 27, config.Ruler.StoreConfig.GCS.ChunkBufferSize)
 			assert.EqualValues(t, 5*time.Minute, config.Ruler.StoreConfig.GCS.RequestTimeout)
 
-			//should remain empty
+			// should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 		})
 
@@ -545,7 +547,7 @@ ruler:
 
 			assert.EqualValues(t, "rules", config.Ruler.StoreConfig.GCS.BucketName)
 
-			//from common config
+			// from common config
 			assert.EqualValues(t, 27, config.Ruler.StoreConfig.GCS.ChunkBufferSize)
 			assert.EqualValues(t, 5*time.Minute, config.Ruler.StoreConfig.GCS.RequestTimeout)
 		})
@@ -565,7 +567,7 @@ storage_config:
 
 			assert.EqualValues(t, "chunks", config.StorageConfig.GCSConfig.BucketName)
 
-			//from common config
+			// from common config
 			assert.EqualValues(t, 27, config.StorageConfig.GCSConfig.ChunkBufferSize)
 			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
 		})
@@ -582,14 +584,14 @@ storage_config:
       s3: s3://foo-bucket/example
       access_key_id: abc123
       secret_access_key: def789`,
-					expected: storage.StorageTypeS3,
+					expected: config.StorageTypeS3,
 				},
 				{
 					configString: `common:
   storage:
     gcs:
       bucket_name: foobar`,
-					expected: storage.StorageTypeGCS,
+					expected: config.StorageTypeGCS,
 				},
 				{
 					configString: `common:
@@ -597,7 +599,7 @@ storage_config:
     azure:
       account_name: 3rd_planet
       account_key: water`,
-					expected: storage.StorageTypeAzure,
+					expected: config.StorageTypeAzure,
 				},
 				{
 					configString: `common:
@@ -605,7 +607,7 @@ storage_config:
     swift:
       username: steve
       password: supersecret`,
-					expected: storage.StorageTypeSwift,
+					expected: config.StorageTypeSwift,
 				},
 				{
 					configString: `common:
@@ -613,7 +615,7 @@ storage_config:
     filesystem:
       chunks_directory: /tmp/chunks
       rules_directory: /tmp/rules`,
-					expected: storage.StorageTypeFileSystem,
+					expected: config.StorageTypeFileSystem,
 				},
 			} {
 				config, _ := testContext(tt.configString, nil)
@@ -649,9 +651,9 @@ schema_config:
       index:
         prefix: index_
         period: 24h`
-			config, _ := testContext(boltdbSchemaConfig, nil)
+			cfg, _ := testContext(boltdbSchemaConfig, nil)
 
-			assert.Equal(t, storage.StorageTypeS3, config.StorageConfig.BoltDBShipperConfig.SharedStoreType)
+			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
 		})
 
 		t.Run("default compactor.shared_store to the value of current_schema.object_store", func(t *testing.T) {
@@ -665,9 +667,9 @@ schema_config:
       index:
         prefix: index_
         period: 24h`
-			config, _ := testContext(boltdbSchemaConfig, nil)
+			cfg, _ := testContext(boltdbSchemaConfig, nil)
 
-			assert.Equal(t, storage.StorageTypeGCS, config.CompactorConfig.SharedStoreType)
+			assert.Equal(t, config.StorageTypeGCS, cfg.CompactorConfig.SharedStoreType)
 		})
 
 		t.Run("shared store types provided via config file take precedence", func(t *testing.T) {
@@ -688,10 +690,10 @@ storage_config:
 
 compactor:
   shared_store: s3`
-			config, _ := testContext(boltdbSchemaConfig, nil)
+			cfg, _ := testContext(boltdbSchemaConfig, nil)
 
-			assert.Equal(t, storage.StorageTypeS3, config.StorageConfig.BoltDBShipperConfig.SharedStoreType)
-			assert.Equal(t, storage.StorageTypeS3, config.CompactorConfig.SharedStoreType)
+			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
+			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
 		})
 
 		t.Run("shared store types provided via command line take precedence", func(t *testing.T) {
@@ -705,10 +707,10 @@ schema_config:
       index:
         prefix: index_
         period: 24h`
-			config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
+			cfg, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
 
-			assert.Equal(t, storage.StorageTypeS3, config.StorageConfig.BoltDBShipperConfig.SharedStoreType)
-			assert.Equal(t, storage.StorageTypeS3, config.CompactorConfig.SharedStoreType)
+			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
+			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
 		})
 
 		t.Run("if path prefix provided in common config, default active_index_directory and cache_location", func(t *testing.T) {})
@@ -776,7 +778,7 @@ func TestDefaultFIFOCacheBehavior(t *testing.T) {
 		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 chunk_store_config:
-  chunk_cache_config: 
+  chunk_cache_config:
     redis:
       endpoint: endpoint.redis.org`
 
@@ -788,7 +790,7 @@ chunk_store_config:
 		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
 chunk_store_config:
-  chunk_cache_config: 
+  chunk_cache_config:
     memcached_client:
       host: host.memcached.org`
 
@@ -870,7 +872,7 @@ storage_config:
 		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 query_range:
-  results_cache: 
+  results_cache:
     cache:
       redis:
         endpoint: endpoint.redis.org`
@@ -883,7 +885,7 @@ query_range:
 		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
 query_range:
-  results_cache: 
+  results_cache:
     cache:
       memcached_client:
         host: memcached.host.org`
@@ -1101,7 +1103,9 @@ query_scheduler:
 		assert.Equal(t, config.Distributor.DistributorRing.InstanceInterfaceNames, []string{"distributoriface"})
 		assert.Equal(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, []string{"scheduleriface"})
 		assert.Equal(t, config.Ruler.Ring.InstanceInterfaceNames, []string{"ruleriface"})
-		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, []string{"eth0", "en0", defaultIface})
+		expectedInterfaces := netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
+		expectedInterfaces = append(expectedInterfaces, defaultIface)
+		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, expectedInterfaces)
 	})
 }
 
@@ -1113,9 +1117,11 @@ func TestLoopbackAppendingToFrontendV2(t *testing.T) {
 	t.Run("when using common or ingester ring configs, loopback should be added to interface names", func(t *testing.T) {
 		config, _, err := configWrapperFromYAML(t, minimalConfig, []string{})
 		assert.NoError(t, err)
-		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Frontend.FrontendV2.InfNames)
-		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Ingester.LifecyclerConfig.InfNames)
-		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Common.Ring.InstanceInterfaceNames)
+		expectedInterfaces := netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
+		expectedInterfaces = append(expectedInterfaces, defaultIface)
+		assert.Equal(t, expectedInterfaces, config.Frontend.FrontendV2.InfNames)
+		assert.Equal(t, expectedInterfaces, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, expectedInterfaces, config.Common.Ring.InstanceInterfaceNames)
 	})
 
 	t.Run("loopback shouldn't be in FrontendV2 interface names if set by user", func(t *testing.T) {
@@ -1328,7 +1334,6 @@ storage_config:
 		assert.NoError(t, err)
 		assert.Equal(t, 11*time.Minute, config.Ingester.RetainPeriod)
 	})
-
 }
 
 func Test_replicationFactor(t *testing.T) {

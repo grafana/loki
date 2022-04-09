@@ -29,7 +29,7 @@ Loki Operator is the Kubernetes Operator for [Loki](https://grafana.com/docs/lok
   ```console
   kubectl get pods
   ```
-  
+
   You should see `controller-manager-xxxx` and `minio-xxxx` pods running.
 
 * Now create a LokiStack instance to get the various components of Loki up and running:
@@ -85,6 +85,12 @@ It will undeploy controller from the configured Kubernetes cluster in [~/.kube/c
 
 ### Installation of Loki Operator
 
+* Create the `openshift-operators-redhat` namespace in the cluster:
+
+  ```console
+  kubectl create ns openshift-operators-redhat
+  ```
+
 * Build and push the container image [2] and then deploy the operator with:
 
   ```console
@@ -93,27 +99,31 @@ It will undeploy controller from the configured Kubernetes cluster in [~/.kube/c
 
   where `$YOUR_QUAY_ORG` is your personal [quay.io](http://quay.io/) account where you can push container images and `$VERSION` can be any random version number such as `v0.0.1`.
 
-  The above command will deploy the operator to your active Openshift cluster defined by your local [kubeconfig](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/). The operator will be running in the `openshift-logging` namespace.
+  The above command will deploy the operator to your active Openshift cluster defined by your local [kubeconfig](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/). The operator will be running in the `openshift-operators-redhat` namespace.
 
 * You can confirm that the operator is up and running using:
 
   ```console
-  kubectl -n openshift-logging get pods
+  kubectl -n openshift-operators-redhat get pods
+  ```
+
+* Next step is to create the `openshift-logging` namespace in the cluster:
+
+  ```console
+  kubectl create ns openshift-logging
   ```
 
 * Now you need to create a storage secret for the operator. This can be done using:
 
   ```console
-  make olm-deploy-example-storage-secret
+  ./hack/deploy-aws-storage-secret.sh <BUCKET_NAME>
   ```
 
-  OR
+  This secret will be available in `openshift-logging` namespace. You can check the `hack/deploy-aws-storage-secret.sh` file to check the content of the secret. By default, the script will pull credential information using the `aws` cli. However, these values can be overwritten. For example:
 
   ```console
-  ./hack/deploy-example-secret.sh openshift-logging
+  REGION=us-west-1 ./hack/deploy-aws-storage-secret.sh <BUCKET_NAME>
   ```
-
-  This secret will be available in openshift-logging namespace. You can check the `hack/deploy-example-secret.sh` file to check the content of the secret.
 
 * Now you need to create a gateway secret [3] for the operator. This can be done using:
 
@@ -159,7 +169,7 @@ It will undeploy controller from the configured Kubernetes cluster in [~/.kube/c
   If you don't want `lokistack-gateway` component [1] then you can skip it by removing the `--with-lokistack-gateway` args from the `loki-operator-controller-manager` deployment:
 
   ```console
-  kubectl -n openshift-logging edit deployment/loki-operator-controller-manager
+  kubectl -n openshift-operators-redhat edit deployment/loki-operator-controller-manager
   ```
 
   Delete the flag `--with-lokistack-gateway` from the `args` section and save the file. This will update the deployment and now you can create LokiStack instance using:
@@ -184,13 +194,29 @@ It will cleanup deployments of the operator bundle, and the operator via OLM on 
 
 [1] `lokistack-gateway` is an optional component deployed as part of Loki Operator. It provides secure access to Loki's distributor (i.e. for pushing logs) and query-frontend (i.e. for querying logs) via consulting an OAuth/OIDC endpoint for the request subject.
 
-[2] If you get multiple images as options, and you are required to select one of them then select `docker.io/library/golang:1.16`
+[2] If you get multiple images as options, and you are required to select one of them then select `docker.io/library/golang:1.17`
 
 [3] The OIDC configuration expects `clientID`, `clientSecret` and `issuerCAPath` which should be provided via a Kubernetes secret that the LokiStack admin provides upfront.
 
 Each tenant Secret is required to match:
 * `metadata.name` with `TenantsSecretsSpec.Name`.
 * `metadata.namespace` with `LokiStack.metadata.namespace`.
+
+## Development Add-Ons
+
+To help with testing and development, a [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) and [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) deployment are available. The example file has been configured to work with the [lokistack-gateway](./forwarding_logs_to_gateway.md). In order to work without this component, change the URLs to use the `distributor` and `query-frontend` service respectively.
+
+In order to deploy these resources, follow the above steps to deploy the operator and instance. Then, do the following command:
+
+```console
+kubectl apply -f ./hack/addons_dev.yaml
+```
+
+### Notes
+
+[1] When using an OpenShift cluster, the `addons_ocp.yaml` should be used. In a native K8s cluster the `addons_dev.yaml` should be used. The OpenShift environment uses `SecurityContextConstraints` in order to limit or enable pod capabilities.
+
+[2] When deploying on a native K8s cluster, ensure that the namespaces of the `ServiceAccount` in the `ClusterRoleBinding` objects are changed accordingly.
 
 ## Basic Troubleshooting on Hacking on Loki Operator
 

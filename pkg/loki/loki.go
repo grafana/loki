@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
@@ -41,8 +40,8 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -67,10 +66,10 @@ type Config struct {
 	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
 	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
 	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig storage.ChunkStoreConfig `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig     storage.SchemaConfig     `yaml:"schema_config,omitempty"`
+	ChunkStoreConfig config.ChunkStoreConfig  `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig     config.SchemaConfig      `yaml:"schema_config,omitempty"`
 	LimitsConfig     validation.Limits        `yaml:"limits_config,omitempty"`
-	TableManager     chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
+	TableManager     index.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Worker           worker.Config            `yaml:"frontend_worker,omitempty"`
 	Frontend         lokifrontend.Config      `yaml:"frontend,omitempty"`
 	Ruler            ruler.Config             `yaml:"ruler,omitempty"`
@@ -80,7 +79,7 @@ type Config struct {
 	Tracing          tracing.Config           `yaml:"tracing"`
 	CompactorConfig  compactor.Config         `yaml:"compactor,omitempty"`
 	QueryScheduler   scheduler.Config         `yaml:"query_scheduler"`
-	UsageReport      usagestats.Config        `yaml:"usage_report"`
+	UsageReport      usagestats.Config        `yaml:"analytics"`
 }
 
 // RegisterFlags registers flag.
@@ -177,7 +176,7 @@ func (c *Config) Validate() error {
 		return errors.Wrap(err, "invalid limits config")
 	}
 	if err := c.Worker.Validate(util_log.Logger); err != nil {
-		return errors.Wrap(err, "invalid storage config")
+		return errors.Wrap(err, "invalid frontend-worker config")
 	}
 	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid boltdb-shipper config")
@@ -234,10 +233,11 @@ type Loki struct {
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
 	Ingester                 ingester.Interface
-	Querier                  *querier.Querier
+	Querier                  querier.Querier
+	querierAPI               *querier.QuerierAPI
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
-	tableManager             *chunk.TableManager
+	tableManager             *index.TableManager
 	frontend                 Frontend
 	ruler                    *base_ruler.Ruler
 	RulerStorage             rulestore.RuleStore
@@ -250,7 +250,7 @@ type Loki struct {
 	queryScheduler           *scheduler.Scheduler
 	usageReport              *usagestats.Reporter
 
-	clientMetrics chunk_storage.ClientMetrics
+	clientMetrics storage.ClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
 }
@@ -259,15 +259,14 @@ type Loki struct {
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
 		Cfg:           cfg,
-		clientMetrics: chunk_storage.NewClientMetrics(),
+		clientMetrics: storage.NewClientMetrics(),
 	}
-
+	usagestats.Edition("oss")
 	loki.setupAuthMiddleware()
 	loki.setupGRPCRecoveryMiddleware()
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
-	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, loki.clientMetrics, prometheus.DefaultRegisterer)
 
 	return loki, nil
 }
@@ -342,7 +341,6 @@ func (t *Loki) Run(opts RunOpts) error {
 
 	t.serviceMap = serviceMap
 	t.Server.HTTP.Path("/services").Methods("GET").Handler(http.HandlerFunc(t.servicesHandler))
-	t.Server.HTTP.NotFoundHandler = http.HandlerFunc(serverutil.NotFoundHandler)
 
 	// get all services, create service manager and tell it to start
 	var servs []services.Service
@@ -508,7 +506,7 @@ func (t *Loki) setupModuleManager() error {
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
 		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
-		IndexGateway:             {Server, UsageReport},
+		IndexGateway:             {Server, Overrides, UsageReport},
 		IngesterQuerier:          {Ring},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},

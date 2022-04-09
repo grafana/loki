@@ -5,21 +5,26 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 	serverutil "github.com/grafana/loki/pkg/util/server"
+	util_validation "github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -31,8 +36,27 @@ type QueryResponse struct {
 	Result     parser.Value     `json:"result"`
 }
 
+//nolint // QurierAPI defines HTTP handler functions for the querier.
+type QuerierAPI struct {
+	querier Querier
+	cfg     Config
+	limits  *validation.Overrides
+	engine  *logql.Engine
+}
+
+// NewQuerierAPI returns an instance of the QuerierAPI.
+func NewQuerierAPI(cfg Config, querier Querier, limits *validation.Overrides, logger log.Logger) *QuerierAPI {
+	engine := logql.NewEngine(cfg.Engine, querier, limits, logger)
+	return &QuerierAPI{
+		cfg:     cfg,
+		limits:  limits,
+		querier: querier,
+		engine:  engine,
+	}
+}
+
 // RangeQueryHandler is a http.HandlerFunc for range queries.
-func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
@@ -71,7 +95,7 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
-func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
@@ -111,7 +135,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // LogQueryHandler is a http.HandlerFunc for log only queries.
-func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
@@ -127,14 +151,14 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expr, err := logql.ParseExpr(request.Query)
+	expr, err := syntax.ParseExpr(request.Query)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
 
 	// short circuit metric queries
-	if _, ok := expr.(logql.SampleExpr); ok {
+	if _, ok := expr.(syntax.SampleExpr); ok {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logqlmodel.ValueTypeStreams), w)
 		return
 	}
@@ -169,14 +193,14 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // LabelHandler is a http.HandlerFunc for handling label queries.
-func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := loghttp.ParseLabelQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
-	resp, err := q.Label(r.Context(), req)
+	resp, err := q.querier.Label(r.Context(), req)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
@@ -194,7 +218,7 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // TailHandler is a http.HandlerFunc for handling tail queries.
-func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
+func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
@@ -212,18 +236,19 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tenantID, err := tenant.TenantID(r.Context())
+	if err != nil {
+		level.Warn(logger).Log("msg", "error getting tenant id", "err", err)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		level.Error(logger).Log("msg", "Error in upgrading websocket", "err", err)
 		return
 	}
 
-	tenantID, err := tenant.TenantID(r.Context())
-	if err != nil {
-		level.Error(logger).Log("msg", "error getting tenant id", "err", err)
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
 	level.Info(logger).Log("msg", "starting to tail logs", "tenant", tenantID, "selectors", req.Query)
 
 	defer func() {
@@ -236,7 +261,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	tailer, err := q.Tail(r.Context(), req)
+	tailer, err := q.querier.Tail(r.Context(), req)
 	if err != nil {
 		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
 			level.Error(logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
@@ -318,14 +343,14 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
-func (q *Querier) SeriesHandler(w http.ResponseWriter, r *http.Request) {
-	req, err := logql.ParseAndValidateSeriesQuery(r)
+func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
+	req, err := loghttp.ParseAndValidateSeriesQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
-	resp, err := q.Series(r.Context(), req)
+	resp, err := q.querier.Series(r.Context(), req)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
@@ -344,11 +369,11 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	query := httpRequest.Form.Get("query")
 	regexp := httpRequest.Form.Get("regexp")
 	if regexp != "" {
-		expr, err := logql.ParseLogSelector(query, true)
+		expr, err := syntax.ParseLogSelector(query, true)
 		if err != nil {
 			return "", err
 		}
-		newExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
+		newExpr, err := syntax.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
 		if err != nil {
 			return "", err
 		}
@@ -357,23 +382,23 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	return query, nil
 }
 
-func (q *Querier) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
-	userID, err := tenant.TenantID(ctx)
+func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	expr, err := logql.ParseExpr(query)
+	expr, err := syntax.ParseExpr(query)
 	if err != nil {
 		return err
 	}
 
 	// entry limit does not apply to metric queries.
-	if _, ok := expr.(logql.SampleExpr); ok {
+	if _, ok := expr.(syntax.SampleExpr); ok {
 		return nil
 	}
 
-	maxEntriesLimit := q.limits.MaxEntriesLimitPerQuery(userID)
+	maxEntriesLimit := util_validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.limits.MaxEntriesLimitPerQuery)
 	if int(limit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", limit, maxEntriesLimit)

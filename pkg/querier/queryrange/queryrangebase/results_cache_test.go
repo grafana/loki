@@ -430,7 +430,8 @@ func TestPartition(t *testing.T) {
 				&PrometheusRequest{
 					Start: 0,
 					End:   100,
-				}},
+				},
+			},
 		},
 		{
 			name: "Test a partial hit.",
@@ -751,9 +752,11 @@ func TestResultsCache(t *testing.T) {
 			Cache: cache.NewMockCache(),
 		},
 	}
-	rcm, _, err := NewResultsCacheMiddleware(
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger())
+	require.NoError(t, err)
+	rcm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
-		cfg,
+		c,
 		constSplitter(day),
 		mockLimits{},
 		PrometheusCodec,
@@ -791,9 +794,11 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, _, err := NewResultsCacheMiddleware(
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger())
+	require.NoError(t, err)
+	rcm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
-		cfg,
+		c,
 		constSplitter(day),
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
@@ -852,11 +857,12 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			var cfg ResultsCacheConfig
 			flagext.DefaultValues(&cfg)
 			cfg.CacheConfig.Cache = cache.NewMockCache()
-
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger())
+			require.NoError(t, err)
 			fakeLimits := tc.fakeLimits
-			rcm, _, err := NewResultsCacheMiddleware(
+			rcm, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
-				cfg,
+				c,
 				constSplitter(day),
 				fakeLimits,
 				PrometheusCodec,
@@ -891,9 +897,11 @@ func Test_resultsCache_MissingData(t *testing.T) {
 			Cache: cache.NewMockCache(),
 		},
 	}
-	rm, _, err := NewResultsCacheMiddleware(
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger())
+	require.NoError(t, err)
+	rm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
-		cfg,
+		c,
 		constSplitter(day),
 		mockLimits{},
 		PrometheusCodec,
@@ -930,6 +938,10 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	extents, hit = rc.get(ctx, "mixed")
 	require.Equal(t, len(extents), 0)
 	require.False(t, hit)
+}
+
+func toMs(t time.Duration) int64 {
+	return t.Nanoseconds() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
 func TestConstSplitter_generateCacheKey(t *testing.T) {
@@ -996,9 +1008,11 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 			var cfg ResultsCacheConfig
 			flagext.DefaultValues(&cfg)
 			cfg.CacheConfig.Cache = cache.NewMockCache()
-			rcm, _, err := NewResultsCacheMiddleware(
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger())
+			require.NoError(t, err)
+			rcm, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),
-				cfg,
+				c,
 				constSplitter(day),
 				mockLimits{maxCacheFreshness: 10 * time.Minute},
 				PrometheusCodec,
@@ -1024,8 +1038,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 	}
 }
 
-type mockCacheGenNumberLoader struct {
-}
+type mockCacheGenNumberLoader struct{}
 
 func newMockCacheGenNumberLoader() CacheGenNumberLoader {
 	return mockCacheGenNumberLoader{}
