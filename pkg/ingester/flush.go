@@ -256,7 +256,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	return nil
 }
 
-func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *sync.RWMutex) {
+func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *sync.RWMutex, bool) {
 	var stream *stream
 	var ok bool
 	stream, ok = instance.streams.LoadByFP(fp)
