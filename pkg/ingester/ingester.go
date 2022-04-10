@@ -71,6 +71,7 @@ type Config struct {
 	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
 	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
 	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
+	MaxChunksPerFlushOp int               `yaml:"max_chunks_per_flush_op"`
 	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
 	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
 	BlockSize           int               `yaml:"chunk_block_size"`
@@ -112,6 +113,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "")
+	f.IntVar(&cfg.MaxChunksPerFlushOp, "ingester.max-chunks-per-flush-op", 0, "")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
@@ -144,6 +146,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.IndexShards <= 0 {
 		return fmt.Errorf("invalid ingester index shard factor: %d", cfg.IndexShards)
+	}
+
+	if cfg.MaxChunksPerFlushOp < 0 {
+		return errors.New("max_chunks_per_flush_op must be >=0")
 	}
 
 	return nil

@@ -238,11 +238,10 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 		return nil
 	}
 
-	chunks, labels, chunkMtx := i.collectChunksToFlush(instance, fp, immediate)
+	chunks, labels, chunkMtx, truncated := i.collectChunksToFlush(instance, fp, immediate)
 	if len(chunks) < 1 {
 		return nil
 	}
-
 	ctx := user.InjectOrgID(context.Background(), userID)
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel()
@@ -251,6 +250,9 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 		return err
 	}
 
+	if truncated {
+		return fmt.Errorf("truncated flush for user %s, fp: %s", userID, fp)
+	}
 	return nil
 }
 
@@ -260,13 +262,14 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	stream, ok = instance.streams.LoadByFP(fp)
 
 	if !ok {
-		return nil, nil, nil
+		return nil, nil, nil, false
 	}
 
 	stream.chunkMtx.Lock()
 	defer stream.chunkMtx.Unlock()
 
 	var result []*chunkDesc
+	truncated := false
 	for j := range stream.chunks {
 		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j])
 		if immediate || shouldFlush {
@@ -283,8 +286,13 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 				chunksFlushedPerReason.WithLabelValues(reason).Add(1)
 			}
 		}
+
+		if i.cfg.MaxChunksPerFlushOp != 0 && len(result) >= i.cfg.MaxChunksPerFlushOp {
+			truncated = true
+			break
+		}
 	}
-	return result, stream.labels, &stream.chunkMtx
+	return result, stream.labels, &stream.chunkMtx, truncated
 }
 
 func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
