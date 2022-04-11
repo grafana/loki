@@ -21,7 +21,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
@@ -185,7 +184,7 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, ca
 //
 // It is used by both, simple and ring mode.
 func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*indexgatewaypb.IndexQuery,
-	queryKeyQueryMap map[string]chunk.IndexQuery, callback chunk.QueryPagesCallback, client indexgatewaypb.IndexGatewayClient) error {
+	queryKeyQueryMap map[string]index.Query, callback index.QueryPagesCallback, client indexgatewaypb.IndexGatewayClient) error {
 	streamer, err := client.QueryIndex(ctx, &indexgatewaypb.QueryIndexRequest{Queries: gatewayQueries})
 	if err != nil {
 		return errors.Wrap(err, "query index")
@@ -220,7 +219,7 @@ func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*i
 // 2. Fetching different Index Gateway instances assigned to the extracted tenant.
 // 3. Iterating in parallel over all fetched Index Gateway instances, getting their gRPC connections
 //  from the pool and invoking clientDoQueries using their client.
-func (s *GatewayClient) ringModeDoQueries(ctx context.Context, gatewayQueries []*indexgatewaypb.IndexQuery, queryKeyQueryMap map[string]chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (s *GatewayClient) ringModeDoQueries(ctx context.Context, gatewayQueries []*indexgatewaypb.IndexQuery, queryKeyQueryMap map[string]index.Query, callback index.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return errors.Wrap(err, "index gateway client get tenant ID")
@@ -259,7 +258,7 @@ func (s *GatewayClient) ringModeDoQueries(ctx context.Context, gatewayQueries []
 	return fmt.Errorf("index gateway replicationSet clientDoQueries")
 }
 
-func (s *GatewayClient) NewWriteBatch() chunk.WriteBatch {
+func (s *GatewayClient) NewWriteBatch() index.WriteBatch {
 	panic("unsupported")
 }
 
