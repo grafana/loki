@@ -89,7 +89,6 @@ func newPipelineFilter(start, end int64, lbls labels.Labels, filter string) Pipe
 	var matchers []*labels.Matcher
 	for _, l := range lbls {
 		m := labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value)
-		stages = append(stages, NewStringLabelFilter(m))
 		matchers = append(matchers, m)
 	}
 	stages = append(stages, mustFilter(NewFilter(filter, labels.MatchEqual)).ToStage())
