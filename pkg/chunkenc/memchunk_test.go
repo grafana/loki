@@ -1232,7 +1232,7 @@ func buildTestMemChunk(t *testing.T, from, through time.Time) *MemChunk {
 }
 
 func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
-	chkFrom := time.Unix(1, 0) // headBlock.Append treats 0 as not set so we have use something later
+	chkFrom := time.Unix(1, 0) // headBlock.Append treats Unix time 0 as not set so we have to use a later time
 	chkFromPlus5 := chkFrom.Add(5 * time.Second)
 	chkThrough := chkFrom.Add(10 * time.Second)
 	chkThroughPlus1 := chkThrough.Add(1 * time.Second)
