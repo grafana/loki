@@ -4,6 +4,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
 
@@ -29,8 +30,15 @@ func (d *DeleteRequest) SetQuery(logQL string) error {
 	return nil
 }
 
+// FilterFunction returns a dummy filter that doesn't remove any lines
+func (d *DeleteRequest) FilterFunction() encoding.FilterFunc {
+	return func(s string) bool {
+		return false
+	}
+}
+
 // IsDeleted checks if the given ChunkEntry will be deleted by this DeleteRequest.
-// It also returns the intervals of the ChunkEntry that will be deleted.
+// It also returns the intervals of the ChunkEntry that will remain.
 func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention.IntervalFilter) {
 	if d.UserID != unsafeGetString(entry.UserID) {
 		return false, nil
@@ -55,8 +63,7 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 	}
 
 	intervals := make([]retention.IntervalFilter, 0, 2)
-
-	// Add filter
+	ff := d.FilterFunction()
 
 	if d.StartTime > entry.From {
 		intervals = append(intervals, retention.IntervalFilter{
@@ -64,6 +71,7 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 				Start: entry.From,
 				End:   d.StartTime - 1,
 			},
+			Filter: ff,
 		})
 	}
 
@@ -73,10 +81,9 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 				Start: d.EndTime + 1,
 				End:   entry.Through,
 			},
+			Filter: ff,
 		})
 	}
-
-	// TODO: Add filter
 
 	return true, intervals
 }

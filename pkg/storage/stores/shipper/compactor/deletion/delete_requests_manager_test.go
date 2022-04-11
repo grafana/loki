@@ -258,7 +258,12 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 
 			isExpired, nonDeletedIntervals := mgr.Expired(chunkEntry, model.Now())
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)
-			require.Equal(t, tc.expectedResp.nonDeletedIntervals, nonDeletedIntervals)
+			// require.Equal(t, tc.expectedResp.nonDeletedIntervals, nonDeletedIntervals)
+			for idx, interval := range nonDeletedIntervals {
+				require.Equal(t, tc.expectedResp.nonDeletedIntervals[idx].Interval.Start, interval.Interval.Start)
+				require.Equal(t, tc.expectedResp.nonDeletedIntervals[idx].Interval.End, interval.Interval.End)
+				require.NotNil(t, interval.Filter)
+			}
 		})
 	}
 }

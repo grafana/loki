@@ -133,20 +133,6 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		return false, nil
 	}
 
-	/*
-		var filter encoding.FilterFunc
-			if d.deletionMode == FilterAndDelete {
-				// TODO Create a FilterFunc
-				for _, deleteRequest := range d.deleteRequestsToProcess {
-					deleteRequest.matchers
-				}
-
-				filter = func(string) bool {
-					return true
-				}
-			}
-	*/
-
 	d.chunkIntervalsToRetain = d.chunkIntervalsToRetain[:0]
 	d.chunkIntervalsToRetain = append(d.chunkIntervalsToRetain, retention.IntervalFilter{
 		Interval: model.Interval{
@@ -163,6 +149,8 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 			entry.Through = interval.Interval.End
 			isDeleted, newIntervalsToRetain := deleteRequest.IsDeleted(entry)
 			if !isDeleted {
+				ff := deleteRequest.FilterFunction()
+				interval.Filter = ff
 				rebuiltIntervals = append(rebuiltIntervals, interval)
 			} else {
 				rebuiltIntervals = append(rebuiltIntervals, newIntervalsToRetain...)
