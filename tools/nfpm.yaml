@@ -1,10 +1,11 @@
+---
 name: "logcli"
 arch: "amd64"
 platform: "linux"
 version: ${CIRCLE_TAG}
 section: "default"
 provides:
-- logcli 
+  - logcli
 maintainer: "Grafana Labs <support@grafana.com>"
 description: |
   LogCLI is the command-line interface to Loki.
@@ -13,5 +14,5 @@ vendor: "Grafana Labs Inc"
 homepage: "https://grafana.com/loki"
 license: "AGPL-3.0"
 contents:
-- src: ./dist/logcli-linux-amd64
-  dst: /usr/local/bin/logcli
+  - src: ./dist/tmp/logcli-linux-amd64
+    dst: /usr/local/bin/logcli

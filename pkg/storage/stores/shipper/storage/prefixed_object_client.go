@@ -5,15 +5,15 @@ import (
 	"io"
 	"strings"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 )
 
 type prefixedObjectClient struct {
-	downstreamClient chunk.ObjectClient
+	downstreamClient client.ObjectClient
 	prefix           string
 }
 
-func newPrefixedObjectClient(downstreamClient chunk.ObjectClient, prefix string) chunk.ObjectClient {
+func newPrefixedObjectClient(downstreamClient client.ObjectClient, prefix string) client.ObjectClient {
 	return prefixedObjectClient{downstreamClient: downstreamClient, prefix: prefix}
 }
 
@@ -25,7 +25,7 @@ func (p prefixedObjectClient) GetObject(ctx context.Context, objectKey string) (
 	return p.downstreamClient.GetObject(ctx, p.prefix+objectKey)
 }
 
-func (p prefixedObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+func (p prefixedObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	objects, commonPrefixes, err := p.downstreamClient.List(ctx, p.prefix+prefix, delimiter)
 	if err != nil {
 		return nil, nil, err
@@ -36,7 +36,7 @@ func (p prefixedObjectClient) List(ctx context.Context, prefix, delimiter string
 	}
 
 	for i := range commonPrefixes {
-		commonPrefixes[i] = chunk.StorageCommonPrefix(strings.TrimPrefix(string(commonPrefixes[i]), p.prefix))
+		commonPrefixes[i] = client.StorageCommonPrefix(strings.TrimPrefix(string(commonPrefixes[i]), p.prefix))
 	}
 
 	return objects, commonPrefixes, nil

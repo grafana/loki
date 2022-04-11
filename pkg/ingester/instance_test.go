@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/storage/chunk"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -20,7 +21,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -537,7 +537,7 @@ func Test_Iterator(t *testing.T) {
 
 type testFilter struct{}
 
-func (t *testFilter) ForRequest(ctx context.Context) storage.ChunkFilterer {
+func (t *testFilter) ForRequest(ctx context.Context) chunk.Filterer {
 	return t
 }
 

@@ -11,9 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 func Test_ChunkIterator(t *testing.T) {
@@ -50,8 +51,8 @@ func Test_ChunkIterator(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.Equal(t, []ChunkEntry{
-				entryFromChunk(store.schemaCfg.SchemaConfig, c1),
-				entryFromChunk(store.schemaCfg.SchemaConfig, c2),
+				entryFromChunk(store.schemaCfg, c1),
+				entryFromChunk(store.schemaCfg, c2),
 			}, actual)
 
 			// second pass we delete c2
@@ -66,7 +67,7 @@ func Test_ChunkIterator(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.Equal(t, []ChunkEntry{
-				entryFromChunk(store.schemaCfg.SchemaConfig, c1),
+				entryFromChunk(store.schemaCfg, c1),
 			}, actual)
 		})
 	}
@@ -78,7 +79,7 @@ func Test_SeriesCleaner(t *testing.T) {
 		t.Run(tt.schema, func(t *testing.T) {
 			cm := storage.NewClientMetrics()
 			defer cm.Unregister()
-			testSchema := chunk.SchemaConfig{Configs: []chunk.PeriodConfig{tt.config}}
+			testSchema := config.SchemaConfig{Configs: []config.PeriodConfig{tt.config}}
 			store := newTestStore(t, cm)
 			c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
 			c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, tt.from, tt.from.Add(1*time.Hour))
@@ -143,12 +144,12 @@ func Test_SeriesCleaner(t *testing.T) {
 	}
 }
 
-func entryFromChunk(s chunk.SchemaConfig, c chunk.Chunk) ChunkEntry {
+func entryFromChunk(s config.SchemaConfig, c chunk.Chunk) ChunkEntry {
 	return ChunkEntry{
 		ChunkRef: ChunkRef{
 			UserID:   []byte(c.UserID),
 			SeriesID: labelsSeriesID(c.Metric),
-			ChunkID:  []byte(s.ExternalKey(c)),
+			ChunkID:  []byte(s.ExternalKey(c.ChunkRef)),
 			From:     c.From,
 			Through:  c.Through,
 		},
