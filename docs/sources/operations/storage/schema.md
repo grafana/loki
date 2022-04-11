@@ -3,31 +3,30 @@ title: Storage Schema
 ---
 # Loki Storage Schema
 
-To support iterations over the storage layer, Loki has a configurable storage schema. The schema is defined in configuration with a `from` value that is used to mark the starting point of that schema, it is considered the active schema until another entry is inserted defining a new schema and a new `from` date.
+To support iterations over the storage layer contents, Loki has a configurable storage schema. The schema is defined to apply over periods of time. A `from` value marks the starting point of that schema. The schema is active until another entry defines a new schema with a new `from` date.
 
 ![schema_example](../schema.png)
 
-When querying data, Loki will use the defined schemas to automatically determine which format to use to query the data.
+Loki uses the defined schemas to determine which format to use when storing and querying the data.
 
-The schema design allows Loki to iterate over the storage layer without requiring migrations of existing data.
+Use of a schema allows Loki to iterate over the storage layer without requiring migration of existing data.
 
 ## Changing the schema
 
-There are some very important considerations to make when changing the schema to prevent creating scenarios where data can’t be read.
+Here are items to consider when changing the schema; if schema changes are not done properly, a scenario can be created which prevents data from being read.
+- Always set the `from` date in the new schema to a date in the future.
 
-### Always set the `from` date in the new schema to a date in the future.
+  The `from` date is interpreted by Loki to start at 00:00:00 UTC. Therefore, Loki must have a date in the future to be able to transition to the new schema when that date and time arrives.
 
-The `from` date is interpreted by Loki to start at 00:00:00 UTC, therefore it’s very important when adding a new schema to always add a date that’s in the future so that Loki can transition to the new schema when that date and time arrives.
+  Be aware of your relation to UTC when using the current date. Make sure that UTC 00:00:00 has not already passed for your current date.
+  
+  As an example, assume that the current date is 2022-04-10, and you want to update to the v12 schema, so you restart Loki with 2022-04-11 as the `from` date for the new schema. If you forget to take into account that your timezone is UTC -5:00 and it’s currently 20:00 hours in your local timezone,  that is actually 2022-04-11T01:00:00 UTC. When Loki starts it will see the new schema and begin to write and store objects following that new schema. If you then try to query data that was written between 00:00:00 and 01:00:00 UTC, Loki will use the new schema and the data will be unreadable, because it was created with the previous schema.
 
-Be aware of using the current date and your relation to UTC to make sure UTC 00:00:00 has not already passed for the date you are using!
+- You cannot undo or roll back a schema change.
 
-Example, the date is 2022-04-10 and you want to update to the v12 schema so you restart Loki with 2022-04-11 as the `from` date for the new schema, but you forgot to take into account that your timezone is UTC -5:00 and it’s currently 20:00 hours in your local timezone!  Which is actually 2022-04-11T01:00:00 UTC. When Loki starts it will see the new schema and begin to write and store objects following that new schema. If you try to query data that was written between 00:00:00 and 01:00:00 UTC, however, Loki will use the new schema and the data will be unreadable because it was actually created with the previous schema.
+  Any data written with an active schema can only be read by that schema. If you wish to return to the previous schema; you can add another new entry with the previous schema settings.
 
-### You cannot “undo” or “rollback” a schema change.
-
-Any data written with an active schema can only be read by that schema, instead you can add another new entry with the previous schema settings if required.
-
-## Examples
+## Schema configuration example
 
 ```
 schema_config:
