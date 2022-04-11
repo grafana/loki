@@ -83,7 +83,8 @@ func NewReader(writer io.Writer,
 	labelVal string,
 	streamName string,
 	streamValue string,
-	interval time.Duration) *Reader {
+	interval time.Duration,
+) *Reader {
 	h := http.Header{}
 	if user != "" {
 		h = http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))}}
@@ -441,11 +442,11 @@ func (r *Reader) closeAndReconnect() {
 func parseResponse(entry *loghttp.Entry) (*time.Time, error) {
 	sp := strings.Split(entry.Line, " ")
 	if len(sp) != 2 {
-		return nil, errors.Errorf("received invalid entry: %s\n", entry.Line)
+		return nil, errors.Errorf("received invalid entry: %s", entry.Line)
 	}
 	ts, err := strconv.ParseInt(sp[0], 10, 64)
 	if err != nil {
-		return nil, errors.Errorf("failed to parse timestamp: %s\n", sp[0])
+		return nil, errors.Errorf("failed to parse timestamp: %s", sp[0])
 	}
 	t := time.Unix(0, ts)
 	return &t, nil

@@ -14,9 +14,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -92,7 +92,7 @@ func (tm *TableManager) Stop() {
 	tm.uploadTables(context.Background(), true)
 }
 
-func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (tm *TableManager) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	queriesByTable := util.QueriesByTable(queries)
 	for tableName, queries := range queriesByTable {
 		err := tm.query(ctx, tableName, queries, callback)
@@ -104,7 +104,7 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQue
 	return nil
 }
 
-func (tm *TableManager) query(ctx context.Context, tableName string, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (tm *TableManager) query(ctx context.Context, tableName string, queries []index.Query, callback index.QueryPagesCallback) error {
 	table, ok := tm.getTable(tableName)
 	if !ok {
 		return nil
@@ -120,7 +120,7 @@ func (tm *TableManager) getTable(tableName string) (*Table, bool) {
 	return table, ok
 }
 
-func (tm *TableManager) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+func (tm *TableManager) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
 	boltWriteBatch, ok := batch.(*local.BoltWriteBatch)
 	if !ok {
 		return errors.New("invalid write batch")

@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/util"
@@ -144,7 +145,7 @@ func (s *GatewayClient) Stop() {
 	}
 }
 
-func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	if len(queries) <= maxQueriesPerGrpc {
 		return s.doQueries(ctx, queries, callback)
 	}
@@ -158,9 +159,8 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQue
 	})
 }
 
-// doQueries queries index pages from the Index Gateway.
-func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
-	queryKeyQueryMap := make(map[string]chunk.IndexQuery, len(queries))
+func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+	queryKeyQueryMap := make(map[string]index.Query, len(queries))
 	gatewayQueries := make([]*indexgatewaypb.IndexQuery, 0, len(queries))
 
 	for _, query := range queries {
@@ -212,6 +212,7 @@ func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*i
 	return nil
 }
 
+<<<<<<< HEAD
 // ringModeDoQueries prepares an index query to be sent to the Index Gateway, and then sends it
 // using the clientDoQueries implementation.
 //
@@ -260,10 +261,15 @@ func (s *GatewayClient) ringModeDoQueries(ctx context.Context, gatewayQueries []
 }
 
 func (s *GatewayClient) NewWriteBatch() chunk.WriteBatch {
+||||||| 46b552def
+func (s *GatewayClient) NewWriteBatch() chunk.WriteBatch {
+=======
+func (s *GatewayClient) NewWriteBatch() index.WriteBatch {
+>>>>>>> 8994eca7e5c554b7109502b5c5fd2c217e65cb29
 	panic("unsupported")
 }
 
-func (s *GatewayClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+func (s *GatewayClient) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
 	panic("unsupported")
 }
 
@@ -271,7 +277,7 @@ type readBatch struct {
 	*indexgatewaypb.QueryIndexResponse
 }
 
-func (r *readBatch) Iterator() chunk.ReadBatchIterator {
+func (r *readBatch) Iterator() index.ReadBatchIterator {
 	return &grpcIter{
 		i:                  -1,
 		QueryIndexResponse: r.QueryIndexResponse,

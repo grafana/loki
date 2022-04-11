@@ -15,9 +15,9 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 func AddRecordsToDB(t testing.TB, path string, dbClient *local.BoltIndexClient, start, numRecords int, bucketName []byte) {
@@ -38,7 +38,7 @@ func AddRecordsToDB(t testing.TB, path string, dbClient *local.BoltIndexClient, 
 	require.NoError(t, db.Close())
 }
 
-func AddRecordsToBatch(batch chunk.WriteBatch, tableName string, start, numRecords int) {
+func AddRecordsToBatch(batch index.WriteBatch, tableName string, start, numRecords int) {
 	for i := 0; i < numRecords; i++ {
 		rec := []byte(strconv.Itoa(start + i))
 		batch.Add(tableName, "", rec, rec)
@@ -46,10 +46,10 @@ func AddRecordsToBatch(batch chunk.WriteBatch, tableName string, start, numRecor
 }
 
 type SingleTableQuerier interface {
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 }
 
-func TestSingleTableQuery(t *testing.T, userID string, queries []chunk.IndexQuery, querier SingleTableQuerier, start, numRecords int) {
+func TestSingleTableQuery(t *testing.T, userID string, queries []index.Query, querier SingleTableQuerier, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
@@ -62,10 +62,10 @@ func TestSingleTableQuery(t *testing.T, userID string, queries []chunk.IndexQuer
 }
 
 type SingleDBQuerier interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query index.Query, callback index.QueryPagesCallback) error
 }
 
-func TestSingleDBQuery(t *testing.T, query chunk.IndexQuery, db *bbolt.DB, bucketName []byte, querier SingleDBQuerier, start, numRecords int) {
+func TestSingleDBQuery(t *testing.T, query index.Query, db *bbolt.DB, bucketName []byte, querier SingleDBQuerier, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
@@ -78,10 +78,10 @@ func TestSingleDBQuery(t *testing.T, query chunk.IndexQuery, db *bbolt.DB, bucke
 }
 
 type MultiTableQuerier interface {
-	QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 }
 
-func TestMultiTableQuery(t *testing.T, userID string, queries []chunk.IndexQuery, querier MultiTableQuerier, start, numRecords int) {
+func TestMultiTableQuery(t *testing.T, userID string, queries []index.Query, querier MultiTableQuerier, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
@@ -93,10 +93,10 @@ func TestMultiTableQuery(t *testing.T, userID string, queries []chunk.IndexQuery
 	require.Len(t, fetchedRecords, numRecords)
 }
 
-func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) chunk.QueryPagesCallback {
+func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) index.QueryPagesCallback {
 	t.Helper()
 	recordsMtx := sync.Mutex{}
-	return func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+	return func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {
 			require.Equal(t, itr.RangeValue(), itr.Value())

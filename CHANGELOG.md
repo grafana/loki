@@ -75,6 +75,7 @@
 
 ##### Changes
 * [5686](https://github.com/grafana/loki/pull/5686) **ssncferreira**: Move promtail StreamLagLabels config to upper level config.Config
+* [5839](https://github.com/grafana/loki/pull/5839) **marctc**: Add ActiveTargets method to promtail
 #### Fluent Bit
 * [5711](https://github.com/grafana/loki/pull/5711) **MichelHollands**: Update fluent-bit output name
 

@@ -33,8 +33,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -289,11 +290,11 @@ func (s *mockStore) GetSeries(ctx context.Context, req logql.SelectLogParams) ([
 	return nil, nil
 }
 
-func (s *mockStore) GetSchemaConfigs() []chunk.PeriodConfig {
+func (s *mockStore) GetSchemaConfigs() []config.PeriodConfig {
 	return nil
 }
 
-func (s *mockStore) SetChunkFilterer(_ storage.RequestChunkFilterer) {
+func (s *mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
 }
 
 // chunk.Store methods
@@ -301,7 +302,7 @@ func (s *mockStore) PutOne(ctx context.Context, from, through model.Time, chunk 
 	return nil
 }
 
-func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
@@ -313,7 +314,7 @@ func (s *mockStore) LabelNamesForMetricName(ctx context.Context, userID string, 
 	return nil, nil
 }
 
-func (s *mockStore) GetChunkFetcher(tm model.Time) *chunk.Fetcher {
+func (s *mockStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return nil
 }
 
@@ -410,23 +411,23 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 
 	for _, tc := range []struct {
 		name                string
-		periodicConfigs     []chunk.PeriodConfig
+		periodicConfigs     []config.PeriodConfig
 		expectedMaxLookBack time.Duration
 	}{
 		{
 			name: "not using boltdb-shipper",
-			periodicConfigs: []chunk.PeriodConfig{
+			periodicConfigs: []config.PeriodConfig{
 				{
-					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 					IndexType: "bigtable",
 				},
 			},
 		},
 		{
 			name: "just one periodic config with boltdb-shipper",
-			periodicConfigs: []chunk.PeriodConfig{
+			periodicConfigs: []config.PeriodConfig{
 				{
-					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 					IndexType: "boltdb-shipper",
 				},
 			},
@@ -434,13 +435,13 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 		},
 		{
 			name: "active config boltdb-shipper, previous config non boltdb-shipper",
-			periodicConfigs: []chunk.PeriodConfig{
+			periodicConfigs: []config.PeriodConfig{
 				{
-					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
 					IndexType: "bigtable",
 				},
 				{
-					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 					IndexType: "boltdb-shipper",
 				},
 			},
@@ -448,13 +449,13 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 		},
 		{
 			name: "current and previous config both using boltdb-shipper",
-			periodicConfigs: []chunk.PeriodConfig{
+			periodicConfigs: []config.PeriodConfig{
 				{
-					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
 					IndexType: "boltdb-shipper",
 				},
 				{
-					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 					IndexType: "boltdb-shipper",
 				},
 			},
@@ -462,13 +463,13 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 		},
 		{
 			name: "active config non boltdb-shipper, previous config boltdb-shipper",
-			periodicConfigs: []chunk.PeriodConfig{
+			periodicConfigs: []config.PeriodConfig{
 				{
-					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
 					IndexType: "boltdb-shipper",
 				},
 				{
-					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 					IndexType: "bigtable",
 				},
 			},
