@@ -296,6 +296,11 @@ The `querier` block configures the Loki Querier.
 # CLI flag: -querier.query-store-only
 [query_store_only: <boolean> | default = false]
 
+# Queriers should only query the ingesters and not try to query any store,
+# useful for when object store is unavailable.
+# CLI flag: -querier.query-ingester-only
+[query_ingester_only: <boolean> | default = false]
+
 # Allow queries for multiple tenants.
 # CLI flag: -querier.multi-tenant-queries-enabled
 [multi_tenant_queries_enabled: <boolean> | default = false]
