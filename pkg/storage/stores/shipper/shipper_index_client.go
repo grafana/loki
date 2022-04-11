@@ -18,8 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"

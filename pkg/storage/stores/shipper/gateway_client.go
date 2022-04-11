@@ -22,8 +22,8 @@ import (
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/util"
@@ -138,7 +138,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 
 // Stop stops the execution of this gateway client.
 //
-// If it is in simple mode, the sinlge GRPC connection is closed. Otherwise, nothing happens.
+// If it is in simple mode, the single GRPC connection is closed. Otherwise, nothing happens.
 func (s *GatewayClient) Stop() {
 	if s.cfg.Mode == indexgateway.SimpleMode {
 		s.conn.Close()
@@ -212,7 +212,6 @@ func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*i
 	return nil
 }
 
-<<<<<<< HEAD
 // ringModeDoQueries prepares an index query to be sent to the Index Gateway, and then sends it
 // using the clientDoQueries implementation.
 //
@@ -261,11 +260,6 @@ func (s *GatewayClient) ringModeDoQueries(ctx context.Context, gatewayQueries []
 }
 
 func (s *GatewayClient) NewWriteBatch() chunk.WriteBatch {
-||||||| 46b552def
-func (s *GatewayClient) NewWriteBatch() chunk.WriteBatch {
-=======
-func (s *GatewayClient) NewWriteBatch() index.WriteBatch {
->>>>>>> 8994eca7e5c554b7109502b5c5fd2c217e65cb29
 	panic("unsupported")
 }
 

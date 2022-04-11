@@ -40,6 +40,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
@@ -67,8 +68,8 @@ type Config struct {
 	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
 	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
 	IndexGateway     indexgateway.Config      `yaml:"index_gateway"`
-	ChunkStoreConfig storage.ChunkStoreConfig `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig     storage.SchemaConfig     `yaml:"schema_config,omitempty"`
+	ChunkStoreConfig config.ChunkStoreConfig  `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig     config.SchemaConfig      `yaml:"schema_config,omitempty"`
 	LimitsConfig     validation.Limits        `yaml:"limits_config,omitempty"`
 	TableManager     index.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Worker           worker.Config            `yaml:"frontend_worker,omitempty"`
