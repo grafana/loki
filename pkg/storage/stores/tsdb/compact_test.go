@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -62,28 +61,28 @@ func TestCompactor(t *testing.T) {
 			exp: []ChunkRef{
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 					Start:       0,
 					End:         3,
 					Checksum:    0,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 					Start:       1,
 					End:         4,
 					Checksum:    1,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 					Start:       2,
 					End:         5,
 					Checksum:    2,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash())},
 					Start:       1,
 					End:         10,
 					Checksum:    3,
@@ -152,21 +151,21 @@ func TestCompactor(t *testing.T) {
 			exp: []ChunkRef{
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 					Start:       0,
 					End:         3,
 					Checksum:    0,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 					Start:       1,
 					End:         4,
 					Checksum:    1,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 					Start:       2,
 					End:         5,
 					Checksum:    2,
@@ -174,28 +173,28 @@ func TestCompactor(t *testing.T) {
 
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", a="b"}`).Hash())},
 					Start:       10,
 					End:         11,
 					Checksum:    0,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", a="b"}`).Hash())},
 					Start:       11,
 					End:         14,
 					Checksum:    1,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", a="b"}`).Hash())},
 					Start:       12,
 					End:         15,
 					Checksum:    2,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash())},
 					Start:       1,
 					End:         10,
 					Checksum:    3,
@@ -297,21 +296,21 @@ func TestCompactor(t *testing.T) {
 			exp: []ChunkRef{
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 					Start:       0,
 					End:         3,
 					Checksum:    0,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 					Start:       1,
 					End:         4,
 					Checksum:    1,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
 					Start:       2,
 					End:         5,
 					Checksum:    2,
@@ -319,28 +318,28 @@ func TestCompactor(t *testing.T) {
 
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", a="b"}`).Hash())},
 					Start:       10,
 					End:         11,
 					Checksum:    0,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", a="b"}`).Hash())},
 					Start:       11,
 					End:         14,
 					Checksum:    1,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", a="b"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", a="b"}`).Hash())},
 					Start:       12,
 					End:         15,
 					Checksum:    2,
 				},
 				{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+					Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash())},
 					Start:       1,
 					End:         10,
 					Checksum:    3,
