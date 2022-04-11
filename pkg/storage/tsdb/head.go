@@ -218,6 +218,10 @@ func (s *stripeSeries) Append(
 	if series == nil {
 		series = createFn()
 		s.hashes[i].set(fp, series)
+
+		// the series locks are modulo'd by the ref, not fingerprint
+		refIdx := series.ref & uint64(s.shards-1)
+		s.series[refIdx][series.ref] = series
 		created = true
 	}
 	mtx.Unlock()
