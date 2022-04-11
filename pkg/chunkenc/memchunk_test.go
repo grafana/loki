@@ -18,14 +18,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
-
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 var testEncoding = []Encoding{
@@ -1178,7 +1177,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 		},
 		{
 			name:      "slice out of bounds without overlap",
-			err:       encoding.ErrSliceNoDataInRange,
+			err:       chunk.ErrSliceNoDataInRange,
 			sliceFrom: chkThrough.Add(time.Minute),
 			sliceTo:   chkThrough.Add(time.Hour),
 		},
