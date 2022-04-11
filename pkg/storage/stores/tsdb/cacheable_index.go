@@ -407,6 +407,7 @@ func (i *CacheableIndex) cacheFetch(ctx context.Context, cacheKeys []string) ([]
 // will be used to avoid allocations if it is big enough to store the labels.
 // TODO: Callum, this is copied from prometheus and some of the proto definitions I've added
 // are copied as well, is there a nice way to not do this (ie import some proto + define new types using those imported types)
+//nolint:unparam
 func labelsToLabelsProto(labels labels.Labels, buf []Label) Labels {
 	result := buf[:0]
 	if cap(buf) < len(labels) {
@@ -426,6 +427,7 @@ func labelsToLabelsProto(labels labels.Labels, buf []Label) Labels {
 // strings.Cut was added in Go v1.18, but since Loki hasn't migrated to it,
 // we are using a forked copy of the new Cut method.
 // Source code reference: https://github.com/golang/go/issues/46336
+//nolint:unparam
 func cutStr(s, sep string) (before, after string, found bool) {
 	if i := strings.Index(s, sep); i >= 0 {
 		return s[:i], s[i+len(sep):], true
