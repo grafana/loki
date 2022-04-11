@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 func TestMultiIndex(t *testing.T) {
@@ -145,7 +145,6 @@ func TestMultiIndex(t *testing.T) {
 		expected := []string{"bozz", "buzz"}
 
 		require.Equal(t, expected, xs)
-
 	})
 
 	t.Run("LabelValuesWithMatchers", func(t *testing.T) {
@@ -154,6 +153,5 @@ func TestMultiIndex(t *testing.T) {
 		expected := []string{"bozz"}
 
 		require.Equal(t, expected, xs)
-
 	})
 }

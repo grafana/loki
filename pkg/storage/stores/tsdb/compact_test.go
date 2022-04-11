@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 func TestCompactor(t *testing.T) {
@@ -382,9 +382,6 @@ func TestCompactor(t *testing.T) {
 
 			require.Nil(t, err)
 			require.Equal(t, tc.exp, res)
-
 		})
-
 	}
-
 }

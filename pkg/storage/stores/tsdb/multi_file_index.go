@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 type MultiIndex struct {
@@ -97,7 +97,6 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
 		return idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +120,6 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 	}
 
 	return res, nil
-
 }
 
 func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
@@ -133,7 +131,6 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
 		return idx.Series(ctx, userID, from, through, nil, shard, matchers...)
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +157,6 @@ func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, throug
 	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
 		return idx.LabelNames(ctx, userID, from, through, matchers...)
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -190,14 +186,12 @@ func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, throug
 	}
 
 	return results, nil
-
 }
 
 func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
 	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
 		return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -227,5 +221,4 @@ func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, throu
 	}
 
 	return results, nil
-
 }
