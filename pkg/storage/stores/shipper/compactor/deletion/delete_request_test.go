@@ -177,7 +177,16 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			require.NoError(t, tc.deleteRequest.SetQuery(tc.deleteRequest.Query))
 			isDeleted, nonDeletedIntervals := tc.deleteRequest.IsDeleted(chunkEntry)
 			require.Equal(t, tc.expectedResp.isDeleted, isDeleted)
-			require.Equal(t, tc.expectedResp.nonDeletedIntervals, nonDeletedIntervals)
+			for idx := range tc.expectedResp.nonDeletedIntervals {
+				require.Equal(t,
+					tc.expectedResp.nonDeletedIntervals[idx].Interval.Start,
+					nonDeletedIntervals[idx].Interval.Start,
+				)
+				require.Equal(t,
+					tc.expectedResp.nonDeletedIntervals[idx].Interval.End,
+					nonDeletedIntervals[idx].Interval.End,
+				)
+			}
 		})
 	}
 }

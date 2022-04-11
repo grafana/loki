@@ -4,6 +4,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
@@ -16,25 +17,37 @@ type DeleteRequest struct {
 	Status    DeleteRequestStatus `json:"status"`
 	CreatedAt model.Time          `json:"created_at"`
 
-	UserID   string            `json:"-"`
-	matchers []*labels.Matcher `json:"-"`
+	UserID          string                 `json:"-"`
+	matchers        []*labels.Matcher      `json:"-"`
+	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
 }
 
 func (d *DeleteRequest) SetQuery(logQL string) error {
 	d.Query = logQL
-	matchers, err := parseDeletionQuery(logQL)
+	logSelectorExpr, err := parseDeletionQuery(logQL)
 	if err != nil {
 		return err
 	}
-	d.matchers = matchers
+	d.logSelectorExpr = logSelectorExpr
+	d.matchers = logSelectorExpr.Matchers()
 	return nil
 }
 
-// FilterFunction returns a dummy filter that doesn't remove any lines
-func (d *DeleteRequest) FilterFunction() encoding.FilterFunc {
-	return func(s string) bool {
-		return false
+// FilterFunction returns a filter function that returns true if the given line matches
+func (d *DeleteRequest) FilterFunction(labels labels.Labels) (encoding.FilterFunc, error) {
+	p, err := d.logSelectorExpr.Pipeline()
+	if err != nil {
+		return nil, err
 	}
+
+	f := p.ForStream(labels).ProcessString
+	return func(s string) bool {
+		result, _, skip := f(s)
+		if len(result) != 0 || skip {
+			return true
+		}
+		return false
+	}, nil
 }
 
 // IsDeleted checks if the given ChunkEntry will be deleted by this DeleteRequest.
@@ -63,7 +76,11 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 	}
 
 	intervals := make([]retention.IntervalFilter, 0, 2)
-	ff := d.FilterFunction()
+	ff, err := d.FilterFunction(entry.Labels)
+	if err != nil {
+		// TODO: log this? Handle it different?
+		return false, nil
+	}
 
 	if d.StartTime > entry.From {
 		intervals = append(intervals, retention.IntervalFilter{

@@ -149,7 +149,11 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 			entry.Through = interval.Interval.End
 			isDeleted, newIntervalsToRetain := deleteRequest.IsDeleted(entry)
 			if !isDeleted {
-				ff := deleteRequest.FilterFunction()
+				ff, err := deleteRequest.FilterFunction(ref.Labels)
+				if err != nil {
+					// TODO: handle this better
+					return false, nil
+				}
 				interval.Filter = ff
 				rebuiltIntervals = append(rebuiltIntervals, interval)
 			} else {
