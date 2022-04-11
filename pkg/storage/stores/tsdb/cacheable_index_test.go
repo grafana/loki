@@ -220,6 +220,116 @@ func BenchmarkCacheableIndex_Buffering(b *testing.B) {
 	})
 }
 
+func BenchmarkCacheableIndexGobEncoding(b *testing.B) {
+	cases := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  3,
+					Checksum: 0,
+				},
+				{
+					MinTime:  1,
+					MaxTime:  4,
+					Checksum: 1,
+				},
+				{
+					MinTime:  2,
+					MaxTime:  5,
+					Checksum: 2,
+				},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  1,
+					MaxTime:  10,
+					Checksum: 3,
+				},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bard", bazz="bozz", bonk="borb"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  1,
+					MaxTime:  7,
+					Checksum: 4,
+				},
+			},
+		},
+	}
+
+	b.Run("GetChunkRef", func(b *testing.B) {
+		expected := []ChunkRef{
+			{
+				User:        "fake",
+				Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
+				Start:       0,
+				End:         3,
+				Checksum:    0,
+			},
+			{
+				User:        "fake",
+				Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
+				Start:       1,
+				End:         4,
+				Checksum:    1,
+			},
+			{
+				User:        "fake",
+				Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar"}`).Hash())},
+				Start:       2,
+				End:         5,
+				Checksum:    2,
+			},
+			{
+				User:        "fake",
+				Fingerprint: &Fingerprint{int64(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash())},
+				Start:       1,
+				End:         10,
+				Checksum:    3,
+			},
+		}
+
+		dir := b.TempDir()
+		idx := buildIndexB(b, dir, "fake", cases)
+		l := log.NewNopLogger()
+		ctx := context.Background()
+		matchers := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+
+		b.Run("gob encoding", func(b *testing.B) {
+			gobnm := NewOldCacheMetrics(nil)
+			cache := cache.NewFifoCache(b.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
+			defer cache.Stop()
+			gobEncodedCacheableIndex := NewOldCacheableIndex(l, idx, cache, gobnm)
+
+			for n := 0; n < b.N; n++ {
+				got, err := gobEncodedCacheableIndex.GetChunkRefs(ctx, "fake", 1, 5, nil, nil, matchers)
+				require.NoError(b, err)
+				require.Equal(b, expected, got)
+			}
+		})
+
+		b.Run("protbuf encoding", func(b *testing.B) {
+			pbufnm := NewCacheMetrics(nil)
+			cache := cache.NewFifoCache(b.Name(), cache.FifoCacheConfig{MaxSizeItems: 20}, nil, log.NewNopLogger())
+			defer cache.Stop()
+			pbufEncodedCacheableIndex := NewCacheableIndex(l, idx, cache, pbufnm)
+
+			for n := 0; n < b.N; n++ {
+				got, err := pbufEncodedCacheableIndex.GetChunkRefs(ctx, "fake", 1, 5, nil, nil, matchers)
+				require.NoError(b, err)
+				require.Equal(b, expected, got)
+			}
+		})
+	})
+}
+
 func TestCacheableIndex(t *testing.T) {
 	cases := []LoadableSeries{
 		{
