@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/tenant"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
