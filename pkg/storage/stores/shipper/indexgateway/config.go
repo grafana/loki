@@ -54,7 +54,6 @@ type RingCfg struct {
 
 	// ReplicationFactor defines how many Index Gateway instances are assigned to each tenant.
 	//
-	// If the replication factor is higher than the number of instances, the ring is considered not ready.
 	// Whenever the store queries the ring key-value store for the Index Gateway instance responsible for tenant X,
 	// multiple Index Gateway instances are expected to be returned as Index Gateway might be busy/locked for specific
 	// reasons (this is assured by the spikey behavior of Index Gateway latencies).

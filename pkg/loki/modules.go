@@ -10,7 +10,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/tenant"
+	gerrors "github.com/pkg/errors"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
@@ -798,9 +800,23 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	ringCfg := t.Cfg.IndexGateway.Ring.ToRingConfig(t.Cfg.IndexGateway.Ring.ReplicationFactor)
 	reg := prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer)
-	t.indexGatewayRing, err = ring.New(ringCfg, indexgateway.RingIdentifier, indexgateway.RingKey, util_log.Logger, reg)
+
+	logger := util_log.Logger
+	ringStore, err := kv.NewClient(
+		ringCfg.KVStore,
+		ring.GetCodec(),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", reg), "index-gateway"),
+		logger,
+	)
 	if err != nil {
-		return
+		return nil, gerrors.Wrap(err, "kv new client")
+	}
+
+	t.indexGatewayRing, err = ring.NewWithStoreClientAndStrategy(
+		ringCfg, indexgateway.RingIdentifier, indexgateway.RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", reg), logger,
+	)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "new with store client and strategy")
 	}
 
 	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRing)
