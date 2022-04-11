@@ -86,6 +86,9 @@ func TestPromtail(t *testing.T) {
 		server    = &http.Server{Addr: "localhost:3100", Handler: nil}
 	)
 	defer func() {
+		if t.Failed() {
+			return // Test has already failed; don't wait for everything to shut down.
+		}
 		fmt.Fprintf(os.Stdout, "wait close")
 		wg.Wait()
 		if err != nil {
@@ -117,6 +120,7 @@ func TestPromtail(t *testing.T) {
 			err = errors.Wrap(err, "Failed to start promtail")
 		}
 	}()
+	defer p.Shutdown() // In case the test fails before the call to Shutdown below.
 
 	expectedCounts := map[string]int{}
 

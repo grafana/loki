@@ -5,18 +5,17 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
-
-	"github.com/ViaQ/logerr/kverrors"
-	"github.com/ViaQ/logerr/log"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/secrets"
 	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
 
+	"github.com/ViaQ/logerr/kverrors"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -26,7 +25,14 @@ import (
 )
 
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
-func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client, s *runtime.Scheme, flags manifests.FeatureFlags) error {
+func CreateOrUpdateLokiStack(
+	ctx context.Context,
+	log logr.Logger,
+	req ctrl.Request,
+	k k8s.Client,
+	s *runtime.Scheme,
+	flags manifests.FeatureFlags,
+) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createOrUpdate")
 
 	var stack lokiv1beta1.LokiStack
@@ -53,20 +59,22 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
 	if err := k.Get(ctx, key, &storageSecret); err != nil {
 		if apierrors.IsNotFound(err) {
-			return status.SetDegradedCondition(ctx, k, req,
-				"Missing object storage secret",
-				lokiv1beta1.ReasonMissingObjectStorageSecret,
-			)
+			return &status.DegradedError{
+				Message: "Missing object storage secret",
+				Reason:  lokiv1beta1.ReasonMissingObjectStorageSecret,
+				Requeue: false,
+			}
 		}
 		return kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
 	storage, err := secrets.ExtractStorageSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
-		return status.SetDegradedCondition(ctx, k, req,
-			"Invalid object storage secret contents",
-			lokiv1beta1.ReasonInvalidObjectStorageSecret,
-		)
+		return &status.DegradedError{
+			Message: "Invalid object storage secret contents",
+			Reason:  lokiv1beta1.ReasonInvalidObjectStorageSecret,
+			Requeue: false,
+		}
 	}
 
 	var (
@@ -75,16 +83,18 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		tenantConfigMap map[string]openshift.TenantData
 	)
 	if flags.EnableGateway && stack.Spec.Tenants == nil {
-		return status.SetDegradedCondition(ctx, k, req,
-			"Invalid tenants configuration - TenantsSpec cannot be nil when gateway flag is enabled",
-			lokiv1beta1.ReasonInvalidTenantsConfiguration,
-		)
+		return &status.DegradedError{
+			Message: "Invalid tenants configuration - TenantsSpec cannot be nil when gateway flag is enabled",
+			Reason:  lokiv1beta1.ReasonInvalidTenantsConfiguration,
+			Requeue: false,
+		}
 	} else if flags.EnableGateway && stack.Spec.Tenants != nil {
 		if err = gateway.ValidateModes(stack); err != nil {
-			return status.SetDegradedCondition(ctx, k, req,
-				fmt.Sprintf("Invalid tenants configuration: %s", err),
-				lokiv1beta1.ReasonInvalidTenantsConfiguration,
-			)
+			return &status.DegradedError{
+				Message: fmt.Sprintf("Invalid tenants configuration: %s", err),
+				Reason:  lokiv1beta1.ReasonInvalidTenantsConfiguration,
+				Requeue: false,
+			}
 		}
 
 		if stack.Spec.Tenants.Mode != lokiv1beta1.OpenshiftLogging {
@@ -97,11 +107,11 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		if stack.Spec.Tenants.Mode == lokiv1beta1.OpenshiftLogging {
 			baseDomain, err = gateway.GetOpenShiftBaseDomain(ctx, k, req)
 			if err != nil {
-				return nil
+				return err
 			}
 
 			// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
-			tenantConfigMap = gateway.GetTenantConfigMapData(ctx, k, req)
+			tenantConfigMap = gateway.GetTenantConfigMapData(ctx, log, k, req)
 		}
 	}
 
@@ -159,7 +169,7 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		}
 
 		desired := obj.DeepCopyObject().(client.Object)
-		mutateFn := manifests.MutateFuncFor(obj, desired)
+		mutateFn := manifests.MutateFuncFor(log, obj, desired)
 
 		op, err := ctrl.CreateOrUpdate(ctx, k, obj, mutateFn)
 		if err != nil {

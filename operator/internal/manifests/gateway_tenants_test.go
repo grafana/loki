@@ -200,6 +200,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Args: []string{
 										"--log.level=warn",
 										"--opa.package=lokistack",
+										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
@@ -220,7 +221,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										},
 									},
 									LivenessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/live",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -232,7 +233,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										FailureThreshold: 10,
 									},
 									ReadinessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/ready",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -293,6 +294,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Args: []string{
 										"--log.level=warn",
 										"--opa.package=lokistack",
+										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
@@ -315,7 +317,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										},
 									},
 									LivenessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/live",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -327,7 +329,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										FailureThreshold: 10,
 									},
 									ReadinessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/ready",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -430,6 +432,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Args: []string{
 										"--log.level=warn",
 										"--opa.package=lokistack",
+										"--opa.matcher=kubernetes_namespace_name",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
@@ -452,7 +455,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										},
 									},
 									LivenessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/live",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
@@ -464,7 +467,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										FailureThreshold: 10,
 									},
 									ReadinessProbe: &corev1.Probe{
-										Handler: corev1.Handler{
+										ProbeHandler: corev1.ProbeHandler{
 											HTTPGet: &corev1.HTTPGetAction{
 												Path:   "/ready",
 												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),

@@ -12,13 +12,14 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -35,7 +36,6 @@ func NewQueryShardMiddleware(
 	shardingMetrics *logql.ShardingMetrics,
 	limits Limits,
 ) queryrangebase.Middleware {
-
 	noshards := !hasShards(confs)
 
 	if noshards {
@@ -219,14 +219,14 @@ func hasShards(confs ShardingConfigs) bool {
 }
 
 // ShardingConfigs is a slice of chunk shard configs
-type ShardingConfigs []chunk.PeriodConfig
+type ShardingConfigs []config.PeriodConfig
 
 // ValidRange extracts a non-overlapping sharding configuration from a list of configs and a time range.
-func (confs ShardingConfigs) ValidRange(start, end int64) (chunk.PeriodConfig, error) {
+func (confs ShardingConfigs) ValidRange(start, end int64) (config.PeriodConfig, error) {
 	for i, conf := range confs {
 		if start < int64(conf.From.Time) {
 			// the query starts before this config's range
-			return chunk.PeriodConfig{}, errInvalidShardingRange
+			return config.PeriodConfig{}, errInvalidShardingRange
 		} else if i == len(confs)-1 {
 			// the last configuration has no upper bound
 			return conf, nil
@@ -238,11 +238,11 @@ func (confs ShardingConfigs) ValidRange(start, end int64) (chunk.PeriodConfig, e
 		}
 	}
 
-	return chunk.PeriodConfig{}, errInvalidShardingRange
+	return config.PeriodConfig{}, errInvalidShardingRange
 }
 
 // GetConf will extract a shardable config corresponding to a request and the shardingconfigs
-func (confs ShardingConfigs) GetConf(r queryrangebase.Request) (chunk.PeriodConfig, error) {
+func (confs ShardingConfigs) GetConf(r queryrangebase.Request) (config.PeriodConfig, error) {
 	conf, err := confs.ValidRange(r.GetStart(), r.GetEnd())
 	// query exists across multiple sharding configs
 	if err != nil {
@@ -266,7 +266,6 @@ func NewSeriesQueryShardMiddleware(
 	limits queryrangebase.Limits,
 	merger queryrangebase.Merger,
 ) queryrangebase.Middleware {
-
 	noshards := !hasShards(confs)
 
 	if noshards {

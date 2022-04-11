@@ -10,9 +10,9 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
-	loki_storage "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
@@ -30,7 +30,7 @@ func setupTestCompactor(t *testing.T, tempDir string, clientMetrics storage.Clie
 
 	require.NoError(t, cfg.Validate())
 
-	c, err := NewCompactor(cfg, storage.Config{FSConfig: local.FSConfig{Directory: tempDir}}, loki_storage.SchemaConfig{}, nil, clientMetrics, nil)
+	c, err := NewCompactor(cfg, storage.Config{FSConfig: local.FSConfig{Directory: tempDir}}, config.SchemaConfig{}, nil, clientMetrics, nil)
 	require.NoError(t, err)
 
 	return c

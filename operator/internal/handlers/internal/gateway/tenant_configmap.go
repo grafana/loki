@@ -3,19 +3,17 @@ package gateway
 import (
 	"context"
 
+	"github.com/grafana/loki/operator/internal/external/k8s"
+	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
-	"github.com/ViaQ/logerr/log"
-
 	"github.com/ViaQ/logerr/kverrors"
-	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/json"
-	"sigs.k8s.io/yaml"
-
-	"github.com/grafana/loki/operator/internal/external/k8s"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -41,7 +39,7 @@ type openShiftSpec struct {
 
 // GetTenantConfigMapData returns the tenantName, tenantId, cookieSecret
 // clusters to auto-create redirect URLs for OpenShift Auth or an error.
-func GetTenantConfigMapData(ctx context.Context, k k8s.Client, req ctrl.Request) map[string]openshift.TenantData {
+func GetTenantConfigMapData(ctx context.Context, log logr.Logger, k k8s.Client, req ctrl.Request) map[string]openshift.TenantData {
 	var tenantConfigMap corev1.ConfigMap
 	key := client.ObjectKey{Name: manifests.GatewayName(req.Name), Namespace: req.Namespace}
 	if err := k.Get(ctx, key, &tenantConfigMap); err != nil {

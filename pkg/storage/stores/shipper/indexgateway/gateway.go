@@ -6,7 +6,7 @@ import (
 
 	"github.com/grafana/dskit/services"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
@@ -14,7 +14,7 @@ import (
 const maxIndexEntriesPerResponse = 1000
 
 type IndexQuerier interface {
-	QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 	Stop()
 }
 
@@ -39,9 +39,9 @@ func (g *gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server i
 	var outerErr error
 	var innerErr error
 
-	queries := make([]chunk.IndexQuery, 0, len(request.Queries))
+	queries := make([]index.Query, 0, len(request.Queries))
 	for _, query := range request.Queries {
-		queries = append(queries, chunk.IndexQuery{
+		queries = append(queries, index.Query{
 			TableName:        query.TableName,
 			HashValue:        query.HashValue,
 			RangeValuePrefix: query.RangeValuePrefix,
@@ -51,7 +51,7 @@ func (g *gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server i
 	}
 
 	sendBatchMtx := sync.Mutex{}
-	outerErr = g.indexQuerier.QueryPages(server.Context(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	outerErr = g.indexQuerier.QueryPages(server.Context(), queries, func(query index.Query, batch index.ReadBatchResult) bool {
 		innerErr = buildResponses(query, batch, func(response *indexgatewaypb.QueryIndexResponse) error {
 			// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
 			sendBatchMtx.Lock()
@@ -74,7 +74,7 @@ func (g *gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server i
 	return outerErr
 }
 
-func buildResponses(query chunk.IndexQuery, batch chunk.ReadBatch, callback func(*indexgatewaypb.QueryIndexResponse) error) error {
+func buildResponses(query index.Query, batch index.ReadBatchResult, callback func(*indexgatewaypb.QueryIndexResponse) error) error {
 	itr := batch.Iterator()
 	var resp []*indexgatewaypb.Row
 

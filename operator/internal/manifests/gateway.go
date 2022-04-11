@@ -149,7 +149,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					},
 				},
 				LivenessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
+					ProbeHandler: corev1.ProbeHandler{
 						HTTPGet: &corev1.HTTPGetAction{
 							Path:   "/live",
 							Port:   intstr.FromInt(gatewayInternalPort),
@@ -161,7 +161,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					FailureThreshold: 10,
 				},
 				ReadinessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
+					ProbeHandler: corev1.ProbeHandler{
 						HTTPGet: &corev1.HTTPGetAction{
 							Path:   "/ready",
 							Port:   intstr.FromInt(gatewayInternalPort),
@@ -388,14 +388,14 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 	}
 	uriSchemeContainerSpec := corev1.Container{
 		ReadinessProbe: &corev1.Probe{
-			Handler: corev1.Handler{
+			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
 					Scheme: corev1.URISchemeHTTPS,
 				},
 			},
 		},
 		LivenessProbe: &corev1.Probe{
-			Handler: corev1.Handler{
+			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
 					Scheme: corev1.URISchemeHTTPS,
 				},

@@ -200,6 +200,58 @@ func Test_CloudflareTargetError(t *testing.T) {
 	require.Equal(t, newEnd, end.UnixNano())
 }
 
+func Test_CloudflareTargetError168h(t *testing.T) {
+	var (
+		w      = log.NewSyncWriter(os.Stderr)
+		logger = log.NewLogfmtLogger(w)
+		cfg    = &scrapeconfig.CloudflareConfig{
+			APIToken:  "foo",
+			ZoneID:    "bar",
+			Labels:    model.LabelSet{"job": "cloudflare"},
+			PullRange: model.Duration(time.Minute),
+		}
+		end      = time.Unix(0, time.Hour.Nanoseconds())
+		client   = fake.New(func() {})
+		cfClient = newFakeCloudflareClient()
+	)
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Second,
+		PositionsFile: t.TempDir() + "/positions.yml",
+	})
+	// retries as fast as possible.
+	defaultBackoff.MinBackoff = 0
+	defaultBackoff.MaxBackoff = 0
+
+	// set our end time to be the last time we have a position
+	ps.Put(positions.CursorKey(cfg.ZoneID), end.UnixNano())
+	require.NoError(t, err)
+
+	// setup errors for all retries
+	cfClient.On("LogpullReceived", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("HTTP status 400: bad query: error parsing time: invalid time range: too early: logs older than 168h0m0s are not available"))
+	// replace the client.
+	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
+		return cfClient, nil
+	}
+
+	ta, err := NewTarget(NewMetrics(prometheus.NewRegistry()), logger, client, ps, cfg)
+	require.NoError(t, err)
+	require.True(t, ta.Ready())
+
+	// wait for the target to be stopped.
+	require.Eventually(t, func() bool {
+		return cfClient.CallCount() >= 5
+	}, 5*time.Second, 100*time.Millisecond)
+
+	require.Len(t, client.Received(), 0)
+	require.GreaterOrEqual(t, cfClient.CallCount(), 5)
+	ta.Stop()
+	ps.Stop()
+
+	// Make sure we move on from the save the last position.
+	newEnd, _ := ps.Get(positions.CursorKey(cfg.ZoneID))
+	require.Greater(t, newEnd, end.UnixNano())
+}
+
 func Test_validateConfig(t *testing.T) {
 	tests := []struct {
 		in      *scrapeconfig.CloudflareConfig

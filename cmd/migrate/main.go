@@ -15,8 +15,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
@@ -24,7 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -92,13 +93,8 @@ func main() {
 	}
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	clientMetrics := chunk_storage.NewClientMetrics()
-	sourceStore, err := chunk_storage.NewStore(sourceConfig.StorageConfig.Config, sourceConfig.ChunkStoreConfig.StoreConfig, sourceConfig.SchemaConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
-	if err != nil {
-		log.Println("Failed to create source store:", err)
-		os.Exit(1)
-	}
-	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.SchemaConfig, sourceStore, prometheus.DefaultRegisterer)
+	clientMetrics := storage.NewClientMetrics()
+	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		log.Println("Failed to create source store:", err)
 		os.Exit(1)
@@ -106,12 +102,8 @@ func main() {
 
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	destStore, err := chunk_storage.NewStore(destConfig.StorageConfig.Config, destConfig.ChunkStoreConfig.StoreConfig, destConfig.SchemaConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, nil, util_log.Logger)
-	if err != nil {
-		log.Println("Failed to create destination store:", err)
-		os.Exit(1)
-	}
-	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.SchemaConfig, destStore, prometheus.DefaultRegisterer)
+
+	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.ChunkStoreConfig, destConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		log.Println("Failed to create destination store:", err)
 		os.Exit(1)
@@ -173,7 +165,7 @@ func main() {
 	log.Printf("With a shard duration of %v, %v ranges have been calculated.\n", shardByNs, len(syncRanges))
 
 	// Pass dest schema config, the destination determines the new chunk external keys using potentially a different schema config.
-	cm := newChunkMover(ctx, destConfig.SchemaConfig.SchemaConfig, s, d, *source, *dest, matchers, *batch)
+	cm := newChunkMover(ctx, destConfig.SchemaConfig, s, d, *source, *dest, matchers, *batch)
 	syncChan := make(chan *syncRange)
 	errorChan := make(chan error)
 	statsChan := make(chan stats)
@@ -266,7 +258,7 @@ type stats struct {
 
 type chunkMover struct {
 	ctx        context.Context
-	schema     chunk.SchemaConfig
+	schema     config.SchemaConfig
 	source     storage.Store
 	dest       storage.Store
 	sourceUser string
@@ -275,7 +267,7 @@ type chunkMover struct {
 	batch      int
 }
 
-func newChunkMover(ctx context.Context, s chunk.SchemaConfig, source, dest storage.Store, sourceUser, destUser string, matchers []*labels.Matcher, batch int) *chunkMover {
+func newChunkMover(ctx context.Context, s config.SchemaConfig, source, dest storage.Store, sourceUser, destUser string, matchers []*labels.Matcher, batch int) *chunkMover {
 	cm := &chunkMover{
 		ctx:        ctx,
 		schema:     s,
@@ -324,10 +316,10 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 
 					// FetchChunks requires chunks to be ordered by external key.
 					sort.Slice(chunks, func(x, y int) bool {
-						return m.schema.ExternalKey(chunks[x]) < m.schema.ExternalKey(chunks[y])
+						return m.schema.ExternalKey(chunks[x].ChunkRef) < m.schema.ExternalKey(chunks[y].ChunkRef)
 					})
 					for _, chk := range chunks {
-						key := m.schema.ExternalKey(chk)
+						key := m.schema.ExternalKey(chk.ChunkRef)
 						keys = append(keys, key)
 						chks = append(chks, chk)
 					}

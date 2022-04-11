@@ -14,12 +14,13 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/tenant"
 	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
@@ -225,13 +226,11 @@ func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT t
 	var deletes []*logproto.Delete
 	for _, del := range d {
 		if int64(del.StartTime) <= end && int64(del.EndTime) >= start {
-			for _, selector := range del.Selectors {
-				deletes = append(deletes, &logproto.Delete{
-					Selector: selector,
-					Start:    int64(del.StartTime),
-					End:      int64(del.EndTime),
-				})
-			}
+			deletes = append(deletes, &logproto.Delete{
+				Selector: del.Query,
+				Start:    int64(del.StartTime),
+				End:      int64(del.EndTime),
+			})
 		}
 	}
 
@@ -530,7 +529,7 @@ func (q *SingleTenantQuerier) seriesForMatchers(
 
 // seriesForMatcher fetches series from the store for a given matcher
 func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
-	ids, err := q.store.GetSeries(ctx, logql.SelectLogParams{
+	ids, err := q.store.Series(ctx, logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  matcher,
 			Limit:     1,

@@ -53,7 +53,7 @@ func (it *cachedIterator) consumeWrapped() bool {
 		return false
 	}
 	// we're caching entries
-	it.cache = append(it.cache, entryWithLabels{entry: it.Wrapped().Entry(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash()})
+	it.cache = append(it.cache, entryWithLabels{Entry: it.Wrapped().Entry(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash()})
 	it.curr++
 	return true
 }
@@ -77,7 +77,7 @@ func (it *cachedIterator) Entry() logproto.Entry {
 		return logproto.Entry{}
 	}
 
-	return it.cache[it.curr].entry
+	return it.cache[it.curr].Entry
 }
 
 func (it *cachedIterator) Labels() string {

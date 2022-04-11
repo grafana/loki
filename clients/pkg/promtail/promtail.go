@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/config"
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	"github.com/grafana/loki/clients/pkg/promtail/targets"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -63,18 +64,18 @@ func New(cfg config.Config, metrics *client.Metrics, dryRun bool, opts ...Option
 
 	cfg.Setup()
 
-	if cfg.LimitConfig.ReadlineRateEnabled {
-		stages.SetReadLineRateLimiter(cfg.LimitConfig.ReadlineRate, cfg.LimitConfig.ReadlineBurst, cfg.LimitConfig.ReadlineRateDrop)
+	if cfg.LimitsConfig.ReadlineRateEnabled {
+		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
 	}
 	var err error
 	if dryRun {
-		promtail.client, err = client.NewLogger(metrics, cfg.ClientConfigs.StreamLagLabels, promtail.logger, cfg.ClientConfigs.Configs...)
+		promtail.client, err = client.NewLogger(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		promtail.client, err = client.NewMulti(metrics, cfg.ClientConfigs.StreamLagLabels, promtail.logger, cfg.ClientConfigs.Configs...)
+		promtail.client, err = client.NewMulti(metrics, cfg.Options.StreamLagLabels, promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
@@ -114,6 +115,9 @@ func (p *Promtail) Client() client.Client {
 func (p *Promtail) Shutdown() {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
+	if p.stopped {
+		return
+	}
 	p.stopped = true
 	if p.server != nil {
 		p.server.Shutdown()
@@ -123,4 +127,9 @@ func (p *Promtail) Shutdown() {
 	}
 	// todo work out the stop.
 	p.client.Stop()
+}
+
+// ActiveTargets returns active targets per jobs from the target manager
+func (p *Promtail) ActiveTargets() map[string][]target.Target {
+	return p.targetManagers.ActiveTargets()
 }
