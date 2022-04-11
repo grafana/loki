@@ -206,16 +206,6 @@ func (s *stripeSeries) getByID(id uint64) *memSeries {
 	return series
 }
 
-func (s *stripeSeries) getByHash(hash uint64, lset labels.Labels) *memSeries {
-	i := hash & uint64(s.shards-1)
-
-	s.locks[i].RLock()
-	series := s.hashes[i].get(hash, lset)
-	s.locks[i].RUnlock()
-
-	return series
-}
-
 // Append adds chunks to the correct series and returns whether a new series was added
 func (s *stripeSeries) Append(
 	ls labels.Labels,
