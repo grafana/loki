@@ -162,6 +162,9 @@ type Tripperware func(http.RoundTripper) http.RoundTripper
 
 // New makes a new Client.
 func New(metrics *Metrics, cfg Config, streamLagLabels []string, logger log.Logger) (Client, error) {
+	if cfg.StreamLagLabels.String() != "" {
+		level.Warn(logger).Log("msg", "client config stream_lag_labels is deprecated in favour of the config file options block field, and will be ignored", "stream_lag_labels", cfg.StreamLagLabels.String())
+	}
 	return newClient(metrics, cfg, streamLagLabels, logger)
 }
 
