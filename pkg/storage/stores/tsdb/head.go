@@ -16,12 +16,13 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 /*
