@@ -25,7 +25,7 @@ local pipeline(name) = {
   kind: 'pipeline',
   name: name,
   steps: [],
-  trigger: { event: ['push', 'pull_request'] },
+  trigger: { event: ['push', 'pull_request', 'tag'] },
 };
 
 local secret(name, vault_path, vault_key) = {
@@ -432,13 +432,13 @@ local manifest(apps) = pipeline('manifest') {
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMain {
-      event: ['push'],
+      event: ['push', 'tag'],
     },
   },
 ] + [
   pipeline('deploy') {
     trigger: condition('include').tagMain {
-      event: ['push'],
+      event: ['push', 'tag'],
     },
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],

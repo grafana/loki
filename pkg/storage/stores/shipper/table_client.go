@@ -3,16 +3,17 @@ package shipper
 import (
 	"context"
 
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-
-	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type boltDBShipperTableClient struct {
 	indexStorageClient storage.Client
 }
 
-func NewBoltDBShipperTableClient(objectClient chunk.ObjectClient, storageKeyPrefix string) chunk.TableClient {
+func NewBoltDBShipperTableClient(objectClient client.ObjectClient, storageKeyPrefix string) index.TableClient {
 	return &boltDBShipperTableClient{storage.NewIndexStorageClient(objectClient, storageKeyPrefix)}
 }
 
@@ -20,7 +21,7 @@ func (b *boltDBShipperTableClient) ListTables(ctx context.Context) ([]string, er
 	return b.indexStorageClient.ListTables(ctx)
 }
 
-func (b *boltDBShipperTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
+func (b *boltDBShipperTableClient) CreateTable(ctx context.Context, desc config.TableDesc) error {
 	return nil
 }
 
@@ -44,12 +45,12 @@ func (b *boltDBShipperTableClient) DeleteTable(ctx context.Context, tableName st
 	return nil
 }
 
-func (b *boltDBShipperTableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {
-	return chunk.TableDesc{
+func (b *boltDBShipperTableClient) DescribeTable(ctx context.Context, name string) (desc config.TableDesc, isActive bool, err error) {
+	return config.TableDesc{
 		Name: name,
 	}, true, nil
 }
 
-func (b *boltDBShipperTableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
+func (b *boltDBShipperTableClient) UpdateTable(ctx context.Context, current, expected config.TableDesc) error {
 	return nil
 }

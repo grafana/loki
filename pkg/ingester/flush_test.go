@@ -29,8 +29,9 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -332,17 +333,17 @@ func (s *testStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	return nil, nil
 }
 
-func (s *testStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+func (s *testStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
-func (s *testStore) GetSchemaConfigs() []chunk.PeriodConfig {
+func (s *testStore) GetSchemaConfigs() []config.PeriodConfig {
 	return nil
 }
 
 func (s *testStore) Stop() {}
 
-func (s *testStore) SetChunkFilterer(_ storage.RequestChunkFilterer) {}
+func (s *testStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {
 	userIDs := []string{"1", "2", "3"}

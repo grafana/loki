@@ -11,13 +11,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -30,12 +29,12 @@ const (
 )
 
 type BoltDBIndexClient interface {
-	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error
 }
 
 type Table interface {
 	Close()
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 	DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error)
 	Sync(ctx context.Context) error
 	EnsureQueryReadiness(ctx context.Context, userIDs []string) error
@@ -152,7 +151,7 @@ func (t *table) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (t *table) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err

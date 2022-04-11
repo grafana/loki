@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 )
 
 func Test_LeaderElection(t *testing.T) {

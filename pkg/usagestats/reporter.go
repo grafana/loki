@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/util/build"
 )
 
@@ -50,7 +50,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 type Reporter struct {
 	logger       log.Logger
-	objectClient chunk.ObjectClient
+	objectClient client.ObjectClient
 	reg          prometheus.Registerer
 
 	services.Service
@@ -61,7 +61,7 @@ type Reporter struct {
 	lastReport time.Time
 }
 
-func NewReporter(config Config, kvConfig kv.Config, objectClient chunk.ObjectClient, logger log.Logger, reg prometheus.Registerer) (*Reporter, error) {
+func NewReporter(config Config, kvConfig kv.Config, objectClient client.ObjectClient, logger log.Logger, reg prometheus.Registerer) (*Reporter, error) {
 	if !config.Enabled {
 		return nil, nil
 	}

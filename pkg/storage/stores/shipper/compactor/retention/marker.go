@@ -16,7 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )

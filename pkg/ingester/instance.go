@@ -26,7 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -87,10 +87,10 @@ type instance struct {
 
 	metrics *ingesterMetrics
 
-	chunkFilter storage.RequestChunkFilterer
+	chunkFilter chunk.RequestChunkFilterer
 }
 
-func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch, chunkFilter storage.RequestChunkFilterer) *instance {
+func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch, chunkFilter chunk.RequestChunkFilterer) *instance {
 	i := &instance{
 		cfg:        cfg,
 		streams:    newStreamsMap(),
@@ -515,7 +515,7 @@ func (i *instance) numStreams() int {
 // forAllStreams will execute a function for all streams in the instance.
 // It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forAllStreams(ctx context.Context, fn func(*stream) error) error {
-	var chunkFilter storage.ChunkFilterer
+	var chunkFilter chunk.Filterer
 	if i.chunkFilter != nil {
 		chunkFilter = i.chunkFilter.ForRequest(ctx)
 	}
@@ -549,7 +549,7 @@ func (i *instance) forMatchingStreams(
 	if err != nil {
 		return err
 	}
-	var chunkFilter storage.ChunkFilterer
+	var chunkFilter chunk.Filterer
 	if i.chunkFilter != nil {
 		chunkFilter = i.chunkFilter.ForRequest(ctx)
 	}
@@ -600,7 +600,7 @@ func (i *instance) addTailersToNewStream(stream *stream) {
 		if t.isClosed() {
 			continue
 		}
-		var chunkFilter storage.ChunkFilterer
+		var chunkFilter chunk.Filterer
 		if i.chunkFilter != nil {
 			chunkFilter = i.chunkFilter.ForRequest(t.conn.Context())
 		}
