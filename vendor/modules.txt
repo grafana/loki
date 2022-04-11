@@ -1153,10 +1153,10 @@ go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
 go.uber.org/zap/zapgrpc
-# go4.org/intern v0.0.0-20210108033219-3eb7198706b2
+# go4.org/intern v0.0.0-20211027215823-ae77deb06f29
 ## explicit; go 1.13
 go4.org/intern
-# go4.org/unsafe/assume-no-moving-gc v0.0.0-20201222180813-1025295fd063
+# go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37
 ## explicit; go 1.11
 go4.org/unsafe/assume-no-moving-gc
 # golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
@@ -1423,7 +1423,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 ## explicit
 gopkg.in/yaml.v3
-# inet.af/netaddr v0.0.0-20210707202901-70468d781e6c
+# inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 ## explicit; go 1.12
 inet.af/netaddr
 # k8s.io/api v0.22.7 => k8s.io/api v0.21.0
