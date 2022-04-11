@@ -85,6 +85,8 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyInstanceConfigs(r, &defaults)
 
+		applyCommonReplicationFactor(r, &defaults)
+
 		applyDynamicRingConfigs(r, &defaults)
 
 		appendLoopbackInterface(r, &defaults)
@@ -141,6 +143,14 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 	}
 }
 
+// applyCommonReplicationFactor apply a common replication factor to the Ingester and Index Gateway rings.
+func applyCommonReplicationFactor(r, defaults *ConfigWrapper) {
+	if !reflect.DeepEqual(r.Common.ReplicationFactor, defaults.Common.ReplicationFactor) {
+		r.IndexGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
+		r.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = r.Common.ReplicationFactor
+	}
+}
+
 // applyDynamicRingConfigs checks the current config and, depending on the given values, reuse ring configs accordingly.
 //
 // 1. Gives preference to any explicit ring config set. For instance, if the user explicitly configures Distributor's ring,
@@ -154,10 +164,10 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 // When using the ingester or common ring config, the loopback interface will be appended to the end of
 // the list of default interface names.
 func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
-	if r.Common.ReplicationFactor != defaults.Common.ReplicationFactor {
-		r.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = r.Common.ReplicationFactor
-		r.IndexGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
-	}
+	// if r.Common.ReplicationFactor != defaults.Common.ReplicationFactor {
+	// 	r.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = r.Common.ReplicationFactor
+	// 	r.IndexGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
+	// }
 
 	if !reflect.DeepEqual(r.Common.Ring, defaults.Common.Ring) {
 		// common ring is provided, use that for all rings, merging with
