@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
@@ -158,7 +160,7 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
-				Selector:  tc.selector,
+				Selector: tc.selector,
 			}}
 			iter, err := multiTenantQuerier.SelectSamples(ctx, params)
 			require.NoError(t, err)
@@ -169,6 +171,31 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 				entriesCount++
 			}
 			require.Equalf(t, len(tc.expLabels), entriesCount, "Expected %d entries but got %d", len(tc.expLabels), entriesCount)
+		})
+	}
+}
+
+func TestMultiTenantQuerier_TenantFilter(t *testing.T) {
+	for _, tc := range []struct {
+		selector string
+		expected string
+	}{
+		{
+			`count_over_time({foo="bar", __tenant_id__="1"}[1m]) > 10`,
+			`(count_over_time({foo="bar"}[1m]) > 10)`,
+		},
+		{
+			`topk(2, count_over_time({app="foo", __tenant_id__="1"}[3m]))`,
+			`topk(2, count_over_time({app="foo"}[3m]))`,
+		},
+	} {
+		t.Run(tc.selector, func(t *testing.T) {
+			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+				Selector: tc.selector,
+			}}
+			_, updatedSelector, err := removeTenantSelector(params, []string{})
+			require.NoError(t, err)
+			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(updatedSelector.String()))
 		})
 	}
 }
@@ -393,4 +420,13 @@ func mockSeriesResponse() *logproto.SeriesResponse {
 			},
 		},
 	}
+}
+
+func removeWhiteSpace(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == ' ' || unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
 }

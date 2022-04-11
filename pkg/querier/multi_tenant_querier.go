@@ -74,14 +74,13 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 		return q.Querier.SelectSamples(ctx, params)
 	}
 
-	selector, err := params.LogSelector()
+	matchedTenants, updatedSelector, err := removeTenantSelector(params, tenantIDs)
 	if err != nil {
 		return nil, err
 	}
-	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
-	params.Selector = selector.WithMatchers(filteredMatchers).String() // TODO: this is wrong.
+	params.Selector = updatedSelector.String()
 
-	iters := make([]iter.SampleIterator, len(tenantIDs))
+	iters := make([]iter.SampleIterator, len(matchedTenants))
 	i := 0
 	for id := range matchedTenants {
 		singleContext := user.InjectOrgID(ctx, id)
@@ -152,6 +151,43 @@ func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 	}
 
 	return logproto.MergeSeriesResponses(responses)
+}
+
+// removeTenantSelector filters the given tenant IDs based on any tenant ID filter the in passed selector.
+func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (map[string]struct{}, syntax.SampleExpr, error) {
+	expr, err := params.Expr()
+	if err != nil {
+		return nil, nil, err
+	}
+	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, expr.Selector().Matchers()...)
+	expr = replaceMatchers(expr, filteredMatchers)
+	return matchedTenants, expr, nil
+}
+
+// replaceMatchers traverses the passed epxression and replaces all matchers.
+func replaceMatchers(expr syntax.SampleExpr, matchers []*labels.Matcher) syntax.SampleExpr {
+	c, _ := syntax.Clone(expr)
+	expr = c.(syntax.SampleExpr)
+
+	switch e := expr.(type) {
+	case *syntax.LiteralExpr:
+		return e
+	case *syntax.VectorAggregationExpr:
+		e.Left = replaceMatchers(e.Left, matchers)
+		return e
+	case *syntax.LabelReplaceExpr:
+		e.Left = replaceMatchers(e.Left, matchers)
+		return e
+	case *syntax.RangeAggregationExpr:
+		e.Left.Left = e.Left.Left.WithMatchers(matchers)
+		return e
+	case *syntax.BinOpExpr:
+		e.SampleExpr = replaceMatchers(e.SampleExpr, matchers)
+		e.RHS = replaceMatchers(e.RHS, matchers)
+		return e
+	}
+
+	return expr
 }
 
 // See https://github.com/grafana/mimir/blob/114ab88b50638a2047e2ca2a60640f6ca6fe8c17/pkg/querier/tenantfederation/tenant_federation.go#L29-L69
