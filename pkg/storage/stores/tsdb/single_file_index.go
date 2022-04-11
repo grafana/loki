@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 func LoadTSDBIdentifier(dir string, id index.Identifier) (*TSDBIndex, error) {
@@ -20,7 +20,6 @@ func LoadTSDB(name string) (*TSDBIndex, error) {
 	}
 
 	return NewTSDBIndex(reader), nil
-
 }
 
 // nolint
@@ -119,7 +118,6 @@ func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			// TODO(owen-d): use logarithmic approach
 			for _, chk := range chks {
-
 				if Overlap(queryBounds, chk) {
 					// this series has at least one chunk in the desired range
 					res = append(res, Series{

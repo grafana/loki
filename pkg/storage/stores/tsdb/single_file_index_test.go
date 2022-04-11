@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 func TestSingleIdx(t *testing.T) {
@@ -110,7 +110,6 @@ func TestSingleIdx(t *testing.T) {
 			End:         10,
 			Checksum:    3,
 		}}, shardedRefs)
-
 	})
 
 	t.Run("Series", func(t *testing.T) {
