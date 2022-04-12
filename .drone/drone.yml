@@ -28,6 +28,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 workspace:
   base: /src
   path: loki
@@ -39,27 +40,27 @@ steps:
   - make BUILD_IN_CONTAINER=false check-drone-drift
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.20.1
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.20.1
   name: check-generated-files
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.20.1
   name: test
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.20.1
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -67,7 +68,7 @@ steps:
   - clone
   - test
   - lint
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.20.1
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -78,24 +79,25 @@ steps:
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.20.1
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.20.1
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.20.0
+  image: grafana/loki-build-image:0.20.1
   name: check-example-config-doc
 trigger:
   event:
   - push
   - pull_request
+  - tag
 workspace:
   base: /src
   path: loki
@@ -113,26 +115,7 @@ trigger:
   event:
   - push
   - pull_request
-workspace:
-  base: /src
-  path: loki
----
-kind: pipeline
-name: benchmark-cron
-node:
-  type: no-parallel
-steps:
-- commands:
-  - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...
-  image: grafana/loki-build-image:0.20.0
-  name: All
-trigger:
-  cron:
-    include:
-    - loki-bench
-  event:
-    include:
-    - cron
+  - tag
 workspace:
   base: /src
   path: loki
@@ -263,6 +246,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -390,6 +374,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -517,6 +502,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -572,6 +558,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -627,6 +614,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -682,6 +670,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -738,6 +727,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -794,6 +784,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -850,6 +841,64 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
+---
+depends_on:
+- check
+kind: pipeline
+name: querytee-amd64
+platform:
+  arch: amd64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  - echo ",main" >> .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-querytee-image
+  settings:
+    dockerfile: cmd/querytee/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-query-tee
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-querytee-image
+  settings:
+    dockerfile: cmd/querytee/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-query-tee
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
+  - tag
 ---
 depends_on:
 - docker-amd64
@@ -902,6 +951,7 @@ steps:
 trigger:
   event:
   - push
+  - tag
   ref:
     include:
     - refs/heads/main
@@ -937,6 +987,7 @@ steps:
 trigger:
   event:
   - push
+  - tag
   ref:
     include:
     - refs/heads/main
@@ -962,6 +1013,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 depends_on:
 - check
@@ -1021,6 +1073,7 @@ trigger:
   event:
   - push
   - pull_request
+  - tag
 ---
 get:
   name: pat
@@ -1065,6 +1118,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 835c89da39567393f70fb1848d9f010d3276a4ff2e7dd9089b8ea70eee7beb1a
+hmac: a96f66baa9057be9437904081ef78fa7c1584d855ba1c90d22a0bcb4eb0881f7
 
 ...

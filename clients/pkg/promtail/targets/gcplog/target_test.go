@@ -226,12 +226,10 @@ const (
 `
 )
 
-var (
-	testConfig = &scrapeconfig.GcplogTargetConfig{
-		ProjectID:    project,
-		Subscription: subscription,
-		Labels: model.LabelSet{
-			"job": "test-gcplogtarget",
-		},
-	}
-)
+var testConfig = &scrapeconfig.GcplogTargetConfig{
+	ProjectID:    project,
+	Subscription: subscription,
+	Labels: model.LabelSet{
+		"job": "test-gcplogtarget",
+	},
+}

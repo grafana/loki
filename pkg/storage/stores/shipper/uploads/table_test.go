@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
@@ -99,7 +99,7 @@ func TestLoadTable(t *testing.T) {
 
 	// change a boltdb file to text file which would fail to open.
 	invalidFilePath := filepath.Join(tablePath, "invalid")
-	require.NoError(t, ioutil.WriteFile(invalidFilePath, []byte("invalid boltdb file"), 0666))
+	require.NoError(t, ioutil.WriteFile(invalidFilePath, []byte("invalid boltdb file"), 0o666))
 
 	// verify that changed boltdb file can't be opened.
 	_, err = local.OpenBoltdbFile(invalidFilePath)
@@ -122,7 +122,7 @@ func TestLoadTable(t *testing.T) {
 	require.NoError(t, table.Snapshot())
 
 	// query the loaded table to see if it has right data.
-	testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, table, 0, 40)
+	testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 0, 40)
 }
 
 func TestTable_Write(t *testing.T) {
@@ -180,12 +180,12 @@ func TestTable_Write(t *testing.T) {
 					require.NoError(t, table.Snapshot())
 
 					// test that the table has current + previous records
-					testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, table, 0, (i+1)*10)
+					testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 0, (i+1)*10)
 					bucketToQuery := local.IndexBucketName
 					if withPerTenantBucket {
 						bucketToQuery = []byte(userID)
 					}
-					testutil.TestSingleDBQuery(t, chunk.IndexQuery{}, db, bucketToQuery, boltIndexClient, i*10, 10)
+					testutil.TestSingleDBQuery(t, index.Query{}, db, bucketToQuery, boltIndexClient, i*10, 10)
 				})
 			}
 		})
@@ -533,9 +533,9 @@ func TestTable_MultiQueries(t *testing.T) {
 	require.NoError(t, table.Snapshot())
 
 	// build queries each looking for specific value from all the dbs
-	var queries []chunk.IndexQuery
+	var queries []index.Query
 	for i := 5; i < 35; i++ {
-		queries = append(queries, chunk.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
+		queries = append(queries, index.Query{ValueEqual: []byte(strconv.Itoa(i))})
 	}
 
 	// querying data for user1 should return both data from common index and user1's index

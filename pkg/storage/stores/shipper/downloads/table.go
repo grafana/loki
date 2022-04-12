@@ -11,14 +11,15 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
@@ -28,12 +29,12 @@ const (
 )
 
 type BoltDBIndexClient interface {
-	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error
 }
 
 type Table interface {
 	Close()
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 	DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error)
 	Sync(ctx context.Context) error
 	EnsureQueryReadiness(ctx context.Context, userIDs []string) error
@@ -150,7 +151,7 @@ func (t *table) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (t *table) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
@@ -158,7 +159,7 @@ func (t *table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 
 	// query both user and common index
 	for _, uid := range []string{userID, ""} {
-		indexSet, err := t.getOrCreateIndexSet(uid, true)
+		indexSet, err := t.getOrCreateIndexSet(ctx, uid, true)
 		if err != nil {
 			return err
 		}
@@ -258,7 +259,7 @@ func (t *table) Sync(ctx context.Context) error {
 // Caller can use IndexSet.AwaitReady() to wait until the IndexSet gets ready, if required.
 // forQuerying must be set to true only getting the index for querying since
 // it captures the amount of time it takes to download the index at query time.
-func (t *table) getOrCreateIndexSet(id string, forQuerying bool) (IndexSet, error) {
+func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying bool) (IndexSet, error) {
 	t.indexSetsMtx.RLock()
 	indexSet, ok := t.indexSets[id]
 	t.indexSetsMtx.RUnlock()
@@ -293,9 +294,11 @@ func (t *table) getOrCreateIndexSet(id string, forQuerying bool) (IndexSet, erro
 		if forQuerying {
 			start := time.Now()
 			defer func() {
-				duration := time.Since(start).Seconds()
-				t.metrics.queryTimeTableDownloadDurationSeconds.WithLabelValues(t.name).Add(duration)
-				level.Info(loggerWithUserID(t.logger, id)).Log("msg", "downloaded index set at query time", "duration", duration)
+				duration := time.Since(start)
+				t.metrics.queryTimeTableDownloadDurationSeconds.WithLabelValues(t.name).Add(duration.Seconds())
+
+				logger := spanlogger.FromContextWithFallback(ctx, loggerWithUserID(t.logger, id))
+				level.Info(logger).Log("msg", "downloaded index set at query time", "duration", duration)
 			}()
 		}
 
@@ -311,7 +314,7 @@ func (t *table) getOrCreateIndexSet(id string, forQuerying bool) (IndexSet, erro
 // EnsureQueryReadiness ensures that we have downloaded the common index as well as user index for the provided userIDs.
 // When ensuring query readiness for a table, we will always download common index set because it can include index for one of the provided user ids.
 func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) error {
-	commonIndexSet, err := t.getOrCreateIndexSet("", false)
+	commonIndexSet, err := t.getOrCreateIndexSet(ctx, "", false)
 	if err != nil {
 		return err
 	}
@@ -339,7 +342,7 @@ func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) erro
 // downloadUserIndexes downloads user specific index files concurrently.
 func (t *table) downloadUserIndexes(ctx context.Context, userIDs []string) error {
 	return concurrency.ForEachJob(ctx, len(userIDs), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
-		indexSet, err := t.getOrCreateIndexSet(userIDs[idx], false)
+		indexSet, err := t.getOrCreateIndexSet(ctx, userIDs[idx], false)
 		if err != nil {
 			return err
 		}

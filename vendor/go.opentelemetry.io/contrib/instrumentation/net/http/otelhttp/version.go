@@ -16,7 +16,11 @@ package otelhttp
 
 // Version is the current release version of the otelhttp instrumentation.
 func Version() string {
+<<<<<<< HEAD
 	return "0.27.0"
+=======
+	return "0.29.0"
+>>>>>>> main
 	// This string is updated by the pre_release.sh script during release
 }
 

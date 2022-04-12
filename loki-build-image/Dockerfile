@@ -22,7 +22,7 @@ RUN apk add --no-cache curl && \
     cd / && \
     curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.41.1
 
-FROM alpine:edge as docker
+FROM alpine:3.15.4 as docker
 RUN apk add --no-cache docker-cli
 
 # TODO this should be fixed to download and extract the specific release binary from github as we do for golangci and helm above
@@ -39,6 +39,9 @@ RUN curl -L https://github.com/drone/drone-cli/releases/download/v1.4.0/drone_li
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
 FROM golang:1.17.8 as faillint
 RUN GO111MODULE=on go get github.com/fatih/faillint@v1.5.0
+
+FROM golang:1.17.8 as delve
+RUN GO111MODULE=on go get github.com/go-delve/delve/cmd/dlv@v1.7.3
 
 # Install ghr used to push binaries and template the release
 # This collides with the version of go tools used in the base image, thus we install it in its own image and copy it over.
@@ -64,6 +67,7 @@ COPY --from=lychee /usr/bin/lychee /usr/bin/lychee
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
 COPY --from=drone /usr/local/bin/drone /usr/bin/drone
 COPY --from=faillint /go/bin/faillint /usr/bin/faillint
+COPY --from=delve /go/bin/dlv /usr/bin/dlv
 COPY --from=ghr /go/bin/ghr /usr/bin/ghr
 COPY --from=nfpm /go/bin/nfpm /usr/bin/nfpm
 
@@ -76,7 +80,6 @@ RUN GO111MODULE=on go get \
     github.com/golang/protobuf/protoc-gen-go@v1.3.1 \
     github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0 \
     github.com/gogo/protobuf/gogoproto@v1.3.0 \
-    github.com/go-delve/delve/cmd/dlv@v1.3.2 \
     # Due to the lack of a proper release tag, we use the commit hash of
     # https://github.com/golang/tools/releases v0.1.7
     golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69 \

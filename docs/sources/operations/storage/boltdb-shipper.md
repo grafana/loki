@@ -73,7 +73,7 @@ Let us talk about more in depth about how both Ingesters and Queriers work when 
 
 ### Ingesters
 
-Ingesters keep writing the index to BoltDB files in `active_index_directory` and BoltDB Shipper keeps looking for new and updated files in that directory every 15 Minutes to upload them to the shared object store.
+Ingesters keep writing the index to BoltDB files in `active_index_directory` and BoltDB Shipper keeps looking for new and updated files in that directory every 1 Minutes to upload them to the shared object store.
 When running Loki in clustered mode there could be multiple ingesters serving write requests hence each of them generating BoltDB files locally.
 
 **Note:** To avoid any loss of index when Ingester crashes it is recommended to run Ingesters as statefulset(when using k8s) with a persistent storage for storing index files.

@@ -2,18 +2,18 @@ package deletion
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 // DeleteRequestHandler provides handlers for delete requests
@@ -34,28 +34,26 @@ func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, deleteRequestCance
 	return &deleteMgr
 }
 
-// AddDeleteRequestHandler handles addition of new delete request
+// AddDeleteRequestHandler handles addition of a new delete request
 func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		serverutil.JSONError(w, http.StatusBadRequest, err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	params := r.URL.Query()
-	match := params["match[]"]
-	if len(match) == 0 {
-		serverutil.JSONError(w, http.StatusBadRequest, "selectors not set")
+	query := params.Get("query")
+	if len(query) == 0 {
+		http.Error(w, "query not set", http.StatusBadRequest)
 		return
 	}
 
-	for i := range match {
-		_, err := parser.ParseMetricSelector(match[i])
-		if err != nil {
-			serverutil.JSONError(w, http.StatusBadRequest, err.Error())
-			return
-		}
+	_, err = parseDeletionQuery(query)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	startParam := params.Get("start")
@@ -63,7 +61,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	if startParam != "" {
 		startTime, err = util.ParseTime(startParam)
 		if err != nil {
-			serverutil.JSONError(w, http.StatusBadRequest, err.Error())
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 	}
@@ -74,12 +72,12 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	if endParam != "" {
 		endTime, err = util.ParseTime(endParam)
 		if err != nil {
-			serverutil.JSONError(w, http.StatusBadRequest, err.Error())
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		if endTime > int64(model.Now()) {
-			serverutil.JSONError(w, http.StatusBadRequest, "deletes in future not allowed")
+			http.Error(w, "deletes in future not allowed", http.StatusBadRequest)
 			return
 		}
 	}
@@ -89,9 +87,9 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
-	if err := dm.deleteRequestsStore.AddDeleteRequest(ctx, userID, model.Time(startTime), model.Time(endTime), match); err != nil {
+	if err := dm.deleteRequestsStore.AddDeleteRequest(ctx, userID, model.Time(startTime), model.Time(endTime), query); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
-		serverutil.JSONError(w, http.StatusInternalServerError, err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -104,20 +102,20 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		serverutil.JSONError(w, http.StatusBadRequest, err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	deleteRequests, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
-		serverutil.JSONError(w, http.StatusInternalServerError, err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if err := json.NewEncoder(w).Encode(deleteRequests); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
-		serverutil.JSONError(w, http.StatusInternalServerError, "error marshalling response: %v", err)
+		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
 	}
 }
 
@@ -126,7 +124,7 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		serverutil.JSONError(w, http.StatusBadRequest, err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -136,28 +134,28 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 	deleteRequest, err := dm.deleteRequestsStore.GetDeleteRequest(ctx, userID, requestID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete request from the store", "err", err)
-		serverutil.JSONError(w, http.StatusInternalServerError, err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if deleteRequest == nil {
-		serverutil.JSONError(w, http.StatusBadRequest, "could not find delete request with given id")
+		http.Error(w, "could not find delete request with given id", http.StatusBadRequest)
 		return
 	}
 
 	if deleteRequest.Status != StatusReceived {
-		serverutil.JSONError(w, http.StatusBadRequest, "deletion of request which is in process or already processed is not allowed")
+		http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
 		return
 	}
 
 	if deleteRequest.CreatedAt.Add(dm.deleteRequestCancelPeriod).Before(model.Now()) {
-		serverutil.JSONError(w, http.StatusBadRequest, "deletion of request past the deadline of %s since its creation is not allowed", dm.deleteRequestCancelPeriod.String())
+		http.Error(w, fmt.Sprintf("deletion of request past the deadline of %s since its creation is not allowed", dm.deleteRequestCancelPeriod.String()), http.StatusBadRequest)
 		return
 	}
 
 	if err := dm.deleteRequestsStore.RemoveDeleteRequest(ctx, userID, requestID, deleteRequest.CreatedAt, deleteRequest.StartTime, deleteRequest.EndTime); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error cancelling the delete request", "err", err)
-		serverutil.JSONError(w, http.StatusInternalServerError, err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 

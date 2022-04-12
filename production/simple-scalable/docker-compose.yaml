@@ -6,7 +6,7 @@ networks:
 
 services:
   read:
-    image: grafana/loki:2.4.2
+    image: grafana/loki:2.5.0
     command: "-config.file=/etc/loki/config.yaml -target=read"
     ports:
       - 3100
@@ -22,7 +22,7 @@ services:
           - loki
 
   write:
-    image: grafana/loki:2.4.2
+    image: grafana/loki:2.5.0
     command: "-config.file=/etc/loki/config.yaml -target=write"
     ports:
       - 3100
@@ -36,7 +36,7 @@ services:
       <<: *loki-dns
 
   promtail:
-    image: grafana/promtail:2.4.2
+    image: grafana/promtail:2.5.0
     logging: &logging
       driver: loki-compose
       options:

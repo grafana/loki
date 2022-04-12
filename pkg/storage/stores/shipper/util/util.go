@@ -17,8 +17,8 @@ import (
 	gzip "github.com/klauspost/pgzip"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -225,7 +225,7 @@ func ValidateSharedStoreKeyPrefix(prefix string) error {
 	return nil
 }
 
-func QueryKey(q chunk.IndexQuery) string {
+func QueryKey(q index.Query) string {
 	ret := q.TableName + sep + q.HashValue
 
 	if len(q.RangeValuePrefix) != 0 {

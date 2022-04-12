@@ -187,7 +187,11 @@ func (v Value) AsFloat64() float64 {
 }
 
 // AsFloat64Slice returns the []float64 value. Make sure that the Value's type is
+<<<<<<< HEAD
 // INT64SLICE.
+=======
+// FLOAT64SLICE.
+>>>>>>> main
 func (v Value) AsFloat64Slice() []float64 {
 	if s, ok := v.slice.(*[]float64); ok {
 		return *s
@@ -202,7 +206,11 @@ func (v Value) AsString() string {
 }
 
 // AsStringSlice returns the []string value. Make sure that the Value's type is
+<<<<<<< HEAD
 // INT64SLICE.
+=======
+// STRINGSLICE.
+>>>>>>> main
 func (v Value) AsStringSlice() []string {
 	if s, ok := v.slice.(*[]string); ok {
 		return *s

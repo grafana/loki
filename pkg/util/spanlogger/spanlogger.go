@@ -7,7 +7,8 @@ import (
 	"github.com/grafana/dskit/spanlogger"
 	"github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/dskit/tenant"
+
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -18,8 +19,19 @@ const (
 	TenantIDsTagName = spanlogger.TenantIDsTagName
 )
 
+type resolverProxy struct{}
+
+func (r *resolverProxy) TenantID(ctx context.Context) (string, error) {
+	return tenant.TenantID(ctx)
+}
+
+func (r *resolverProxy) TenantIDs(ctx context.Context) ([]string, error) {
+	return tenant.TenantIDs(ctx)
+}
+
 var (
 	loggerCtxKey = &loggerCtxMarker{}
+	resolver     = &resolverProxy{}
 )
 
 // SpanLogger unifies tracing and logging, to reduce repetition.
@@ -28,12 +40,12 @@ type SpanLogger = spanlogger.SpanLogger
 // New makes a new SpanLogger with a log.Logger to send logs to. The provided context will have the logger attached
 // to it and can be retrieved with FromContext.
 func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
-	return spanlogger.New(ctx, util_log.Logger, method, tenant.DefaultResolver, kvps...)
+	return spanlogger.New(ctx, util_log.Logger, method, resolver, kvps...)
 }
 
 // NewWithLogger is like New but allows to pass a logger.
 func NewWithLogger(ctx context.Context, logger log.Logger, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
-	return spanlogger.New(ctx, logger, method, tenant.DefaultResolver, kvps...)
+	return spanlogger.New(ctx, logger, method, resolver, kvps...)
 }
 
 // FromContext returns a SpanLogger using the current parent span.
@@ -41,7 +53,7 @@ func NewWithLogger(ctx context.Context, logger log.Logger, method string, kvps .
 // within the context. If the context doesn't have a logger, the fallback
 // logger is used.
 func FromContext(ctx context.Context) *SpanLogger {
-	return spanlogger.FromContext(ctx, util_log.Logger, tenant.DefaultResolver)
+	return spanlogger.FromContext(ctx, util_log.Logger, resolver)
 }
 
 // FromContextWithFallback returns a span logger using the current parent span.

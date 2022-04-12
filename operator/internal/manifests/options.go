@@ -34,6 +34,7 @@ type FeatureFlags struct {
 	EnableCertificateSigningService bool
 	EnableServiceMonitors           bool
 	EnableTLSServiceMonitorConfig   bool
+	EnablePrometheusAlerts          bool
 	EnableGateway                   bool
 	EnableGatewayRoute              bool
 }

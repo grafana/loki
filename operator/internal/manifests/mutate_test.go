@@ -3,12 +3,12 @@ package manifests_test
 import (
 	"testing"
 
+	"github.com/grafana/loki/operator/internal/manifests"
+
+	"github.com/ViaQ/logerr/log"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -17,6 +17,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 )
+
+var logger = log.DefaultLogger()
 
 func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 	got := &corev1.ConfigMap{
@@ -41,7 +43,7 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(logger, got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -53,7 +55,7 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 func TestGetMutateFunc_ReturnErrOnNotSupportedType(t *testing.T) {
 	got := &corev1.Endpoints{}
 	want := &corev1.Endpoints{}
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(logger, got, want)
 
 	require.Error(t, f())
 }
@@ -69,7 +71,7 @@ func TestGetMutateFunc_MutateConfigMap(t *testing.T) {
 		BinaryData: map[string][]byte{"btest": []byte("btestss")},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(logger, got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -118,7 +120,7 @@ func TestGetMutateFunc_MutateServiceSpec(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(logger, got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -233,7 +235,7 @@ func TestGetMutateFunc_MutateServiceAccountObjectMeta(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tt.got, tt.want)
+			f := manifests.MutateFuncFor(logger, tt.got, tt.want)
 			err := f()
 			require.NoError(t, err)
 
@@ -295,7 +297,7 @@ func TestGetMutateFunc_MutateClusterRole(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(logger, got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -306,6 +308,12 @@ func TestGetMutateFunc_MutateClusterRole(t *testing.T) {
 }
 
 func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
+	roleRef := rbacv1.RoleRef{
+		APIGroup: "rbac.authorization.k8s.io",
+		Kind:     "ClusterRole",
+		Name:     "a-role",
+	}
+
 	got := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
@@ -315,11 +323,7 @@ func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
 				"test": "test",
 			},
 		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "ClusterRole",
-			Name:     "a-role",
-		},
+		RoleRef: roleRef,
 		Subjects: []rbacv1.Subject{
 			{
 				Kind:      "ServiceAccount",
@@ -358,14 +362,134 @@ func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(logger, got, want)
 	err := f()
 	require.NoError(t, err)
 
 	// Partial mutation checks
 	require.Exactly(t, got.Labels, want.Labels)
 	require.Exactly(t, got.Annotations, want.Annotations)
-	require.Exactly(t, got.RoleRef, want.RoleRef)
+	require.Exactly(t, got.RoleRef, roleRef)
+	require.Exactly(t, got.Subjects, want.Subjects)
+}
+
+func TestGetMutateFunc_MutateRole(t *testing.T) {
+	got := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"test": "test",
+			},
+			Annotations: map[string]string{
+				"test": "test",
+			},
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{"group-a"},
+				Resources: []string{"res-a"},
+				Verbs:     []string{"get"},
+			},
+		},
+	}
+
+	want := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"test":  "test",
+				"other": "label",
+			},
+			Annotations: map[string]string{
+				"test":  "test",
+				"other": "annotation",
+			},
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{"groupa-a"},
+				Resources: []string{"resa-a"},
+				Verbs:     []string{"get", "create"},
+			},
+			{
+				APIGroups: []string{"groupa-b"},
+				Resources: []string{"resa-b"},
+				Verbs:     []string{"list", "create"},
+			},
+		},
+	}
+
+	f := manifests.MutateFuncFor(logger, got, want)
+	err := f()
+	require.NoError(t, err)
+
+	// Partial mutation checks
+	require.Exactly(t, got.Labels, want.Labels)
+	require.Exactly(t, got.Annotations, want.Annotations)
+	require.Exactly(t, got.Rules, want.Rules)
+}
+
+func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
+	roleRef := rbacv1.RoleRef{
+		APIGroup: "rbac.authorization.k8s.io",
+		Kind:     "Role",
+		Name:     "a-role",
+	}
+
+	got := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"test": "test",
+			},
+			Annotations: map[string]string{
+				"test": "test",
+			},
+		},
+		RoleRef: roleRef,
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      "service-me",
+				Namespace: "stack-ns",
+			},
+		},
+	}
+
+	want := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"test":  "test",
+				"other": "label",
+			},
+			Annotations: map[string]string{
+				"test":  "test",
+				"other": "annotation",
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "Role",
+			Name:     "b-role",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      "service-me",
+				Namespace: "stack-ns",
+			},
+			{
+				Kind: "User",
+				Name: "a-user",
+			},
+		},
+	}
+
+	f := manifests.MutateFuncFor(logger, got, want)
+	err := f()
+	require.NoError(t, err)
+
+	// Partial mutation checks
+	require.Exactly(t, got.Labels, want.Labels)
+	require.Exactly(t, got.Annotations, want.Annotations)
+	require.Exactly(t, got.RoleRef, roleRef)
 	require.Exactly(t, got.Subjects, want.Subjects)
 }
 
@@ -477,7 +601,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want)
+			f := manifests.MutateFuncFor(logger, tst.got, tst.want)
 			err := f()
 			require.NoError(t, err)
 
@@ -634,7 +758,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want)
+			f := manifests.MutateFuncFor(logger, tst.got, tst.want)
 			err := f()
 			require.NoError(t, err)
 
@@ -807,7 +931,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want)
+			f := manifests.MutateFuncFor(logger, tst.got, tst.want)
 			err := f()
 			require.NoError(t, err)
 
@@ -875,7 +999,7 @@ func TestGetMutateFunc_MutateIngress(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(logger, got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -928,7 +1052,7 @@ func TestGetMutateFunc_MutateRoute(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(logger, got, want)
 	err := f()
 	require.NoError(t, err)
 

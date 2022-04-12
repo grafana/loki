@@ -4,11 +4,34 @@ run:
   tests: true #Default
 
 linters:
+<<<<<<< HEAD
   enable:
     - misspell
     - goimports
     - revive
     - gofmt
+=======
+  # Disable everything by default so upgrades to not include new "default
+  # enabled" linters.
+  disable-all: true
+  # Specifically enable linters we want to use.
+  enable:
+    - deadcode
+    - errcheck
+    - gofmt
+    - goimports
+    - gosimple
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - structcheck
+    - typecheck
+    - unused
+    - varcheck
+
+>>>>>>> main
 
 issues:
   exclude-rules:

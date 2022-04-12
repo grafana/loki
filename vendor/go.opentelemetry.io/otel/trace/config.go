@@ -41,13 +41,18 @@ func (t *TracerConfig) SchemaURL() string {
 func NewTracerConfig(options ...TracerOption) TracerConfig {
 	var config TracerConfig
 	for _, option := range options {
+<<<<<<< HEAD
 		option.apply(&config)
+=======
+		config = option.apply(config)
+>>>>>>> main
 	}
 	return config
 }
 
 // TracerOption applies an option to a TracerConfig.
 type TracerOption interface {
+<<<<<<< HEAD
 	apply(*TracerConfig)
 }
 
@@ -55,6 +60,15 @@ type tracerOptionFunc func(*TracerConfig)
 
 func (fn tracerOptionFunc) apply(cfg *TracerConfig) {
 	fn(cfg)
+=======
+	apply(TracerConfig) TracerConfig
+}
+
+type tracerOptionFunc func(TracerConfig) TracerConfig
+
+func (fn tracerOptionFunc) apply(cfg TracerConfig) TracerConfig {
+	return fn(cfg)
+>>>>>>> main
 }
 
 // SpanConfig is a group of options for a Span.
@@ -106,7 +120,11 @@ func (cfg *SpanConfig) SpanKind() SpanKind {
 func NewSpanStartConfig(options ...SpanStartOption) SpanConfig {
 	var c SpanConfig
 	for _, option := range options {
+<<<<<<< HEAD
 		option.applySpanStart(&c)
+=======
+		c = option.applySpanStart(c)
+>>>>>>> main
 	}
 	return c
 }
@@ -118,7 +136,11 @@ func NewSpanStartConfig(options ...SpanStartOption) SpanConfig {
 func NewSpanEndConfig(options ...SpanEndOption) SpanConfig {
 	var c SpanConfig
 	for _, option := range options {
+<<<<<<< HEAD
 		option.applySpanEnd(&c)
+=======
+		c = option.applySpanEnd(c)
+>>>>>>> main
 	}
 	return c
 }
@@ -126,6 +148,7 @@ func NewSpanEndConfig(options ...SpanEndOption) SpanConfig {
 // SpanStartOption applies an option to a SpanConfig. These options are applicable
 // only when the span is created
 type SpanStartOption interface {
+<<<<<<< HEAD
 	applySpanStart(*SpanConfig)
 }
 
@@ -133,12 +156,25 @@ type spanOptionFunc func(*SpanConfig)
 
 func (fn spanOptionFunc) applySpanStart(cfg *SpanConfig) {
 	fn(cfg)
+=======
+	applySpanStart(SpanConfig) SpanConfig
+}
+
+type spanOptionFunc func(SpanConfig) SpanConfig
+
+func (fn spanOptionFunc) applySpanStart(cfg SpanConfig) SpanConfig {
+	return fn(cfg)
+>>>>>>> main
 }
 
 // SpanEndOption applies an option to a SpanConfig. These options are
 // applicable only when the span is ended.
 type SpanEndOption interface {
+<<<<<<< HEAD
 	applySpanEnd(*SpanConfig)
+=======
+	applySpanEnd(SpanConfig) SpanConfig
+>>>>>>> main
 }
 
 // EventConfig is a group of options for an Event.
@@ -170,7 +206,11 @@ func (cfg *EventConfig) StackTrace() bool {
 func NewEventConfig(options ...EventOption) EventConfig {
 	var c EventConfig
 	for _, option := range options {
+<<<<<<< HEAD
 		option.applyEvent(&c)
+=======
+		c = option.applyEvent(c)
+>>>>>>> main
 	}
 	if c.timestamp.IsZero() {
 		c.timestamp = time.Now()
@@ -180,7 +220,11 @@ func NewEventConfig(options ...EventOption) EventConfig {
 
 // EventOption applies span event options to an EventConfig.
 type EventOption interface {
+<<<<<<< HEAD
 	applyEvent(*EventConfig)
+=======
+	applyEvent(EventConfig) EventConfig
+>>>>>>> main
 }
 
 // SpanOption are options that can be used at both the beginning and end of a span.
@@ -203,12 +247,23 @@ type SpanEndEventOption interface {
 
 type attributeOption []attribute.KeyValue
 
+<<<<<<< HEAD
 func (o attributeOption) applySpan(c *SpanConfig) {
 	c.attributes = append(c.attributes, []attribute.KeyValue(o)...)
 }
 func (o attributeOption) applySpanStart(c *SpanConfig) { o.applySpan(c) }
 func (o attributeOption) applyEvent(c *EventConfig) {
 	c.attributes = append(c.attributes, []attribute.KeyValue(o)...)
+=======
+func (o attributeOption) applySpan(c SpanConfig) SpanConfig {
+	c.attributes = append(c.attributes, []attribute.KeyValue(o)...)
+	return c
+}
+func (o attributeOption) applySpanStart(c SpanConfig) SpanConfig { return o.applySpan(c) }
+func (o attributeOption) applyEvent(c EventConfig) EventConfig {
+	c.attributes = append(c.attributes, []attribute.KeyValue(o)...)
+	return c
+>>>>>>> main
 }
 
 var _ SpanStartEventOption = attributeOption{}
@@ -234,10 +289,23 @@ type SpanEventOption interface {
 
 type timestampOption time.Time
 
+<<<<<<< HEAD
 func (o timestampOption) applySpan(c *SpanConfig)      { c.timestamp = time.Time(o) }
 func (o timestampOption) applySpanStart(c *SpanConfig) { o.applySpan(c) }
 func (o timestampOption) applySpanEnd(c *SpanConfig)   { o.applySpan(c) }
 func (o timestampOption) applyEvent(c *EventConfig)    { c.timestamp = time.Time(o) }
+=======
+func (o timestampOption) applySpan(c SpanConfig) SpanConfig {
+	c.timestamp = time.Time(o)
+	return c
+}
+func (o timestampOption) applySpanStart(c SpanConfig) SpanConfig { return o.applySpan(c) }
+func (o timestampOption) applySpanEnd(c SpanConfig) SpanConfig   { return o.applySpan(c) }
+func (o timestampOption) applyEvent(c EventConfig) EventConfig {
+	c.timestamp = time.Time(o)
+	return c
+}
+>>>>>>> main
 
 var _ SpanEventOption = timestampOption{}
 
@@ -249,9 +317,21 @@ func WithTimestamp(t time.Time) SpanEventOption {
 
 type stackTraceOption bool
 
+<<<<<<< HEAD
 func (o stackTraceOption) applyEvent(c *EventConfig)  { c.stackTrace = bool(o) }
 func (o stackTraceOption) applySpan(c *SpanConfig)    { c.stackTrace = bool(o) }
 func (o stackTraceOption) applySpanEnd(c *SpanConfig) { o.applySpan(c) }
+=======
+func (o stackTraceOption) applyEvent(c EventConfig) EventConfig {
+	c.stackTrace = bool(o)
+	return c
+}
+func (o stackTraceOption) applySpan(c SpanConfig) SpanConfig {
+	c.stackTrace = bool(o)
+	return c
+}
+func (o stackTraceOption) applySpanEnd(c SpanConfig) SpanConfig { return o.applySpan(c) }
+>>>>>>> main
 
 // WithStackTrace sets the flag to capture the error with stack trace (e.g. true, false).
 func WithStackTrace(b bool) SpanEndEventOption {
@@ -261,8 +341,14 @@ func WithStackTrace(b bool) SpanEndEventOption {
 // WithLinks adds links to a Span. The links are added to the existing Span
 // links, i.e. this does not overwrite. Links with invalid span context are ignored.
 func WithLinks(links ...Link) SpanStartOption {
+<<<<<<< HEAD
 	return spanOptionFunc(func(cfg *SpanConfig) {
 		cfg.links = append(cfg.links, links...)
+=======
+	return spanOptionFunc(func(cfg SpanConfig) SpanConfig {
+		cfg.links = append(cfg.links, links...)
+		return cfg
+>>>>>>> main
 	})
 }
 
@@ -270,28 +356,52 @@ func WithLinks(links ...Link) SpanStartOption {
 // existing parent span context will be ignored when defining the Span's trace
 // identifiers.
 func WithNewRoot() SpanStartOption {
+<<<<<<< HEAD
 	return spanOptionFunc(func(cfg *SpanConfig) {
 		cfg.newRoot = true
+=======
+	return spanOptionFunc(func(cfg SpanConfig) SpanConfig {
+		cfg.newRoot = true
+		return cfg
+>>>>>>> main
 	})
 }
 
 // WithSpanKind sets the SpanKind of a Span.
 func WithSpanKind(kind SpanKind) SpanStartOption {
+<<<<<<< HEAD
 	return spanOptionFunc(func(cfg *SpanConfig) {
 		cfg.spanKind = kind
+=======
+	return spanOptionFunc(func(cfg SpanConfig) SpanConfig {
+		cfg.spanKind = kind
+		return cfg
+>>>>>>> main
 	})
 }
 
 // WithInstrumentationVersion sets the instrumentation version.
 func WithInstrumentationVersion(version string) TracerOption {
+<<<<<<< HEAD
 	return tracerOptionFunc(func(cfg *TracerConfig) {
 		cfg.instrumentationVersion = version
+=======
+	return tracerOptionFunc(func(cfg TracerConfig) TracerConfig {
+		cfg.instrumentationVersion = version
+		return cfg
+>>>>>>> main
 	})
 }
 
 // WithSchemaURL sets the schema URL for the Tracer.
 func WithSchemaURL(schemaURL string) TracerOption {
+<<<<<<< HEAD
 	return tracerOptionFunc(func(cfg *TracerConfig) {
 		cfg.schemaURL = schemaURL
+=======
+	return tracerOptionFunc(func(cfg TracerConfig) TracerConfig {
+		cfg.schemaURL = schemaURL
+		return cfg
+>>>>>>> main
 	})
 }

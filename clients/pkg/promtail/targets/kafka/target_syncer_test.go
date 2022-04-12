@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -65,8 +66,8 @@ func Test_TopicDiscovery(t *testing.T) {
 		if !group.consuming.Load() {
 			return false
 		}
-		return assert.Equal(t, group.topics, []string{"topic1"})
-	}, 200*time.Millisecond, time.Millisecond)
+		return reflect.DeepEqual([]string{"topic1"}, group.topics)
+	}, 200*time.Millisecond, time.Millisecond, "expected topics: %v, got: %v", []string{"topic1"}, group.topics)
 
 	client.topics = []string{"topic1", "topic2"} // introduce new topics
 
@@ -74,8 +75,8 @@ func Test_TopicDiscovery(t *testing.T) {
 		if !group.consuming.Load() {
 			return false
 		}
-		return assert.Equal(t, group.topics, []string{"topic1", "topic2"})
-	}, 200*time.Millisecond, time.Millisecond)
+		return reflect.DeepEqual([]string{"topic1", "topic2"}, group.topics)
+	}, 200*time.Millisecond, time.Millisecond, "expected topics: %v, got: %v", []string{"topic1", "topic2"}, group.topics)
 
 	require.NoError(t, ts.Stop())
 	require.True(t, closed)
@@ -274,10 +275,8 @@ func Test_withAuthentication(t *testing.T) {
 		SASLConfig: scrapeconfig.KafkaSASLConfig{
 			Mechanism: sarama.SASLTypeSCRAMSHA256,
 			User:      "user",
-			Password: flagext.Secret{
-				Value: "pass",
-			},
-			UseTLS: false,
+			Password:  flagext.SecretWithValue("pass"),
+			UseTLS:    false,
 		},
 	})
 	assert.Nil(t, err)
@@ -289,9 +288,7 @@ func Test_withAuthentication(t *testing.T) {
 		SASLConfig: scrapeconfig.KafkaSASLConfig{
 			Mechanism: sarama.SASLTypePlaintext,
 			User:      "user",
-			Password: flagext.Secret{
-				Value: "pass",
-			},
+			Password:  flagext.SecretWithValue("pass"),
 		},
 	})
 	assert.Nil(t, err)
@@ -308,9 +305,7 @@ func Test_withAuthentication(t *testing.T) {
 		SASLConfig: scrapeconfig.KafkaSASLConfig{
 			Mechanism: sarama.SASLTypeSCRAMSHA512,
 			User:      "user",
-			Password: flagext.Secret{
-				Value: "pass",
-			},
+			Password:  flagext.SecretWithValue("pass"),
 		},
 	})
 	assert.Nil(t, err)
@@ -327,9 +322,7 @@ func Test_withAuthentication(t *testing.T) {
 		SASLConfig: scrapeconfig.KafkaSASLConfig{
 			Mechanism: sarama.SASLTypeGSSAPI,
 			User:      "user",
-			Password: flagext.Secret{
-				Value: "pass",
-			},
+			Password:  flagext.SecretWithValue("pass"),
 		},
 	})
 	assert.Error(t, err)
@@ -341,9 +334,7 @@ func Test_withAuthentication(t *testing.T) {
 		SASLConfig: scrapeconfig.KafkaSASLConfig{
 			Mechanism: sarama.SASLTypeSCRAMSHA512,
 			User:      "user",
-			Password: flagext.Secret{
-				Value: "pass",
-			},
+			Password:  flagext.SecretWithValue("pass"),
 			UseTLS:    true,
 			TLSConfig: tlsConf,
 		},

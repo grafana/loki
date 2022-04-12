@@ -74,6 +74,24 @@ func (key tsigHMACProvider) Verify(msg []byte, t *TSIG) error {
 	return nil
 }
 
+type tsigSecretProvider map[string]string
+
+func (ts tsigSecretProvider) Generate(msg []byte, t *TSIG) ([]byte, error) {
+	key, ok := ts[t.Hdr.Name]
+	if !ok {
+		return nil, ErrSecret
+	}
+	return tsigHMACProvider(key).Generate(msg, t)
+}
+
+func (ts tsigSecretProvider) Verify(msg []byte, t *TSIG) error {
+	key, ok := ts[t.Hdr.Name]
+	if !ok {
+		return ErrSecret
+	}
+	return tsigHMACProvider(key).Verify(msg, t)
+}
+
 // TSIG is the RR the holds the transaction signature of a message.
 // See RFC 2845 and RFC 4635.
 type TSIG struct {

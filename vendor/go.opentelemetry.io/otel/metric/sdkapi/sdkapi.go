@@ -72,7 +72,11 @@ type AsyncImpl interface {
 // AsyncBatchRunner.  SDKs will encounter an error if the AsyncRunner
 // does not satisfy one of these interfaces.
 type AsyncRunner interface {
+<<<<<<< HEAD
 	// AnyRunner() is a non-exported method with no functional use
+=======
+	// AnyRunner is a non-exported method with no functional use
+>>>>>>> main
 	// other than to make this a non-empty interface.
 	AnyRunner()
 }

@@ -10,18 +10,18 @@ import (
 	"go.etcd.io/bbolt"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/storage/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 var (
 	source = flag.String("source", "", "the source boltdb file")
-	dest   = flag.String("dest", "", "the dest tsdb file")
+	dest   = flag.String("dest", "", "the dest tsdb dir")
 	// Hardcode a periodconfig for convenience as the boltdb iterator needs one
 	// NB: must match the index file you're reading from
-	periodConfig = func() chunk.PeriodConfig {
+	periodConfig = func() config.PeriodConfig {
 		input := `
 from: "2022-01-01"
 index:
@@ -31,7 +31,7 @@ object_store: gcs
 schema: v13
 store: boltdb-shipper
 `
-		var cfg chunk.PeriodConfig
+		var cfg config.PeriodConfig
 		if err := yaml.Unmarshal([]byte(input), &cfg); err != nil {
 			panic(err)
 		}
@@ -95,7 +95,7 @@ func main() {
 	}
 
 	log.Println("writing index")
-	if err := builder.Build(context.Background(), *dest); err != nil {
+	if _, err := builder.Build(context.Background(), *dest, "fake"); err != nil {
 		panic(err)
 	}
 }

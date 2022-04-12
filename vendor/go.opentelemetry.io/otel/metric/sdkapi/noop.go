@@ -21,7 +21,13 @@ import (
 	"go.opentelemetry.io/otel/metric/number"
 )
 
+<<<<<<< HEAD
 type noopInstrument struct{}
+=======
+type noopInstrument struct {
+	descriptor Descriptor
+}
+>>>>>>> main
 type noopSyncInstrument struct{ noopInstrument }
 type noopAsyncInstrument struct{ noopInstrument }
 
@@ -31,21 +37,46 @@ var _ AsyncImpl = noopAsyncInstrument{}
 // NewNoopSyncInstrument returns a No-op implementation of the
 // synchronous instrument interface.
 func NewNoopSyncInstrument() SyncImpl {
+<<<<<<< HEAD
 	return noopSyncInstrument{}
+=======
+	return noopSyncInstrument{
+		noopInstrument{
+			descriptor: Descriptor{
+				instrumentKind: CounterInstrumentKind,
+			},
+		},
+	}
+>>>>>>> main
 }
 
 // NewNoopAsyncInstrument returns a No-op implementation of the
 // asynchronous instrument interface.
 func NewNoopAsyncInstrument() AsyncImpl {
+<<<<<<< HEAD
 	return noopAsyncInstrument{}
+=======
+	return noopAsyncInstrument{
+		noopInstrument{
+			descriptor: Descriptor{
+				instrumentKind: CounterObserverInstrumentKind,
+			},
+		},
+	}
+>>>>>>> main
 }
 
 func (noopInstrument) Implementation() interface{} {
 	return nil
 }
 
+<<<<<<< HEAD
 func (noopInstrument) Descriptor() Descriptor {
 	return Descriptor{}
+=======
+func (n noopInstrument) Descriptor() Descriptor {
+	return n.descriptor
+>>>>>>> main
 }
 
 func (noopSyncInstrument) RecordOne(context.Context, number.Number, []attribute.KeyValue) {

@@ -14,9 +14,11 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -38,13 +40,13 @@ type TableMarker interface {
 
 type Marker struct {
 	workingDirectory string
-	config           storage.SchemaConfig
+	config           config.SchemaConfig
 	expiration       ExpirationChecker
 	markerMetrics    *markerMetrics
-	chunkClient      chunk.Client
+	chunkClient      client.Client
 }
 
-func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration ExpirationChecker, chunkClient chunk.Client, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(workingDirectory string, config config.SchemaConfig, expiration ExpirationChecker, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
 	if err := validatePeriods(config); err != nil {
 		return nil, err
 	}
@@ -280,31 +282,27 @@ func (s *Sweeper) Stop() {
 }
 
 type chunkRewriter struct {
-	chunkClient chunk.Client
+	chunkClient client.Client
 	tableName   string
 	bucket      *bbolt.Bucket
-	scfg        chunk.SchemaConfig
+	scfg        config.SchemaConfig
 
-	seriesStoreSchema chunk.SeriesStoreSchema
+	seriesStoreSchema index.SeriesStoreSchema
 }
 
-func newChunkRewriter(chunkClient chunk.Client, schemaCfg chunk.PeriodConfig,
-	tableName string, bucket *bbolt.Bucket) (*chunkRewriter, error) {
-	schema, err := schemaCfg.CreateSchema()
+func newChunkRewriter(chunkClient client.Client, schemaCfg config.PeriodConfig,
+	tableName string, bucket *bbolt.Bucket,
+) (*chunkRewriter, error) {
+	seriesStoreSchema, err := index.CreateSchema(schemaCfg)
 	if err != nil {
 		return nil, err
-	}
-
-	seriesStoreSchema, ok := schema.(chunk.SeriesStoreSchema)
-	if !ok {
-		return nil, errors.New("invalid schema")
 	}
 
 	return &chunkRewriter{
 		chunkClient:       chunkClient,
 		tableName:         tableName,
 		bucket:            bucket,
-		scfg:              chunk.SchemaConfig{Configs: []chunk.PeriodConfig{schemaCfg}},
+		scfg:              config.SchemaConfig{Configs: []config.PeriodConfig{schemaCfg}},
 		seriesStoreSchema: seriesStoreSchema,
 	}, nil
 }
@@ -341,7 +339,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 		}
 
 		newChunk := chunk.NewChunk(
-			userID, chks[0].Fingerprint, chks[0].Metric,
+			userID, chks[0].FingerprintModel(), chks[0].Metric,
 			facade,
 			interval.Start,
 			interval.End,
@@ -352,7 +350,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 			return false, err
 		}
 
-		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(interval.Start, interval.End, userID, "logs", newChunk.Metric, c.scfg.ExternalKey(newChunk))
+		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(interval.Start, interval.End, userID, "logs", newChunk.Metric, c.scfg.ExternalKey(newChunk.ChunkRef))
 		if err != nil {
 			return false, err
 		}

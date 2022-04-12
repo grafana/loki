@@ -6,7 +6,8 @@ import (
 
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/util/validation"
 )
 

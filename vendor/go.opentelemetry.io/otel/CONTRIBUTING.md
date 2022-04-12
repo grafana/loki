@@ -228,11 +228,19 @@ all options to create a configured `config`.
 
 ```go
 // newConfig returns an appropriately configured config.
+<<<<<<< HEAD
 func newConfig([]Option) config {
 	// Set default values for config.
 	config := config{/* […] */}
 	for _, option := range options {
 		option.apply(&config)
+=======
+func newConfig(options ...Option) config {
+	// Set default values for config.
+	config := config{/* […] */}
+	for _, option := range options {
+		config = option.apply(config)
+>>>>>>> main
 	}
 	// Preform any validation here.
 	return config
@@ -253,7 +261,11 @@ To set the value of the options a `config` contains, a corresponding
 
 ```go
 type Option interface {
+<<<<<<< HEAD
 	apply(*config)
+=======
+	apply(config) config
+>>>>>>> main
 }
 ```
 
@@ -261,6 +273,12 @@ Having `apply` unexported makes sure that it will not be used externally.
 Moreover, the interface becomes sealed so the user cannot easily implement
 the interface on its own.
 
+<<<<<<< HEAD
+=======
+The `apply` method should return a modified version of the passed config.
+This approach, instead of passing a pointer, is used to prevent the config from being allocated to the heap.
+
+>>>>>>> main
 The name of the interface should be prefixed in the same way the
 corresponding `config` is (if at all).
 
@@ -283,8 +301,14 @@ func With*(…) Option { … }
 ```go
 type defaultFalseOption bool
 
+<<<<<<< HEAD
 func (o defaultFalseOption) apply(c *config) {
 	c.Bool = bool(o)
+=======
+func (o defaultFalseOption) apply(c config) config {
+	c.Bool = bool(o)
+    return c
+>>>>>>> main
 }
 
 // WithOption sets a T to have an option included.
@@ -296,8 +320,14 @@ func WithOption() Option {
 ```go
 type defaultTrueOption bool
 
+<<<<<<< HEAD
 func (o defaultTrueOption) apply(c *config) {
 	c.Bool = bool(o)
+=======
+func (o defaultTrueOption) apply(c config) config {
+	c.Bool = bool(o)
+    return c
+>>>>>>> main
 }
 
 // WithoutOption sets a T to have Bool option excluded.
@@ -313,8 +343,14 @@ type myTypeOption struct {
 	MyType MyType
 }
 
+<<<<<<< HEAD
 func (o myTypeOption) apply(c *config) {
 	c.MyType = o.MyType
+=======
+func (o myTypeOption) apply(c config) config {
+	c.MyType = o.MyType
+    return c
+>>>>>>> main
 }
 
 // WithMyType sets T to have include MyType.
@@ -326,16 +362,29 @@ func WithMyType(t MyType) Option {
 ##### Functional Options
 
 ```go
+<<<<<<< HEAD
 type optionFunc func(*config)
 
 func (fn optionFunc) apply(c *config) {
 	fn(c)
+=======
+type optionFunc func(config) config
+
+func (fn optionFunc) apply(c config) config {
+	return fn(c)
+>>>>>>> main
 }
 
 // WithMyType sets t as MyType.
 func WithMyType(t MyType) Option {
+<<<<<<< HEAD
 	return optionFunc(func(c *config) {
 		c.MyType = t
+=======
+	return optionFunc(func(c config) config {
+		c.MyType = t
+        return c
+>>>>>>> main
 	})
 }
 ```
@@ -370,12 +419,20 @@ type config struct {
 
 // DogOption apply Dog specific options.
 type DogOption interface {
+<<<<<<< HEAD
 	applyDog(*config)
+=======
+	applyDog(config) config
+>>>>>>> main
 }
 
 // BirdOption apply Bird specific options.
 type BirdOption interface {
+<<<<<<< HEAD
 	applyBird(*config)
+=======
+	applyBird(config) config
+>>>>>>> main
 }
 
 // Option apply options for all animals.
@@ -385,6 +442,7 @@ type Option interface {
 }
 
 type weightOption float64
+<<<<<<< HEAD
 func (o weightOption) applyDog(c *config)  { c.Weight = float64(o) }
 func (o weightOption) applyBird(c *config) { c.Weight = float64(o) }
 func WithWeight(w float64) Option          { return weightOption(w) }
@@ -396,6 +454,38 @@ func WithFurColor(c string) DogOption       { return furColorOption(c) }
 type maxAltitudeOption float64
 func (o maxAltitudeOption) applyBird(c *config) { c.MaxAltitude = float64(o) }
 func WithMaxAltitude(a float64) BirdOption      { return maxAltitudeOption(a) }
+=======
+
+func (o weightOption) applyDog(c config) config {
+	c.Weight = float64(o)
+	return c
+}
+
+func (o weightOption) applyBird(c config) config {
+	c.Weight = float64(o)
+	return c
+}
+
+func WithWeight(w float64) Option { return weightOption(w) }
+
+type furColorOption string
+
+func (o furColorOption) applyDog(c config) config {
+	c.Color = string(o)
+	return c
+}
+
+func WithFurColor(c string) DogOption { return furColorOption(c) }
+
+type maxAltitudeOption float64
+
+func (o maxAltitudeOption) applyBird(c config) config {
+	c.MaxAltitude = float64(o)
+	return c
+}
+
+func WithMaxAltitude(a float64) BirdOption { return maxAltitudeOption(a) }
+>>>>>>> main
 
 func NewDog(name string, o ...DogOption) Dog    {…}
 func NewBird(name string, o ...BirdOption) Bird {…}
@@ -478,7 +568,11 @@ Approvers:
 
 - [Evan Torrie](https://github.com/evantorrie), Verizon Media
 - [Josh MacDonald](https://github.com/jmacd), LightStep
+<<<<<<< HEAD
 - [Sam Xie](https://github.com/XSAM)
+=======
+- [Sam Xie](https://github.com/XSAM), Cisco/AppDynamics
+>>>>>>> main
 - [David Ashpole](https://github.com/dashpole), Google
 - [Gustavo Silva Paiva](https://github.com/paivagustavo), LightStep
 - [Robert Pająk](https://github.com/pellared), Splunk

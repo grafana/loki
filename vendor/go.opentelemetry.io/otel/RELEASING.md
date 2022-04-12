@@ -108,7 +108,10 @@ It is critical you make sure the version you push upstream is correct.
 
 Finally create a Release for the new `<new tag>` on GitHub.
 The release body should include all the release notes from the Changelog for this release.
+<<<<<<< HEAD
 Additionally, the `tag.sh` script generates commit logs since last release which can be used to supplement the release notes.
+=======
+>>>>>>> main
 
 ## Verify Examples
 

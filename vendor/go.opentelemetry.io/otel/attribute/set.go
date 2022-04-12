@@ -410,6 +410,18 @@ func (l *Set) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.equivalent.iface)
 }
 
+<<<<<<< HEAD
+=======
+// MarshalLog is the marshaling function used by the logging system to represent this exporter.
+func (l Set) MarshalLog() interface{} {
+	kvs := make(map[string]string)
+	for _, kv := range l.ToSlice() {
+		kvs[string(kv.Key)] = kv.Value.Emit()
+	}
+	return kvs
+}
+
+>>>>>>> main
 // Len implements `sort.Interface`.
 func (l *Sortable) Len() int {
 	return len(*l)

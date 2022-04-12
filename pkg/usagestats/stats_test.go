@@ -2,6 +2,7 @@ package usagestats
 
 import (
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,7 +50,7 @@ func Test_BuildReport(t *testing.T) {
 	require.Equal(t, r.Edition, "OSS")
 	require.Equal(t, r.Target, "compactor")
 	require.Equal(t, r.Metrics["num_cpu"], runtime.NumCPU())
-	require.Equal(t, r.Metrics["num_goroutine"], runtime.NumGoroutine())
+	// Don't check num_goroutine because it could have changed since the report was created.
 	require.Equal(t, r.Metrics["compression"], "lz4")
 	require.Equal(t, r.Metrics["compression_ratio"], int64(100))
 	require.Equal(t, r.Metrics["size_mb"], 200.1)
@@ -95,13 +96,17 @@ func TestStatistic(t *testing.T) {
 
 func TestWordCounter(t *testing.T) {
 	w := NewWordCounter("test_words_count")
+	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			w.Add("foo")
 			w.Add("bar")
 			w.Add("foo")
 		}()
 	}
+	wg.Wait()
 	require.Equal(t, int64(2), w.Value())
 }
 

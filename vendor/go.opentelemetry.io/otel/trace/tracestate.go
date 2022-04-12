@@ -58,7 +58,11 @@ func newMember(key, value string) (member, error) {
 	return member{Key: key, Value: value}, nil
 }
 
+<<<<<<< HEAD
 func parseMemeber(m string) (member, error) {
+=======
+func parseMember(m string) (member, error) {
+>>>>>>> main
 	matches := memberRe.FindStringSubmatch(m)
 	if len(matches) != 5 {
 		return member{}, fmt.Errorf("%w: %s", errInvalidMember, m)
@@ -114,7 +118,11 @@ func ParseTraceState(tracestate string) (TraceState, error) {
 			continue
 		}
 
+<<<<<<< HEAD
 		m, err := parseMemeber(memberStr)
+=======
+		m, err := parseMember(memberStr)
+>>>>>>> main
 		if err != nil {
 			return TraceState{}, wrapErr(err)
 		}

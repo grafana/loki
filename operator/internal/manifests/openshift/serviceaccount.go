@@ -20,7 +20,7 @@ func BuildServiceAccount(opts Options) client.Object {
 			Annotations: serviceAccountAnnotations(opts),
 			Labels:      opts.BuildOpts.Labels,
 			Name:        serviceAccountName(opts),
-			Namespace:   opts.BuildOpts.GatewayNamespace,
+			Namespace:   opts.BuildOpts.LokiStackNamespace,
 		},
 		AutomountServiceAccountToken: pointer.Bool(true),
 	}

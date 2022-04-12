@@ -21,8 +21,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
@@ -82,7 +82,7 @@ func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexReq
 			})
 		}
 
-		resp.QueryKey = util.QueryKey(chunk.IndexQuery{
+		resp.QueryKey = util.QueryKey(index.Query{
 			TableName:        query.TableName,
 			HashValue:        query.HashValue,
 			RangeValuePrefix: query.RangeValuePrefix,
@@ -130,9 +130,9 @@ func TestGatewayClient(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	queries := []chunk.IndexQuery{}
+	queries := []index.Query{}
 	for i := 0; i < 10; i++ {
-		queries = append(queries, chunk.IndexQuery{
+		queries = append(queries, index.Query{
 			TableName:        fmt.Sprintf("%s%d", tableNamePrefix, i),
 			HashValue:        fmt.Sprintf("%s%d", hashValuePrefix, i),
 			RangeValuePrefix: []byte(fmt.Sprintf("%s%d", rangeValuePrefixPrefix, i)),
@@ -142,7 +142,7 @@ func TestGatewayClient(t *testing.T) {
 	}
 
 	numCallbacks := 0
-	err = gatewayClient.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+	err = gatewayClient.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 
 		for j := 0; j <= numCallbacks; j++ {
@@ -174,7 +174,7 @@ func (m mockLimits) DefaultLimits() *validation.Limits {
 	return &validation.Limits{}
 }
 
-func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
+func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 	buffer := 1024 * 1024
 	listener := bufconn.Listen(buffer)
 
@@ -202,8 +202,8 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 		tableName := buildTableName(i)
 		objectStorageDir := filepath.Join(dir, "index", tableName)
 		cacheDir := filepath.Join(dir, "cache", tableName)
-		require.NoError(b, os.MkdirAll(objectStorageDir, 0777))
-		require.NoError(b, os.MkdirAll(cacheDir, 0777))
+		require.NoError(b, os.MkdirAll(objectStorageDir, 0o777))
+		require.NoError(b, os.MkdirAll(cacheDir, 0o777))
 
 		// add few rows at a time to the db because doing to many writes in a single transaction puts too much strain on boltdb and makes it slow
 		for i := 0; i < benchMarkNumEntries/numTables; i += 10000 {
@@ -256,7 +256,7 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 		actual := map[string]int{}
 		syncMtx := sync.Mutex{}
 
-		err := gatewayClient.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+		err := gatewayClient.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 			itr := batch.Iterator()
 			for itr.Next() {
 				syncMtx.Lock()
@@ -271,11 +271,11 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 }
 
 func Benchmark_QueriesMatchingSingleRow(b *testing.B) {
-	queries := []chunk.IndexQuery{}
+	queries := []index.Query{}
 	// do a query per row from each of the tables
 	for i := 0; i < benchMarkNumEntries/numTables; i++ {
 		for j := 0; j < numTables; j++ {
-			queries = append(queries, chunk.IndexQuery{
+			queries = append(queries, index.Query{
 				TableName:        buildTableName(j),
 				RangeValuePrefix: []byte(strconv.Itoa(i)),
 				ValueEqual:       []byte(strconv.Itoa(i)),
@@ -287,10 +287,10 @@ func Benchmark_QueriesMatchingSingleRow(b *testing.B) {
 }
 
 func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
-	var queries []chunk.IndexQuery
+	var queries []index.Query
 	// do a query per table matching all the rows from it
 	for j := 0; j < numTables; j++ {
-		queries = append(queries, chunk.IndexQuery{
+		queries = append(queries, index.Query{
 			TableName: buildTableName(j),
 		})
 	}
