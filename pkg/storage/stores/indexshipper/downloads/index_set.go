@@ -121,9 +121,9 @@ func (t *indexSet) Init() (err error) {
 		idx, err := t.openIndexFileFunc(fullPath)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open existing index file %s, removing the file and continuing without it to let the sync operation catch up", fullPath), "err", err)
-			// Sometimes files get corrupted when the process gets killed in the middle of a download operation which causes boltdb client to panic.
-			// We already recover the panic but the lock on the file is not released by boltdb client which causes the reopening of the file to fail when the sync operation tries it.
-			// We want to remove the file failing to open to get rid of the lock.
+			// Sometimes files get corrupted when the process gets killed in the middle of a download operation which can cause problems in reading the file.
+			// Implementation of openIndexFileFunc should take care of gracefully handling corrupted files.
+			// Let us just remove the file and let the sync operation re-download it.
 			if err := os.Remove(fullPath); err != nil {
 				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove index file %s which failed to open", fullPath))
 			}
