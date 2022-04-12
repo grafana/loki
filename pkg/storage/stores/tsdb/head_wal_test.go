@@ -10,15 +10,15 @@ import (
 )
 
 func Test_Encoding_Series(t *testing.T) {
-	record := &walRecord{
-		userID: "foo",
-		series: record.RefSeries{
+	record := &WalRecord{
+		UserID: "foo",
+		Series: record.RefSeries{
 			Ref:    chunks.HeadSeriesRef(1),
 			Labels: mustParseLabels(`{foo="bar"}`),
 		},
 	}
 	buf := record.encodeSeries(nil)
-	decoded := &walRecord{}
+	decoded := &WalRecord{}
 
 	err := decodeWALRecord(buf, decoded)
 	require.Nil(t, err)
@@ -26,11 +26,11 @@ func Test_Encoding_Series(t *testing.T) {
 }
 
 func Test_Encoding_Chunks(t *testing.T) {
-	record := &walRecord{
-		userID: "foo",
-		chks: chunkMetasRecord{
-			ref: 1,
-			chks: index.ChunkMetas{
+	record := &WalRecord{
+		UserID: "foo",
+		Chks: ChunkMetasRecord{
+			Ref: 1,
+			Chks: index.ChunkMetas{
 				{
 					Checksum: 1,
 					MinTime:  1,
@@ -49,7 +49,7 @@ func Test_Encoding_Chunks(t *testing.T) {
 		},
 	}
 	buf := record.encodeChunks(nil)
-	decoded := &walRecord{}
+	decoded := &WalRecord{}
 
 	err := decodeWALRecord(buf, decoded)
 	require.Nil(t, err)

@@ -1,8 +1,6 @@
 package tsdb
 
 import (
-	"sync"
-
 	"github.com/go-kit/log"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/encoding"
@@ -29,39 +27,39 @@ const (
 	walRecordChunks
 )
 
-type walRecord struct {
-	userID string
-	series record.RefSeries
-	chks   chunkMetasRecord
+type WalRecord struct {
+	UserID string
+	Series record.RefSeries
+	Chks   ChunkMetasRecord
 }
 
-type chunkMetasRecord struct {
-	chks index.ChunkMetas
-	ref  uint64
+type ChunkMetasRecord struct {
+	Chks index.ChunkMetas
+	Ref  uint64
 }
 
-func (r *walRecord) encodeSeries(b []byte) []byte {
+func (r *WalRecord) encodeSeries(b []byte) []byte {
 	buf := encoding.EncWith(b)
 	buf.PutByte(byte(walRecordSeries))
-	buf.PutUvarintStr(r.userID)
+	buf.PutUvarintStr(r.UserID)
 
 	var enc record.Encoder
 	// The 'encoded' already has the type header and userID here, hence re-using
 	// the remaining part of the slice (i.e. encoded[len(encoded):])) to encode the series.
 	encoded := buf.Get()
-	encoded = append(encoded, enc.Series([]record.RefSeries{r.series}, encoded[len(encoded):])...)
+	encoded = append(encoded, enc.Series([]record.RefSeries{r.Series}, encoded[len(encoded):])...)
 
 	return encoded
 }
 
-func (r *walRecord) encodeChunks(b []byte) []byte {
+func (r *WalRecord) encodeChunks(b []byte) []byte {
 	buf := encoding.EncWith(b)
 	buf.PutByte(byte(walRecordChunks))
-	buf.PutUvarintStr(r.userID)
-	buf.PutBE64(r.chks.ref)
-	buf.PutUvarint(len(r.chks.chks))
+	buf.PutUvarintStr(r.UserID)
+	buf.PutBE64(r.Chks.Ref)
+	buf.PutUvarint(len(r.Chks.Chks))
 
-	for _, chk := range r.chks.chks {
+	for _, chk := range r.Chks.Chks {
 		buf.PutBE64(uint64(chk.MinTime))
 		buf.PutBE64(uint64(chk.MaxTime))
 		buf.PutBE32(chk.Checksum)
@@ -72,14 +70,14 @@ func (r *walRecord) encodeChunks(b []byte) []byte {
 	return buf.Get()
 }
 
-func decodeChunks(b []byte, version RecordType, rec *walRecord) error {
+func decodeChunks(b []byte, version RecordType, rec *WalRecord) error {
 	if len(b) == 0 {
 		return nil
 	}
 
 	dec := encoding.DecWith(b)
 
-	rec.chks.ref = dec.Be64()
+	rec.Chks.Ref = dec.Be64()
 	if err := dec.Err(); err != nil {
 		return errors.Wrap(err, "decoding series ref")
 	}
@@ -89,10 +87,10 @@ func decodeChunks(b []byte, version RecordType, rec *walRecord) error {
 		return errors.Wrap(err, "decoding number of chunks")
 	}
 	// allocate space for the required number of chunks
-	rec.chks.chks = make(index.ChunkMetas, 0, ln)
+	rec.Chks.Chks = make(index.ChunkMetas, 0, ln)
 
 	for len(dec.B) > 0 && dec.Err() == nil {
-		rec.chks.chks = append(rec.chks.chks, index.ChunkMeta{
+		rec.Chks.Chks = append(rec.Chks.Chks, index.ChunkMeta{
 			MinTime:  dec.Be64int64(),
 			MaxTime:  dec.Be64int64(),
 			Checksum: dec.Be32(),
@@ -108,7 +106,7 @@ func decodeChunks(b []byte, version RecordType, rec *walRecord) error {
 	return nil
 }
 
-func decodeWALRecord(b []byte, walRec *walRecord) (err error) {
+func decodeWALRecord(b []byte, walRec *WalRecord) (err error) {
 	var (
 		userID string
 		dec    record.Decoder
@@ -129,7 +127,7 @@ func decodeWALRecord(b []byte, walRec *walRecord) (err error) {
 			return errors.New("more than one series detected in tsdb head wal record")
 		}
 		if len(rSeries) == 1 {
-			walRec.series = rSeries[0]
+			walRec.Series = rSeries[0]
 		}
 	case walRecordChunks:
 		userID = decbuf.UvarintStr()
@@ -147,7 +145,7 @@ func decodeWALRecord(b []byte, walRec *walRecord) (err error) {
 		return err
 	}
 
-	walRec.userID = userID
+	walRec.UserID = userID
 	return nil
 }
 
@@ -156,9 +154,6 @@ func decodeWALRecord(b []byte, walRec *walRecord) (err error) {
 type headWAL struct {
 	log log.Logger
 	wal *wal.WAL
-
-	closeMtx sync.RWMutex
-	closed   bool
 }
 
 func newHeadWAL(log log.Logger, dir string) (*headWAL, error) {
@@ -177,9 +172,30 @@ func newHeadWAL(log log.Logger, dir string) (*headWAL, error) {
 }
 
 func (w *headWAL) Stop() error {
-	w.closeMtx.Lock()
-	err := w.wal.Close()
-	w.closed = true
-	w.closeMtx.Unlock()
-	return err
+	return w.wal.Close()
+}
+
+func (w *headWAL) Log(record *WalRecord) error {
+	if record == nil {
+		return nil
+	}
+
+	var buf []byte
+
+	// Always write series before chunks
+	if len(record.Series.Labels) > 0 {
+		buf = record.encodeSeries(buf)
+		if err := w.wal.Log(buf); err != nil {
+			return err
+		}
+	}
+
+	if len(record.Chks.Chks) > 0 {
+		buf = record.encodeChunks(buf[:0])
+		if err := w.wal.Log(buf); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
