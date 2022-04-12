@@ -761,18 +761,31 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # CLI flag: -<prefix>.azure.environment
 [environment: <string> | default = "AzureGlobal"]
 
-# Name of the blob container used to store chunks. This container must be
-# created before running cortex.
-# CLI flag: -<prefix>.azure.container-name
-[container_name: <string> | default = "loki"]
-
-# The Microsoft Azure account name to be used
+# Azure storage account name.
 # CLI flag: -<prefix>.azure.account-name
 [account_name: <string> | default = ""]
 
-# The Microsoft Azure account key to use.
+# Azure storage account key.
 # CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
+
+# Name of the storage account blob container used to store chunks.
+# This container must be created before running Loki.
+# CLI flag: -<prefix>.azure.container-name
+[container_name: <string> | default = "loki"]
+
+# Azure storage endpoint suffix without schema. The storage account name will
+# be prefixed to this value to create the FQDN.
+# CLI flag: -<prefix>.azure.endpoint-suffix
+[endpoint_suffix: <string> | default = ""]
+
+# Use Managed Identity to authenticate to the Azure storage account.
+# CLI flag: -<prefix>.azure.use-managed-identity
+[use_managed_identity: <boolean> | default = false]
+
+# User assigned identity ID to authenticate to the Azure storage account.
+# CLI flag: -<prefix>.azure.user-assigned-id
+[user_assigned_id: <string> | default = ""]
 
 # Chunk delimiter to build the blobID
 # CLI flag: -<prefix>.azure.chunk-delimiter
@@ -805,10 +818,6 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # Maximum time to wait before retrying a request.
 # CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
-
-# Use Managed Identity or not.
-# CLI flag: -ruler.storage.azure.use-managed-identity
-[use_managed_identity: <boolean> | default = false]
 ```
 
 ## gcs_storage_config

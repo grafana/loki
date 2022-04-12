@@ -360,8 +360,8 @@ memberlist:
 					"should equal default environment since unspecified in config")
 
 				assert.Equal(t, "milkyway", actual.ContainerName)
-				assert.Equal(t, "3rd_planet", actual.AccountName)
-				assert.Equal(t, "water", actual.AccountKey.String())
+				assert.Equal(t, "3rd_planet", actual.StorageAccountName)
+				assert.Equal(t, "water", actual.StorageAccountKey.String())
 				assert.Equal(t, 27, actual.DownloadBufferSize)
 				assert.Equal(t, 42, actual.UploadBufferSize)
 				assert.Equal(t, 13, actual.UploadBufferCount)
