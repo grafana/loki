@@ -31,6 +31,45 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Loki
+
+#### `stream_lag_labels` configuration has moved, single client config has been deprecated
+
+Previously the config for each promtail client looked like: https://grafana.com/docs/loki/v2.4/clients/promtail/configuration/#clients
+example:
+```
+clients:
+  - url: http://localhost:3100/loki/api/v1/push
+    stream_lag_labels: "filename,something_else_1"
+    external_labels:
+      client: a
+  - url: http://localhost:3100/loki/api/v1/push
+    stream_lag_labels: "filename,something_else_2"
+    external_labels:
+      client: b
+```
+However due to the way the Promtail client metrics were registered, and more specifically the way the Promtail stream lag metric labels were set, there was a bug
+that should have been caught by Prometheus' metric instrumentation library (duplicate metric registration/attempt to register the same metric with different label sets)
+but was not, and therefore would result in a failure to scrape metrics at runtime. This was due to allowing `stream_lag_labels` to be set for each client,
+which could result in that metric for each client having the same label values. To remedy this, the `stream_lag_labels` config field has been moved to a new
+top level section `options`.
+example:
+```
+options:
+  - stream_lag_labels: "filename,something_else"
+clients:
+  - url: http://localhost:3100/loki/api/v1/push
+    external_labels:
+      client: a
+  - url: http://localhost:3100/loki/api/v1/push
+    external_labels:
+      client: b
+```
+This means that if you currently set a value for that configuration per client you will need to move it/only set it once, as shown above.
+
+At the same time, we have taken steps to deprecate the use of the single client `client` config file block, as well as the `-client.*` command line flags. The interaction between setting any of these plus the usage of `client` with `clients` within the connfig file can be confusing as it was not always clear which values take precedence. Setting any of these
+values will result in Promtail logging an error message about the usage of these fields and exiting.
+
 ## 2.5.0
 
 ### Loki
