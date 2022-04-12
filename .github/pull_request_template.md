@@ -24,8 +24,18 @@ Note about CHANGELOG entries, if a change adds:
 then please add a CHANGELOG entry.
 
 For documentation changes, build changes, simple fixes etc please skip this step. We are attempting to curate a changelog of the most relevant and important changes to be easier to ingest by end users of Loki.
+
+Note about the upgrade guide, if this changes:
+* default configuration values
+* metric names or label names
+* changes existing log lines such as the metrics.go query output line
+* configuration parameters 
+* anything to do with any API
+* any other change that would require special attention or extra steps to upgrade
+Please document clearly what changed AND what needs to be done in the upgrade guide.
 -->
 **Checklist**
 - [ ] Documentation added
 - [ ] Tests updated
 - [ ] Is this an important fix or new feature? Add an entry in the `CHANGELOG.md`.
+- [ ] Changes that require user attention or interaction to upgrade are documented in `docs/sources/upgrading/_index.md`
