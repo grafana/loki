@@ -429,3 +429,32 @@ func removeWhiteSpace(s string) string {
 		return r
 	}, s)
 }
+
+func TestSliceToSet(t *testing.T) {
+	for _, tc := range []struct {
+		desc     string
+		slice    []string
+		expected map[string]struct{}
+	}{
+		{
+			desc:     "empty slice",
+			slice:    []string{},
+			expected: map[string]struct{}{},
+		},
+		{
+			desc:     "single element",
+			slice:    []string{"a"},
+			expected: map[string]struct{}{"a": {}},
+		},
+		{
+			desc:     "multiple elements",
+			slice:    []string{"a", "b", "c"},
+			expected: map[string]struct{}{"a": {}, "b": {}, "c": {}},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			actual := sliceToSet(tc.slice)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
