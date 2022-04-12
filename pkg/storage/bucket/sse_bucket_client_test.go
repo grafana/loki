@@ -1,4 +1,4 @@
-package bucket
+String()package bucket
 
 import (
 	"context"
@@ -51,7 +51,7 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 				Endpoint:        srv.Listener.Addr().String(),
 				Region:          "test",
 				BucketName:      "test-bucket",
-				SecretAccessKey: flagext.Secret{Value: "test"},
+				SecretAccessKey: flagext.SecretWithValue("test"),
 				AccessKeyID:     "test",
 				Insecure:        true,
 			}
