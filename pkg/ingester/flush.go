@@ -375,7 +375,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			chunkSize := c.chunk.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
 			start := time.Now()
 			if err := ch.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkSize))); err != nil {
-				return err
+				return fmt.Errorf("chunk encoding: %w", err)
 			}
 			chunkEncodeTime.Observe(time.Since(start).Seconds())
 			wireChunks[j] = ch
@@ -387,26 +387,24 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		return err
 	}
 
-	if err := i.store.Put(ctx, wireChunks); err != nil {
-		return err
-	}
-	flushedChunksStats.Inc(int64(len(wireChunks)))
-
-	// Record statistics only when actual put request did not return error.
 	sizePerTenant := chunkSizePerTenant.WithLabelValues(userID)
 	countPerTenant := chunksPerTenant.WithLabelValues(userID)
 
 	chunkMtx.Lock()
 	defer chunkMtx.Unlock()
-
-	for i, wc := range wireChunks {
+	for idx, wc := range wireChunks {
+		if err := i.store.Put(ctx, []chunk.Chunk{wc}); err != nil {
+			return fmt.Errorf("store put chunk: %w", err)
+		}
+		flushedChunksStats.Inc(1)
 
 		// flush successful, write while we have lock
-		cs[i].flushed = time.Now()
+		cs[idx].flushed = time.Now()
+		numEntries := cs[idx].chunk.Size()
 
-		numEntries := cs[i].chunk.Size()
 		byt, err := wc.Encoded()
 		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to encode flushed wire chunk", "err", err)
 			continue
 		}
 
@@ -423,7 +421,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		chunkSize.Observe(compressedSize)
 		sizePerTenant.Add(compressedSize)
 		countPerTenant.Inc()
-		firstTime, lastTime := cs[i].chunk.Bounds()
+		firstTime, lastTime := cs[idx].chunk.Bounds()
 		chunkAge.Observe(time.Since(firstTime).Seconds())
 		chunkLifespan.Observe(lastTime.Sub(firstTime).Hours())
 
