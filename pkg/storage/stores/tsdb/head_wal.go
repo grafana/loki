@@ -4,12 +4,19 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
-	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
+
+type WAL interface {
+	Start(time.Time) error
+	Log(*WalRecord) error
+	Stop() error
+}
 
 // TODO(owen-d): There are probably some performance gains to be had by utilizing
 // pools here, but in the interest of implementation time and given chunks aren't
@@ -195,8 +202,8 @@ func newHeadWAL(log log.Logger, dir string) (*headWAL, error) {
 }
 
 // Start logs a record containing the time at which this WAL became active.
-func (w *headWAL) Start() error {
-	return w.Log(&WalRecord{StartTime: time.Now().UnixNano()})
+func (w *headWAL) Start(t time.Time) error {
+	return w.Log(&WalRecord{StartTime: t.UnixNano()})
 }
 
 func (w *headWAL) Stop() error {
