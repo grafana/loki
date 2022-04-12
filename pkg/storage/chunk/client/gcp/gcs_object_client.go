@@ -2,8 +2,11 @@ package gcp
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"io"
+	"net"
+	"net/http"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -11,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	google_http "google.golang.org/api/transport/http"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
@@ -77,10 +81,11 @@ func newGCSObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.C
 
 func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config, enableHTTP2, hedging bool, clientFactory ClientFactory) (*storage.BucketHandle, error) {
 	var opts []option.ClientOption
-	httpClient, err := gcsInstrumentation(ctx, storage.ScopeReadWrite, cfg.Insecure, enableHTTP2)
+	transport, err := gcsTransport(ctx, storage.ScopeReadWrite, cfg.Insecure, enableHTTP2)
 	if err != nil {
 		return nil, err
 	}
+	httpClient := gcsInstrumentation(transport)
 
 	if hedging {
 		httpClient, err = hedgingCfg.ClientWithRegisterer(httpClient, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
@@ -205,4 +210,33 @@ func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (s *GCSObjectClient) IsObjectNotFoundErr(err error) bool {
 	return errors.Is(err, storage.ErrObjectNotExist)
+}
+
+func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool) (http.RoundTripper, error) {
+	customTransport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          200,
+		MaxIdleConnsPerHost:   200,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	if !http2 {
+		// disable HTTP/2 by setting TLSNextProto to non-nil empty map, as per the net/http documentation.
+		// see http2 section of https://pkg.go.dev/net/http
+		customTransport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
+		customTransport.ForceAttemptHTTP2 = false
+	}
+	transportOptions := []option.ClientOption{option.WithScopes(scope)}
+	if insecure {
+		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		// When using `insecure` (testing only), we add a fake API key as well to skip credential chain lookups.
+		transportOptions = append(transportOptions, option.WithAPIKey("insecure"))
+	}
+	return google_http.NewTransport(ctx, customTransport, transportOptions...)
 }
