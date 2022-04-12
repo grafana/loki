@@ -161,7 +161,7 @@ storage_config:
 tracing:
   enabled: false
 analytics:
-  reporting_enabled: false
+  reporting_enabled: true
 `
 	expRCfg := `
 ---
@@ -225,6 +225,7 @@ overrides:
 				AccessKeySecret: "test123",
 			},
 		},
+		EnableRemoteReporting: true,
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)

@@ -40,16 +40,16 @@ func init() {
 
 func main() {
 	var (
-		metricsAddr              string
-		enableLeaderElection     bool
-		probeAddr                string
-		enableCertSigning        bool
-		enableServiceMonitors    bool
-		enableTLSServiceMonitors bool
-		enableGateway            bool
-		enableGatewayRoute       bool
-		enablePrometheusAlerts   bool
-		enableGrafanaLabsStats   bool
+		metricsAddr                string
+		enableLeaderElection       bool
+		probeAddr                  string
+		enableCertSigning          bool
+		enableServiceMonitors      bool
+		enableTLSServiceMonitors   bool
+		enableGateway              bool
+		enableGatewayRoute         bool
+		enablePrometheusAlerts     bool
+		enableGrafanaLabsAnalytics bool
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -67,8 +67,8 @@ func main() {
 	flag.BoolVar(&enableGatewayRoute, "with-lokistack-gateway-route", false,
 		"Enables the usage of Route for the lokistack-gateway instead of Ingress (OCP Only!).")
 	flag.BoolVar(&enablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts.")
-	flag.BoolVar(&enableGrafanaLabsStats, "with-grafana-labs-stats", true,
-		"Enables grafana labs statistics.\nMore info: https://grafana.com/docs/loki/latest/configuration/#analytics")
+	flag.BoolVar(&enableGrafanaLabsAnalytics, "with-grafana-labs-analytics", true,
+		"Enables Grafana Labs analytics.\nMore info: https://grafana.com/docs/loki/latest/configuration/#analytics")
 	flag.Parse()
 
 	logger := log.NewLogger("loki-operator")
@@ -111,7 +111,7 @@ func main() {
 		EnablePrometheusAlerts:          enablePrometheusAlerts,
 		EnableGateway:                   enableGateway,
 		EnableGatewayRoute:              enableGatewayRoute,
-		EnableGrafanaLabsStats:          enableGrafanaLabsStats,
+		EnableGrafanaLabsStats:          enableGrafanaLabsAnalytics,
 	}
 
 	if err = (&controllers.LokiStackReconciler{
