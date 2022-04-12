@@ -125,7 +125,7 @@ func decodeWALRecord(b []byte, walRec *walRecord) (err error) {
 			return errors.Wrap(err, "decoding head series")
 		}
 		// unlike tsdb, we only add one series per record.
-		if len(rSeries) > 0 {
+		if len(rSeries) > 1 {
 			return errors.New("more than one series detected in tsdb head wal record")
 		}
 		if len(rSeries) == 1 {
