@@ -117,7 +117,7 @@ func (t *indexSet) Init() (err error) {
 		}
 
 		fullPath := filepath.Join(t.cacheLocation, fileInfo.Name())
-		// if we fail to open a boltdb file, lets skip it and let sync operation re-download the file from storage.
+		// if we fail to open an index file, lets skip it and let sync operation re-download the file from storage.
 		idx, err := t.openIndexFileFunc(fullPath)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open existing index file %s, removing the file and continuing without it to let the sync operation catch up", fullPath), "err", err)
