@@ -71,7 +71,7 @@ http:
 				Endpoint:         "test-endpoint",
 				Region:           "test-region",
 				BucketName:       "test-bucket-name",
-				SecretAccessKey:  flagext.Secret{Value: "test-secret-access-key"},
+				SecretAccessKey:  flagext.SecretWithValue("test-secret-access-key"),
 				AccessKeyID:      "test-access-key-id",
 				Insecure:         true,
 				SignatureVersion: "test-signature-version",

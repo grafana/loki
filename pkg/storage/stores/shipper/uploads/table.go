@@ -19,9 +19,9 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -38,7 +38,7 @@ const (
 )
 
 type BoltDBIndexClient interface {
-	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error
 	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 }
 
@@ -84,7 +84,8 @@ func NewTable(path, uploader string, storageClient StorageClient, boltdbIndexCli
 
 // LoadTable loads local dbs belonging to the table and creates a new Table with references to dbs if there are any otherwise it doesn't create a table
 func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient,
-	makePerTenantBuckets bool, metrics *metrics) (*Table, error) {
+	makePerTenantBuckets bool, metrics *metrics,
+) (*Table, error) {
 	dbs, err := loadBoltDBsFromDir(path, metrics)
 	if err != nil {
 		return nil, err
@@ -98,7 +99,8 @@ func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexCl
 }
 
 func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient,
-	makePerTenantBuckets bool) (*Table, error) {
+	makePerTenantBuckets bool,
+) (*Table, error) {
 	return &Table{
 		name:                 filepath.Base(path),
 		path:                 path,
@@ -189,7 +191,7 @@ func (lt *Table) Snapshot() error {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (lt *Table) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	lt.dbSnapshotsMtx.RLock()
 	defer lt.dbSnapshotsMtx.RUnlock()
 
@@ -226,25 +228,29 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 }
 
 func (lt *Table) getOrAddDB(name string) (*bbolt.DB, error) {
+	lt.dbsMtx.RLock()
+	db, ok := lt.dbs[name]
+	lt.dbsMtx.RUnlock()
+
+	if ok {
+		return db, nil
+	}
+
 	lt.dbsMtx.Lock()
 	defer lt.dbsMtx.Unlock()
 
-	var (
-		db  *bbolt.DB
-		err error
-		ok  bool
-	)
-
 	db, ok = lt.dbs[name]
-	if !ok {
-		db, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(lt.path, name))
-		if err != nil {
-			return nil, err
-		}
-
-		lt.dbs[name] = db
+	if ok {
 		return db, nil
 	}
+
+	var err error
+	db, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(lt.path, name))
+	if err != nil {
+		return nil, err
+	}
+
+	lt.dbs[name] = db
 
 	return db, nil
 }

@@ -12,7 +12,7 @@ func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
 
 type noOpDeleteRequestsStore struct{}
 
-func (d *noOpDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error {
+func (d *noOpDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, query string) error {
 	return nil
 }
 

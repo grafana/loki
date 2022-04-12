@@ -13,7 +13,7 @@ import (
 func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
 	bucketConfig := gcs.Config{
 		Bucket:         cfg.BucketName,
-		ServiceAccount: cfg.ServiceAccount.Value,
+		ServiceAccount: cfg.ServiceAccount.String(),
 	}
 
 	// Thanos currently doesn't support passing the config as is, but expects a YAML,

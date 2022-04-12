@@ -226,13 +226,11 @@ func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT t
 	var deletes []*logproto.Delete
 	for _, del := range d {
 		if int64(del.StartTime) <= end && int64(del.EndTime) >= start {
-			for _, selector := range del.Selectors {
-				deletes = append(deletes, &logproto.Delete{
-					Selector: selector,
-					Start:    int64(del.StartTime),
-					End:      int64(del.EndTime),
-				})
-			}
+			deletes = append(deletes, &logproto.Delete{
+				Selector: del.Query,
+				Start:    int64(del.StartTime),
+				End:      int64(del.EndTime),
+			})
 		}
 	}
 
@@ -531,7 +529,7 @@ func (q *SingleTenantQuerier) seriesForMatchers(
 
 // seriesForMatcher fetches series from the store for a given matcher
 func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
-	ids, err := q.store.GetSeries(ctx, logql.SelectLogParams{
+	ids, err := q.store.Series(ctx, logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  matcher,
 			Limit:     1,

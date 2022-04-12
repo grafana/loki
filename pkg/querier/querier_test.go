@@ -242,7 +242,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(nil, errors.New("tst-err"))
 
-				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, nil)
+				store.On("Series", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -258,7 +258,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1"},
 				}), nil)
 
-				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
+				store.On("Series", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -271,7 +271,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 			mkReq([]string{`{a="1"}`}),
 			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
-				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, nil)
+				store.On("Series", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -289,7 +289,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1", "b": "3"},
 				}), nil)
 
-				store.On("GetSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+				store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 					{Labels: map[string]string{"a": "1", "b": "4"}},
 					{Labels: map[string]string{"a": "1", "b": "5"}},
 				}, nil)
@@ -314,7 +314,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1", "b": "2"},
 				}), nil)
 
-				store.On("GetSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+				store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 					{Labels: map[string]string{"a": "1", "b": "2"}},
 					{Labels: map[string]string{"a": "1", "b": "3"}},
 				}, nil)
@@ -740,11 +740,11 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 
 	delGetter := &mockDeleteGettter{
 		results: []deletion.DeleteRequest{
-			{Selectors: []string{`0`}, StartTime: 0, EndTime: 100},
-			{Selectors: []string{`1`}, StartTime: 200, EndTime: 400},
-			{Selectors: []string{`2`}, StartTime: 400, EndTime: 500},
-			{Selectors: []string{`3`}, StartTime: 500, EndTime: 700},
-			{Selectors: []string{`4`}, StartTime: 700, EndTime: 900},
+			{Query: `0`, StartTime: 0, EndTime: 100},
+			{Query: `1`, StartTime: 200, EndTime: 400},
+			{Query: `2`, StartTime: 400, EndTime: 500},
+			{Query: `3`, StartTime: 500, EndTime: 700},
+			{Query: `4`, StartTime: 700, EndTime: 900},
 		},
 	}
 
@@ -802,11 +802,11 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 
 	delGetter := &mockDeleteGettter{
 		results: []deletion.DeleteRequest{
-			{Selectors: []string{`0`}, StartTime: 0, EndTime: 100},
-			{Selectors: []string{`1`}, StartTime: 200, EndTime: 400},
-			{Selectors: []string{`2`}, StartTime: 400, EndTime: 500},
-			{Selectors: []string{`3`}, StartTime: 500, EndTime: 700},
-			{Selectors: []string{`4`}, StartTime: 700, EndTime: 900},
+			{Query: `0`, StartTime: 0, EndTime: 100},
+			{Query: `1`, StartTime: 200, EndTime: 400},
+			{Query: `2`, StartTime: 400, EndTime: 500},
+			{Query: `3`, StartTime: 500, EndTime: 700},
+			{Query: `4`, StartTime: 700, EndTime: 900},
 		},
 	}
 

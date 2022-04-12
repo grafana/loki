@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -937,7 +937,7 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 	}
 
 	if newChunk.Size() == 0 {
-		return nil, encoding.ErrSliceNoDataInRange
+		return nil, chunk.ErrSliceNoDataInRange
 	}
 
 	if err := newChunk.Close(); err != nil {

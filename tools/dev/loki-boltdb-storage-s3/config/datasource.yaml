@@ -8,3 +8,7 @@ datasources:
     type: loki
     access: proxy
     url: http://query-frontend:8007
+    jsonData:
+      httpHeaderName1: 'X-Scope-OrgID'
+    secureJsonData:
+      httpHeaderValue1: '1'

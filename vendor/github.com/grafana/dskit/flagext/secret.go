@@ -1,17 +1,22 @@
 package flagext
 
+// SecretWithValue returns Secret with specified value.
+func SecretWithValue(v string) Secret {
+	return Secret{value: v}
+}
+
 type Secret struct {
-	Value string
+	value string
 }
 
 // String implements flag.Value
 func (v Secret) String() string {
-	return v.Value
+	return v.value
 }
 
 // Set implements flag.Value
 func (v *Secret) Set(s string) error {
-	v.Value = s
+	v.value = s
 	return nil
 }
 
@@ -27,7 +32,7 @@ func (v *Secret) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // MarshalYAML implements yaml.Marshaler.
 func (v Secret) MarshalYAML() (interface{}, error) {
-	if len(v.Value) == 0 {
+	if len(v.value) == 0 {
 		return "", nil
 	}
 	return "********", nil

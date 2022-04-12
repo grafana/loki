@@ -4,12 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 func Test_calculateMaxLookBack(t *testing.T) {
 	type args struct {
-		pc                chunk.PeriodConfig
+		pc                config.PeriodConfig
 		maxLookBackConfig time.Duration
 		minDuration       time.Duration
 	}
@@ -22,7 +22,7 @@ func Test_calculateMaxLookBack(t *testing.T) {
 		{
 			name: "default",
 			args: args{
-				pc: chunk.PeriodConfig{
+				pc: config.PeriodConfig{
 					ObjectType: "filesystem",
 				},
 				maxLookBackConfig: 0,
@@ -34,7 +34,7 @@ func Test_calculateMaxLookBack(t *testing.T) {
 		{
 			name: "infinite",
 			args: args{
-				pc: chunk.PeriodConfig{
+				pc: config.PeriodConfig{
 					ObjectType: "filesystem",
 				},
 				maxLookBackConfig: -1,
@@ -46,7 +46,7 @@ func Test_calculateMaxLookBack(t *testing.T) {
 		{
 			name: "invalid store type",
 			args: args{
-				pc: chunk.PeriodConfig{
+				pc: config.PeriodConfig{
 					ObjectType: "gcs",
 				},
 				maxLookBackConfig: -1,
@@ -58,7 +58,7 @@ func Test_calculateMaxLookBack(t *testing.T) {
 		{
 			name: "less than minDuration",
 			args: args{
-				pc: chunk.PeriodConfig{
+				pc: config.PeriodConfig{
 					ObjectType: "filesystem",
 				},
 				maxLookBackConfig: 1 * time.Hour,
