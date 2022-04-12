@@ -328,7 +328,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 	wroteChunks := false
 
 	for _, interval := range intervals {
-		newChunkData, err := chks[0].Data.Rebound(interval.Start, interval.End)
+		newChunkData, err := chks[0].Data.Rebound(interval.Start, interval.End, nil)
 		if err != nil {
 			return false, err
 		}

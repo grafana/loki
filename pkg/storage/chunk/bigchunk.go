@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/grafana/loki/pkg/util/filter"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
@@ -85,7 +86,7 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 	return nil
 }
 
-func (b *bigchunk) Rebound(start, end model.Time) (Data, error) {
+func (b *bigchunk) Rebound(start, end model.Time, filter filter.Func) (Data, error) {
 	return nil, errors.New("not implemented")
 }
 

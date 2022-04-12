@@ -20,6 +20,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/grafana/loki/pkg/util/filter"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	errs "github.com/weaveworks/common/errors"
@@ -47,7 +48,7 @@ type Data interface {
 	// Rebound returns a smaller chunk that includes all samples between start and end (inclusive).
 	// We do not want to change existing Slice implementations because
 	// it is built specifically for query optimization and is a noop for some of the encodings.
-	Rebound(start, end model.Time) (Data, error)
+	Rebound(start, end model.Time, filter filter.Func) (Data, error)
 	// Size returns the approximate length of the chunk in bytes.
 	Size() int
 	Utilization() float64
