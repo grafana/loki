@@ -237,7 +237,12 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.Schem
 				return err
 			}
 			c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
-			c.deleteRequestsManager = deletion.NewDeleteRequestsManager(c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, r)
+			c.deleteRequestsManager = deletion.NewDeleteRequestsManager(
+				c.deleteRequestsStore,
+				c.cfg.DeleteRequestCancelPeriod,
+				r,
+				c.deleteMode,
+			)
 			c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 		} else {
 			c.expirationChecker = newExpirationChecker(

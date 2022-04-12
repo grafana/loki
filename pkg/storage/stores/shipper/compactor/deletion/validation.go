@@ -7,8 +7,7 @@ import (
 )
 
 var (
-	errInvalidQuery     = errors.New("invalid query expression")
-	errUnsupportedQuery = errors.New("unsupported query expression")
+	errInvalidQuery = errors.New("invalid query expression")
 )
 
 // parseDeletionQuery checks if the given logQL is valid for deletions
