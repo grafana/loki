@@ -37,12 +37,12 @@ var splittableRangeVectorOp = map[string]struct{}{
 // A rewrite is performed using the following rules:
 // 1) Check if query is splittable based on the range.
 // 2) Check if the query is splittable based on the query AST
-// 3) Range aggregations are split into multiple downstream range aggregations
-//    that are merged with a vector aggregation with an appropriate operator.
-//    If the range aggregation has a grouping, the grouping is also applied on
-//    the merge aggregation.
-//    If the range aggregation has no grouping, the grouping is using "without"
-//    to preserve the stream labels.
+// 3) Range aggregations are split into multiple downstream range aggregation expressions
+//    that are concatenated with an appropriate vector aggregator with a grouping operator.
+//    If the range aggregation has a grouping, the grouping is also applied to
+//    the resultant vector aggregator expression.
+//    If the range aggregation has no grouping, a grouping operator using "without" is applied
+//    to the resultant vector aggregator expression to preserve the stream labels.
 // 4) Vector aggregations are split into multiple downstream vector aggregations
 //    that are merged with vector aggregation using "without" and then aggregated
 //    using the vector aggregation with the same operator,
@@ -87,8 +87,8 @@ func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
 	return origExpr.String() == modExpr.String(), modExpr, err
 }
 
-// Map rewrites an existing sample expression and returns the modified
-// expression. It is called recursively on the expression tree.
+// Map rewrites sample expression expr and returns the resultant sample expression to be executed by the downstream engine
+// It is called recursively on the expression tree.
 // The function takes an optional vector aggregation as second argument, that
 // is pushed down to the downstream expression.
 func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.VectorAggregationExpr) (syntax.SampleExpr, error) {
@@ -363,7 +363,7 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 
 // clone returns a copy of the given sample expression
 // This is needed whenever we want to modify the existing query tree.
-// clone is identical as syntax.Expr.Clone() but with the additional type
+// clone is identical to syntax.Expr.Clone() but with the additional type
 // casting for syntax.SampleExpr.
 func clone(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 	return syntax.ParseSampleExpr(expr.String())
