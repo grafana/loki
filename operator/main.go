@@ -67,7 +67,7 @@ func main() {
 	flag.BoolVar(&enableGatewayRoute, "with-lokistack-gateway-route", false,
 		"Enables the usage of Route for the lokistack-gateway instead of Ingress (OCP Only!).")
 	flag.BoolVar(&enablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts.")
-	flag.BoolVar(&enableGrafanaLabsStats, "with-grafana-labs-stats", false,
+	flag.BoolVar(&enableGrafanaLabsStats, "with-grafana-labs-stats", true,
 		"Enables grafana labs statistics.\nMore info: https://grafana.com/docs/loki/latest/configuration/#analytics")
 	flag.Parse()
 
