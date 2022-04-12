@@ -121,20 +121,16 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 // - "instance-interface-names", a list of net interfaces used when looking for addresses.
 func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(r.Common.InstanceAddr, defaults.Common.InstanceAddr) {
-		r.Ingester.LifecyclerConfig.Addr = r.Common.InstanceAddr
-		r.CompactorConfig.CompactorRing.InstanceAddr = r.Common.InstanceAddr
-		r.Distributor.DistributorRing.InstanceAddr = r.Common.InstanceAddr
-		r.Ruler.Ring.InstanceAddr = r.Common.InstanceAddr
-		r.QueryScheduler.SchedulerRing.InstanceAddr = r.Common.InstanceAddr
+		if reflect.DeepEqual(r.Common.Ring.InstanceAddr, defaults.Common.Ring.InstanceAddr) {
+			r.Common.Ring.InstanceAddr = r.Common.InstanceAddr
+		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
-		r.Ingester.LifecyclerConfig.InfNames = r.Common.InstanceInterfaceNames
-		r.CompactorConfig.CompactorRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.Distributor.DistributorRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.Ruler.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		if reflect.DeepEqual(r.Common.Ring.InstanceInterfaceNames, defaults.Common.Ring.InstanceInterfaceNames) {
+			r.Common.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 	}
 }

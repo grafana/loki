@@ -1484,4 +1484,42 @@ common:
 		assert.Equal(t, []string{"ringsshouldntusethis"}, config.Frontend.FrontendV2.InfNames) // not a ring.
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
 	})
+
+	t.Run("common instance net interface doesn't get overwritten by common ring config", func(t *testing.T) {
+		yamlContent := `common:
+  instance_interface_names:
+  - interface
+  ring:
+    kvstore:
+      store: inmemory`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"interface"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"interface"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"interface"}, config.Ruler.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"interface"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"interface"}, config.Frontend.FrontendV2.InfNames)
+		assert.Equal(t, []string{"interface"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+	})
+
+	t.Run("common instance net interface doesn't supersede net interface from common ring with additional config", func(t *testing.T) {
+		yamlContent := `common:
+  instance_interface_names:
+  - ringsshouldntusethis
+  ring:
+    instance_interface_names:
+    - ringsshouldusethis
+    kvstore:
+      store: inmemory`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ruler.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldntusethis"}, config.Frontend.FrontendV2.InfNames) // not a ring.
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+	})
 }
