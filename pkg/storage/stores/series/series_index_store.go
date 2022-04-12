@@ -142,9 +142,13 @@ func (c *IndexStore) GetSeries(ctx context.Context, userID string, from, through
 		return nil, err
 	}
 
+	return c.chunksToSeries(ctx, chks, matchers)
+}
+
+func (c *IndexStore) chunksToSeries(ctx context.Context, in []logproto.ChunkRef, matchers []*labels.Matcher) ([]labels.Labels, error) {
 	// download one per series and merge
 	// group chunks by series
-	chunksBySeries, keys := filterChunkRefsByUniqueFingerprint(c.schemaCfg, chks)
+	chunksBySeries, keys := filterChunkRefsByUniqueFingerprint(c.schemaCfg, in)
 
 	results := make([]labels.Labels, 0, len(chunksBySeries))
 

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -50,7 +51,9 @@ const (
 	numTables           = 50
 )
 
-type mockIndexGatewayServer struct{}
+type mockIndexGatewayServer struct {
+	indexgatewaypb.IndexGatewayServer
+}
 
 func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
 	for i, query := range request.Queries {
@@ -96,6 +99,10 @@ func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexReq
 	}
 
 	return nil
+}
+
+func (m mockIndexGatewayServer) GetChunkRef(context.Context, *indexgatewaypb.GetChunkRefRequest) (*indexgatewaypb.GetChunkRefResponse, error) {
+	return &indexgatewaypb.GetChunkRefResponse{}, nil
 }
 
 func createTestGrpcServer(t *testing.T) (func(), string) {
@@ -228,7 +235,7 @@ func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 	require.NoError(b, err)
 
 	// initialize the index gateway server
-	gw := indexgateway.NewIndexGateway(tm)
+	gw := indexgateway.NewIndexGateway(nil, tm)
 	indexgatewaypb.RegisterIndexGatewayServer(s, gw)
 	go func() {
 		if err := s.Serve(listener); err != nil {
@@ -242,7 +249,7 @@ func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 
 	// initialize the gateway client
 	gatewayClient := GatewayClient{}
-	gatewayClient.grpcClient = indexgatewaypb.NewIndexGatewayClient(conn)
+	gatewayClient.IndexGatewayClient = indexgatewaypb.NewIndexGatewayClient(conn)
 
 	// build the response we expect to get from queries
 	expected := map[string]int{}
@@ -295,4 +302,52 @@ func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
 		})
 	}
 	benchmarkIndexQueries(b, queries)
+}
+
+func Test_HasGetRefsAPI(t *testing.T) {
+	t.Run("registered getref", func(t *testing.T) {
+		cleanup, storeAddress := createTestGrpcServer(t)
+		defer cleanup()
+
+		v, err := HasGetRefsAPI(IndexGatewayClientConfig{
+			Address: storeAddress,
+		})
+		require.Equal(t, true, v)
+		require.NoError(t, err)
+	})
+	t.Run("not registered getref", func(t *testing.T) {
+		lis, err := net.Listen("tcp", "localhost:0")
+		require.NoError(t, err)
+		s := grpc.NewServer()
+
+		go func() {
+			if err := s.Serve(lis); err != nil {
+				log.Fatalf("Failed to serve: %v", err)
+			}
+		}()
+		defer func() {
+			s.GracefulStop()
+		}()
+
+		v, err := HasGetRefsAPI(IndexGatewayClientConfig{
+			Address: lis.Addr().String(),
+		})
+		require.Equal(t, false, v)
+		require.NoError(t, err)
+	})
+}
+
+func TestDoubleRegistration(t *testing.T) {
+	r := prometheus.NewRegistry()
+	cleanup, storeAddress := createTestGrpcServer(t)
+	defer cleanup()
+
+	_, err := NewGatewayClient(IndexGatewayClientConfig{
+		Address: storeAddress,
+	}, r)
+	require.NoError(t, err)
+	_, err = NewGatewayClient(IndexGatewayClientConfig{
+		Address: storeAddress,
+	}, r)
+	require.NoError(t, err)
 }

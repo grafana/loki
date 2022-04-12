@@ -5,15 +5,17 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/gogo/status"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/instrument"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
@@ -49,18 +51,27 @@ type GatewayClient struct {
 
 	storeGatewayClientRequestDuration *prometheus.HistogramVec
 	conn                              *grpc.ClientConn
-	grpcClient                        indexgatewaypb.IndexGatewayClient
+	indexgatewaypb.IndexGatewayClient
 }
 
 func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer) (*GatewayClient, error) {
+	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "loki_boltdb_shipper",
+		Name:      "store_gateway_request_duration_seconds",
+		Help:      "Time (in seconds) spent serving requests when using boltdb shipper store gateway",
+		Buckets:   instrument.DefBuckets,
+	}, []string{"operation", "status_code"})
+	err := r.Register(latency)
+	if err != nil {
+		alreadtErr, ok := err.(prometheus.AlreadyRegisteredError)
+		if !ok {
+			return nil, err
+		}
+		latency = alreadtErr.ExistingCollector.(*prometheus.HistogramVec)
+	}
 	sgClient := &GatewayClient{
-		cfg: cfg,
-		storeGatewayClientRequestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "store_gateway_request_duration_seconds",
-			Help:      "Time (in seconds) spent serving requests when using boltdb shipper store gateway",
-			Buckets:   instrument.DefBuckets,
-		}, []string{"operation", "status_code"}),
+		cfg:                               cfg,
+		storeGatewayClientRequestDuration: latency,
 	}
 
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(sgClient.storeGatewayClientRequestDuration))
@@ -73,8 +84,29 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer) (*G
 		return nil, err
 	}
 
-	sgClient.grpcClient = indexgatewaypb.NewIndexGatewayClient(sgClient.conn)
+	sgClient.IndexGatewayClient = indexgatewaypb.NewIndexGatewayClient(sgClient.conn)
 	return sgClient, nil
+}
+
+func HasGetRefsAPI(cfg IndexGatewayClientConfig) (bool, error) {
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(nil, nil)
+	if err != nil {
+		return false, err
+	}
+	conn, err := grpc.Dial(cfg.Address, dialOpts...)
+	if err != nil {
+		return false, err
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+
+	_, err = indexgatewaypb.NewIndexGatewayClient(conn).GetChunkRef(ctx, &indexgatewaypb.GetChunkRefRequest{})
+	s, ok := status.FromError(err)
+	if !ok {
+		return false, err
+	}
+	return (s.Code() != codes.Unimplemented) && (s.Code() != codes.FailedPrecondition) && (s.Code() != codes.Unavailable), nil
 }
 
 func (s *GatewayClient) Stop() {
@@ -110,7 +142,7 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, ca
 		})
 	}
 
-	streamer, err := s.grpcClient.QueryIndex(ctx, &indexgatewaypb.QueryIndexRequest{Queries: gatewayQueries})
+	streamer, err := s.IndexGatewayClient.QueryIndex(ctx, &indexgatewaypb.QueryIndexRequest{Queries: gatewayQueries})
 	if err != nil {
 		return err
 	}
