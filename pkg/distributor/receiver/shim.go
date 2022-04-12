@@ -104,7 +104,7 @@ func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat 
 			return nil, fmt.Errorf("receiver factory not found for type: %s", componentID.Type())
 		}
 
-		receiver, err := factoryBase.CreateLogsReceiver(ctx, params, cfg, middleware.Wrap(shim))
+		receiver, err := factoryBase.CreateTracesReceiver(ctx, params, cfg, middleware.Wrap(shim))
 		if err != nil {
 			return nil, err
 		}
@@ -156,10 +156,10 @@ func (r *receiversShim) stopping(_ error) error {
 }
 
 // ConsumeLogs implements consumer.Logs
-func (r *receiversShim) ConsumeLogs(ctx context.Context, ld pdata.Logs) error {
+func (r *receiversShim) ConsumeTraces(ctx context.Context, td pdata.Traces) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "distributor.ConsumeLogs")
 	defer span.Finish()
-	req, err := parseLog(ld, r.format)
+	req, err := parseTrace(td, r.format)
 	if err != nil {
 		level.Error(r.logger).Log("msg", "pusher failed to parse log data", "err", err)
 	}
@@ -174,14 +174,14 @@ func (r *receiversShim) ConsumeLogs(ctx context.Context, ld pdata.Logs) error {
 	return err
 }
 
-func parseLog(ld pdata.Logs, format string) (*logproto.PushRequest, error) {
+func parseTrace(ld pdata.Traces, format string) (*logproto.PushRequest, error) {
 	streams := make(map[string]*logproto.Stream)
-	rss := ld.ResourceLogs()
+	rss := ld.ResourceSpans()
 	for i := 0; i < rss.Len(); i++ {
 		rs := rss.At(i)
-		ill := rs.InstrumentationLibraryLogs()
+		ill := rs.InstrumentationLibrarySpans()
 		for i := 0; i < ill.Len(); i++ {
-			logs := ill.At(i).LogRecords()
+			logs := ill.At(i).Spans()
 			for k := 0; k < logs.Len(); k++ {
 				pLog := logs.At(k)
 				labels := parseLabel(rs.Resource().Attributes(), pLog.Attributes())
@@ -212,17 +212,22 @@ func parseLog(ld pdata.Logs, format string) (*logproto.PushRequest, error) {
 	return req, nil
 }
 
-func parseEntry(pLog pdata.LogRecord, format string) (*logproto.Entry, error) {
+func parseEntry(pLog pdata.Span, format string) (*logproto.Entry, error) {
 	var line string
 	if format == LogFormatLogfmt {
 		records := make(map[string]interface{})
-		records["severity_number"] = int32(pLog.SeverityNumber())
-		records["severity_text"] = pLog.SeverityText()
-		records["name"] = pLog.Name()
-		records["body"] = pLog.Body().AsString()
-		records["flags"] = pLog.Flags()
+
 		records["trace_id"] = pLog.TraceID().HexString()
 		records["span_id"] = pLog.SpanID().HexString()
+		records["name"] = pLog.Name()
+		records["parent_span_id"] = pLog.ParentSpanID().HexString()
+		records["status_code"] = pLog.Status().Code().String()
+		records["status_msg"] = pLog.Status().Message()
+		records["trace_state"] = pLog.TraceState()
+		records["kind"] = pLog.Kind()
+		records["start_time"] = pLog.StartTimestamp().String()
+		records["end_time"] = pLog.EndTimestamp().String()
+		records["duration"] = pLog.EndTimestamp() - pLog.StartTimestamp()
 
 		buf := &bytes.Buffer{}
 		enc := logfmt.NewEncoder(buf)
@@ -246,14 +251,36 @@ func parseEntry(pLog pdata.LogRecord, format string) (*logproto.Entry, error) {
 		}
 		line = buf.String()
 	} else if format == LogFormatJSON {
-		record := LokiLogRecord{
-			SeverityNumber: int32(pLog.SeverityNumber()),
-			SeverityText:   pLog.SeverityText(),
-			Name:           pLog.Name(),
-			Body:           pLog.Body().AsString(),
-			Flags:          pLog.Flags(),
-			TraceID:        pLog.TraceID().HexString(),
-			SpanID:         pLog.SpanID().HexString(),
+
+		record := LokiTraceRecord{
+			TraceID:      pLog.TraceID().HexString(),
+			SpanID:       pLog.SpanID().HexString(),
+			Name:         pLog.Name(),
+			ParentSpanId: pLog.ParentSpanID().HexString(),
+			StatusCode:   pLog.Status().Code().String(),
+			StatusMsg:    pLog.Status().Message(),
+			TraceState:   pLog.TraceState(),
+			Kind:         pLog.Kind().String(),
+			StartTime:    pLog.StartTimestamp().String(),
+			EndTime:      pLog.EndTimestamp().String(),
+			Duration:     pLog.EndTimestamp() - pLog.StartTimestamp(),
+		}
+
+		maxEvents := 3
+		for i := 0; i < pLog.Events().Len(); i++ {
+			if i >= maxEvents {
+				break
+			}
+			event := pLog.Events().At(i)
+			spanEvent := Span_Event{Name: event.Name(), Timestamp: event.Timestamp()}
+			if i == 0 {
+				record.Event1 = spanEvent
+			} else if i == 1 {
+				record.Event2 = spanEvent
+			} else if i == 2 {
+				record.Event3 = spanEvent
+			}
+
 		}
 
 		data, err := json.Marshal(&record)
@@ -266,7 +293,7 @@ func parseEntry(pLog pdata.LogRecord, format string) (*logproto.Entry, error) {
 	}
 
 	return &logproto.Entry{
-		Timestamp: time.Unix(0, int64(pLog.Timestamp())),
+		Timestamp: time.Unix(0, int64(pLog.StartTimestamp())),
 		Line:      line,
 	}, nil
 }
@@ -306,12 +333,29 @@ func (r *receiversShim) GetExporters() map[config.DataType]map[config.ComponentI
 	return nil
 }
 
-type LokiLogRecord struct {
-	SeverityNumber int32  `json:"severity_number,omitempty"`
-	SeverityText   string `json:"severity_text,omitempty"`
-	Name           string `json:"name,omitempty"`
-	Body           string `json:"body"`
-	Flags          uint32 `json:"flags,omitempty"`
-	TraceID        string `json:"trace_id"`
-	SpanID         string `json:"span_id"`
+type LokiTraceRecord struct {
+	TraceID      string           `json:"trace_id"`
+	SpanID       string           `json:"span_id"`
+	Name         string           `json:"name"`
+	ParentSpanId string           `json:"parent_span_id"`
+	StatusCode   string           `json:"status_code"`
+	StatusMsg    string           `json:"status_msg"`
+	TraceState   pdata.TraceState `json:"trace_state"`
+	Kind         string           `json:"kind"`
+	StartTime    string           `json:"start_time"`
+	EndTime      string           `json:"end_time"`
+	Duration     pdata.Timestamp  `json:"duration"`
+	Event1       Span_Event       `json:"event1"`
+	Event2       Span_Event       `json:"event2"`
+	Event3       Span_Event       `json:"event3"`
+}
+
+type Span_Event struct {
+	// time_unix_nano is the time the event occurred.
+	Timestamp pdata.Timestamp `protobuf:"fixed64,1,opt,name=time_unix_nano,json=timeUnixNano,proto3" json:"time_unix_nano,omitempty"`
+	// name of the event.
+	// This field is semantically required to be set to non-empty string.
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// attributes is a collection of attribute key/value pairs on the event.
+	Attributes pdata.AttributeMap `protobuf:"bytes,3,rep,name=attributes,proto3" json:"attributes"`
 }

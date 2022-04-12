@@ -6,37 +6,35 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/model/pdata"
-
-	"github.com/grafana/loki/pkg/util/log"
 )
 
-type ConsumeLogsFunc func(context.Context, pdata.Logs) error
+type ConsumeTracesFunc func(context.Context, pdata.Traces) error
 
-func (f ConsumeLogsFunc) Capabilities() consumer.Capabilities {
+func (f ConsumeTracesFunc) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: false}
 }
 
-func (f ConsumeLogsFunc) ConsumeLogs(ctx context.Context, td pdata.Logs) error {
+func (f ConsumeTracesFunc) ConsumeTraces(ctx context.Context, td pdata.Traces) error {
 	return f(ctx, td)
 }
 
 type Middleware interface {
-	Wrap(consumer.Logs) consumer.Logs
+	Wrap(consumer.Traces) consumer.Traces
 }
 
-type MiddlewareFunc func(consumer.Logs) consumer.Logs
+type MiddlewareFunc func(consumer.Traces) consumer.Traces
 
 // Wrap implements Interface
-func (tc MiddlewareFunc) Wrap(next consumer.Logs) consumer.Logs {
+func (tc MiddlewareFunc) Wrap(next consumer.Traces) consumer.Traces {
 	return tc(next)
 }
 
-// Merge produces a middleware that applies multiple middlewares in turn;
+// Merge produces a middleware that applies multiple middlesware in turn;
 // ie Merge(f,g,h).Wrap(handler) == f.Wrap(g.Wrap(h.Wrap(handler)))
-func Merge(middlewares ...Middleware) Middleware {
-	return MiddlewareFunc(func(next consumer.Logs) consumer.Logs {
-		for i := len(middlewares) - 1; i >= 0; i-- {
-			next = middlewares[i].Wrap(next)
+func Merge(middlesware ...Middleware) Middleware {
+	return MiddlewareFunc(func(next consumer.Traces) consumer.Traces {
+		for i := len(middlesware) - 1; i >= 0; i-- {
+			next = middlesware[i].Wrap(next)
 		}
 		return next
 	})
@@ -48,10 +46,10 @@ func FakeTenantMiddleware() Middleware {
 	return &fakeTenantMiddleware{}
 }
 
-func (m *fakeTenantMiddleware) Wrap(next consumer.Logs) consumer.Logs {
-	return ConsumeLogsFunc(func(ctx context.Context, td pdata.Logs) error {
+func (m *fakeTenantMiddleware) Wrap(next consumer.Traces) consumer.Traces {
+	return ConsumeTracesFunc(func(ctx context.Context, td pdata.Traces) error {
 		ctx = user.InjectOrgID(ctx, "fake")
-		return next.ConsumeLogs(ctx, td)
+		return next.ConsumeTraces(ctx, td)
 	})
 }
 
@@ -61,14 +59,13 @@ func MultiTenancyMiddleware() Middleware {
 	return &multiTenancyMiddleware{}
 }
 
-func (m *multiTenancyMiddleware) Wrap(next consumer.Logs) consumer.Logs {
-	return ConsumeLogsFunc(func(ctx context.Context, td pdata.Logs) error {
+func (m *multiTenancyMiddleware) Wrap(next consumer.Traces) consumer.Traces {
+	return ConsumeTracesFunc(func(ctx context.Context, td pdata.Traces) error {
 		var err error
 		_, ctx, err = user.ExtractFromGRPCRequest(ctx)
 		if err != nil {
-			log.Logger.Log("msg", "failed to extract org id", "err", err)
 			return err
 		}
-		return next.ConsumeLogs(ctx, td)
+		return next.ConsumeTraces(ctx, td)
 	})
 }
