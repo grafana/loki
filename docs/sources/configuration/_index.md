@@ -1727,6 +1727,11 @@ boltdb_shipper:
 # CLI flag: -store.index-cache-validity
 [index_cache_validity: <duration> | default = 5m]
 
+# Disable broad index queries which results in reduced cache usage and faster query performance at the expense of
+# somewhat higher QPS on the index store.
+# CLI flag: -store.disable-broad-index-queries
+[disable_broad_index_queries: <bool> | default = false]
+
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
 [max_chunk_batch_size: <int> | default = 50]
