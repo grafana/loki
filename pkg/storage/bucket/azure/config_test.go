@@ -58,7 +58,7 @@ http:
 `,
 			expectedConfig: Config{
 				StorageAccountName: "test-account-name",
-				StorageAccountKey:  flagext.Secret{Value: "test-account-key"},
+				StorageAccountKey:  flagext.SecretWithValue("test-account-key"),
 				ContainerName:      "test-container-name",
 				Endpoint:           "test-endpoint-suffix",
 				MaxRetries:         1,
