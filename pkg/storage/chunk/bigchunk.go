@@ -6,9 +6,10 @@ import (
 	"errors"
 	"io"
 
-	"github.com/grafana/loki/pkg/util/filter"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 const samplesPerChunk = 120

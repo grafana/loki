@@ -20,10 +20,11 @@ import (
 	"context"
 	"io"
 
-	"github.com/grafana/loki/pkg/util/filter"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	errs "github.com/weaveworks/common/errors"
+
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 const (
