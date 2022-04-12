@@ -45,6 +45,7 @@ ingester:
   chunk_idle_period: 1h
   chunk_retain_period: 5m
   chunk_target_size: 2097152
+  flush_op_timeout: 10m
   lifecycler:
     final_sleep: 0s
     heartbeat_period: 5s
@@ -100,6 +101,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
+  split_queries_by_interval: 30m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -126,7 +128,6 @@ query_range:
       enable_fifocache: true
       fifocache:
         max_size_bytes: 500MB
-  split_queries_by_interval: 30m
   parallelise_shardable_queries: true
 schema_config:
   configs:
@@ -266,6 +267,7 @@ ingester:
   chunk_idle_period: 1h
   chunk_retain_period: 5m
   chunk_target_size: 2097152
+  flush_op_timeout: 10m
   lifecycler:
     final_sleep: 0s
     heartbeat_period: 5s
@@ -321,6 +323,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
+  split_queries_by_interval: 30m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -347,7 +350,6 @@ query_range:
       enable_fifocache: true
       fifocache:
         max_size_bytes: 500MB
-  split_queries_by_interval: 30m
   parallelise_shardable_queries: true
 schema_config:
   configs:
