@@ -165,12 +165,11 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 			iter, err := multiTenantQuerier.SelectSamples(ctx, params)
 			require.NoError(t, err)
 
-			entriesCount := 0
+			received := make([]string, 0, len(tc.expLabels))
 			for iter.Next() {
-				require.Equalf(t, tc.expLabels[entriesCount], iter.Labels(), "Entry %d", entriesCount)
-				entriesCount++
+				received = append(received, iter.Labels())
 			}
-			require.Equalf(t, len(tc.expLabels), entriesCount, "Expected %d entries but got %d", len(tc.expLabels), entriesCount)
+			require.ElementsMatch(t, tc.expLabels, received)
 		})
 	}
 }
