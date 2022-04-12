@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"testing"
+	"time"
 
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/chunks"
@@ -49,6 +50,18 @@ func Test_Encoding_Chunks(t *testing.T) {
 		},
 	}
 	buf := record.encodeChunks(nil)
+	decoded := &WalRecord{}
+
+	err := decodeWALRecord(buf, decoded)
+	require.Nil(t, err)
+	require.Equal(t, record, decoded)
+}
+
+func Test_Encoding_StartTime(t *testing.T) {
+	record := &WalRecord{
+		StartTime: time.Now().UnixNano(),
+	}
+	buf := record.encodeStartTime(nil)
 	decoded := &WalRecord{}
 
 	err := decodeWALRecord(buf, decoded)
