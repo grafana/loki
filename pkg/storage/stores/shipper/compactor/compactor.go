@@ -567,7 +567,7 @@ func newExpirationChecker(retentionExpiryChecker, deletionExpiryChecker retentio
 	return &expirationChecker{retentionExpiryChecker, deletionExpiryChecker}
 }
 
-func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []model.Interval) {
+func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []retention.IntervalFilter) {
 	if expired, nonDeletedIntervals := e.retentionExpiryChecker.Expired(ref, now); expired {
 		return expired, nonDeletedIntervals
 	}
