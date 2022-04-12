@@ -49,6 +49,7 @@ func main() {
 		enableGateway            bool
 		enableGatewayRoute       bool
 		enablePrometheusAlerts   bool
+		enableGrafanaLabsStats   bool
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -64,8 +65,10 @@ func main() {
 	flag.BoolVar(&enableGateway, "with-lokistack-gateway", false,
 		"Enables the manifest creation for the entire lokistack-gateway.")
 	flag.BoolVar(&enableGatewayRoute, "with-lokistack-gateway-route", false,
-		"Enables the usage of Route for the lokistack-gateway instead of Ingress (OCP Only!)")
-	flag.BoolVar(&enablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts")
+		"Enables the usage of Route for the lokistack-gateway instead of Ingress (OCP Only!).")
+	flag.BoolVar(&enablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts.")
+	flag.BoolVar(&enableGrafanaLabsStats, "with-grafana-labs-stats", false,
+		"Enables grafana labs statistics.\nMore info: https://grafana.com/docs/loki/latest/configuration/#analytics")
 	flag.Parse()
 
 	logger := log.NewLogger("loki-operator")
@@ -108,6 +111,7 @@ func main() {
 		EnablePrometheusAlerts:          enablePrometheusAlerts,
 		EnableGateway:                   enableGateway,
 		EnableGatewayRoute:              enableGatewayRoute,
+		EnableGrafanaLabsStats:          enableGrafanaLabsStats,
 	}
 
 	if err = (&controllers.LokiStackReconciler{

@@ -160,6 +160,8 @@ storage_config:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
 tracing:
   enabled: false
+analytics:
+  reporting_enabled: false
 `
 	expRCfg := `
 ---
@@ -382,6 +384,8 @@ storage_config:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
 tracing:
   enabled: false
+analytics:
+  reporting_enabled: false
 `
 	expRCfg := `
 ---

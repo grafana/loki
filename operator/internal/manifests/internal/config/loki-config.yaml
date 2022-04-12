@@ -178,3 +178,5 @@ storage_config:
       server_address: dns:///{{ .IndexGateway.FQDN }}:{{ .IndexGateway.Port }}
 tracing:
   enabled: false
+analytics:
+  reporting_enabled: {{ .EnableRemoteReporting }}
