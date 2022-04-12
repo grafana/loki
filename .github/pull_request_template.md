@@ -7,7 +7,6 @@
   c. Use sentence case, not title case.
   d. Use a complete phrase or sentence. The PR title will appear in a changelog, so help other people understand what your change will be.
 3. Rebase your PR if it gets out of sync with main
-4. If changing the Helm chart, please ensure the chart version is increased per semantic versioning (https://semver.org)
 -->
 
 **What this PR does / why we need it**:
@@ -17,7 +16,16 @@ Fixes #<issue number>
 
 **Special notes for your reviewer**:
 
+<!--
+Note about CHANGELOG entries, if a change adds:
+* an important feature
+* fixes an issue present in a previous release, 
+* causes a change in operation that would be useful for an operator of Loki to know
+then please add a CHANGELOG entry.
+
+For documentation changes, build changes, simple fixes etc please skip this step. We are attempting to curate a changelog of the most relevant and important changes to be easier to ingest by end users of Loki.
+-->
 **Checklist**
 - [ ] Documentation added
 - [ ] Tests updated
-- [ ] Add an entry in the `CHANGELOG.md` about the changes.
+- [ ] Is this an important fix or new feature? Add an entry in the `CHANGELOG.md`.
