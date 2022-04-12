@@ -15,6 +15,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type testCluster struct {
+	sharedPath string
+	components []testComponent
+}
+
+type testComponent struct {
+	loki    *loki.Loki
+	cluster *testCluster
+
+	httpPort int
+	grpcPort int
+}
+
+func (c *testCluster) addComponent(name string, flags ...string) *testComponent {
+	return nil
+}
+
 func getFreePort() (port int, err error) {
 	var a *net.TCPAddr
 	if a, err = net.ResolveTCPAddr("tcp", "localhost:0"); err == nil {
