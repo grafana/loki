@@ -1820,8 +1820,8 @@ server:
 positions:
   filename: /var/log/positions.yaml # This location needs to be writeable by Promtail.
 
-client:
-  url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
+clients:
+  - url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
 
 scrape_configs:
  - job_name: system
@@ -1849,8 +1849,8 @@ server:
 positions:
   filename: /var/log/positions.yaml # This location needs to be writeable by Promtail.
 
-client:
-  url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
+clients:
+  - url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
 
 scrape_configs:
  - job_name: system
