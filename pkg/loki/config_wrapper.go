@@ -143,11 +143,10 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 	}
 }
 
-// applyCommonReplicationFactor apply a common replication factor to the Ingester and Index Gateway rings.
+// applyCommonReplicationFactor apply the common replication factor to the Index Gateway ring.
 func applyCommonReplicationFactor(r, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(r.Common.ReplicationFactor, defaults.Common.ReplicationFactor) {
 		r.IndexGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
-		r.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = r.Common.ReplicationFactor
 	}
 }
 
@@ -156,19 +155,13 @@ func applyCommonReplicationFactor(r, defaults *ConfigWrapper) {
 // 1. Gives preference to any explicit ring config set. For instance, if the user explicitly configures Distributor's ring,
 // that config will prevail. This rule is enforced by the fact that the config file and command line args are parsed
 // again after the dynamic config has been applied, so will take higher precedence.
-// 2. If no explicit ring config is set, use the common ring configured if provided. If a common replication factor is given,
-// it will be reused by Ingester and IndexGateway ring.
+// 2. If no explicit ring config is set, use the common ring configured if provided.
 // 3. If no common ring was provided, use the memberlist config if provided.
 // 4. If no common ring or memberlist were provided, use the ingester's ring configuration.
 //
 // When using the ingester or common ring config, the loopback interface will be appended to the end of
 // the list of default interface names.
 func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
-	// if r.Common.ReplicationFactor != defaults.Common.ReplicationFactor {
-	// 	r.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = r.Common.ReplicationFactor
-	// 	r.IndexGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
-	// }
-
 	if !reflect.DeepEqual(r.Common.Ring, defaults.Common.Ring) {
 		// common ring is provided, use that for all rings, merging with
 		// any specific configs provided for each ring
@@ -212,7 +205,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
-		r.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = r.Common.ReplicationFactor
 	}
 
 	// Distributor
@@ -274,7 +266,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.InstanceZone = rc.InstanceZone
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
-		r.IndexGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
 	}
 }
 
