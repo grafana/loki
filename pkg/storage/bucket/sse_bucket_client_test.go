@@ -1,4 +1,4 @@
-String()package bucket
+package bucket
 
 import (
 	"context"
