@@ -1357,14 +1357,14 @@ func (e *LiteralExpr) String() string {
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
-func (e *LiteralExpr) Selector() LogSelectorExpr                        { return e }
-func (e *LiteralExpr) HasFilter() bool                                  { return false }
-func (e *LiteralExpr) Shardable() bool                                  { return true }
-func (e *LiteralExpr) Walk(f WalkFn)                                    { f(e) }
-func (e *LiteralExpr) Pipeline() (log.Pipeline, error)                  { return log.NewNoopPipeline(), nil }
-func (e *LiteralExpr) Matchers() []*labels.Matcher                      { return nil }
-func (e *LiteralExpr) Extractor() (log.SampleExtractor, error)          { return nil, nil }
-func (e *LiteralExpr) Value() float64                                   { return e.Val }
+func (e *LiteralExpr) Selector() LogSelectorExpr               { return e }
+func (e *LiteralExpr) HasFilter() bool                         { return false }
+func (e *LiteralExpr) Shardable() bool                         { return true }
+func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
+func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
+func (e *LiteralExpr) Matchers() []*labels.Matcher             { return nil }
+func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
+func (e *LiteralExpr) Value() float64                          { return e.Val }
 
 // helper used to impl Stringer for vector and range aggregations
 // nolint:interfacer
