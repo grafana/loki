@@ -37,7 +37,6 @@ func (implicit) logQLExpr() {}
 // LogSelectorExpr is a LogQL expression filtering and returning logs.
 type LogSelectorExpr interface {
 	Matchers() []*labels.Matcher
-	WithMatchers([]*labels.Matcher) LogSelectorExpr
 	LogPipelineExpr
 	HasFilter() bool
 	Expr
@@ -113,10 +112,6 @@ func (e *MatchersExpr) Matchers() []*labels.Matcher {
 	return e.Mts
 }
 
-func (e *MatchersExpr) WithMatchers(matchers []*labels.Matcher) LogSelectorExpr {
-	return newMatcherExpr(matchers)
-}
-
 func (e *MatchersExpr) AppendMatchers(m []*labels.Matcher) {
 	e.Mts = append(e.Mts, m...)
 }
@@ -185,10 +180,6 @@ func (e *PipelineExpr) Walk(f WalkFn) {
 
 func (e *PipelineExpr) Matchers() []*labels.Matcher {
 	return e.Left.Matchers()
-}
-
-func (e *PipelineExpr) WithMatchers(matchers []*labels.Matcher) LogSelectorExpr {
-	return newPipelineExpr(newMatcherExpr(matchers), e.MultiStages)
 }
 
 func (e *PipelineExpr) String() string {
@@ -1372,7 +1363,6 @@ func (e *LiteralExpr) Shardable() bool                                  { return
 func (e *LiteralExpr) Walk(f WalkFn)                                    { f(e) }
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)                  { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher                      { return nil }
-func (e *LiteralExpr) WithMatchers(m []*labels.Matcher) LogSelectorExpr { return e }
 func (e *LiteralExpr) Extractor() (log.SampleExtractor, error)          { return nil, nil }
 func (e *LiteralExpr) Value() float64                                   { return e.Val }
 
