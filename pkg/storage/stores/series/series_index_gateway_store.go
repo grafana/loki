@@ -72,7 +72,10 @@ func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, u
 		// Handle communication with older index gateways gracefully, by falling back to the index store calls.
 		return c.IndexStore.LabelNamesForMetricName(ctx, userID, from, through, metricName)
 	}
-	return resp.Values, err
+	if err != nil {
+		return nil, err
+	}
+	return resp.Values, nil
 }
 
 func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
@@ -87,7 +90,10 @@ func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, 
 		// Handle communication with older index gateways gracefully, by falling back to the index store calls.
 		return c.IndexStore.LabelNamesForMetricName(ctx, userID, from, through, metricName)
 	}
-	return resp.Values, err
+	if err != nil {
+		return nil, err
+	}
+	return resp.Values, nil
 }
 
 // isUnimplementedCallError tells if the GRPC error is a gRPC error with code Unimplemented.
