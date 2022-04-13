@@ -3,8 +3,10 @@ package series
 import (
 	"context"
 
+	"github.com/gogo/status"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -30,6 +32,9 @@ func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, userID strin
 		Matchers: (&syntax.MatchersExpr{Mts: allMatchers}).String(),
 	})
 	if err != nil {
+		if isUnimplementedCallError(err) {
+			return c.IndexStore.GetChunkRefs(ctx, userID, from, through, allMatchers...)
+		}
 		return nil, err
 	}
 	result := make([]logproto.ChunkRef, len(response.Refs))
@@ -55,7 +60,9 @@ func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, u
 		From:       from,
 		Through:    through,
 	})
-
+	if isUnimplementedCallError(err) {
+		return c.IndexStore.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+	}
 	return resp.Values, err
 }
 
@@ -67,6 +74,21 @@ func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, 
 		Through:    through,
 		Matchers:   (&syntax.MatchersExpr{Mts: matchers}).String(),
 	})
-
+	if isUnimplementedCallError(err) {
+		return c.IndexStore.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+	}
 	return resp.Values, err
+}
+
+// isUnimplementedCallError tells if the GRPC error is a gRPC error with code Unimplemented.
+func isUnimplementedCallError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	s, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	return (s.Code() == codes.Unimplemented)
 }

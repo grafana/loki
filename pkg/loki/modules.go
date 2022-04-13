@@ -426,6 +426,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			// Only queriers should use the AsyncStore, it should never be used in ingesters.
 			asyncStore = true
 		case t.Cfg.isModuleEnabled(IndexGateway):
+			// we want to use the actual storage when running the index-gateway, so we remove the Addr from the config
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Address = ""
 		case t.Cfg.isModuleEnabled(All):
 			// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
@@ -762,10 +763,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGateway() (services.Service, error) {
-	cfg := t.Cfg.StorageConfig
-	cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address = ""
-
-	indexClient, err := storage.NewIndexClient(config.BoltDBShipperType, cfg, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer)
+	indexClient, err := storage.NewIndexClient(config.BoltDBShipperType, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

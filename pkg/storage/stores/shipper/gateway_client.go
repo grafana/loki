@@ -61,13 +61,15 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer) (*G
 		Help:      "Time (in seconds) spent serving requests when using boltdb shipper store gateway",
 		Buckets:   instrument.DefBuckets,
 	}, []string{"operation", "status_code"})
-	err := r.Register(latency)
-	if err != nil {
-		alreadtErr, ok := err.(prometheus.AlreadyRegisteredError)
-		if !ok {
-			return nil, err
+	if r != nil {
+		err := r.Register(latency)
+		if err != nil {
+			alreadtErr, ok := err.(prometheus.AlreadyRegisteredError)
+			if !ok {
+				return nil, err
+			}
+			latency = alreadtErr.ExistingCollector.(*prometheus.HistogramVec)
 		}
-		latency = alreadtErr.ExistingCollector.(*prometheus.HistogramVec)
 	}
 	sgClient := &GatewayClient{
 		cfg:                               cfg,

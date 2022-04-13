@@ -202,21 +202,13 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		seriesdIndex *series.IndexStore = series.NewIndexStore(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize)
 		index        stores.Index       = seriesdIndex
 	)
-
 	if s.cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" {
-
-		hasRefsAPI, err := shipper.HasGetRefsAPI(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig)
+		// inject the index-gateway client into the index store
+		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		if hasRefsAPI {
-			gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			index = series.NewIndexGatewayClientStore(gw, seriesdIndex)
-		}
-
+		index = series.NewIndexGatewayClientStore(gw, seriesdIndex)
 	}
 
 	return writer,
