@@ -95,6 +95,12 @@ type GatewayClient struct {
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created.
 // Otherwise, it creates a single GRPC connection to an Index Gateway instance running in simple mode.
 func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
+	if cfg.Mode == indexgateway.SimpleMode && cfg.Address == "" {
+		return nil, fmt.Errorf("address is required when running in simple mode")
+	} else if cfg.Mode == indexgateway.RingMode && cfg.Ring == nil {
+		return nil, fmt.Errorf("ring is required when running in ring mode")
+	}
+
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki_boltdb_shipper",
 		Name:      "store_gateway_request_duration_seconds",
@@ -111,6 +117,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 			latency = alreadyErr.ExistingCollector.(*prometheus.HistogramVec)
 		}
 	}
+
 	sgClient := &GatewayClient{
 		cfg:                               cfg,
 		storeGatewayClientRequestDuration: latency,
