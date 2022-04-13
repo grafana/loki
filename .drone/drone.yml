@@ -1065,12 +1065,6 @@ steps:
     repo: public.ecr.aws/grafana/lambda-promtail
     secret_key:
       from_secret: ecr_secret_key
-  when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k??
-      - refs/tags/v*
 trigger:
   event:
   - push
@@ -1127,12 +1121,6 @@ steps:
     repo: public.ecr.aws/grafana/lambda-promtail
     secret_key:
       from_secret: ecr_secret_key
-  when:
-    ref:
-      include:
-      - refs/heads/main
-      - refs/heads/k??
-      - refs/tags/v*
 trigger:
   event:
   - push
@@ -1222,6 +1210,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: e892094649b59c07210f1db262662e506cf389f45b74cfc58c7f1226d51571a3
+hmac: 478dc9ae6430f5b9b460c1f73e406a042f4621c8b1c72fb1d0734aeb6d0669d3
 
 ...
