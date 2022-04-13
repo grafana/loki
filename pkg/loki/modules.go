@@ -423,7 +423,14 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	}
 
 	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
-	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRing
+	// golang quirk:
+	// Ring is of an interface type ring.ReadRing, indexGatewayRing is of struct type ring.Ring
+	// setting IndexGatewayClientConfig.Ring = t.indexGatewayRing
+	// when t.indexGatewayRing == nil
+	// will make `t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring != nil` evaluate to true
+	if t.indexGatewayRing != nil {
+		t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRing
+	}
 
 	var asyncStore bool
 	if config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
