@@ -204,7 +204,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 	)
 	if s.cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" {
 		// inject the index-gateway client into the index store
-		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg)
+		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 		if err != nil {
 			return nil, nil, nil, err
 		}

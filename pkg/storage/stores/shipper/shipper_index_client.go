@@ -15,8 +15,6 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
@@ -26,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (

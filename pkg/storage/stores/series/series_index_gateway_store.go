@@ -6,6 +6,7 @@ import (
 	"github.com/gogo/status"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -14,11 +15,17 @@ import (
 )
 
 type IndexGatewayClientStore struct {
-	client indexgatewaypb.IndexGatewayClient
+	client IndexGatewayClient
 	*IndexStore
 }
 
-func NewIndexGatewayClientStore(client indexgatewaypb.IndexGatewayClient, index *IndexStore) *IndexGatewayClientStore {
+type IndexGatewayClient interface {
+	GetChunkRef(ctx context.Context, in *indexgatewaypb.GetChunkRefRequest, opts ...grpc.CallOption) (*indexgatewaypb.GetChunkRefResponse, error)
+	LabelNamesForMetricName(ctx context.Context, in *indexgatewaypb.LabelNamesForMetricNameRequest, opts ...grpc.CallOption) (*indexgatewaypb.LabelResponse, error)
+	LabelValuesForMetricName(ctx context.Context, in *indexgatewaypb.LabelValuesForMetricNameRequest, opts ...grpc.CallOption) (*indexgatewaypb.LabelResponse, error)
+}
+
+func NewIndexGatewayClientStore(client IndexGatewayClient, index *IndexStore) *IndexGatewayClientStore {
 	return &IndexGatewayClientStore{
 		client:     client,
 		IndexStore: index,

@@ -10,7 +10,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/tenant"
+	gerrors "github.com/pkg/errors"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
@@ -84,6 +86,7 @@ const (
 	MemberlistKV             string = "memberlist-kv"
 	Compactor                string = "compactor"
 	IndexGateway             string = "index-gateway"
+	IndexGatewayRing         string = "index-gateway-ring"
 	QueryScheduler           string = "query-scheduler"
 	All                      string = "all"
 	Read                     string = "read"
@@ -203,6 +206,12 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	// EXCEPT when running with `-target=all` or `-target=` contains `ingester`
 	if !t.Cfg.isModuleEnabled(All) && !t.Cfg.isModuleEnabled(Write) && !t.Cfg.isModuleEnabled(Ingester) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
+	}
+
+	// If the querier module is not part of this process we need to check if multi-tenant queries are enabled.
+	// If the querier module is part of this process the querier module will configure everything.
+	if !t.Cfg.isModuleEnabled(Querier) && t.Cfg.Querier.MultiTenantQueriesEnabled {
+		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	}
 
 	pushHandler := middleware.Merge(
@@ -412,6 +421,9 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg) + 2*time.Minute
 		}
 	}
+
+	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRing
 
 	var asyncStore bool
 	if config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
@@ -763,13 +775,55 @@ func (t *Loki) initCompactor() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGateway() (services.Service, error) {
+	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+
 	indexClient, err := storage.NewIndexClient(config.BoltDBShipperType, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
-	gateway := indexgateway.NewIndexGateway(t.Store, indexClient)
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Store, indexClient)
+	if err != nil {
+		return nil, err
+	}
+
+	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(gateway)
+
 	indexgatewaypb.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
 	return gateway, nil
+}
+
+func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
+	if t.Cfg.IndexGateway.Mode != indexgateway.RingMode {
+		return
+	}
+
+	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
+	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+	ringCfg := t.Cfg.IndexGateway.Ring.ToRingConfig(t.Cfg.IndexGateway.Ring.ReplicationFactor)
+	reg := prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer)
+
+	logger := util_log.Logger
+	ringStore, err := kv.NewClient(
+		ringCfg.KVStore,
+		ring.GetCodec(),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", reg), "index-gateway"),
+		logger,
+	)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "kv new client")
+	}
+
+	t.indexGatewayRing, err = ring.NewWithStoreClientAndStrategy(
+		ringCfg, indexgateway.RingIdentifier, indexgateway.RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", reg), logger,
+	)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "new with store client and strategy")
+	}
+
+	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRing)
+	return t.indexGatewayRing, nil
 }
 
 func (t *Loki) initQueryScheduler() (services.Service, error) {
