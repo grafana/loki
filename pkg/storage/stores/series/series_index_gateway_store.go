@@ -40,6 +40,7 @@ func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, userID strin
 	})
 	if err != nil {
 		if isUnimplementedCallError(err) {
+			// Handle communication with older index gateways gracefully, by falling back to the index store calls.
 			return c.IndexStore.GetChunkRefs(ctx, userID, from, through, allMatchers...)
 		}
 		return nil, err
@@ -68,6 +69,7 @@ func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, u
 		Through:    through,
 	})
 	if isUnimplementedCallError(err) {
+		// Handle communication with older index gateways gracefully, by falling back to the index store calls.
 		return c.IndexStore.LabelNamesForMetricName(ctx, userID, from, through, metricName)
 	}
 	return resp.Values, err
@@ -82,6 +84,7 @@ func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, 
 		Matchers:   (&syntax.MatchersExpr{Mts: matchers}).String(),
 	})
 	if isUnimplementedCallError(err) {
+		// Handle communication with older index gateways gracefully, by falling back to the index store calls.
 		return c.IndexStore.LabelNamesForMetricName(ctx, userID, from, through, metricName)
 	}
 	return resp.Values, err
