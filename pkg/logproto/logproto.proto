@@ -41,6 +41,7 @@ message QueryRequest {
   Direction direction = 5;
   reserved 6;
   repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
+  repeated Delete deletes = 8;
 }
 
 message SampleQueryRequest {
@@ -48,6 +49,13 @@ message SampleQueryRequest {
   google.protobuf.Timestamp start = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp end = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
+  repeated Delete deletes = 5;
+}
+
+message Delete {
+  string selector = 1;
+  int64 start = 2;
+  int64 end = 3;
 }
 
 message QueryResponse {
@@ -97,6 +105,7 @@ message Sample {
   uint64 hash = 3 [(gogoproto.jsontag) = "hash"];
 }
 
+// LegacySample exists for backwards compatibility reasons and is deprecated. Do not use.
 message LegacySample {
   double value       = 1;
   int64 timestamp_ms = 2;
@@ -154,6 +163,7 @@ message LabelPair {
   string value = 2;
 }
 
+// LegacyLabelPair exists for backwards compatibility reasons and is deprecated. Do not use.
 message LegacyLabelPair {
   bytes name = 1;
   bytes value = 2;
@@ -183,4 +193,19 @@ message GetChunkIDsRequest {
 
 message GetChunkIDsResponse {
   repeated string chunkIDs = 1;
+}
+
+// ChunkRef contains the metadata to reference a Chunk.
+// It is embedded by the Chunk type itself and used to generate the Chunk
+// checksum. So it is imported to take care of the JSON representation of the
+// resulting Go struct.
+message ChunkRef {
+  uint64 fingerprint = 1 [(gogoproto.jsontag) = "fingerprint"];
+  string user_id = 2 [(gogoproto.customname) = "UserID", (gogoproto.jsontag) = "userID"];
+  int64 from = 3 [(gogoproto.jsontag) = "from", (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
+  int64 through = 4 [(gogoproto.jsontag) = "through", (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
+
+  // The checksum is not written to the external storage. We use crc32,
+  // Castagnoli table. See http://www.evanjones.ca/crc32c.html.
+  uint32 checksum = 5 [(gogoproto.jsontag) = "-"];
 }

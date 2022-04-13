@@ -28,7 +28,7 @@ type Config struct {
 
 	Parallelism           int  `yaml:"parallelism"`
 	MatchMaxConcurrency   bool `yaml:"match_max_concurrent"`
-	MaxConcurrentRequests int  `yaml:"-"` // Must be same as passed to PromQL Engine.
+	MaxConcurrentRequests int  `yaml:"-"` // Must be same as passed to LogQL Engine.
 
 	QuerierID string `yaml:"id"`
 
@@ -42,7 +42,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.DNSLookupPeriod, "querier.dns-lookup-period", 3*time.Second, "How often to query DNS for query-frontend or query-scheduler address. Also used to determine how often to poll the scheduler-ring for addresses if the scheduler-ring is configured.")
 
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process per query-frontend or query-scheduler.")
-	f.BoolVar(&cfg.MatchMaxConcurrency, "querier.worker-match-max-concurrent", false, "Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.")
+	f.BoolVar(&cfg.MatchMaxConcurrency, "querier.worker-match-max-concurrent", true, "Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.")
 	f.StringVar(&cfg.QuerierID, "querier.id", "", "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
@@ -260,7 +260,7 @@ func (w *querierWorker) resetConcurrency() {
 
 		// If concurrency is 0 then MaxConcurrentRequests is less than the total number of
 		// frontends/schedulers. In order to prevent accidentally starving a frontend or scheduler we are just going to
-		// always connect once to every target.  This is dangerous b/c we may start exceeding PromQL
+		// always connect once to every target.  This is dangerous b/c we may start exceeding LogQL
 		// max concurrency.
 		if concurrency == 0 {
 			concurrency = 1
@@ -272,7 +272,7 @@ func (w *querierWorker) resetConcurrency() {
 	}
 
 	if totalConcurrency > w.cfg.MaxConcurrentRequests {
-		level.Warn(w.logger).Log("msg", "total worker concurrency is greater than promql max concurrency. Queries may be queued in the querier which reduces QOS")
+		level.Warn(w.logger).Log("msg", "total worker concurrency is greater than logql max concurrency. Queries may be queued in the querier which reduces QOS")
 	}
 }
 

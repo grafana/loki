@@ -45,19 +45,11 @@ func TestMatrixStepper(t *testing.T) {
 				Point:  promql.Point{T: start.UnixNano(), V: 0},
 				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
 			},
-			promql.Sample{
-				Point:  promql.Point{T: start.UnixNano(), V: 0},
-				Metric: labels.Labels{{Name: "bazz", Value: "buzz"}},
-			},
 		},
 		{
 			promql.Sample{
 				Point:  promql.Point{T: start.Add(step).UnixNano() / int64(time.Millisecond), V: 1},
 				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
-			},
-			promql.Sample{
-				Point:  promql.Point{T: start.Add(step).UnixNano() / int64(time.Millisecond), V: 0},
-				Metric: labels.Labels{{Name: "bazz", Value: "buzz"}},
 			},
 		},
 		{
@@ -75,10 +67,6 @@ func TestMatrixStepper(t *testing.T) {
 				Point:  promql.Point{T: start.Add(3*step).UnixNano() / int64(time.Millisecond), V: 3},
 				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
 			},
-			promql.Sample{
-				Point:  promql.Point{T: start.Add(3*step).UnixNano() / int64(time.Millisecond), V: 0},
-				Metric: labels.Labels{{Name: "bazz", Value: "buzz"}},
-			},
 		},
 		{
 			promql.Sample{
@@ -95,21 +83,8 @@ func TestMatrixStepper(t *testing.T) {
 				Point:  promql.Point{T: start.Add(5*step).UnixNano() / int64(time.Millisecond), V: 5},
 				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
 			},
-			promql.Sample{
-				Point:  promql.Point{T: start.Add(5*step).UnixNano() / int64(time.Millisecond), V: 0},
-				Metric: labels.Labels{{Name: "bazz", Value: "buzz"}},
-			},
 		},
-		{
-			promql.Sample{
-				Point:  promql.Point{T: start.Add(6*step).UnixNano() / int64(time.Millisecond), V: 0},
-				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
-			},
-			promql.Sample{
-				Point:  promql.Point{T: start.Add(6*step).UnixNano() / int64(time.Millisecond), V: 0},
-				Metric: labels.Labels{{Name: "bazz", Value: "buzz"}},
-			},
-		},
+		{},
 	}
 
 	for i := 0; i <= int(end.Sub(start)/step); i++ {

@@ -17,8 +17,8 @@ import (
 	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -58,7 +58,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const (
-	uploaderName = "compactor"
+	uploaderName               = "compactor"
+	uploadIndexSetsConcurrency = 10
 
 	readDBsConcurrency = 50
 	batchSize          = 1000
@@ -98,7 +99,8 @@ type table struct {
 }
 
 func newTable(ctx context.Context, workingDirectory string, indexStorageClient storage.Client,
-	tableMarker retention.TableMarker, expirationChecker tableExpirationChecker) (*table, error) {
+	tableMarker retention.TableMarker, expirationChecker tableExpirationChecker,
+) (*table, error) {
 	err := chunk_util.EnsureDirectory(workingDirectory)
 	if err != nil {
 		return nil, err
@@ -223,9 +225,28 @@ func (t *table) done() error {
 		}
 	}
 
-	for _, is := range t.indexSets {
-		err := is.done()
-		if err != nil {
+	userIDs := make([]string, 0, len(t.indexSets))
+	for userID := range t.indexSets {
+		// indexSet.done() uploads the compacted db and cleans up the source index files.
+		// For user index sets, the files from common index sets are also a source of index.
+		// if we cleanup common index sets first, and we fail to upload newly compacted dbs in user index sets, then we will lose data.
+		// To avoid any data loss, we should call done() on common index sets at the end.
+		if userID == "" {
+			continue
+		}
+
+		userIDs = append(userIDs, userID)
+	}
+
+	err := concurrency.ForEachJob(t.ctx, len(userIDs), uploadIndexSetsConcurrency, func(ctx context.Context, idx int) error {
+		return t.indexSets[userIDs[idx]].done()
+	})
+	if err != nil {
+		return err
+	}
+
+	if commonIndexSet, ok := t.indexSets[""]; ok {
+		if err := commonIndexSet.done(); err != nil {
 			return err
 		}
 	}
@@ -434,6 +455,7 @@ func readFile(logger log.Logger, path string, writeBatch func(userID string, bat
 
 	return db.View(func(tx *bbolt.Tx) error {
 		return tx.ForEach(func(name []byte, b *bbolt.Bucket) error {
+			batch = batch[:0]
 			bucketNameStr := string(name)
 			err := b.ForEach(func(k, v []byte) error {
 				ie := indexEntry{
@@ -454,8 +476,7 @@ func readFile(logger log.Logger, path string, writeBatch func(userID string, bat
 					if err != nil {
 						return err
 					}
-					// todo(cyriltovena) we should just re-slice to avoid allocations
-					batch = make([]indexEntry, 0, batchSize)
+					batch = batch[:0]
 				}
 
 				return nil

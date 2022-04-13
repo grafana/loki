@@ -307,13 +307,39 @@ type LokiTemplateSpec struct {
 	IndexGateway *LokiComponentSpec `json:"indexGateway,omitempty"`
 }
 
+// ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
+//
+// +kubebuilder:validation:Enum=azure;gcs;s3;swift
+type ObjectStorageSecretType string
+
+const (
+	// ObjectStorageSecretAzure when using Azure for Loki storage
+	ObjectStorageSecretAzure ObjectStorageSecretType = "azure"
+
+	// ObjectStorageSecretGCS when using GCS for Loki storage
+	ObjectStorageSecretGCS ObjectStorageSecretType = "gcs"
+
+	// ObjectStorageSecretS3 when using S3 for Loki storage
+	ObjectStorageSecretS3 ObjectStorageSecretType = "s3"
+
+	// ObjectStorageSecretSwift when using Swift for Loki storage
+	ObjectStorageSecretSwift ObjectStorageSecretType = "swift"
+)
+
 // ObjectStorageSecretSpec is a secret reference containing name only, no namespace.
 type ObjectStorageSecretSpec struct {
+	// Type of object storage that should be used
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:azure","urn:alm:descriptor:com.tectonic.ui:select:gcs","urn:alm:descriptor:com.tectonic.ui:select:s3","urn:alm:descriptor:com.tectonic.ui:select:swift"},displayName="Object Storage Secret Type"
+	Type ObjectStorageSecretType `json:"type"`
+
 	// Name of a secret in the namespace configured for object storage secrets.
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:Secret",displayName="Object Storage Secret"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:Secret",displayName="Object Storage Secret Name"
 	Name string `json:"name"`
 }
 
@@ -484,8 +510,8 @@ type LokiStackSpec struct {
 
 	// ReplicationFactor defines the policy for log stream replication.
 	//
-	// +required
-	// +kubebuilder:validation:Required
+	// +optional
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Minimum:=1
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
 	ReplicationFactor int32 `json:"replicationFactor"`

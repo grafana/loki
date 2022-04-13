@@ -1,4 +1,4 @@
-auth_enabled: false
+auth_enabled: true 
 chunk_store_config:
     chunk_cache_config:
         memcached:
@@ -37,7 +37,7 @@ ingester:
     chunk_idle_period: 15m
     chunk_retain_period: 6m
     chunk_target_size: 1.572864e+06
-    flush_op_timeout: 30s
+    flush_op_timeout: 10m
     lifecycler:
         heartbeat_period: 10s
         interface_names:
@@ -89,6 +89,7 @@ querier:
         timeout: 5m
     query_ingesters_within: 2h
     query_timeout: 5m
+    multi_tenant_queries_enabled: true
 query_range:
     align_queries_with_step: true
     cache_results: true

@@ -26,10 +26,11 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/scheduler/queue"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
-	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
 	lokiutil "github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
@@ -92,6 +93,7 @@ type Scheduler struct {
 	connectedFrontendClients prometheus.GaugeFunc
 	queueDuration            prometheus.Histogram
 	schedulerRunning         prometheus.Gauge
+	inflightRequests         prometheus.Summary
 
 	// Ring used for finding schedulers
 	ringLifecycler *ring.BasicLifecycler
@@ -173,6 +175,13 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 	s.schedulerRunning = promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_query_scheduler_running",
 		Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
+	})
+	s.inflightRequests = promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
+		Name:       "cortex_query_scheduler_inflight_requests",
+		Help:       "Number of inflight requests (either queued or processing) sampled at a regular interval. Quantile buckets keep track of inflight requests over the last 60s.",
+		Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
+		MaxAge:     time.Minute,
+		AgeBuckets: 6,
 	})
 
 	s.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
@@ -632,15 +641,23 @@ func (s *Scheduler) starting(ctx context.Context) (err error) {
 }
 
 func (s *Scheduler) running(ctx context.Context) error {
-	t := time.NewTicker(ringCheckPeriod)
-	defer t.Stop()
+	// We observe inflight requests frequently and at regular intervals, to have a good
+	// approximation of max inflight requests over percentiles of time. We also do it with
+	// a ticker so that we keep tracking it even if we have no new queries but stuck inflight
+	// requests (eg. queriers are all crashing).
+	inflightRequestsTicker := time.NewTicker(250 * time.Millisecond)
+	defer inflightRequestsTicker.Stop()
+
+	ringCheckTicker := time.NewTicker(ringCheckPeriod)
+	defer ringCheckTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case err := <-s.subservicesWatcher.Chan():
 			return errors.Wrap(err, "scheduler subservice failed")
-		case <-t.C:
+		case <-ringCheckTicker.C:
 			if !s.cfg.UseSchedulerRing {
 				continue
 			}
@@ -650,6 +667,12 @@ func (s *Scheduler) running(ctx context.Context) error {
 				continue
 			}
 			s.setRunState(isInSet)
+		case <-inflightRequestsTicker.C:
+			s.pendingRequestsMu.Lock()
+			inflight := len(s.pendingRequests)
+			s.pendingRequestsMu.Unlock()
+
+			s.inflightRequests.Observe(float64(inflight))
 		}
 	}
 }

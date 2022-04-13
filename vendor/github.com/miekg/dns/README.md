@@ -76,6 +76,7 @@ A not-so-up-to-date-list-that-may-be-actually-current:
 * https://www.misaka.io/services/dns
 * https://ping.sx/dig
 * https://fleetdeck.io/
+* https://github.com/markdingo/autoreverse
 
 
 Send pull request if you want to be listed here.

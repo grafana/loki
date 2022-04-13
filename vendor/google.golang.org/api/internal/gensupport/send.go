@@ -99,6 +99,17 @@ func sendAndRetry(ctx context.Context, client *http.Client, req *http.Request, r
 		case <-time.After(pause):
 		}
 
+		if ctx.Err() != nil {
+			// Check for context cancellation once more. If more than one case in a
+			// select is satisfied at the same time, Go will choose one arbitrarily.
+			// That can cause an operation to go through even if the context was
+			// canceled before.
+			if err == nil {
+				err = ctx.Err()
+			}
+			return resp, err
+		}
+
 		resp, err = client.Do(req.WithContext(ctx))
 
 		var status int

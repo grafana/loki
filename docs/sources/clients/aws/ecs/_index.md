@@ -83,7 +83,7 @@ aws iam attach-role-policy --role-name ecsTaskExecutionRole --policy-arn "arn:aw
 
 Amazon [Firelens][Firelens] is a log router (usually `fluentd` or `fluentbit`) you run along the same task definition next to your application containers to route their logs to Loki.
 
-In this example we will use [fluentbit][fluentbit] (with the [Loki plugin][fluentbit loki] installed) but if you prefer [fluentd][fluentd] make sure to check the [fluentd output plugin][fluentd loki] documentation.
+In this example we will use [fluentbit][fluentbit] with the [fluentbit output plugin][fluentbit loki] installed but if you prefer [fluentd][fluentd] make sure to check the [fluentd output plugin][fluentd loki] documentation.
 
 > We recommend you to use [fluentbit][fluentbit] as it's less resources consuming than [fluentd][fluentd].
 
@@ -134,8 +134,8 @@ The `log_router` container image is the [Fluent bit Loki docker image][fluentbit
     "logConfiguration": {
         "logDriver": "awsfirelens",
         "options": {
-            "Name": "loki",
-            "Url": "https://<userid>:<grafancloud apikey>@logs-prod-us-central1.grafana.net/loki/api/v1/push",
+            "Name": "grafana-loki",
+            "Url": "https://<userid>:<grafancloud apikey>@<grafanacloud host>/loki/api/v1/push",
             "Labels": "{job=\"firelens\"}",
             "RemoveKeys": "container_id,ecs_task_arn",
             "LabelKeys": "container_name,ecs_task_definition,source,ecs_cluster",
@@ -228,8 +228,8 @@ That's it ! Make sure to checkout LogQL to learn more about Loki powerful query 
 [ecs iam]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 [arn]: https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html
 [task]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html
-[fluentd loki]: https://github.com/grafana/loki/tree/master/cmd/fluentd
-[fluentbit loki]: https://github.com/grafana/loki/tree/master/cmd/fluent-bit
+[fluentd loki]: https://grafana.com/docs/loki/latest/clients/fluentd/
+[fluentbit loki]: https://grafana.com/docs/loki/latest/clients/fluentbit/
 [fluentbit]: https://fluentbit.io/
 [fluentd]: https://www.fluentd.org/
 [fluentbit loki image]: https://hub.docker.com/r/grafana/fluent-bit-plugin-loki

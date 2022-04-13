@@ -2,22 +2,18 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
-	"github.com/grafana/loki/pkg/util"
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	storage_errors "github.com/grafana/loki/pkg/storage/errors"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // StatusClientClosedRequest is the status code for when a client request cancellation of an http request
@@ -28,40 +24,20 @@ const (
 	ErrDeadlineExceeded = "Request timed out, decrease the duration of the request or add more label matchers (prefer exact match over regex match) to reduce the amount of data processed."
 )
 
-type ErrorResponseBody struct {
-	Code    int    `json:"code"`
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
-
-func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
-	JSONError(w, 404, "not found")
-}
-
-func JSONError(w http.ResponseWriter, code int, message string, args ...interface{}) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(ErrorResponseBody{
-		Code:    code,
-		Status:  "error",
-		Message: fmt.Sprintf(message, args...),
-	})
-}
-
 // WriteError write a go error with the correct status code.
 func WriteError(err error, w http.ResponseWriter) {
 	var (
-		queryErr chunk.QueryError
+		queryErr storage_errors.QueryError
 		promErr  promql.ErrStorage
 	)
 
 	me, ok := err.(util.MultiError)
 	if ok && me.Is(context.Canceled) {
-		JSONError(w, StatusClientClosedRequest, ErrClientCanceled)
+		http.Error(w, ErrClientCanceled, StatusClientClosedRequest)
 		return
 	}
 	if ok && me.IsDeadlineExceeded() {
-		JSONError(w, http.StatusGatewayTimeout, ErrDeadlineExceeded)
+		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)
 		return
 	}
 
@@ -69,19 +45,21 @@ func WriteError(err error, w http.ResponseWriter) {
 	switch {
 	case errors.Is(err, context.Canceled) ||
 		(errors.As(err, &promErr) && errors.Is(promErr.Err, context.Canceled)):
-		JSONError(w, StatusClientClosedRequest, ErrClientCanceled)
+		http.Error(w, ErrClientCanceled, StatusClientClosedRequest)
 	case errors.Is(err, context.DeadlineExceeded) ||
 		(isRPC && s.Code() == codes.DeadlineExceeded):
-		JSONError(w, http.StatusGatewayTimeout, ErrDeadlineExceeded)
-	case errors.As(err, &queryErr),
-		errors.Is(err, logqlmodel.ErrLimit) || errors.Is(err, logqlmodel.ErrParse) || errors.Is(err, logqlmodel.ErrPipeline),
-		errors.Is(err, user.ErrNoOrgID):
-		JSONError(w, http.StatusBadRequest, err.Error())
+		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)
+	case errors.As(err, &queryErr):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	case errors.Is(err, logqlmodel.ErrLimit) || errors.Is(err, logqlmodel.ErrParse) || errors.Is(err, logqlmodel.ErrPipeline):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	case errors.Is(err, user.ErrNoOrgID):
+		http.Error(w, err.Error(), http.StatusBadRequest)
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
-			JSONError(w, int(grpcErr.Code), string(grpcErr.Body))
+			http.Error(w, string(grpcErr.Body), int(grpcErr.Code))
 			return
 		}
-		JSONError(w, http.StatusInternalServerError, err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

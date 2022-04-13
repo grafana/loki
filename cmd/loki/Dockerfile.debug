@@ -8,10 +8,10 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false loki-debug
 
-FROM       alpine:3.13
+FROM       alpine:3.15.4
 RUN        apk add --update --no-cache ca-certificates
 COPY       --from=build /src/loki/cmd/loki/loki-debug /usr/bin/loki-debug
-COPY       --from=build /go/bin/dlv /usr/bin/dlv
+COPY       --from=build /usr/bin/dlv /usr/bin/dlv
 COPY       cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
 EXPOSE     3100
 
@@ -24,5 +24,5 @@ RUN apk add --no-cache libc6-compat
 # Run delve, ending with -- because we pass params via kubernetes, per the docs:
 #   Pass flags to the program you are debugging using --, for example:`
 #   dlv exec ./hello -- server --config conf/config.toml`
-ENTRYPOINT ["/usr/bin/dlv", "--listen=:40000", "--headless=true", "--log", "--continue" , "--api-version=2", "exec", "/usr/bin/loki-debug", "--"]
+ENTRYPOINT ["/usr/bin/dlv", "--listen=:40000", "--headless=true", "--log", "--continue", "--accept-multiclient" , "--api-version=2", "exec", "/usr/bin/loki-debug", "--"]
 CMD        ["-config.file=/etc/loki/local-config.yaml"]

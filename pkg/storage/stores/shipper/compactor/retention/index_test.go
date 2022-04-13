@@ -8,8 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 func Test_schemaPeriodForTable(t *testing.T) {
@@ -18,12 +17,12 @@ func Test_schemaPeriodForTable(t *testing.T) {
 	}
 	tests := []struct {
 		name          string
-		config        storage.SchemaConfig
+		config        config.SchemaConfig
 		tableName     string
-		expected      chunk.PeriodConfig
+		expected      config.PeriodConfig
 		expectedFound bool
 	}{
-		{"out of scope", schemaCfg, "index_" + indexFromTime(start.Time().Add(-24*time.Hour)), chunk.PeriodConfig{}, false},
+		{"out of scope", schemaCfg, "index_" + indexFromTime(start.Time().Add(-24*time.Hour)), config.PeriodConfig{}, false},
 		{"first table", schemaCfg, "index_" + indexFromTime(dayFromTime(start).Time.Time()), schemaCfg.Configs[0], true},
 		{"4 hour after first table", schemaCfg, "index_" + indexFromTime(dayFromTime(start).Time.Time().Add(4*time.Hour)), schemaCfg.Configs[0], true},
 		{"second schema", schemaCfg, "index_" + indexFromTime(dayFromTime(start.Add(28*time.Hour)).Time.Time()), schemaCfg.Configs[1], true},

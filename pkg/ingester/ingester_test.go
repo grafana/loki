@@ -2,7 +2,10 @@ package ingester
 
 import (
 	"fmt"
+	"log"
+	"net"
 	"net/http"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -13,10 +16,15 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/test/bufconn"
+
+	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -25,9 +33,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -282,11 +290,11 @@ func (s *mockStore) GetSeries(ctx context.Context, req logql.SelectLogParams) ([
 	return nil, nil
 }
 
-func (s *mockStore) GetSchemaConfigs() []chunk.PeriodConfig {
+func (s *mockStore) GetSchemaConfigs() []config.PeriodConfig {
 	return nil
 }
 
-func (s *mockStore) SetChunkFilterer(_ storage.RequestChunkFilterer) {
+func (s *mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
 }
 
 // chunk.Store methods
@@ -294,11 +302,7 @@ func (s *mockStore) PutOne(ctx context.Context, from, through model.Time, chunk 
 	return nil
 }
 
-func (s *mockStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	return nil, nil
-}
-
-func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
@@ -310,15 +314,7 @@ func (s *mockStore) LabelNamesForMetricName(ctx context.Context, userID string, 
 	return nil, nil
 }
 
-func (s *mockStore) GetChunkFetcher(tm model.Time) *chunk.Fetcher {
-	return nil
-}
-
-func (s *mockStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
-	return nil
-}
-
-func (s *mockStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+func (s *mockStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return nil
 }
 
@@ -415,23 +411,23 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 
 	for _, tc := range []struct {
 		name                string
-		periodicConfigs     []chunk.PeriodConfig
+		periodicConfigs     []config.PeriodConfig
 		expectedMaxLookBack time.Duration
 	}{
 		{
 			name: "not using boltdb-shipper",
-			periodicConfigs: []chunk.PeriodConfig{
+			periodicConfigs: []config.PeriodConfig{
 				{
-					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 					IndexType: "bigtable",
 				},
 			},
 		},
 		{
 			name: "just one periodic config with boltdb-shipper",
-			periodicConfigs: []chunk.PeriodConfig{
+			periodicConfigs: []config.PeriodConfig{
 				{
-					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 					IndexType: "boltdb-shipper",
 				},
 			},
@@ -439,13 +435,13 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 		},
 		{
 			name: "active config boltdb-shipper, previous config non boltdb-shipper",
-			periodicConfigs: []chunk.PeriodConfig{
+			periodicConfigs: []config.PeriodConfig{
 				{
-					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
 					IndexType: "bigtable",
 				},
 				{
-					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 					IndexType: "boltdb-shipper",
 				},
 			},
@@ -453,13 +449,13 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 		},
 		{
 			name: "current and previous config both using boltdb-shipper",
-			periodicConfigs: []chunk.PeriodConfig{
+			periodicConfigs: []config.PeriodConfig{
 				{
-					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
 					IndexType: "boltdb-shipper",
 				},
 				{
-					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 					IndexType: "boltdb-shipper",
 				},
 			},
@@ -467,13 +463,13 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 		},
 		{
 			name: "active config non boltdb-shipper, previous config boltdb-shipper",
-			periodicConfigs: []chunk.PeriodConfig{
+			periodicConfigs: []config.PeriodConfig{
 				{
-					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
 					IndexType: "boltdb-shipper",
 				},
 				{
-					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
 					IndexType: "bigtable",
 				},
 			},
@@ -593,4 +589,400 @@ func Test_InMemoryLabels(t *testing.T) {
 	res, err = i.Label(ctx, &logproto.LabelRequest{})
 	require.NoError(t, err)
 	require.Equal(t, []string{"bar", "foo"}, res.Values)
+}
+
+func Test_DedupeIngester(t *testing.T) {
+	var (
+		requests      = int64(400)
+		streamCount   = int64(20)
+		streams       []labels.Labels
+		streamHashes  []uint64
+		ingesterCount = 100
+
+		ingesterConfig = defaultIngesterTestConfig(t)
+		ctx, _         = user.InjectIntoGRPCRequest(user.InjectOrgID(context.Background(), "foo"))
+	)
+	// make sure we will cut blocks and chunks and use head chunks
+	ingesterConfig.TargetChunkSize = 800
+	ingesterConfig.BlockSize = 300
+
+	// created many different ingesters
+	ingesterSet, closer := createIngesterSets(t, ingesterConfig, ingesterCount)
+	defer closer()
+
+	for i := int64(0); i < streamCount; i++ {
+		s := labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i))
+		streams = append(streams, s)
+		streamHashes = append(streamHashes, s.Hash())
+	}
+	sort.Slice(streamHashes, func(i, j int) bool { return streamHashes[i] < streamHashes[j] })
+
+	for i := int64(0); i < requests; i++ {
+		for _, ing := range ingesterSet {
+			_, err := ing.Push(ctx, buildPushRequest(i, streams))
+			require.NoError(t, err)
+		}
+	}
+
+	t.Run("backward log", func(t *testing.T) {
+		iterators := make([]iter.EntryIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.Query(ctx, &logproto.QueryRequest{
+				Selector:  `{foo="bar"} | label_format bar=""`, // making it difficult to dedupe by removing uncommon label.
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(0, requests+1),
+				Limit:     uint32(requests * streamCount),
+				Direction: logproto.BACKWARD,
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
+		}
+		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.BACKWARD)
+
+		for i := requests - 1; i >= 0; i-- {
+			actualHashes := []uint64{}
+			for j := 0; j < int(streamCount); j++ {
+				require.True(t, it.Next())
+				require.Equal(t, fmt.Sprintf("line %d", i), it.Entry().Line)
+				require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+				require.Equal(t, `{bar="", foo="bar"}`, it.Labels())
+				actualHashes = append(actualHashes, it.StreamHash())
+			}
+			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			require.Equal(t, streamHashes, actualHashes)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+	t.Run("forward log", func(t *testing.T) {
+		iterators := make([]iter.EntryIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.Query(ctx, &logproto.QueryRequest{
+				Selector:  `{foo="bar"} | label_format bar=""`, // making it difficult to dedupe by removing uncommon label.
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(0, requests+1),
+				Limit:     uint32(requests * streamCount),
+				Direction: logproto.FORWARD,
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.FORWARD))
+		}
+		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.FORWARD)
+
+		for i := int64(0); i < requests; i++ {
+			actualHashes := []uint64{}
+			for j := 0; j < int(streamCount); j++ {
+				require.True(t, it.Next())
+				require.Equal(t, fmt.Sprintf("line %d", i), it.Entry().Line)
+				require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+				require.Equal(t, `{bar="", foo="bar"}`, it.Labels())
+				actualHashes = append(actualHashes, it.StreamHash())
+			}
+			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			require.Equal(t, streamHashes, actualHashes)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+	t.Run("sum by metrics", func(t *testing.T) {
+		iterators := make([]iter.SampleIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.QuerySample(ctx, &logproto.SampleQueryRequest{
+				Selector: `sum(rate({foo="bar"}[1m])) by (bar)`,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, requests+1),
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+		}
+		it := iter.NewMergeSampleIterator(ctx, iterators)
+		var expectedLabels []string
+		for _, s := range streams {
+			expectedLabels = append(expectedLabels, s.WithoutLabels("foo").String())
+		}
+		sort.Strings(expectedLabels)
+		for i := int64(0); i < requests; i++ {
+			labels := []string{}
+			actualHashes := []uint64{}
+			for j := 0; j < int(streamCount); j++ {
+				require.True(t, it.Next())
+				require.Equal(t, float64(1), it.Sample().Value)
+				require.Equal(t, i, it.Sample().Timestamp)
+				labels = append(labels, it.Labels())
+				actualHashes = append(actualHashes, it.StreamHash())
+			}
+			sort.Strings(labels)
+			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			require.Equal(t, expectedLabels, labels)
+			require.Equal(t, streamHashes, actualHashes)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+	t.Run("sum metrics", func(t *testing.T) {
+		iterators := make([]iter.SampleIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.QuerySample(ctx, &logproto.SampleQueryRequest{
+				Selector: `sum(rate({foo="bar"}[1m]))`,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, requests+1),
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+		}
+		it := iter.NewMergeSampleIterator(ctx, iterators)
+		for i := int64(0); i < requests; i++ {
+			actualHashes := []uint64{}
+			for j := 0; j < int(streamCount); j++ {
+				require.True(t, it.Next())
+				require.Equal(t, float64(1), it.Sample().Value)
+				require.Equal(t, i, it.Sample().Timestamp)
+				require.Equal(t, "{}", it.Labels())
+				actualHashes = append(actualHashes, it.StreamHash())
+			}
+			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			require.Equal(t, streamHashes, actualHashes)
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+}
+
+func Test_DedupeIngesterParser(t *testing.T) {
+	var (
+		requests      = 100
+		streamCount   = 10
+		streams       []labels.Labels
+		ingesterCount = 30
+
+		ingesterConfig = defaultIngesterTestConfig(t)
+		ctx, _         = user.InjectIntoGRPCRequest(user.InjectOrgID(context.Background(), "foo"))
+	)
+	// make sure we will cut blocks and chunks and use head chunks
+	ingesterConfig.TargetChunkSize = 800
+	ingesterConfig.BlockSize = 300
+
+	// created many different ingesters
+	ingesterSet, closer := createIngesterSets(t, ingesterConfig, ingesterCount)
+	defer closer()
+
+	for i := 0; i < streamCount; i++ {
+		streams = append(streams, labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i)))
+	}
+
+	for i := 0; i < requests; i++ {
+		for _, ing := range ingesterSet {
+			_, err := ing.Push(ctx, buildPushJSONRequest(int64(i), streams))
+			require.NoError(t, err)
+		}
+	}
+
+	t.Run("backward log", func(t *testing.T) {
+		iterators := make([]iter.EntryIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.Query(ctx, &logproto.QueryRequest{
+				Selector:  `{foo="bar"} | json`,
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(0, int64(requests+1)),
+				Limit:     uint32(requests * streamCount * 2),
+				Direction: logproto.BACKWARD,
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
+		}
+		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.BACKWARD)
+
+		for i := requests - 1; i >= 0; i-- {
+			for j := 0; j < streamCount; j++ {
+				for k := 0; k < 2; k++ { // 2 line per entry
+					require.True(t, it.Next())
+					require.Equal(t, int64(i), it.Entry().Timestamp.UnixNano())
+				}
+			}
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+
+	t.Run("forward log", func(t *testing.T) {
+		iterators := make([]iter.EntryIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.Query(ctx, &logproto.QueryRequest{
+				Selector:  `{foo="bar"} | json`, // making it difficult to dedupe by removing uncommon label.
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(0, int64(requests+1)),
+				Limit:     uint32(requests * streamCount * 2),
+				Direction: logproto.FORWARD,
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.FORWARD))
+		}
+		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.FORWARD)
+
+		for i := 0; i < requests; i++ {
+			for j := 0; j < streamCount; j++ {
+				for k := 0; k < 2; k++ { // 2 line per entry
+					require.True(t, it.Next())
+					require.Equal(t, int64(i), it.Entry().Timestamp.UnixNano())
+				}
+			}
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+	t.Run("no sum metrics", func(t *testing.T) {
+		iterators := make([]iter.SampleIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.QuerySample(ctx, &logproto.SampleQueryRequest{
+				Selector: `rate({foo="bar"} | json [1m])`,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, int64(requests+1)),
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+		}
+		it := iter.NewMergeSampleIterator(ctx, iterators)
+
+		for i := 0; i < requests; i++ {
+			for j := 0; j < streamCount; j++ {
+				for k := 0; k < 2; k++ { // 2 line per entry
+					require.True(t, it.Next())
+					require.Equal(t, float64(1), it.Sample().Value)
+					require.Equal(t, int64(i), it.Sample().Timestamp)
+				}
+			}
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+	t.Run("sum metrics", func(t *testing.T) {
+		iterators := make([]iter.SampleIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.QuerySample(ctx, &logproto.SampleQueryRequest{
+				Selector: `sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, int64(requests+1)),
+			})
+			require.NoError(t, err)
+			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+		}
+		it := iter.NewMergeSampleIterator(ctx, iterators)
+
+		for i := 0; i < requests; i++ {
+			for j := 0; j < streamCount; j++ {
+				for k := 0; k < 2; k++ { // 2 line per entry
+					require.True(t, it.Next())
+					require.Equal(t, float64(1), it.Sample().Value)
+					require.Equal(t, int64(i), it.Sample().Timestamp)
+				}
+			}
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
+	})
+}
+
+type ingesterClient struct {
+	logproto.PusherClient
+	logproto.QuerierClient
+}
+
+func createIngesterSets(t *testing.T, config Config, count int) ([]ingesterClient, func()) {
+	result := make([]ingesterClient, count)
+	closers := make([]func(), count)
+	for i := 0; i < count; i++ {
+		ingester, closer := createIngesterServer(t, config)
+		result[i] = ingester
+		closers[i] = closer
+	}
+	return result, func() {
+		for _, closer := range closers {
+			closer()
+		}
+	}
+}
+
+func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, func()) {
+	t.Helper()
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+
+	listener := bufconn.Listen(1024 * 1024)
+
+	server := grpc.NewServer(grpc.ChainStreamInterceptor(func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
+	}), grpc.ChainUnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+		return middleware.ServerUserHeaderInterceptor(ctx, req, info, handler)
+	}))
+
+	logproto.RegisterPusherServer(server, ing)
+	logproto.RegisterQuerierServer(server, ing)
+	go func() {
+		if err := server.Serve(listener); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+		return listener.Dial()
+	}))
+	require.NoError(t, err)
+
+	return ingesterClient{
+			PusherClient:  logproto.NewPusherClient(conn),
+			QuerierClient: logproto.NewQuerierClient(conn),
+		}, func() {
+			_ = services.StopAndAwaitTerminated(context.Background(), ing)
+			server.Stop()
+			_ = listener.Close()
+		}
+}
+
+func buildPushRequest(ts int64, streams []labels.Labels) *logproto.PushRequest {
+	req := &logproto.PushRequest{}
+
+	for _, stream := range streams {
+		req.Streams = append(req.Streams, logproto.Stream{
+			Labels: stream.String(),
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Unix(0, ts),
+					Line:      fmt.Sprintf("line %d", ts),
+				},
+			},
+		})
+	}
+
+	return req
+}
+
+func buildPushJSONRequest(ts int64, streams []labels.Labels) *logproto.PushRequest {
+	req := &logproto.PushRequest{}
+
+	for _, stream := range streams {
+		req.Streams = append(req.Streams, logproto.Stream{
+			Labels: stream.String(),
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Unix(0, ts),
+					Line:      jsonLine(ts, 0),
+				},
+				{
+					Timestamp: time.Unix(0, ts),
+					Line:      jsonLine(ts, 1),
+				},
+			},
+		})
+	}
+
+	return req
+}
+
+func jsonLine(ts int64, i int) string {
+	if i%2 == 0 {
+		return fmt.Sprintf(`{"a":"b", "c":"d", "e":"f", "g":"h", "ts":"%d"}`, ts)
+	}
+	return fmt.Sprintf(`{"e":"f", "h":"i", "j":"k", "g":"h", "ts":"%d"}`, ts)
 }

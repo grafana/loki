@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/grafana/loki/pkg/util/test"
@@ -26,7 +27,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	defer listener.Close()
 	cc, err := grpc.DialContext(ctx, "bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 		return listener.Dial()
-	}), grpc.WithInsecure())
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
 
 	require.NoError(t, err)
 
@@ -63,7 +64,7 @@ func TestContextCancelStopsProcess(t *testing.T) {
 	defer listener.Close()
 	cc, err := grpc.DialContext(ctx, "bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 		return listener.Dial()
-	}), grpc.WithInsecure())
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 
 	pm := newProcessorManager(ctx, &mockProcessor{}, cc, "test")

@@ -118,8 +118,7 @@ func (it *peekingSampleIterator) Error() error {
 }
 
 type sampleIteratorHeap struct {
-	its            []SampleIterator
-	byAlphabetical bool
+	its []SampleIterator
 }
 
 func (h sampleIteratorHeap) Len() int             { return len(h.its) }
@@ -139,7 +138,7 @@ func (h *sampleIteratorHeap) Pop() interface{} {
 func (h sampleIteratorHeap) Less(i, j int) bool {
 	s1, s2 := h.its[i].Sample(), h.its[j].Sample()
 	if s1.Timestamp == s2.Timestamp {
-		if h.byAlphabetical {
+		if h.its[i].StreamHash() == 0 {
 			return h.its[i].Labels() < h.its[j].Labels()
 		}
 		return h.its[i].StreamHash() < h.its[j].StreamHash()
@@ -153,8 +152,13 @@ type mergeSampleIterator struct {
 	is         []SampleIterator
 	prefetched bool
 	stats      *stats.Context
+	// pushBuffer contains the list of iterators that needs to be pushed to the heap
+	// This is to avoid allocations.
+	pushBuffer []SampleIterator
 
-	tuples []sampletuple
+	// buffer of entries to be returned by Next()
+	// We buffer entries with the same timestamp to correctly dedupe them.
+	buffer []sampleWithLabels
 	curr   sampleWithLabels
 	errs   []error
 }
@@ -168,10 +172,11 @@ func NewMergeSampleIterator(ctx context.Context, is []SampleIterator) SampleIter
 		its: make([]SampleIterator, 0, len(is)),
 	}
 	return &mergeSampleIterator{
-		stats:  stats.FromContext(ctx),
-		is:     is,
-		heap:   &h,
-		tuples: make([]sampletuple, 0, len(is)),
+		stats:      stats.FromContext(ctx),
+		is:         is,
+		heap:       &h,
+		buffer:     make([]sampleWithLabels, 0, len(is)),
+		pushBuffer: make([]SampleIterator, 0, len(is)),
 	}
 }
 
@@ -211,13 +216,13 @@ func (i *mergeSampleIterator) requeue(ei SampleIterator, advanced bool) {
 	util.LogError("closing iterator", ei.Close)
 }
 
-type sampletuple struct {
-	logproto.Sample
-	SampleIterator
-}
-
 func (i *mergeSampleIterator) Next() bool {
 	i.prefetch()
+
+	if len(i.buffer) != 0 {
+		i.nextFromBuffer()
+		return true
+	}
 
 	if i.heap.Len() == 0 {
 		return false
@@ -238,43 +243,74 @@ func (i *mergeSampleIterator) Next() bool {
 	// preserve their original order. We look at all the top entries in the
 	// heap with the same timestamp, and pop the ones whose common value
 	// occurs most often.
+Outer:
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
 		sample := next.Sample()
-		if len(i.tuples) > 0 && (i.tuples[0].StreamHash() != next.StreamHash() || i.tuples[0].Timestamp != sample.Timestamp) {
+		if len(i.buffer) > 0 && (i.buffer[0].streamHash != next.StreamHash() || i.buffer[0].Timestamp != sample.Timestamp) {
 			break
 		}
-
 		heap.Pop(i.heap)
-		i.tuples = append(i.tuples, sampletuple{
-			Sample:         sample,
-			SampleIterator: next,
-		})
+		previous := i.buffer
+		var dupe bool
+		for _, t := range previous {
+			if t.Sample.Hash == sample.Hash {
+				i.stats.AddDuplicates(1)
+				dupe = true
+				break
+			}
+		}
+		if !dupe {
+			i.buffer = append(i.buffer, sampleWithLabels{
+				Sample:     sample,
+				labels:     next.Labels(),
+				streamHash: next.StreamHash(),
+			})
+		}
+	inner:
+		for {
+			if !next.Next() {
+				continue Outer
+			}
+			sample := next.Sample()
+			if next.StreamHash() != i.buffer[0].streamHash ||
+				sample.Timestamp != i.buffer[0].Timestamp {
+				break
+			}
+			for _, t := range previous {
+				if t.Hash == sample.Hash {
+					i.stats.AddDuplicates(1)
+					continue inner
+				}
+			}
+			i.buffer = append(i.buffer, sampleWithLabels{
+				Sample:     sample,
+				labels:     next.Labels(),
+				streamHash: next.StreamHash(),
+			})
+		}
+		i.pushBuffer = append(i.pushBuffer, next)
 	}
 
-	i.curr.Sample = i.tuples[0].Sample
-	i.curr.labels = i.tuples[0].Labels()
-	i.curr.streamHash = i.tuples[0].StreamHash()
-	t := i.tuples[0]
-	if len(i.tuples) == 1 {
-		i.requeue(i.tuples[0].SampleIterator, false)
-		i.tuples = i.tuples[:0]
-		return true
+	for _, ei := range i.pushBuffer {
+		heap.Push(i.heap, ei)
 	}
-	// Requeue the iterators, advancing them if they were consumed.
-	for j := range i.tuples {
-		if i.tuples[j].Hash != i.curr.Hash {
-			i.requeue(i.tuples[j].SampleIterator, true)
-			continue
-		}
-		// we count as duplicates only if the tuple is not the one (t) used to fill the current entry
-		if i.tuples[j] != t {
-			i.stats.AddDuplicates(1)
-		}
-		i.requeue(i.tuples[j].SampleIterator, false)
-	}
-	i.tuples = i.tuples[:0]
+	i.pushBuffer = i.pushBuffer[:0]
+
+	i.nextFromBuffer()
+
 	return true
+}
+
+func (i *mergeSampleIterator) nextFromBuffer() {
+	i.curr.Sample = i.buffer[0].Sample
+	i.curr.labels = i.buffer[0].labels
+	i.curr.streamHash = i.buffer[0].streamHash
+	if len(i.buffer) == 1 {
+		i.buffer = i.buffer[:0]
+		return
+	}
+	i.buffer = i.buffer[1:]
 }
 
 func (i *mergeSampleIterator) Sample() logproto.Sample {
@@ -286,7 +322,7 @@ func (i *mergeSampleIterator) Labels() string {
 }
 
 func (i *mergeSampleIterator) StreamHash() uint64 {
-	return i.curr.Hash
+	return i.curr.streamHash
 }
 
 func (i *mergeSampleIterator) Error() error {
@@ -306,7 +342,7 @@ func (i *mergeSampleIterator) Close() error {
 			return err
 		}
 	}
-	i.tuples = nil
+	i.buffer = nil
 	return nil
 }
 
@@ -332,8 +368,7 @@ func NewSortSampleIterator(is []SampleIterator) SampleIterator {
 		return is[0]
 	}
 	h := sampleIteratorHeap{
-		its:            make([]SampleIterator, 0, len(is)),
-		byAlphabetical: true,
+		its: make([]SampleIterator, 0, len(is)),
 	}
 	return &sortSampleIterator{
 		is:   is,
@@ -673,26 +708,37 @@ func (i *timeRangedSampleIterator) Next() bool {
 
 // ReadBatch reads a set of entries off an iterator.
 func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
-	series := map[string]*logproto.Series{}
-	respSize := uint32(0)
+	var (
+		series      = map[uint64]map[string]*logproto.Series{}
+		respSize    uint32
+		seriesCount int
+	)
 	for ; respSize < size && i.Next(); respSize++ {
 		labels, hash, sample := i.Labels(), i.StreamHash(), i.Sample()
-		s, ok := series[labels]
+		streams, ok := series[hash]
 		if !ok {
+			streams = map[string]*logproto.Series{}
+			series[hash] = streams
+		}
+		s, ok := streams[labels]
+		if !ok {
+			seriesCount++
 			s = &logproto.Series{
 				Labels:     labels,
 				StreamHash: hash,
 			}
-			series[labels] = s
+			streams[labels] = s
 		}
 		s.Samples = append(s.Samples, sample)
 	}
 
 	result := logproto.SampleQueryResponse{
-		Series: make([]logproto.Series, 0, len(series)),
+		Series: make([]logproto.Series, 0, seriesCount),
 	}
-	for _, s := range series {
-		result.Series = append(result.Series, *s)
+	for _, streams := range series {
+		for _, s := range streams {
+			result.Series = append(result.Series, *s)
+		}
 	}
 	return &result, respSize, i.Error()
 }

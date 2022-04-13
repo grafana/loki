@@ -4,10 +4,10 @@ metadata:
   name: lokistack-dev
 spec:
   size: 1x.extra-small
-  replicationFactor: 1
   storage:
     secret:
       name: test
+      type: s3
   storageClassName: gp2
   tenants:
     mode: static

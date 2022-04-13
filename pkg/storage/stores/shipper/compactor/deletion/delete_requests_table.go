@@ -14,8 +14,8 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -33,7 +33,7 @@ type deleteRequestsTable struct {
 
 const deleteRequestsIndexFileName = DeleteRequestsTableName + ".gz"
 
-func newDeleteRequestsTable(workingDirectory string, indexStorageClient storage.Client) (chunk.IndexClient, error) {
+func newDeleteRequestsTable(workingDirectory string, indexStorageClient storage.Client) (index.Client, error) {
 	dbPath := filepath.Join(workingDirectory, DeleteRequestsTableName, DeleteRequestsTableName)
 	boltdbIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: filepath.Dir(dbPath)})
 	if err != nil {
@@ -161,11 +161,11 @@ func (t *deleteRequestsTable) Stop() {
 	t.boltdbIndexClient.Stop()
 }
 
-func (t *deleteRequestsTable) NewWriteBatch() chunk.WriteBatch {
+func (t *deleteRequestsTable) NewWriteBatch() index.WriteBatch {
 	return t.boltdbIndexClient.NewWriteBatch()
 }
 
-func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
 	boltWriteBatch, ok := batch.(*local.BoltWriteBatch)
 	if !ok {
 		return errors.New("invalid write batch")
@@ -180,7 +180,7 @@ func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch chunk.WriteB
 	return nil
 }
 
-func (t *deleteRequestsTable) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (t *deleteRequestsTable) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	for _, query := range queries {
 		if err := t.boltdbIndexClient.QueryDB(ctx, t.db, local.IndexBucketName, query, callback); err != nil {
 			return err

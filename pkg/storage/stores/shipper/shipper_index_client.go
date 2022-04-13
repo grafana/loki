@@ -15,16 +15,16 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
@@ -35,9 +35,6 @@ const (
 	// ModeWriteOnly is to allow only write operations
 	ModeWriteOnly
 
-	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
-	BoltDBShipperType = "boltdb-shipper"
-
 	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
 	FilesystemObjectStoreType = "filesystem"
 
@@ -47,8 +44,8 @@ const (
 )
 
 type boltDBIndexClient interface {
-	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
-	NewWriteBatch() chunk.WriteBatch
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error
+	NewWriteBatch() index.WriteBatch
 	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 	Stop()
 }
@@ -78,7 +75,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.CacheLocation, "boltdb.shipper.cache-location", "", "Cache location for restoring boltDB files for queries")
 	f.DurationVar(&cfg.CacheTTL, "boltdb.shipper.cache-ttl", 24*time.Hour, "TTL for boltDB files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, "boltdb.shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
-	f.IntVar(&cfg.QueryReadyNumDays, "boltdb.shipper.query-ready-num-days", 0, "Number of days of index to be kept downloaded for queries. Works only with tables created with 24h period.")
+	f.IntVar(&cfg.QueryReadyNumDays, "boltdb.shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
 	f.BoolVar(&cfg.BuildPerTenantIndex, "boltdb.shipper.build-per-tenant-index", false, "Build per tenant index files")
 }
 
@@ -97,13 +94,13 @@ type Shipper struct {
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometheus.Registerer) (chunk.IndexClient, error) {
+func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) (index.Client, error) {
 	shipper := Shipper{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
 	}
 
-	err := shipper.init(storageClient, registerer)
+	err := shipper.init(storageClient, limits, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +110,7 @@ func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometh
 	return &shipper, nil
 }
 
-func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.Registerer) error {
+func (s *Shipper) init(storageClient client.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) error {
 	// When we run with target querier we don't have ActiveIndexDirectory set so using CacheLocation instead.
 	// Also it doesn't matter which directory we use since BoltDBIndexClient doesn't do anything with it but it is good to have a valid path.
 	boltdbIndexClientDir := s.cfg.ActiveIndexDirectory
@@ -156,6 +153,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			SyncInterval:      s.cfg.ResyncInterval,
 			CacheTTL:          s.cfg.CacheTTL,
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
+			Limits:            limits,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, indexStorageClient, registerer)
 		if err != nil {
@@ -184,7 +182,7 @@ func (s *Shipper) getUploaderName() (string, error) {
 		if !os.IsNotExist(err) {
 			return "", err
 		}
-		if err := ioutil.WriteFile(uploaderFilePath, []byte(uploader), 0666); err != nil {
+		if err := ioutil.WriteFile(uploaderFilePath, []byte(uploader), 0o666); err != nil {
 			return "", err
 		}
 	} else {
@@ -214,17 +212,17 @@ func (s *Shipper) stop() {
 	s.boltDBIndexClient.Stop()
 }
 
-func (s *Shipper) NewWriteBatch() chunk.WriteBatch {
+func (s *Shipper) NewWriteBatch() index.WriteBatch {
 	return s.boltDBIndexClient.NewWriteBatch()
 }
 
-func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+func (s *Shipper) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
 	return instrument.CollectedRequest(ctx, "WRITE", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
 		return s.uploadsManager.BatchWrite(ctx, batch)
 	})
 }
 
-func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *Shipper) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	return instrument.CollectedRequest(ctx, "Shipper.Query", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
 		spanLogger := spanlogger.FromContext(ctx)
 

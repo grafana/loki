@@ -262,15 +262,17 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	}, &result)
 	require.NoError(t, err)
 	require.Len(t, result.resps, 1)
+	lbls := labels.Labels{{Name: "bar", Value: "baz1"}, {Name: "foo", Value: "bar"}}
 	expected := []logproto.Stream{
 		{
-			Labels: `{bar="baz1", foo="bar"}`,
+			Labels: lbls.String(),
 			Entries: []logproto.Entry{
 				{
 					Timestamp: time.Unix(1, 0),
 					Line:      "line 1",
 				},
 			},
+			Hash: lbls.Hash(),
 		},
 	}
 	require.Equal(t, expected, result.resps[0].Streams)

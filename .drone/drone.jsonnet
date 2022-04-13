@@ -25,7 +25,7 @@ local pipeline(name) = {
   kind: 'pipeline',
   name: name,
   steps: [],
-  trigger: { event: ['push', 'pull_request'] },
+  trigger: { event: ['push', 'pull_request', 'tag'] },
 };
 
 local secret(name, vault_path, vault_key) = {
@@ -44,7 +44,7 @@ local pull_secret = secret('dockerconfigjson', 'secret/data/common/gcr', '.docke
 local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 'pat');
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
-local deploy_configuration = secret('deploy_config', 'infra/data/ci/loki/deploy', 'config.json');
+local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
 
 
 local run(name, commands) = {
@@ -134,6 +134,30 @@ local promtail_win() = pipeline('promtail-windows') {
       ],
     },
   ],
+};
+
+local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
+  steps+: [
+    // dry run for everything that is not tag or main
+    docker('amd64', 'querytee') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMain,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/loki-query-tee',
+      },
+    },
+  ] + [
+    // publish for tag or main
+    docker('amd64', 'querytee') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMain,
+      settings+: {
+        repo: 'grafana/loki-query-tee',
+      },
+    },
+  ],
+  depends_on: ['check'],
 };
 
 local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
@@ -371,7 +395,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: ['0.20.0'],
+          tags: ['0.20.3'],
           dry_run: false,
         },
       },
@@ -393,7 +417,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         image: 'koalaman/shellcheck-alpine:stable',
         commands: ['apk add make bash && make lint-scripts'],
       },
-      make('loki', container=false) { depends_on: ['clone'] },
+      make('loki', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
     ],
@@ -410,24 +434,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         depends_on: ['clone'],
       },
     ],
-  },
-  pipeline('benchmark-cron') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    node: { type: 'no-parallel' },
-    steps: [
-      run('All', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...']),
-    ],
-    trigger: {
-      event: {
-        include: ['cron'],
-      },
-      cron: {
-        include: ['loki-bench'],
-      },
-    },
   },
 ] + [
   multiarch_image(arch)
@@ -462,16 +468,17 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   fluentbit(),
   fluentd(),
   logstash(),
+  querytee(),
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMain {
-      event: ['push'],
+      event: ['push', 'tag'],
     },
   },
 ] + [
   pipeline('deploy') {
     trigger: condition('include').tagMain {
-      event: ['push'],
+      event: ['push', 'tag'],
     },
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],

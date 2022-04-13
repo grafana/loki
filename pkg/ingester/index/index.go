@@ -19,7 +19,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/series"
 )
 
 const DefaultIndexShards = 32
@@ -288,9 +288,9 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 		if matcher.Type == labels.MatchEqual {
 			fps := values.fps[matcher.Value]
 			toIntersect = append(toIntersect, fps.fps...) // deliberate copy
-		} else if matcher.Type == labels.MatchRegexp && len(chunk.FindSetMatches(matcher.Value)) > 0 {
+		} else if matcher.Type == labels.MatchRegexp && len(series.FindSetMatches(matcher.Value)) > 0 {
 			// The lookup is of the form `=~"a|b|c|d"`
-			set := chunk.FindSetMatches(matcher.Value)
+			set := series.FindSetMatches(matcher.Value)
 			for _, value := range set {
 				toIntersect = append(toIntersect, values.fps[value].fps...)
 			}
@@ -329,7 +329,7 @@ func (shard *indexShard) allFPs() model.Fingerprints {
 	}
 
 	var result model.Fingerprints
-	var m = map[model.Fingerprint]struct{}{}
+	m := map[model.Fingerprint]struct{}{}
 	for _, fp := range fps {
 		if _, ok := m[fp]; !ok {
 			m[fp] = struct{}{}

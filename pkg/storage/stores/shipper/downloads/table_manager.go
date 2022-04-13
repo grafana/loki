@@ -13,11 +13,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -25,11 +26,17 @@ const (
 	durationDay          = 24 * time.Hour
 )
 
+type Limits interface {
+	AllByUserID() map[string]*validation.Limits
+	DefaultLimits() *validation.Limits
+}
+
 type Config struct {
 	CacheDir          string
 	SyncInterval      time.Duration
 	CacheTTL          time.Duration
 	QueryReadyNumDays int
+	Limits            Limits
 }
 
 type TableManager struct {
@@ -37,7 +44,7 @@ type TableManager struct {
 	boltIndexClient    BoltDBIndexClient
 	indexStorageClient storage.Client
 
-	tables    map[string]*Table
+	tables    map[string]Table
 	tablesMtx sync.RWMutex
 	metrics   *metrics
 
@@ -56,7 +63,7 @@ func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, indexStorage
 		cfg:                cfg,
 		boltIndexClient:    boltIndexClient,
 		indexStorageClient: indexStorageClient,
-		tables:             make(map[string]*Table),
+		tables:             make(map[string]Table),
 		metrics:            newMetrics(registerer),
 		ctx:                ctx,
 		cancel:             cancel,
@@ -71,7 +78,7 @@ func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, indexStorage
 	}
 
 	// download the missing tables.
-	err = tm.ensureQueryReadiness()
+	err = tm.ensureQueryReadiness(ctx)
 	if err != nil {
 		// call Stop to close open file references.
 		tm.Stop()
@@ -101,7 +108,7 @@ func (tm *TableManager) loop() {
 			}
 
 			// we need to keep ensuring query readiness to download every days new table which would otherwise be downloaded only during queries.
-			err = tm.ensureQueryReadiness()
+			err = tm.ensureQueryReadiness(tm.ctx)
 			if err != nil {
 				level.Error(util_log.Logger).Log("msg", "error ensuring query readiness of tables", "err", err)
 			}
@@ -128,7 +135,7 @@ func (tm *TableManager) Stop() {
 	}
 }
 
-func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (tm *TableManager) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	queriesByTable := util.QueriesByTable(queries)
 	for tableName, queries := range queriesByTable {
 		err := tm.query(ctx, tableName, queries, callback)
@@ -140,7 +147,7 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQue
 	return nil
 }
 
-func (tm *TableManager) query(ctx context.Context, tableName string, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (tm *TableManager) query(ctx context.Context, tableName string, queries []index.Query, callback index.QueryPagesCallback) error {
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	level.Debug(logger).Log("table-name", tableName)
 
@@ -152,7 +159,7 @@ func (tm *TableManager) query(ctx context.Context, tableName string, queries []c
 	return util.DoParallelQueries(ctx, table, queries, callback)
 }
 
-func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
+func (tm *TableManager) getOrCreateTable(tableName string) (Table, error) {
 	// if table is already there, use it.
 	tm.tablesMtx.RLock()
 	table, ok := tm.tables[tableName]
@@ -160,6 +167,8 @@ func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
 
 	if !ok {
 		tm.tablesMtx.Lock()
+		defer tm.tablesMtx.Unlock()
+
 		// check if some other competing goroutine got the lock before us and created the table, use it if so.
 		table, ok = tm.tables[tableName]
 		if !ok {
@@ -175,7 +184,6 @@ func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
 			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
 			tm.tables[tableName] = table
 		}
-		tm.tablesMtx.Unlock()
 	}
 
 	return table, nil
@@ -185,6 +193,7 @@ func (tm *TableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
+	start := time.Now()
 	var err error
 
 	defer func() {
@@ -194,6 +203,7 @@ func (tm *TableManager) syncTables(ctx context.Context) error {
 		}
 
 		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
+		tm.metrics.tablesDownloadOperationDurationSeconds.Set(time.Since(start).Seconds())
 	}()
 
 	level.Info(util_log.Logger).Log("msg", "syncing tables")
@@ -230,55 +240,76 @@ func (tm *TableManager) cleanupCache() error {
 }
 
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
-func (tm *TableManager) ensureQueryReadiness() error {
-	if tm.cfg.QueryReadyNumDays == 0 {
+func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
+	activeTableNumber := getActiveTableNumber()
+
+	// find the largest query readiness number
+	largestQueryReadinessNum := tm.cfg.QueryReadyNumDays
+	if defaultLimits := tm.cfg.Limits.DefaultLimits(); defaultLimits.QueryReadyIndexNumDays > largestQueryReadinessNum {
+		largestQueryReadinessNum = defaultLimits.QueryReadyIndexNumDays
+	}
+
+	queryReadinessNumByUserID := make(map[string]int)
+	for userID, limits := range tm.cfg.Limits.AllByUserID() {
+		if limits.QueryReadyIndexNumDays != 0 {
+			queryReadinessNumByUserID[userID] = limits.QueryReadyIndexNumDays
+			if limits.QueryReadyIndexNumDays > largestQueryReadinessNum {
+				largestQueryReadinessNum = limits.QueryReadyIndexNumDays
+			}
+		}
+	}
+
+	// return early if no table has to be downloaded for query readiness
+	if largestQueryReadinessNum == 0 {
 		return nil
 	}
 
-	tableNames, err := tm.indexStorageClient.ListTables(context.Background())
+	tables, err := tm.indexStorageClient.ListTables(ctx)
 	if err != nil {
 		return err
 	}
 
-	// get the names of tables required for being query ready.
-	tableNames, err = tm.tablesRequiredForQueryReadiness(tableNames)
+	// regex for finding daily tables which have a 5 digit number at the end.
+	re, err := regexp.Compile(`.+[0-9]{5}$`)
 	if err != nil {
 		return err
 	}
 
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("list of tables required for query-readiness %s", tableNames))
-
-	for _, tableName := range tableNames {
-		tm.tablesMtx.RLock()
-		table, ok := tm.tables[tableName]
-		tm.tablesMtx.RUnlock()
-		if ok {
-			err = table.EnsureQueryReadiness(context.Background())
-			if err != nil {
-				return err
-			}
+	for _, tableName := range tables {
+		if !re.MatchString(tableName) {
 			continue
 		}
 
-		level.Info(util_log.Logger).Log("msg", "table required for query readiness does not exist locally, downloading it", "table-name", tableName)
-		// table doesn't exist, download it.
-		tablePath := filepath.Join(tm.cfg.CacheDir, tableName)
-		err = chunk_util.EnsureDirectory(tablePath)
+		tableNumber, err := strconv.ParseInt(tableName[len(tableName)-5:], 10, 64)
 		if err != nil {
 			return err
 		}
 
-		table, err = LoadTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
+		// continue if the table is not within query readiness
+		if activeTableNumber-tableNumber > int64(largestQueryReadinessNum) {
+			continue
+		}
+
+		// list the users that have dedicated index files for this table
+		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName)
 		if err != nil {
 			return err
 		}
 
-		tm.tablesMtx.Lock()
-		tm.tables[tableName] = table
-		tm.tablesMtx.Unlock()
+		// find the users whos index we need to keep ready for querying from this table
+		usersToBeQueryReadyFor := tm.findUsersInTableForQueryReadiness(tableNumber, usersWithIndex, queryReadinessNumByUserID)
 
-		err = table.EnsureQueryReadiness(context.Background())
+		// continue if both user index and common index is not required to be downloaded for query readiness
+		if len(usersToBeQueryReadyFor) == 0 && activeTableNumber-tableNumber > int64(tm.cfg.QueryReadyNumDays) {
+			continue
+		}
+
+		table, err := tm.getOrCreateTable(tableName)
 		if err != nil {
+			return err
+		}
+
+		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
 	}
@@ -286,41 +317,31 @@ func (tm *TableManager) ensureQueryReadiness() error {
 	return nil
 }
 
-// queryReadyTableNumbersRange returns the table numbers range. Table numbers are added as suffix to table names.
-func (tm *TableManager) queryReadyTableNumbersRange() (int64, int64) {
-	newestTableNumber := getActiveTableNumber()
+// findUsersInTableForQueryReadiness returns the users that needs their index to be query ready based on the tableNumber and
+// query readiness number provided per user
+func (tm *TableManager) findUsersInTableForQueryReadiness(tableNumber int64, usersWithIndexInTable []string,
+	queryReadinessNumByUserID map[string]int,
+) []string {
+	activeTableNumber := getActiveTableNumber()
+	usersToBeQueryReadyFor := []string{}
 
-	return newestTableNumber - int64(tm.cfg.QueryReadyNumDays), newestTableNumber
-}
+	for _, userID := range usersWithIndexInTable {
+		// use the query readiness config for the user if it exists or use the default config
+		queryReadyNumDays, ok := queryReadinessNumByUserID[userID]
+		if !ok {
+			queryReadyNumDays = tm.cfg.Limits.DefaultLimits().QueryReadyIndexNumDays
+		}
 
-// tablesRequiredForQueryReadiness returns the names of tables required to be downloaded for being query ready as per configured QueryReadyNumDays.
-// It only considers daily tables for simplicity and we anyways have made it mandatory to have daily tables with boltdb-shipper.
-func (tm *TableManager) tablesRequiredForQueryReadiness(tablesInStorage []string) ([]string, error) {
-	// regex for finding daily tables which have a 5 digit number at the end.
-	re, err := regexp.Compile(`.+[0-9]{5}$`)
-	if err != nil {
-		return nil, err
-	}
-
-	minTableNumber, maxTableNumber := tm.queryReadyTableNumbersRange()
-	var requiredTableNames []string
-
-	for _, tableName := range tablesInStorage {
-		if !re.MatchString(tableName) {
+		if queryReadyNumDays == 0 {
 			continue
 		}
 
-		tableNumber, err := strconv.ParseInt(tableName[len(tableName)-5:], 10, 64)
-		if err != nil {
-			return nil, err
-		}
-
-		if minTableNumber <= tableNumber && tableNumber <= maxTableNumber {
-			requiredTableNames = append(requiredTableNames, tableName)
+		if activeTableNumber-tableNumber <= int64(queryReadyNumDays) {
+			usersToBeQueryReadyFor = append(usersToBeQueryReadyFor, userID)
 		}
 	}
 
-	return requiredTableNames, nil
+	return usersToBeQueryReadyFor
 }
 
 // loadLocalTables loads tables present locally.

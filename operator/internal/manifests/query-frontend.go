@@ -66,9 +66,13 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
 				},
 				ReadinessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
+					ProbeHandler: corev1.ProbeHandler{
 						HTTPGet: &corev1.HTTPGetAction{
-							Path:   "/metrics",
+							// The frontend will only return ready once a querier has connected to it.
+							// Because the service used for connecting the querier to the frontend only lists ready
+							// instances there's sequencing issue. For now, we re-use the liveness-probe path
+							// for the readiness-probe as a workaround.
+							Path:   lokiLivenessPath,
 							Port:   intstr.FromInt(httpPort),
 							Scheme: corev1.URISchemeHTTP,
 						},
@@ -79,19 +83,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 					SuccessThreshold:    1,
 					FailureThreshold:    3,
 				},
-				LivenessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
-						HTTPGet: &corev1.HTTPGetAction{
-							Path:   "/metrics",
-							Port:   intstr.FromInt(httpPort),
-							Scheme: corev1.URISchemeHTTP,
-						},
-					},
-					TimeoutSeconds:   2,
-					PeriodSeconds:    30,
-					FailureThreshold: 10,
-					SuccessThreshold: 1,
-				},
+				LivenessProbe: lokiLivenessProbe(),
 				Ports: []corev1.ContainerPort{
 					{
 						Name:          lokiHTTPPortName,
