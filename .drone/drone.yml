@@ -1121,11 +1121,7 @@ steps:
 trigger:
   event:
   - push
-  ref:
-    include:
-    - refs/heads/main
-    - refs/heads/k??
-    - refs/tags/v*
+  - pull_request
 ---
 get:
   name: pat
@@ -1170,6 +1166,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 757a1016e9c3e6f2ba72b57a849face119f2a19318827123396107ed84411708
+hmac: 5739e12cb87751c5b8ce5b236872586cd725b4a79d215ada64ac7135c5f722cd
 
 ...
