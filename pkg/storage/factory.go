@@ -144,7 +144,8 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 		if boltDBIndexClientWithShipper != nil {
 			return boltDBIndexClientWithShipper, nil
 		}
-		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" {
+		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly &&
+			(cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" || cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Ring != nil) {
 			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
 			if err != nil {
 				return nil, err
