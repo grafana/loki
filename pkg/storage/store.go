@@ -179,7 +179,7 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 	return chunks, nil
 }
 
-func shouldRunBoltDBShipperClient(cfg Config) bool {
+func shouldUseIndexGatewayClient(cfg Config) bool {
 	if cfg.BoltDBShipperConfig.Mode != shipper.ModeReadOnly {
 		return false
 	}
@@ -217,7 +217,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		index        stores.Index       = seriesdIndex
 	)
 
-	if shouldRunBoltDBShipperClient(s.cfg) {
+	if shouldUseIndexGatewayClient(s.cfg) {
 		// inject the index-gateway client into the index store
 		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 		if err != nil {
