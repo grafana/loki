@@ -279,7 +279,7 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 	mockLabelRequest := func(name string) *logproto.LabelRequest {
 		return &logproto.LabelRequest{
 			Name:   name,
-			Values: true,
+			Values: name != "",
 			Start:  &start,
 			End:    &end,
 		}
@@ -316,6 +316,18 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 			name:           defaultTenantLabel,
 			orgID:          "1",
 			expectedLabels: []string{"1"},
+		},
+		{
+			desc:           "label names for multiple tenants",
+			name:           "",
+			orgID:          "1|2",
+			expectedLabels: []string{defaultTenantLabel, "test"},
+		},
+		{
+			desc:           "label names for a single tenant",
+			name:           "",
+			orgID:          "1",
+			expectedLabels: []string{"test"},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
