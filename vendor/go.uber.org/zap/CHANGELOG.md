@@ -3,6 +3,27 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## 1.21.0 (7 Feb 2022)
+
+Enhancements:
+*  [#1047][]: Add `zapcore.ParseLevel` to parse a `Level` from a string.
+*  [#1048][]: Add `zap.ParseAtomicLevel` to parse an `AtomicLevel` from a
+   string.
+
+Bugfixes:
+* [#1058][]: Fix panic in JSON encoder when `EncodeLevel` is unset.
+
+Other changes:
+* [#1052][]: Improve encoding performance when the `AddCaller` and
+  `AddStacktrace` options are used together.
+
+[#1047]: https://github.com/uber-go/zap/pull/1047
+[#1048]: https://github.com/uber-go/zap/pull/1048
+[#1052]: https://github.com/uber-go/zap/pull/1052
+[#1058]: https://github.com/uber-go/zap/pull/1058
+
+Thanks to @aerosol and @Techassi for their contributions to this release.
+
 ## 1.20.0 (4 Jan 2022)
 
 Enhancements:

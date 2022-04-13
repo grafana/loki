@@ -8,6 +8,10 @@
         {
             "pattern": "^/registry",
             "replacement": "https://opentelemetry.io/registry"
+        },
+        {
+            "pattern": "^/docs/",
+            "replacement": "https://opentelemetry.io/docs/"
         }
     ],
     "retryOn429": true,

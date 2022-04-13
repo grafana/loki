@@ -17,6 +17,7 @@ package component // import "go.opentelemetry.io/collector/component"
 import (
 	"context"
 
+	"go.opentelemetry.io/collector/component/componenterror"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/consumer"
 )
@@ -97,11 +98,10 @@ type ReceiverCreateSettings struct {
 	BuildInfo BuildInfo
 }
 
-// ReceiverFactory can create TracesReceiver, MetricsReceiver and
-// and LogsReceiver. This is the new preferred factory type to create receivers.
+// ReceiverFactory is factory interface for receivers.
 //
 // This interface cannot be directly implemented. Implementations must
-// use the receiverhelper.NewFactory to implement it.
+// use the NewReceiverFactory to implement it.
 type ReceiverFactory interface {
 	Factory
 
@@ -131,4 +131,103 @@ type ReceiverFactory interface {
 	// an error will be returned instead.
 	CreateLogsReceiver(ctx context.Context, set ReceiverCreateSettings,
 		cfg config.Receiver, nextConsumer consumer.Logs) (LogsReceiver, error)
+}
+
+// ReceiverFactoryOption apply changes to ReceiverOptions.
+type ReceiverFactoryOption func(o *receiverFactory)
+
+// ReceiverCreateDefaultConfigFunc is the equivalent of ReceiverFactory.CreateDefaultConfig().
+type ReceiverCreateDefaultConfigFunc func() config.Receiver
+
+// CreateDefaultConfig implements ReceiverFactory.CreateDefaultConfig().
+func (f ReceiverCreateDefaultConfigFunc) CreateDefaultConfig() config.Receiver {
+	return f()
+}
+
+// CreateTracesReceiverFunc is the equivalent of ReceiverFactory.CreateTracesReceiver().
+type CreateTracesReceiverFunc func(context.Context, ReceiverCreateSettings, config.Receiver, consumer.Traces) (TracesReceiver, error)
+
+// CreateTracesReceiver implements ReceiverFactory.CreateTracesReceiver().
+func (f CreateTracesReceiverFunc) CreateTracesReceiver(
+	ctx context.Context,
+	set ReceiverCreateSettings,
+	cfg config.Receiver,
+	nextConsumer consumer.Traces) (TracesReceiver, error) {
+	if f == nil {
+		return nil, componenterror.ErrDataTypeIsNotSupported
+	}
+	return f(ctx, set, cfg, nextConsumer)
+}
+
+// CreateMetricsReceiverFunc is the equivalent of ReceiverFactory.CreateMetricsReceiver().
+type CreateMetricsReceiverFunc func(context.Context, ReceiverCreateSettings, config.Receiver, consumer.Metrics) (MetricsReceiver, error)
+
+// CreateMetricsReceiver implements ReceiverFactory.CreateMetricsReceiver().
+func (f CreateMetricsReceiverFunc) CreateMetricsReceiver(
+	ctx context.Context,
+	set ReceiverCreateSettings,
+	cfg config.Receiver,
+	nextConsumer consumer.Metrics,
+) (MetricsReceiver, error) {
+	if f == nil {
+		return nil, componenterror.ErrDataTypeIsNotSupported
+	}
+	return f(ctx, set, cfg, nextConsumer)
+}
+
+// CreateLogsReceiverFunc is the equivalent of ReceiverFactory.CreateLogsReceiver().
+type CreateLogsReceiverFunc func(context.Context, ReceiverCreateSettings, config.Receiver, consumer.Logs) (LogsReceiver, error)
+
+// CreateLogsReceiver implements ReceiverFactory.CreateLogsReceiver().
+func (f CreateLogsReceiverFunc) CreateLogsReceiver(
+	ctx context.Context,
+	set ReceiverCreateSettings,
+	cfg config.Receiver,
+	nextConsumer consumer.Logs,
+) (LogsReceiver, error) {
+	if f == nil {
+		return nil, componenterror.ErrDataTypeIsNotSupported
+	}
+	return f(ctx, set, cfg, nextConsumer)
+}
+
+type receiverFactory struct {
+	baseFactory
+	ReceiverCreateDefaultConfigFunc
+	CreateTracesReceiverFunc
+	CreateMetricsReceiverFunc
+	CreateLogsReceiverFunc
+}
+
+// WithTracesReceiver overrides the default "error not supported" implementation for CreateTracesReceiver.
+func WithTracesReceiver(createTracesReceiver CreateTracesReceiverFunc) ReceiverFactoryOption {
+	return func(o *receiverFactory) {
+		o.CreateTracesReceiverFunc = createTracesReceiver
+	}
+}
+
+// WithMetricsReceiver overrides the default "error not supported" implementation for CreateMetricsReceiver.
+func WithMetricsReceiver(createMetricsReceiver CreateMetricsReceiverFunc) ReceiverFactoryOption {
+	return func(o *receiverFactory) {
+		o.CreateMetricsReceiverFunc = createMetricsReceiver
+	}
+}
+
+// WithLogsReceiver overrides the default "error not supported" implementation for CreateLogsReceiver.
+func WithLogsReceiver(createLogsReceiver CreateLogsReceiverFunc) ReceiverFactoryOption {
+	return func(o *receiverFactory) {
+		o.CreateLogsReceiverFunc = createLogsReceiver
+	}
+}
+
+// NewReceiverFactory returns a ReceiverFactory.
+func NewReceiverFactory(cfgType config.Type, createDefaultConfig ReceiverCreateDefaultConfigFunc, options ...ReceiverFactoryOption) ReceiverFactory {
+	f := &receiverFactory{
+		baseFactory:                     baseFactory{cfgType: cfgType},
+		ReceiverCreateDefaultConfigFunc: createDefaultConfig,
+	}
+	for _, opt := range options {
+		opt(f)
+	}
+	return f
 }

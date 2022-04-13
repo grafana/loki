@@ -98,7 +98,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *OTLPConfig) RegisterFlags(fs *flag.FlagSet) {
-	fs.BoolVar(&cfg.ReceiverEnable, "distributor.otlp.enable-receivers", false, "set to true to enable support receiving logs in Loki using OpenTelemetry OTLP")
+	fs.BoolVar(&cfg.ReceiverEnable, "distributor.otlp.enable-receivers", true, "set to true to enable support receiving logs in Loki using OpenTelemetry OTLP")
 	fs.StringVar(&cfg.ReceiverFormat, "distributor.otlp.receiver-format", "json", "json or logfmt")
 	fs.DurationVar(&cfg.ReceiverDrainTimeout, "distributor.otlp.receiver-drain-timeout", 2*time.Second, "distributor receiver should drain before terminating")
 }

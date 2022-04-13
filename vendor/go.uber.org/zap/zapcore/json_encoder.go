@@ -364,7 +364,7 @@ func (enc *jsonEncoder) EncodeEntry(ent Entry, fields []Field) (*buffer.Buffer, 
 	final := enc.clone()
 	final.buf.AppendByte('{')
 
-	if final.LevelKey != "" {
+	if final.LevelKey != "" && final.EncodeLevel != nil {
 		final.addKey(final.LevelKey)
 		cur := final.buf.Len()
 		final.EncodeLevel(ent.Level, final)

@@ -12,16 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package otelhttp
+package otelhttp // import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 import (
-<<<<<<< HEAD
-	"net/http"
-=======
 	"context"
 	"net/http"
 	"net/http/httptrace"
->>>>>>> main
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
@@ -45,10 +41,7 @@ type config struct {
 	WriteEvent        bool
 	Filters           []Filter
 	SpanNameFormatter func(string, *http.Request) string
-<<<<<<< HEAD
-=======
 	ClientTrace       func(context.Context) *httptrace.ClientTrace
->>>>>>> main
 
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
@@ -69,7 +62,7 @@ func (o optionFunc) apply(c *config) {
 func newConfig(opts ...Option) *config {
 	c := &config{
 		Propagators:   otel.GetTextMapPropagator(),
-		MeterProvider: global.GetMeterProvider(),
+		MeterProvider: global.MeterProvider(),
 	}
 	for _, opt := range opts {
 		opt.apply(c)
@@ -184,8 +177,6 @@ func WithSpanNameFormatter(f func(operation string, r *http.Request) string) Opt
 		c.SpanNameFormatter = f
 	})
 }
-<<<<<<< HEAD
-=======
 
 // WithClientTrace takes a function that returns client trace instance that will be
 // applied to the requests sent through the otelhttp Transport.
@@ -194,4 +185,3 @@ func WithClientTrace(f func(context.Context) *httptrace.ClientTrace) Option {
 		c.ClientTrace = f
 	})
 }
->>>>>>> main

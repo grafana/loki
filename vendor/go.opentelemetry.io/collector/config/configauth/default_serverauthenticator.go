@@ -18,7 +18,6 @@ import (
 	"context"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/component/componenthelper"
 )
 
 var _ ServerAuthenticator = (*defaultServerAuthenticator)(nil)
@@ -28,8 +27,8 @@ type Option func(*defaultServerAuthenticator)
 
 type defaultServerAuthenticator struct {
 	AuthenticateFunc
-	componenthelper.StartFunc
-	componenthelper.ShutdownFunc
+	component.StartFunc
+	component.ShutdownFunc
 }
 
 // WithAuthenticate specifies which function to use to perform the authentication.
@@ -41,7 +40,7 @@ func WithAuthenticate(authenticateFunc AuthenticateFunc) Option {
 
 // WithStart overrides the default `Start` function for a component.Component.
 // The default always returns nil.
-func WithStart(startFunc componenthelper.StartFunc) Option {
+func WithStart(startFunc component.StartFunc) Option {
 	return func(o *defaultServerAuthenticator) {
 		o.StartFunc = startFunc
 	}
@@ -49,7 +48,7 @@ func WithStart(startFunc componenthelper.StartFunc) Option {
 
 // WithShutdown overrides the default `Shutdown` function for a component.Component.
 // The default always returns nil.
-func WithShutdown(shutdownFunc componenthelper.ShutdownFunc) Option {
+func WithShutdown(shutdownFunc component.ShutdownFunc) Option {
 	return func(o *defaultServerAuthenticator) {
 		o.ShutdownFunc = shutdownFunc
 	}

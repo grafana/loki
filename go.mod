@@ -113,7 +113,6 @@ require (
 require (
 	go.opentelemetry.io/collector v0.48.0
 	go.opentelemetry.io/collector/model v0.48.0
-	go.opentelemetry.io/otel/metric v0.28.0
 	go.opentelemetry.io/otel/trace v1.6.1
 	go.uber.org/multierr v1.8.0
 	go.uber.org/zap v1.21.0
@@ -290,7 +289,10 @@ require (
 	sigs.k8s.io/yaml v1.2.0 // indirect
 )
 
-require github.com/pelletier/go-toml v1.9.4 // indirect
+require (
+	github.com/pelletier/go-toml v1.9.4 // indirect
+	go.opentelemetry.io/otel/metric v0.28.0 // indirect
+)
 
 // Upgrade to run with gRPC 1.3.0 and above.
 replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible

@@ -126,8 +126,6 @@ type Options struct {
 	// called for key-value pairs passed directly to Info and Error.  See
 	// RenderBuiltinsHook for more details.
 	RenderArgsHook func(kvList []interface{}) []interface{}
-<<<<<<< HEAD
-=======
 
 	// MaxLogDepth tells funcr how many levels of nested fields (e.g. a struct
 	// that contains a struct, etc.) it may log.  Every time it finds a struct,
@@ -136,7 +134,6 @@ type Options struct {
 	// depth has been exceeded.  If this field is not specified, a default
 	// value will be used.
 	MaxLogDepth int
->>>>>>> main
 }
 
 // MessageClass indicates which category or categories of messages to consider.
@@ -204,13 +201,6 @@ func NewFormatterJSON(opts Options) Formatter {
 	return newFormatter(opts, outputJSON)
 }
 
-<<<<<<< HEAD
-const defaultTimestampFmt = "2006-01-02 15:04:05.000000"
-
-func newFormatter(opts Options, outfmt outputFormat) Formatter {
-	if opts.TimestampFormat == "" {
-		opts.TimestampFormat = defaultTimestampFmt
-=======
 // Defaults for Options.
 const defaultTimestampFormat = "2006-01-02 15:04:05.000000"
 const defaultMaxLogDepth = 16
@@ -221,7 +211,6 @@ func newFormatter(opts Options, outfmt outputFormat) Formatter {
 	}
 	if opts.MaxLogDepth == 0 {
 		opts.MaxLogDepth = defaultMaxLogDepth
->>>>>>> main
 	}
 	f := Formatter{
 		outputFormat: outfmt,
@@ -345,11 +334,7 @@ func (f Formatter) flatten(buf *bytes.Buffer, kvList []interface{}, continuing b
 }
 
 func (f Formatter) pretty(value interface{}) string {
-<<<<<<< HEAD
-	return f.prettyWithFlags(value, 0)
-=======
 	return f.prettyWithFlags(value, 0, 0)
->>>>>>> main
 }
 
 const (
@@ -357,28 +342,24 @@ const (
 )
 
 // TODO: This is not fast. Most of the overhead goes here.
-<<<<<<< HEAD
-func (f Formatter) prettyWithFlags(value interface{}, flags uint32) string {
-=======
 func (f Formatter) prettyWithFlags(value interface{}, flags uint32, depth int) string {
 	if depth > f.opts.MaxLogDepth {
 		return `"<max-log-depth-exceeded>"`
 	}
 
->>>>>>> main
 	// Handle types that take full control of logging.
 	if v, ok := value.(logr.Marshaler); ok {
 		// Replace the value with what the type wants to get logged.
 		// That then gets handled below via reflection.
-		value = v.MarshalLog()
+		value = invokeMarshaler(v)
 	}
 
 	// Handle types that want to format themselves.
 	switch v := value.(type) {
 	case fmt.Stringer:
-		value = v.String()
+		value = invokeStringer(v)
 	case error:
-		value = v.Error()
+		value = invokeError(v)
 	}
 
 	// Handling the most common types without reflect is a small perf win.
@@ -427,14 +408,11 @@ func (f Formatter) prettyWithFlags(value interface{}, flags uint32, depth int) s
 			if i > 0 {
 				buf.WriteByte(',')
 			}
+			k, _ := v[i].(string) // sanitize() above means no need to check success
 			// arbitrary keys might need escaping
-			buf.WriteString(prettyString(v[i].(string)))
+			buf.WriteString(prettyString(k))
 			buf.WriteByte(':')
-<<<<<<< HEAD
-			buf.WriteString(f.pretty(v[i+1]))
-=======
 			buf.WriteString(f.prettyWithFlags(v[i+1], 0, depth+1))
->>>>>>> main
 		}
 		if flags&flagRawStruct == 0 {
 			buf.WriteByte('}')
@@ -504,11 +482,7 @@ func (f Formatter) prettyWithFlags(value interface{}, flags uint32, depth int) s
 				buf.WriteByte(',')
 			}
 			if fld.Anonymous && fld.Type.Kind() == reflect.Struct && name == "" {
-<<<<<<< HEAD
-				buf.WriteString(f.prettyWithFlags(v.Field(i).Interface(), flags|flagRawStruct))
-=======
 				buf.WriteString(f.prettyWithFlags(v.Field(i).Interface(), flags|flagRawStruct, depth+1))
->>>>>>> main
 				continue
 			}
 			if name == "" {
@@ -519,11 +493,7 @@ func (f Formatter) prettyWithFlags(value interface{}, flags uint32, depth int) s
 			buf.WriteString(name)
 			buf.WriteByte('"')
 			buf.WriteByte(':')
-<<<<<<< HEAD
-			buf.WriteString(f.pretty(v.Field(i).Interface()))
-=======
 			buf.WriteString(f.prettyWithFlags(v.Field(i).Interface(), 0, depth+1))
->>>>>>> main
 		}
 		if flags&flagRawStruct == 0 {
 			buf.WriteByte('}')
@@ -536,11 +506,7 @@ func (f Formatter) prettyWithFlags(value interface{}, flags uint32, depth int) s
 				buf.WriteByte(',')
 			}
 			e := v.Index(i)
-<<<<<<< HEAD
-			buf.WriteString(f.pretty(e.Interface()))
-=======
 			buf.WriteString(f.prettyWithFlags(e.Interface(), 0, depth+1))
->>>>>>> main
 		}
 		buf.WriteByte(']')
 		return buf.String()
@@ -565,11 +531,7 @@ func (f Formatter) prettyWithFlags(value interface{}, flags uint32, depth int) s
 				keystr = prettyString(keystr)
 			} else {
 				// prettyWithFlags will produce already-escaped values
-<<<<<<< HEAD
-				keystr = f.prettyWithFlags(it.Key().Interface(), 0)
-=======
 				keystr = f.prettyWithFlags(it.Key().Interface(), 0, depth+1)
->>>>>>> main
 				if t.Key().Kind() != reflect.String {
 					// JSON only does string keys.  Unlike Go's standard JSON, we'll
 					// convert just about anything to a string.
@@ -578,11 +540,7 @@ func (f Formatter) prettyWithFlags(value interface{}, flags uint32, depth int) s
 			}
 			buf.WriteString(keystr)
 			buf.WriteByte(':')
-<<<<<<< HEAD
-			buf.WriteString(f.pretty(it.Value().Interface()))
-=======
 			buf.WriteString(f.prettyWithFlags(it.Value().Interface(), 0, depth+1))
->>>>>>> main
 			i++
 		}
 		buf.WriteByte('}')
@@ -591,11 +549,7 @@ func (f Formatter) prettyWithFlags(value interface{}, flags uint32, depth int) s
 		if v.IsNil() {
 			return "null"
 		}
-<<<<<<< HEAD
-		return f.pretty(v.Elem().Interface())
-=======
 		return f.prettyWithFlags(v.Elem().Interface(), 0, depth)
->>>>>>> main
 	}
 	return fmt.Sprintf(`"<unhandled-%s>"`, t.Kind().String())
 }
@@ -641,6 +595,33 @@ func isEmpty(v reflect.Value) bool {
 		return v.IsNil()
 	}
 	return false
+}
+
+func invokeMarshaler(m logr.Marshaler) (ret interface{}) {
+	defer func() {
+		if r := recover(); r != nil {
+			ret = fmt.Sprintf("<panic: %s>", r)
+		}
+	}()
+	return m.MarshalLog()
+}
+
+func invokeStringer(s fmt.Stringer) (ret string) {
+	defer func() {
+		if r := recover(); r != nil {
+			ret = fmt.Sprintf("<panic: %s>", r)
+		}
+	}()
+	return s.String()
+}
+
+func invokeError(e error) (ret string) {
+	defer func() {
+		if r := recover(); r != nil {
+			ret = fmt.Sprintf("<panic: %s>", r)
+		}
+	}()
+	return e.Error()
 }
 
 // Caller represents the original call site for a log line, after considering

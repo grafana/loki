@@ -15,9 +15,7 @@
 package consumer // import "go.opentelemetry.io/collector/consumer"
 
 import (
-	"context"
-
-	"go.opentelemetry.io/collector/model/pdata"
+	"errors"
 )
 
 // Capabilities describes the capabilities of a Processor.
@@ -34,26 +32,36 @@ type baseConsumer interface {
 	Capabilities() Capabilities
 }
 
-// Metrics is the new metrics consumer interface that receives pdata.Metrics, processes it
-// as needed, and sends it to the next processing node if any or to the destination.
-type Metrics interface {
-	baseConsumer
-	// ConsumeMetrics receives pdata.Metrics for consumption.
-	ConsumeMetrics(ctx context.Context, md pdata.Metrics) error
+var errNilFunc = errors.New("nil consumer func")
+
+type baseImpl struct {
+	capabilities Capabilities
 }
 
-// Traces is an interface that receives pdata.Traces, processes it
-// as needed, and sends it to the next processing node if any or to the destination.
-type Traces interface {
-	baseConsumer
-	// ConsumeTraces receives pdata.Traces for consumption.
-	ConsumeTraces(ctx context.Context, td pdata.Traces) error
+// Option to construct new consumers.
+type Option func(*baseImpl)
+
+// WithCapabilities overrides the default GetCapabilities function for a processor.
+// The default GetCapabilities function returns mutable capabilities.
+func WithCapabilities(capabilities Capabilities) Option {
+	return func(o *baseImpl) {
+		o.capabilities = capabilities
+	}
 }
 
-// Logs is an interface that receives pdata.Logs, processes it
-// as needed, and sends it to the next processing node if any or to the destination.
-type Logs interface {
-	baseConsumer
-	// ConsumeLogs receives pdata.Logs for consumption.
-	ConsumeLogs(ctx context.Context, ld pdata.Logs) error
+// Capabilities implementation of the base
+func (bs baseImpl) Capabilities() Capabilities {
+	return bs.capabilities
+}
+
+func newBaseImpl(options ...Option) *baseImpl {
+	bs := &baseImpl{
+		capabilities: Capabilities{MutatesData: false},
+	}
+
+	for _, op := range options {
+		op(bs)
+	}
+
+	return bs
 }

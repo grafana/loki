@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package otelhttp
+package otelhttp // import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 import (
 	"context"
 	"io"
 	"net/http"
-<<<<<<< HEAD
-=======
 	"net/http/httptrace"
->>>>>>> main
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
@@ -40,10 +37,7 @@ type Transport struct {
 	spanStartOptions  []trace.SpanStartOption
 	filters           []Filter
 	spanNameFormatter func(string, *http.Request) string
-<<<<<<< HEAD
-=======
 	clientTrace       func(context.Context) *httptrace.ClientTrace
->>>>>>> main
 }
 
 var _ http.RoundTripper = &Transport{}
@@ -79,10 +73,7 @@ func (t *Transport) applyConfig(c *config) {
 	t.spanStartOptions = c.SpanStartOptions
 	t.filters = c.Filters
 	t.spanNameFormatter = c.SpanNameFormatter
-<<<<<<< HEAD
-=======
 	t.clientTrace = c.ClientTrace
->>>>>>> main
 }
 
 func defaultTransportFormatter(_ string, r *http.Request) string {
@@ -114,13 +105,10 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 	ctx, span := tracer.Start(r.Context(), t.spanNameFormatter("", r), opts...)
 
-<<<<<<< HEAD
-=======
 	if t.clientTrace != nil {
 		ctx = httptrace.WithClientTrace(ctx, t.clientTrace(ctx))
 	}
 
->>>>>>> main
 	r = r.WithContext(ctx)
 	span.SetAttributes(semconv.HTTPClientAttributesFromHTTPRequest(r)...)
 	t.propagators.Inject(ctx, propagation.HeaderCarrier(r.Header))
@@ -135,19 +123,11 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 	span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(res.StatusCode)...)
 	span.SetStatus(semconv.SpanStatusFromHTTPStatusCode(res.StatusCode))
-<<<<<<< HEAD
-	res.Body = &wrappedBody{ctx: ctx, span: span, body: res.Body}
-=======
 	res.Body = newWrappedBody(span, res.Body)
->>>>>>> main
 
 	return res, err
 }
 
-<<<<<<< HEAD
-type wrappedBody struct {
-	ctx  context.Context
-=======
 // newWrappedBody returns a new and appropriately scoped *wrappedBody as an
 // io.ReadCloser. If the passed body implements io.Writer, the returned value
 // will implement io.ReadWriteCloser.
@@ -173,14 +153,10 @@ func newWrappedBody(span trace.Span, body io.ReadCloser) io.ReadCloser {
 // If the response body implements the io.Writer interface (i.e. for
 // successful protocol switches), the wrapped body also will.
 type wrappedBody struct {
->>>>>>> main
 	span trace.Span
 	body io.ReadCloser
 }
 
-<<<<<<< HEAD
-var _ io.ReadCloser = &wrappedBody{}
-=======
 var _ io.ReadWriteCloser = &wrappedBody{}
 
 func (wb *wrappedBody) Write(p []byte) (int, error) {
@@ -192,7 +168,6 @@ func (wb *wrappedBody) Write(p []byte) (int, error) {
 	}
 	return n, err
 }
->>>>>>> main
 
 func (wb *wrappedBody) Read(b []byte) (int, error) {
 	n, err := wb.body.Read(b)

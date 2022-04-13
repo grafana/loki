@@ -17,9 +17,9 @@ package component // import "go.opentelemetry.io/collector/component"
 import (
 	"context"
 
+	"go.opentelemetry.io/collector/component/componenterror"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/internal/internalinterface"
 )
 
 // Processor defines the common functions that must be implemented by TracesProcessor
@@ -54,13 +54,11 @@ type ProcessorCreateSettings struct {
 	BuildInfo BuildInfo
 }
 
-// ProcessorFactory is factory interface for processors. This is the
-// new factory type that can create new style processors.
+// ProcessorFactory is Factory interface for processors.
 //
 // This interface cannot be directly implemented. Implementations must
-// use the processorhelper.NewFactory to implement it.
+// use the NewProcessorFactory to implement it.
 type ProcessorFactory interface {
-	internalinterface.InternalInterface
 	Factory
 
 	// CreateDefaultConfig creates the default configuration for the Processor.
@@ -101,4 +99,103 @@ type ProcessorFactory interface {
 		cfg config.Processor,
 		nextConsumer consumer.Logs,
 	) (LogsProcessor, error)
+}
+
+// ProcessorFactoryOption apply changes to ProcessorOptions.
+type ProcessorFactoryOption func(o *processorFactory)
+
+// ProcessorCreateDefaultConfigFunc is the equivalent of ProcessorFactory.CreateDefaultConfig().
+type ProcessorCreateDefaultConfigFunc func() config.Processor
+
+// CreateDefaultConfig implements ProcessorFactory.CreateDefaultConfig().
+func (f ProcessorCreateDefaultConfigFunc) CreateDefaultConfig() config.Processor {
+	return f()
+}
+
+// CreateTracesProcessorFunc is the equivalent of ProcessorFactory.CreateTracesProcessor().
+type CreateTracesProcessorFunc func(context.Context, ProcessorCreateSettings, config.Processor, consumer.Traces) (TracesProcessor, error)
+
+// CreateTracesProcessor implements ProcessorFactory.CreateTracesProcessor().
+func (f CreateTracesProcessorFunc) CreateTracesProcessor(
+	ctx context.Context,
+	set ProcessorCreateSettings,
+	cfg config.Processor,
+	nextConsumer consumer.Traces) (TracesProcessor, error) {
+	if f == nil {
+		return nil, componenterror.ErrDataTypeIsNotSupported
+	}
+	return f(ctx, set, cfg, nextConsumer)
+}
+
+// CreateMetricsProcessorFunc is the equivalent of ProcessorFactory.CreateMetricsProcessor().
+type CreateMetricsProcessorFunc func(context.Context, ProcessorCreateSettings, config.Processor, consumer.Metrics) (MetricsProcessor, error)
+
+// CreateMetricsProcessor implements ProcessorFactory.CreateMetricsProcessor().
+func (f CreateMetricsProcessorFunc) CreateMetricsProcessor(
+	ctx context.Context,
+	set ProcessorCreateSettings,
+	cfg config.Processor,
+	nextConsumer consumer.Metrics,
+) (MetricsProcessor, error) {
+	if f == nil {
+		return nil, componenterror.ErrDataTypeIsNotSupported
+	}
+	return f(ctx, set, cfg, nextConsumer)
+}
+
+// CreateLogsProcessorFunc is the equivalent of ProcessorFactory.CreateLogsProcessor().
+type CreateLogsProcessorFunc func(context.Context, ProcessorCreateSettings, config.Processor, consumer.Logs) (LogsProcessor, error)
+
+// CreateLogsProcessor implements ProcessorFactory.CreateLogsProcessor().
+func (f CreateLogsProcessorFunc) CreateLogsProcessor(
+	ctx context.Context,
+	set ProcessorCreateSettings,
+	cfg config.Processor,
+	nextConsumer consumer.Logs,
+) (LogsProcessor, error) {
+	if f == nil {
+		return nil, componenterror.ErrDataTypeIsNotSupported
+	}
+	return f(ctx, set, cfg, nextConsumer)
+}
+
+type processorFactory struct {
+	baseFactory
+	ProcessorCreateDefaultConfigFunc
+	CreateTracesProcessorFunc
+	CreateMetricsProcessorFunc
+	CreateLogsProcessorFunc
+}
+
+// WithTracesProcessor overrides the default "error not supported" implementation for CreateTracesProcessor.
+func WithTracesProcessor(createTracesProcessor CreateTracesProcessorFunc) ProcessorFactoryOption {
+	return func(o *processorFactory) {
+		o.CreateTracesProcessorFunc = createTracesProcessor
+	}
+}
+
+// WithMetricsProcessor overrides the default "error not supported" implementation for CreateMetricsProcessor.
+func WithMetricsProcessor(createMetricsProcessor CreateMetricsProcessorFunc) ProcessorFactoryOption {
+	return func(o *processorFactory) {
+		o.CreateMetricsProcessorFunc = createMetricsProcessor
+	}
+}
+
+// WithLogsProcessor overrides the default "error not supported" implementation for CreateLogsProcessor.
+func WithLogsProcessor(createLogsProcessor CreateLogsProcessorFunc) ProcessorFactoryOption {
+	return func(o *processorFactory) {
+		o.CreateLogsProcessorFunc = createLogsProcessor
+	}
+}
+
+// NewProcessorFactory returns a ProcessorFactory.
+func NewProcessorFactory(cfgType config.Type, createDefaultConfig ProcessorCreateDefaultConfigFunc, options ...ProcessorFactoryOption) ProcessorFactory {
+	f := &processorFactory{
+		baseFactory:                      baseFactory{cfgType: cfgType},
+		ProcessorCreateDefaultConfigFunc: createDefaultConfig,
+	}
+	for _, opt := range options {
+		opt(f)
+	}
+	return f
 }

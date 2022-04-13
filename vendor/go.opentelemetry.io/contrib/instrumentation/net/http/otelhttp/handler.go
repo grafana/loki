@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package otelhttp
+package otelhttp // import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 import (
 	"io"
@@ -24,6 +24,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
+	"go.opentelemetry.io/otel/metric/instrument/syncint64"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 	"go.opentelemetry.io/otel/trace"
@@ -47,12 +49,8 @@ type Handler struct {
 	writeEvent        bool
 	filters           []Filter
 	spanNameFormatter func(string, *http.Request) string
-	counters          map[string]metric.Int64Counter
-<<<<<<< HEAD
-	valueRecorders    map[string]metric.Int64Histogram
-=======
-	valueRecorders    map[string]metric.Float64Histogram
->>>>>>> main
+	counters          map[string]syncint64.Counter
+	valueRecorders    map[string]syncfloat64.Histogram
 }
 
 func defaultHandlerFormatter(operation string, _ *http.Request) string {
@@ -97,24 +95,16 @@ func handleErr(err error) {
 }
 
 func (h *Handler) createMeasures() {
-	h.counters = make(map[string]metric.Int64Counter)
-<<<<<<< HEAD
-	h.valueRecorders = make(map[string]metric.Int64Histogram)
-=======
-	h.valueRecorders = make(map[string]metric.Float64Histogram)
->>>>>>> main
+	h.counters = make(map[string]syncint64.Counter)
+	h.valueRecorders = make(map[string]syncfloat64.Histogram)
 
-	requestBytesCounter, err := h.meter.NewInt64Counter(RequestContentLength)
+	requestBytesCounter, err := h.meter.SyncInt64().Counter(RequestContentLength)
 	handleErr(err)
 
-	responseBytesCounter, err := h.meter.NewInt64Counter(ResponseContentLength)
+	responseBytesCounter, err := h.meter.SyncInt64().Counter(ResponseContentLength)
 	handleErr(err)
 
-<<<<<<< HEAD
-	serverLatencyMeasure, err := h.meter.NewInt64Histogram(ServerLatency)
-=======
-	serverLatencyMeasure, err := h.meter.NewFloat64Histogram(ServerLatency)
->>>>>>> main
+	serverLatencyMeasure, err := h.meter.SyncFloat64().Histogram(ServerLatency)
 	handleErr(err)
 
 	h.counters[RequestContentLength] = requestBytesCounter
@@ -207,12 +197,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.counters[RequestContentLength].Add(ctx, bw.read, attributes...)
 	h.counters[ResponseContentLength].Add(ctx, rww.written, attributes...)
 
-<<<<<<< HEAD
-	elapsedTime := time.Since(requestStartTime).Microseconds()
-=======
 	// Use floating point division here for higher precision (instead of Millisecond method).
 	elapsedTime := float64(time.Since(requestStartTime)) / float64(time.Millisecond)
->>>>>>> main
 
 	h.valueRecorders[ServerLatency].Record(ctx, elapsedTime, attributes...)
 }

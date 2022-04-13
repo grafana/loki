@@ -82,11 +82,11 @@ type HTTPClientSettings struct {
 	IdleConnTimeout *time.Duration `mapstructure:"idle_conn_timeout"`
 }
 
-// DefaultHTTPClientSettings returns HTTPClientSettings type object with
+// NewDefaultHTTPClientSettings returns HTTPClientSettings type object with
 // the default values of 'MaxIdleConns' and 'IdleConnTimeout'.
 // Other config options are not added as they are initialized with 'zero value' by GoLang as default.
 // We encourage to use this function to create an object of HTTPClientSettings.
-func DefaultHTTPClientSettings() HTTPClientSettings {
+func NewDefaultHTTPClientSettings() HTTPClientSettings {
 	// The default values are taken from the values of 'DefaultTransport' of 'http' package.
 	maxIdleConns := 100
 	idleConnTimeout := 90 * time.Second
@@ -271,6 +271,15 @@ func (hss *HTTPServerSettings) ToServer(host component.Host, settings component.
 		handler = maxRequestBodySizeInterceptor(handler, hss.MaxRequestBodySize)
 	}
 
+	if hss.Auth != nil {
+		authenticator, err := hss.Auth.GetServerAuthenticator(host.GetExtensions())
+		if err != nil {
+			return nil, err
+		}
+
+		handler = authInterceptor(handler, authenticator.Authenticate)
+	}
+
 	if hss.CORS != nil && len(hss.CORS.AllowedOrigins) > 0 {
 		co := cors.Options{
 			AllowedOrigins:   hss.CORS.AllowedOrigins,
@@ -281,15 +290,6 @@ func (hss *HTTPServerSettings) ToServer(host component.Host, settings component.
 		handler = cors.New(co).Handler(handler)
 	}
 	// TODO: emit a warning when non-empty CorsHeaders and empty CorsOrigins.
-
-	if hss.Auth != nil {
-		authenticator, err := hss.Auth.GetServerAuthenticator(host.GetExtensions())
-		if err != nil {
-			return nil, err
-		}
-
-		handler = authInterceptor(handler, authenticator.Authenticate)
-	}
 
 	// Enable OpenTelemetry observability plugin.
 	// TODO: Consider to use component ID string as prefix for all the operations.

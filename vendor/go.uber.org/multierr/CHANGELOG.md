@@ -1,6 +1,12 @@
 Releases
 ========
 
+v1.8.0 (2022-02-28)
+===================
+
+-   `Combine`: perform zero allocations when there are no errors.
+
+
 v1.7.0 (2021-05-06)
 ===================
 

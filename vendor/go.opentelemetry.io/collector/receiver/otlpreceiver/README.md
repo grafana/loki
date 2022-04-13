@@ -41,8 +41,7 @@ Several helper files are leveraged to provide additional capabilities automatica
 
 The OTLP receiver can receive trace export calls via HTTP/JSON in addition to
 gRPC. The HTTP/JSON address is the same as gRPC as the protocol is recognized
-and processed accordingly. Note the format needs to be [protobuf JSON
-serialization](https://developers.google.com/protocol-buffers/docs/proto3#json).
+and processed accordingly. Note the serialization format needs to be [protobuf JSON](https://developers.google.com/protocol-buffers/docs/proto3#json).
 
 To write traces with HTTP/JSON, `POST` to `[address]/v1/traces` for traces,
 to `[address]/v1/metrics` for metrics, to `[address]/v1/logs` for logs. The default

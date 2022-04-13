@@ -143,8 +143,8 @@ func unmarshalExtensions(exts map[config.ComponentID]map[string]interface{}, fac
 	// Iterate over extensions and create a config for each.
 	for id, value := range exts {
 		// Find extension factory based on "type" that we read from config source.
-		factory := factories[id.Type()]
-		if factory == nil {
+		factory, ok := factories[id.Type()]
+		if !ok {
 			return nil, errorUnknownType(extensionsKeyName, id, reflect.ValueOf(factories).MapKeys())
 		}
 

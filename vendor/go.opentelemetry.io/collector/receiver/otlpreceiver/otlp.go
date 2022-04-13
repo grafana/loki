@@ -143,22 +143,6 @@ func (r *otlpReceiver) startProtocolServers(host component.Host) error {
 		if err != nil {
 			return err
 		}
-		if r.cfg.HTTP.Endpoint == defaultHTTPEndpoint {
-			r.settings.Logger.Info("Setting up a second HTTP listener on legacy endpoint " + legacyHTTPEndpoint)
-
-			// Copy the config.
-			cfgLegacyHTTP := *(r.cfg.HTTP)
-			// And use the legacy endpoint.
-			cfgLegacyHTTP.Endpoint = legacyHTTPEndpoint
-			err = r.startHTTPServer(&cfgLegacyHTTP, host)
-			if err != nil {
-				return err
-			}
-		}
-		if r.cfg.HTTP.Endpoint == legacyHTTPEndpoint {
-			r.settings.Logger.Warn(fmt.Sprintf("Legacy HTTP endpoint %v is configured, please use %v instead.",
-				legacyHTTPEndpoint, defaultHTTPEndpoint))
-		}
 	}
 
 	return err

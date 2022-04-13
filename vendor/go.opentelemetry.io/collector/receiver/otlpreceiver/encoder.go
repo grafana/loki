@@ -52,27 +52,33 @@ type encoder interface {
 type protoEncoder struct{}
 
 func (protoEncoder) unmarshalTracesRequest(buf []byte) (otlpgrpc.TracesRequest, error) {
-	return otlpgrpc.UnmarshalTracesRequest(buf)
+	req := otlpgrpc.NewTracesRequest()
+	err := req.UnmarshalProto(buf)
+	return req, err
 }
 
 func (protoEncoder) unmarshalMetricsRequest(buf []byte) (otlpgrpc.MetricsRequest, error) {
-	return otlpgrpc.UnmarshalMetricsRequest(buf)
+	req := otlpgrpc.NewMetricsRequest()
+	err := req.UnmarshalProto(buf)
+	return req, err
 }
 
 func (protoEncoder) unmarshalLogsRequest(buf []byte) (otlpgrpc.LogsRequest, error) {
-	return otlpgrpc.UnmarshalLogsRequest(buf)
+	req := otlpgrpc.NewLogsRequest()
+	err := req.UnmarshalProto(buf)
+	return req, err
 }
 
 func (protoEncoder) marshalTracesResponse(resp otlpgrpc.TracesResponse) ([]byte, error) {
-	return resp.Marshal()
+	return resp.MarshalProto()
 }
 
 func (protoEncoder) marshalMetricsResponse(resp otlpgrpc.MetricsResponse) ([]byte, error) {
-	return resp.Marshal()
+	return resp.MarshalProto()
 }
 
 func (protoEncoder) marshalLogsResponse(resp otlpgrpc.LogsResponse) ([]byte, error) {
-	return resp.Marshal()
+	return resp.MarshalProto()
 }
 
 func (protoEncoder) marshalStatus(resp *spb.Status) ([]byte, error) {
@@ -86,15 +92,21 @@ func (protoEncoder) contentType() string {
 type jsonEncoder struct{}
 
 func (jsonEncoder) unmarshalTracesRequest(buf []byte) (otlpgrpc.TracesRequest, error) {
-	return otlpgrpc.UnmarshalJSONTracesRequest(buf)
+	req := otlpgrpc.NewTracesRequest()
+	err := req.UnmarshalJSON(buf)
+	return req, err
 }
 
 func (jsonEncoder) unmarshalMetricsRequest(buf []byte) (otlpgrpc.MetricsRequest, error) {
-	return otlpgrpc.UnmarshalJSONMetricsRequest(buf)
+	req := otlpgrpc.NewMetricsRequest()
+	err := req.UnmarshalJSON(buf)
+	return req, err
 }
 
 func (jsonEncoder) unmarshalLogsRequest(buf []byte) (otlpgrpc.LogsRequest, error) {
-	return otlpgrpc.UnmarshalJSONLogsRequest(buf)
+	req := otlpgrpc.NewLogsRequest()
+	err := req.UnmarshalJSON(buf)
+	return req, err
 }
 
 func (jsonEncoder) marshalTracesResponse(resp otlpgrpc.TracesResponse) ([]byte, error) {

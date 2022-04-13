@@ -28,7 +28,9 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 // Resource information.
 type Resource struct {
-	// Set of labels that describe the resource.
+	// Set of attributes that describe the resource.
+	// Attribute keys MUST be unique (it is not allowed to have more than one
+	// attribute with the same key).
 	Attributes []v1.KeyValue `protobuf:"bytes,1,rep,name=attributes,proto3" json:"attributes"`
 	// dropped_attributes_count is the number of dropped attributes. If the value is 0, then
 	// no attributes were dropped.

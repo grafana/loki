@@ -18,7 +18,6 @@ import (
 	"context"
 
 	"go.opentelemetry.io/collector/config"
-	"go.opentelemetry.io/collector/internal/internalinterface"
 )
 
 // Component is either a receiver, exporter, processor, or an extension.
@@ -61,6 +60,28 @@ type Component interface {
 	Shutdown(ctx context.Context) error
 }
 
+// StartFunc specifies the function invoked when the component.Component is being started.
+type StartFunc func(context.Context, Host) error
+
+// Start starts the component.
+func (f StartFunc) Start(ctx context.Context, host Host) error {
+	if f == nil {
+		return nil
+	}
+	return f(ctx, host)
+}
+
+// ShutdownFunc specifies the function invoked when the component.Component is being shutdown.
+type ShutdownFunc func(context.Context) error
+
+// Shutdown shuts down the component.
+func (f ShutdownFunc) Shutdown(ctx context.Context) error {
+	if f == nil {
+		return nil
+	}
+	return f(ctx)
+}
+
 // Kind represents component kinds.
 type Kind int
 
@@ -77,7 +98,18 @@ const (
 // This interface cannot be directly implemented. Implementations must
 // use the factory helpers for the appropriate component type.
 type Factory interface {
-	internalinterface.InternalInterface
 	// Type gets the type of the component created by this factory.
 	Type() config.Type
+
+	unexportedFactoryFunc()
+}
+
+type baseFactory struct {
+	cfgType config.Type
+}
+
+func (baseFactory) unexportedFactoryFunc() {}
+
+func (bf baseFactory) Type() config.Type {
+	return bf.cfgType
 }

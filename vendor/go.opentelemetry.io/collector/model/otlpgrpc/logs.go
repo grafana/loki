@@ -21,9 +21,10 @@ import (
 	"github.com/gogo/protobuf/jsonpb"
 	"google.golang.org/grpc"
 
-	"go.opentelemetry.io/collector/model/internal"
 	otlpcollectorlog "go.opentelemetry.io/collector/model/internal/data/protogen/collector/logs/v1"
+	v1 "go.opentelemetry.io/collector/model/internal/data/protogen/common/v1"
 	otlplogs "go.opentelemetry.io/collector/model/internal/data/protogen/logs/v1"
+	ipdata "go.opentelemetry.io/collector/model/internal/pdata"
 	"go.opentelemetry.io/collector/model/pdata"
 )
 
@@ -40,27 +41,33 @@ func NewLogsResponse() LogsResponse {
 	return LogsResponse{orig: &otlpcollectorlog.ExportLogsServiceResponse{}}
 }
 
-// UnmarshalLogsResponse unmarshalls LogsResponse from proto bytes.
+// Deprecated: [v0.48.0] use LogsResponse.UnmarshalProto.
 func UnmarshalLogsResponse(data []byte) (LogsResponse, error) {
-	var orig otlpcollectorlog.ExportLogsServiceResponse
-	if err := orig.Unmarshal(data); err != nil {
-		return LogsResponse{}, err
-	}
-	return LogsResponse{orig: &orig}, nil
+	lr := NewLogsResponse()
+	err := lr.UnmarshalProto(data)
+	return lr, err
 }
 
-// UnmarshalJSONLogsResponse unmarshalls LogsResponse from JSON bytes.
+// Deprecated: [v0.48.0] use LogsResponse.UnmarshalJSON.
 func UnmarshalJSONLogsResponse(data []byte) (LogsResponse, error) {
-	var orig otlpcollectorlog.ExportLogsServiceResponse
-	if err := jsonUnmarshaler.Unmarshal(bytes.NewReader(data), &orig); err != nil {
-		return LogsResponse{}, err
-	}
-	return LogsResponse{orig: &orig}, nil
+	lr := NewLogsResponse()
+	err := lr.UnmarshalJSON(data)
+	return lr, err
 }
 
-// Marshal marshals LogsResponse into proto bytes.
+// Deprecated: [v0.48.0] use MarshalProto.
 func (lr LogsResponse) Marshal() ([]byte, error) {
+	return lr.MarshalProto()
+}
+
+// MarshalProto marshals LogsResponse into proto bytes.
+func (lr LogsResponse) MarshalProto() ([]byte, error) {
 	return lr.orig.Marshal()
+}
+
+// UnmarshalProto unmarshalls LogsResponse from proto bytes.
+func (lr LogsResponse) UnmarshalProto(data []byte) error {
+	return lr.orig.Unmarshal(data)
 }
 
 // MarshalJSON marshals LogsResponse into JSON bytes.
@@ -70,6 +77,11 @@ func (lr LogsResponse) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// UnmarshalJSON unmarshalls LogsResponse from JSON bytes.
+func (lr LogsResponse) UnmarshalJSON(data []byte) error {
+	return jsonUnmarshaler.Unmarshal(bytes.NewReader(data), lr.orig)
 }
 
 // LogsRequest represents the response for gRPC client/server.
@@ -82,27 +94,37 @@ func NewLogsRequest() LogsRequest {
 	return LogsRequest{orig: &otlpcollectorlog.ExportLogsServiceRequest{}}
 }
 
-// UnmarshalLogsRequest unmarshalls LogsRequest from proto bytes.
+// Deprecated: [v0.48.0] use LogsRequest.UnmarshalProto.
 func UnmarshalLogsRequest(data []byte) (LogsRequest, error) {
-	var orig otlpcollectorlog.ExportLogsServiceRequest
-	if err := orig.Unmarshal(data); err != nil {
-		return LogsRequest{}, err
-	}
-	return LogsRequest{orig: &orig}, nil
+	lr := NewLogsRequest()
+	err := lr.UnmarshalProto(data)
+	return lr, err
 }
 
-// UnmarshalJSONLogsRequest unmarshalls LogsRequest from JSON bytes.
+// Deprecated: [v0.48.0] use LogsRequest.UnmarshalJSON.
 func UnmarshalJSONLogsRequest(data []byte) (LogsRequest, error) {
-	var orig otlpcollectorlog.ExportLogsServiceRequest
-	if err := jsonUnmarshaler.Unmarshal(bytes.NewReader(data), &orig); err != nil {
-		return LogsRequest{}, err
-	}
-	return LogsRequest{orig: &orig}, nil
+	lr := NewLogsRequest()
+	err := lr.UnmarshalJSON(data)
+	return lr, err
 }
 
-// Marshal marshals LogsRequest into proto bytes.
+// Deprecated: [v0.48.0] use MarshalProto.
 func (lr LogsRequest) Marshal() ([]byte, error) {
+	return lr.MarshalProto()
+}
+
+// MarshalProto marshals LogsRequest into proto bytes.
+func (lr LogsRequest) MarshalProto() ([]byte, error) {
 	return lr.orig.Marshal()
+}
+
+// UnmarshalProto unmarshalls LogsRequest from proto bytes.
+func (lr LogsRequest) UnmarshalProto(data []byte) error {
+	if err := lr.orig.Unmarshal(data); err != nil {
+		return err
+	}
+	InstrumentationLibraryLogsToScope(lr.orig.ResourceLogs)
+	return nil
 }
 
 // MarshalJSON marshals LogsRequest into JSON bytes.
@@ -114,12 +136,21 @@ func (lr LogsRequest) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// UnmarshalJSON unmarshalls LogsRequest from JSON bytes.
+func (lr LogsRequest) UnmarshalJSON(data []byte) error {
+	if err := jsonUnmarshaler.Unmarshal(bytes.NewReader(data), lr.orig); err != nil {
+		return err
+	}
+	InstrumentationLibraryLogsToScope(lr.orig.ResourceLogs)
+	return nil
+}
+
 func (lr LogsRequest) SetLogs(ld pdata.Logs) {
-	lr.orig.ResourceLogs = internal.LogsToOtlp(ld.InternalRep()).ResourceLogs
+	lr.orig.ResourceLogs = ipdata.LogsToOtlp(ld).ResourceLogs
 }
 
 func (lr LogsRequest) Logs() pdata.Logs {
-	return pdata.LogsFromInternalRep(internal.LogsFromOtlp(&otlplogs.LogsData{ResourceLogs: lr.orig.ResourceLogs}))
+	return ipdata.LogsFromOtlp(&otlplogs.LogsData{ResourceLogs: lr.orig.ResourceLogs})
 }
 
 // LogsClient is the client API for OTLP-GRPC Logs service.
@@ -168,4 +199,30 @@ type rawLogsServer struct {
 func (s rawLogsServer) Export(ctx context.Context, request *otlpcollectorlog.ExportLogsServiceRequest) (*otlpcollectorlog.ExportLogsServiceResponse, error) {
 	rsp, err := s.srv.Export(ctx, LogsRequest{orig: request})
 	return rsp.orig, err
+}
+
+// InstrumentationLibraryLogsToScope implements the translation of resource logs data
+// following the v0.15.0 upgrade:
+//      receivers SHOULD check if instrumentation_library_logs is set
+//      and scope_logs is not set then the value in instrumentation_library_logs
+//      SHOULD be used instead by converting InstrumentationLibraryLogs into ScopeLogs.
+//      If scope_logs is set then instrumentation_library_logs SHOULD be ignored.
+// https://github.com/open-telemetry/opentelemetry-proto/blob/3c2915c01a9fb37abfc0415ec71247c4978386b0/opentelemetry/proto/logs/v1/logs.proto#L58
+func InstrumentationLibraryLogsToScope(rls []*otlplogs.ResourceLogs) {
+	for _, rl := range rls {
+		if len(rl.ScopeLogs) == 0 {
+			for _, ill := range rl.InstrumentationLibraryLogs {
+				scopeLogs := otlplogs.ScopeLogs{
+					Scope: v1.InstrumentationScope{
+						Name:    ill.InstrumentationLibrary.Name,
+						Version: ill.InstrumentationLibrary.Version,
+					},
+					LogRecords: ill.LogRecords,
+					SchemaUrl:  ill.SchemaUrl,
+				}
+				rl.ScopeLogs = append(rl.ScopeLogs, &scopeLogs)
+			}
+		}
+		rl.InstrumentationLibraryLogs = nil
+	}
 }

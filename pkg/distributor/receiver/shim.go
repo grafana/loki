@@ -22,7 +22,6 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/model/pdata"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"go.uber.org/multierr"
@@ -95,7 +94,7 @@ func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat 
 	params := component.ReceiverCreateSettings{TelemetrySettings: component.TelemetrySettings{
 		Logger:         zap.NewNop(),
 		TracerProvider: trace.NewNoopTracerProvider(),
-		MeterProvider:  metric.NewNoopMeterProvider(),
+		//MeterProvider:  metric.NewMeterConfig(),
 	}}
 
 	for componentID, cfg := range cfgs.Receivers {
@@ -128,6 +127,25 @@ func (r *receiversShim) starting(ctx context.Context) error {
 	return nil
 }
 
+func sanitizeLabelKey(key string) string {
+	if len(key) == 0 {
+		return key
+	}
+	key = strings.TrimSpace(key)
+	if len(key) == 0 {
+		return key
+	}
+	if key[0] >= '0' && key[0] <= '9' {
+		key = "_" + key
+	}
+	return strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_' || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '_'
+	}, key)
+}
+
 // Called after distributor is asked to stop via StopAsync.
 func (r *receiversShim) stopping(_ error) error {
 	// when shutdown is called on the receiver it immediately shuts down its connection
@@ -157,18 +175,18 @@ func (r *receiversShim) stopping(_ error) error {
 
 // ConsumeLogs implements consumer.Logs
 func (r *receiversShim) ConsumeTraces(ctx context.Context, td pdata.Traces) error {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "distributor.ConsumeLogs")
+	span, ctx := opentracing.StartSpanFromContext(ctx, "distributor.ConsumeTraces")
 	defer span.Finish()
 	req, err := parseTrace(td, r.format)
 	if err != nil {
-		level.Error(r.logger).Log("msg", "pusher failed to parse log data", "err", err)
+		level.Error(r.logger).Log("msg", "pusher failed to parse trace data", "err", err)
 	}
 
 	start := time.Now()
 	_, err = r.pusher.Push(ctx, req)
 	metricPushDuration.Observe(time.Since(start).Seconds())
 	if err != nil {
-		r.logger.Log("msg", "pusher failed to consume log data", "err", err)
+		r.logger.Log("msg", "pusher failed to consume trace data", "err", err)
 	}
 
 	return err
@@ -301,10 +319,12 @@ func parseEntry(pLog pdata.Span, format string) (*logproto.Entry, error) {
 func parseLabel(resource pdata.AttributeMap, attr pdata.AttributeMap) string {
 	labelMap := make([]string, 0)
 	resource.Range(func(key string, attr pdata.AttributeValue) bool {
+		key = sanitizeLabelKey(key)
 		labelMap = append(labelMap, fmt.Sprintf("%s=%q", key, attr.AsString()))
 		return true
 	})
 	attr.Range(func(key string, attr pdata.AttributeValue) bool {
+		key = sanitizeLabelKey(key)
 		labelMap = append(labelMap, fmt.Sprintf("%s=%q", key, attr.AsString()))
 		return true
 	})

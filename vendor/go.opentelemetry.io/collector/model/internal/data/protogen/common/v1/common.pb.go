@@ -236,6 +236,8 @@ func (m *ArrayValue) GetValues() []AnyValue {
 type KeyValueList struct {
 	// A collection of key/value pairs of key-value pairs. The list may be empty (may
 	// contain 0 elements).
+	// The keys MUST be unique (it is not allowed to have more than one
+	// value with the same key).
 	Values []KeyValue `protobuf:"bytes,1,rep,name=values,proto3" json:"values"`
 }
 
@@ -333,64 +335,13 @@ func (m *KeyValue) GetValue() AnyValue {
 	return AnyValue{}
 }
 
-// StringKeyValue is a pair of key/value strings. This is the simpler (and faster) version
-// of KeyValue that only supports string values.
-//
-// Deprecated: Do not use.
-type StringKeyValue struct {
-	Key   string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
-}
-
-func (m *StringKeyValue) Reset()         { *m = StringKeyValue{} }
-func (m *StringKeyValue) String() string { return proto.CompactTextString(m) }
-func (*StringKeyValue) ProtoMessage()    {}
-func (*StringKeyValue) Descriptor() ([]byte, []int) {
-	return fileDescriptor_62ba46dcb97aa817, []int{4}
-}
-func (m *StringKeyValue) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *StringKeyValue) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_StringKeyValue.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *StringKeyValue) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_StringKeyValue.Merge(m, src)
-}
-func (m *StringKeyValue) XXX_Size() int {
-	return m.Size()
-}
-func (m *StringKeyValue) XXX_DiscardUnknown() {
-	xxx_messageInfo_StringKeyValue.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_StringKeyValue proto.InternalMessageInfo
-
-func (m *StringKeyValue) GetKey() string {
-	if m != nil {
-		return m.Key
-	}
-	return ""
-}
-
-func (m *StringKeyValue) GetValue() string {
-	if m != nil {
-		return m.Value
-	}
-	return ""
-}
-
 // InstrumentationLibrary is a message representing the instrumentation library information
 // such as the fully qualified name and version.
+// InstrumentationLibrary is wire-compatible with InstrumentationScope for binary
+// Protobuf format.
+// This message is deprecated and will be removed on June 15, 2022.
+//
+// Deprecated: Do not use.
 type InstrumentationLibrary struct {
 	// An empty instrumentation library name means the name is unknown.
 	Name    string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -401,7 +352,7 @@ func (m *InstrumentationLibrary) Reset()         { *m = InstrumentationLibrary{}
 func (m *InstrumentationLibrary) String() string { return proto.CompactTextString(m) }
 func (*InstrumentationLibrary) ProtoMessage()    {}
 func (*InstrumentationLibrary) Descriptor() ([]byte, []int) {
-	return fileDescriptor_62ba46dcb97aa817, []int{5}
+	return fileDescriptor_62ba46dcb97aa817, []int{4}
 }
 func (m *InstrumentationLibrary) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -444,13 +395,68 @@ func (m *InstrumentationLibrary) GetVersion() string {
 	return ""
 }
 
+// InstrumentationScope is a message representing the instrumentation scope information
+// such as the fully qualified name and version.
+type InstrumentationScope struct {
+	// An empty instrumentation scope name means the name is unknown.
+	Name    string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Version string `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+}
+
+func (m *InstrumentationScope) Reset()         { *m = InstrumentationScope{} }
+func (m *InstrumentationScope) String() string { return proto.CompactTextString(m) }
+func (*InstrumentationScope) ProtoMessage()    {}
+func (*InstrumentationScope) Descriptor() ([]byte, []int) {
+	return fileDescriptor_62ba46dcb97aa817, []int{5}
+}
+func (m *InstrumentationScope) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *InstrumentationScope) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_InstrumentationScope.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *InstrumentationScope) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_InstrumentationScope.Merge(m, src)
+}
+func (m *InstrumentationScope) XXX_Size() int {
+	return m.Size()
+}
+func (m *InstrumentationScope) XXX_DiscardUnknown() {
+	xxx_messageInfo_InstrumentationScope.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_InstrumentationScope proto.InternalMessageInfo
+
+func (m *InstrumentationScope) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *InstrumentationScope) GetVersion() string {
+	if m != nil {
+		return m.Version
+	}
+	return ""
+}
+
 func init() {
 	proto.RegisterType((*AnyValue)(nil), "opentelemetry.proto.common.v1.AnyValue")
 	proto.RegisterType((*ArrayValue)(nil), "opentelemetry.proto.common.v1.ArrayValue")
 	proto.RegisterType((*KeyValueList)(nil), "opentelemetry.proto.common.v1.KeyValueList")
 	proto.RegisterType((*KeyValue)(nil), "opentelemetry.proto.common.v1.KeyValue")
-	proto.RegisterType((*StringKeyValue)(nil), "opentelemetry.proto.common.v1.StringKeyValue")
 	proto.RegisterType((*InstrumentationLibrary)(nil), "opentelemetry.proto.common.v1.InstrumentationLibrary")
+	proto.RegisterType((*InstrumentationScope)(nil), "opentelemetry.proto.common.v1.InstrumentationScope")
 }
 
 func init() {
@@ -458,38 +464,38 @@ func init() {
 }
 
 var fileDescriptor_62ba46dcb97aa817 = []byte{
-	// 488 bytes of a gzipped FileDescriptorProto
+	// 486 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x53, 0x4d, 0x6f, 0xd3, 0x40,
-	0x10, 0xf5, 0x36, 0x69, 0x3e, 0xc6, 0x11, 0x42, 0xab, 0x0a, 0x45, 0x48, 0x75, 0x4d, 0x38, 0x60,
-	0x40, 0x8a, 0xd5, 0x72, 0x43, 0x5c, 0x9a, 0x02, 0x0a, 0x22, 0x87, 0xc8, 0x15, 0x1c, 0xb8, 0xa0,
-	0x75, 0xb3, 0xb2, 0x56, 0x5d, 0xef, 0x56, 0xeb, 0x8d, 0x25, 0xff, 0x0a, 0xf8, 0x59, 0x3d, 0xf6,
-	0xc8, 0x09, 0x55, 0xc9, 0x1f, 0x41, 0xfb, 0x91, 0xb6, 0xf4, 0x90, 0xaa, 0xb7, 0xd9, 0x37, 0xef,
-	0xbd, 0x99, 0xb1, 0x67, 0xe0, 0x8d, 0xbc, 0xa0, 0x42, 0x53, 0x4e, 0x4b, 0xaa, 0x55, 0x93, 0x5e,
-	0x28, 0xa9, 0x65, 0x7a, 0x26, 0xcb, 0x52, 0x8a, 0xb4, 0x3e, 0xf4, 0xd1, 0xd8, 0xc2, 0x78, 0xff,
-	0x3f, 0xae, 0x03, 0xc7, 0x9e, 0x51, 0x1f, 0x3e, 0xdf, 0x2b, 0x64, 0x21, 0x9d, 0x81, 0x89, 0x5c,
-	0x7e, 0x74, 0xbd, 0x03, 0xbd, 0x63, 0xd1, 0x7c, 0x27, 0x7c, 0x49, 0xf1, 0x4b, 0x18, 0x54, 0x5a,
-	0x31, 0x51, 0xfc, 0xac, 0xcd, 0x7b, 0x88, 0x62, 0x94, 0xf4, 0xa7, 0x41, 0x16, 0x3a, 0xd4, 0x91,
-	0x0e, 0x00, 0x72, 0x29, 0xb9, 0xa7, 0xec, 0xc4, 0x28, 0xe9, 0x4d, 0x83, 0xac, 0x6f, 0x30, 0x47,
-	0xd8, 0x87, 0x3e, 0x13, 0xda, 0xe7, 0x5b, 0x31, 0x4a, 0x5a, 0xd3, 0x20, 0xeb, 0x31, 0xa1, 0x6f,
-	0x8a, 0x2c, 0xe4, 0x32, 0xe7, 0xd4, 0x33, 0xda, 0x31, 0x4a, 0x90, 0x29, 0xe2, 0x50, 0x47, 0x9a,
-	0x41, 0x48, 0x94, 0x22, 0x8d, 0xe7, 0xec, 0xc6, 0x28, 0x09, 0x8f, 0x5e, 0x8f, 0xb7, 0x4e, 0x38,
-	0x3e, 0x36, 0x0a, 0xab, 0x9f, 0x06, 0x19, 0x90, 0x9b, 0x17, 0x9e, 0xc3, 0xe0, 0xbc, 0xe6, 0xac,
-	0xda, 0x34, 0xd5, 0xb1, 0x76, 0x6f, 0x1f, 0xb0, 0xfb, 0x4a, 0x9d, 0x7c, 0xc6, 0x2a, 0x6d, 0xfa,
-	0x73, 0x16, 0xce, 0xf1, 0x05, 0x84, 0x79, 0xa3, 0x69, 0xe5, 0x0d, 0xbb, 0x31, 0x4a, 0x06, 0xa6,
-	0xa8, 0x05, 0x2d, 0x65, 0xd2, 0x85, 0x5d, 0x9b, 0x1c, 0x9d, 0x02, 0xdc, 0x76, 0x86, 0x3f, 0x41,
-	0xc7, 0xc2, 0xd5, 0x10, 0xc5, 0xad, 0x24, 0x3c, 0x7a, 0xf5, 0xd0, 0x50, 0xfe, 0xe7, 0x4c, 0xda,
-	0x97, 0x7f, 0x0f, 0x82, 0xcc, 0x8b, 0x47, 0xdf, 0x60, 0x70, 0xb7, 0xbf, 0x47, 0xdb, 0x6e, 0xc4,
-	0xf7, 0x6c, 0x09, 0xf4, 0x36, 0x19, 0xfc, 0x14, 0x5a, 0xe7, 0xb4, 0x71, 0x4b, 0x90, 0x99, 0x10,
-	0x9f, 0xf8, 0x91, 0xec, 0x5f, 0x7f, 0x74, 0xeb, 0xfe, 0x73, 0x7c, 0x80, 0x27, 0xa7, 0x76, 0x9d,
-	0xb6, 0x14, 0xda, 0xbb, 0x5b, 0xa8, 0xef, 0x95, 0xef, 0x77, 0x86, 0x68, 0xf4, 0x19, 0x9e, 0x7d,
-	0x11, 0x95, 0x56, 0xcb, 0x92, 0x0a, 0x4d, 0x34, 0x93, 0x62, 0xc6, 0x72, 0x45, 0x54, 0x83, 0x31,
-	0xb4, 0x05, 0x29, 0xfd, 0xd2, 0x66, 0x36, 0xc6, 0x43, 0xe8, 0xd6, 0x54, 0x55, 0x4c, 0x0a, 0xef,
-	0xb4, 0x79, 0x4e, 0x7e, 0xa1, 0xcb, 0x55, 0x84, 0xae, 0x56, 0x11, 0xba, 0x5e, 0x45, 0xe8, 0xf7,
-	0x3a, 0x0a, 0xae, 0xd6, 0x51, 0xf0, 0x67, 0x1d, 0x05, 0x10, 0x33, 0xb9, 0x7d, 0xb0, 0x49, 0x78,
-	0x62, 0xc3, 0xb9, 0x81, 0xe7, 0xe8, 0xc7, 0xc7, 0xe2, 0xbe, 0x80, 0x99, 0x23, 0xe5, 0x9c, 0x9e,
-	0x69, 0xa9, 0xd2, 0x52, 0x2e, 0x28, 0x4f, 0x99, 0xd0, 0x54, 0x09, 0xc2, 0xd3, 0x05, 0xd1, 0xc4,
-	0x1d, 0x72, 0x41, 0xc5, 0xed, 0x2d, 0xe7, 0x1d, 0x8b, 0xbd, 0xfb, 0x17, 0x00, 0x00, 0xff, 0xff,
-	0x2c, 0x29, 0x86, 0xfe, 0xf3, 0x03, 0x00, 0x00,
+	0x10, 0xf5, 0x26, 0x69, 0x3e, 0xc6, 0x39, 0x20, 0xab, 0x42, 0x11, 0x52, 0x5d, 0x13, 0x0e, 0x18,
+	0x90, 0x62, 0xb5, 0xdc, 0xb8, 0x35, 0x2d, 0x52, 0x80, 0x1c, 0x22, 0x57, 0x70, 0xe0, 0x82, 0xd6,
+	0xc9, 0xca, 0x5a, 0x75, 0xbd, 0x1b, 0xad, 0x37, 0x96, 0xfc, 0x2b, 0xe0, 0x67, 0xf5, 0xd8, 0x23,
+	0x27, 0x54, 0x25, 0x7f, 0x04, 0xed, 0x47, 0x5a, 0xc8, 0xa1, 0x51, 0x6e, 0x33, 0x6f, 0xde, 0x7b,
+	0x33, 0x63, 0xef, 0xc0, 0x5b, 0xb1, 0x24, 0x5c, 0x11, 0x46, 0x0a, 0xa2, 0x64, 0x9d, 0x2c, 0xa5,
+	0x50, 0x22, 0x99, 0x8b, 0xa2, 0x10, 0x3c, 0xa9, 0xce, 0x5c, 0x34, 0x32, 0x70, 0x70, 0xf2, 0x1f,
+	0xd7, 0x82, 0x23, 0xc7, 0xa8, 0xce, 0x5e, 0x1c, 0xe7, 0x22, 0x17, 0xd6, 0x40, 0x47, 0xb6, 0x3e,
+	0xbc, 0x6f, 0x40, 0xf7, 0x82, 0xd7, 0xdf, 0x30, 0x5b, 0x91, 0xe0, 0x15, 0xf4, 0x4b, 0x25, 0x29,
+	0xcf, 0x7f, 0x54, 0x3a, 0x1f, 0xa0, 0x08, 0xc5, 0xbd, 0x89, 0x97, 0xfa, 0x16, 0xb5, 0xa4, 0x53,
+	0x80, 0x4c, 0x08, 0xe6, 0x28, 0x8d, 0x08, 0xc5, 0xdd, 0x89, 0x97, 0xf6, 0x34, 0x66, 0x09, 0x27,
+	0xd0, 0xa3, 0x5c, 0xb9, 0x7a, 0x33, 0x42, 0x71, 0x73, 0xe2, 0xa5, 0x5d, 0xca, 0xd5, 0x43, 0x93,
+	0x85, 0x58, 0x65, 0x8c, 0x38, 0x46, 0x2b, 0x42, 0x31, 0xd2, 0x4d, 0x2c, 0x6a, 0x49, 0x53, 0xf0,
+	0xb1, 0x94, 0xb8, 0x76, 0x9c, 0xa3, 0x08, 0xc5, 0xfe, 0xf9, 0x9b, 0xd1, 0x93, 0x1b, 0x8e, 0x2e,
+	0xb4, 0xc2, 0xe8, 0x27, 0x5e, 0x0a, 0xf8, 0x21, 0x0b, 0x66, 0xd0, 0xbf, 0xa9, 0x18, 0x2d, 0xb7,
+	0x43, 0xb5, 0x8d, 0xdd, 0xbb, 0x3d, 0x76, 0x5f, 0x88, 0x95, 0x4f, 0x69, 0xa9, 0xf4, 0x7c, 0xd6,
+	0xc2, 0x3a, 0xbe, 0x04, 0x3f, 0xab, 0x15, 0x29, 0x9d, 0x61, 0x27, 0x42, 0x71, 0x5f, 0x37, 0x35,
+	0xa0, 0xa1, 0x8c, 0x3b, 0x70, 0x64, 0x8a, 0xc3, 0x6b, 0x80, 0xc7, 0xc9, 0x82, 0x8f, 0xd0, 0x36,
+	0x70, 0x39, 0x40, 0x51, 0x33, 0xf6, 0xcf, 0x5f, 0xef, 0x5b, 0xca, 0xfd, 0x9c, 0x71, 0xeb, 0xf6,
+	0xcf, 0xa9, 0x97, 0x3a, 0xf1, 0xf0, 0x2b, 0xf4, 0xff, 0x9d, 0xef, 0x60, 0xdb, 0xad, 0x78, 0xc7,
+	0x16, 0x43, 0x77, 0x5b, 0x09, 0x9e, 0x41, 0xf3, 0x86, 0xd4, 0xf6, 0x11, 0xa4, 0x3a, 0x0c, 0x2e,
+	0xdd, 0x4a, 0xe6, 0xaf, 0x1f, 0x3c, 0xba, 0xfb, 0x1c, 0x9f, 0xe1, 0xf9, 0x27, 0x5e, 0x2a, 0xb9,
+	0x2a, 0x08, 0x57, 0x58, 0x51, 0xc1, 0xa7, 0x34, 0x93, 0x58, 0xd6, 0x41, 0x00, 0x2d, 0x8e, 0x0b,
+	0xf7, 0xec, 0x52, 0x13, 0x07, 0x03, 0xe8, 0x54, 0x44, 0x96, 0x54, 0x70, 0xd3, 0xb4, 0x97, 0x6e,
+	0xd3, 0x0f, 0x8d, 0x01, 0x1a, 0x5e, 0xc1, 0xf1, 0x8e, 0xd7, 0xf5, 0x5c, 0x2c, 0xc9, 0x61, 0x4e,
+	0xe3, 0x9f, 0xe8, 0x76, 0x1d, 0xa2, 0xbb, 0x75, 0x88, 0xee, 0xd7, 0x21, 0xfa, 0xb5, 0x09, 0xbd,
+	0xbb, 0x4d, 0xe8, 0xfd, 0xde, 0x84, 0x1e, 0x44, 0x54, 0x3c, 0xbd, 0xe4, 0xd8, 0xbf, 0x34, 0xe1,
+	0x4c, 0xc3, 0x33, 0xf4, 0xfd, 0x2a, 0xdf, 0x15, 0x50, 0x7d, 0xb0, 0x8c, 0x91, 0xb9, 0x12, 0x32,
+	0x29, 0xc4, 0x82, 0xb0, 0x84, 0x72, 0x45, 0x24, 0xc7, 0x2c, 0x59, 0x60, 0x85, 0xed, 0x51, 0xe7,
+	0x84, 0x3f, 0xde, 0x75, 0xd6, 0x36, 0xd8, 0xfb, 0xbf, 0x01, 0x00, 0x00, 0xff, 0xff, 0xd5, 0xac,
+	0xb3, 0xd7, 0xff, 0x03, 0x00, 0x00,
 }
 
 func (m *AnyValue) Marshal() (dAtA []byte, err error) {
@@ -752,43 +758,6 @@ func (m *KeyValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *StringKeyValue) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *StringKeyValue) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *StringKeyValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if len(m.Value) > 0 {
-		i -= len(m.Value)
-		copy(dAtA[i:], m.Value)
-		i = encodeVarintCommon(dAtA, i, uint64(len(m.Value)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Key) > 0 {
-		i -= len(m.Key)
-		copy(dAtA[i:], m.Key)
-		i = encodeVarintCommon(dAtA, i, uint64(len(m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *InstrumentationLibrary) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -805,6 +774,43 @@ func (m *InstrumentationLibrary) MarshalTo(dAtA []byte) (int, error) {
 }
 
 func (m *InstrumentationLibrary) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Version) > 0 {
+		i -= len(m.Version)
+		copy(dAtA[i:], m.Version)
+		i = encodeVarintCommon(dAtA, i, uint64(len(m.Version)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = encodeVarintCommon(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *InstrumentationScope) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *InstrumentationScope) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *InstrumentationScope) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -967,24 +973,24 @@ func (m *KeyValue) Size() (n int) {
 	return n
 }
 
-func (m *StringKeyValue) Size() (n int) {
+func (m *InstrumentationLibrary) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	l = len(m.Key)
+	l = len(m.Name)
 	if l > 0 {
 		n += 1 + l + sovCommon(uint64(l))
 	}
-	l = len(m.Value)
+	l = len(m.Version)
 	if l > 0 {
 		n += 1 + l + sovCommon(uint64(l))
 	}
 	return n
 }
 
-func (m *InstrumentationLibrary) Size() (n int) {
+func (m *InstrumentationScope) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1527,120 +1533,6 @@ func (m *KeyValue) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *StringKeyValue) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowCommon
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: StringKeyValue: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: StringKeyValue: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowCommon
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthCommon
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthCommon
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Key = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowCommon
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthCommon
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthCommon
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Value = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipCommon(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthCommon
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
 func (m *InstrumentationLibrary) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1668,6 +1560,120 @@ func (m *InstrumentationLibrary) Unmarshal(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: InstrumentationLibrary: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCommon
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthCommon
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthCommon
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCommon
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthCommon
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthCommon
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Version = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipCommon(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthCommon
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *InstrumentationScope) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowCommon
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: InstrumentationScope: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: InstrumentationScope: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
