@@ -437,19 +437,6 @@ func encodeChunk(ctx context.Context, ch chunk.Chunk, desc *chunkDesc) error {
 	return nil
 }
 
-// flushChunk flushes the given chunk to the store.
-//
-// If the flush is successful, metrics for this flush are to be reported.
-// If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
-// chunk to have another opportunity to be flushed.
-func (i *Ingester) flushChunk(ctx context.Context, ch chunk.Chunk) error {
-	if err := i.store.Put(ctx, []chunk.Chunk{ch}); err != nil {
-		return fmt.Errorf("store put chunk: %w", err)
-	}
-	flushedChunksStats.Inc(1)
-	return nil
-}
-
 // reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
 func reportFlushedChunkStatistics(ch chunk.Chunk, desc *chunkDesc, sizePerTenant prometheus.Counter, countPerTenant prometheus.Counter, reason string) {
 	byt, err := ch.Encoded()
