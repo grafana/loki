@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -29,6 +30,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -122,10 +124,11 @@ func TestGatewayClient(t *testing.T) {
 	defer cleanup()
 
 	var cfg IndexGatewayClientConfig
+	cfg.Mode = indexgateway.SimpleMode
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
 
-	gatewayClient, err := NewGatewayClient(cfg, nil)
+	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, util_log.Logger)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "fake")
@@ -228,7 +231,11 @@ func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 	require.NoError(b, err)
 
 	// initialize the index gateway server
-	gw := indexgateway.NewIndexGateway(tm)
+	var cfg indexgateway.Config
+	flagext.DefaultValues(&cfg)
+
+	gw, err := indexgateway.NewIndexGateway(cfg, util_log.Logger, prometheus.DefaultRegisterer, tm)
+	require.NoError(b, err)
 	indexgatewaypb.RegisterIndexGatewayServer(s, gw)
 	go func() {
 		if err := s.Serve(listener); err != nil {
