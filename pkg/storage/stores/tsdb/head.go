@@ -36,6 +36,8 @@ const (
 	// 1) Heads are per-tenant in Loki
 	// 2) Loki tends to have a few orders of magnitude less series per node than
 	// Prometheus|Cortex|Mimir.
+	// Do not specify without bit shifting. This allows us to
+	// do shard index calcuations via bitwise & rather than modulos.
 	defaultStripeSize = 64
 )
 
@@ -130,10 +132,10 @@ func (h *Head) updateMinMaxTime(mint, maxt int64) {
 }
 
 // Note: chks must not be nil or zero-length
-func (h *Head) Append(ls labels.Labels, chks index.ChunkMetas) {
+func (h *Head) Append(ls labels.Labels, chks index.ChunkMetas) (created bool, refID uint64) {
 	from, through := chks.Bounds()
 	var id uint64
-	created := h.series.Append(ls, chks, func() *memSeries {
+	created, refID = h.series.Append(ls, chks, func() *memSeries {
 		id = h.lastSeriesID.Inc()
 		return newMemSeries(id, ls)
 	})
@@ -144,6 +146,7 @@ func (h *Head) Append(ls labels.Labels, chks index.ChunkMetas) {
 	}
 	h.postings.Add(storage.SeriesRef(id), ls)
 	h.numSeries.Inc()
+	return
 }
 
 // seriesHashmap is a simple hashmap for memSeries by their label set. It is built
@@ -211,7 +214,7 @@ func (s *stripeSeries) Append(
 	ls labels.Labels,
 	chks index.ChunkMetas,
 	createFn func() *memSeries,
-) (created bool) {
+) (created bool, refID uint64) {
 	fp := ls.Hash()
 	i := fp & uint64(s.shards-1)
 	mtx := &s.locks[i]
@@ -222,7 +225,7 @@ func (s *stripeSeries) Append(
 		series = createFn()
 		s.hashes[i].set(fp, series)
 
-		// the series locks are modulo'd by the ref, not fingerprint
+		// the series locks are determined by the ref, not fingerprint
 		refIdx := series.ref & uint64(s.shards-1)
 		s.series[refIdx][series.ref] = series
 		created = true
@@ -231,6 +234,7 @@ func (s *stripeSeries) Append(
 
 	series.Lock()
 	series.chks = append(series.chks, chks...)
+	refID = series.ref
 	series.Unlock()
 
 	return

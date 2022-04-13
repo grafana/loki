@@ -12,7 +12,7 @@ import (
 )
 
 func Test_Encoding_Series(t *testing.T) {
-	record := &WalRecord{
+	record := &WALRecord{
 		UserID: "foo",
 		Series: record.RefSeries{
 			Ref:    chunks.HeadSeriesRef(1),
@@ -20,7 +20,7 @@ func Test_Encoding_Series(t *testing.T) {
 		},
 	}
 	buf := record.encodeSeries(nil)
-	decoded := &WalRecord{}
+	decoded := &WALRecord{}
 
 	err := decodeWALRecord(buf, decoded)
 	require.Nil(t, err)
@@ -28,7 +28,7 @@ func Test_Encoding_Series(t *testing.T) {
 }
 
 func Test_Encoding_Chunks(t *testing.T) {
-	record := &WalRecord{
+	record := &WALRecord{
 		UserID: "foo",
 		Chks: ChunkMetasRecord{
 			Ref: 1,
@@ -51,7 +51,7 @@ func Test_Encoding_Chunks(t *testing.T) {
 		},
 	}
 	buf := record.encodeChunks(nil)
-	decoded := &WalRecord{}
+	decoded := &WALRecord{}
 
 	err := decodeWALRecord(buf, decoded)
 	require.Nil(t, err)
@@ -59,11 +59,11 @@ func Test_Encoding_Chunks(t *testing.T) {
 }
 
 func Test_Encoding_StartTime(t *testing.T) {
-	record := &WalRecord{
+	record := &WALRecord{
 		StartTime: time.Now().UnixNano(),
 	}
 	buf := record.encodeStartTime(nil)
-	decoded := &WalRecord{}
+	decoded := &WALRecord{}
 
 	err := decodeWALRecord(buf, decoded)
 	require.Nil(t, err)
@@ -77,7 +77,7 @@ func Test_HeadWALLog(t *testing.T) {
 	require.Nil(t, err)
 	require.Nil(t, w.Start(start))
 
-	newSeries := &WalRecord{
+	newSeries := &WALRecord{
 		UserID:    "foo",
 		StartTime: 0,
 		Series:    record.RefSeries{Ref: 1, Labels: mustParseLabels(`{foo="bar"}`)},
@@ -96,7 +96,7 @@ func Test_HeadWALLog(t *testing.T) {
 	}
 	require.Nil(t, w.Log(newSeries))
 
-	chunksOnly := &WalRecord{
+	chunksOnly := &WALRecord{
 		UserID:    "foo",
 		StartTime: 0,
 		Chks: ChunkMetasRecord{

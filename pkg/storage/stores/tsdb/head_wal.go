@@ -14,7 +14,7 @@ import (
 
 type WAL interface {
 	Start(time.Time) error
-	Log(*WalRecord) error
+	Log(*WALRecord) error
 	Stop() error
 }
 
@@ -41,7 +41,7 @@ const (
 	WalRecordChunks
 )
 
-type WalRecord struct {
+type WALRecord struct {
 	UserID    string
 	StartTime int64 // UnixNano
 	Series    record.RefSeries
@@ -53,7 +53,7 @@ type ChunkMetasRecord struct {
 	Ref  uint64
 }
 
-func (r *WalRecord) encodeSeries(b []byte) []byte {
+func (r *WALRecord) encodeSeries(b []byte) []byte {
 	buf := encoding.EncWith(b)
 	buf.PutByte(byte(WalRecordSeries))
 	buf.PutUvarintStr(r.UserID)
@@ -67,7 +67,7 @@ func (r *WalRecord) encodeSeries(b []byte) []byte {
 	return encoded
 }
 
-func (r *WalRecord) encodeChunks(b []byte) []byte {
+func (r *WALRecord) encodeChunks(b []byte) []byte {
 	buf := encoding.EncWith(b)
 	buf.PutByte(byte(WalRecordChunks))
 	buf.PutUvarintStr(r.UserID)
@@ -85,7 +85,7 @@ func (r *WalRecord) encodeChunks(b []byte) []byte {
 	return buf.Get()
 }
 
-func decodeChunks(b []byte, version RecordType, rec *WalRecord) error {
+func decodeChunks(b []byte, version RecordType, rec *WALRecord) error {
 	if len(b) == 0 {
 		return nil
 	}
@@ -121,20 +121,20 @@ func decodeChunks(b []byte, version RecordType, rec *WalRecord) error {
 	return nil
 }
 
-func (r *WalRecord) encodeStartTime(b []byte) []byte {
+func (r *WALRecord) encodeStartTime(b []byte) []byte {
 	buf := encoding.EncWith(b)
 	buf.PutByte(byte(WALRecordFirstWrite))
 	buf.PutBE64int64(r.StartTime)
 	return buf.Get()
 }
 
-func decodeStartTime(b []byte, rec *WalRecord) error {
+func decodeStartTime(b []byte, rec *WALRecord) error {
 	dec := encoding.DecWith(b)
 	rec.StartTime = dec.Be64int64()
 	return dec.Err()
 }
 
-func decodeWALRecord(b []byte, walRec *WalRecord) error {
+func decodeWALRecord(b []byte, walRec *WALRecord) error {
 	var (
 		userID string
 		dec    record.Decoder
@@ -203,14 +203,15 @@ func newHeadWAL(log log.Logger, dir string) (*headWAL, error) {
 
 // Start logs a record containing the time at which this WAL became active.
 func (w *headWAL) Start(t time.Time) error {
-	return w.Log(&WalRecord{StartTime: t.UnixNano()})
+	w.start = t
+	return w.Log(&WALRecord{StartTime: t.UnixNano()})
 }
 
 func (w *headWAL) Stop() error {
 	return w.wal.Close()
 }
 
-func (w *headWAL) Log(record *WalRecord) error {
+func (w *headWAL) Log(record *WALRecord) error {
 	if record == nil {
 		return nil
 	}
