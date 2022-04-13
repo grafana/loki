@@ -423,8 +423,8 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	}
 
 	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
-	// golang quirk:
-	// Ring is of an interface type ring.ReadRing, indexGatewayRing is of struct type ring.Ring
+	// golang quirk(https://go.dev/doc/faq#nil_error):
+	// Ring is of an interface type ring.ReadRing, indexGatewayRing is of struct reference type *ring.Ring
 	// setting IndexGatewayClientConfig.Ring = t.indexGatewayRing
 	// when t.indexGatewayRing == nil
 	// will make `t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring != nil` evaluate to true
