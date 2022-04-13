@@ -179,17 +179,13 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 	return chunks, nil
 }
 
-func shouldRunBoltDBShipper(cfg Config) bool {
+func shouldRunBoltDBShipperClient(cfg Config) bool {
 	if cfg.BoltDBShipperConfig.Mode != shipper.ModeReadOnly {
 		return false
 	}
 
 	gatewayCfg := cfg.BoltDBShipperConfig.IndexGatewayClientConfig
 	if gatewayCfg.Mode == indexgateway.SimpleMode && gatewayCfg.Address == "" {
-		return false
-	}
-
-	if gatewayCfg.Mode == indexgateway.RingMode && gatewayCfg.Ring == nil {
 		return false
 	}
 
@@ -221,7 +217,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		index        stores.Index       = seriesdIndex
 	)
 
-	if shouldRunBoltDBShipper(s.cfg) {
+	if shouldRunBoltDBShipperClient(s.cfg) {
 		// inject the index-gateway client into the index store
 		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 		if err != nil {
