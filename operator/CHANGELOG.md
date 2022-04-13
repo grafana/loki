@@ -1,5 +1,6 @@
 ## Main
 
+- [5907](https://github.com/grafana/loki/pull/5907) **xperimental**: Do not include non-static labels in pod selectors
 - [5893](https://github.com/grafana/loki/pull/5893) **periklis**: Align PVC storage size requests for all lokistack t-shirt sizes
 - [5884](https://github.com/grafana/loki/pull/5884) **periklis**: Update Loki operand to v2.5.0
 - [5748](https://github.com/grafana/loki/pull/5748) **Red-GV**: Update Prometheus go client to 12.1
