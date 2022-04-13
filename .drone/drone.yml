@@ -974,7 +974,6 @@ steps:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
-  - echo ",main" >> .tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -1036,7 +1035,6 @@ steps:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-arm64 > .tags
-  - echo ",main" >> .tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -1086,6 +1084,49 @@ trigger:
   - push
   - pull_request
 ---
+depends_on:
+- lambda-promtail-amd64
+- lambda-promtail-arm64
+kind: pipeline
+name: manifest-ecr
+steps:
+- commands:
+  - apk add --no-cache aws-cli
+  - docker login --username AWS --password $(aws ecr-public get-login-password --region
+    us-east-1) public.ecr.aws
+  depends_on:
+  - clone
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: ecr_key
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: ecr_secret_key
+  image: docker:dind
+  name: ecr-login
+  volumes:
+  - name: dockerconf
+    path: /root/.docker
+- depends_on:
+  - clone
+  - ecr-login
+  image: plugins/manifest
+  name: manifest-lambda-promtail
+  settings:
+    ignore_missing: true
+    spec: .drone/docker-manifest-ecr.tmpl
+    target: lambda-promtail
+  volumes:
+  - name: dockerconf
+    path: /.docker
+trigger:
+  event:
+  - push
+  ref:
+    include:
+    - refs/heads/main
+    - refs/heads/k??
+    - refs/tags/v*
+---
 get:
   name: pat
   path: infra/data/ci/github/grafanabot
@@ -1129,6 +1170,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 9426d6c35e6147d2cd8bfbcec1ed0323d376a8878614a7fbe4c91dd17257ddf9
+hmac: 757a1016e9c3e6f2ba72b57a849face119f2a19318827123396107ed84411708
 
 ...
