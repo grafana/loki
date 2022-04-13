@@ -6,6 +6,46 @@ metadata:
       [
         {
           "apiVersion": "loki.grafana.com/v1beta1",
+          "kind": "AlertingRule",
+          "metadata": {
+            "name": "alertingrule-sample"
+          },
+          "spec": {
+            "groups": [
+              {
+                "interval": "10m",
+                "name": "alerting-rules-group",
+                "rules": [
+                  {
+                    "alert": "HighPercentageError",
+                    "annotations": {
+                      "summary": "High request latency"
+                    },
+                    "expr": "sum(rate({app=\"foo\", env=\"production\"} |= \"error\" [5m])) by (job)\n  /\nsum(rate({app=\"foo\", env=\"production\"}[5m])) by (job)\n  \u003e 0.05\n",
+                    "for": "10m",
+                    "labels": {
+                      "severity": "page"
+                    }
+                  },
+                  {
+                    "alert": "HttpCredentialsLeaked",
+                    "annotations": {
+                      "message": "{{ $labels.job }} is leaking http basic auth credentials."
+                    },
+                    "expr": "sum by (cluster, job, pod) (count_over_time({namespace=\"prod\"} |~ \"http(s?)://(\\\\w+):(\\\\w+)@\" [5m]) \u003e 0)",
+                    "for": "10m",
+                    "labels": {
+                      "severity": "critical"
+                    }
+                  }
+                ]
+              }
+            ],
+            "tenantID": "test-tenant"
+          }
+        },
+        {
+          "apiVersion": "loki.grafana.com/v1beta1",
           "kind": "LokiStack",
           "metadata": {
             "name": "lokistack-sample"
@@ -18,6 +58,32 @@ metadata:
               }
             },
             "storageClassName": "standard"
+          }
+        },
+        {
+          "apiVersion": "loki.grafana.com/v1beta1",
+          "kind": "RecordingRule",
+          "metadata": {
+            "name": "recordingrule-sample"
+          },
+          "spec": {
+            "groups": [
+              {
+                "interval": "10m",
+                "name": "recording-rules-group",
+                "rules": [
+                  {
+                    "expr": "sum(rate({container=\"myservice\"}[10m]))\n",
+                    "record": "myservice:requests:rate10m"
+                  },
+                  {
+                    "expr": "sum(rate({container=\"otherservice\"}[1m]))\n",
+                    "record": "otherservice:requests:rate1m"
+                  }
+                ]
+              }
+            ],
+            "tenantID": "test-tenant"
           }
         }
       ]
@@ -51,6 +117,64 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
+    - description: AlertingRule is the Schema for the alertingrules API
+      displayName: AlertingRule
+      kind: AlertingRule
+      name: alertingrules.loki.grafana.com
+      resources:
+      - kind: LokiStack
+        name: ""
+        version: v1beta1
+      specDescriptors:
+      - description: List of groups for alerting rules.
+        displayName: Groups
+        path: groups
+      - description: Interval defines the time interval between evaluation of the
+          given alerting rule.
+        displayName: Evaluation Interval
+        path: groups[0].interval
+      - description: Limit defines the number of alerts an alerting rule can produce.
+          0 is no limit.
+        displayName: Limit of firing alerts
+        path: groups[0].limit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Name of the alerting rule group. Must be unique within all alerting
+          rules.
+        displayName: Name
+        path: groups[0].name
+      - description: Rules defines a list of alerting rules
+        displayName: Rules
+        path: groups[0].rules
+      - description: The name of the alert. Must be a valid label value.
+        displayName: Name
+        path: groups[0].rules[0].alert
+      - description: Annotations to add to each alert.
+        displayName: Annotations
+        path: groups[0].rules[0].annotations
+      - description: The LogQL expression to evaluate. Every evaluation cycle this
+          is evaluated at the current time, and all resultant time series become pending/firing
+          alerts.
+        displayName: LogQL Expression
+        path: groups[0].rules[0].expr
+      - description: Alerts are considered firing once they have been returned for
+          this long. Alerts which have not yet fired for long enough are considered
+          pending.
+        displayName: Firing Threshold
+        path: groups[0].rules[0].for
+      - description: Labels to add to each alert.
+        displayName: Labels
+        path: groups[0].rules[0].labels
+      - description: TenantID of tenant where the alerting rules are evaluated in.
+        displayName: Tenant ID
+        path: tenantID
+      statusDescriptors:
+      - description: Conditions of the AlertingRule generation health.
+        displayName: Conditions
+        path: conditions
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes.conditions
+      version: v1beta1
     - description: LokiStack is the Schema for the lokistacks API
       displayName: LokiStack
       kind: LokiStack
@@ -227,6 +351,24 @@ spec:
         path: replicationFactor
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Rules defines the spec for the ruler component
+        displayName: Rules
+        path: rules
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Enabled defines a flag to enable/disable the ruler component
+        displayName: Enable
+        path: rules.enabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: Namespaces to be selected for PrometheusRules discovery. If unspecified,
+          only the same namespace as the LokiStack object is in is used.
+        displayName: Namespace Selector
+        path: rules.namespaceSelector
+      - description: A selector to select which LokiRules to mount for loading alerting/recording
+          rules from.
+        displayName: Selector
+        path: rules.selector
       - description: Size defines one of the support Loki deployment scale out sizes.
         displayName: LokiStack Size
         path: size
@@ -318,6 +460,14 @@ spec:
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.queryFrontend.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Ruler defines the ruler component spec.
+        displayName: Ruler pods
+        path: template.ruler
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.ruler.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
       - description: Tenants defines the per-tenant authentication and authorization
@@ -418,7 +568,60 @@ spec:
         path: components.indexGateway
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: Ruler is a map to the per pod status of the lokistack ruler statefulset.
+        displayName: Ruler
+        path: components.ruler
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
       - description: Conditions of the Loki deployment health.
+        displayName: Conditions
+        path: conditions
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes.conditions
+      version: v1beta1
+    - description: RecordingRule is the Schema for the recordingrules API
+      displayName: RecordingRule
+      kind: RecordingRule
+      name: recordingrules.loki.grafana.com
+      resources:
+      - kind: LokiStack
+        name: ""
+        version: v1beta1
+      specDescriptors:
+      - description: List of groups for recording rules.
+        displayName: Groups
+        path: groups
+      - description: Interval defines the time interval between evaluation of the
+          given recoding rule.
+        displayName: Evaluation Interval
+        path: groups[0].interval
+      - description: Limit defines the number of series a recording rule can produce.
+          0 is no limit.
+        displayName: Limit of produced series
+        path: groups[0].limit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Name of the recording rule group. Must be unique within all recording
+          rules.
+        displayName: Name
+        path: groups[0].name
+      - description: Rules defines a list of recording rules
+        displayName: Rules
+        path: groups[0].rules
+      - description: The LogQL expression to evaluate. Every evaluation cycle this
+          is evaluated at the current time, and all resultant time series become pending/firing
+          alerts.
+        displayName: LogQL Expression
+        path: groups[0].rules[0].expr
+      - description: The name of the time series to output to. Must be a valid metric
+          name.
+        displayName: Metric Name
+        path: groups[0].rules[0].record
+      - description: TenantID of tenant where the recording rules are evaluated in.
+        displayName: Tenant ID
+        path: tenantID
+      statusDescriptors:
+      - description: Conditions of the RecordingRule generation health.
         displayName: Conditions
         path: conditions
         x-descriptors:
@@ -498,6 +701,32 @@ spec:
         - apiGroups:
           - loki.grafana.com
           resources:
+          - alertingrules
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - alertingrules/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - alertingrules/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
           - lokistacks
           verbs:
           - create
@@ -517,6 +746,32 @@ spec:
           - loki.grafana.com
           resources:
           - lokistacks/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - recordingrules
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - recordingrules/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - recordingrules/status
           verbs:
           - get
           - patch
@@ -635,6 +890,9 @@ spec:
                   periodSeconds: 20
                 name: manager
                 ports:
+                - containerPort: 9443
+                  name: webhook-server
+                  protocol: TCP
                 - containerPort: 8080
                   name: metrics
                 readinessProbe:
@@ -646,6 +904,10 @@ spec:
                 resources: {}
                 securityContext:
                   allowPrivilegeEscalation: false
+                volumeMounts:
+                - mountPath: /tmp/k8s-webhook-server/serving-certs
+                  name: webhook-cert
+                  readOnly: true
               - args:
                 - --secure-listen-address=0.0.0.0:8443
                 - --upstream=http://127.0.0.1:8080/
@@ -666,6 +928,10 @@ spec:
                 kubernetes.io/os: linux
               terminationGracePeriodSeconds: 10
               volumes:
+              - name: webhook-cert
+                secret:
+                  defaultMode: 420
+                  secretName: loki-operator-webhook-service
               - name: loki-operator-metrics-cert
                 secret:
                   defaultMode: 420
@@ -726,3 +992,44 @@ spec:
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
   version: 0.0.1
+  webhookdefinitions:
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: loki-operator-controller-manager
+    failurePolicy: Fail
+    generateName: valertingrule.kb.io
+    rules:
+    - apiGroups:
+      - loki.grafana.com
+      apiVersions:
+      - v1beta1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - alertingrules
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-loki-grafana-com-v1beta1-alertingrule
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: loki-operator-controller-manager
+    failurePolicy: Fail
+    generateName: vrecordingrule.kb.io
+    rules:
+    - apiGroups:
+      - loki.grafana.com
+      apiVersions:
+      - v1beta1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - recordingrules
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-loki-grafana-com-v1beta1-recordingrule

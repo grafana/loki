@@ -15,7 +15,6 @@ type Options struct {
 
 	OpenShiftOptions openshift.Options
 	TenantSecrets    []*Secret
-	TenantConfigMap  map[string]TenantData
 }
 
 // Secret for clientID, clientSecret and issuerCAPath for tenant's authentication.
@@ -24,10 +23,4 @@ type Secret struct {
 	ClientID     string
 	ClientSecret string
 	IssuerCAPath string
-}
-
-// TenantData defines the existing tenantID and cookieSecret for lokistack reconcile.
-type TenantData struct {
-	TenantID     string
-	CookieSecret string
 }

@@ -1,8 +1,10 @@
 package manifests
 
 import (
+	"fmt"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -96,6 +98,9 @@ func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
 				Namespace: "test",
 				Stack: lokiv1beta1.LokiStackSpec{
 					Size: lokiv1beta1.SizeOneXSmall,
+					Rules: &lokiv1beta1.RulesSpec{
+						Enabled: true,
+					},
 				},
 				Flags: FeatureFlags{
 					EnableCertificateSigningService: false,
@@ -106,7 +111,7 @@ func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
 		},
 		{
 			desc:         "service monitor per component created",
-			MonitorCount: 7,
+			MonitorCount: 8,
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
@@ -192,6 +197,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 				NewQueryFrontendHTTPService(tst.BuildOptions),
 				NewCompactorHTTPService(tst.BuildOptions),
 				NewIndexGatewayHTTPService(tst.BuildOptions),
+				NewRulerHTTPService(tst.BuildOptions),
 				NewGatewayHTTPService(tst.BuildOptions),
 			}
 
@@ -203,6 +209,82 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 				}
 			}
 		})
+	}
+}
+
+func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
+	opts := Options{
+		Name:      "test",
+		Namespace: "test",
+		Stack: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXSmall,
+			Rules: &lokiv1beta1.RulesSpec{
+				Enabled: true,
+			},
+		},
+		Flags: FeatureFlags{
+			EnableServiceMonitors:         true,
+			EnableTLSServiceMonitorConfig: true,
+		},
+	}
+
+	err := ApplyDefaultSettings(&opts)
+	require.NoError(t, err)
+	objects, buildErr := BuildAll(opts)
+	require.NoError(t, buildErr)
+	require.Equal(t, 8, serviceMonitorCount(objects))
+
+	for _, obj := range objects {
+		var (
+			name string
+			vs   []corev1.Volume
+			vms  []corev1.VolumeMount
+			args []string
+			rps  corev1.URIScheme
+			lps  corev1.URIScheme
+		)
+
+		switch o := obj.(type) {
+		case *appsv1.Deployment:
+			name = o.Name
+			vs = o.Spec.Template.Spec.Volumes
+			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
+			args = o.Spec.Template.Spec.Containers[0].Args
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+		case *appsv1.StatefulSet:
+			name = o.Name
+			vs = o.Spec.Template.Spec.Volumes
+			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
+			args = o.Spec.Template.Spec.Containers[0].Args
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+		default:
+			continue
+		}
+
+		secretName := fmt.Sprintf("%s-http-metrics", name)
+		expVolume := corev1.Volume{
+			Name: secretName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: secretName,
+				},
+			},
+		}
+		require.Contains(t, vs, expVolume)
+
+		expVolumeMount := corev1.VolumeMount{
+			Name:      secretName,
+			ReadOnly:  false,
+			MountPath: "/etc/proxy/secrets",
+		}
+		require.Contains(t, vms, expVolumeMount)
+
+		require.Contains(t, args, "-server.http-tls-cert-path=/etc/proxy/secrets/tls.crt")
+		require.Contains(t, args, "-server.http-tls-key-path=/etc/proxy/secrets/tls.key")
+		require.Equal(t, corev1.URISchemeHTTPS, rps)
+		require.Equal(t, corev1.URISchemeHTTPS, lps)
 	}
 }
 
