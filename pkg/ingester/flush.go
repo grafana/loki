@@ -276,11 +276,12 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 			}
 			// Flush this chunk if it hasn't already been successfully flushed.
 			if stream.chunks[j].flushed.IsZero() {
-				result = append(result, &stream.chunks[j])
 				if immediate {
 					reason = flushReasonForced
 				}
-				chunksFlushedPerReason.WithLabelValues(reason).Add(1)
+				stream.chunks[j].reason = reason
+
+				result = append(result, &stream.chunks[j])
 			}
 		}
 	}
@@ -373,7 +374,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			lastTime,
 		)
 
-		if err := i.encodeChunk(ch, c); err != nil {
+		if err := i.encodeChunk(ctx, ch, c); err != nil {
 			return err
 		}
 
@@ -383,7 +384,14 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 
 		i.markChunkAsFlushed(cs[j], chunkMtx)
 
-		i.reportFlushedChunkStatistics(ch, c, sizePerTenant, countPerTenant)
+		reason := func() string {
+			chunkMtx.Lock()
+			defer chunkMtx.Unlock()
+
+			return c.reason
+		}()
+
+		i.reportFlushedChunkStatistics(ch, c, sizePerTenant, countPerTenant, reason)
 	}
 
 	return nil
@@ -410,7 +418,10 @@ func (i *Ingester) closeChunk(desc *chunkDesc, chunkMtx sync.Locker) error {
 //
 // If the encoding is unsuccessful the flush operation is reinserted in the queue which will cause
 // the encoding for a given chunk to be evaluated again.
-func (i *Ingester) encodeChunk(ch chunk.Chunk, desc *chunkDesc) error {
+func (i *Ingester) encodeChunk(ctx context.Context, ch chunk.Chunk, desc *chunkDesc) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	start := time.Now()
 	chunkBytesSize := desc.chunk.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
 	if err := ch.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkBytesSize))); err != nil {
@@ -434,12 +445,14 @@ func (i *Ingester) flushChunk(ctx context.Context, ch chunk.Chunk) error {
 }
 
 // reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
-func (i *Ingester) reportFlushedChunkStatistics(ch chunk.Chunk, desc *chunkDesc, sizePerTenant prometheus.Counter, countPerTenant prometheus.Counter) {
+func (i *Ingester) reportFlushedChunkStatistics(ch chunk.Chunk, desc *chunkDesc, sizePerTenant prometheus.Counter, countPerTenant prometheus.Counter, reason string) {
 	byt, err := ch.Encoded()
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to encode flushed wire chunk", "err", err)
 		return
 	}
+
+	chunksFlushedPerReason.WithLabelValues(reason).Add(1)
 
 	compressedSize := float64(len(byt))
 	uncompressedSize, ok := chunkenc.UncompressedSize(ch.Data)
