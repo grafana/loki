@@ -361,64 +361,70 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	sizePerTenant := chunkSizePerTenant.WithLabelValues(userID)
 	countPerTenant := chunksPerTenant.WithLabelValues(userID)
 
-	for j, c := range cs {
-		if err := i.closeChunk(c, chunkMtx); err != nil {
+	// Acquire lock, loop over chunks, and close.
+	chunkMtx.Lock()
+	for _, c := range cs {
+		if err := c.chunk.Close(); err != nil {
+			chunkMtx.Unlock()
 			return fmt.Errorf("chunk close for flushing: %w", err)
 		}
+	}
+	chunkMtx.Unlock()
 
-		firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
-		ch := chunk.NewChunk(
-			userID, fp, metric,
-			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
-			firstTime,
-			lastTime,
-		)
+	// Without the lock, encode & store
+	flushTimes := make([]struct {
+		t  time.Time
+		ch chunk.Chunk
+	}, 0, len(cs))
 
-		if err := i.encodeChunk(ctx, ch, c); err != nil {
-			return err
+	err = func() error {
+		for _, c := range cs {
+			firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
+			ch := chunk.NewChunk(
+				userID, fp, metric,
+				chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
+				firstTime,
+				lastTime,
+			)
+
+			if err := encodeChunk(ctx, ch, c); err != nil {
+				return err
+			}
+			if err := i.store.Put(ctx, []chunk.Chunk{ch}); err != nil {
+				return fmt.Errorf("store put chunk: %w", err)
+			}
+			flushTimes = append(flushTimes, struct {
+				t  time.Time
+				ch chunk.Chunk
+			}{
+				t:  time.Now(),
+				ch: ch,
+			})
 		}
+		return nil
+	}()
 
-		if err := i.flushChunk(ctx, ch); err != nil {
-			return err
+	// Reacquire the lock once more and iterate, updating flush times.
+	// Doing this before returning the error ensures we update any flushed chunks,
+	// even if later ones failed.
+	if len(flushTimes) > 0 {
+		flushedChunksStats.Inc(int64(len(flushTimes)))
+		chunkMtx.Lock()
+		for i, x := range flushTimes {
+			cs[i].flushed = x.t
+			reportFlushedChunkStatistics(x.ch, cs[i], sizePerTenant, countPerTenant, cs[i].reason)
 		}
-
-		i.markChunkAsFlushed(cs[j], chunkMtx)
-
-		reason := func() string {
-			chunkMtx.Lock()
-			defer chunkMtx.Unlock()
-
-			return c.reason
-		}()
-
-		i.reportFlushedChunkStatistics(ch, c, sizePerTenant, countPerTenant, reason)
+		chunkMtx.Unlock()
 	}
 
-	return nil
-}
-
-// markChunkAsFlushed mark a chunk to make sure it won't be flushed if this operation fails.
-func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
-	chunkMtx.Lock()
-	defer chunkMtx.Unlock()
-	desc.flushed = time.Now()
-}
-
-// closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.
-//
-// If the chunk isn't closed, data in the head block isn't included.
-func (i *Ingester) closeChunk(desc *chunkDesc, chunkMtx sync.Locker) error {
-	chunkMtx.Lock()
-	defer chunkMtx.Unlock()
-
-	return desc.chunk.Close()
+	return err
 }
 
 // encodeChunk encodes a chunk.Chunk based on the given chunkDesc.
 //
 // If the encoding is unsuccessful the flush operation is reinserted in the queue which will cause
 // the encoding for a given chunk to be evaluated again.
-func (i *Ingester) encodeChunk(ctx context.Context, ch chunk.Chunk, desc *chunkDesc) error {
+func encodeChunk(ctx context.Context, ch chunk.Chunk, desc *chunkDesc) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -445,7 +451,7 @@ func (i *Ingester) flushChunk(ctx context.Context, ch chunk.Chunk) error {
 }
 
 // reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
-func (i *Ingester) reportFlushedChunkStatistics(ch chunk.Chunk, desc *chunkDesc, sizePerTenant prometheus.Counter, countPerTenant prometheus.Counter, reason string) {
+func reportFlushedChunkStatistics(ch chunk.Chunk, desc *chunkDesc, sizePerTenant prometheus.Counter, countPerTenant prometheus.Counter, reason string) {
 	byt, err := ch.Encoded()
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to encode flushed wire chunk", "err", err)
