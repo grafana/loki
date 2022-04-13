@@ -52,7 +52,9 @@ const (
 	numTables           = 50
 )
 
-type mockIndexGatewayServer struct{}
+type mockIndexGatewayServer struct {
+	indexgatewaypb.IndexGatewayServer
+}
 
 func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
 	for i, query := range request.Queries {
@@ -98,6 +100,10 @@ func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexReq
 	}
 
 	return nil
+}
+
+func (m mockIndexGatewayServer) GetChunkRef(context.Context, *indexgatewaypb.GetChunkRefRequest) (*indexgatewaypb.GetChunkRefResponse, error) {
+	return &indexgatewaypb.GetChunkRefResponse{}, nil
 }
 
 func createTestGrpcServer(t *testing.T) (func(), string) {
@@ -234,7 +240,7 @@ func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 	var cfg indexgateway.Config
 	flagext.DefaultValues(&cfg)
 
-	gw, err := indexgateway.NewIndexGateway(cfg, util_log.Logger, prometheus.DefaultRegisterer, tm)
+	gw, err := indexgateway.NewIndexGateway(cfg, util_log.Logger, prometheus.DefaultRegisterer, nil, tm)
 	require.NoError(b, err)
 	indexgatewaypb.RegisterIndexGatewayServer(s, gw)
 	go func() {
@@ -302,4 +308,19 @@ func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
 		})
 	}
 	benchmarkIndexQueries(b, queries)
+}
+
+func TestDoubleRegistration(t *testing.T) {
+	r := prometheus.NewRegistry()
+	cleanup, storeAddress := createTestGrpcServer(t)
+	defer cleanup()
+
+	_, err := NewGatewayClient(IndexGatewayClientConfig{
+		Address: storeAddress,
+	}, r, util_log.Logger)
+	require.NoError(t, err)
+	_, err = NewGatewayClient(IndexGatewayClientConfig{
+		Address: storeAddress,
+	}, r, util_log.Logger)
+	require.NoError(t, err)
 }

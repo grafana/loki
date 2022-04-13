@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -196,8 +197,22 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		schema = index.NewSchemaCaching(schema, time.Duration(s.storeCfg.CacheLookupsOlderThan))
 	}
 
-	return series.NewWriter(f, s.schemaCfg, idx, schema, s.writeDedupeCache, s.storeCfg.DisableIndexDeduplication),
-		series.NewIndexStore(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize),
+	var (
+		writer       stores.ChunkWriter = series.NewWriter(f, s.schemaCfg, idx, schema, s.writeDedupeCache, s.storeCfg.DisableIndexDeduplication)
+		seriesdIndex *series.IndexStore = series.NewIndexStore(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize)
+		index        stores.Index       = seriesdIndex
+	)
+	if s.cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && (s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" || s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Ring != nil) {
+		// inject the index-gateway client into the index store
+		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		index = series.NewIndexGatewayClientStore(gw, seriesdIndex)
+	}
+
+	return writer,
+		index,
 		func() {
 			chunkClient.Stop()
 			f.Stop()

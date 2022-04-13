@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/instrument"
 	"google.golang.org/grpc"
 
@@ -96,15 +95,26 @@ type GatewayClient struct {
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created.
 // Otherwise, it creates a single GRPC connection to an Index Gateway instance running in simple mode.
 func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
+	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "loki_boltdb_shipper",
+		Name:      "store_gateway_request_duration_seconds",
+		Help:      "Time (in seconds) spent serving requests when using boltdb shipper store gateway",
+		Buckets:   instrument.DefBuckets,
+	}, []string{"operation", "status_code"})
+	if r != nil {
+		err := r.Register(latency)
+		if err != nil {
+			alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
+			if !ok {
+				return nil, err
+			}
+			latency = alreadyErr.ExistingCollector.(*prometheus.HistogramVec)
+		}
+	}
 	sgClient := &GatewayClient{
-		cfg: cfg,
-		storeGatewayClientRequestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "store_gateway_request_duration_seconds",
-			Help:      "Time (in seconds) spent serving requests when using boltdb shipper store gateway",
-			Buckets:   instrument.DefBuckets,
-		}, []string{"operation", "status_code"}),
-		ring: cfg.Ring,
+		cfg:                               cfg,
+		storeGatewayClientRequestDuration: latency,
+		ring:                              cfg.Ring,
 	}
 
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(sgClient.storeGatewayClientRequestDuration))
@@ -158,6 +168,51 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, c
 	})
 }
 
+func (s *GatewayClient) GetChunkRef(ctx context.Context, in *indexgatewaypb.GetChunkRefRequest, opts ...grpc.CallOption) (*indexgatewaypb.GetChunkRefResponse, error) {
+	if s.cfg.Mode == indexgateway.RingMode {
+		var (
+			resp *indexgatewaypb.GetChunkRefResponse
+			err  error
+		)
+		err = s.ringModeDo(ctx, func(client indexgatewaypb.IndexGatewayClient) error {
+			resp, err = client.GetChunkRef(ctx, in, opts...)
+			return err
+		})
+		return resp, err
+	}
+	return s.grpcClient.GetChunkRef(ctx, in, opts...)
+}
+
+func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *indexgatewaypb.LabelNamesForMetricNameRequest, opts ...grpc.CallOption) (*indexgatewaypb.LabelResponse, error) {
+	if s.cfg.Mode == indexgateway.RingMode {
+		var (
+			resp *indexgatewaypb.LabelResponse
+			err  error
+		)
+		err = s.ringModeDo(ctx, func(client indexgatewaypb.IndexGatewayClient) error {
+			resp, err = client.LabelNamesForMetricName(ctx, in, opts...)
+			return err
+		})
+		return resp, err
+	}
+	return s.grpcClient.LabelNamesForMetricName(ctx, in, opts...)
+}
+
+func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *indexgatewaypb.LabelValuesForMetricNameRequest, opts ...grpc.CallOption) (*indexgatewaypb.LabelResponse, error) {
+	if s.cfg.Mode == indexgateway.RingMode {
+		var (
+			resp *indexgatewaypb.LabelResponse
+			err  error
+		)
+		err = s.ringModeDo(ctx, func(client indexgatewaypb.IndexGatewayClient) error {
+			resp, err = client.LabelValuesForMetricName(ctx, in, opts...)
+			return err
+		})
+		return resp, err
+	}
+	return s.grpcClient.LabelValuesForMetricName(ctx, in, opts...)
+}
+
 func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	queryKeyQueryMap := make(map[string]index.Query, len(queries))
 	gatewayQueries := make([]*indexgatewaypb.IndexQuery, 0, len(queries))
@@ -174,7 +229,9 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, ca
 	}
 
 	if s.cfg.Mode == indexgateway.RingMode {
-		return s.ringModeDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback)
+		return s.ringModeDo(ctx, func(client indexgatewaypb.IndexGatewayClient) error {
+			return s.clientDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback, client)
+		})
 	}
 
 	return s.clientDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback, s.grpcClient)
@@ -184,7 +241,8 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, ca
 //
 // It is used by both, simple and ring mode.
 func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*indexgatewaypb.IndexQuery,
-	queryKeyQueryMap map[string]index.Query, callback index.QueryPagesCallback, client indexgatewaypb.IndexGatewayClient) error {
+	queryKeyQueryMap map[string]index.Query, callback index.QueryPagesCallback, client indexgatewaypb.IndexGatewayClient,
+) error {
 	streamer, err := client.QueryIndex(ctx, &indexgatewaypb.QueryIndexRequest{Queries: gatewayQueries})
 	if err != nil {
 		return errors.Wrap(err, "query index")
@@ -211,15 +269,9 @@ func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*i
 	return nil
 }
 
-// ringModeDoQueries prepares an index query to be sent to the Index Gateway, and then sends it
-// using the clientDoQueries implementation.
-//
-// The preparation and sending phase includes:
-// 1. Extracting the tenant name from the query.
-// 2. Fetching different Index Gateway instances assigned to the extracted tenant.
-// 3. Iterating in parallel over all fetched Index Gateway instances, getting their gRPC connections
-//  from the pool and invoking clientDoQueries using their client.
-func (s *GatewayClient) ringModeDoQueries(ctx context.Context, gatewayQueries []*indexgatewaypb.IndexQuery, queryKeyQueryMap map[string]index.Query, callback index.QueryPagesCallback) error {
+// ringModeDo executes the given function for each Index Gateway instance in the ring mapping to the correct tenant in the index.
+// In case of callback failure, we'll try another member of the ring for that tenant ID.
+func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client indexgatewaypb.IndexGatewayClient) error) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return errors.Wrap(err, "index gateway client get tenant ID")
@@ -238,7 +290,7 @@ func (s *GatewayClient) ringModeDoQueries(ctx context.Context, gatewayQueries []
 	rand.Shuffle(len(addrs), func(i, j int) {
 		addrs[i], addrs[j] = addrs[j], addrs[i]
 	})
-
+	var lastErr error
 	for _, addr := range addrs {
 		genericClient, err := s.pool.GetClientFor(addr)
 		if err != nil {
@@ -247,15 +299,16 @@ func (s *GatewayClient) ringModeDoQueries(ctx context.Context, gatewayQueries []
 		}
 
 		client := (genericClient.(indexgatewaypb.IndexGatewayClient))
-		if err := s.clientDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback, client); err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("client do queries failed for instance %s", addr), "err", err)
+		if err := callback(client); err != nil {
+			lastErr = err
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
 			continue
 		}
 
 		return nil
 	}
 
-	return fmt.Errorf("index gateway replicationSet clientDoQueries")
+	return lastErr
 }
 
 func (s *GatewayClient) NewWriteBatch() index.WriteBatch {

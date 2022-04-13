@@ -511,7 +511,7 @@ func (t *Loki) setupModuleManager() error {
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
 		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
-		IndexGateway:             {Server, Overrides, UsageReport, MemberlistKV},
+		IndexGateway:             {Server, Store, Overrides, UsageReport, MemberlistKV},
 		IngesterQuerier:          {Ring},
 		IndexGatewayRing:         {RuntimeConfig, Server, MemberlistKV},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
