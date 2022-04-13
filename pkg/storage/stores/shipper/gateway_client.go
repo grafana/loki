@@ -104,11 +104,11 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 	if r != nil {
 		err := r.Register(latency)
 		if err != nil {
-			alreadtErr, ok := err.(prometheus.AlreadyRegisteredError)
+			alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
 			if !ok {
 				return nil, err
 			}
-			latency = alreadtErr.ExistingCollector.(*prometheus.HistogramVec)
+			latency = alreadyErr.ExistingCollector.(*prometheus.HistogramVec)
 		}
 	}
 	sgClient := &GatewayClient{

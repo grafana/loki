@@ -202,7 +202,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		seriesdIndex *series.IndexStore = series.NewIndexStore(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize)
 		index        stores.Index       = seriesdIndex
 	)
-	if s.cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" {
+	if s.cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && (s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" || s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Ring != nil) {
 		// inject the index-gateway client into the index store
 		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 		if err != nil {
