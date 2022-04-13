@@ -361,57 +361,17 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	sizePerTenant := chunkSizePerTenant.WithLabelValues(userID)
 	countPerTenant := chunksPerTenant.WithLabelValues(userID)
 
-	for j, c := range cs {
-		if err := i.closeChunk(c, chunkMtx); err != nil {
-			return fmt.Errorf("chunk close for flushing: %w", err)
+	for _, c := range cs {
+		ch, reason, err := i.flushChunk(ctx, fp, userID, c, metric, chunkMtx)
+		if err != nil {
+			return fmt.Errorf("flush chunk: %w", err)
 		}
 
-		firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
-		ch := chunk.NewChunk(
-			userID, fp, metric,
-			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
-			firstTime,
-			lastTime,
-		)
-
-		if err := i.encodeChunk(ctx, ch, c); err != nil {
-			return err
-		}
-
-		if err := i.flushChunk(ctx, ch); err != nil {
-			return err
-		}
-
-		i.markChunkAsFlushed(cs[j], chunkMtx)
-
-		reason := func() string {
-			chunkMtx.Lock()
-			defer chunkMtx.Unlock()
-
-			return c.reason
-		}()
-
-		i.reportFlushedChunkStatistics(ch, c, sizePerTenant, countPerTenant, reason)
+		flushedChunksStats.Inc(1)
+		i.reportFlushedChunkStatistics(*ch, c, sizePerTenant, countPerTenant, reason)
 	}
 
 	return nil
-}
-
-// markChunkAsFlushed mark a chunk to make sure it won't be flushed if this operation fails.
-func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
-	chunkMtx.Lock()
-	defer chunkMtx.Unlock()
-	desc.flushed = time.Now()
-}
-
-// closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.
-//
-// If the chunk isn't closed, data in the head block isn't included.
-func (i *Ingester) closeChunk(desc *chunkDesc, chunkMtx sync.Locker) error {
-	chunkMtx.Lock()
-	defer chunkMtx.Unlock()
-
-	return desc.chunk.Close()
 }
 
 // encodeChunk encodes a chunk.Chunk based on the given chunkDesc.
@@ -433,15 +393,37 @@ func (i *Ingester) encodeChunk(ctx context.Context, ch chunk.Chunk, desc *chunkD
 
 // flushChunk flushes the given chunk to the store.
 //
+// It starts by closing the given chunk to ensure that new blocks are cut before flushing, otherwise
+// head block isn't included.
 // If the flush is successful, metrics for this flush are to be reported.
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
 // chunk to have another opportunity to be flushed.
-func (i *Ingester) flushChunk(ctx context.Context, ch chunk.Chunk) error {
-	if err := i.store.Put(ctx, []chunk.Chunk{ch}); err != nil {
-		return fmt.Errorf("store put chunk: %w", err)
+func (i *Ingester) flushChunk(ctx context.Context, fp model.Fingerprint, userID string, desc *chunkDesc, metric labels.Labels, chunkMtx sync.Locker) (*chunk.Chunk, string, error) {
+	chunkMtx.Lock()
+	defer chunkMtx.Unlock()
+
+	if err := desc.chunk.Close(); err != nil {
+		return nil, "", fmt.Errorf("chunk close for flushing: %w", err)
 	}
-	flushedChunksStats.Inc(1)
-	return nil
+
+	firstTime, lastTime := loki_util.RoundToMilliseconds(desc.chunk.Bounds())
+	ch := chunk.NewChunk(
+		userID, fp, metric,
+		chunkenc.NewFacade(desc.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
+		firstTime,
+		lastTime,
+	)
+
+	if err := i.encodeChunk(ctx, ch, desc); err != nil {
+		return nil, "", fmt.Errorf("chunk encoding for flushing: %w", err)
+	}
+
+	if err := i.store.Put(ctx, []chunk.Chunk{ch}); err != nil {
+		return nil, "", fmt.Errorf("store put chunk: %w", err)
+	}
+
+	desc.flushed = time.Now()
+	return &ch, desc.reason, nil
 }
 
 // reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
