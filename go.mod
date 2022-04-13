@@ -111,6 +111,7 @@ require (
 )
 
 require (
+	github.com/jsternberg/zap-logfmt v1.2.0
 	go.opentelemetry.io/collector v0.48.0
 	go.opentelemetry.io/collector/model v0.48.0
 	go.opentelemetry.io/otel/trace v1.6.1
@@ -245,7 +246,7 @@ require (
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver v2.4.0+incompatible // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
-	github.com/sirupsen/logrus v1.8.1 // indirect
+	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cast v1.4.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.2.0 // indirect

@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/weaveworks/common/logging"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -143,7 +144,7 @@ type Distributor struct {
 }
 
 // New a distributor creates.
-func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, middleware receiver.Middleware, registerer prometheus.Registerer) (*Distributor, error) {
+func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, middleware receiver.Middleware, registerer prometheus.Registerer, logLevel logging.Level) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
 		factory = func(addr string) (ring_client.PoolClient, error) {
@@ -233,7 +234,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		if len(cfgReceivers) == 0 {
 			cfgReceivers = defaultReceivers
 		}
-		receivers, err := receiver.New(cfgReceivers, d, cfg.OTLP.ReceiverFormat, cfg.OTLP.ReceiverDrainTimeout, middleware)
+		receivers, err := receiver.New(cfgReceivers, d, cfg.OTLP.ReceiverFormat, cfg.OTLP.ReceiverDrainTimeout, middleware,logLevel)
 		if err != nil {
 			return nil, err
 		}

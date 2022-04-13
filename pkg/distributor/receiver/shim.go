@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -13,9 +14,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/go-logfmt/logfmt"
 	"github.com/grafana/dskit/services"
+	zaplogfmt "github.com/jsternberg/zap-logfmt"
 	"github.com/opentracing/opentracing-go"
 	prom_client "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/sirupsen/logrus"
+	"github.com/weaveworks/common/logging"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configunmarshaler"
@@ -23,6 +27,7 @@ import (
 	"go.opentelemetry.io/collector/model/pdata"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap/zapcore"
 
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
@@ -65,7 +70,7 @@ func (r *receiversShim) Capabilities() consumer.Capabilities {
 
 // New
 // handler "/v1/logs" go.opentelemetry.io/collector/receiver/otlpreceiver/otlp.go:229
-func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat string, receiverDrainTimeout time.Duration, middleware Middleware) (services.Service, error) {
+func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat string, receiverDrainTimeout time.Duration, middleware Middleware, logLevel logging.Level) (services.Service, error) {
 	shim := &receiversShim{
 		pusher:       pusher,
 		format:       receiverFormat,
@@ -73,6 +78,7 @@ func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat 
 		drainTimeout: receiverDrainTimeout,
 	}
 
+	zapLogger := newLogger(logLevel)
 	receiverFactories, err := component.MakeReceiverFactoryMap(
 		otlpreceiver.NewFactory(),
 	)
@@ -92,7 +98,7 @@ func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat 
 
 	ctx := context.Background()
 	params := component.ReceiverCreateSettings{TelemetrySettings: component.TelemetrySettings{
-		Logger:         zap.NewNop(),
+		Logger:         zapLogger,
 		TracerProvider: trace.NewNoopTracerProvider(),
 		//MeterProvider:  metric.NewMeterConfig(),
 	}}
@@ -125,6 +131,41 @@ func (r *receiversShim) starting(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// observability shims
+func newLogger(level logging.Level) *zap.Logger {
+	zapLevel := zapcore.InfoLevel
+
+	switch level.Logrus {
+	case logrus.PanicLevel:
+		zapLevel = zapcore.PanicLevel
+	case logrus.FatalLevel:
+		zapLevel = zapcore.FatalLevel
+	case logrus.ErrorLevel:
+		zapLevel = zapcore.ErrorLevel
+	case logrus.WarnLevel:
+		zapLevel = zapcore.WarnLevel
+	case logrus.InfoLevel:
+		zapLevel = zapcore.InfoLevel
+	case logrus.DebugLevel:
+	case logrus.TraceLevel:
+		zapLevel = zapcore.DebugLevel
+	}
+
+	config := zap.NewProductionEncoderConfig()
+	config.EncodeTime = func(ts time.Time, encoder zapcore.PrimitiveArrayEncoder) {
+		encoder.AppendString(ts.UTC().Format(time.RFC3339))
+	}
+	logger := zap.New(zapcore.NewCore(
+		zaplogfmt.NewEncoder(config),
+		os.Stdout,
+		zapLevel,
+	))
+	logger = logger.With(zap.String("component", "tempo"))
+	logger.Info("OTel Shim Logger Initialized")
+
+	return logger
 }
 
 func sanitizeLabelKey(key string) string {
