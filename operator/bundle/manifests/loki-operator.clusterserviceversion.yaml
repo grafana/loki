@@ -586,11 +586,9 @@ spec:
           replicas: 1
           selector:
             matchLabels:
-              app.kubernetes.io/instance: loki-operator-v0.0.1
               app.kubernetes.io/managed-by: operator-lifecycle-manager
               app.kubernetes.io/name: loki-operator
               app.kubernetes.io/part-of: cluster-logging
-              app.kubernetes.io/version: 0.0.1
               name: loki-operator-controller-manager
           strategy: {}
           template:
@@ -598,11 +596,9 @@ spec:
               annotations:
                 kubectl.kubernetes.io/default-container: manager
               labels:
-                app.kubernetes.io/instance: loki-operator-v0.0.1
                 app.kubernetes.io/managed-by: operator-lifecycle-manager
                 app.kubernetes.io/name: loki-operator
                 app.kubernetes.io/part-of: cluster-logging
-                app.kubernetes.io/version: 0.0.1
                 name: loki-operator-controller-manager
             spec:
               containers:
