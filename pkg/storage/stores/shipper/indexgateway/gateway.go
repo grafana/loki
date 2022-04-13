@@ -319,7 +319,7 @@ func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *indexgateway
 	if err != nil {
 		return nil, err
 	}
-	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.From, req.MetricName)
+	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName)
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +337,7 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *indexgatewa
 	if err != nil {
 		return nil, err
 	}
-	names, err := g.indexQuerier.LabelValuesForMetricName(ctx, instanceID, req.From, req.From, req.MetricName, req.LabelName, matchers...)
+	names, err := g.indexQuerier.LabelValuesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, req.LabelName, matchers...)
 	if err != nil {
 		return nil, err
 	}
