@@ -338,7 +338,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       volumes: [{
         name: 'dockerconf',
         path: '/.docker',
-      },],
+      }],
       settings: {
         // the target parameter is abused for the app's name,
         // as it is unused in spec mode. See docker-manifest-ecr.tmpl
@@ -360,7 +360,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       volumes: [{
         name: 'dockerconf',
         path: '/root/.docker',
-      },],
+      }],
       environment: {
         AWS_ACCESS_KEY_ID: { from_secret: ecr_key.name },
         AWS_SECRET_ACCESS_KEY: { from_secret: ecr_secret_key.name },
