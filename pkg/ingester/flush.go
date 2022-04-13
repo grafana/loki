@@ -360,12 +360,8 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	sizePerTenant := chunkSizePerTenant.WithLabelValues(userID)
 	countPerTenant := chunksPerTenant.WithLabelValues(userID)
 
-	chunkMtx.Lock()
-	defer chunkMtx.Unlock()
-
 	for j, c := range cs {
-		// Ensure that new blocks are cut before flushing as data in the head block is not included otherwise.
-		if err := c.chunk.Close(); err != nil {
+		if err := i.closeChunk(c, chunkMtx); err != nil {
 			return fmt.Errorf("chunk close for flushing: %w", err)
 		}
 
@@ -385,13 +381,29 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			return err
 		}
 
-		// flush successful, write while we have lock.
-		cs[j].flushed = time.Now()
+		i.markChunkAsFlushed(cs[j], chunkMtx)
 
 		i.reportFlushedChunkStatistics(ch, c, sizePerTenant, countPerTenant)
 	}
 
 	return nil
+}
+
+// markChunkAsFlushed mark a chunk to make sure it won't be flushed if this operation fails.
+func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
+	chunkMtx.Lock()
+	defer chunkMtx.Unlock()
+	desc.flushed = time.Now()
+}
+
+// closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.
+//
+// If the chunk isn't closed, data in the head block isn't included.
+func (i *Ingester) closeChunk(desc *chunkDesc, chunkMtx sync.Locker) error {
+	chunkMtx.Lock()
+	defer chunkMtx.Unlock()
+
+	return desc.chunk.Close()
 }
 
 // encodeChunk encodes a chunk.Chunk based on the given chunkDesc.
