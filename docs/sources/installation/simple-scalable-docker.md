@@ -46,7 +46,11 @@ docker-compose up
 The running Docker containers use the directory's configuration files.
 
 Navigate to http://localhost:3101/ready to check for read container readiness.
-Navigate to http://localhost:3102/metrics to view the write container metrics.
+Navigate to http://localhost:3101/metrics to view read container metrics.
+
+Navigate to http://localhost:3102/ready to check for write container readiness.
+Navigate to http://localhost:3102/metrics to view write container metrics.
+
 Navigate to http://localhost:3000 for the Grafana instance that has Loki configured as a datasource.
 
 By default, the image runs processes as user loki with  UID `10001` and GID `10001`.
