@@ -65,10 +65,10 @@ var defaultReceivers = map[string]interface{}{
 	"otlp": map[string]interface{}{
 		"protocols": map[string]interface{}{
 			"grpc": map[string]interface{}{
-				"endpoint": "localhost:4317",
+				"endpoint": "0.0.0.0:4317",
 			},
 			"http": map[string]interface{}{
-				"endpoint": "localhost:4318",
+				"endpoint": "0.0.0.0:4318",
 			},
 		},
 	},
