@@ -12,7 +12,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.20.2
+    - 0.20.3
     username:
       from_secret: docker_username
   when:
@@ -1118,6 +1118,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 2f47de5e61231501593c473c31c46c695edabd18e6dd5e06817d272720c144f8
+hmac: 64871d70248fbe43acab816fe107dc657442ded224b48779ac15f4559143a2c6
 
 ...

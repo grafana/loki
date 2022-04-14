@@ -2,8 +2,6 @@
 
 set -uo pipefail
 
-command -v drone >/dev/null 2>&1 || { echo "drone is not installed"; exit 1; }
-
 TARGET_BRANCH="$1"
 DRONE_JSONNET_FILE=".drone/drone.jsonnet"
 DRONE_CONFIG_FILE=".drone/drone.yml"
