@@ -1166,6 +1166,9 @@ trigger:
   - push
   - pull_request
   - tag
+volumes:
+- name: dockerconf
+  temp: {}
 ---
 get:
   name: pat
@@ -1210,6 +1213,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 478dc9ae6430f5b9b460c1f73e406a042f4621c8b1c72fb1d0734aeb6d0669d3
+hmac: e98ddc9174d237a28edf544b30008645e2732b57640af1835c383c87bcd48dc9
 
 ...
