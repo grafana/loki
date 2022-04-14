@@ -374,7 +374,8 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			lastTime,
 		)
 
-		if err := i.encodeChunk(ctx, ch, c); err != nil {
+		// encodeChunk mutates the chunk so we must pass by reference
+		if err := i.encodeChunk(ctx, &ch, c); err != nil {
 			return err
 		}
 
@@ -418,7 +419,7 @@ func (i *Ingester) closeChunk(desc *chunkDesc, chunkMtx sync.Locker) error {
 //
 // If the encoding is unsuccessful the flush operation is reinserted in the queue which will cause
 // the encoding for a given chunk to be evaluated again.
-func (i *Ingester) encodeChunk(ctx context.Context, ch chunk.Chunk, desc *chunkDesc) error {
+func (i *Ingester) encodeChunk(ctx context.Context, ch *chunk.Chunk, desc *chunkDesc) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
