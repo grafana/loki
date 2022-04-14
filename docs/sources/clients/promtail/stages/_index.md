@@ -12,6 +12,7 @@ Parsing stages:
   - [cri](cri/): Extract data by parsing the log line using the standard CRI format.
   - [regex](regex/): Extract data using a regular expression.
   - [json](json/): Extract data by parsing the log line as JSON.
+  - [logfmt](logfmt/): Extract data by parsing the log line with the logfmt parser.
   - [replace](replace/): Replace data using a regular expression.
   - [multiline](multiline/): Merge multiple lines into a multiline block.
 
