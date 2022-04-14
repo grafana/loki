@@ -101,7 +101,7 @@ func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelReque
 		return nil, err
 	}
 
-	if req.Name == defaultTenantLabel {
+	if req.Values && req.Name == defaultTenantLabel {
 		return &logproto.LabelResponse{Values: tenantIDs}, nil
 	}
 
@@ -118,6 +118,11 @@ func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelReque
 		}
 
 		responses[i] = resp
+	}
+
+	// Append tenant ID label name if label names are requested.
+	if !req.Values {
+		responses = append(responses, &logproto.LabelResponse{Values: []string{defaultTenantLabel}})
 	}
 
 	return logproto.MergeLabelResponses(responses)
