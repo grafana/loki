@@ -111,6 +111,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 			latency = alreadyErr.ExistingCollector.(*prometheus.HistogramVec)
 		}
 	}
+
 	sgClient := &GatewayClient{
 		cfg:                               cfg,
 		storeGatewayClientRequestDuration: latency,

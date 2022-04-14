@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -178,6 +179,19 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 	return chunks, nil
 }
 
+func shouldUseIndexGatewayClient(cfg Config) bool {
+	if cfg.BoltDBShipperConfig.Mode != shipper.ModeReadOnly {
+		return false
+	}
+
+	gatewayCfg := cfg.BoltDBShipperConfig.IndexGatewayClientConfig
+	if gatewayCfg.Mode == indexgateway.SimpleMode && gatewayCfg.Address == "" {
+		return false
+	}
+
+	return true
+}
+
 func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, stores.Index, func(), error) {
 	// todo switch tsdb.
 
@@ -202,7 +216,8 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		seriesdIndex *series.IndexStore = series.NewIndexStore(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize)
 		index        stores.Index       = seriesdIndex
 	)
-	if s.cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && (s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" || s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Ring != nil) {
+
+	if shouldUseIndexGatewayClient(s.cfg) {
 		// inject the index-gateway client into the index store
 		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 		if err != nil {
