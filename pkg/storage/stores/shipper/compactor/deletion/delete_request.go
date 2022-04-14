@@ -48,12 +48,24 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 
 	f := p.ForStream(labels).ProcessString
 	return func(s string) bool {
+		if !allMatch(d.matchers, labels) {
+			return false
+		}
 		result, _, skip := f(s)
 		if len(result) != 0 || skip {
 			return true
 		}
 		return false
 	}, nil
+}
+
+func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
+	for _, m := range matchers {
+		if !m.Matches(labels.Get(m.Name)) {
+			return false
+		}
+	}
+	return true
 }
 
 // IsDeleted checks if the given ChunkEntry will be deleted by this DeleteRequest.

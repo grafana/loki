@@ -199,3 +199,29 @@ func mustParseLabel(input string) labels.Labels {
 
 	return lbls
 }
+
+func TestDeleteRequest_FilterFunction(t *testing.T) {
+	dr := DeleteRequest{
+		Query: `{foo="bar"} |= "some"`,
+	}
+
+	lblStr := `{foo="bar"}`
+	lbls := mustParseLabel(lblStr)
+
+	f, err := dr.FilterFunction(lbls)
+	require.NoError(t, err)
+
+	require.True(t, f(`some line`))
+	require.False(t, f(""))
+	require.False(t, f("other line"))
+
+	lblStr = `{foo2="buzz"}`
+	lbls = mustParseLabel(lblStr)
+
+	f, err = dr.FilterFunction(lbls)
+	require.NoError(t, err)
+
+	require.False(t, f(""))
+	require.False(t, f("other line"))
+	require.False(t, f("some line"))
+}
