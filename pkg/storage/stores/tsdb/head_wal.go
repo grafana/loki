@@ -84,7 +84,7 @@ func (r *WALRecord) encodeChunks(b []byte) []byte {
 	return buf.Get()
 }
 
-func decodeChunks(b []byte, version RecordType, rec *WALRecord) error {
+func decodeChunks(b []byte, rec *WALRecord) error {
 	if len(b) == 0 {
 		return nil
 	}
@@ -145,7 +145,7 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 		}
 	case WalRecordChunks:
 		userID = decbuf.UvarintStr()
-		if err := decodeChunks(decbuf.B, t, walRec); err != nil {
+		if err := decodeChunks(decbuf.B, walRec); err != nil {
 			return err
 		}
 	default:
