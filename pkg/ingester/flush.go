@@ -379,7 +379,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			return err
 		}
 
-		if err := i.flushChunk(ctx, ch); err != nil {
+		if err := i.flushChunk(ctx, &ch); err != nil {
 			return err
 		}
 
@@ -392,7 +392,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			return c.reason
 		}()
 
-		i.reportFlushedChunkStatistics(ch, c, sizePerTenant, countPerTenant, reason)
+		i.reportFlushedChunkStatistics(&ch, c, sizePerTenant, countPerTenant, reason)
 	}
 
 	return nil
@@ -437,8 +437,8 @@ func (i *Ingester) encodeChunk(ctx context.Context, ch *chunk.Chunk, desc *chunk
 // If the flush is successful, metrics for this flush are to be reported.
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
 // chunk to have another opportunity to be flushed.
-func (i *Ingester) flushChunk(ctx context.Context, ch chunk.Chunk) error {
-	if err := i.store.Put(ctx, []chunk.Chunk{ch}); err != nil {
+func (i *Ingester) flushChunk(ctx context.Context, ch *chunk.Chunk) error {
+	if err := i.store.Put(ctx, []chunk.Chunk{*ch}); err != nil {
 		return fmt.Errorf("store put chunk: %w", err)
 	}
 	flushedChunksStats.Inc(1)
@@ -446,7 +446,7 @@ func (i *Ingester) flushChunk(ctx context.Context, ch chunk.Chunk) error {
 }
 
 // reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
-func (i *Ingester) reportFlushedChunkStatistics(ch chunk.Chunk, desc *chunkDesc, sizePerTenant prometheus.Counter, countPerTenant prometheus.Counter, reason string) {
+func (i *Ingester) reportFlushedChunkStatistics(ch *chunk.Chunk, desc *chunkDesc, sizePerTenant prometheus.Counter, countPerTenant prometheus.Counter, reason string) {
 	byt, err := ch.Encoded()
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to encode flushed wire chunk", "err", err)
