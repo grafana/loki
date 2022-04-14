@@ -229,7 +229,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.Schem
 			return err
 		}
 
-		if c.deleteMode != deletion.Disabled {
+		if c.deleteMode == deletion.WholeStreamDeletion || c.deleteMode == deletion.FilterOnly || c.deleteMode == deletion.FilterAndDelete {
 			deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
 			c.deleteRequestsStore, err = deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)

@@ -333,6 +333,11 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 
 		newChunkData, err := chks[0].Data.Rebound(start, end, ivf.Filter)
 		if err != nil {
+			if errors.Is(err, chunk.ErrSliceNoDataInRange) {
+				level.Info(util_log.Logger).Log("msg", "Rebound leaves an empty chunk", "chunk ref", string(ce.ChunkRef.ChunkID))
+				// skip empty chunks
+				continue
+			}
 			return false, err
 		}
 
