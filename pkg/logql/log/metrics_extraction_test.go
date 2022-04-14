@@ -192,7 +192,7 @@ func TestFilteringSampleExtractor(t *testing.T) {
 		labels labels.Labels
 		ok     bool
 	}{
-		{"it is before the timerange", 6, "line", labels.Labels{{Name: "baz", Value: "foo"}}, true},
+		{"it is after the timerange", 6, "line", labels.Labels{{Name: "baz", Value: "foo"}}, true},
 		{"it is before the timerange", 1, "line", labels.Labels{{Name: "baz", Value: "foo"}}, true},
 		{"it doesn't match the filter", 3, "all good", labels.Labels{{Name: "baz", Value: "foo"}}, true},
 		{"it doesn't match all the selectors", 3, "line", labels.Labels{{Name: "foo", Value: "bar"}}, true},

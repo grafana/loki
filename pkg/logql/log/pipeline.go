@@ -52,11 +52,11 @@ type noopStreamPipeline struct {
 	LabelsResult
 }
 
-func (n noopStreamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
+func (n noopStreamPipeline) Process(_ int64, line []byte) ([]byte, LabelsResult, bool) {
 	return line, n.LabelsResult, true
 }
 
-func (n noopStreamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
+func (n noopStreamPipeline) ProcessString(_ int64, line string) (string, LabelsResult, bool) {
 	return line, n.LabelsResult, true
 }
 
@@ -135,7 +135,7 @@ func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	return res
 }
 
-func (p *streamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
+func (p *streamPipeline) Process(_ int64, line []byte) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
 	for _, s := range p.stages {
