@@ -10,7 +10,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/tenant"
+	gerrors "github.com/pkg/errors"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
@@ -84,6 +86,7 @@ const (
 	MemberlistKV             string = "memberlist-kv"
 	Compactor                string = "compactor"
 	IndexGateway             string = "index-gateway"
+	IndexGatewayRing         string = "index-gateway-ring"
 	QueryScheduler           string = "query-scheduler"
 	All                      string = "all"
 	Read                     string = "read"
@@ -203,6 +206,12 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	// EXCEPT when running with `-target=all` or `-target=` contains `ingester`
 	if !t.Cfg.isModuleEnabled(All) && !t.Cfg.isModuleEnabled(Write) && !t.Cfg.isModuleEnabled(Ingester) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
+	}
+
+	// If the querier module is not part of this process we need to check if multi-tenant queries are enabled.
+	// If the querier module is part of this process the querier module will configure everything.
+	if !t.Cfg.isModuleEnabled(Querier) && t.Cfg.Querier.MultiTenantQueriesEnabled {
+		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	}
 
 	pushHandler := middleware.Merge(
@@ -404,7 +413,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			// and queried as part of live data until the cache TTL expires on the index entry.
 			t.Cfg.Ingester.RetainPeriod = t.Cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg) + 2*time.Minute
-		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read):
+		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.isModuleActive(IndexGateway):
 			// We do not want query to do any updates to index
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 		default:
@@ -412,6 +421,9 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg) + 2*time.Minute
 		}
 	}
+
+	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRing
 
 	var asyncStore bool
 	if config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
@@ -425,6 +437,9 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
 			// Only queriers should use the AsyncStore, it should never be used in ingesters.
 			asyncStore = true
+		case t.Cfg.isModuleEnabled(IndexGateway):
+			// we want to use the actual storage when running the index-gateway, so we remove the Addr from the config
+			t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Address = ""
 		case t.Cfg.isModuleEnabled(All):
 			// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
 			// We do not want to use AsyncStore otherwise it would start spiraling around doing queries over and over again to the ingesters and store.
@@ -760,20 +775,55 @@ func (t *Loki) initCompactor() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGateway() (services.Service, error) {
-	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
-	objectClient, err := storage.NewObjectClient(t.Cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
+	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	indexClient, err := storage.NewIndexClient(config.BoltDBShipperType, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Store, indexClient)
 	if err != nil {
 		return nil, err
 	}
 
-	shipperIndexClient, err := shipper.NewShipper(t.Cfg.StorageConfig.BoltDBShipperConfig, objectClient, t.overrides, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, err
-	}
+	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(gateway)
 
-	gateway := indexgateway.NewIndexGateway(shipperIndexClient)
 	indexgatewaypb.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
 	return gateway, nil
+}
+
+func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
+	if t.Cfg.IndexGateway.Mode != indexgateway.RingMode {
+		return
+	}
+
+	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
+	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+	ringCfg := t.Cfg.IndexGateway.Ring.ToRingConfig(t.Cfg.IndexGateway.Ring.ReplicationFactor)
+	reg := prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer)
+
+	logger := util_log.Logger
+	ringStore, err := kv.NewClient(
+		ringCfg.KVStore,
+		ring.GetCodec(),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", reg), "index-gateway"),
+		logger,
+	)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "kv new client")
+	}
+
+	t.indexGatewayRing, err = ring.NewWithStoreClientAndStrategy(
+		ringCfg, indexgateway.RingIdentifier, indexgateway.RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", reg), logger,
+	)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "new with store client and strategy")
+	}
+
+	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRing)
+	return t.indexGatewayRing, nil
 }
 
 func (t *Loki) initQueryScheduler() (services.Service, error) {
