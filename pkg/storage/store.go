@@ -180,7 +180,7 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 }
 
 func shouldUseIndexGatewayClient(cfg Config) bool {
-	if cfg.BoltDBShipperConfig.Mode != shipper.ModeReadOnly {
+	if cfg.BoltDBShipperConfig.Mode != shipper.ModeReadOnly || cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled {
 		return false
 	}
 

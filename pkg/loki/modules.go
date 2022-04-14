@@ -439,7 +439,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			asyncStore = true
 		case t.Cfg.isModuleEnabled(IndexGateway):
 			// we want to use the actual storage when running the index-gateway, so we remove the Addr from the config
-			t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Address = ""
+			t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 		case t.Cfg.isModuleEnabled(All):
 			// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
 			// We do not want to use AsyncStore otherwise it would start spiraling around doing queries over and over again to the ingesters and store.
