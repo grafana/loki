@@ -58,29 +58,14 @@ func Test_Encoding_Chunks(t *testing.T) {
 	require.Equal(t, record, decoded)
 }
 
-func Test_Encoding_StartTime(t *testing.T) {
-	record := &WALRecord{
-		StartTime: time.Now().UnixNano(),
-	}
-	buf := record.encodeStartTime(nil)
-	decoded := &WALRecord{}
-
-	err := decodeWALRecord(buf, decoded)
-	require.Nil(t, err)
-	require.Equal(t, record, decoded)
-}
-
 func Test_HeadWALLog(t *testing.T) {
 	dir := t.TempDir()
-	start := time.Now()
-	w, err := newHeadWAL(log.NewNopLogger(), dir)
+	w, err := newHeadWAL(log.NewNopLogger(), dir, time.Now())
 	require.Nil(t, err)
-	require.Nil(t, w.Start(start))
 
 	newSeries := &WALRecord{
-		UserID:    "foo",
-		StartTime: 0,
-		Series:    record.RefSeries{Ref: 1, Labels: mustParseLabels(`{foo="bar"}`)},
+		UserID: "foo",
+		Series: record.RefSeries{Ref: 1, Labels: mustParseLabels(`{foo="bar"}`)},
 		Chks: ChunkMetasRecord{
 			Chks: []index.ChunkMeta{
 				{
@@ -97,8 +82,7 @@ func Test_HeadWALLog(t *testing.T) {
 	require.Nil(t, w.Log(newSeries))
 
 	chunksOnly := &WALRecord{
-		UserID:    "foo",
-		StartTime: 0,
+		UserID: "foo",
 		Chks: ChunkMetasRecord{
 			Chks: []index.ChunkMeta{
 				{

@@ -163,11 +163,12 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 // the headWAL, unlike Head, is multi-tenant. This is just to avoid the need to maintain
 // an open segment per tenant (potentially thousands of them)
 type headWAL struct {
-	log log.Logger
-	wal *wal.WAL
+	initialized time.Time
+	log         log.Logger
+	wal         *wal.WAL
 }
 
-func newHeadWAL(log log.Logger, dir string) (*headWAL, error) {
+func newHeadWAL(log log.Logger, dir string, t time.Time) (*headWAL, error) {
 	// NB: if we use a non-nil Prometheus Registerer, ensure
 	// that the underlying metrics won't conflict with existing WAL metrics in the ingester.
 	// Likely, this can be done by adding extra label(s)
@@ -177,8 +178,9 @@ func newHeadWAL(log log.Logger, dir string) (*headWAL, error) {
 	}
 
 	return &headWAL{
-		log: log,
-		wal: wal,
+		initialized: t,
+		log:         log,
+		wal:         wal,
 	}, nil
 }
 

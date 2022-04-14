@@ -13,6 +13,7 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
@@ -36,24 +37,6 @@ and exposes the index interface for multiple tenants.
 It also handles updating an underlying WAL and periodically
 rotates both the tenant Heads and the underlying WAL, using
 the old versions to build + upload TSDB files.
-
-The basic algorithm is:
-# Initialization
-- clear scratch dir
-- remove any old shipped TSDBs
-- get list of all WALs
-  - Build/ship a TSDB for anything before currPeriod
-    - Delete WALs after
-  - Recover currPeriod WALs into memory.
-  - Load currPeriod-1 from TSDB dir
-
-# Rotation
-- if currPeriod > activePeriod,
-  - create new wal+tenantHeads, make it active
-  - push old into prev
-  - build tsdb from prev
-    - under mtx, load tsdb-prev from file instead of tenantHeads and remove prev.
-  - remove any older tsdbs than activePeriod-1
 
 On disk, it looks like:
 
@@ -91,8 +74,8 @@ type HeadManager struct {
 	// how often WALs should be rotated and TSDBs cut
 	period time.Duration
 
-	tsdbManager TSDBManager
-	active      *headWAL
+	tsdbManager  TSDBManager
+	active, prev *headWAL
 
 	shards                 int
 	activeHeads, prevHeads *tenantHeads
@@ -116,9 +99,10 @@ func NewHeadManager(log log.Logger, dir string, reg prometheus.Registerer, name 
 
 func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
 	m.mtx.RLock()
-	if m.PeriodFor(time.Now()) > m.PeriodFor(m.activeHeads.start) {
+	now := time.Now()
+	if m.PeriodFor(now) > m.PeriodFor(m.activeHeads.start) {
 		m.mtx.RUnlock()
-		if err := m.Rotate(); err != nil {
+		if err := m.Rotate(now); err != nil {
 			return errors.Wrap(err, "rotating TSDB Head")
 		}
 		m.mtx.RLock()
@@ -190,7 +174,7 @@ func (m *HeadManager) Start() error {
 	}
 
 	nextWALPath := m.walPath(now)
-	nextWAL, err := newHeadWAL(m.log, nextWALPath)
+	nextWAL, err := newHeadWAL(m.log, nextWALPath, now)
 	if err != nil {
 		return errors.Wrapf(err, "creating tsdb wal: %s", nextWALPath)
 	}
@@ -212,8 +196,66 @@ func (m *HeadManager) walDir() string     { return filepath.Join(m.dir, "wal") }
 func (m *HeadManager) builtDir() string   { return filepath.Join(m.dir, "multitenant", "built") }
 func (m *HeadManager) shippedDir() string { return filepath.Join(m.dir, "multitenant", "shipped") }
 
-func (m *HeadManager) Rotate() error {
-	panic("unimplemented")
+func (m *HeadManager) Rotate(t time.Time) error {
+	// create new wal
+	nextWALPath := m.walPath(t)
+	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
+	if err != nil {
+		return errors.Wrapf(err, "creating tsdb wal: %s during rotation", nextWALPath)
+	}
+
+	// create new tenant heads
+	nextHeads := newTenantHeads(t, m.shards, m.metrics, m.log)
+
+	stopPrev := func(s string) {
+		if m.prev != nil {
+			if err := m.prev.Stop(); err != nil {
+				level.Error(m.log).Log(
+					"msg", "failed stopping wal",
+					"period", m.PeriodFor(m.prev.initialized),
+					"err", err,
+					"wal", s,
+				)
+			}
+		}
+	}
+
+	stopPrev("previous cycle") // stop the previous wal if it hasn't been cleaned up yet
+	m.mtx.Lock()
+	m.prev = m.active
+	m.prevHeads = m.activeHeads
+	m.active = nextWAL
+	m.activeHeads = nextHeads
+	m.mtx.Unlock()
+	stopPrev("freshly rotated") // stop the newly rotated-out wal
+
+	// build tsdb from rotated-out period
+	grp, _, err := m.walsForPeriod(m.PeriodFor(m.prev.initialized))
+	if err != nil {
+		return errors.Wrap(err, "listing wals")
+	}
+
+	// TODO(owen-d): It's probably faster to build this from the *tenantHeads instead,
+	// but we already need to impl BuildFromWALs to ensure we can correctly build/ship
+	// TSDBs from orphaned WALs of previous periods during startup.
+	// we use the m.prev.initialized timestamp here for the filename to ensure it can't clobber
+	// an existing file from a previous cycle. I don't think this is possible, but
+	// perhaps in some unusual crashlooping it could be, so let's be safe and protect ourselves.
+	if err := m.tsdbManager.BuildFromWALs(m.prev.initialized, grp.wals); err != nil {
+		return errors.Wrapf(err, "building TSDB from prevHeads WALs for period %d", grp.period)
+	}
+
+	// Now that a TSDB has been created from this group, it's safe to remove them
+	if err := m.removeWALGroup(grp); err != nil {
+		return errors.Wrapf(err, "removing prev TSDB WALs for period %d", grp.period)
+	}
+
+	// Now that the tsdbManager has the updated TSDBs, we can remove our references
+	m.mtx.Lock()
+	m.prevHeads = nil
+	m.prev = nil
+	m.mtx.Unlock()
+	return nil
 }
 
 func (m *HeadManager) shippedTSDBsBeforePeriod(period int) (res []string, err error) {
@@ -237,6 +279,23 @@ type walGroup struct {
 }
 
 func (m *HeadManager) walsByPeriod() ([]walGroup, error) {
+
+	groupsMap, err := m.walGroups()
+	if err != nil {
+		return nil, err
+	}
+	res := make([]walGroup, 0, len(groupsMap))
+	for _, grp := range groupsMap {
+		res = append(res, *grp)
+	}
+	// Ensure the earliers periods are seen first
+	sort.Slice(res, func(i, j int) bool {
+		return res[i].period < res[j].period
+	})
+	return res, nil
+}
+
+func (m *HeadManager) walGroups() (map[int]*walGroup, error) {
 	files, err := ioutil.ReadDir(m.walDir())
 	if err != nil {
 		return nil, err
@@ -258,19 +317,27 @@ func (m *HeadManager) walsByPeriod() ([]walGroup, error) {
 		}
 	}
 
-	res := make([]walGroup, 0, len(groupsMap))
 	for _, grp := range groupsMap {
 		// Ensure the earliest wals are seen first
 		sort.Slice(grp.wals, func(i, j int) bool {
 			return grp.wals[i].ts.Before(grp.wals[j].ts)
 		})
-		res = append(res, *grp)
 	}
-	// Ensure the earliers periods are seen first
-	sort.Slice(res, func(i, j int) bool {
-		return res[i].period < res[j].period
-	})
-	return res, nil
+	return groupsMap, nil
+}
+
+func (m *HeadManager) walsForPeriod(period int) (walGroup, bool, error) {
+	groupsMap, err := m.walGroups()
+	if err != nil {
+		return walGroup{}, false, err
+	}
+
+	grp, ok := groupsMap[period]
+	if !ok {
+		return walGroup{}, false, nil
+	}
+
+	return *grp, true, nil
 }
 
 func (m *HeadManager) removeWALGroup(grp walGroup) error {
@@ -344,6 +411,7 @@ func (m *HeadManager) recoverHead(grp walGroup) error {
 			)
 		}
 	}
+	return nil
 }
 
 type WALIdentifier struct {
