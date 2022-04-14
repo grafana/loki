@@ -70,7 +70,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Validate validates the config.
 func (cfg *Config) Validate() error {
 	if cfg.QueryStoreOnly && cfg.QueryIngesterOnly {
-		return errors.New("querier.query_store_only and querier.query_store_only cannot both be true")
+		return errors.New("querier.query_store_only and querier.query_ingester_only cannot both be true")
 	}
 	return nil
 }

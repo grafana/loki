@@ -108,7 +108,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 		},
 	}
 
-	gateway := gateway{}
+	gateway := Gateway{}
 	responseSizes := []int{0, 99, maxIndexEntriesPerResponse, 2 * maxIndexEntriesPerResponse, 5*maxIndexEntriesPerResponse - 1}
 	for i, responseSize := range responseSizes {
 		query := index.Query{
@@ -128,7 +128,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 		}
 		expectedQueryKey = util.QueryKey(query)
 
-		gateway.indexQuerier = mockIndexClient{response: &mockBatch{size: responseSize}}
+		gateway.indexClient = mockIndexClient{response: &mockBatch{size: responseSize}}
 		err := gateway.QueryIndex(&indexgatewaypb.QueryIndexRequest{Queries: []*indexgatewaypb.IndexQuery{{
 			TableName:        query.TableName,
 			HashValue:        query.HashValue,

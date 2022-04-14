@@ -131,7 +131,7 @@ type Writer struct {
 	labelIndexes []labelIndexHashEntry // Label index offsets.
 	labelNames   map[string]uint64     // Label names, and their usage.
 	// Keeps track of the fingerprint/offset for every n series
-	fingerprintOffsets fingerprintOffsets
+	fingerprintOffsets FingerprintOffsets
 
 	// Hold last series to validate that clients insert new series in order.
 	lastSeries labels.Labels
@@ -1149,7 +1149,7 @@ type Reader struct {
 	nameSymbols map[uint32]string // Cache of the label name symbol lookups,
 	// as there are not many and they are half of all lookups.
 
-	fingerprintOffsets fingerprintOffsets
+	fingerprintOffsets FingerprintOffsets
 
 	dec *Decoder
 
@@ -1522,10 +1522,10 @@ func ReadOffsetTable(bs ByteSlice, off uint64, f func([]string, uint64, int) err
 	return d.Err()
 }
 
-func ReadFingerprintOffsetsTable(bs ByteSlice, off uint64) (fingerprintOffsets, error) {
+func ReadFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, error) {
 	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable))
 	cnt := d.Be32()
-	res := make(fingerprintOffsets, 0, int(cnt))
+	res := make(FingerprintOffsets, 0, int(cnt))
 
 	for d.Err() == nil && d.Len() > 0 && cnt > 0 {
 		res = append(res, [2]uint64{d.Be64(), d.Be64()})
@@ -1824,7 +1824,7 @@ func (r *Reader) Postings(name string, shard *ShardAnnotation, values ...string)
 
 	merged := Merge(res...)
 	if shard != nil {
-		return newShardedPostings(merged, *shard, r.fingerprintOffsets), nil
+		return NewShardedPostings(merged, *shard, r.fingerprintOffsets), nil
 	}
 
 	return merged, nil

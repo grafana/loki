@@ -7,15 +7,15 @@ resources:
 # Adds namespace to all resources.
 namespace: default
 
-# Labels to add to all resources and selectors.
-#commonLabels:
-#  someName: someValue
-commonLabels:
-  app.kubernetes.io/name: loki-operator
-  app.kubernetes.io/instance: loki-operator-v0.0.1
-  app.kubernetes.io/version: "0.0.1"
-  app.kubernetes.io/part-of: loki-operator
-  app.kubernetes.io/managed-by: operator-lifecycle-manager
+labels:
+- pairs:
+    app.kubernetes.io/name: loki-operator
+    app.kubernetes.io/part-of: loki-operator
+    app.kubernetes.io/managed-by: operator-lifecycle-manager
+  includeSelectors: true
+- pairs:
+    app.kubernetes.io/instance: loki-operator-v0.0.1
+    app.kubernetes.io/version: "0.0.1"
 
 patchesStrategicMerge:
 - manager_related_image_patch.yaml

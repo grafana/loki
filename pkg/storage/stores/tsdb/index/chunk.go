@@ -26,6 +26,28 @@ type ChunkMetas []ChunkMeta
 
 func (c ChunkMetas) Len() int      { return len(c) }
 func (c ChunkMetas) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
+func (c ChunkMetas) Bounds() (mint, maxt model.Time) {
+	ln := len(c)
+	if ln == 0 {
+		return
+	}
+
+	mint, maxt = model.Time(c[0].MinTime), model.Time(c[ln-1].MaxTime)
+	// even when sorted, we need to check all chunks for maxt
+	// since we sort by (min, max, checksum). Therefore
+	// check mint here as well to ensure this works on unordered ChunkMetas too
+	for _, chk := range c {
+		from, through := chk.Bounds()
+		if mint > from {
+			mint = from
+		}
+
+		if maxt < through {
+			maxt = through
+		}
+	}
+	return
+}
 
 // Sort by (MinTime, MaxTime, Checksum)
 func (c ChunkMetas) Less(i, j int) bool {

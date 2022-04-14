@@ -1,9 +1,6 @@
 package gcp
 
 import (
-	"context"
-	"crypto/tls"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -14,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/api/option"
-	google_http "google.golang.org/api/transport/http"
 	"google.golang.org/grpc"
 )
 
@@ -51,43 +47,14 @@ func bigtableInstrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClie
 		}
 }
 
-func gcsInstrumentation(ctx context.Context, scope string, insecure bool, http2 bool) (*http.Client, error) {
-	customTransport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          200,
-		MaxIdleConnsPerHost:   200,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-	if !http2 {
-		// disable HTTP/2 by setting TLSNextProto to non-nil empty map, as per the net/http documentation.
-		// see http2 section of https://pkg.go.dev/net/http
-		customTransport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
-		customTransport.ForceAttemptHTTP2 = false
-	}
-	transportOptions := []option.ClientOption{option.WithScopes(scope)}
-	if insecure {
-		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-		// When using `insecure` (testing only), we add a fake API key as well to skip credential chain lookups.
-		transportOptions = append(transportOptions, option.WithAPIKey("insecure"))
-	}
-	transport, err := google_http.NewTransport(ctx, customTransport, transportOptions...)
-	if err != nil {
-		return nil, err
-	}
+func gcsInstrumentation(transport http.RoundTripper) *http.Client {
 	client := &http.Client{
 		Transport: instrumentedTransport{
 			observer: gcsRequestDuration,
 			next:     transport,
 		},
 	}
-	return client, nil
+	return client
 }
 
 func toOptions(opts []grpc.DialOption) []option.ClientOption {
