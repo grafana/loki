@@ -225,6 +225,7 @@ type Loki struct {
 	ModuleManager *modules.Manager
 	serviceMap    map[string]services.Service
 	deps          map[string][]string
+	SignalHandler *signals.Handler
 
 	Server                   *server.Server
 	ring                     *ring.Ring
@@ -391,9 +392,9 @@ func (t *Loki) Run(opts RunOpts) error {
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
 
 	// Setup signal handler. If signal arrives, we stop the manager, which stops all the services.
-	handler := signals.NewHandler(t.Server.Log)
+	t.SignalHandler = signals.NewHandler(t.Server.Log)
 	go func() {
-		handler.Loop()
+		t.SignalHandler.Loop()
 		sm.StopAsync()
 	}()
 
