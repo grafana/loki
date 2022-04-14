@@ -43,8 +43,11 @@ On disk, it looks like:
 tsdb/
      # scratch directory used for temp tsdb files during build stage
      scratch/
+	 # wal directory used to store WALs being written on the ingester.
+	 # These are eventually shipped to storage as multi-tenant TSDB files
+	 # and compacted into per tenant indices
      wal/
-		 <timestamp>-<ingester-name>
+		 <timestamp>
 	 # multitenant tsdb files which are created on the ingesters/shipped
      multitenant/
 	             # contains built TSDBs
@@ -352,7 +355,7 @@ func (m *HeadManager) removeWALGroup(grp walGroup) error {
 func (m *HeadManager) walPath(t time.Time) string {
 	return filepath.Join(
 		m.walDir(),
-		fmt.Sprintf("%d-%s", t.Unix(), m.name),
+		fmt.Sprintf("%d", t.Unix()),
 	)
 }
 
@@ -415,31 +418,23 @@ func (m *HeadManager) recoverHead(grp walGroup) error {
 }
 
 type WALIdentifier struct {
-	nodeName string
-	ts       time.Time
+	ts time.Time
 }
-type MultitenantTSDBIdentifier WALIdentifier
 
 func parseWALPath(p string) (id WALIdentifier, ok bool) {
-	xs := strings.Split(p, "-")
-	if len(xs) != 2 {
-		return
-	}
-
-	// require node name isn't empty
-	if len(xs[1]) == 0 {
-		return
-	}
-
-	period, err := strconv.Atoi(xs[0])
+	ts, err := strconv.Atoi(p)
 	if err != nil {
 		return
 	}
 
 	return WALIdentifier{
-		ts:       time.Unix(int64(period), 0),
-		nodeName: xs[1],
+		ts: time.Unix(int64(ts), 0),
 	}, true
+}
+
+type MultitenantTSDBIdentifier struct {
+	nodeName string
+	ts       time.Time
 }
 
 func parseTSDBPath(p string) (id MultitenantTSDBIdentifier, ok bool) {
@@ -450,10 +445,25 @@ func parseTSDBPath(p string) (id MultitenantTSDBIdentifier, ok bool) {
 		return
 	}
 
-	if found, ok := parseWALPath(trimmed); ok {
-		return MultitenantTSDBIdentifier(found), true
+	xs := strings.Split(trimmed, "-")
+	if len(xs) != 2 {
+		return
 	}
-	return
+
+	// require node name isn't empty
+	if len(xs[1]) == 0 {
+		return
+	}
+
+	ts, err := strconv.Atoi(xs[0])
+	if err != nil {
+		return
+	}
+
+	return MultitenantTSDBIdentifier{
+		ts:       time.Unix(int64(ts), 0),
+		nodeName: xs[1],
+	}, true
 }
 
 type tenantHeads struct {
