@@ -372,6 +372,10 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       depends_on: ['clone'],
     }],
   ),
+  volumes: [{
+    name: 'dockerconf',
+    temp: {},
+  }],
   depends_on: [
     'lambda-promtail-%s' % arch
     for arch in archs
