@@ -420,7 +420,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		)
 
 		level.Info(util_log.Logger).Log("msg", "recovering from WAL")
-		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
+		segmentReader, segmentCloser, err := NewWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
 		}

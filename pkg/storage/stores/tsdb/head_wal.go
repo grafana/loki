@@ -42,10 +42,9 @@ const (
 )
 
 type WALRecord struct {
-	UserID    string
-	StartTime int64 // UnixNano
-	Series    record.RefSeries
-	Chks      ChunkMetasRecord
+	UserID string
+	Series record.RefSeries
+	Chks   ChunkMetasRecord
 }
 
 type ChunkMetasRecord struct {
@@ -121,19 +120,6 @@ func decodeChunks(b []byte, version RecordType, rec *WALRecord) error {
 	return nil
 }
 
-func (r *WALRecord) encodeStartTime(b []byte) []byte {
-	buf := encoding.EncWith(b)
-	buf.PutByte(byte(WALRecordFirstWrite))
-	buf.PutBE64int64(r.StartTime)
-	return buf.Get()
-}
-
-func decodeStartTime(b []byte, rec *WALRecord) error {
-	dec := encoding.DecWith(b)
-	rec.StartTime = dec.Be64int64()
-	return dec.Err()
-}
-
 func decodeWALRecord(b []byte, walRec *WALRecord) error {
 	var (
 		userID string
@@ -144,10 +130,6 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 	)
 
 	switch t {
-	case WALRecordFirstWrite:
-		if err := decodeStartTime(decbuf.B, walRec); err != nil {
-			return errors.Wrap(err, "decoding tsdb wal start time")
-		}
 	case WalRecordSeries:
 		userID = decbuf.UvarintStr()
 		rSeries, err := dec.Series(decbuf.B, nil)
@@ -181,9 +163,8 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 // the headWAL, unlike Head, is multi-tenant. This is just to avoid the need to maintain
 // an open segment per tenant (potentially thousands of them)
 type headWAL struct {
-	start time.Time
-	log   log.Logger
-	wal   *wal.WAL
+	log log.Logger
+	wal *wal.WAL
 }
 
 func newHeadWAL(log log.Logger, dir string) (*headWAL, error) {
@@ -201,12 +182,6 @@ func newHeadWAL(log log.Logger, dir string) (*headWAL, error) {
 	}, nil
 }
 
-// Start logs a record containing the time at which this WAL became active.
-func (w *headWAL) Start(t time.Time) error {
-	w.start = t
-	return w.Log(&WALRecord{StartTime: t.UnixNano()})
-}
-
 func (w *headWAL) Stop() error {
 	return w.wal.Close()
 }
@@ -217,16 +192,6 @@ func (w *headWAL) Log(record *WALRecord) error {
 	}
 
 	var buf []byte
-
-	// This only happens once when the wal is first written to.
-	// It could be refactored out of this function to avoid cpu cycles,
-	// but this is simpler and not on the hot path, so I've (owen-d) kept it.
-	if record.StartTime != 0 {
-		buf = record.encodeStartTime(buf[:0])
-		if err := w.wal.Log(buf); err != nil {
-			return err
-		}
-	}
 
 	// Always write series before chunks
 	if len(record.Series.Labels) > 0 {

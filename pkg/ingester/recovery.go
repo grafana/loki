@@ -31,7 +31,7 @@ func (NoopWALReader) Record() []byte { return nil }
 func (NoopWALReader) Close() error   { return nil }
 
 // If startSegment is <0, it means all the segments.
-func newWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) {
+func NewWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) {
 	var (
 		segmentReader io.ReadCloser
 		err           error
