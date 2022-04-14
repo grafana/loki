@@ -54,7 +54,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Distributor')
                           .addPanel(
                             $.panel('QPS') +
-                            $.qpsPanel('loki_request_duration_seconds_count{%s route=~"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
+                            $.qpsPanel('loki_request_duration_seconds_count{%s, route=~"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
                           )
                           .addPanel(
                             $.panel('Latency') +
