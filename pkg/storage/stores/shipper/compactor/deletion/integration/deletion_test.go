@@ -289,8 +289,8 @@ func TestFilterOnlyMonolithCompactor(t *testing.T) {
 	}
 
 	var (
-		tAll       = cluster.addComponent("all", append(flags, "-target=all")...)
-		tCompactor = cluster.addComponent("compactor", append(flags, "-target=compactor")...)
+		tAll = cluster.addComponent("all", append(flags, "-target=all")...)
+		//		tCompactor = cluster.addComponent("compactor", append(flags, "-target=compactor")...)
 	)
 
 	require.NoError(t, cluster.run())
@@ -326,7 +326,7 @@ func TestFilterOnlyMonolithCompactor(t *testing.T) {
 
 	// request a deletion
 	t.Run("request-deletion", func(t *testing.T) {
-		reqU, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d/loki/api/v1/delete", tCompactor.httpPort))
+		reqU, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d/loki/api/v1/delete", tAll.httpPort))
 		reqQ := reqU.Query()
 		reqQ.Set("query", `{job="fake"}`) // TODO support a real filter with  |= lineA`)
 		// TODO: Investigate why this is not nano seconds as for querying
@@ -337,6 +337,14 @@ func TestFilterOnlyMonolithCompactor(t *testing.T) {
 		resp, err := http.Post(reqU.String(), "", nil)
 		require.NoError(t, err)
 		assert.Equal(t, 204, resp.StatusCode)
+
+		reqU.RawQuery = ""
+		resp, err = http.Get(reqU.String())
+		assert.Equal(t, 200, resp.StatusCode)
+
+		body, err := ioutil.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Equal(t, "", string(body))
 	})
 
 	// TODO: do not sleep
