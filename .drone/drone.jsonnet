@@ -256,14 +256,14 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
 local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
-    lambda_promtail_ecr('lambda-promtail') {
-      depends_on: ['image-tag'],
-      when: condition('exclude').tagMain,
-      settings+: {
-        dry_run: true,
-      },
-    },
-  ] + [
+    // lambda_promtail_ecr('lambda-promtail') {
+    //   depends_on: ['image-tag'],
+    //   when: condition('exclude').tagMain,
+    //   settings+: {
+    //     dry_run: true,
+    //   },
+    // },
+  // ] + [
     // publish for tag or main
     lambda_promtail_ecr('lambda-promtail') {
       depends_on: ['image-tag'],
@@ -493,6 +493,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
+          'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
         ],
         depends_on: ['clone'],

@@ -968,6 +968,7 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  - echo $(./tools/image-tag)
   - echo $(./tools/image-tag) > .tag
   depends_on:
   - clone
@@ -1032,27 +1033,6 @@ steps:
 - depends_on:
   - image-tag
   image: cstyan/ecr
-  name: build-lambda-promtail-image
-  privileged: true
-  settings:
-    access_key:
-      from_secret: ecr_key
-    dockerfile: tools/lambda-promtail/Dockerfile
-    dry_run: true
-    region: us-east-1
-    registry: public.ecr.aws/grafana
-    repo: public.ecr.aws/grafana/lambda-promtail
-    secret_key:
-      from_secret: ecr_secret_key
-  when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k??
-      - refs/tags/v*
-- depends_on:
-  - image-tag
-  image: cstyan/ecr
   name: publish-lambda-promtail-image
   privileged: true
   settings:
@@ -1085,27 +1065,6 @@ steps:
   - echo $(./tools/image-tag)-arm64 > .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: cstyan/ecr
-  name: build-lambda-promtail-image
-  privileged: true
-  settings:
-    access_key:
-      from_secret: ecr_key
-    dockerfile: tools/lambda-promtail/Dockerfile
-    dry_run: true
-    region: us-east-1
-    registry: public.ecr.aws/grafana
-    repo: public.ecr.aws/grafana/lambda-promtail
-    secret_key:
-      from_secret: ecr_secret_key
-  when:
-    ref:
-      exclude:
-      - refs/heads/main
-      - refs/heads/k??
-      - refs/tags/v*
 - depends_on:
   - image-tag
   image: cstyan/ecr
@@ -1213,6 +1172,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: e98ddc9174d237a28edf544b30008645e2732b57640af1835c383c87bcd48dc9
+hmac: e26d025503f2d6b6e3aed4ea3396dcbf45a0c332e30b93a968f2bca517e52385
 
 ...
