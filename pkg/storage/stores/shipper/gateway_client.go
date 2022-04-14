@@ -63,6 +63,10 @@ type IndexGatewayClientConfig struct {
 	//
 	// Only relevant for the simple mode.
 	Address string `yaml:"server_address,omitempty"`
+
+	// Forcefully disable the use of the index gateway client for the storage.
+	// This is mainly useful for the index-gateway component which should always use the storage.
+	Disabled bool `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
