@@ -832,7 +832,7 @@ func (x seriesRefSlice) Len() int           { return len(x) }
 func (x seriesRefSlice) Less(i, j int) bool { return x[i] < x[j] }
 func (x seriesRefSlice) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 
-type shardedPostings struct {
+type ShardedPostings struct {
 	p                    Postings
 	minOffset, maxOffset uint64
 	initialized          bool
@@ -845,9 +845,9 @@ type shardedPostings struct {
 // For example (below), given a shard, we'll likely return a slight superset of offsets surrounding the shard.
 // ---[shard0]--- # Shard membership
 // -[--shard0--]- # Series returned by shardedPostings
-func newShardedPostings(p Postings, shard ShardAnnotation, offsets fingerprintOffsets) *shardedPostings {
+func NewShardedPostings(p Postings, shard ShardAnnotation, offsets FingerprintOffsets) *ShardedPostings {
 	min, max := offsets.Range(shard)
-	return &shardedPostings{
+	return &ShardedPostings{
 		p:         p,
 		minOffset: min,
 		maxOffset: max,
@@ -855,7 +855,7 @@ func newShardedPostings(p Postings, shard ShardAnnotation, offsets fingerprintOf
 }
 
 // Next advances the iterator and returns true if another value was found.
-func (sp *shardedPostings) Next() bool {
+func (sp *ShardedPostings) Next() bool {
 	// fast forward to the point we know we'll have to start checking
 	if !sp.initialized {
 		sp.initialized = true
@@ -880,7 +880,7 @@ func (sp *shardedPostings) Next() bool {
 
 // Seek advances the iterator to value v or greater and returns
 // true if a value was found.
-func (sp *shardedPostings) Seek(v storage.SeriesRef) (res bool) {
+func (sp *ShardedPostings) Seek(v storage.SeriesRef) (res bool) {
 	if v > storage.SeriesRef(sp.maxOffset) {
 		return false
 	}
@@ -891,11 +891,11 @@ func (sp *shardedPostings) Seek(v storage.SeriesRef) (res bool) {
 }
 
 // At returns the value at the current iterator position.
-func (sp *shardedPostings) At() storage.SeriesRef {
+func (sp *ShardedPostings) At() storage.SeriesRef {
 	return sp.p.At()
 }
 
 // Err returns the last error of the iterator.
-func (sp *shardedPostings) Err() (err error) {
+func (sp *ShardedPostings) Err() (err error) {
 	return sp.p.Err()
 }

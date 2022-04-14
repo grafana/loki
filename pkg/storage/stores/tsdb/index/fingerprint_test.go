@@ -9,7 +9,7 @@ import (
 )
 
 func Test_FingerprintOffsetRange(t *testing.T) {
-	offsets := fingerprintOffsets{
+	offsets := FingerprintOffsets{
 		{1, 1},       // 00 prefix
 		{2, 1 << 62}, // 01 prefix
 		{3, 1 << 63}, // 10 prefix
