@@ -17,7 +17,7 @@ type Entry struct {
 
 type InstrumentedEntryHandler interface {
 	EntryHandler
-	UnregisterLatencyMetric(prometheus.Labels)
+	UnregisterLatencyMetric(prometheus.Labels) bool
 }
 
 // EntryHandler is something that can "handle" entries via a channel.

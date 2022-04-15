@@ -494,3 +494,39 @@ func Test_Tripperware(t *testing.T) {
 	c.Stop()
 	require.True(t, called)
 }
+
+func Test_UnregisterLatencyMetric(t *testing.T) {
+	// Start a local HTTP server
+	server := httptest.NewServer(createServerHandler(nil, 1))
+	require.NotNil(t, server)
+	defer server.Close()
+
+	// Get the URL at which the local test server is listening to
+	serverURL := flagext.URLValue{}
+	err := serverURL.Set(server.URL)
+	require.NoError(t, err)
+
+	cfg := Config{
+		URL: serverURL,
+		// BatchWait:      testData.clientBatchWait,
+		// BatchSize:      testData.clientBatchSize,
+		Client: config.HTTPClientConfig{},
+		// BackoffConfig:  backoff.Config{MinBackoff: 1 * time.Millisecond, MaxBackoff: 2 * time.Millisecond, MaxRetries: testData.clientMaxRetries},
+		ExternalLabels: lokiflag.LabelSet{},
+		Timeout:        1 * time.Second,
+		TenantID:       "asdf",
+	}
+	reg := prometheus.NewRegistry()
+	// imitate a pod label via the stream lag labels
+	m := NewMetrics(reg, []string{"filename", "pod"})
+	c, err := New(m, cfg, nil, log.NewNopLogger())
+	require.NoError(t, err)
+
+	ls := prometheus.Labels{"filename": "test", "client": c.Name(), "host": cfg.URL.Host, "pod": "test-pod"}
+	m.streamLag.With(ls).Add(1234)
+	require.Equal(t, float64(1234), testutil.ToFloat64(m.streamLag.With(ls)))
+	c.(*client).streamLagMetricsMap["test"+c.Name()+cfg.URL.Host] = ls
+	if h, ok := c.(api.InstrumentedEntryHandler); ok {
+		require.True(t, h.UnregisterLatencyMetric(prometheus.Labels{"filename": "test", "client": c.Name(), "host": cfg.URL.Host}))
+	}
+}

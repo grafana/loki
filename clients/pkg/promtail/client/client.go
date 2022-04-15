@@ -139,13 +139,16 @@ type Client interface {
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
 type client struct {
-	name            string
-	metrics         *Metrics
-	streamLagLabels []string
-	logger          log.Logger
-	cfg             Config
-	client          *http.Client
-	entries         chan api.Entry
+	name    string
+	metrics *Metrics
+	// TODO: callum, replace with new client_golang functionality `DeletePartialMatch(labels Labels)`
+	// once https://github.com/prometheus/client_golang/pull/1013 is merged.
+	streamLagMetricsMap map[string]prometheus.Labels
+	streamLagLabels     []string
+	logger              log.Logger
+	cfg                 Config
+	client              *http.Client
+	entries             chan api.Entry
 
 	once sync.Once
 	wg   sync.WaitGroup
@@ -174,12 +177,13 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger lo
 	ctx, cancel := context.WithCancel(context.Background())
 
 	c := &client{
-		logger:          log.With(logger, "component", "client", "host", cfg.URL.Host),
-		cfg:             cfg,
-		entries:         make(chan api.Entry),
-		metrics:         metrics,
-		streamLagLabels: streamLagLabels,
-		name:            asSha256(cfg),
+		logger:              log.With(logger, "component", "client", "host", cfg.URL.Host),
+		cfg:                 cfg,
+		entries:             make(chan api.Entry),
+		metrics:             metrics,
+		streamLagMetricsMap: make(map[string]prometheus.Labels),
+		streamLagLabels:     streamLagLabels,
+		name:                asSha256(cfg),
 
 		externalLabels: cfg.ExternalLabels.LabelSet,
 		ctx:            ctx,
@@ -352,6 +356,8 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					// also set client name since if we have multiple promtail clients configured we will run into a
 					// duplicate metric collected with same labels error when trying to hit the /metrics endpoint
 					lblSet[ClientLabel] = c.name
+					key := lblSet["filename"] + c.cfg.URL.Host + c.name
+					c.streamLagMetricsMap[key] = lblSet
 					c.metrics.streamLag.With(lblSet).Set(time.Since(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
 				}
 			}
@@ -451,9 +457,18 @@ func (c *client) processEntry(e api.Entry) (api.Entry, string) {
 	return e, tenantID
 }
 
-func (c *client) UnregisterLatencyMetric(labels prometheus.Labels) {
-	labels[HostLabel] = c.cfg.URL.Host
-	c.metrics.streamLag.Delete(labels)
+func (c *client) UnregisterLatencyMetric(labels prometheus.Labels) bool {
+	key := labels["filename"] + c.name + c.cfg.URL.Host
+	lset, ok := c.streamLagMetricsMap[key]
+	if !ok {
+		level.Debug(c.logger).Log("msg", "no stream lag metric found", "filename", labels["filename"], "client", c.name, "host", c.cfg.URL.Host)
+		return false
+	}
+	if !c.metrics.streamLag.Delete(lset) {
+		level.Debug(c.logger).Log("msg", "no stream lag metric deleted, mismatch between stored metrics map and client library registered metrics", "filename", labels["filename"], "client", c.name, "host", c.cfg.URL.Host)
+		return false
+	}
+	return true
 }
 
 func (c *client) Name() string {
