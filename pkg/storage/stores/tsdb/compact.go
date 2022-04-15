@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -29,18 +30,29 @@ func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res ind
 		return indices[0].Identifier(c.tenant), nil
 	}
 
+	ifcs := make([]Index, 0, len(indices))
+	for _, idx := range indices {
+		ifcs = append(ifcs, idx)
+	}
+
 	b := index.NewBuilder()
-	multi, err := NewMultiIndex(indices...)
+	multi, err := NewMultiIndex(ifcs...)
 	if err != nil {
 		return res, err
 	}
 
+	// TODO(owen-d): introduce parallelism
+	// Until then,
 	// Instead of using the MultiIndex.forIndices helper, we loop over each sub-index manually.
 	// The index builder is single threaded, so we avoid races.
 	// Additionally, this increases the likelihood we add chunks in order
 	// by processing the indices in ascending order.
 	for _, idx := range multi.indices {
-		if err := idx.forSeries(
+		casted, ok := idx.(*TSDBIndex)
+		if !ok {
+			return index.Identifier{}, fmt.Errorf("expected tsdb index to compact, found :%T", idx)
+		}
+		if err := casted.forSeries(
 			nil,
 			func(ls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) {
 				// AddSeries copies chks into it's own slice
