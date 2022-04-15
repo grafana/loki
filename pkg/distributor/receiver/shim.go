@@ -81,7 +81,6 @@ func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat 
 	otlpLabels["messaging_rocketmq_message_tag"] = 1
 	otlpLabels["messaging_rocketmq_message_type"] = 1
 
-
 	shim := &receiversShim{
 		pusher:       pusher,
 		format:       receiverFormat,
@@ -268,7 +267,7 @@ func parseTrace(otlpLabels map[string]int, ld pdata.Traces, format string) (*log
 			logs := ill.At(i).Spans()
 			for k := 0; k < logs.Len(); k++ {
 				pLog := logs.At(k)
-				labels := parseLabel(otlpLabels, rs.Resource().Attributes(), pLog.Attributes())
+				labels := parseLabel(otlpLabels, rs.Resource().Attributes(), pLog.Attributes(), pLog.Status().Code().String())
 				entry, err := parseEntry(pLog, format, rs.Resource().Attributes())
 				if err != nil {
 					return nil, err
@@ -383,8 +382,10 @@ func parseAttrs(attr pdata.AttributeMap) map[string]string {
 	return labelMap
 }
 
-func parseLabel(otlpLabels map[string]int, resource pdata.AttributeMap, attr pdata.AttributeMap) string {
+func parseLabel(otlpLabels map[string]int, resource pdata.AttributeMap, attr pdata.AttributeMap, statusCode string) string {
 	labelMap := make([]string, 0)
+	key := sanitizeLabelKey("status_code")
+	labelMap = append(labelMap, fmt.Sprintf("%s=%q", key, statusCode))
 	resource.Range(func(key string, attr pdata.AttributeValue) bool {
 		key = sanitizeLabelKey(key)
 		_, ok := otlpLabels[key]
