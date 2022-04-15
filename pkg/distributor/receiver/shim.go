@@ -77,8 +77,10 @@ func (r *receiversShim) Capabilities() consumer.Capabilities {
 func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat string, receiverDrainTimeout time.Duration, middleware Middleware, logLevel logging.Level) (services.Service, error) {
 	otlpLabels := make(map[string]int)
 	otlpLabels["service_name"] = 1
+	otlpLabels["status_code"] = 1
 	otlpLabels["messaging_rocketmq_message_tag"] = 1
 	otlpLabels["messaging_rocketmq_message_type"] = 1
+
 
 	shim := &receiversShim{
 		pusher:       pusher,
