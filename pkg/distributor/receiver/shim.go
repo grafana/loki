@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/logging"
+	"github.com/weaveworks/common/user"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configunmarshaler"
@@ -224,6 +225,16 @@ func (r *receiversShim) ConsumeTraces(ctx context.Context, td pdata.Traces) erro
 	}
 
 	start := time.Now()
+
+	tenantIdVal := ctx.Value(user.OrgIDHeaderName)
+	if tenantIdVal == nil {
+		tenantIdVal = ctx.Value("X-Scope-Orgid")
+		if tenantIdVal != nil {
+			tenantId := (tenantIdVal.([]string))[0]
+			ctx = user.InjectOrgID(ctx, tenantId)
+		}
+	}
+
 	_, err = r.pusher.Push(ctx, req)
 	metricPushDuration.Observe(time.Since(start).Seconds())
 	if err != nil {
