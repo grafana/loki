@@ -32,6 +32,11 @@ type period time.Duration
 
 const defaultRotationPeriod = period(15 * time.Minute)
 
+// TenantLabel is part of the reserved label namespace (__ prefix)
+// It's used to create multi-tenant TSDBs (which do not have a tenancy concept)
+// These labels are stripped out during compaction to single-tenant TSDBs
+const TenantLabel = "__loki_tenant__"
+
 // Do not specify without bit shifting. This allows us to
 // do shard index calcuations via bitwise & rather than modulos.
 const defaultHeadManagerStripeSize = 1 << 7
@@ -73,7 +78,7 @@ type HeadManager struct {
 	name    string
 	log     log.Logger
 	dir     string
-	metrics *HeadMetrics
+	metrics *Metrics
 
 	// RLocked for all writes/reads,
 	// Locked before rotating heads/wal
@@ -181,7 +186,7 @@ func (m *HeadManager) Start() error {
 		}
 
 		if group.period == curPeriod {
-			if err := m.recoverHead(group); err != nil {
+			if err := recoverHead(m.dir, m.activeHeads, group, false); err != nil {
 				return errors.Wrap(err, "recovering tsdb head from wal")
 			}
 		}
@@ -390,12 +395,12 @@ func walPath(parent string, t time.Time) string {
 
 // recoverHead recovers from all WALs belonging to some period
 // and inserts it into the active *tenantHeads
-func (m *HeadManager) recoverHead(grp walGroup) error {
+func recoverHead(dir string, heads *tenantHeads, grp walGroup, addTenantLabels bool) error {
 	for _, id := range grp.wals {
 
 		// use anonymous function for ease of cleanup
 		if err := func(id WALIdentifier) error {
-			reader, closer, err := ingester.NewWalReader(walPath(m.dir, id.ts), -1)
+			reader, closer, err := ingester.NewWalReader(walPath(dir, id.ts), -1)
 			if err != nil {
 				return err
 			}
@@ -430,7 +435,7 @@ func (m *HeadManager) recoverHead(grp walGroup) error {
 					if !ok {
 						return errors.New("found tsdb chunk metas without series in WAL replay")
 					}
-					_ = m.activeHeads.Append(rec.UserID, ls, rec.Chks.Chks)
+					_ = heads.Append(rec.UserID, ls, rec.Chks.Chks)
 				}
 			}
 			return reader.Err()
@@ -502,10 +507,10 @@ type tenantHeads struct {
 	locks   []sync.RWMutex
 	tenants []map[string]*Head
 	log     log.Logger
-	metrics *HeadMetrics
+	metrics *Metrics
 }
 
-func newTenantHeads(start time.Time, shards int, metrics *HeadMetrics, log log.Logger) *tenantHeads {
+func newTenantHeads(start time.Time, shards int, metrics *Metrics, log log.Logger) *tenantHeads {
 	res := &tenantHeads{
 		start:   start,
 		shards:  shards,

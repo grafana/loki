@@ -184,7 +184,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	require.Nil(t, err)
 	require.True(t, ok)
 	require.Equal(t, 1, len(grp.wals))
-	require.Nil(t, mgr.recoverHead(grp))
+	require.Nil(t, recoverHead(mgr.dir, mgr.activeHeads, grp, false))
 
 	for _, c := range cases {
 		idx, err := mgr.Index()

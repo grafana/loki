@@ -55,12 +55,12 @@ guaranteeing we maintain querying consistency for the entire data lifecycle.
 */
 
 // TODO(owen-d)
-type HeadMetrics struct {
+type Metrics struct {
 	seriesNotFound prometheus.Counter
 }
 
-func NewHeadMetrics(r prometheus.Registerer) *HeadMetrics {
-	return &HeadMetrics{
+func NewHeadMetrics(r prometheus.Registerer) *Metrics {
+	return &Metrics{
 		seriesNotFound: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_tsdb_head_series_not_found_total",
 			Help: "Total number of requests for series that were not found.",
@@ -77,7 +77,7 @@ type Head struct {
 	// in the MemPostings, but is eventually discarded when we create a real TSDB index.
 	lastSeriesID atomic.Uint64
 
-	metrics *HeadMetrics
+	metrics *Metrics
 	logger  log.Logger
 
 	series *stripeSeries
@@ -88,7 +88,7 @@ type Head struct {
 	closed    bool
 }
 
-func NewHead(tenant string, metrics *HeadMetrics, logger log.Logger) *Head {
+func NewHead(tenant string, metrics *Metrics, logger log.Logger) *Head {
 	return &Head{
 		tenant:    tenant,
 		metrics:   metrics,
