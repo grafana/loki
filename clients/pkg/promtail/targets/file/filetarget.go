@@ -69,6 +69,7 @@ type FileTarget struct {
 	targetEventHandler chan fileTargetEvent
 	watches            map[string]struct{}
 	path               string
+	pathExclude        string
 	quit               chan struct{}
 	done               chan struct{}
 
@@ -84,6 +85,7 @@ func NewFileTarget(
 	handler api.EntryHandler,
 	positions positions.Positions,
 	path string,
+	pathExclude string,
 	labels model.LabelSet,
 	discoveredLabels model.LabelSet,
 	targetConfig *Config,
@@ -94,6 +96,7 @@ func NewFileTarget(
 		logger:             logger,
 		metrics:            metrics,
 		path:               path,
+		pathExclude:        pathExclude,
 		labels:             labels,
 		discoveredLabels:   discoveredLabels,
 		handler:            api.AddLabelsMiddleware(labels).Wrap(handler),
@@ -184,7 +187,7 @@ func (t *FileTarget) run() {
 }
 
 func (t *FileTarget) sync() error {
-	var matches []string
+	var matches, matchesExcluded []string
 	if fi, err := os.Stat(t.path); err == nil && !fi.IsDir() {
 		// if the path points to a file that exists, then it we can skip the Glob search
 		matches = []string{t.path}
@@ -194,10 +197,23 @@ func (t *FileTarget) sync() error {
 		if err != nil {
 			return errors.Wrap(err, "filetarget.sync.filepath.Glob")
 		}
+
+		matchesExcluded, err = doublestar.Glob(t.pathExclude)
+		if err != nil {
+			return errors.Wrap(err, "filetarget.sync.filepath.Glob")
+		}
+		for i := 0; i < len(matchesExcluded); i++ {
+			for j := 0; j < len(matches); j++ {
+				if matchesExcluded[i] == matches[j] {
+					// exclude this specific match
+					matches = append(matches[:j], matches[j+1:]...)
+				}
+			}
+		}
 	}
 
 	if len(matches) == 0 {
-		level.Debug(t.logger).Log("msg", "no files matched requested path, nothing will be tailed", "path", t.path)
+		level.Debug(t.logger).Log("msg", "no files matched requested path, nothing will be tailed", "path", t.path, "pathExclude", t.pathExclude)
 	}
 
 	// Gets absolute path for each pattern.
