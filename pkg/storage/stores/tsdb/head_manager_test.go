@@ -153,7 +153,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, "tsdb-mgr-test", noopTSDBManager{})
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
-	for _, d := range mgr.RequiredDirs() {
+	for _, d := range managerRequiredDirs(dir) {
 		require.Nil(t, util.EnsureDirectory(d))
 	}
 

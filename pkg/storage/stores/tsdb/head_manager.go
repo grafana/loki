@@ -137,7 +137,7 @@ func (m *HeadManager) Start() error {
 		return errors.Wrap(err, "removing tsdb scratch dir")
 	}
 
-	for _, d := range m.RequiredDirs() {
+	for _, d := range managerRequiredDirs(m.dir) {
 		if err := util.EnsureDirectory(d); err != nil {
 			return errors.Wrapf(err, "ensuring required directory exists: %s", d)
 		}
@@ -195,18 +195,18 @@ func (m *HeadManager) Start() error {
 	return nil
 }
 
-func (m *HeadManager) RequiredDirs() []string {
+func managerRequiredDirs(parent string) []string {
 	return []string{
-		m.scratchDir(),
-		m.walDir(),
-		m.builtDir(),
-		m.shippedDir(),
+		managerScratchDir(parent),
+		managerWalDir(parent),
+		managerBuiltDir(parent),
+		managerShippedDir(parent),
 	}
 }
-func (m *HeadManager) scratchDir() string { return filepath.Join(m.dir, "scratch") }
-func (m *HeadManager) walDir() string     { return filepath.Join(m.dir, "wal") }
-func (m *HeadManager) builtDir() string   { return filepath.Join(m.dir, "multitenant", "built") }
-func (m *HeadManager) shippedDir() string { return filepath.Join(m.dir, "multitenant", "shipped") }
+func managerScratchDir(parent string) string { return filepath.Join(parent, "scratch") }
+func managerWalDir(parent string) string     { return filepath.Join(parent, "wal") }
+func managerBuiltDir(parent string) string   { return filepath.Join(parent, "multitenant", "built") }
+func managerShippedDir(parent string) string { return filepath.Join(parent, "multitenant", "shipped") }
 
 func (m *HeadManager) Rotate(t time.Time) error {
 	// create new wal
@@ -289,7 +289,7 @@ func (m *HeadManager) Index() (Index, error) {
 }
 
 func (m *HeadManager) shippedTSDBsBeforePeriod(period int) (res []string, err error) {
-	files, err := ioutil.ReadDir(m.shippedDir())
+	files, err := ioutil.ReadDir(managerShippedDir(m.dir))
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +326,7 @@ func (m *HeadManager) walsByPeriod() ([]walGroup, error) {
 }
 
 func (m *HeadManager) walGroups() (map[int]*walGroup, error) {
-	files, err := ioutil.ReadDir(m.walDir())
+	files, err := ioutil.ReadDir(managerWalDir(m.dir))
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +381,7 @@ func (m *HeadManager) removeWALGroup(grp walGroup) error {
 
 func (m *HeadManager) walPath(t time.Time) string {
 	return filepath.Join(
-		m.walDir(),
+		managerWalDir(m.dir),
 		fmt.Sprintf("%d", t.Unix()),
 	)
 }
