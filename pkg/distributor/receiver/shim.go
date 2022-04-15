@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/dskit/services"
 	zaplogfmt "github.com/jsternberg/zap-logfmt"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	prom_client "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sirupsen/logrus"
@@ -226,12 +227,14 @@ func (r *receiversShim) ConsumeTraces(ctx context.Context, td pdata.Traces) erro
 
 	start := time.Now()
 
+	tenantId := ""
 	tenantIdVal := ctx.Value(user.OrgIDHeaderName)
 	if tenantIdVal == nil {
 		tenantIdVal = ctx.Value("X-Scope-Orgid")
 		if tenantIdVal != nil {
-			tenantId := (tenantIdVal.([]string))[0]
+			tenantId = (tenantIdVal.([]string))[0]
 			ctx = user.InjectOrgID(ctx, tenantId)
+			ctx = user.InjectUserID(ctx, tenantId)
 		}
 	}
 
@@ -239,9 +242,10 @@ func (r *receiversShim) ConsumeTraces(ctx context.Context, td pdata.Traces) erro
 	metricPushDuration.Observe(time.Since(start).Seconds())
 	if err != nil {
 		r.logger.Log("msg", "pusher failed to consume trace data", "err", err)
+		return errors.New("pusher failed to consume trace data,err:" + err.Error() + ",tenantId:" + tenantId)
 	}
 
-	return err
+	return nil
 }
 
 func parseTrace(ld pdata.Traces, format string) (*logproto.PushRequest, error) {
