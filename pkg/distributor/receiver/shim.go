@@ -85,6 +85,7 @@ func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat 
 		format:       receiverFormat,
 		logger:       util_log.Logger,
 		drainTimeout: receiverDrainTimeout,
+		otlpLabels:   otlpLabels,
 	}
 
 	zapLogger := newLogger(logLevel)
