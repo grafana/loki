@@ -1,6 +1,7 @@
 package tsdb
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -16,9 +17,11 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
@@ -261,6 +264,21 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	return nil
 }
 
+func (m *HeadManager) Index() (Index, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	indices := []Index{m.tsdbManager}
+	if m.prev != nil {
+		indices = append(indices, m.prevHeads)
+	}
+	if m.active != nil {
+		indices = append(indices, m.activeHeads)
+	}
+
+	return NewMultiIndex(indices...)
+}
+
 func (m *HeadManager) shippedTSDBsBeforePeriod(period int) (res []string, err error) {
 	files, err := ioutil.ReadDir(m.shippedDir())
 	if err != nil {
@@ -467,6 +485,8 @@ func parseTSDBPath(p string) (id MultitenantTSDBIdentifier, ok bool) {
 }
 
 type tenantHeads struct {
+	mint, maxt atomic.Int64 // easy lookup for Bounds() impl
+
 	start   time.Time
 	shards  int
 	locks   []sync.RWMutex
@@ -491,7 +511,19 @@ func newTenantHeads(start time.Time, shards int, metrics *HeadMetrics, log log.L
 }
 
 func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMetas) *WALRecord {
-	idx := xxhash.Sum64String(userID) & uint64(t.shards-1)
+	idx := t.shardForTenant(userID)
+
+	var mint, maxt int64
+	for _, chk := range chks {
+		if chk.MinTime < mint || mint == 0 {
+			mint = chk.MinTime
+		}
+
+		if chk.MaxTime > maxt {
+			maxt = chk.MaxTime
+		}
+	}
+	updateMintMaxt(mint, maxt, &t.mint, &t.maxt)
 
 	// First, check if this tenant has been created
 	var (
@@ -529,4 +561,66 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	}
 
 	return rec
+}
+
+func (t *tenantHeads) shardForTenant(userID string) uint64 {
+	return xxhash.Sum64String(userID) & uint64(t.shards-1)
+}
+
+func (t *tenantHeads) Bounds() (model.Time, model.Time) {
+	return model.Time(t.mint.Load()), model.Time(t.maxt.Load())
+}
+
+func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx Index, unlock func(), ok bool) {
+	i := t.shardForTenant(userID)
+	t.locks[i].RLock()
+	tenant, ok := t.tenants[i][userID]
+	if !ok {
+		t.locks[i].RUnlock()
+		return
+	}
+
+	return NewTSDBIndex(tenant.indexRange(int64(from), int64(through))), t.locks[i].RUnlock, true
+
+}
+
+func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	if !ok {
+		return nil, nil
+	}
+	defer unlock()
+	return idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+
+}
+
+// Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
+func (t *tenantHeads) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	if !ok {
+		return nil, nil
+	}
+	defer unlock()
+	return idx.Series(ctx, userID, from, through, nil, shard, matchers...)
+
+}
+
+func (t *tenantHeads) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	if !ok {
+		return nil, nil
+	}
+	defer unlock()
+	return idx.LabelNames(ctx, userID, from, through, matchers...)
+
+}
+
+func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
+	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	if !ok {
+		return nil, nil
+	}
+	defer unlock()
+	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
+
 }

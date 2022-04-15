@@ -110,22 +110,23 @@ func (h *Head) MaxTime() int64 {
 	return h.maxTime.Load()
 }
 
-func (h *Head) updateMinMaxTime(mint, maxt int64) {
+// Will CAS until successfully updates bounds or the condition is no longer valid
+func updateMintMaxt(mint, maxt int64, mintSrc, maxtSrc *atomic.Int64) {
 	for {
-		lt := h.MinTime()
-		if mint >= lt {
+		lt := mintSrc.Load()
+		if mint >= lt && lt != 0 {
 			break
 		}
-		if h.minTime.CAS(lt, mint) {
+		if mintSrc.CAS(lt, mint) {
 			break
 		}
 	}
 	for {
-		ht := h.MaxTime()
+		ht := maxtSrc.Load()
 		if maxt <= ht {
 			break
 		}
-		if h.maxTime.CAS(ht, maxt) {
+		if maxtSrc.CAS(ht, maxt) {
 			break
 		}
 	}
@@ -139,7 +140,7 @@ func (h *Head) Append(ls labels.Labels, chks index.ChunkMetas) (created bool, re
 		id = h.lastSeriesID.Inc()
 		return newMemSeries(id, ls)
 	})
-	h.updateMinMaxTime(int64(from), int64(through))
+	updateMintMaxt(int64(from), int64(through), &h.minTime, &h.maxTime)
 
 	if !created {
 		return
