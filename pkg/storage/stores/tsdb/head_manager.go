@@ -103,6 +103,12 @@ func NewHeadManager(log log.Logger, dir string, reg prometheus.Registerer, name 
 
 }
 
+func (m *HeadManager) Stop() error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return m.active.Stop()
+}
+
 func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
 	m.mtx.RLock()
 	now := time.Now()

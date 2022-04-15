@@ -48,3 +48,21 @@ type Index interface {
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
 }
+
+type NoopIndex struct{}
+
+func (NoopIndex) Bounds() (from, through model.Time) { return }
+func (NoopIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+	return nil, nil
+}
+
+// Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
+func (NoopIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+	return nil, nil
+}
+func (NoopIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+	return nil, nil
+}
+func (NoopIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
+	return nil, nil
+}
