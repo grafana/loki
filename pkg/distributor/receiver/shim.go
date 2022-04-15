@@ -64,6 +64,8 @@ type receiversShim struct {
 	logger       log.Logger
 	format       string
 	drainTimeout time.Duration
+
+	otlpLabels map[string]int
 }
 
 func (r *receiversShim) Capabilities() consumer.Capabilities {
@@ -73,6 +75,11 @@ func (r *receiversShim) Capabilities() consumer.Capabilities {
 // New
 // handler "/v1/logs" go.opentelemetry.io/collector/receiver/otlpreceiver/otlp.go:229
 func New(receiverCfg map[string]interface{}, pusher BatchPusher, receiverFormat string, receiverDrainTimeout time.Duration, middleware Middleware, logLevel logging.Level) (services.Service, error) {
+	otlpLabels := make(map[string]int)
+	otlpLabels["service_name"] = 1
+	otlpLabels["messaging_rocketmq_message_tag"] = 1
+	otlpLabels["messaging_rocketmq_message_type"] = 1
+
 	shim := &receiversShim{
 		pusher:       pusher,
 		format:       receiverFormat,
@@ -220,7 +227,7 @@ func (r *receiversShim) stopping(_ error) error {
 func (r *receiversShim) ConsumeTraces(ctx context.Context, td pdata.Traces) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "distributor.ConsumeTraces")
 	defer span.Finish()
-	req, err := parseTrace(td, r.format)
+	req, err := parseTrace(r.otlpLabels, td, r.format)
 	if err != nil {
 		level.Error(r.logger).Log("msg", "pusher failed to parse trace data", "err", err)
 	}
@@ -248,7 +255,7 @@ func (r *receiversShim) ConsumeTraces(ctx context.Context, td pdata.Traces) erro
 	return nil
 }
 
-func parseTrace(ld pdata.Traces, format string) (*logproto.PushRequest, error) {
+func parseTrace(otlpLabels map[string]int, ld pdata.Traces, format string) (*logproto.PushRequest, error) {
 	streams := make(map[string]*logproto.Stream)
 	rss := ld.ResourceSpans()
 	for i := 0; i < rss.Len(); i++ {
@@ -258,8 +265,8 @@ func parseTrace(ld pdata.Traces, format string) (*logproto.PushRequest, error) {
 			logs := ill.At(i).Spans()
 			for k := 0; k < logs.Len(); k++ {
 				pLog := logs.At(k)
-				labels := parseLabel(rs.Resource().Attributes(), pLog.Attributes())
-				entry, err := parseEntry(pLog, format)
+				labels := parseLabel(otlpLabels, rs.Resource().Attributes(), pLog.Attributes())
+				entry, err := parseEntry(pLog, format, rs.Resource().Attributes())
 				if err != nil {
 					return nil, err
 				}
@@ -286,7 +293,7 @@ func parseTrace(ld pdata.Traces, format string) (*logproto.PushRequest, error) {
 	return req, nil
 }
 
-func parseEntry(pLog pdata.Span, format string) (*logproto.Entry, error) {
+func parseEntry(pLog pdata.Span, format string, resourceAttr pdata.AttributeMap) (*logproto.Entry, error) {
 	var line string
 	if format == LogFormatLogfmt {
 		records := make(map[string]interface{})
@@ -339,23 +346,14 @@ func parseEntry(pLog pdata.Span, format string) (*logproto.Entry, error) {
 			EndTime:      pLog.EndTimestamp().String(),
 			Duration:     pLog.EndTimestamp() - pLog.StartTimestamp(),
 		}
-
-		maxEvents := 3
+		record.SpanAttrs = parseAttrs(pLog.Attributes())
+		record.ResourceAttrs = parseAttrs(resourceAttr)
+		events := make(map[string]map[string]string)
 		for i := 0; i < pLog.Events().Len(); i++ {
-			if i >= maxEvents {
-				break
-			}
 			event := pLog.Events().At(i)
-			spanEvent := Span_Event{Name: event.Name(), Timestamp: event.Timestamp()}
-			if i == 0 {
-				record.Event1 = spanEvent
-			} else if i == 1 {
-				record.Event2 = spanEvent
-			} else if i == 2 {
-				record.Event3 = spanEvent
-			}
-
+			events[event.Name()] = parseAttrs(resourceAttr)
 		}
+		record.Events = events
 
 		data, err := json.Marshal(&record)
 		if err != nil {
@@ -372,16 +370,32 @@ func parseEntry(pLog pdata.Span, format string) (*logproto.Entry, error) {
 	}, nil
 }
 
-func parseLabel(resource pdata.AttributeMap, attr pdata.AttributeMap) string {
+func parseAttrs(attr pdata.AttributeMap) map[string]string {
+	labelMap := make(map[string]string)
+	attr.Range(func(key string, attr pdata.AttributeValue) bool {
+		key = sanitizeLabelKey(key)
+		labelMap[key] = attr.AsString()
+		return true
+	})
+	return labelMap
+}
+
+func parseLabel(otlpLabels map[string]int, resource pdata.AttributeMap, attr pdata.AttributeMap) string {
 	labelMap := make([]string, 0)
 	resource.Range(func(key string, attr pdata.AttributeValue) bool {
 		key = sanitizeLabelKey(key)
-		labelMap = append(labelMap, fmt.Sprintf("%s=%q", key, attr.AsString()))
+		_, ok := otlpLabels[key]
+		if ok {
+			labelMap = append(labelMap, fmt.Sprintf("%s=%q", key, attr.AsString()))
+		}
 		return true
 	})
 	attr.Range(func(key string, attr pdata.AttributeValue) bool {
 		key = sanitizeLabelKey(key)
-		labelMap = append(labelMap, fmt.Sprintf("%s=%q", key, attr.AsString()))
+		_, ok := otlpLabels[key]
+		if ok {
+			labelMap = append(labelMap, fmt.Sprintf("%s=%q", key, attr.AsString()))
+		}
 		return true
 	})
 	sort.Strings(labelMap)
@@ -410,20 +424,20 @@ func (r *receiversShim) GetExporters() map[config.DataType]map[config.ComponentI
 }
 
 type LokiTraceRecord struct {
-	TraceID      string           `json:"trace_id"`
-	SpanID       string           `json:"span_id"`
-	Name         string           `json:"name"`
-	ParentSpanId string           `json:"parent_span_id"`
-	StatusCode   string           `json:"status_code"`
-	StatusMsg    string           `json:"status_msg"`
-	TraceState   pdata.TraceState `json:"trace_state"`
-	Kind         string           `json:"kind"`
-	StartTime    string           `json:"start_time"`
-	EndTime      string           `json:"end_time"`
-	Duration     pdata.Timestamp  `json:"duration"`
-	Event1       Span_Event       `json:"event1"`
-	Event2       Span_Event       `json:"event2"`
-	Event3       Span_Event       `json:"event3"`
+	TraceID       string                       `json:"trace_id"`
+	SpanID        string                       `json:"span_id"`
+	Name          string                       `json:"name"`
+	ParentSpanId  string                       `json:"parent_span_id"`
+	StatusCode    string                       `json:"status_code"`
+	StatusMsg     string                       `json:"status_msg"`
+	TraceState    pdata.TraceState             `json:"trace_state"`
+	Kind          string                       `json:"kind"`
+	StartTime     string                       `json:"start_time"`
+	EndTime       string                       `json:"end_time"`
+	Duration      pdata.Timestamp              `json:"duration"`
+	Events        map[string]map[string]string `json:"events"`
+	ResourceAttrs map[string]string            `json:"resource_attrs"`
+	SpanAttrs     map[string]string            `json:"span_attrs"`
 }
 
 type Span_Event struct {
