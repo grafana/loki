@@ -3,7 +3,6 @@ package tsdb
 import (
 	"context"
 	"errors"
-	"sort"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -20,17 +19,6 @@ func NewMultiIndex(indices ...Index) (*MultiIndex, error) {
 	if len(indices) == 0 {
 		return nil, errors.New("must supply at least one index")
 	}
-
-	sort.Slice(indices, func(i, j int) bool {
-		aFrom, aThrough := indices[i].Bounds()
-		bFrom, bThrough := indices[j].Bounds()
-
-		if aFrom != bFrom {
-			return aFrom < bFrom
-		}
-		// tiebreaker uses through
-		return aThrough <= bThrough
-	})
 
 	return &MultiIndex{indices: indices}, nil
 }
