@@ -22,6 +22,8 @@ type Middleware interface {
 	Wrap(consumer.Traces) consumer.Traces
 }
 
+var OtlpAuthMultiTenant Middleware = &multiTenancyMiddleware{}
+
 type MiddlewareFunc func(consumer.Traces) consumer.Traces
 
 // Wrap implements Interface
@@ -56,7 +58,7 @@ func (m *fakeTenantMiddleware) Wrap(next consumer.Traces) consumer.Traces {
 type multiTenancyMiddleware struct{}
 
 func MultiTenancyMiddleware() Middleware {
-	return &multiTenancyMiddleware{}
+	return OtlpAuthMultiTenant
 }
 
 func (m *multiTenancyMiddleware) Wrap(next consumer.Traces) consumer.Traces {
