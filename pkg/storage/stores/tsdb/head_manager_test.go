@@ -180,7 +180,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 
 	require.Nil(t, w.Stop())
 
-	grp, ok, err := mgr.walsForPeriod(mgr.PeriodFor(now))
+	grp, ok, err := mgr.walsForPeriod(mgr.period.PeriodFor(now))
 	require.Nil(t, err)
 	require.True(t, ok)
 	require.Equal(t, 1, len(grp.wals))

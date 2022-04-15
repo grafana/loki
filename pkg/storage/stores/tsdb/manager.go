@@ -17,4 +17,6 @@ tsdbManager is responsible for:
  * Keeping them available for querying
  * Removing old TSDBs which are no longer needed
 */
-type tsdbManager struct{}
+type tsdbManager struct {
+	period time.Duration // period to retain old tsdbs
+}

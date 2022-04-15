@@ -28,7 +28,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
-const defaultRotationPeriod = 15 * time.Minute
+type period time.Duration
+
+const defaultRotationPeriod = period(15 * time.Minute)
 
 // Do not specify without bit shifting. This allows us to
 // do shard index calcuations via bitwise & rather than modulos.
@@ -78,7 +80,7 @@ type HeadManager struct {
 	mtx sync.RWMutex
 
 	// how often WALs should be rotated and TSDBs cut
-	period time.Duration
+	period period
 
 	tsdbManager  TSDBManager
 	active, prev *headWAL
@@ -112,7 +114,7 @@ func (m *HeadManager) Stop() error {
 func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
 	m.mtx.RLock()
 	now := time.Now()
-	if m.PeriodFor(now) > m.PeriodFor(m.activeHeads.start) {
+	if m.period.PeriodFor(now) > m.period.PeriodFor(m.activeHeads.start) {
 		m.mtx.RUnlock()
 		if err := m.Rotate(now); err != nil {
 			return errors.Wrap(err, "rotating TSDB Head")
@@ -124,12 +126,12 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	return m.active.Log(rec)
 }
 
-func (m *HeadManager) PeriodFor(t time.Time) int {
-	return int(t.UnixNano() / int64(m.period))
+func (p period) PeriodFor(t time.Time) int {
+	return int(t.UnixNano() / int64(p))
 }
 
-func (m *HeadManager) TimeForPeriod(period int) time.Time {
-	return time.Unix(0, int64(m.period)*int64(period))
+func (p period) TimeForPeriod(n int) time.Time {
+	return time.Unix(0, int64(p)*int64(n))
 }
 
 func (m *HeadManager) Start() error {
@@ -144,7 +146,7 @@ func (m *HeadManager) Start() error {
 	}
 
 	now := time.Now()
-	curPeriod := m.PeriodFor(now)
+	curPeriod := m.period.PeriodFor(now)
 
 	toRemove, err := m.shippedTSDBsBeforePeriod(curPeriod)
 	if err != nil {
@@ -167,7 +169,7 @@ func (m *HeadManager) Start() error {
 	for _, group := range walsByPeriod {
 		if group.period < (curPeriod) {
 			if err := m.tsdbManager.BuildFromWALs(
-				m.TimeForPeriod(group.period),
+				m.period.TimeForPeriod(group.period),
 				group.wals,
 			); err != nil {
 				return errors.Wrap(err, "building tsdb")
@@ -224,7 +226,7 @@ func (m *HeadManager) Rotate(t time.Time) error {
 			if err := m.prev.Stop(); err != nil {
 				level.Error(m.log).Log(
 					"msg", "failed stopping wal",
-					"period", m.PeriodFor(m.prev.initialized),
+					"period", m.period.PeriodFor(m.prev.initialized),
 					"err", err,
 					"wal", s,
 				)
@@ -243,7 +245,7 @@ func (m *HeadManager) Rotate(t time.Time) error {
 
 	// build tsdb from rotated-out period
 	if m.prev != nil {
-		grp, _, err := m.walsForPeriod(m.PeriodFor(m.prev.initialized))
+		grp, _, err := m.walsForPeriod(m.period.PeriodFor(m.prev.initialized))
 		if err != nil {
 			return errors.Wrap(err, "listing wals")
 		}
@@ -295,7 +297,7 @@ func (m *HeadManager) shippedTSDBsBeforePeriod(period int) (res []string, err er
 	}
 	for _, f := range files {
 		if id, ok := parseTSDBPath(f.Name()); ok {
-			if found := m.PeriodFor(id.ts); found < period {
+			if found := m.period.PeriodFor(id.ts); found < period {
 				res = append(res, f.Name())
 			}
 		}
@@ -335,7 +337,7 @@ func (m *HeadManager) walGroups() (map[int]*walGroup, error) {
 
 	for _, f := range files {
 		if id, ok := parseWALPath(f.Name()); ok {
-			pd := m.PeriodFor(id.ts)
+			pd := m.period.PeriodFor(id.ts)
 			grp, ok := groupsMap[pd]
 			if !ok {
 				grp = &walGroup{
