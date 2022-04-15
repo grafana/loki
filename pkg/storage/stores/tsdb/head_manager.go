@@ -186,7 +186,7 @@ func (m *HeadManager) Start() error {
 		}
 
 		if group.period == curPeriod {
-			if err := recoverHead(m.dir, m.activeHeads, group, false); err != nil {
+			if err := recoverHead(m.dir, m.activeHeads, group.wals, false); err != nil {
 				return errors.Wrap(err, "recovering tsdb head from wal")
 			}
 		}
@@ -310,18 +310,18 @@ func (m *HeadManager) shippedTSDBsBeforePeriod(period int) (res []string, err er
 	return
 }
 
-type walGroup struct {
+type WalGroup struct {
 	period int
 	wals   []WALIdentifier
 }
 
-func (m *HeadManager) walsByPeriod() ([]walGroup, error) {
+func (m *HeadManager) walsByPeriod() ([]WalGroup, error) {
 
 	groupsMap, err := m.walGroups()
 	if err != nil {
 		return nil, err
 	}
-	res := make([]walGroup, 0, len(groupsMap))
+	res := make([]WalGroup, 0, len(groupsMap))
 	for _, grp := range groupsMap {
 		res = append(res, *grp)
 	}
@@ -332,20 +332,20 @@ func (m *HeadManager) walsByPeriod() ([]walGroup, error) {
 	return res, nil
 }
 
-func (m *HeadManager) walGroups() (map[int]*walGroup, error) {
+func (m *HeadManager) walGroups() (map[int]*WalGroup, error) {
 	files, err := ioutil.ReadDir(managerWalDir(m.dir))
 	if err != nil {
 		return nil, err
 	}
 
-	groupsMap := map[int]*walGroup{}
+	groupsMap := map[int]*WalGroup{}
 
 	for _, f := range files {
 		if id, ok := parseWALPath(f.Name()); ok {
 			pd := m.period.PeriodFor(id.ts)
 			grp, ok := groupsMap[pd]
 			if !ok {
-				grp = &walGroup{
+				grp = &WalGroup{
 					period: pd,
 				}
 				groupsMap[pd] = grp
@@ -363,21 +363,21 @@ func (m *HeadManager) walGroups() (map[int]*walGroup, error) {
 	return groupsMap, nil
 }
 
-func (m *HeadManager) walsForPeriod(period int) (walGroup, bool, error) {
+func (m *HeadManager) walsForPeriod(period int) (WalGroup, bool, error) {
 	groupsMap, err := m.walGroups()
 	if err != nil {
-		return walGroup{}, false, err
+		return WalGroup{}, false, err
 	}
 
 	grp, ok := groupsMap[period]
 	if !ok {
-		return walGroup{}, false, nil
+		return WalGroup{}, false, nil
 	}
 
 	return *grp, true, nil
 }
 
-func (m *HeadManager) removeWALGroup(grp walGroup) error {
+func (m *HeadManager) removeWALGroup(grp WalGroup) error {
 	for _, wal := range grp.wals {
 		if err := os.RemoveAll(walPath(m.dir, wal.ts)); err != nil {
 			return errors.Wrapf(err, "removing tsdb wal: %s", walPath(m.dir, wal.ts))
@@ -395,8 +395,8 @@ func walPath(parent string, t time.Time) string {
 
 // recoverHead recovers from all WALs belonging to some period
 // and inserts it into the active *tenantHeads
-func recoverHead(dir string, heads *tenantHeads, grp walGroup, addTenantLabels bool) error {
-	for _, id := range grp.wals {
+func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier, addTenantLabels bool) error {
+	for _, id := range wals {
 
 		// use anonymous function for ease of cleanup
 		if err := func(id WALIdentifier) error {
@@ -435,6 +435,12 @@ func recoverHead(dir string, heads *tenantHeads, grp walGroup, addTenantLabels b
 					if !ok {
 						return errors.New("found tsdb chunk metas without series in WAL replay")
 					}
+					if addTenantLabels {
+						ls = append(ls, labels.Label{
+							Name:  TenantLabel,
+							Value: rec.UserID,
+						})
+					}
 					_ = heads.Append(rec.UserID, ls, rec.Chks.Chks)
 				}
 			}
@@ -468,6 +474,10 @@ func parseWALPath(p string) (id WALIdentifier, ok bool) {
 type MultitenantTSDBIdentifier struct {
 	nodeName string
 	ts       time.Time
+}
+
+func (id MultitenantTSDBIdentifier) Name() string {
+	return fmt.Sprintf("%d-%s.tsdb", id.ts.Unix(), id.nodeName)
 }
 
 func parseTSDBPath(p string) (id MultitenantTSDBIdentifier, ok bool) {
@@ -638,4 +648,43 @@ func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, thro
 	defer unlock()
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 
+}
+
+// helper only used in building TSDBs
+func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.ChunkMetas)) error {
+	for i, shard := range t.tenants {
+		t.locks[i].RLock()
+		defer t.locks[i].RUnlock()
+
+		var (
+			ls   labels.Labels
+			chks []index.ChunkMeta
+		)
+
+		for user, tenant := range shard {
+			idx := tenant.Index()
+			ps, err := postingsForMatcher(idx, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+			if err != nil {
+				return err
+			}
+
+			for ps.Next() {
+				_, err := idx.Series(ps.At(), &ls, &chks)
+
+				if err != nil {
+					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
+				}
+
+				// We'll be reusing the slices, so copy before calling fn
+				dst := make(index.ChunkMetas, 0, len(chks))
+				_ = copy(dst, chks)
+				fn(user, ls.Copy(), dst)
+
+				ls = ls[:0]
+				chks = chks[:0]
+			}
+		}
+	}
+
+	return nil
 }

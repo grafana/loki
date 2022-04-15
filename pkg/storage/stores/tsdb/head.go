@@ -56,7 +56,9 @@ guaranteeing we maintain querying consistency for the entire data lifecycle.
 
 // TODO(owen-d)
 type Metrics struct {
-	seriesNotFound prometheus.Counter
+	seriesNotFound       prometheus.Counter
+	tsdbCreationsTotal   prometheus.Counter
+	tsdbCreationFailures prometheus.Counter
 }
 
 func NewHeadMetrics(r prometheus.Registerer) *Metrics {
@@ -64,6 +66,14 @@ func NewHeadMetrics(r prometheus.Registerer) *Metrics {
 		seriesNotFound: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_tsdb_head_series_not_found_total",
 			Help: "Total number of requests for series that were not found.",
+		}),
+		tsdbCreationsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_creations_total",
+			Help: "Total number of tsdb creations attempted",
+		}),
+		tsdbCreationFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_creations_failed_total",
+			Help: "Total number of tsdb creations failed",
 		}),
 	}
 }

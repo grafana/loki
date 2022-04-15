@@ -71,11 +71,18 @@ func (b *Builder) AddSeries(ls labels.Labels, chks []ChunkMeta) {
 	s.chunks = append(s.chunks, chks...)
 }
 
-func (b *Builder) Build(ctx context.Context, dir, tenant string) (id Identifier, err error) {
+func (b *Builder) Build(
+	ctx context.Context,
+	scratchDir string,
+	// Determines how to create the resulting Identifier and file name.
+	// This is variable as we use Builder for multiple reasons,
+	// such as building multi-tenant tsdbs on the ingester
+	// and per tenant ones during compaction
+	createFn func(from, through model.Time, checksum uint32) (Identifier, string),
+) (id Identifier, err error) {
 	// Ensure the parent dir exists (i.e. index/<bucket>/<tenant>/)
-	parent := filepath.Join(dir, tenant)
-	if parent != "" {
-		if err := chunk_util.EnsureDirectory(parent); err != nil {
+	if scratchDir != "" {
+		if err := chunk_util.EnsureDirectory(scratchDir); err != nil {
 			return id, err
 		}
 	}
@@ -83,7 +90,7 @@ func (b *Builder) Build(ctx context.Context, dir, tenant string) (id Identifier,
 	// First write tenant/index-bounds-random.staging
 	rng := rand.Int63()
 	name := fmt.Sprintf("%s-%x.staging", IndexFilename, rng)
-	tmpPath := filepath.Join(parent, name)
+	tmpPath := filepath.Join(scratchDir, name)
 
 	writer, err := NewWriter(ctx, tmpPath)
 	if err != nil {
@@ -145,12 +152,7 @@ func (b *Builder) Build(ctx context.Context, dir, tenant string) (id Identifier,
 	from, through := reader.Bounds()
 
 	// load the newly compacted index to grab checksum, promptly close
-	id = Identifier{
-		Tenant:   tenant,
-		From:     model.Time(from),
-		Through:  model.Time(through),
-		Checksum: reader.Checksum(),
-	}
+	id, dst := createFn(model.Time(from), model.Time(through), reader.Checksum())
 
 	reader.Close()
 	defer func() {
@@ -159,8 +161,9 @@ func (b *Builder) Build(ctx context.Context, dir, tenant string) (id Identifier,
 		}
 	}()
 
-	dst := id.FilePath(dir)
-
+	if err := chunk_util.EnsureDirectory(filepath.Dir(dst)); err != nil {
+		return id, err
+	}
 	if err := os.Rename(tmpPath, dst); err != nil {
 		return id, err
 	}

@@ -73,8 +73,7 @@ func TestSingleIdx(t *testing.T) {
 				for _, x := range cases {
 					_, _ = head.Append(x.Labels, x.Chunks)
 				}
-				reader, err := head.Index()
-				require.Nil(t, err)
+				reader := head.Index()
 				return NewTSDBIndex(reader)
 			},
 		},

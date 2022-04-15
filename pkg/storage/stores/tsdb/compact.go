@@ -64,5 +64,17 @@ func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res ind
 		}
 	}
 
-	return b.Build(ctx, c.parentDir, c.tenant)
+	return b.Build(
+		ctx,
+		c.parentDir,
+		func(from, through model.Time, checksum uint32) (index.Identifier, string) {
+			id := index.Identifier{
+				Tenant:   c.tenant,
+				From:     from,
+				Through:  through,
+				Checksum: checksum,
+			}
+			return id, id.FilePath(c.parentDir)
+		},
+	)
 }

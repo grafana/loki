@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -22,7 +23,15 @@ func BuildIndex(t *testing.T, dir, tenant string, cases []LoadableSeries) *TSDBI
 		b.AddSeries(s.Labels, s.Chunks)
 	}
 
-	dst, err := b.Build(context.Background(), dir, tenant)
+	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) (index.Identifier, string) {
+		id := index.Identifier{
+			Tenant:   tenant,
+			From:     from,
+			Through:  through,
+			Checksum: checksum,
+		}
+		return id, id.FilePath(dir)
+	})
 	require.Nil(t, err)
 	location := dst.FilePath(dir)
 

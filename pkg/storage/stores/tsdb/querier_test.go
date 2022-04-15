@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -88,7 +89,15 @@ func TestQueryIndex(t *testing.T) {
 		b.AddSeries(s.labels, s.chunks)
 	}
 
-	dst, err := b.Build(context.Background(), dir, "fake")
+	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) (index.Identifier, string) {
+		id := index.Identifier{
+			Tenant:   "fake",
+			From:     from,
+			Through:  through,
+			Checksum: checksum,
+		}
+		return id, id.FilePath(dir)
+	})
 	require.Nil(t, err)
 
 	reader, err := index.NewFileReader(dst.FilePath(dir))
