@@ -187,7 +187,7 @@ func (m *HeadManager) Start() error {
 		}
 	}
 
-	nextWALPath := m.walPath(now)
+	nextWALPath := walPath(m.dir, now)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, now)
 	if err != nil {
 		return errors.Wrapf(err, "creating tsdb wal: %s", nextWALPath)
@@ -212,7 +212,7 @@ func managerShippedDir(parent string) string { return filepath.Join(parent, "mul
 
 func (m *HeadManager) Rotate(t time.Time) error {
 	// create new wal
-	nextWALPath := m.walPath(t)
+	nextWALPath := walPath(m.dir, t)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
 	if err != nil {
 		return errors.Wrapf(err, "creating tsdb wal: %s during rotation", nextWALPath)
@@ -374,16 +374,16 @@ func (m *HeadManager) walsForPeriod(period int) (walGroup, bool, error) {
 
 func (m *HeadManager) removeWALGroup(grp walGroup) error {
 	for _, wal := range grp.wals {
-		if err := os.RemoveAll(m.walPath(wal.ts)); err != nil {
-			return errors.Wrapf(err, "removing tsdb wal: %s", m.walPath(wal.ts))
+		if err := os.RemoveAll(walPath(m.dir, wal.ts)); err != nil {
+			return errors.Wrapf(err, "removing tsdb wal: %s", walPath(m.dir, wal.ts))
 		}
 	}
 	return nil
 }
 
-func (m *HeadManager) walPath(t time.Time) string {
+func walPath(parent string, t time.Time) string {
 	return filepath.Join(
-		managerWalDir(m.dir),
+		managerWalDir(parent),
 		fmt.Sprintf("%d", t.Unix()),
 	)
 }
@@ -394,8 +394,8 @@ func (m *HeadManager) recoverHead(grp walGroup) error {
 	for _, id := range grp.wals {
 
 		// use anonymous function for ease of cleanup
-		if err := func() error {
-			reader, closer, err := ingester.NewWalReader(m.walPath(id.ts), -1)
+		if err := func(id WALIdentifier) error {
+			reader, closer, err := ingester.NewWalReader(walPath(m.dir, id.ts), -1)
 			if err != nil {
 				return err
 			}
@@ -435,11 +435,10 @@ func (m *HeadManager) recoverHead(grp walGroup) error {
 			}
 			return reader.Err()
 
-		}(); err != nil {
-			return errors.Wrapf(
+		}(id); err != nil {
+			return errors.Wrap(
 				err,
-				"error recovering from TSDB WAL: %s",
-				m.walPath(id.ts),
+				"error recovering from TSDB WAL",
 			)
 		}
 	}

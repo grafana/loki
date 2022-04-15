@@ -161,7 +161,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	require.Nil(t, mgr.Rotate(now))
 
 	// now build a WAL independently to test recovery
-	w, err := newHeadWAL(log.NewNopLogger(), mgr.walPath(now), now)
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.dir, now), now)
 	require.Nil(t, err)
 
 	for i, c := range cases {
@@ -236,7 +236,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 	}
 
 	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, "tsdb-mgr-test", noopTSDBManager{})
-	w, err := newHeadWAL(log.NewNopLogger(), mgr.walPath(curPeriod), curPeriod)
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.dir, curPeriod), curPeriod)
 	require.Nil(t, err)
 
 	// Write old WALs
