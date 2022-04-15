@@ -242,24 +242,27 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	stopPrev("freshly rotated") // stop the newly rotated-out wal
 
 	// build tsdb from rotated-out period
-	grp, _, err := m.walsForPeriod(m.PeriodFor(m.prev.initialized))
-	if err != nil {
-		return errors.Wrap(err, "listing wals")
-	}
+	if m.prev != nil {
+		grp, _, err := m.walsForPeriod(m.PeriodFor(m.prev.initialized))
+		if err != nil {
+			return errors.Wrap(err, "listing wals")
+		}
 
-	// TODO(owen-d): It's probably faster to build this from the *tenantHeads instead,
-	// but we already need to impl BuildFromWALs to ensure we can correctly build/ship
-	// TSDBs from orphaned WALs of previous periods during startup.
-	// we use the m.prev.initialized timestamp here for the filename to ensure it can't clobber
-	// an existing file from a previous cycle. I don't think this is possible, but
-	// perhaps in some unusual crashlooping it could be, so let's be safe and protect ourselves.
-	if err := m.tsdbManager.BuildFromWALs(m.prev.initialized, grp.wals); err != nil {
-		return errors.Wrapf(err, "building TSDB from prevHeads WALs for period %d", grp.period)
-	}
+		// TODO(owen-d): It's probably faster to build this from the *tenantHeads instead,
+		// but we already need to impl BuildFromWALs to ensure we can correctly build/ship
+		// TSDBs from orphaned WALs of previous periods during startup.
+		// we use the m.prev.initialized timestamp here for the filename to ensure it can't clobber
+		// an existing file from a previous cycle. I don't think this is possible, but
+		// perhaps in some unusual crashlooping it could be, so let's be safe and protect ourselves.
+		if err := m.tsdbManager.BuildFromWALs(m.prev.initialized, grp.wals); err != nil {
+			return errors.Wrapf(err, "building TSDB from prevHeads WALs for period %d", grp.period)
+		}
 
-	// Now that a TSDB has been created from this group, it's safe to remove them
-	if err := m.removeWALGroup(grp); err != nil {
-		return errors.Wrapf(err, "removing prev TSDB WALs for period %d", grp.period)
+		// Now that a TSDB has been created from this group, it's safe to remove them
+		if err := m.removeWALGroup(grp); err != nil {
+			return errors.Wrapf(err, "removing prev TSDB WALs for period %d", grp.period)
+		}
+
 	}
 
 	// Now that the tsdbManager has the updated TSDBs, we can remove our references
@@ -335,10 +338,10 @@ func (m *HeadManager) walGroups() (map[int]*walGroup, error) {
 			pd := m.PeriodFor(id.ts)
 			grp, ok := groupsMap[pd]
 			if !ok {
-				grp := walGroup{
+				grp = &walGroup{
 					period: pd,
 				}
-				groupsMap[pd] = &grp
+				groupsMap[pd] = grp
 			}
 			grp.wals = append(grp.wals, id)
 		}

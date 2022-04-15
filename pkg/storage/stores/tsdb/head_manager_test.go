@@ -2,13 +2,17 @@ package tsdb
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 )
 
@@ -114,5 +118,193 @@ func Test_TenantHeads_MultiRead(t *testing.T) {
 }
 
 // test head recover from wal
+func Test_HeadManager_RecoverHead(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+	cases := []struct {
+		Labels labels.Labels
+		Chunks []index.ChunkMeta
+		User   string
+	}{
+		{
+			User:   "tenant1",
+			Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  1,
+					MaxTime:  10,
+					Checksum: 3,
+				},
+			},
+		},
+		{
+			User:   "tenant2",
+			Labels: mustParseLabels(`{foo="bard", bazz="bozz", bonk="borb"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  1,
+					MaxTime:  7,
+					Checksum: 4,
+				},
+			},
+		},
+	}
+
+	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, "tsdb-mgr-test", noopTSDBManager{})
+	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
+	// so ensure our dirs exist
+	for _, d := range mgr.RequiredDirs() {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+
+	// Call Rotate() to ensure the new head tenant heads exist, etc
+	require.Nil(t, mgr.Rotate(now))
+
+	// now build a WAL independently to test recovery
+	w, err := newHeadWAL(log.NewNopLogger(), mgr.walPath(now), now)
+	require.Nil(t, err)
+
+	for i, c := range cases {
+		require.Nil(t, w.Log(&WALRecord{
+			UserID: c.User,
+			Series: record.RefSeries{
+				Ref:    chunks.HeadSeriesRef(i),
+				Labels: c.Labels,
+			},
+			Chks: ChunkMetasRecord{
+				Chks: c.Chunks,
+				Ref:  uint64(i),
+			},
+		}))
+	}
+
+	require.Nil(t, w.Stop())
+
+	grp, ok, err := mgr.walsForPeriod(mgr.PeriodFor(now))
+	require.Nil(t, err)
+	require.True(t, ok)
+	require.Equal(t, 1, len(grp.wals))
+	require.Nil(t, mgr.recoverHead(grp))
+
+	for _, c := range cases {
+		idx, err := mgr.Index()
+		require.Nil(t, err)
+		refs, err := idx.GetChunkRefs(
+			context.Background(),
+			c.User,
+			0, math.MaxInt64,
+			nil, nil,
+			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+		)
+		require.Nil(t, err)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
+	}
+
+}
 
 // test mgr recover from multiple wals across multiple periods
+func Test_HeadManager_Lifecycle(t *testing.T) {
+	dir := t.TempDir()
+	curPeriod := time.Now()
+	cases := []struct {
+		Labels labels.Labels
+		Chunks []index.ChunkMeta
+		User   string
+	}{
+		{
+			User:   "tenant1",
+			Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  1,
+					MaxTime:  10,
+					Checksum: 3,
+				},
+			},
+		},
+		{
+			User:   "tenant2",
+			Labels: mustParseLabels(`{foo="bard", bazz="bozz", bonk="borb"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  1,
+					MaxTime:  7,
+					Checksum: 4,
+				},
+			},
+		},
+	}
+
+	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, "tsdb-mgr-test", noopTSDBManager{})
+	w, err := newHeadWAL(log.NewNopLogger(), mgr.walPath(curPeriod), curPeriod)
+	require.Nil(t, err)
+
+	// Write old WALs
+	for i, c := range cases {
+		require.Nil(t, w.Log(&WALRecord{
+			UserID: c.User,
+			Series: record.RefSeries{
+				Ref:    chunks.HeadSeriesRef(i),
+				Labels: c.Labels,
+			},
+			Chks: ChunkMetasRecord{
+				Chks: c.Chunks,
+				Ref:  uint64(i),
+			},
+		}))
+	}
+
+	require.Nil(t, w.Stop())
+
+	// Start, ensuring recovery from old WALs
+	require.Nil(t, mgr.Start())
+	// Ensure old WAL data is queryable
+	for _, c := range cases {
+		idx, err := mgr.Index()
+		require.Nil(t, err)
+		refs, err := idx.GetChunkRefs(
+			context.Background(),
+			c.User,
+			0, math.MaxInt64,
+			nil, nil,
+			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+		)
+		require.Nil(t, err)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
+	}
+
+	// Add data
+	newCase := struct {
+		Labels labels.Labels
+		Chunks []index.ChunkMeta
+		User   string
+	}{
+		User:   "tenant3",
+		Labels: mustParseLabels(`{foo="bard", other="hi"}`),
+		Chunks: []index.ChunkMeta{
+			{
+				MinTime:  1,
+				MaxTime:  7,
+				Checksum: 4,
+			},
+		},
+	}
+
+	require.Nil(t, mgr.Append(newCase.User, newCase.Labels, newCase.Chunks))
+
+	// Ensure old + new data is queryable
+	for _, c := range append(cases, newCase) {
+		idx, err := mgr.Index()
+		require.Nil(t, err)
+		refs, err := idx.GetChunkRefs(
+			context.Background(),
+			c.User,
+			0, math.MaxInt64,
+			nil, nil,
+			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+		)
+		require.Nil(t, err)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
+	}
+
+}
