@@ -21,5 +21,5 @@ tools/
 The following directories and their subdirectories are licensed under their original upstream licenses:
 
 ```
-public/vendor/
+vendor/
 ```
