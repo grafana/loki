@@ -164,7 +164,7 @@ func (m *HeadManager) Start() error {
 		}
 	}
 
-	walsByPeriod, err := m.walsByPeriod()
+	walsByPeriod, err := walsByPeriod(m.dir, m.period)
 	if err != nil {
 		return err
 	}
@@ -250,7 +250,7 @@ func (m *HeadManager) Rotate(t time.Time) error {
 
 	// build tsdb from rotated-out period
 	if m.prev != nil {
-		grp, _, err := m.walsForPeriod(m.period.PeriodFor(m.prev.initialized))
+		grp, _, err := walsForPeriod(m.dir, m.period, m.period.PeriodFor(m.prev.initialized))
 		if err != nil {
 			return errors.Wrap(err, "listing wals")
 		}
@@ -315,9 +315,9 @@ type WalGroup struct {
 	wals   []WALIdentifier
 }
 
-func (m *HeadManager) walsByPeriod() ([]WalGroup, error) {
+func walsByPeriod(dir string, period period) ([]WalGroup, error) {
 
-	groupsMap, err := m.walGroups()
+	groupsMap, err := walGroups(dir, period)
 	if err != nil {
 		return nil, err
 	}
@@ -332,8 +332,8 @@ func (m *HeadManager) walsByPeriod() ([]WalGroup, error) {
 	return res, nil
 }
 
-func (m *HeadManager) walGroups() (map[int]*WalGroup, error) {
-	files, err := ioutil.ReadDir(managerWalDir(m.dir))
+func walGroups(dir string, period period) (map[int]*WalGroup, error) {
+	files, err := ioutil.ReadDir(managerWalDir(dir))
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +342,7 @@ func (m *HeadManager) walGroups() (map[int]*WalGroup, error) {
 
 	for _, f := range files {
 		if id, ok := parseWALPath(f.Name()); ok {
-			pd := m.period.PeriodFor(id.ts)
+			pd := period.PeriodFor(id.ts)
 			grp, ok := groupsMap[pd]
 			if !ok {
 				grp = &WalGroup{
@@ -363,13 +363,13 @@ func (m *HeadManager) walGroups() (map[int]*WalGroup, error) {
 	return groupsMap, nil
 }
 
-func (m *HeadManager) walsForPeriod(period int) (WalGroup, bool, error) {
-	groupsMap, err := m.walGroups()
+func walsForPeriod(dir string, period period, offset int) (WalGroup, bool, error) {
+	groupsMap, err := walGroups(dir, period)
 	if err != nil {
 		return WalGroup{}, false, err
 	}
 
-	grp, ok := groupsMap[period]
+	grp, ok := groupsMap[offset]
 	if !ok {
 		return WalGroup{}, false, nil
 	}

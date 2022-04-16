@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"sort"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -184,6 +185,7 @@ func TestSingleIdx(t *testing.T) {
 			t.Run("LabelValues", func(t *testing.T) {
 				vs, err := idx.LabelValues(context.Background(), "fake", 9, 10, "foo")
 				require.Nil(t, err)
+				sort.Strings(vs)
 				require.Equal(t, []string{"bar", "bard"}, vs)
 			})
 

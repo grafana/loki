@@ -105,6 +105,11 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	panic("unimplemented")
 }
 
+func (m *tsdbManager) Start() {
+	go m.loop()
+}
+
 func (m *tsdbManager) loop() {
+	// continually ship built indices to storage then move them to the shipped directory
 	// continually remove shipped tsdbs over 1 period old
 }
