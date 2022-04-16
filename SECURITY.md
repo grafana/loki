@@ -10,7 +10,7 @@ The key is available from [keyserver.ubuntu.com](https://keyserver.ubuntu.com/pk
 
 Grafana Labs will send you a response indicating the next steps in handling your report. After the initial reply to your report, the security team will keep you informed of the progress towards a fix and full announcement, and may ask for additional information or guidance.
 
-**Important:** We ask you to not disclose the vulnerability before it have been fixed and announced, unless you received a response from the Grafana Labs security team that you can do so.
+**Important:** We ask that you not disclose the vulnerability before it has been fixed and announced, unless you receive a response from the Grafana Labs security team allowing you to disclose the vulnerability.
 
 ## Security announcements
 
