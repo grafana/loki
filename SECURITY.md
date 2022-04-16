@@ -8,7 +8,7 @@ F988 7BEA 027A 049F AE8E 5CAA D125 8932 BE24 C5CA
 
 The key is available from [keyserver.ubuntu.com](https://keyserver.ubuntu.com/pks/lookup?search=0xF9887BEA027A049FAE8E5CAAD1258932BE24C5CA&fingerprint=on&op=index).
 
-Grafana Labs will send you a response indicating the next steps in handling your report. After the initial reply to your report, the security team will keep you informed of the progress towards a fix and full announcement, and may ask for additional information or guidance.
+Grafana Labs will respond, indicating the next steps in handling your report. After the initial reply to your report, the security team will keep you informed of the progress towards a fix and full announcement, and may ask for additional information or guidance.
 
 **Important:** We ask that you not disclose the vulnerability before it has been fixed and announced, unless you receive a response from the Grafana Labs security team allowing you to disclose the vulnerability.
 
