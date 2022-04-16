@@ -301,7 +301,7 @@ func (m *HeadManager) shippedTSDBsBeforePeriod(period int) (res []string, err er
 		return nil, err
 	}
 	for _, f := range files {
-		if id, ok := parseTSDBPath(f.Name()); ok {
+		if id, ok := parseMultitenantTSDBPath(f.Name()); ok {
 			if found := m.period.PeriodFor(id.ts); found < period {
 				res = append(res, f.Name())
 			}
@@ -480,7 +480,7 @@ func (id MultitenantTSDBIdentifier) Name() string {
 	return fmt.Sprintf("%d-%s.tsdb", id.ts.Unix(), id.nodeName)
 }
 
-func parseTSDBPath(p string) (id MultitenantTSDBIdentifier, ok bool) {
+func parseMultitenantTSDBPath(p string) (id MultitenantTSDBIdentifier, ok bool) {
 	trimmed := strings.TrimSuffix(p, ".tsdb")
 
 	// incorrect suffix
@@ -591,6 +591,8 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMe
 func (t *tenantHeads) shardForTenant(userID string) uint64 {
 	return xxhash.Sum64String(userID) & uint64(t.shards-1)
 }
+
+func (t *tenantHeads) Close() error { return nil }
 
 func (t *tenantHeads) Bounds() (model.Time, model.Time) {
 	return model.Time(t.mint.Load()), model.Time(t.maxt.Load())

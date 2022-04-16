@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"sync"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -32,6 +33,7 @@ func (r ChunkRef) Less(x ChunkRef) bool {
 
 type Index interface {
 	Bounded
+	Close() error
 	// GetChunkRefs accepts an optional []ChunkRef argument.
 	// If not nil, it will use that slice to build the result,
 	// allowing us to avoid unnecessary allocations at the caller's discretion.
@@ -51,6 +53,7 @@ type Index interface {
 
 type NoopIndex struct{}
 
+func (NoopIndex) Close() error                       { return nil }
 func (NoopIndex) Bounds() (from, through model.Time) { return }
 func (NoopIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	return nil, nil
@@ -65,4 +68,46 @@ func (NoopIndex) LabelNames(ctx context.Context, userID string, from, through mo
 }
 func (NoopIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
 	return nil, nil
+}
+
+// LockedIndex wraps an index+RWMutex and only calls index methods under rlock
+type LockedIndex struct {
+	mtx *sync.RWMutex
+	idx Index
+}
+
+func NewLockedMutex(mtx *sync.RWMutex, idx Index) *LockedIndex {
+	return &LockedIndex{
+		mtx: mtx,
+		idx: idx,
+	}
+}
+
+func (i *LockedIndex) Close() error { return i.Close() }
+func (i *LockedIndex) Bounds() (from, through model.Time) {
+	i.mtx.RLock()
+	defer i.mtx.RUnlock()
+	return i.idx.Bounds()
+}
+func (i *LockedIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+	i.mtx.RLock()
+	defer i.mtx.RUnlock()
+	return i.idx.GetChunkRefs(ctx, userID, from, through, res, shard, matchers...)
+}
+
+func (i *LockedIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+	i.mtx.RLock()
+	defer i.mtx.RUnlock()
+	return i.idx.Series(ctx, userID, from, through, res, shard, matchers...)
+}
+func (i *LockedIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+	i.mtx.RLock()
+	defer i.mtx.RUnlock()
+	return i.idx.LabelNames(ctx, userID, from, through, matchers...)
+}
+func (i *LockedIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
+	i.mtx.RLock()
+	defer i.mtx.RUnlock()
+	return i.idx.LabelValues(ctx, userID, from, through, name, matchers...)
+
 }

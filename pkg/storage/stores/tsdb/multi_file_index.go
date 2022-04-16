@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -37,6 +38,17 @@ func (i *MultiIndex) Bounds() (model.Time, model.Time) {
 	}
 
 	return lowest, highest
+}
+
+func (i *MultiIndex) Close() error {
+	var errs multierror.MultiError
+	for _, idx := range i.indices {
+		if err := idx.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errs.Err()
+
 }
 
 func (i *MultiIndex) forIndices(ctx context.Context, from, through model.Time, fn func(context.Context, Index) (interface{}, error)) ([]interface{}, error) {

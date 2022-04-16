@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"io/ioutil"
 	"path/filepath"
 	"sync"
 	"time"
@@ -46,6 +47,8 @@ type tsdbManager struct {
 	metrics *Metrics
 
 	sync.RWMutex
+
+	Index
 
 	shipper shipper
 }
@@ -101,8 +104,78 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		return err
 	}
 
-	// TODO(owen-d): lock mtx, load file into list, unlock, start ship process
-	panic("unimplemented")
+	return m.updateIndices()
+}
+
+// updateIndices replaces the *tsdbManager's list of indices
+// with those on disk.
+func (m *tsdbManager) updateIndices() (err error) {
+	defer func() {
+		m.metrics.tsdbManagerUpdatesTotal.Inc()
+		if err != nil {
+			m.metrics.tsdbManagerUpdatesFailedTotal.Inc()
+		}
+	}()
+	var indices []Index
+
+	// lock mtx, load file into list, unlock, start ship process
+	built, err := m.listMultiTenantTSDBs(managerBuiltDir(m.dir))
+	if err != nil {
+		return err
+	}
+	for _, x := range built {
+		idx, err := LoadTSDB(filepath.Join(managerBuiltDir(m.dir), x.Name()))
+		if err != nil {
+			return err
+		}
+		indices = append(indices, idx)
+	}
+
+	shipped, err := m.listMultiTenantTSDBs(managerShippedDir(m.dir))
+	if err != nil {
+		return err
+	}
+	for _, x := range shipped {
+		idx, err := LoadTSDB(filepath.Join(managerShippedDir(m.dir), x.Name()))
+		if err != nil {
+			return err
+		}
+		indices = append(indices, idx)
+	}
+
+	var newIdx Index
+	if len(indices) == 0 {
+		newIdx = NoopIndex{}
+	} else {
+		newIdx, err = NewMultiIndex(indices...)
+		if err != nil {
+			return err
+		}
+	}
+
+	m.Lock()
+	defer m.Unlock()
+	if err := m.Index.Close(); err != nil {
+		return err
+	}
+
+	m.Index = NewLockedMutex(&m.RWMutex, newIdx)
+	return nil
+}
+
+func (m *tsdbManager) listMultiTenantTSDBs(dir string) (res []MultitenantTSDBIdentifier, err error) {
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, f := range files {
+		if id, ok := parseMultitenantTSDBPath(filepath.Base(f.Name())); ok {
+			res = append(res, id)
+		}
+	}
+
+	return
 }
 
 func (m *tsdbManager) Start() {
