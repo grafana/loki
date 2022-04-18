@@ -3,7 +3,6 @@ package tsdb
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"path/filepath"
 	"sync"
 	"time"
@@ -40,8 +39,6 @@ type tsdbManager struct {
 	metrics *Metrics
 
 	sync.RWMutex
-
-	Index
 
 	shipper indexshipper.IndexShipper
 }
@@ -106,85 +103,5 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		return err
 	}
 
-	return m.updateIndices()
-}
-
-// updateIndices replaces the *tsdbManager's list of indices
-// with those on disk.
-func (m *tsdbManager) updateIndices() (err error) {
-	defer func() {
-		m.metrics.tsdbManagerUpdatesTotal.Inc()
-		if err != nil {
-			m.metrics.tsdbManagerUpdatesFailedTotal.Inc()
-		}
-	}()
-	var indices []Index
-
-	// lock mtx, load file into list, unlock, start ship process
-	built, err := m.listMultiTenantTSDBs(managerBuiltDir(m.dir))
-	if err != nil {
-		return err
-	}
-	for _, x := range built {
-		idx, err := NewShippableTSDBFile(filepath.Join(managerBuiltDir(m.dir), x.Name()))
-		if err != nil {
-			return err
-		}
-		indices = append(indices, idx)
-	}
-
-	shipped, err := m.listMultiTenantTSDBs(managerShippedDir(m.dir))
-	if err != nil {
-		return err
-	}
-	for _, x := range shipped {
-		idx, err := NewShippableTSDBFile(filepath.Join(managerShippedDir(m.dir), x.Name()))
-		if err != nil {
-			return err
-		}
-		indices = append(indices, idx)
-	}
-
-	var newIdx Index
-	if len(indices) == 0 {
-		newIdx = NoopIndex{}
-	} else {
-		newIdx, err = NewMultiIndex(indices...)
-		if err != nil {
-			return err
-		}
-	}
-
-	m.Lock()
-	defer m.Unlock()
-	if err := m.Index.Close(); err != nil {
-		return err
-	}
-
-	m.Index = NewLockedMutex(&m.RWMutex, newIdx)
 	return nil
-}
-
-func (m *tsdbManager) listMultiTenantTSDBs(dir string) (res []MultitenantTSDBIdentifier, err error) {
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, f := range files {
-		if id, ok := parseMultitenantTSDBPath(filepath.Base(f.Name())); ok {
-			res = append(res, id)
-		}
-	}
-
-	return
-}
-
-func (m *tsdbManager) Start() {
-	go m.loop()
-}
-
-func (m *tsdbManager) loop() {
-	// continually ship built indices to storage then move them to the shipped directory
-	// continually remove shipped tsdbs over 1 period old
 }
