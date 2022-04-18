@@ -59,7 +59,7 @@ type ErrStreamRateLimit struct {
 }
 
 func (e *ErrStreamRateLimit) Error() string {
-	return fmt.Sprintf("Per stream rate limit exceeded (limit: %s/sec) while attempting to ingest for stream '%s' totaling %s, consider splitting a stream via additional labels or contact your Loki administrator to see if the limt can be increased",
+	return fmt.Sprintf("Per stream rate limit exceeded (limit: %s/sec) while attempting to ingest for stream '%s' totaling %s, consider splitting a stream via additional labels or contact your Loki administrator to see if the limit can be increased",
 		e.RateLimit.String(),
 		e.Labels,
 		e.Bytes.String())
