@@ -64,12 +64,12 @@ func (c *genNumberClient) GetCacheGenerationNumber(_ context.Context, userID str
 	}
 	defer resp.Body.Close()
 
-	var genNumber int
+	var genNumber string
 	if err := json.NewDecoder(resp.Body).Decode(&genNumber); err != nil {
 		fmt.Println(err)
 		level.Error(log.Logger).Log("msg", "error marshalling response", "err", err)
 		return "", err
 	}
 
-	return fmt.Sprint(genNumber), err
+	return genNumber, err
 }

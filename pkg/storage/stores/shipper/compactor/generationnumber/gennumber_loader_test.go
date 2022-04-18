@@ -48,3 +48,7 @@ type mockGenNumberGetter struct {
 func (g *mockGenNumberGetter) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
 	return g.genNumbers[userID], nil
 }
+
+func (g *mockGenNumberGetter) Source() string {
+	return ""
+}

@@ -11,7 +11,7 @@ import (
 )
 
 func TestGetCacheGenNumberForUser(t *testing.T) {
-	httpClient := &mockHTTPClient{ret: `42`}
+	httpClient := &mockHTTPClient{ret: `"42"`}
 	client := NewGenNumberClient("http://test-server", httpClient)
 
 	cacheGenNumber, err := client.GetCacheGenerationNumber(context.Background(), "userID")
