@@ -25,9 +25,8 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 }
 
 type mockHTTPClient struct {
-	userID string
-	ret    string
-	req    *http.Request
+	ret string
+	req *http.Request
 }
 
 func (c *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {

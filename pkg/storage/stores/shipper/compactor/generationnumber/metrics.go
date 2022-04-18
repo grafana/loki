@@ -16,6 +16,10 @@ func newGenLoaderMetrics(r prometheus.Registerer) *genLoaderMetrics {
 		return metrics
 	}
 
+	if r == nil {
+		return nil
+	}
+
 	cacheGenLoadFailures := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "delete_cache_gen_load_failures_total",
