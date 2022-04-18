@@ -23,7 +23,8 @@ type IngesterQuerier interface {
 }
 
 type AsyncStoreCfg struct {
-	IngesterQuerier      IngesterQuerier
+	IngesterQuerier IngesterQuerier
+	// QueryIngestersWithin defines maximum lookback beyond which ingesters are not queried for chunk ids.
 	QueryIngestersWithin time.Duration
 }
 
