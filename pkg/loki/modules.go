@@ -875,8 +875,13 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 }
 
 func (t *Loki) deleteRequestsStore() (deletion.DeleteRequestsStore, error) {
+	filteringEnabled, err := deletion.FilteringEnabled(t.Cfg.CompactorConfig.DeletionMode)
+	if err != nil {
+		return nil, err
+	}
+
 	deleteStore := deletion.NewNoOpDeleteRequestsStore()
-	if config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
+	if config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) && filteringEnabled {
 		indexClient, err := storage.NewIndexClient(config.BoltDBShipperType, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, err
