@@ -199,20 +199,22 @@ func (t *FileTarget) sync() error {
 		}
 	}
 
-	if fi, err := os.Stat(t.pathExclude); err == nil && !fi.IsDir() {
-		matchesExcluded = []string{t.pathExclude}
-	} else {
-		matchesExcluded, err = doublestar.Glob(t.pathExclude)
-		if err != nil {
-			return errors.Wrap(err, "filetarget.sync.filepathexclude.Glob")
+	if t.pathExclude != "" {
+		if fi, err := os.Stat(t.pathExclude); err == nil && !fi.IsDir() {
+			matchesExcluded = []string{t.pathExclude}
+		} else {
+			matchesExcluded, err = doublestar.Glob(t.pathExclude)
+			if err != nil {
+				return errors.Wrap(err, "filetarget.sync.filepathexclude.Glob")
+			}
 		}
-	}
 
-	for i := 0; i < len(matchesExcluded); i++ {
-		for j := 0; j < len(matches); j++ {
-			if matchesExcluded[i] == matches[j] {
-				// exclude this specific match
-				matches = append(matches[:j], matches[j+1:]...)
+		for i := 0; i < len(matchesExcluded); i++ {
+			for j := 0; j < len(matches); j++ {
+				if matchesExcluded[i] == matches[j] {
+					// exclude this specific match
+					matches = append(matches[:j], matches[j+1:]...)
+				}
 			}
 		}
 	}
