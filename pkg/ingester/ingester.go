@@ -592,6 +592,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			End:       end,
 			Limit:     req.Limit,
 			Shards:    req.Shards,
+			Deletes:   req.Deletes,
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
@@ -628,6 +629,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			End:      end,
 			Selector: req.Selector,
 			Shards:   req.Shards,
+			Deletes:  req.Deletes,
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {

@@ -761,8 +761,8 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 	request := logproto.QueryRequest{
 		Selector:  `{type="test"} |= "foo"`,
 		Limit:     10,
-		Start:     time.Unix(0, 300),
-		End:       time.Unix(0, 600),
+		Start:     time.Unix(0, 300000000),
+		End:       time.Unix(0, 600000000),
 		Direction: logproto.FORWARD,
 	}
 
@@ -776,9 +776,9 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 		End:       request.End,
 		Direction: request.Direction,
 		Deletes: []*logproto.Delete{
-			{Selector: "1", Start: 200, End: 400},
-			{Selector: "2", Start: 400, End: 500},
-			{Selector: "3", Start: 500, End: 700},
+			{Selector: "1", Start: 200000000, End: 400000000},
+			{Selector: "2", Start: 400000000, End: 500000000},
+			{Selector: "3", Start: 500000000, End: 700000000},
 		},
 	}
 
@@ -822,8 +822,8 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 
 	request := logproto.SampleQueryRequest{
 		Selector: `count_over_time({foo="bar"}[5m])`,
-		Start:    time.Unix(0, 300),
-		End:      time.Unix(0, 600),
+		Start:    time.Unix(0, 300000000),
+		End:      time.Unix(0, 600000000),
 	}
 
 	_, err = q.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: &request})
@@ -835,9 +835,9 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 			Start:    request.Start,
 			End:      request.End,
 			Deletes: []*logproto.Delete{
-				{Selector: "1", Start: 200, End: 400},
-				{Selector: "2", Start: 400, End: 500},
-				{Selector: "3", Start: 500, End: 700},
+				{Selector: "1", Start: 200000000, End: 400000000},
+				{Selector: "2", Start: 400000000, End: 500000000},
+				{Selector: "3", Start: 500000000, End: 700000000},
 			},
 		},
 	}
