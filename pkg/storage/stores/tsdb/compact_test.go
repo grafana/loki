@@ -356,7 +356,7 @@ func TestCompactor(t *testing.T) {
 			for _, cases := range tc.input {
 				idx := BuildIndex(t, dir, "fake", cases)
 				defer idx.Close()
-				indices = append(indices, idx)
+				indices = append(indices, idx.TSDBIndex)
 			}
 
 			out, err := c.Compact(context.Background(), indices...)

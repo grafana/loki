@@ -64,14 +64,20 @@ func (i *MultiIndex) forIndices(ctx context.Context, from, through model.Time, f
 		if Overlap(queryBounds, idx) {
 			// run all queries in linked goroutines (cancel after first err),
 			// bounded by parallelism controls if applicable.
-			g.Go(func() error {
-				got, err := fn(ctx, idx)
-				if err != nil {
-					return err
-				}
-				ch <- got
-				return nil
-			})
+
+			// must wrap g.Go in anonymous function to capture
+			// idx variable during iteration
+			func(idx Index) {
+				g.Go(func() error {
+					got, err := fn(ctx, idx)
+					if err != nil {
+						return err
+					}
+					ch <- got
+					return nil
+				})
+			}(idx)
+
 		}
 	}
 

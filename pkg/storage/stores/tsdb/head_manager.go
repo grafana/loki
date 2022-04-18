@@ -249,6 +249,7 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	stopPrev("freshly rotated") // stop the newly rotated-out wal
 
 	// build tsdb from rotated-out period
+	// TODO(owen-d): don't block Append() waiting for tsdb building. Use a work channel/etc
 	if m.prev != nil {
 		grp, _, err := walsForPeriod(m.dir, m.period, m.period.PeriodFor(m.prev.initialized))
 		if err != nil {
@@ -284,13 +285,15 @@ func (m *HeadManager) Index() (Index, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
-	indices := []Index{m.tsdbManager}
-	if m.prev != nil {
+	var indices []Index
+	if m.prevHeads != nil {
 		indices = append(indices, m.prevHeads)
 	}
-	if m.active != nil {
+	if m.activeHeads != nil {
 		indices = append(indices, m.activeHeads)
 	}
+
+	indices = append(indices, m.tsdbManager)
 
 	return NewMultiIndex(indices...)
 }

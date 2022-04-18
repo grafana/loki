@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"sync"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -22,15 +24,6 @@ type TSDBManager interface {
 	BuildFromWALs(time.Time, []WALIdentifier) error
 }
 
-// placeholder for index shipper
-type shipper interface {
-	Ship(context.Context, MultitenantTSDBIdentifier) error
-}
-
-type noopShipper struct{}
-
-func (noopShipper) Ship(_ context.Context, _ MultitenantTSDBIdentifier) error { return nil }
-
 /*
 tsdbManager is responsible for:
  * Turning WALs into optimized multi-tenant TSDBs when requested
@@ -40,9 +33,9 @@ tsdbManager is responsible for:
  * Removing old TSDBs which are no longer needed
 */
 type tsdbManager struct {
+	period  period
 	name    string // node name
 	log     log.Logger
-	period  period // period to retain old tsdbs
 	dir     string
 	metrics *Metrics
 
@@ -50,7 +43,7 @@ type tsdbManager struct {
 
 	Index
 
-	shipper shipper
+	shipper indexshipper.IndexShipper
 }
 
 func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
@@ -104,6 +97,15 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		return err
 	}
 
+	loaded, err := NewShippableTSDBFile(dstFile)
+	if err != nil {
+		return err
+	}
+
+	if err := m.shipper.AddIndex(fmt.Sprintf("%d", m.period.PeriodFor(t)), "", loaded); err != nil {
+		return err
+	}
+
 	return m.updateIndices()
 }
 
@@ -124,7 +126,7 @@ func (m *tsdbManager) updateIndices() (err error) {
 		return err
 	}
 	for _, x := range built {
-		idx, err := LoadTSDB(filepath.Join(managerBuiltDir(m.dir), x.Name()))
+		idx, err := NewShippableTSDBFile(filepath.Join(managerBuiltDir(m.dir), x.Name()))
 		if err != nil {
 			return err
 		}
@@ -136,7 +138,7 @@ func (m *tsdbManager) updateIndices() (err error) {
 		return err
 	}
 	for _, x := range shipped {
-		idx, err := LoadTSDB(filepath.Join(managerShippedDir(m.dir), x.Name()))
+		idx, err := NewShippableTSDBFile(filepath.Join(managerShippedDir(m.dir), x.Name()))
 		if err != nil {
 			return err
 		}

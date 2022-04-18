@@ -2,29 +2,82 @@ package tsdb
 
 import (
 	"context"
+	"io"
+	"os"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
-func LoadTSDBIdentifier(dir string, id index.Identifier) (*TSDBIndex, error) {
-	return LoadTSDB(id.FilePath(dir))
+func LoadTSDBIdentifier(dir string, id index.Identifier) (*TSDBFile, error) {
+	return NewShippableTSDBFile(id.FilePath(dir))
 }
 
-func LoadTSDB(name string) (*TSDBIndex, error) {
-	reader, err := index.NewFileReader(name)
+// nolint
+// TSDBFile is backed by an actual file and implements the indexshipper/index.Index interface
+type TSDBFile struct {
+	path string
+
+	// reuse TSDBIndex for reading
+	*TSDBIndex
+
+	// open the read only fd
+	// to sastisfy Reader() and Close() methods
+	f *os.File
+}
+
+func NewShippableTSDBFile(location string) (*TSDBFile, error) {
+	idx, err := NewTSDBIndexFromFile(location)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewTSDBIndex(reader), nil
+	f, err := os.Open(location)
+	if err != nil {
+		return nil, err
+	}
+
+	return &TSDBFile{
+		path:      location,
+		TSDBIndex: idx,
+		f:         f,
+	}, err
+}
+
+// TODO(owen-d): not yet sure how name vs path differ
+func (f *TSDBFile) Name() string {
+	return f.path
+}
+func (f *TSDBFile) Path() string { return f.path }
+
+func (f *TSDBFile) Close() error {
+	var errs multierror.MultiError
+	errs.Add(f.TSDBIndex.Close())
+	errs.Add(f.f.Close())
+	return errs.Err()
+}
+
+func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
+	return f.f, nil
 }
 
 // nolint
+// TSDBIndex is backed by an IndexReader
+// and translates the IndexReader to an Index implementation
+// It loads the file into memory and doesn't keep a file descriptor open
 type TSDBIndex struct {
 	reader IndexReader
+}
+
+func NewTSDBIndexFromFile(location string) (*TSDBIndex, error) {
+	reader, err := index.NewFileReader(location)
+	if err != nil {
+		return nil, err
+	}
+	return NewTSDBIndex(reader), nil
 }
 
 func NewTSDBIndex(reader IndexReader) *TSDBIndex {
