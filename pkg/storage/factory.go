@@ -63,6 +63,11 @@ type Config struct {
 
 	MaxChunkBatchSize   int            `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig shipper.Config `yaml:"boltdb_shipper"`
+
+	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
+	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
+	EnableAsyncStore bool          `yaml:"-"`
+	AsyncStoreConfig AsyncStoreCfg `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
