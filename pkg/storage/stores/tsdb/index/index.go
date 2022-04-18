@@ -33,7 +33,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 
 	"github.com/grafana/loki/pkg/util/encoding"
@@ -1187,18 +1186,19 @@ func NewReader(b ByteSlice) (*Reader, error) {
 	return newReader(b, ioutil.NopCloser(nil))
 }
 
+type nopCloser struct{}
+
+func (_ nopCloser) Close() error { return nil }
+
 // NewFileReader returns a new index reader against the given index file.
 func NewFileReader(path string) (*Reader, error) {
-	f, err := fileutil.OpenMmapFile(path)
+	b, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	r, err := newReader(realByteSlice(f.Bytes()), f)
+	r, err := newReader(realByteSlice(b), nopCloser{})
 	if err != nil {
-		return nil, tsdb_errors.NewMulti(
-			err,
-			f.Close(),
-		).Err()
+		return r, err
 	}
 
 	return r, nil
