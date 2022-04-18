@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/uploads"
@@ -83,7 +83,7 @@ type indexShipper struct {
 
 // NewIndexShipper creates a shipper for providing index store functionality using index files and object storage.
 // It manages the whole life cycle of uploading the index and downloading the index at query time.
-func NewIndexShipper(cfg Config, storageClient chunk.ObjectClient, limits downloads.Limits) (IndexShipper, error) {
+func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits) (IndexShipper, error) {
 	shipper := indexShipper{
 		cfg: cfg,
 	}
@@ -98,7 +98,7 @@ func NewIndexShipper(cfg Config, storageClient chunk.ObjectClient, limits downlo
 	return &shipper, nil
 }
 
-func (s *indexShipper) init(storageClient chunk.ObjectClient, limits downloads.Limits) error {
+func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.Limits) error {
 	indexStorageClient := storage.NewIndexStorageClient(storageClient, s.cfg.SharedStoreKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {

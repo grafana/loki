@@ -12,7 +12,7 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -56,7 +56,7 @@ type tableManager struct {
 }
 
 func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client) (TableManager, error) {
-	if err := chunk_util.EnsureDirectory(cfg.CacheDir); err != nil {
+	if err := util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
 
@@ -161,7 +161,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
 
 			tablePath := filepath.Join(tm.cfg.CacheDir, tableName)
-			err := chunk_util.EnsureDirectory(tablePath)
+			err := util.EnsureDirectory(tablePath)
 			if err != nil {
 				return nil, err
 			}

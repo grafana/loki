@@ -11,14 +11,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
-	"github.com/pkg/errors"
-	"go.etcd.io/bbolt"
-
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/pkg/errors"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
@@ -26,10 +23,6 @@ const (
 	downloadTimeout        = 5 * time.Minute
 	maxDownloadConcurrency = 50
 )
-
-type BoltDBIndexClient interface {
-	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error
-}
 
 type Table interface {
 	Close()
@@ -74,7 +67,7 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 // LoadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
 // It is used for loading and initializing table at startup. It would initialize index sets which already had files locally.
 func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc) (Table, error) {
-	err := chunk_util.EnsureDirectory(cacheLocation)
+	err := util.EnsureDirectory(cacheLocation)
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -59,7 +59,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		return nil, fmt.Errorf("userID must be empty")
 	}
 
-	err := chunk_util.EnsureDirectory(cacheLocation)
+	err := util.EnsureDirectory(cacheLocation)
 	if err != nil {
 		return nil, err
 	}
