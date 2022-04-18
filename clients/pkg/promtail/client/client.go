@@ -356,7 +356,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					// also set client name since if we have multiple promtail clients configured we will run into a
 					// duplicate metric collected with same labels error when trying to hit the /metrics endpoint
 					lblSet[ClientLabel] = c.name
-					key := lblSet["filename"] + c.cfg.URL.Host + c.name
+					key := c.streamLagMetricsMapKey(lblSet)
 					c.streamLagMetricsMap[key] = lblSet
 					c.metrics.streamLag.With(lblSet).Set(time.Since(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
 				}
@@ -458,7 +458,7 @@ func (c *client) processEntry(e api.Entry) (api.Entry, string) {
 }
 
 func (c *client) UnregisterLatencyMetric(labels prometheus.Labels) bool {
-	key := labels["filename"] + c.name + c.cfg.URL.Host
+	key := c.streamLagMetricsMapKey(labels)
 	lset, ok := c.streamLagMetricsMap[key]
 	if !ok {
 		level.Debug(c.logger).Log("msg", "no stream lag metric found", "filename", labels["filename"], "client", c.name, "host", c.cfg.URL.Host)
@@ -473,4 +473,8 @@ func (c *client) UnregisterLatencyMetric(labels prometheus.Labels) bool {
 
 func (c *client) Name() string {
 	return c.name
+}
+
+func (c *client) streamLagMetricsMapKey(labels prometheus.Labels) string {
+	return string(labels["filename"]) + c.name + c.cfg.URL.Host
 }

@@ -507,11 +507,8 @@ func Test_UnregisterLatencyMetric(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := Config{
-		URL: serverURL,
-		// BatchWait:      testData.clientBatchWait,
-		// BatchSize:      testData.clientBatchSize,
-		Client: config.HTTPClientConfig{},
-		// BackoffConfig:  backoff.Config{MinBackoff: 1 * time.Millisecond, MaxBackoff: 2 * time.Millisecond, MaxRetries: testData.clientMaxRetries},
+		URL:            serverURL,
+		Client:         config.HTTPClientConfig{},
 		ExternalLabels: lokiflag.LabelSet{},
 		Timeout:        1 * time.Second,
 		TenantID:       "asdf",
@@ -525,8 +522,8 @@ func Test_UnregisterLatencyMetric(t *testing.T) {
 	ls := prometheus.Labels{"filename": "test", "client": c.Name(), "host": cfg.URL.Host, "pod": "test-pod"}
 	m.streamLag.With(ls).Add(1234)
 	require.Equal(t, float64(1234), testutil.ToFloat64(m.streamLag.With(ls)))
-	c.(*client).streamLagMetricsMap["test"+c.Name()+cfg.URL.Host] = ls
-	if h, ok := c.(api.InstrumentedEntryHandler); ok {
-		require.True(t, h.UnregisterLatencyMetric(prometheus.Labels{"filename": "test", "client": c.Name(), "host": cfg.URL.Host}))
-	}
+
+	// Fake setting the metric key in the map, which would be done client.sendBatch
+	c.(*client).streamLagMetricsMap[c.(*client).streamLagMetricsMapKey(ls)] = ls
+	require.True(t, c.(api.InstrumentedEntryHandler).UnregisterLatencyMetric(prometheus.Labels{"filename": "test", "client": c.Name(), "host": cfg.URL.Host}))
 }
