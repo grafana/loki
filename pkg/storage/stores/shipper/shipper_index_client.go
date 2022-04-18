@@ -39,7 +39,6 @@ const (
 	FilesystemObjectStoreType = "filesystem"
 
 	// UploadInterval defines interval for when we check if there are new index files to upload.
-	// It's also used to snapshot the currently written index tables so the snapshots can be used for reads.
 	UploadInterval = 1 * time.Minute
 )
 
