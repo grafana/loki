@@ -183,9 +183,10 @@ memberlist:
   join_members:
     - foo.bar.example.com`
 
-			config, _ := testContext(configFileString, []string{"-ruler.ring.store", "inmemory"})
+			config, _ := testContext(configFileString, []string{"-ruler.ring.store", "inmemory", "-index-gateway.ring.store", "etcd"})
 
 			assert.EqualValues(t, "inmemory", config.Ruler.Ring.KVStore.Store)
+			assert.EqualValues(t, "etcd", config.IndexGateway.Ring.KVStore.Store)
 
 			assert.EqualValues(t, memberlistStr, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.Distributor.DistributorRing.KVStore.Store)
@@ -360,7 +361,7 @@ memberlist:
 
 				assert.Equal(t, "milkyway", actual.ContainerName)
 				assert.Equal(t, "3rd_planet", actual.AccountName)
-				assert.Equal(t, "water", actual.AccountKey.Value)
+				assert.Equal(t, "water", actual.AccountKey.String())
 				assert.Equal(t, 27, actual.DownloadBufferSize)
 				assert.Equal(t, 42, actual.UploadBufferSize)
 				assert.Equal(t, 13, actual.UploadBufferCount)
@@ -996,6 +997,7 @@ common:
 		assert.Equal(t, "", config.Ingester.LifecyclerConfig.TokensFilePath)
 		assert.Equal(t, "", config.CompactorConfig.CompactorRing.TokensFilePath)
 		assert.Equal(t, "", config.QueryScheduler.SchedulerRing.TokensFilePath)
+		assert.Equal(t, "", config.IndexGateway.Ring.TokensFilePath)
 	})
 
 	t.Run("tokens files should be set from common config when persist_tokens is true and path_prefix is defined", func(t *testing.T) {
@@ -1010,6 +1012,7 @@ common:
 		assert.Equal(t, "/loki/ingester.tokens", config.Ingester.LifecyclerConfig.TokensFilePath)
 		assert.Equal(t, "/loki/compactor.tokens", config.CompactorConfig.CompactorRing.TokensFilePath)
 		assert.Equal(t, "/loki/scheduler.tokens", config.QueryScheduler.SchedulerRing.TokensFilePath)
+		assert.Equal(t, "/loki/indexgateway.tokens", config.IndexGateway.Ring.TokensFilePath)
 	})
 
 	t.Run("ingester config not applied to other rings if actual values set", func(t *testing.T) {
@@ -1023,6 +1026,9 @@ compactor:
 query_scheduler:
   scheduler_ring:
     tokens_file_path: /sched/tokes
+index_gateway:
+  ring:
+    tokens_file_path: /looki/tookens
 common:
   persist_tokens: true
   path_prefix: /loki
@@ -1033,6 +1039,7 @@ common:
 		assert.Equal(t, "/loki/toookens", config.Ingester.LifecyclerConfig.TokensFilePath)
 		assert.Equal(t, "/foo/tokens", config.CompactorConfig.CompactorRing.TokensFilePath)
 		assert.Equal(t, "/sched/tokes", config.QueryScheduler.SchedulerRing.TokensFilePath)
+		assert.Equal(t, "/looki/tookens", config.IndexGateway.Ring.TokensFilePath)
 	})
 
 	t.Run("ingester ring configuration is used for other rings when no common ring or memberlist config is provided", func(t *testing.T) {
@@ -1051,6 +1058,7 @@ ingester:
 		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.IndexGateway.Ring.KVStore.Store)
 	})
 
 	t.Run("memberlist configuration takes precedence over copying ingester config", func(t *testing.T) {
@@ -1073,6 +1081,7 @@ ingester:
 		assert.Equal(t, "memberlist", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "memberlist", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "memberlist", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, "memberlist", config.IndexGateway.Ring.KVStore.Store)
 	})
 }
 
@@ -1223,6 +1232,7 @@ func TestCommonRingConfigSection(t *testing.T) {
 		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.IndexGateway.Ring.KVStore.Store)
 	})
 
 	t.Run("if common ring is provided, reuse it for all rings that aren't explicitly set", func(t *testing.T) {
@@ -1244,6 +1254,7 @@ ingester:
 		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.IndexGateway.Ring.KVStore.Store)
 	})
 
 	t.Run("if only ingester ring is provided, reuse it for all rings", func(t *testing.T) {
@@ -1259,6 +1270,7 @@ ingester:
 		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.IndexGateway.Ring.KVStore.Store)
 	})
 
 	t.Run("if a ring is explicitly configured, don't override any part of it with ingester config", func(t *testing.T) {
@@ -1290,6 +1302,9 @@ ingester:
 
 		assert.Equal(t, "inmemory", config.CompactorConfig.CompactorRing.KVStore.Store)
 		assert.Equal(t, 5*time.Minute, config.CompactorConfig.CompactorRing.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.IndexGateway.Ring.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.IndexGateway.Ring.HeartbeatPeriod)
 	})
 
 	t.Run("if a ring is explicitly configured, merge common config with unconfigured parts of explicitly configured ring", func(t *testing.T) {
@@ -1321,6 +1336,9 @@ distributor:
 
 		assert.Equal(t, "inmemory", config.CompactorConfig.CompactorRing.KVStore.Store)
 		assert.Equal(t, 5*time.Minute, config.CompactorConfig.CompactorRing.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.IndexGateway.Ring.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.IndexGateway.Ring.HeartbeatPeriod)
 	})
 
 	t.Run("ring configs provided via command line take precedence", func(t *testing.T) {
@@ -1337,6 +1355,7 @@ distributor:
 		assert.Equal(t, "consul", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "consul", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "consul", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, "consul", config.IndexGateway.Ring.KVStore.Store)
 	})
 
 	t.Run("common ring config take precedence over common memberlist config", func(t *testing.T) {
@@ -1354,6 +1373,7 @@ common:
 		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.IndexGateway.Ring.KVStore.Store)
 	})
 }
 
@@ -1390,10 +1410,38 @@ func Test_replicationFactor(t *testing.T) {
   join_members:
     - foo.bar.example.com
 common:
-  replication_factor: 1`
+  replication_factor: 2`
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)
-		assert.Equal(t, 1, config.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor)
+		assert.Equal(t, 2, config.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor)
+		assert.Equal(t, 2, config.IndexGateway.Ring.ReplicationFactor)
+	})
+}
+
+func Test_IndexGatewayRingReplicationFactor(t *testing.T) {
+	t.Run("default replication factor is 3", func(t *testing.T) {
+		const emptyConfigString = `---
+server:
+  http_listen_port: 80`
+		config, _, err := configWrapperFromYAML(t, emptyConfigString, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, 3, config.IndexGateway.Ring.ReplicationFactor)
+	})
+
+	t.Run("explicit replication factor for the index gateway should override all other definitions", func(t *testing.T) {
+		yamlContent := `ingester:
+  lifecycler:
+    ring:
+      replication_factor: 15
+common:
+  replication_factor: 30
+index_gateway:
+  ring:
+    replication_factor: 7`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, 7, config.IndexGateway.Ring.ReplicationFactor)
 	})
 }
 
@@ -1416,6 +1464,9 @@ frontend:
 compactor:
   compactor_ring:
     instance_addr: mycompactor
+index_gateway:
+  ring:
+    instance_addr: myindexgateway
 common:
   instance_addr: 99.99.99.99
   ring:
@@ -1428,6 +1479,7 @@ common:
 		assert.Equal(t, "myscheduler", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "myqueryfrontend", config.Frontend.FrontendV2.Addr)
 		assert.Equal(t, "mycompactor", config.CompactorConfig.CompactorRing.InstanceAddr)
+		assert.Equal(t, "myindexgateway", config.IndexGateway.Ring.InstanceAddr)
 	})
 
 	t.Run("common instance addr is applied when addresses are not explicitly set", func(t *testing.T) {
@@ -1441,6 +1493,7 @@ common:
 		assert.Equal(t, "99.99.99.99", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr)
 		assert.Equal(t, "99.99.99.99", config.CompactorConfig.CompactorRing.InstanceAddr)
+		assert.Equal(t, "99.99.99.99", config.IndexGateway.Ring.InstanceAddr)
 	})
 
 	t.Run("common instance addr doesn't supersede instance addr from common ring", func(t *testing.T) {
@@ -1457,6 +1510,7 @@ common:
 		assert.Equal(t, "22.22.22.22", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr) // not a ring.
 		assert.Equal(t, "22.22.22.22", config.CompactorConfig.CompactorRing.InstanceAddr)
+		assert.Equal(t, "22.22.22.22", config.IndexGateway.Ring.InstanceAddr)
 	})
 }
 
@@ -1478,6 +1532,10 @@ query_scheduler:
   scheduler_ring:
     instance_interface_names:
     - myscheduler
+index_gateway:
+  ring:
+    instance_interface_names:
+    - myindexgateway
 frontend:
   instance_interface_names:
   - myfrontend
@@ -1499,6 +1557,7 @@ common:
 		assert.Equal(t, []string{"myscheduler"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"myfrontend"}, config.Frontend.FrontendV2.InfNames)
 		assert.Equal(t, []string{"mycompactor"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"myindexgateway"}, config.IndexGateway.Ring.InstanceInterfaceNames)
 	})
 
 	t.Run("common instance net interfaces is applied when others net interfaces are not explicitly set", func(t *testing.T) {
@@ -1513,6 +1572,7 @@ common:
 		assert.Equal(t, []string{"commoninterface"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"commoninterface"}, config.Frontend.FrontendV2.InfNames)
 		assert.Equal(t, []string{"commoninterface"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"commoninterface"}, config.IndexGateway.Ring.InstanceInterfaceNames)
 	})
 
 	t.Run("common instance net interface doesn't supersede net interface from common ring", func(t *testing.T) {
@@ -1522,6 +1582,45 @@ common:
   ring:
     instance_interface_names:
     - ringsshouldusethis`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ruler.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldntusethis"}, config.Frontend.FrontendV2.InfNames) // not a ring.
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.IndexGateway.Ring.InstanceInterfaceNames)
+	})
+
+	t.Run("common instance net interface doesn't get overwritten by common ring config", func(t *testing.T) {
+		yamlContent := `common:
+  instance_interface_names:
+  - interface
+  ring:
+    kvstore:
+      store: inmemory`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"interface"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"interface"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"interface"}, config.Ruler.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"interface"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
+		assert.Equal(t, []string{"interface"}, config.Frontend.FrontendV2.InfNames)
+		assert.Equal(t, []string{"interface"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+	})
+
+	t.Run("common instance net interface doesn't supersede net interface from common ring with additional config", func(t *testing.T) {
+		yamlContent := `common:
+  instance_interface_names:
+  - ringsshouldntusethis
+  ring:
+    instance_interface_names:
+    - ringsshouldusethis
+    kvstore:
+      store: inmemory`
 
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)

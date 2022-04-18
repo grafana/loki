@@ -1,5 +1,7 @@
 ## Main
 * [5848](https://github.com/grafana/loki/pull/5848) **arcosx** add Baidu AI Cloud as storage backends for Loki
+* [5899](https://github.com/grafana/loki/pull/5899) **simonswine**: Update go image to 1.17.9.
+* [5888](https://github.com/grafana/loki/pull/5888) **Papawy** Fix common config net interface name overwritten by ring common config
 * [5799](https://github.com/grafana/loki/pull/5799) **cyriltovena** Fix deduping issues when multiple entries with the same timestamp exist.
 * [5799](https://github.com/grafana/loki/pull/5799) **cyriltovena** Fixes deduping issues when multiple entries exists with the same timestamp.
 * [5780](https://github.com/grafana/loki/pull/5780) **simonswine**: Update alpine image to 3.15.4.
@@ -76,6 +78,7 @@
 
 ##### Changes
 * [5686](https://github.com/grafana/loki/pull/5686) **ssncferreira**: Move promtail StreamLagLabels config to upper level config.Config
+* [5839](https://github.com/grafana/loki/pull/5839) **marctc**: Add ActiveTargets method to promtail
 #### Fluent Bit
 * [5711](https://github.com/grafana/loki/pull/5711) **MichelHollands**: Update fluent-bit output name
 
@@ -173,6 +176,8 @@ to include only the most relevant.
 * [5544](https://github.com/grafana/loki/pull/5544) **ssncferreira**: Update vectorAggEvaluator to fail for expressions without grouping
 * [5543](https://github.com/grafana/loki/pull/5543) **cyriltovena**: update loki go version to 1.17.8
 * [5450](https://github.com/grafana/loki/pull/5450) **BenoitKnecht**: pkg/ruler/base: Add external_labels option
+* [5484](https://github.com/grafana/loki/pull/5450) **sandeepsukhani**: Add support for per user index query readiness with limits overrides
+* [5358](https://github.com/grafana/loki/pull/5358) **DylanGuedes**: Add `RingMode` support to `IndexGateway`
 * [5435](https://github.com/grafana/loki/pull/5435) **slim-bean**: set match_max_concurrent true by default
 * [5361](https://github.com/grafana/loki/pull/5361) **cyriltovena**: Add usage report into Loki.
 * [5243](https://github.com/grafana/loki/pull/5243) **owen-d**: Refactor/remove global splitby
@@ -1041,7 +1046,7 @@ TL;DR Loki 2.2 changes the internal chunk format which limits what versions you 
 * [3225](https://github.com/grafana/loki/pull/3225) **Le0tk0k**: (fix: cmd/docker-driver): Insert a space in the error message
 
 #### Docs
-
+* [5934](https://github.com/grafana/loki/pull/5934) **johgsc**: Docs: revise modes of operation section
 * [3437](https://github.com/grafana/loki/pull/3437) **caleb15**: docs: add note about regex
 * [3421](https://github.com/grafana/loki/pull/3421) **kavirajk**: doc(gcplog): Advanced log export filter example
 * [3419](https://github.com/grafana/loki/pull/3419) **suitupalex**: docs: promtail: Fix typo w/ windows_events hyperlink.

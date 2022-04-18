@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/config"
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	"github.com/grafana/loki/clients/pkg/promtail/targets"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -61,7 +62,7 @@ func New(cfg config.Config, metrics *client.Metrics, dryRun bool, opts ...Option
 		o(promtail)
 	}
 
-	cfg.Setup()
+	cfg.Setup(promtail.logger)
 
 	if cfg.LimitsConfig.ReadlineRateEnabled {
 		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
@@ -126,4 +127,9 @@ func (p *Promtail) Shutdown() {
 	}
 	// todo work out the stop.
 	p.client.Stop()
+}
+
+// ActiveTargets returns active targets per jobs from the target manager
+func (p *Promtail) ActiveTargets() map[string][]target.Target {
+	return p.targetManagers.ActiveTargets()
 }

@@ -107,6 +107,7 @@ type chunkDesc struct {
 	closed  bool
 	synced  bool
 	flushed time.Time
+	reason  string
 
 	lastUpdated time.Time
 }
