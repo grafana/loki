@@ -29,6 +29,16 @@ const (
 	gatewayHTTPPortName     = "public"
 	gatewayInternalPortName = "metrics"
 
+	walVolumeName     = "wal"
+	configVolumeName  = "config"
+	storageVolumeName = "storage"
+	rulesStorageVolumeName = "rules"
+
+	walDirectory    = "/tmp/wal"
+	dataDirectory   = "/tmp/loki"
+	secretDirectory = "/etc/proxy/secrets"
+	rulesStorageDirectory  = "/tmp/rules"
+
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
 	// EnvRelatedImageGateway is the environment variable to fetch the Gateway image pullspec.
@@ -106,6 +116,11 @@ func GossipLabels() map[string]string {
 	return map[string]string{
 		"loki.grafana.com/gossip": "true",
 	}
+}
+
+// LokiConfigMapName is the name of the configmap for Loki
+func LokiConfigMapName(stackName string) string {
+	return fmt.Sprintf("%s-config", stackName)
 }
 
 // CompactorName is the name of the compactor statefulset

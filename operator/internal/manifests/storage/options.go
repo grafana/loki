@@ -9,6 +9,7 @@ import (
 type Options struct {
 	SecretName  string
 	SharedStore lokiv1beta1.ObjectStorageSecretType
+	Schemas     []Schema
 	Azure       *AzureStorageConfig
 	GCS         *GCSStorageConfig
 	S3          *S3StorageConfig
@@ -54,6 +55,12 @@ type SwiftStorageConfig struct {
 	ProjectDomainName string
 	Region            string
 	Container         string
+}
+
+// Schema for schema
+type Schema struct {
+	From    string
+	Version lokiv1beta1.ObjectStorageSchemaVersion
 }
 
 // TLSConfig for object storage endpoints. Currently supported only by:

@@ -369,9 +369,30 @@ type ObjectStorageTLSSpec struct {
 	CA string `json:"caName,omitempty"`
 }
 
+// ObjectStorageSchemaVersion defines the storage schema version which will be used with the Loki cluster.
+//
+// +kubebuilder:validation:Enum=v11;v12
+type ObjectStorageSchemaVersion string
+
+const (
+	// ObjectStorageSchemaV11 when using v11 for the storage schema
+	ObjectStorageSchemaV11 ObjectStorageSchemaVersion = "v11"
+
+	// ObjectStorageSchemaV12 when using v12 for the storage schema
+	ObjectStorageSchemaV12 ObjectStorageSchemaVersion = "v12"
+)
+
 // ObjectStorageSpec defines the requirements to access the object
 // storage bucket to persist logs by the ingester component.
 type ObjectStorageSpec struct {
+	// Type of object storage that should be used
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:default:=v12
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:v11","urn:alm:descriptor:com.tectonic.ui:select:v12"},displayName="Schema Version"
+	SchemaVersion ObjectStorageSchemaVersion `json:"schemaVersion"`
+
 	// Secret for object storage authentication.
 	// Name of a secret in the same namespace as the LokiStack custom resource.
 	//

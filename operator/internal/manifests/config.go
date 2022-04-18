@@ -7,6 +7,7 @@ import (
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -32,7 +33,7 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   lokiConfigMapName(opt.Name),
+			Name:   LokiConfigMapName(opt.Name),
 			Labels: commonLabels(opt.Name),
 		},
 		BinaryData: map[string][]byte{
@@ -51,6 +52,7 @@ func ConfigOptions(opt Options) config.Options {
 		amConfig                   *config.AlertManagerConfig
 		rwConfig                   *config.RemoteWriteConfig
 	)
+	
 	if rulerEnabled {
 		rulerEnabled = true
 
@@ -106,10 +108,6 @@ func ConfigOptions(opt Options) config.Options {
 			RemoteWrite:           rwConfig,
 		},
 	}
-}
-
-func lokiConfigMapName(stackName string) string {
-	return fmt.Sprintf("%s-config", stackName)
 }
 
 func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {

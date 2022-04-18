@@ -45,7 +45,7 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						DefaultMode: &defaultConfigMapMode,
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: lokiConfigMapName(opts.Name),
+							Name: LokiConfigMapName(opts.Name),
 						},
 					},
 				},

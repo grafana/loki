@@ -9,11 +9,13 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
-	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
+	"github.com/grafana/loki/operator/internal/handlers/internal/secrets"
 	"github.com/grafana/loki/operator/internal/manifests"
 	storageoptions "github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/metrics"
+	"github.com/grafana/loki/operator/internal/migrations/storageschema"
 	"github.com/grafana/loki/operator/internal/status"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
@@ -69,7 +71,7 @@ func CreateOrUpdateLokiStack(
 		return kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	objstorage, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
+	objStore, err := secrets.ExtractStorageSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
@@ -102,6 +104,12 @@ func CreateOrUpdateLokiStack(
 
 		objstorage.TLS = &storageoptions.TLSConfig{CA: cm.Name}
 	}
+	schemas, err := storageschema.GetLokiStorageSchemaData(ctx, k, req)
+	if err != nil {
+		log.Error(err, "Failed to retrieve config map for storage schemas.")
+		return err
+	}
+	objStore.Schemas = storage.UpdateSchemas(stack.Spec.Storage.AutoUpdateStorageSchema, schemas, stack.Spec.Storage.Secret.Type)
 
 	var (
 		baseDomain    string
@@ -195,7 +203,11 @@ func CreateOrUpdateLokiStack(
 		GatewayBaseDomain: baseDomain,
 		Stack:             stack.Spec,
 		Flags:             flags,
+<<<<<<< HEAD
 		ObjectStorage:     *objstorage,
+=======
+		ObjectStorage:     *objStore,
+>>>>>>> 46e521841 (Doing configmap look up during createorupdate; Fixing test cases)
 		AlertingRules:     alertingRules,
 		RecordingRules:    recordingRules,
 		Ruler: manifests.Ruler{

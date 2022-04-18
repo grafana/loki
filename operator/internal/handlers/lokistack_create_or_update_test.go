@@ -85,6 +85,18 @@ var (
 	}
 )
 
+var lokiConfigData = []byte(`
+schema_config:
+  configs:
+    - from: 2006-01-02
+      index:
+        period: 24h
+        prefix: index_
+      object_store: s3
+      schema: v11
+      store: boltdb-shipper
+`)
+
 func TestMain(m *testing.M) {
 	testing.Init()
 	flag.Parse()
@@ -441,6 +453,16 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 		},
 	}
 
+	cm := corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack-config",
+			Namespace: "some-ns",
+		},
+		BinaryData: map[string][]byte{
+			"config.yaml": lokiConfigData,
+		},
+	}
+
 	// Create looks up the CR first, so we need to return our fake stack
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
@@ -451,6 +473,9 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 		}
 		if svc.Name == name.Name && svc.Namespace == name.Namespace {
 			k.SetClientObject(object, &svc)
+		}
+		if cm.Name == name.Name && cm.Namespace == name.Namespace {
+			k.SetClientObject(object, &cm)
 		}
 		return nil
 	}

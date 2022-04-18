@@ -224,6 +224,12 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
+			Schemas: []storage.Schema{
+				{
+					From:    "2020-10-01",
+					Version: "v11",
+				},
+			},
 		},
 		EnableRemoteReporting: true,
 	}
@@ -466,6 +472,12 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
+			Schemas: []storage.Schema{
+				{
+					From:    "2020-10-01",
+					Version: "v11",
+				},
+			},
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -528,6 +540,12 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 				Buckets:         "loki",
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
+			},
+			Schemas: []storage.Schema{
+				{
+					From:    "2020-10-01",
+					Version: "v11",
+				},
 			},
 		},
 	}

@@ -309,6 +309,13 @@ spec:
                 description: Storage defines the spec for the object storage endpoint
                   to store logs.
                 properties:
+                  schemaVersion:
+                    default: v12
+                    description: Type of object storage that should be used
+                    enum:
+                    - v11
+                    - v12
+                    type: string
                   secret:
                     description: Secret for object storage authentication. Name of
                       a secret in the same namespace as the LokiStack custom resource.
@@ -340,6 +347,7 @@ spec:
                         type: string
                     type: object
                 required:
+                - schemaVersion
                 - secret
                 type: object
               storageClassName:

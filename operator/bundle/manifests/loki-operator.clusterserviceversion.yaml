@@ -439,6 +439,12 @@ spec:
           logs.
         displayName: Object Storage
         path: storage
+      - description: Type of object storage that should be used
+        displayName: Schema Version
+        path: storage.schemaVersion
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:v11
+        - urn:alm:descriptor:com.tectonic.ui:select:v12
       - description: Name of a secret in the namespace configured for object storage
           secrets.
         displayName: Object Storage Secret Name
