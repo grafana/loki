@@ -458,15 +458,17 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
+	if asyncStore {
+		t.Cfg.StorageConfig.EnableAsyncStore = true
+		t.Cfg.StorageConfig.AsyncStoreConfig = storage.AsyncStoreCfg{
+			IngesterQuerier:      t.ingesterQuerier,
+			QueryIngestersWithin: calculateAsyncStoreQueryIngestersWithin(t.Cfg.Querier.QueryIngestersWithin, boltdbShipperMinIngesterQueryStoreDuration(t.Cfg)),
+		}
+	}
+
 	t.Store, err = storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return
-	}
-
-	if asyncStore {
-		t.Store = storage.NewAsyncStore(t.Store, t.Cfg.SchemaConfig, t.ingesterQuerier,
-			calculateAsyncStoreQueryIngestersWithin(t.Cfg.Querier.QueryIngestersWithin, boltdbShipperMinIngesterQueryStoreDuration(t.Cfg)),
-		)
 	}
 
 	return services.NewIdleService(nil, func(_ error) error {
