@@ -26,7 +26,7 @@ func TestConfig_setClusterConfig_authWithPassword(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Auth = true
 	cfg.Username = "user"
-	cfg.Password = flagext.Secret{Value: "pass"}
+	cfg.Password = flagext.SecretWithValue("pass")
 	require.NoError(t, cfg.Validate())
 
 	cqlCfg := gocql.NewCluster()
@@ -71,7 +71,7 @@ func TestConfig_setClusterConfig_authWithPasswordAndPasswordFile(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Auth = true
 	cfg.Username = "user"
-	cfg.Password = flagext.Secret{Value: "pass"}
+	cfg.Password = flagext.SecretWithValue("pass")
 	cfg.PasswordFile = "testdata/password-with-trailing-newline.txt"
 	assert.Error(t, cfg.Validate())
 }

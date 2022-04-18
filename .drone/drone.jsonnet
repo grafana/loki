@@ -355,7 +355,7 @@ local manifest(apps) = pipeline('manifest') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: ['0.20.0'],
+          tags: ['0.20.3'],
           dry_run: false,
         },
       },

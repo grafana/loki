@@ -25,8 +25,11 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/deletion"
 )
 
 var (
@@ -157,6 +160,10 @@ func (s *store) init() error {
 		}
 		s.composite.AddStore(p.From.Time, f, idx, w, stop)
 	}
+
+	if s.cfg.EnableAsyncStore {
+		s.Store = NewAsyncStore(s.cfg.AsyncStoreConfig, s.Store, s.schemaCfg)
+	}
 	return nil
 }
 
@@ -175,6 +182,19 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 
 	chunks = client.NewMetricsChunkClient(chunks, s.chunkClientMetrics)
 	return chunks, nil
+}
+
+func shouldUseIndexGatewayClient(cfg Config) bool {
+	if cfg.BoltDBShipperConfig.Mode != shipper.ModeReadOnly || cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled {
+		return false
+	}
+
+	gatewayCfg := cfg.BoltDBShipperConfig.IndexGatewayClientConfig
+	if gatewayCfg.Mode == indexgateway.SimpleMode && gatewayCfg.Address == "" {
+		return false
+	}
+
+	return true
 }
 
 func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, stores.Index, func(), error) {
@@ -196,8 +216,23 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		schema = index.NewSchemaCaching(schema, time.Duration(s.storeCfg.CacheLookupsOlderThan))
 	}
 
-	return series.NewWriter(f, s.schemaCfg, idx, schema, s.writeDedupeCache, s.storeCfg.DisableIndexDeduplication),
-		series.NewIndexStore(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize),
+	var (
+		writer       stores.ChunkWriter = series.NewWriter(f, s.schemaCfg, idx, schema, s.writeDedupeCache, s.storeCfg.DisableIndexDeduplication)
+		seriesdIndex *series.IndexStore = series.NewIndexStore(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize)
+		index        stores.Index       = seriesdIndex
+	)
+
+	if shouldUseIndexGatewayClient(s.cfg) {
+		// inject the index-gateway client into the index store
+		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		index = series.NewIndexGatewayClientStore(gw, seriesdIndex)
+	}
+
+	return writer,
+		index,
 		func() {
 			chunkClient.Stop()
 			f.Stop()
@@ -349,6 +384,10 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
+	if len(lazyChunks) == 0 {
+		return iter.NoopIterator, nil
+	}
+
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -359,9 +398,11 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
-	if len(lazyChunks) == 0 {
-		return iter.NoopIterator, nil
+	pipeline, err = deletion.SetupPipeline(req, pipeline)
+	if err != nil {
+		return nil, err
 	}
+
 	var chunkFilterer chunk.Filterer
 	if s.chunkFilterer != nil {
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
@@ -376,6 +417,15 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		return nil, err
 	}
 
+	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(lazyChunks) == 0 {
+		return iter.NoopIterator, nil
+	}
+
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
@@ -386,14 +436,11 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
+	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(lazyChunks) == 0 {
-		return iter.NoopIterator, nil
-	}
 	var chunkFilterer chunk.Filterer
 	if s.chunkFilterer != nil {
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)

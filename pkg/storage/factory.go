@@ -63,6 +63,11 @@ type Config struct {
 
 	MaxChunkBatchSize   int            `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig shipper.Config `yaml:"boltdb_shipper"`
+
+	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
+	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
+	EnableAsyncStore bool          `yaml:"-"`
+	AsyncStoreConfig AsyncStoreCfg `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -144,8 +149,9 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 		if boltDBIndexClientWithShipper != nil {
 			return boltDBIndexClientWithShipper, nil
 		}
-		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" {
-			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer)
+
+		if shouldUseIndexGatewayClient(cfg) {
+			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
 			if err != nil {
 				return nil, err
 			}
