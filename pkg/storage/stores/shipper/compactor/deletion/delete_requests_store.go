@@ -16,7 +16,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 )
 
@@ -53,7 +53,7 @@ type DeleteRequestsStore interface {
 
 // deleteRequestsStore provides all the methods required to manage lifecycle of delete request and things related to it.
 type deleteRequestsStore struct {
-	indexClient chunk.IndexClient
+	indexClient index.Client
 }
 
 // NewDeleteStore creates a store for managing delete requests.
@@ -66,7 +66,7 @@ func NewDeleteStore(workingDirectory string, indexStorageClient storage.Client) 
 	return &deleteRequestsStore{indexClient: indexClient}, nil
 }
 
-func NewDeleteStoreFromIndexClient(ic chunk.IndexClient) DeleteRequestsStore {
+func NewDeleteStoreFromIndexClient(ic index.Client) DeleteRequestsStore {
 	return &deleteRequestsStore{ic}
 }
 
@@ -125,7 +125,7 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 
 // GetDeleteRequestsByStatus returns all delete requests for given status.
 func (ds *deleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
-	return ds.queryDeleteRequests(ctx, chunk.IndexQuery{
+	return ds.queryDeleteRequests(ctx, index.Query{
 		TableName:  DeleteRequestsTableName,
 		HashValue:  string(deleteRequestID),
 		ValueEqual: []byte(status),
@@ -134,7 +134,7 @@ func (ds *deleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, st
 
 // GetAllDeleteRequestsForUser returns all delete requests for a user.
 func (ds *deleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
-	return ds.queryDeleteRequests(ctx, chunk.IndexQuery{
+	return ds.queryDeleteRequests(ctx, index.Query{
 		TableName:        DeleteRequestsTableName,
 		HashValue:        string(deleteRequestID),
 		RangeValuePrefix: []byte(userID),
@@ -160,7 +160,7 @@ func (ds *deleteRequestsStore) UpdateStatus(ctx context.Context, userID, request
 func (ds *deleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error) {
 	userIDAndRequestID := fmt.Sprintf("%s:%s", userID, requestID)
 
-	deleteRequests, err := ds.queryDeleteRequests(ctx, chunk.IndexQuery{
+	deleteRequests, err := ds.queryDeleteRequests(ctx, index.Query{
 		TableName:        DeleteRequestsTableName,
 		HashValue:        string(deleteRequestID),
 		RangeValuePrefix: []byte(userIDAndRequestID),
@@ -177,11 +177,11 @@ func (ds *deleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, req
 }
 
 func (ds *deleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
-	query := chunk.IndexQuery{TableName: DeleteRequestsTableName, HashValue: fmt.Sprintf("%s:%s", cacheGenNum, userID)}
+	query := index.Query{TableName: DeleteRequestsTableName, HashValue: fmt.Sprintf("%s:%s", cacheGenNum, userID)}
 	ctx = user.InjectOrgID(ctx, userID)
 
 	genNumber := ""
-	err := ds.indexClient.QueryPages(ctx, []chunk.IndexQuery{query}, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+	err := ds.indexClient.QueryPages(ctx, []index.Query{query}, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {
 			genNumber = string(itr.Value())
@@ -197,10 +197,10 @@ func (ds *deleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, use
 	return genNumber, nil
 }
 
-func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQuery chunk.IndexQuery) ([]DeleteRequest, error) {
+func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQuery index.Query) ([]DeleteRequest, error) {
 	deleteRequests := []DeleteRequest{}
 	// No need to lock inside the callback since we run a single index query.
-	err := ds.indexClient.QueryPages(ctx, []chunk.IndexQuery{deleteQuery}, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+	err := ds.indexClient.QueryPages(ctx, []index.Query{deleteQuery}, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {
 			userID, requestID := splitUserIDAndRequestID(string(itr.RangeValue()))
@@ -218,7 +218,7 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 	}
 
 	for i, deleteRequest := range deleteRequests {
-		deleteRequestQuery := []chunk.IndexQuery{
+		deleteRequestQuery := []index.Query{
 			{
 				TableName: DeleteRequestsTableName,
 				HashValue: fmt.Sprintf("%s:%s:%s", deleteRequestDetails, deleteRequest.UserID, deleteRequest.RequestID),
@@ -226,7 +226,7 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 		}
 
 		var parseError error
-		err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+		err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 			itr := batch.Iterator()
 			itr.Next()
 

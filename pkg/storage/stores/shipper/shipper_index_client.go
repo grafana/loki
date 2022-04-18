@@ -15,16 +15,16 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
@@ -35,9 +35,6 @@ const (
 	// ModeWriteOnly is to allow only write operations
 	ModeWriteOnly
 
-	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
-	BoltDBShipperType = "boltdb-shipper"
-
 	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
 	FilesystemObjectStoreType = "filesystem"
 
@@ -47,8 +44,8 @@ const (
 )
 
 type boltDBIndexClient interface {
-	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback chunk.QueryPagesCallback) error
-	NewWriteBatch() chunk.WriteBatch
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error
+	NewWriteBatch() index.WriteBatch
 	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 	Stop()
 }
@@ -97,7 +94,7 @@ type Shipper struct {
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(cfg Config, storageClient chunk.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) (chunk.IndexClient, error) {
+func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) (index.Client, error) {
 	shipper := Shipper{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
@@ -113,7 +110,7 @@ func NewShipper(cfg Config, storageClient chunk.ObjectClient, limits downloads.L
 	return &shipper, nil
 }
 
-func (s *Shipper) init(storageClient chunk.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) error {
+func (s *Shipper) init(storageClient client.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) error {
 	// When we run with target querier we don't have ActiveIndexDirectory set so using CacheLocation instead.
 	// Also it doesn't matter which directory we use since BoltDBIndexClient doesn't do anything with it but it is good to have a valid path.
 	boltdbIndexClientDir := s.cfg.ActiveIndexDirectory
@@ -185,7 +182,7 @@ func (s *Shipper) getUploaderName() (string, error) {
 		if !os.IsNotExist(err) {
 			return "", err
 		}
-		if err := ioutil.WriteFile(uploaderFilePath, []byte(uploader), 0666); err != nil {
+		if err := ioutil.WriteFile(uploaderFilePath, []byte(uploader), 0o666); err != nil {
 			return "", err
 		}
 	} else {
@@ -215,17 +212,17 @@ func (s *Shipper) stop() {
 	s.boltDBIndexClient.Stop()
 }
 
-func (s *Shipper) NewWriteBatch() chunk.WriteBatch {
+func (s *Shipper) NewWriteBatch() index.WriteBatch {
 	return s.boltDBIndexClient.NewWriteBatch()
 }
 
-func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+func (s *Shipper) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
 	return instrument.CollectedRequest(ctx, "WRITE", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
 		return s.uploadsManager.BatchWrite(ctx, batch)
 	})
 }
 
-func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (s *Shipper) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	return instrument.CollectedRequest(ctx, "Shipper.Query", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
 		spanLogger := spanlogger.FromContext(ctx)
 

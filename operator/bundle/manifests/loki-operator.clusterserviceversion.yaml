@@ -586,11 +586,9 @@ spec:
           replicas: 1
           selector:
             matchLabels:
-              app.kubernetes.io/instance: loki-operator-v0.0.1
               app.kubernetes.io/managed-by: operator-lifecycle-manager
               app.kubernetes.io/name: loki-operator
               app.kubernetes.io/part-of: cluster-logging
-              app.kubernetes.io/version: 0.0.1
               name: loki-operator-controller-manager
           strategy: {}
           template:
@@ -598,11 +596,9 @@ spec:
               annotations:
                 kubectl.kubernetes.io/default-container: manager
               labels:
-                app.kubernetes.io/instance: loki-operator-v0.0.1
                 app.kubernetes.io/managed-by: operator-lifecycle-manager
                 app.kubernetes.io/name: loki-operator
                 app.kubernetes.io/part-of: cluster-logging
-                app.kubernetes.io/version: 0.0.1
                 name: loki-operator-controller-manager
             spec:
               containers:
@@ -617,7 +613,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.4.2
+                  value: quay.io/openshift-logging/loki:v2.5.0
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -718,7 +714,7 @@ spec:
   relatedImages:
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
-  - image: quay.io/openshift-logging/loki:v2.4.2
+  - image: quay.io/openshift-logging/loki:v2.5.0
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway

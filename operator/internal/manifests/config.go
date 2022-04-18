@@ -70,7 +70,8 @@ func ConfigOptions(opt Options) config.Options {
 			Directory:             walDirectory,
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
-		ObjectStorage: opt.ObjectStorage,
+		ObjectStorage:         opt.ObjectStorage,
+		EnableRemoteReporting: opt.Flags.EnableGrafanaLabsStats,
 	}
 }
 

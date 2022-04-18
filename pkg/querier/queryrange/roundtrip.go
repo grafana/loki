@@ -16,8 +16,8 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -41,7 +41,7 @@ func NewTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	schema chunk.SchemaConfig,
+	schema config.SchemaConfig,
 	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
 	registerer prometheus.Registerer,
 ) (queryrangebase.Tripperware, Stopper, error) {
@@ -246,7 +246,7 @@ func NewLogFilterTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	schema chunk.SchemaConfig,
+	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
 	c cache.Cache,
 	metrics *Metrics,
@@ -309,7 +309,7 @@ func NewSeriesTripperware(
 	limits Limits,
 	codec queryrangebase.Codec,
 	metrics *Metrics,
-	schema chunk.SchemaConfig,
+	schema config.SchemaConfig,
 ) (queryrangebase.Tripperware, error) {
 	queryRangeMiddleware := []queryrangebase.Middleware{
 		NewLimitsMiddleware(limits),
@@ -385,7 +385,7 @@ func NewMetricTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	schema chunk.SchemaConfig,
+	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
 	c cache.Cache,
 	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
@@ -472,7 +472,7 @@ func NewInstantMetricTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	schema chunk.SchemaConfig,
+	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
 	metrics *Metrics,
 ) (queryrangebase.Tripperware, error) {
@@ -480,6 +480,7 @@ func NewInstantMetricTripperware(
 
 	if cfg.ShardedQueries {
 		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewSplitByRangeMiddleware(log, limits, nil),
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,

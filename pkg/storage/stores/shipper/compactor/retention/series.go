@@ -4,7 +4,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 type userSeries struct {
@@ -93,13 +93,13 @@ type seriesLabels struct {
 
 type seriesLabelsMapper struct {
 	cursor *bbolt.Cursor
-	config chunk.PeriodConfig
+	config config.PeriodConfig
 
 	bufKey  userSeries
 	mapping map[string]*seriesLabels
 }
 
-func newSeriesLabelsMapper(bucket *bbolt.Bucket, config chunk.PeriodConfig) (*seriesLabelsMapper, error) {
+func newSeriesLabelsMapper(bucket *bbolt.Bucket, config config.PeriodConfig) (*seriesLabelsMapper, error) {
 	sm := &seriesLabelsMapper{
 		cursor:  bucket.Cursor(),
 		mapping: map[string]*seriesLabels{},

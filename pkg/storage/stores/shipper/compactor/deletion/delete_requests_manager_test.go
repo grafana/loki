@@ -58,6 +58,10 @@ func (m mockDeleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, u
 	panic("implement me")
 }
 
+func (m mockDeleteRequestsStore) Source() string {
+	return ""
+}
+
 func TestDeleteRequestsManager_Expired(t *testing.T) {
 	type resp struct {
 		isExpired           bool

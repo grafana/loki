@@ -98,6 +98,10 @@ func NewMultiClient(cfg MultiConfig, clients []kvclient, logger log.Logger, regi
 		logger: log.With(logger, "component", "multikv"),
 	}
 
+	c.registerMetrics(registerer)
+	c.updatePrimaryStoreGauge()
+	c.updateMirrorEnabledGauge()
+
 	ctx, cancelFn := context.WithCancel(context.Background())
 	c.cancel = cancelFn
 
@@ -105,9 +109,6 @@ func NewMultiClient(cfg MultiConfig, clients []kvclient, logger log.Logger, regi
 		go c.watchConfigChannel(ctx, cfg.ConfigProvider())
 	}
 
-	c.registerMetrics(registerer)
-	c.updatePrimaryStoreGauge()
-	c.updateMirrorEnabledGauge()
 	return c
 }
 

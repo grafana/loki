@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/go-kit/log"
 	dskitflagext "github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -137,7 +138,7 @@ func TestConfig_Setup(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			tt.in.Setup()
+			tt.in.Setup(log.NewNopLogger())
 			require.Equal(t, tt.expected, tt.in)
 		})
 	}

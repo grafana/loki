@@ -12,11 +12,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/generationnumber"
-
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
-
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,7 +26,6 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
-	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -194,17 +188,10 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if err != nil {
 		return err
 	}
-	cm := chunk_storage.NewClientMetrics()
-	storage.RegisterCustomIndexClients(&conf.StorageConfig, cm, prometheus.DefaultRegisterer)
+	cm := storage.NewClientMetrics()
 	conf.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 
-	genNumLoader, err := cacheGenNumLoader(&conf, limits)
-	chunkStore, err := chunk_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig.StoreConfig, conf.SchemaConfig.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, genNumLoader, util_log.Logger)
-	if err != nil {
-		return err
-	}
-
-	querier, err := storage.NewStore(conf.StorageConfig, conf.SchemaConfig, chunkStore, prometheus.DefaultRegisterer)
+	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return err
 	}
@@ -254,20 +241,6 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	q.printResult(value, out, nil)
 	return nil
-}
-
-func cacheGenNumLoader(conf *loki.Config, overrides *validation.Overrides) (chunk.CacheGenNumLoader, error) {
-	deleteStore := deletion.NewNoOpDeleteRequestsStore()
-	if storage.UsingBoltdbShipper(conf.SchemaConfig.Configs) {
-		indexClient, err := chunk_storage.NewIndexClient(shipper.BoltDBShipperType, conf.StorageConfig.Config, conf.SchemaConfig.SchemaConfig, overrides, prometheus.DefaultRegisterer)
-		if err != nil {
-			return nil, err
-		}
-
-		deleteStore = deletion.NewDeleteStoreFromIndexClient(indexClient)
-	}
-
-	return generationnumber.NewGenNumberLoader(deleteStore, prometheus.DefaultRegisterer), nil
 }
 
 // SetInstant makes the Query an instant type

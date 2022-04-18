@@ -97,10 +97,6 @@ func (l *GenNumberLoader) GetResultsCacheGenNumber(tenantIDs []string) string {
 	return l.getCacheGenNumbersPerTenants(tenantIDs)
 }
 
-func (l *GenNumberLoader) GetStoreCacheGenNumber(tenantIDs []string) string {
-	return l.getCacheGenNumbersPerTenants(tenantIDs)
-}
-
 func (l *GenNumberLoader) getCacheGenNumbersPerTenants(tenantIDs []string) string {
 	var max int
 	for _, tenantID := range tenantIDs {

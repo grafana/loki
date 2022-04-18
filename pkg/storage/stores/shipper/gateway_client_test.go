@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -21,14 +22,15 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -50,7 +52,9 @@ const (
 	numTables           = 50
 )
 
-type mockIndexGatewayServer struct{}
+type mockIndexGatewayServer struct {
+	indexgatewaypb.IndexGatewayServer
+}
 
 func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
 	for i, query := range request.Queries {
@@ -82,7 +86,7 @@ func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexReq
 			})
 		}
 
-		resp.QueryKey = util.QueryKey(chunk.IndexQuery{
+		resp.QueryKey = util.QueryKey(index.Query{
 			TableName:        query.TableName,
 			HashValue:        query.HashValue,
 			RangeValuePrefix: query.RangeValuePrefix,
@@ -96,6 +100,10 @@ func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexReq
 	}
 
 	return nil
+}
+
+func (m mockIndexGatewayServer) GetChunkRef(context.Context, *indexgatewaypb.GetChunkRefRequest) (*indexgatewaypb.GetChunkRefResponse, error) {
+	return &indexgatewaypb.GetChunkRefResponse{}, nil
 }
 
 func createTestGrpcServer(t *testing.T) (func(), string) {
@@ -122,17 +130,18 @@ func TestGatewayClient(t *testing.T) {
 	defer cleanup()
 
 	var cfg IndexGatewayClientConfig
+	cfg.Mode = indexgateway.SimpleMode
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
 
-	gatewayClient, err := NewGatewayClient(cfg, nil)
+	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, util_log.Logger)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	queries := []chunk.IndexQuery{}
+	queries := []index.Query{}
 	for i := 0; i < 10; i++ {
-		queries = append(queries, chunk.IndexQuery{
+		queries = append(queries, index.Query{
 			TableName:        fmt.Sprintf("%s%d", tableNamePrefix, i),
 			HashValue:        fmt.Sprintf("%s%d", hashValuePrefix, i),
 			RangeValuePrefix: []byte(fmt.Sprintf("%s%d", rangeValuePrefixPrefix, i)),
@@ -142,7 +151,7 @@ func TestGatewayClient(t *testing.T) {
 	}
 
 	numCallbacks := 0
-	err = gatewayClient.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+	err = gatewayClient.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 
 		for j := 0; j <= numCallbacks; j++ {
@@ -174,7 +183,7 @@ func (m mockLimits) DefaultLimits() *validation.Limits {
 	return &validation.Limits{}
 }
 
-func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
+func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 	buffer := 1024 * 1024
 	listener := bufconn.Listen(buffer)
 
@@ -228,7 +237,11 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 	require.NoError(b, err)
 
 	// initialize the index gateway server
-	gw := indexgateway.NewIndexGateway(tm)
+	var cfg indexgateway.Config
+	flagext.DefaultValues(&cfg)
+
+	gw, err := indexgateway.NewIndexGateway(cfg, util_log.Logger, prometheus.DefaultRegisterer, nil, tm)
+	require.NoError(b, err)
 	indexgatewaypb.RegisterIndexGatewayServer(s, gw)
 	go func() {
 		if err := s.Serve(listener); err != nil {
@@ -256,7 +269,7 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 		actual := map[string]int{}
 		syncMtx := sync.Mutex{}
 
-		err := gatewayClient.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+		err := gatewayClient.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 			itr := batch.Iterator()
 			for itr.Next() {
 				syncMtx.Lock()
@@ -271,11 +284,11 @@ func benchmarkIndexQueries(b *testing.B, queries []chunk.IndexQuery) {
 }
 
 func Benchmark_QueriesMatchingSingleRow(b *testing.B) {
-	queries := []chunk.IndexQuery{}
+	queries := []index.Query{}
 	// do a query per row from each of the tables
 	for i := 0; i < benchMarkNumEntries/numTables; i++ {
 		for j := 0; j < numTables; j++ {
-			queries = append(queries, chunk.IndexQuery{
+			queries = append(queries, index.Query{
 				TableName:        buildTableName(j),
 				RangeValuePrefix: []byte(strconv.Itoa(i)),
 				ValueEqual:       []byte(strconv.Itoa(i)),
@@ -287,12 +300,27 @@ func Benchmark_QueriesMatchingSingleRow(b *testing.B) {
 }
 
 func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
-	var queries []chunk.IndexQuery
+	var queries []index.Query
 	// do a query per table matching all the rows from it
 	for j := 0; j < numTables; j++ {
-		queries = append(queries, chunk.IndexQuery{
+		queries = append(queries, index.Query{
 			TableName: buildTableName(j),
 		})
 	}
 	benchmarkIndexQueries(b, queries)
+}
+
+func TestDoubleRegistration(t *testing.T) {
+	r := prometheus.NewRegistry()
+	cleanup, storeAddress := createTestGrpcServer(t)
+	defer cleanup()
+
+	_, err := NewGatewayClient(IndexGatewayClientConfig{
+		Address: storeAddress,
+	}, r, util_log.Logger)
+	require.NoError(t, err)
+	_, err = NewGatewayClient(IndexGatewayClientConfig{
+		Address: storeAddress,
+	}, r, util_log.Logger)
+	require.NoError(t, err)
 }

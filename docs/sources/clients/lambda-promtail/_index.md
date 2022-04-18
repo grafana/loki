@@ -148,15 +148,15 @@ scrape_configs:
       labels:
         # Adds a label on all streams indicating it was processed by the lambda-promtail workflow.
         promtail: 'lambda-promtail'
-      relabel_configs:
-        - source_labels: ['__aws_log_type']
-          taget_label: 'log_type'
-        # Maps the cloudwatch log group into a label called `log_group` for use in Loki.
-        - source_labels: ['__aws_cloudwatch_log_group']
-          target_label: 'log_group'
-        # Maps the loadbalancer name into a label called `loadbalancer_name` for use in Loki.
-        - source_label: ['__aws_s3_log_lb']
-          taget_label: 'loadbalancer_name'
+    relabel_configs:
+      - source_labels: ['__aws_log_type']
+        taget_label: 'log_type'
+      # Maps the cloudwatch log group into a label called `log_group` for use in Loki.
+      - source_labels: ['__aws_cloudwatch_log_group']
+        target_label: 'log_group'
+      # Maps the loadbalancer name into a label called `loadbalancer_name` for use in Loki.
+      - source_label: ['__aws_s3_log_lb']
+        taget_label: 'loadbalancer_name'
 ```
 
 ## Multiple Promtail Deployment

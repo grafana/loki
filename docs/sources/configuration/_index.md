@@ -216,7 +216,7 @@ configures the HTTP and gRPC server communication of the launched service(s).
 [grpc_server_max_recv_msg_size: <int> | default = 4194304]
 
 # Max gRPC message size that can be sent
-# CLI flag: -server.grpc-max-recv-msg-size-bytes
+# CLI flag: -server.grpc-max-send-msg-size-bytes
 [grpc_server_max_send_msg_size: <int> | default = 4194304]
 
 # Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
@@ -295,6 +295,11 @@ The `querier` block configures the Loki Querier.
 # useful for running a standalone querier pool opearting only against stored data.
 # CLI flag: -querier.query-store-only
 [query_store_only: <boolean> | default = false]
+
+# Queriers should only query the ingesters and not try to query any store,
+# useful for when object store is unavailable.
+# CLI flag: -querier.query-ingester-only
+[query_ingester_only: <boolean> | default = false]
 
 # Allow queries for multiple tenants.
 # CLI flag: -querier.multi-tenant-queries-enabled
@@ -746,6 +751,10 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # The Microsoft Azure account key to use.
 # CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
+
+# Chunk delimiter to build the blobID
+# CLI flag: -<prefix>.azure.chunk-delimiter
+[chunk_delimiter: <string> | default = "-"]
 
 # Preallocated buffer size for downloads.
 # CLI flag: -<prefix>.azure.download-buffer-size
@@ -1726,6 +1735,11 @@ boltdb_shipper:
 # the chunk_idle_period in the ingester settings.
 # CLI flag: -store.index-cache-validity
 [index_cache_validity: <duration> | default = 5m]
+
+# Disable broad index queries which results in reduced cache usage and faster query performance at the expense of
+# somewhat higher QPS on the index store.
+# CLI flag: -store.disable-broad-index-queries
+[disable_broad_index_queries: <bool> | default = false]
 
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size

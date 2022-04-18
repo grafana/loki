@@ -38,3 +38,6 @@ coverage.txt
 .terraform*
 *.tfstate*
 *.tfvars
+
+# vscode
+.vscode
