@@ -65,9 +65,14 @@ func (c *genNumberClient) GetCacheGenerationNumber(_ context.Context, userID str
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		err := fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		level.Error(log.Logger).Log("msg", "error getting cache gen numbers from the store", "err", err)
+		return "", err
+	}
+
 	var genNumber string
 	if err := json.NewDecoder(resp.Body).Decode(&genNumber); err != nil {
-		fmt.Println(err)
 		level.Error(log.Logger).Log("msg", "error marshalling response", "err", err)
 		return "", err
 	}
