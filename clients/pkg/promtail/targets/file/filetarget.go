@@ -204,7 +204,7 @@ func (t *FileTarget) sync() error {
 	} else {
 		matchesExcluded, err = doublestar.Glob(t.pathExclude)
 		if err != nil {
-			return errors.Wrap(err, "filetarget.sync.filepath.Glob")
+			return errors.Wrap(err, "filetarget.sync.filepathexclude.Glob")
 		}
 	}
 
