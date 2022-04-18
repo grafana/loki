@@ -18,7 +18,7 @@ const (
 
 type CacheGenClient interface {
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
-	Source() string
+	Name() string
 }
 
 type genNumberClient struct {
@@ -37,7 +37,7 @@ func NewGenNumberClient(addr string, c doer) CacheGenClient {
 	}
 }
 
-func (c *genNumberClient) Source() string {
+func (c *genNumberClient) Name() string {
 	return "gen_number_client"
 }
 

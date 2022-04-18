@@ -42,6 +42,6 @@ func (d *noOpDeleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, 
 
 func (d *noOpDeleteRequestsStore) Stop() {}
 
-func (d *noOpDeleteRequestsStore) Source() string {
+func (d *noOpDeleteRequestsStore) Name() string {
 	return ""
 }

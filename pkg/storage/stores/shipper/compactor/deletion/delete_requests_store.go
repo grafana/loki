@@ -48,7 +48,7 @@ type DeleteRequestsStore interface {
 	RemoveDeleteRequest(ctx context.Context, userID, requestID string, createdAt, startTime, endTime model.Time) error
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
 	Stop()
-	Source() string
+	Name() string
 }
 
 // deleteRequestsStore provides all the methods required to manage lifecycle of delete request and things related to it.
@@ -276,7 +276,7 @@ func (ds *deleteRequestsStore) RemoveDeleteRequest(ctx context.Context, userID, 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
 
-func (ds *deleteRequestsStore) Source() string {
+func (ds *deleteRequestsStore) Name() string {
 	return "delete_requests_store"
 }
 

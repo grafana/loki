@@ -58,7 +58,7 @@ func (m mockDeleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, u
 	panic("implement me")
 }
 
-func (m mockDeleteRequestsStore) Source() string {
+func (m mockDeleteRequestsStore) Name() string {
 	return ""
 }
 

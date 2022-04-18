@@ -26,7 +26,7 @@ type GenNumberLoader struct {
 
 type genNumberGetter interface {
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
-	Source() string
+	Name() string
 }
 
 func NewGenNumberLoader(g genNumberGetter, registerer prometheus.Registerer) *GenNumberLoader {
@@ -132,7 +132,7 @@ func (l *GenNumberLoader) getCacheGenNumber(userID string) string {
 	genNumber, err := l.numberGetter.GetCacheGenerationNumber(context.Background(), userID)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error loading cache generation numbers", "err", err)
-		l.metrics.cacheGenLoadFailures.WithLabelValues(l.numberGetter.Source()).Inc()
+		l.metrics.cacheGenLoadFailures.WithLabelValues(l.numberGetter.Name()).Inc()
 		return ""
 	}
 
@@ -153,6 +153,6 @@ func (g *noopNumberGetter) GetCacheGenerationNumber(_ context.Context, _ string)
 	return "", nil
 }
 
-func (g *noopNumberGetter) Source() string {
+func (g *noopNumberGetter) Name() string {
 	return ""
 }

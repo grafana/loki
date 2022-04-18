@@ -49,6 +49,6 @@ func (g *mockGenNumberGetter) GetCacheGenerationNumber(ctx context.Context, user
 	return g.genNumbers[userID], nil
 }
 
-func (g *mockGenNumberGetter) Source() string {
+func (g *mockGenNumberGetter) Name() string {
 	return ""
 }
