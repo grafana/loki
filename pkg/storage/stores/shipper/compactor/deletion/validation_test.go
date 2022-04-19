@@ -25,17 +25,15 @@ func TestParseLogQLExpressionForDeletion(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	/* syntax.ParseLogSelector does not reject these
-	t.Run("pipeline expression with label filter ", func(t *testing.T) {
-		logSelectorExpr, err := parseDeletionQuery(`{env="dev", secret="true"} | json bob="top.params[0]"`)
-		require.Nil(t, logSelectorExpr)
-		require.ErrorIs(t, err, errUnsupportedQuery)
+	t.Run("pipeline expression with multiple line filters", func(t *testing.T) {
+		logSelectorExpr, err := parseDeletionQuery(`{env="dev", secret="true"} |= "social sec number" |~ "[abd]*" `)
+		require.NotNil(t, logSelectorExpr)
+		require.NoError(t, err)
 	})
 
-	t.Run("metrics query", func(t *testing.T) {
-		logSelectorExpr, err := parseDeletionQuery(`count_over_time({job="mysql"}[5m])`)
+	t.Run("pipeline expression with invalid line filter", func(t *testing.T) {
+		logSelectorExpr, err := parseDeletionQuery(`{env="dev", secret="true"} |= social sec number`)
 		require.Nil(t, logSelectorExpr)
-		require.ErrorIs(t, err, errUnsupportedQuery)
+		require.ErrorIs(t, err, errInvalidQuery)
 	})
-	*/
 }
