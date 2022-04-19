@@ -576,7 +576,7 @@ else
 endif
 
 check-drone-drift:
-	./tools/check-drone-drift.sh main
+	./tools/check-drone-drift.sh $(BUILD_IMAGE_VERSION)
 
 
 # support go modules
