@@ -236,14 +236,14 @@ func (r *receiversShim) ConsumeTraces(ctx context.Context, td pdata.Traces) erro
 
 	start := time.Now()
 
-	tenantId := ""
-	tenantIdVal := ctx.Value(user.OrgIDHeaderName)
-	if tenantIdVal == nil {
-		tenantIdVal = ctx.Value("X-Scope-Orgid")
-		if tenantIdVal != nil {
-			tenantId = (tenantIdVal.([]string))[0]
-			ctx = user.InjectOrgID(ctx, tenantId)
-			ctx = user.InjectUserID(ctx, tenantId)
+	tenantID := ""
+	tenantIDVal := ctx.Value(user.OrgIDHeaderName)
+	if tenantIDVal == nil {
+		tenantIDVal = ctx.Value("X-Scope-Orgid")
+		if tenantIDVal != nil {
+			tenantID = (tenantIDVal.([]string))[0]
+			ctx = user.InjectOrgID(ctx, tenantID)
+			ctx = user.InjectUserID(ctx, tenantID)
 		}
 	}
 
@@ -251,7 +251,7 @@ func (r *receiversShim) ConsumeTraces(ctx context.Context, td pdata.Traces) erro
 	metricPushDuration.Observe(time.Since(start).Seconds())
 	if err != nil {
 		r.logger.Log("msg", "pusher failed to consume trace data", "err", err)
-		return errors.New("pusher failed to consume trace data,err:" + err.Error() + ",tenantId:" + tenantId)
+		return errors.New("pusher failed to consume trace data,err:" + err.Error() + ",tenantID:" + tenantID)
 	}
 
 	return nil
@@ -372,9 +372,9 @@ func parseEntry(pLog pdata.Span, format string, resourceAttr pdata.AttributeMap)
 	}, nil
 }
 
-func parseAttrs(attr pdata.AttributeMap) map[string]string {
+func parseAttrs(attr pdata.Map) map[string]string {
 	labelMap := make(map[string]string)
-	attr.Range(func(key string, attr pdata.AttributeValue) bool {
+	attr.Range(func(key string, attr pdata.Value) bool {
 		key = sanitizeLabelKey(key)
 		labelMap[key] = attr.AsString()
 		return true
@@ -382,11 +382,11 @@ func parseAttrs(attr pdata.AttributeMap) map[string]string {
 	return labelMap
 }
 
-func parseLabel(otlpLabels map[string]int, resource pdata.AttributeMap, attr pdata.AttributeMap, statusCode string) string {
+func parseLabel(otlpLabels map[string]int, resource pdata.Map, attr pdata.Map, statusCode string) string {
 	labelMap := make([]string, 0)
 	key := sanitizeLabelKey("status_code")
 	labelMap = append(labelMap, fmt.Sprintf("%s=%q", key, statusCode))
-	resource.Range(func(key string, attr pdata.AttributeValue) bool {
+	resource.Range(func(key string, attr pdata.Value) bool {
 		key = sanitizeLabelKey(key)
 		_, ok := otlpLabels[key]
 		if ok {
@@ -394,7 +394,7 @@ func parseLabel(otlpLabels map[string]int, resource pdata.AttributeMap, attr pda
 		}
 		return true
 	})
-	attr.Range(func(key string, attr pdata.AttributeValue) bool {
+	attr.Range(func(key string, attr pdata.Value) bool {
 		key = sanitizeLabelKey(key)
 		_, ok := otlpLabels[key]
 		if ok {

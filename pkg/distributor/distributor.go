@@ -12,13 +12,13 @@ import (
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
-	"github.com/weaveworks/common/logging"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -99,7 +99,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *OTLPConfig) RegisterFlags(fs *flag.FlagSet) {
-	fs.BoolVar(&cfg.ReceiverEnable, "distributor.otlp.enable-receivers", true, "set to true to enable support receiving logs in Loki using OpenTelemetry OTLP")
+	fs.BoolVar(&cfg.ReceiverEnable, "distributor.otlp.enable-receivers", false, "set to true to enable support receiving logs in Loki using OpenTelemetry OTLP")
 	fs.StringVar(&cfg.ReceiverFormat, "distributor.otlp.receiver-format", "json", "json or logfmt")
 	fs.DurationVar(&cfg.ReceiverDrainTimeout, "distributor.otlp.receiver-drain-timeout", 2*time.Second, "distributor receiver should drain before terminating")
 }
@@ -234,7 +234,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		if len(cfgReceivers) == 0 {
 			cfgReceivers = defaultReceivers
 		}
-		receivers, err := receiver.New(cfgReceivers, d, cfg.OTLP.ReceiverFormat, cfg.OTLP.ReceiverDrainTimeout, middleware,logLevel)
+		receivers, err := receiver.New(cfgReceivers, d, cfg.OTLP.ReceiverFormat, cfg.OTLP.ReceiverDrainTimeout, middleware, logLevel)
 		if err != nil {
 			return nil, err
 		}
