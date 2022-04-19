@@ -39,14 +39,3 @@ ruler:
 # If you would like to disable reporting, uncomment the following lines:
 #analytics:
 #  reporting_enabled: false
-
-ingester:
-  max_chunk_age: 10m
-
-compactor:
-  working_directory: /loki/retention
-  compaction_interval: 10m
-  retention_enabled: true
-  deletion_mode: "filter-and-delete"
-  retention_delete_delay: 20m
-  delete_request_cancel_period: 20m
