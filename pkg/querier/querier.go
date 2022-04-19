@@ -353,17 +353,25 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
 
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
+
 	var ingesterValues [][]string
-	if !q.cfg.QueryStoreOnly {
-		ingesterValues, err = q.ingesterQuerier.Label(ctx, req)
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+		timeFramedReq := *req
+		timeFramedReq.Start = &ingesterQueryInterval.start
+		timeFramedReq.End = &ingesterQueryInterval.end
+
+		ingesterValues, err = q.ingesterQuerier.Label(ctx, &timeFramedReq)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	var storeValues []string
-	if !q.cfg.QueryIngesterOnly {
-		from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+		from := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
+		through := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+
 		if req.Values {
 			storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
 			if err != nil {
@@ -466,20 +474,17 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 	series := make(chan [][]logproto.SeriesIdentifier, 2)
 	errs := make(chan error, 2)
 
-	// fetch series from ingesters and store concurrently
-	if q.cfg.QueryStoreOnly {
-		series <- [][]logproto.SeriesIdentifier{}
-	} else {
-		go func() {
-			// if the query range does not overlap with the ingester max lookback period (defined by `query_ingesters_within`)
-			// then don't call out to the ingesters, and send an empty result back to the channel
-			if !q.isWithinIngesterMaxLookbackPeriod(q.calculateIngesterMaxLookbackPeriod(), req.End) {
-				series <- [][]logproto.SeriesIdentifier{}
-				return
-			}
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
 
+	// fetch series from ingesters and store concurrently
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+		timeFramedReq := *req
+		timeFramedReq.Start = ingesterQueryInterval.start
+		timeFramedReq.End = ingesterQueryInterval.end
+
+		go func() {
 			// fetch series identifiers from ingesters
-			resps, err := q.ingesterQuerier.Series(ctx, req)
+			resps, err := q.ingesterQuerier.Series(ctx, &timeFramedReq)
 			if err != nil {
 				errs <- err
 				return
@@ -487,11 +492,15 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 
 			series <- resps
 		}()
+	} else {
+		// If only queriying the store or the query range does not overlap with the ingester max lookback period (defined by `query_ingesters_within`)
+		// then don't call out to the ingesters, and send an empty result back to the channel
+		series <- [][]logproto.SeriesIdentifier{}
 	}
 
-	if !q.cfg.QueryIngesterOnly {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		go func() {
-			storeValues, err := q.seriesForMatchers(ctx, req.Start, req.End, req.GetGroups(), req.Shards)
+			storeValues, err := q.seriesForMatchers(ctx, storeQueryInterval.start, storeQueryInterval.end, req.GetGroups(), req.Shards)
 			if err != nil {
 				errs <- err
 				return
