@@ -237,18 +237,36 @@ func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT t
 	return deletes, nil
 }
 
+func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {
+	// find the first instance that we would want to query the ingester from...
+	ingesterOldestStartTime := time.Now().Add(-maxLookback)
+
+	// ...and if the query range ends before that, don't query the ingester
+	return queryEnd.After(ingesterOldestStartTime)
+}
+
+func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod() time.Duration {
+	mlb := time.Duration(-1)
+	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
+		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
+		mlb = q.cfg.IngesterQueryStoreMaxLookback
+	} else if q.cfg.QueryIngestersWithin != 0 {
+		mlb = q.cfg.QueryIngestersWithin
+	}
+
+	return mlb
+}
+
 func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
 	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
 	limitQueryInterval := false
 	// ingesterMLB having -1 means query ingester for whole duration.
-	ingesterMLB := time.Duration(-1)
 	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
 		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
 		limitQueryInterval = true
-		ingesterMLB = q.cfg.IngesterQueryStoreMaxLookback
-	} else if q.cfg.QueryIngestersWithin != 0 {
-		ingesterMLB = q.cfg.QueryIngestersWithin
 	}
+
+	ingesterMLB := q.calculateIngesterMaxLookbackPeriod()
 
 	// query ingester for whole duration.
 	if ingesterMLB == -1 {
@@ -266,14 +284,17 @@ func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time
 		return i, i
 	}
 
+	ingesterQueryWithinRange := q.isWithinIngesterMaxLookbackPeriod(ingesterMLB, queryEnd)
+
 	// see if there is an overlap between ingester query interval and actual query interval, if not just do the store query.
-	ingesterOldestStartTime := time.Now().Add(-ingesterMLB)
-	if queryEnd.Before(ingesterOldestStartTime) {
+	if !ingesterQueryWithinRange {
 		return nil, &interval{
 			start: queryStart,
 			end:   queryEnd,
 		}
 	}
+
+	ingesterOldestStartTime := time.Now().Add(-ingesterMLB)
 
 	// if there is an overlap and we are not limiting the query interval then do both store and ingester query for whole query interval.
 	if !limitQueryInterval {
@@ -445,6 +466,11 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 		series <- [][]logproto.SeriesIdentifier{}
 	} else {
 		go func() {
+			if !q.isWithinIngesterMaxLookbackPeriod(q.calculateIngesterMaxLookbackPeriod(), req.End) {
+				series <- [][]logproto.SeriesIdentifier{}
+				return
+			}
+
 			// fetch series identifiers from ingesters
 			resps, err := q.ingesterQuerier.Series(ctx, req)
 			if err != nil {
