@@ -16,6 +16,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
+// TSDBManager wraps the index shipper and writes/manages
+// TSDB files on  disk
 type TSDBManager interface {
 	Index
 
