@@ -339,7 +339,7 @@ func parseEntry(pLog pdata.Span, format string, resourceAttr pdata.Map) (*logpro
 			TraceID:      pLog.TraceID().HexString(),
 			SpanID:       pLog.SpanID().HexString(),
 			Name:         pLog.Name(),
-			ParentSpanId: pLog.ParentSpanID().HexString(),
+			ParentSpanID: pLog.ParentSpanID().HexString(),
 			StatusCode:   pLog.Status().Code().String(),
 			StatusMsg:    pLog.Status().Message(),
 			TraceState:   pLog.TraceState(),
@@ -430,9 +430,9 @@ func (r *receiversShim) GetExporters() map[config.DataType]map[config.ComponentI
 type LokiTraceRecord struct {
 	TraceID       string                       `json:"trace_id"`
 	SpanID        string                       `json:"span_id"`
-	Name          string                       `json:"name"`
-	ParentSpanId  string                       `json:"parent_span_id"`
-	StatusCode    string                       `json:"status_code"`
+	Name         string `json:"name"`
+	ParentSpanID string `json:"parent_span_id"`
+	StatusCode   string `json:"status_code"`
 	StatusMsg     string                       `json:"status_msg"`
 	TraceState    pdata.TraceState             `json:"trace_state"`
 	Kind          string                       `json:"kind"`
