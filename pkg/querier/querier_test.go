@@ -686,6 +686,80 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 	}
 }
 
+func TestQuerier_isWithinIngesterMaxLookbackPeriod(t *testing.T) {
+	overlappingQuery := interval{
+		start: time.Now().Add(-6 * time.Hour),
+		end:   time.Now(),
+	}
+
+	nonOverlappingQuery := interval{
+		start: time.Now().Add(-24 * time.Hour),
+		end:   time.Now().Add(-12 * time.Hour),
+	}
+
+	for _, tc := range []struct {
+		name                          string
+		ingesterQueryStoreMaxLookback time.Duration
+		queryIngestersWithin          time.Duration
+		overlappingWithinRange        bool
+		nonOverlappingWithinRange     bool
+	}{
+		{
+			name:                      "default values, query ingesters and store for whole duration",
+			overlappingWithinRange:    true,
+			nonOverlappingWithinRange: true,
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 1h",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			overlappingWithinRange:        true,
+			nonOverlappingWithinRange:     false,
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 10h",
+			ingesterQueryStoreMaxLookback: 10 * time.Hour,
+			overlappingWithinRange:        true,
+			nonOverlappingWithinRange:     false,
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 1h and queryIngestersWithin set to 16h, ingesterQueryStoreMaxLookback takes precedence",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			queryIngestersWithin:          16 * time.Hour, // if used, this would put the nonOverlapping query in range
+			overlappingWithinRange:        true,
+			nonOverlappingWithinRange:     false,
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to -1, query just ingesters",
+			ingesterQueryStoreMaxLookback: -1,
+			overlappingWithinRange:        true,
+			nonOverlappingWithinRange:     true,
+		},
+		{
+			name:                      "queryIngestersWithin set to 1h",
+			queryIngestersWithin:      time.Hour,
+			overlappingWithinRange:    true,
+			nonOverlappingWithinRange: false,
+		},
+		{
+			name:                      "queryIngestersWithin set to 10h",
+			queryIngestersWithin:      10 * time.Hour,
+			overlappingWithinRange:    true,
+			nonOverlappingWithinRange: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			querier := SingleTenantQuerier{cfg: Config{
+				IngesterQueryStoreMaxLookback: tc.ingesterQueryStoreMaxLookback,
+				QueryIngestersWithin:          tc.queryIngestersWithin,
+			}}
+
+			lookbackPeriod := querier.calculateIngesterMaxLookbackPeriod()
+			assert.Equal(t, tc.overlappingWithinRange, querier.isWithinIngesterMaxLookbackPeriod(lookbackPeriod, overlappingQuery.end))
+			assert.Equal(t, tc.nonOverlappingWithinRange, querier.isWithinIngesterMaxLookbackPeriod(lookbackPeriod, nonOverlappingQuery.end))
+		})
+	}
+}
+
 type fakeTimeLimits struct {
 	maxQueryLookback time.Duration
 	maxQueryLength   time.Duration
