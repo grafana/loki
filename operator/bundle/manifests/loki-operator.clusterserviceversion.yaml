@@ -581,7 +581,14 @@ spec:
           - create
         serviceAccountName: default
       deployments:
-      - name: loki-operator-controller-manager
+      - label:
+          app.kubernetes.io/instance: loki-operator-v0.0.1
+          app.kubernetes.io/managed-by: operator-lifecycle-manager
+          app.kubernetes.io/name: loki-operator
+          app.kubernetes.io/part-of: cluster-logging
+          app.kubernetes.io/version: 0.0.1
+          control-plane: controller-manager
+        name: loki-operator-controller-manager
         spec:
           replicas: 1
           selector:
@@ -712,10 +719,10 @@ spec:
   provider:
     name: Grafana.com
   relatedImages:
-  - image: quay.io/observatorium/opa-openshift:latest
-    name: opa
   - image: quay.io/openshift-logging/loki:v2.5.0
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
+  - image: quay.io/observatorium/opa-openshift:latest
+    name: opa
   version: 0.0.1
