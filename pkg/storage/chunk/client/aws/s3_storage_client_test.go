@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/grafana/dskit/backoff"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,8 +39,8 @@ func TestRequestMiddleware(t *testing.T) {
 		BucketNames:      "buck-o",
 		S3ForcePathStyle: true,
 		Insecure:         true,
-		AccessKeyID:      "key",
-		SecretAccessKey:  "secret",
+		AccessKeyID:      secret{"key"},
+		SecretAccessKey:  secret{"secret"},
 	}
 
 	tests := []struct {
@@ -126,8 +128,8 @@ func Test_Hedging(t *testing.T) {
 			count := atomic.NewInt32(0)
 
 			c, err := NewS3ObjectClient(S3Config{
-				AccessKeyID:     "foo",
-				SecretAccessKey: "bar",
+				AccessKeyID:     secret{"foo"},
+				SecretAccessKey: secret{"bar"},
 				BackoffConfig:   backoff.Config{MaxRetries: 1},
 				BucketNames:     "foo",
 				Inject: func(next http.RoundTripper) http.RoundTripper {
@@ -147,4 +149,31 @@ func Test_Hedging(t *testing.T) {
 			require.Equal(t, tc.expectedCalls, count.Load())
 		})
 	}
+}
+
+func Test_ConfigRedactsCredentials(t *testing.T) {
+	underTest := S3Config{
+		AccessKeyID:     secret{"secret key id"},
+		SecretAccessKey: secret{"secret access key"},
+	}
+
+	output, err := yaml.Marshal(underTest)
+	require.NoError(t, err)
+
+	require.False(t, bytes.Contains(output, []byte("secret key id")))
+	require.False(t, bytes.Contains(output, []byte("secret access id")))
+}
+
+func Test_ConfigParsesCredentialsInline(t *testing.T) {
+	var underTest = S3Config{}
+	yamlCfg := `
+access_key_id: access key id
+secret_access_key: secret access key
+`
+	err := yaml.Unmarshal([]byte(yamlCfg), &underTest)
+	require.NoError(t, err)
+
+	require.Equal(t, underTest.AccessKeyID.Value, "access key id")
+	require.Equal(t, underTest.SecretAccessKey.Value, "secret access key")
+
 }
