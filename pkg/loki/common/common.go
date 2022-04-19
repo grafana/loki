@@ -58,7 +58,7 @@ type Storage struct {
 	S3       aws.S3Config              `yaml:"s3"`
 	GCS      gcp.GCSConfig             `yaml:"gcs"`
 	Azure    azure.BlobStorageConfig   `yaml:"azure"`
-	Bos      baidubce.BosStorageConfig `yaml:"bos"`
+	BOS      baidubce.BOSStorageConfig `yaml:"bos"`
 	Swift    openstack.SwiftConfig     `yaml:"swift"`
 	FSConfig FilesystemConfig          `yaml:"filesystem"`
 	Hedging  hedging.Config            `yaml:"hedging"`
@@ -69,7 +69,7 @@ func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.GCS.RegisterFlagsWithPrefix(prefix+".gcs", f)
 	s.Azure.RegisterFlagsWithPrefix(prefix+".azure", f)
 	s.Swift.RegisterFlagsWithPrefix(prefix+".swift", f)
-	s.Bos.RegisterFlagsWithPrefix(prefix+".bos", f)
+	s.BOS.RegisterFlagsWithPrefix(prefix+".bos", f)
 	s.FSConfig.RegisterFlagsWithPrefix(prefix+".filesystem", f)
 	s.Hedging.RegisterFlagsWithPrefix(prefix, f)
 }

@@ -37,7 +37,7 @@ type RuleStoreConfig struct {
 	Azure azure.BlobStorageConfig   `yaml:"azure"`
 	GCS   gcp.GCSConfig             `yaml:"gcs"`
 	S3    aws.S3Config              `yaml:"s3"`
-	BOS   baidubce.BosStorageConfig `yaml:"bos"`
+	BOS   baidubce.BOSStorageConfig `yaml:"bos"`
 	Swift openstack.SwiftConfig     `yaml:"swift"`
 	Local local.Config              `yaml:"local"`
 
@@ -66,9 +66,6 @@ func (cfg *RuleStoreConfig) Validate() error {
 	}
 	if err := cfg.S3.Validate(); err != nil {
 		return errors.Wrap(err, "invalid S3 Storage config")
-	}
-	if err := cfg.BOS.Validate(); err != nil {
-		return errors.Wrap(err, "invalid BOS Storage config")
 	}
 	return nil
 }
@@ -107,7 +104,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 	case "s3":
 		client, err = aws.NewS3ObjectClient(cfg.S3, hedgeCfg)
 	case "bos":
-		client, err = baidubce.NewBosObjectStorage(&cfg.BOS)
+		client, err = baidubce.NewBOSObjectStorage(&cfg.BOS)
 	case "swift":
 		client, err = openstack.NewSwiftObjectClient(cfg.Swift, hedgeCfg)
 	case "local":

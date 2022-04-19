@@ -47,7 +47,7 @@ type StoreLimits interface {
 type Config struct {
 	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
 	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
-	BosStorageConfig       baidubce.BosStorageConfig `yaml:"bos"`
+	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
 	GCPStorageConfig       gcp.Config                `yaml:"bigtable"`
 	GCSConfig              gcp.GCSConfig             `yaml:"gcs"`
 	CassandraStorageConfig cassandra.Config          `yaml:"cassandra"`
@@ -71,7 +71,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.AzureStorageConfig.RegisterFlags(f)
-	cfg.BosStorageConfig.RegisterFlags(f)
+	cfg.BOSStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
@@ -105,9 +105,6 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.AzureStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Azure Storage config")
-	}
-	if err := cfg.BosStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Baidu BOS config")
 	}
 	if err := cfg.AWSStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid AWS Storage config")
@@ -200,8 +197,8 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 			return nil, err
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-	case config.StorageTypeBos:
-		c, err := baidubce.NewBosObjectStorage(&cfg.BosStorageConfig)
+	case config.StorageTypeBOS:
+		c, err := baidubce.NewBOSObjectStorage(&cfg.BOSStorageConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -318,8 +315,8 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		return testutils.NewMockStorage(), nil
 	case config.StorageTypeFileSystem:
 		return local.NewFSObjectClient(cfg.FSConfig)
-	case config.StorageTypeBos:
-		return baidubce.NewBosObjectStorage(&cfg.BosStorageConfig)
+	case config.StorageTypeBOS:
+		return baidubce.NewBOSObjectStorage(&cfg.BOSStorageConfig)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS, config.StorageTypeAzure, config.StorageTypeFileSystem)
 	}
