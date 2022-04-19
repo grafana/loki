@@ -70,7 +70,7 @@ func TestSingleIdx(t *testing.T) {
 		{
 			desc: "head",
 			fn: func() Index {
-				head := NewHead("fake", NewHeadMetrics(nil), log.NewNopLogger())
+				head := NewHead("fake", NewMetrics(nil), log.NewNopLogger())
 				for _, x := range cases {
 					_, _ = head.Append(x.Labels, x.Chunks)
 				}

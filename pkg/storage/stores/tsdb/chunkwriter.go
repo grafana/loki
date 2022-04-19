@@ -30,11 +30,13 @@ type ChunkWriter struct {
 
 func NewChunkWriter(
 	fetcher *fetcher.Fetcher,
-	schemaCfg config.SchemaConfig,
+	pd config.PeriodConfig,
 ) *ChunkWriter {
 	return &ChunkWriter{
-		schemaCfg: schemaCfg,
-		fetcher:   fetcher,
+		schemaCfg: config.SchemaConfig{
+			Configs: []config.PeriodConfig{pd},
+		},
+		fetcher: fetcher,
 	}
 }
 

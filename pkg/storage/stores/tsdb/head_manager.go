@@ -16,16 +16,15 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/util/wal"
 )
 
 type period time.Duration
@@ -75,7 +74,6 @@ tsdb/
 */
 
 type HeadManager struct {
-	name    string
 	log     log.Logger
 	dir     string
 	metrics *Metrics
@@ -92,13 +90,13 @@ type HeadManager struct {
 
 	shards                 int
 	activeHeads, prevHeads *tenantHeads
+
+	Index
 }
 
-func NewHeadManager(log log.Logger, dir string, reg prometheus.Registerer, name string, tsdbManager TSDBManager) *HeadManager {
+func NewHeadManager(log log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
 	shards := defaultHeadManagerStripeSize
-	metrics := NewHeadMetrics(reg)
-	return &HeadManager{
-		name:        name,
+	m := &HeadManager{
 		log:         log,
 		dir:         dir,
 		metrics:     metrics,
@@ -108,6 +106,25 @@ func NewHeadManager(log log.Logger, dir string, reg prometheus.Registerer, name 
 		shards: shards,
 	}
 
+	m.Index = LazyIndex(func() (Index, error) {
+		m.mtx.RLock()
+		defer m.mtx.RUnlock()
+
+		var indices []Index
+		if m.prevHeads != nil {
+			indices = append(indices, m.prevHeads)
+		}
+		if m.activeHeads != nil {
+			indices = append(indices, m.activeHeads)
+		}
+
+		indices = append(indices, m.tsdbManager)
+
+		return NewMultiIndex(indices...)
+
+	})
+
+	return m
 }
 
 func (m *HeadManager) Stop() error {
@@ -281,23 +298,6 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	return nil
 }
 
-func (m *HeadManager) Index() (Index, error) {
-	m.mtx.RLock()
-	defer m.mtx.RUnlock()
-
-	var indices []Index
-	if m.prevHeads != nil {
-		indices = append(indices, m.prevHeads)
-	}
-	if m.activeHeads != nil {
-		indices = append(indices, m.activeHeads)
-	}
-
-	indices = append(indices, m.tsdbManager)
-
-	return NewMultiIndex(indices...)
-}
-
 func (m *HeadManager) shippedTSDBsBeforePeriod(period int) (res []string, err error) {
 	files, err := ioutil.ReadDir(managerShippedDir(m.dir))
 	if err != nil {
@@ -403,7 +403,7 @@ func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier, addTenant
 
 		// use anonymous function for ease of cleanup
 		if err := func(id WALIdentifier) error {
-			reader, closer, err := ingester.NewWalReader(walPath(dir, id.ts), -1)
+			reader, closer, err := wal.NewWalReader(walPath(dir, id.ts), -1)
 			if err != nil {
 				return err
 			}

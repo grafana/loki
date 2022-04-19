@@ -34,15 +34,33 @@ tsdbManager is responsible for:
  * Removing old TSDBs which are no longer needed
 */
 type tsdbManager struct {
-	period  period
-	name    string // node name
-	log     log.Logger
-	dir     string
-	metrics *Metrics
+	Index    // placeholder until I implement
+	period   period
+	nodeName string // node name
+	log      log.Logger
+	dir      string
+	metrics  *Metrics
 
 	sync.RWMutex
 
 	shipper indexshipper.IndexShipper
+}
+
+func NewTSDBManager(
+	nodeName,
+	dir string,
+	shipper indexshipper.IndexShipper,
+	log log.Logger,
+	metrics *Metrics,
+) TSDBManager {
+	return &tsdbManager{
+		period:   defaultRotationPeriod,
+		nodeName: nodeName,
+		log:      log,
+		dir:      dir,
+		metrics:  metrics,
+		shipper:  shipper,
+	}
 }
 
 func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
@@ -75,7 +93,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	}
 
 	desired := MultitenantTSDBIdentifier{
-		nodeName: m.name,
+		nodeName: m.nodeName,
 		ts:       t,
 	}
 

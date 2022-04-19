@@ -63,7 +63,7 @@ type Metrics struct {
 	tsdbManagerUpdatesFailedTotal prometheus.Counter
 }
 
-func NewHeadMetrics(r prometheus.Registerer) *Metrics {
+func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
 		seriesNotFound: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_tsdb_head_series_not_found_total",

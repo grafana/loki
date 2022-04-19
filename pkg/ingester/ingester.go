@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 	errUtil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/wal"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -420,7 +421,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		)
 
 		level.Info(util_log.Logger).Log("msg", "recovering from WAL")
-		segmentReader, segmentCloser, err := NewWalReader(i.cfg.WAL.Dir, -1)
+		segmentReader, segmentCloser, err := wal.NewWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
 		}

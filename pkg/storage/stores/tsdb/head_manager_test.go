@@ -35,7 +35,7 @@ func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []C
 
 // Test append
 func Test_TenantHeads_Append(t *testing.T) {
-	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewHeadMetrics(nil), log.NewNopLogger())
+	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
 	ls := mustParseLabels(`{foo="bar"}`)
 	chks := []index.ChunkMeta{
 		{
@@ -63,7 +63,7 @@ func Test_TenantHeads_Append(t *testing.T) {
 
 // Test multitenant reads
 func Test_TenantHeads_MultiRead(t *testing.T) {
-	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewHeadMetrics(nil), log.NewNopLogger())
+	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
 	ls := mustParseLabels(`{foo="bar"}`)
 	chks := []index.ChunkMeta{
 		{
@@ -150,7 +150,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, "tsdb-mgr-test", noopTSDBManager{})
+	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, noopTSDBManager{})
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
 	for _, d := range managerRequiredDirs(dir) {
@@ -187,9 +187,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	require.Nil(t, recoverHead(mgr.dir, mgr.activeHeads, grp.wals, false))
 
 	for _, c := range cases {
-		idx, err := mgr.Index()
-		require.Nil(t, err)
-		refs, err := idx.GetChunkRefs(
+		refs, err := mgr.GetChunkRefs(
 			context.Background(),
 			c.User,
 			0, math.MaxInt64,
@@ -235,7 +233,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, "tsdb-mgr-test", noopTSDBManager{})
+	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, noopTSDBManager{})
 	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.dir, curPeriod), curPeriod)
 	require.Nil(t, err)
 
@@ -260,9 +258,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 	require.Nil(t, mgr.Start())
 	// Ensure old WAL data is queryable
 	for _, c := range cases {
-		idx, err := mgr.Index()
-		require.Nil(t, err)
-		refs, err := idx.GetChunkRefs(
+		refs, err := mgr.GetChunkRefs(
 			context.Background(),
 			c.User,
 			0, math.MaxInt64,
@@ -294,9 +290,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 
 	// Ensure old + new data is queryable
 	for _, c := range append(cases, newCase) {
-		idx, err := mgr.Index()
-		require.Nil(t, err)
-		refs, err := idx.GetChunkRefs(
+		refs, err := mgr.GetChunkRefs(
 			context.Background(),
 			c.User,
 			0, math.MaxInt64,

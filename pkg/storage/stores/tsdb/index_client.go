@@ -18,6 +18,15 @@ type IndexClient struct {
 	idx    Index
 }
 
+func NewIndexClient(idx Index, pd config.PeriodConfig) *IndexClient {
+	return &IndexClient{
+		schema: config.SchemaConfig{
+			Configs: []config.PeriodConfig{pd},
+		},
+		idx: idx,
+	}
+}
+
 // TODO(owen-d): This is a hack for compatibility with how the current query-mapping works.
 // Historically, Loki will read the index shard factor and the query planner will inject shard
 // labels accordingly.
