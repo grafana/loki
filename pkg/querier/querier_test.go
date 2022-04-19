@@ -686,6 +686,45 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 	}
 }
 
+func TestQuerier_calculateIngesterMaxLookbackPeriod(t *testing.T) {
+	for _, tc := range []struct {
+		name                          string
+		ingesterQueryStoreMaxLookback time.Duration
+		queryIngestersWithin          time.Duration
+		expected                      time.Duration
+	}{
+		{
+			name:     "defaults are set; infinite lookback period if no values are set",
+			expected: -1,
+		},
+		{
+			name:                          "only setting ingesterQueryStoreMaxLookback",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			expected:                      time.Hour,
+		},
+		{
+			name:                          "setting both ingesterQueryStoreMaxLookback and queryIngestersWithin; ingesterQueryStoreMaxLookback takes precedence",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			queryIngestersWithin:          time.Minute,
+			expected:                      time.Hour,
+		},
+		{
+			name:                 "only setting queryIngestersWithin",
+			queryIngestersWithin: time.Minute,
+			expected:             time.Minute,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			querier := SingleTenantQuerier{cfg: Config{
+				IngesterQueryStoreMaxLookback: tc.ingesterQueryStoreMaxLookback,
+				QueryIngestersWithin:          tc.queryIngestersWithin,
+			}}
+
+			assert.Equal(t, tc.expected, querier.calculateIngesterMaxLookbackPeriod())
+		})
+	}
+}
+
 func TestQuerier_isWithinIngesterMaxLookbackPeriod(t *testing.T) {
 	overlappingQuery := interval{
 		start: time.Now().Add(-6 * time.Hour),
