@@ -238,6 +238,11 @@ func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT t
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {
+	// if no lookback limits are configured, always consider this within the range of the lookback period
+	if maxLookback <= 0 {
+		return true
+	}
+
 	// find the first instance that we would want to query the ingester from...
 	ingesterOldestStartTime := time.Now().Add(-maxLookback)
 
@@ -466,6 +471,8 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 		series <- [][]logproto.SeriesIdentifier{}
 	} else {
 		go func() {
+			// if the query range does not overlap with the ingester max lookback period (defined by `query_ingesters_within`)
+			// then don't call out to the ingesters, and send an empty result back to the channel
 			if !q.isWithinIngesterMaxLookbackPeriod(q.calculateIngesterMaxLookbackPeriod(), req.End) {
 				series <- [][]logproto.SeriesIdentifier{}
 				return
