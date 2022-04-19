@@ -54,7 +54,7 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 
 	f := p.ForStream(labels).ProcessString
 	return func(s string) bool {
-		result, _, skip := f(s)
+		result, _, skip := f(0, s)
 		return len(result) != 0 || skip
 	}, nil
 }
