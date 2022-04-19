@@ -172,6 +172,7 @@ func TestSingleIdx(t *testing.T) {
 				// request data at the end of the tsdb range, but it should return all labels present
 				ls, err := idx.LabelNames(context.Background(), "fake", 9, 10)
 				require.Nil(t, err)
+				sort.Strings(ls)
 				require.Equal(t, []string{"bazz", "bonk", "foo"}, ls)
 			})
 
@@ -179,6 +180,7 @@ func TestSingleIdx(t *testing.T) {
 				// request data at the end of the tsdb range, but it should return all labels present
 				ls, err := idx.LabelNames(context.Background(), "fake", 9, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
 				require.Nil(t, err)
+				sort.Strings(ls)
 				require.Equal(t, []string{"bazz", "foo"}, ls)
 			})
 
