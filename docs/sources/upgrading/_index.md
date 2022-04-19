@@ -65,7 +65,7 @@ clients:
     external_labels:
       client: b
 ```
-This means that if you currently set a value for that configuration per client you will need to move it/only set it once, as shown above.
+This means that if you currently set a value for that configuration per client you will need to move and only set it once, as shown above.
 
 At the same time, we have taken steps to deprecate the use of the single client `client` config file block, as well as the `-client.*` command line flags. The interaction between setting any of these plus the usage of `client` with `clients` within the connfig file can be confusing as it was not always clear which values take precedence. Setting any of these
 values will result in Promtail logging an error message about the usage of these fields and exiting.
