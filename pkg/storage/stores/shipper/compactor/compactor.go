@@ -229,7 +229,8 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.Schem
 			return err
 		}
 
-		if c.deleteMode == deletion.WholeStreamDeletion || c.deleteMode == deletion.FilterOnly || c.deleteMode == deletion.FilterAndDelete {
+		switch c.deleteMode {
+		case deletion.WholeStreamDeletion, deletion.FilterOnly, deletion.FilterAndDelete:
 			deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
 			c.deleteRequestsStore, err = deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
@@ -244,7 +245,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.Schem
 				c.deleteMode,
 			)
 			c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
-		} else {
+		default:
 			c.expirationChecker = newExpirationChecker(
 				retention.NewExpirationChecker(limits),
 				// This is a dummy deletion ExpirationChecker that never expires anything
