@@ -430,9 +430,9 @@ func (r *receiversShim) GetExporters() map[config.DataType]map[config.ComponentI
 type LokiTraceRecord struct {
 	TraceID       string                       `json:"trace_id"`
 	SpanID        string                       `json:"span_id"`
-	Name         string `json:"name"`
-	ParentSpanID string `json:"parent_span_id"`
-	StatusCode   string `json:"status_code"`
+	Name          string                       `json:"name"`
+	ParentSpanID  string                       `json:"parent_span_id"`
+	StatusCode    string                       `json:"status_code"`
 	StatusMsg     string                       `json:"status_msg"`
 	TraceState    pdata.TraceState             `json:"trace_state"`
 	Kind          string                       `json:"kind"`
