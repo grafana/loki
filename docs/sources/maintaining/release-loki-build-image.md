@@ -20,8 +20,11 @@ and commit the changes to the same pull request.
 Once approved and merged to `main`, the image with the new version is built.
 
 The new image can only be used after updating the `BUILD_IMAGE_VERSION` in the
-`Makefile` a **second step**. Once again, run `BUILD_IN_CONTAINER=false make
-drone` after changing the version and submit a PR with the generated changes.
-Also update the image version in all other places where the image is used:
+`Makefile` a **second step**. After changing the version in the Makefile and
+updating it in all other places where the image is used:
+
 * Dockerfiles in `cmd` directory
 * `.circleci/config.yml`
+
+run `BUILD_IN_CONTAINER=false make drone` again and submit a PR with the
+generated changes.
