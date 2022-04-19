@@ -46,16 +46,16 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 		return nil, err
 	}
 
+	if !allMatch(d.matchers, labels) {
+		return func(s string) bool {
+			return false
+		}, nil
+	}
+
 	f := p.ForStream(labels).ProcessString
 	return func(s string) bool {
-		if !allMatch(d.matchers, labels) {
-			return false
-		}
 		result, _, skip := f(s)
-		if len(result) != 0 || skip {
-			return true
-		}
-		return false
+		return len(result) != 0 || skip
 	}, nil
 }
 
