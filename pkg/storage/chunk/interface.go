@@ -50,6 +50,8 @@ type Data interface {
 	Rebound(start, end model.Time) (Data, error)
 	// Size returns the approximate length of the chunk in bytes.
 	Size() int
+	// Entries returns the number of entries in a chunk
+	Entries() int
 	Utilization() float64
 }
 
