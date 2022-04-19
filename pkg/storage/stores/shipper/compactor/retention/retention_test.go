@@ -398,7 +398,7 @@ func TestChunkRewriter(t *testing.T) {
 			},
 		},
 		{
-			name:  "remove half of the lines using a filter function",
+			name:  "remove no lines using a filter function",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-2*time.Hour), now),
 			rewriteIntervalFilters: []IntervalFilter{
 				{
@@ -407,11 +407,7 @@ func TestChunkRewriter(t *testing.T) {
 						End:   now,
 					},
 					Filter: func(s string) bool {
-						i, err := strconv.Atoi(s[len(s)-1:])
-						if err != nil {
-							panic(fmt.Sprintf("invalid input to filter function: %v", s))
-						}
-						return i%2 == 0
+						return false
 					},
 				},
 			},
