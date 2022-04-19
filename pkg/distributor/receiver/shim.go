@@ -262,7 +262,7 @@ func parseTrace(otlpLabels map[string]int, ld pdata.Traces, format string) (*log
 	rss := ld.ResourceSpans()
 	for i := 0; i < rss.Len(); i++ {
 		rs := rss.At(i)
-		ill := rs.InstrumentationLibrarySpans()
+		ill := rs.ScopeSpans()
 		for i := 0; i < ill.Len(); i++ {
 			logs := ill.At(i).Spans()
 			for k := 0; k < logs.Len(); k++ {
@@ -295,7 +295,7 @@ func parseTrace(otlpLabels map[string]int, ld pdata.Traces, format string) (*log
 	return req, nil
 }
 
-func parseEntry(pLog pdata.Span, format string, resourceAttr pdata.AttributeMap) (*logproto.Entry, error) {
+func parseEntry(pLog pdata.Span, format string, resourceAttr pdata.Map) (*logproto.Entry, error) {
 	var line string
 	if format == LogFormatLogfmt {
 		records := make(map[string]interface{})
@@ -442,14 +442,4 @@ type LokiTraceRecord struct {
 	Events        map[string]map[string]string `json:"events"`
 	ResourceAttrs map[string]string            `json:"resource_attrs"`
 	SpanAttrs     map[string]string            `json:"span_attrs"`
-}
-
-type Span_Event struct {
-	// time_unix_nano is the time the event occurred.
-	Timestamp pdata.Timestamp `protobuf:"fixed64,1,opt,name=time_unix_nano,json=timeUnixNano,proto3" json:"time_unix_nano,omitempty"`
-	// name of the event.
-	// This field is semantically required to be set to non-empty string.
-	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	// attributes is a collection of attribute key/value pairs on the event.
-	Attributes pdata.AttributeMap `protobuf:"bytes,3,rep,name=attributes,proto3" json:"attributes"`
 }
