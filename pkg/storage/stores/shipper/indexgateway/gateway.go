@@ -307,8 +307,8 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *indexgatewaypb.GetChunkR
 		Refs: make([]*logproto.ChunkRef, 0, len(chunks)),
 	}
 	for _, cs := range chunks {
-		for _, c := range cs {
-			result.Refs = append(result.Refs, &c.ChunkRef)
+		for i := range cs {
+			result.Refs = append(result.Refs, &cs[i].ChunkRef)
 		}
 	}
 	return result, nil
