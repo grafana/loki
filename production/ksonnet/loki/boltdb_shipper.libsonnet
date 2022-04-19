@@ -74,4 +74,8 @@
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001)  // 10001 is the group ID assigned to Loki in the Dockerfile
   else {},
+
+  compactor_service: if $._config.using_boltdb_shipper then
+    k.util.serviceFor($.compactor_statefulset)
+  else {}
 }
