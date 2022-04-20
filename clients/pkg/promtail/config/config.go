@@ -88,4 +88,8 @@ func (c *Config) Setup(l log.Logger) {
 			c.ClientConfigs[i].ExternalLabels = flagext.LabelSet{LabelSet: c.ClientConfig.ExternalLabels.LabelSet.Merge(c.ClientConfigs[i].ExternalLabels.LabelSet)}
 		}
 	}
+
+	if len(c.Options.StreamLagLabels) == 0 {
+		c.Options.StreamLagLabels = dskit_flagext.StringSliceCSV{client.LatencyLabel}
+	}
 }

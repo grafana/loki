@@ -45,7 +45,7 @@ import (
 
 const httpTestPort = 9080
 
-var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, nil)
+var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, []string{"filename"})
 
 func TestPromtail(t *testing.T) {
 	// Setup.
@@ -564,6 +564,8 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	cfg.ServerConfig.HTTPListenPort = httpTestPort
 
 	// Override some of those defaults
+	cfg.Options.StreamLagLabels = flagext.StringSliceCSV{"filename"}
+	// TODO (callum): refactor this to use cfg.ClientConfigs, currently doing so seems to break TestPromtail (writes always context deadline exceeded)
 	cfg.ClientConfig.URL = clientURL
 	cfg.ClientConfig.BatchWait = 10 * time.Millisecond
 	cfg.ClientConfig.BatchSize = 10 * 1024

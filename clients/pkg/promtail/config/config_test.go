@@ -75,7 +75,7 @@ func TestConfig_Setup(t *testing.T) {
 					},
 				},
 				Options: Options{
-					StreamLagLabels: []string{},
+					StreamLagLabels: []string{client.LatencyLabel},
 				},
 			},
 			Config{
@@ -91,7 +91,7 @@ func TestConfig_Setup(t *testing.T) {
 					},
 				},
 				Options: Options{
-					StreamLagLabels: []string{},
+					StreamLagLabels: []string{client.LatencyLabel},
 				},
 			},
 		},
@@ -110,7 +110,7 @@ func TestConfig_Setup(t *testing.T) {
 					},
 				},
 				Options: Options{
-					StreamLagLabels: []string{},
+					StreamLagLabels: []string{client.LatencyLabel},
 				},
 			},
 			Config{
@@ -131,7 +131,7 @@ func TestConfig_Setup(t *testing.T) {
 					},
 				},
 				Options: Options{
-					StreamLagLabels: []string{},
+					StreamLagLabels: []string{client.LatencyLabel},
 				},
 			},
 		},
