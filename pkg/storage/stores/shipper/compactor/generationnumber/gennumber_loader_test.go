@@ -8,7 +8,7 @@ import (
 )
 
 func TestGetCacheGenNumber(t *testing.T) {
-	s := &mockGenNumberGetter{
+	s := &mockGenNumberClient{
 		genNumbers: map[string]string{
 			"tenant-a": "1000",
 			"tenant-b": "1050",
@@ -41,14 +41,14 @@ func TestGetCacheGenNumber(t *testing.T) {
 	}
 }
 
-type mockGenNumberGetter struct {
+type mockGenNumberClient struct {
 	genNumbers map[string]string
 }
 
-func (g *mockGenNumberGetter) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
+func (g *mockGenNumberClient) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
 	return g.genNumbers[userID], nil
 }
 
-func (g *mockGenNumberGetter) Name() string {
+func (g *mockGenNumberClient) Name() string {
 	return ""
 }
