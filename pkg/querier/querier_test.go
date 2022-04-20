@@ -799,7 +799,7 @@ func TestQuerier_isWithinIngesterMaxLookbackPeriod(t *testing.T) {
 	}
 }
 
-func TestQuerier_AskingIngesters(t *testing.T) {
+func TestQuerier_RequestingIngesters(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	requestMapping := map[string]struct {
@@ -936,51 +936,19 @@ func TestQuerier_AskingIngesters(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
+
+			conf := mockQuerierConfig()
+			conf.QueryIngestersWithin = time.Minute * 30
+			if tc.setIngesterQueryStoreMaxLookback {
+				conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+			}
+
 			for _, request := range requests {
 				t.Run(request.name, func(t *testing.T) {
 					limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 					require.NoError(t, err)
 
-					conf := mockQuerierConfig()
-					conf.QueryIngestersWithin = time.Minute * 30
-					if tc.setIngesterQueryStoreMaxLookback {
-						conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
-					}
-
-					queryClient := newQueryClientMock()
-					queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil)
-
-					querySampleClient := newQuerySampleClientMock()
-					querySampleClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil)
-
-					ingesterClient := newQuerierClientMock()
-					ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
-					ingesterClient.On("QuerySample", mock.Anything, mock.Anything, mock.Anything).Return(querySampleClient, nil)
-					ingesterClient.On("Label", mock.Anything, mock.Anything, mock.Anything).Return(mockLabelResponse([]string{"bar"}), nil)
-					ingesterClient.On("Series", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.SeriesResponse{
-						Series: []logproto.SeriesIdentifier{
-							{
-								Labels: map[string]string{"bar": "1"},
-							},
-						},
-					}, nil)
-
-					store := newStoreMock()
-					store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
-					store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(querySampleClient), nil)
-					store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
-					store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
-					store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-						{Labels: map[string]string{"foo": "1"}},
-					}, nil)
-
-					querier, err := newQuerier(
-						conf,
-						mockIngesterClientConfig(),
-						newIngesterClientMockFactory(ingesterClient),
-						mockReadRingWithOneActiveIngester(),
-						&mockDeleteGettter{},
-						store, limits)
+					ingesterClient, store, querier, err := setupIngesterQuerierMocks(conf, limits)
 					require.NoError(t, err)
 
 					err = request.do(querier, tc.start, tc.end)
@@ -995,6 +963,49 @@ func TestQuerier_AskingIngesters(t *testing.T) {
 			}
 		})
 	}
+}
+
+func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*querierClientMock, *storeMock, *SingleTenantQuerier, error) {
+	queryClient := newQueryClientMock()
+	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil)
+
+	querySampleClient := newQuerySampleClientMock()
+	querySampleClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil)
+
+	ingesterClient := newQuerierClientMock()
+	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
+	ingesterClient.On("QuerySample", mock.Anything, mock.Anything, mock.Anything).Return(querySampleClient, nil)
+	ingesterClient.On("Label", mock.Anything, mock.Anything, mock.Anything).Return(mockLabelResponse([]string{"bar"}), nil)
+	ingesterClient.On("Series", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.SeriesResponse{
+		Series: []logproto.SeriesIdentifier{
+			{
+				Labels: map[string]string{"bar": "1"},
+			},
+		},
+	}, nil)
+
+	store := newStoreMock()
+	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
+	store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(querySampleClient), nil)
+	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
+	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
+	store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+		{Labels: map[string]string{"foo": "1"}},
+	}, nil)
+
+	querier, err := newQuerier(
+		conf,
+		mockIngesterClientConfig(),
+		newIngesterClientMockFactory(ingesterClient),
+		mockReadRingWithOneActiveIngester(),
+		&mockDeleteGettter{},
+		store, limits)
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return ingesterClient, store, querier, nil
 }
 
 type fakeTimeLimits struct {
