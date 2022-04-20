@@ -2,10 +2,46 @@ syntax = "proto3";
 
 package indexgatewaypb;
 
+import "pkg/logproto/logproto.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+
 service IndexGateway {
     /// QueryIndex reads the indexes required for given query & sends back the batch of rows
     /// in rpc streams
     rpc QueryIndex(QueryIndexRequest) returns (stream QueryIndexResponse);
+    /// GetChunkRef returns chunk reference that match the provided label matchers
+    rpc GetChunkRef(GetChunkRefRequest) returns (GetChunkRefResponse) {};
+    rpc LabelNamesForMetricName(LabelNamesForMetricNameRequest) returns (LabelResponse)  {};
+    rpc LabelValuesForMetricName(LabelValuesForMetricNameRequest) returns (LabelResponse) {};
+}
+
+message LabelValuesForMetricNameRequest {
+    string metric_name = 1;
+    string label_name = 2;
+    int64 from = 3 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
+    int64 through = 4 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
+    string matchers = 5;
+}
+
+message LabelNamesForMetricNameRequest {
+    string metric_name = 1;
+    int64 from = 2 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
+    int64 through = 3 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
+}
+
+message LabelResponse {
+    repeated string values = 1;
+}
+
+message GetChunkRefRequest {
+    int64 from = 1 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
+    int64 through = 2 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
+    string matchers = 3;
+}
+
+message GetChunkRefResponse {
+    repeated logproto.ChunkRef refs = 1;
 }
 
 message QueryIndexResponse {
@@ -29,4 +65,3 @@ message IndexQuery {
     bytes rangeValueStart     = 4;
     bytes valueEqual          = 5;
 }
-

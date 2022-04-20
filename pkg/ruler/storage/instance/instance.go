@@ -207,6 +207,9 @@ func newInstance(cfg Config, reg prometheus.Registerer, logger log.Logger, newWa
 }
 
 func (i *Instance) Storage() storage.Storage {
+	i.mut.Lock()
+	defer i.mut.Unlock()
+
 	return i.storage
 }
 
@@ -284,11 +287,11 @@ func (n noopScrapeManager) Get() (*scrape.Manager, error) {
 // components cannot be reused after they are stopped so we need to recreate them
 // each run.
 func (i *Instance) initialize(_ context.Context, reg prometheus.Registerer, cfg *Config) error {
-	// explicitly set this in case this function is called multiple times
-	i.initialized = false
-
 	i.mut.Lock()
 	defer i.mut.Unlock()
+
+	// explicitly set this in case this function is called multiple times
+	i.initialized = false
 
 	var err error
 
@@ -373,6 +376,9 @@ func (i *Instance) Update(c Config) (err error) {
 
 // Ready indicates if the instance is ready for processing.
 func (i *Instance) Ready() bool {
+	i.mut.Lock()
+	defer i.mut.Unlock()
+
 	return i.initialized
 }
 

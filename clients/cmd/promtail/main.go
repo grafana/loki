@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail"
+	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/config"
 
 	"github.com/grafana/loki/pkg/util"
@@ -77,11 +78,11 @@ func main() {
 	}
 
 	// Init the logger which will honor the log level set in cfg.Server
-	if reflect.DeepEqual(&config.ServerConfig.Config.LogLevel, &logging.Level{}) {
+	if reflect.DeepEqual(&config.Config.ServerConfig.Config.LogLevel, &logging.Level{}) {
 		fmt.Println("Invalid log level")
 		os.Exit(1)
 	}
-	util_log.InitLogger(&config.ServerConfig.Config, prometheus.DefaultRegisterer)
+	util_log.InitLogger(&config.Config.ServerConfig.Config, prometheus.DefaultRegisterer)
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)
@@ -92,7 +93,7 @@ func main() {
 
 	// Set the global debug variable in the stages package which is used to conditionally log
 	// debug messages which otherwise cause huge allocations processing log lines for log messages never printed
-	if config.ServerConfig.Config.LogLevel.String() == "debug" {
+	if config.Config.ServerConfig.Config.LogLevel.String() == "debug" {
 		stages.Debug = true
 	}
 
@@ -110,7 +111,8 @@ func main() {
 		}
 	}
 
-	p, err := promtail.New(config.Config, config.dryRun, prometheus.DefaultRegisterer)
+	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, config.Config.Options.StreamLagLabels)
+	p, err := promtail.New(config.Config, clientMetrics, config.dryRun)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error creating promtail", "error", err)
 		os.Exit(1)

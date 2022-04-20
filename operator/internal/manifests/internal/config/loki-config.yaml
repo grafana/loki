@@ -56,13 +56,15 @@ frontend_worker:
   frontend_address: {{ .FrontendWorker.FQDN }}:{{ .FrontendWorker.Port }}
   grpc_client_config:
     max_send_msg_size: 104857600
-  parallelism: {{ .QueryParallelism.Value }}
+  match_max_concurrent: true
 ingester:
   chunk_block_size: 262144
   chunk_encoding: snappy
   chunk_idle_period: 1h
   chunk_retain_period: 5m
   chunk_target_size: 2097152
+  flush_op_timeout: 10m
+  max_chunk_age: 2h
   lifecycler:
     final_sleep: 0s
     heartbeat_period: 5s
@@ -117,6 +119,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
+  split_queries_by_interval: 30m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: {{ .GossipRing.Port }}
@@ -130,9 +133,10 @@ querier:
     max_look_back_period: 30s
     timeout: 3m
   extra_query_delay: 0s
-  query_ingesters_within: 2h
+  query_ingesters_within: 3h
   query_timeout: 1m
   tail_max_duration: 1h
+  max_concurrent: {{ .MaxConcurrent.AvailableQuerierCPUCores }}
 query_range:
   align_queries_with_step: true
   cache_results: true
@@ -142,7 +146,6 @@ query_range:
       enable_fifocache: true
       fifocache:
         max_size_bytes: 500MB
-  split_queries_by_interval: 30m
   parallelise_shardable_queries: true
 schema_config:
   configs:
@@ -150,7 +153,7 @@ schema_config:
       index:
         period: 24h
         prefix: index_
-      object_store: s3
+      object_store: {{ .ObjectStorage.SharedStore }}
       schema: v11
       store: boltdb-shipper
 server:
@@ -170,8 +173,10 @@ storage_config:
     cache_location: {{ .StorageDirectory }}/index_cache
     cache_ttl: 24h
     resync_interval: 5m
-    shared_store: s3
+    shared_store: {{ .ObjectStorage.SharedStore }}
     index_gateway_client:
       server_address: dns:///{{ .IndexGateway.FQDN }}:{{ .IndexGateway.Port }}
 tracing:
   enabled: false
+analytics:
+  reporting_enabled: {{ .EnableRemoteReporting }}

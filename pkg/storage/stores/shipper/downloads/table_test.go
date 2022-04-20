@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -84,12 +84,12 @@ func buildTestTable(t *testing.T, path string) (*table, *local.BoltIndexClient, 
 
 type mockIndexSet struct {
 	IndexSet
-	queriesDone []chunk.IndexQuery
+	queriesDone []index.Query
 	failQueries bool
 	lastUsedAt  time.Time
 }
 
-func (m *mockIndexSet) MultiQueries(_ context.Context, queries []chunk.IndexQuery, _ chunk.QueryPagesCallback) error {
+func (m *mockIndexSet) MultiQueries(_ context.Context, queries []index.Query, _ index.QueryPagesCallback) error {
 	m.queriesDone = append(m.queriesDone, queries...)
 	return nil
 }
@@ -142,9 +142,9 @@ func TestTable_MultiQueries(t *testing.T) {
 				table.indexSets[userID] = &mockIndexSet{failQueries: tc.withError}
 			}
 
-			var testQueries []chunk.IndexQuery
+			var testQueries []index.Query
 			for i := 0; i < 5; i++ {
-				testQueries = append(testQueries, chunk.IndexQuery{
+				testQueries = append(testQueries, index.Query{
 					TableName:        "test-table",
 					HashValue:        fmt.Sprint(i),
 					RangeValuePrefix: []byte(fmt.Sprintf("range-value-prefix-%d", i)),
@@ -153,7 +153,7 @@ func TestTable_MultiQueries(t *testing.T) {
 				})
 			}
 
-			err := table.MultiQueries(user.InjectOrgID(context.Background(), tc.queryWithUserID), testQueries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+			err := table.MultiQueries(user.InjectOrgID(context.Background(), tc.queryWithUserID), testQueries, func(query index.Query, batch index.ReadBatchResult) bool {
 				return true
 			})
 			if tc.withError {
@@ -204,9 +204,9 @@ func TestTable_MultiQueries_Response(t *testing.T) {
 	}()
 
 	// build queries each looking for specific value from all the dbs
-	var queries []chunk.IndexQuery
+	var queries []index.Query
 	for i := 0; i < 1000; i++ {
-		queries = append(queries, chunk.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
+		queries = append(queries, index.Query{ValueEqual: []byte(strconv.Itoa(i))})
 	}
 
 	// run the queries concurrently
@@ -253,6 +253,20 @@ func TestTable_DropUnusedIndex(t *testing.T) {
 	require.False(t, allIndexSetsDropped)
 
 	// verify that we only dropped index set for expiredIndexUserID
+	require.Len(t, table.indexSets, 2)
+	ensureIndexSetExistsInTable(t, &table, "")
+	ensureIndexSetExistsInTable(t, &table, notExpiredIndexUserID)
+
+	// change the lastUsedAt for common index set to expire it
+	indexSets[""].(*mockIndexSet).lastUsedAt = now.Add(-25 * time.Hour)
+
+	// common index set should not get dropped since we still have notExpiredIndexUserID which is not expired
+	require.Equal(t, []string(nil), table.findExpiredIndexSets(ttl, now))
+	allIndexSetsDropped, err = table.DropUnusedIndex(ttl, now)
+	require.NoError(t, err)
+	require.False(t, allIndexSetsDropped)
+
+	// none of the index set should be dropped
 	require.Len(t, table.indexSets, 2)
 	ensureIndexSetExistsInTable(t, &table, "")
 	ensureIndexSetExistsInTable(t, &table, notExpiredIndexUserID)
@@ -373,7 +387,7 @@ func TestTable_Sync(t *testing.T) {
 	table.storageClient = newStorageClientWithFakeObjectsInList(table.storageClient)
 
 	// query table to see it has expected records setup
-	testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, table, 0, 20)
+	testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 0, 20)
 
 	// add a sleep since we are updating a file and CI is sometimes too fast to create a difference in mtime of files
 	time.Sleep(time.Second)
@@ -386,7 +400,7 @@ func TestTable_Sync(t *testing.T) {
 	require.NoError(t, table.Sync(context.Background()))
 
 	// query and verify table has expected records from new db and the records from deleted db are gone
-	testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, table, 10, 20)
+	testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 10, 20)
 
 	// verify files in cache where dbs for the table are synced to double check.
 	expectedFilesInDir := map[string]struct{}{
@@ -478,9 +492,9 @@ func TestTable_QueryResponse(t *testing.T) {
 	}()
 
 	// build queries each looking for specific value from all the dbs
-	var queries []chunk.IndexQuery
+	var queries []index.Query
 	for i := 5; i < 35; i++ {
-		queries = append(queries, chunk.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
+		queries = append(queries, index.Query{ValueEqual: []byte(strconv.Itoa(i))})
 	}
 
 	// Query the table with user id which has user specific index as well.
@@ -530,14 +544,14 @@ func TestLoadTable(t *testing.T) {
 	require.NotNil(t, table)
 
 	// query the loaded table to see if it has right data.
-	testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, table, 0, 20)
+	testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 0, 20)
 
 	// close the table to test reloading of table with already having files in the cache dir.
 	table.Close()
 
 	// change a boltdb file to text file which would fail to open.
-	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInCache, "0"), []byte("invalid boltdb file"), 0666))
-	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInCache, userID, "10"), []byte("invalid boltdb file"), 0666))
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInCache, "0"), []byte("invalid boltdb file"), 0o666))
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInCache, userID, "10"), []byte("invalid boltdb file"), 0o666))
 
 	// verify that changed boltdb file can't be opened.
 	_, err = local.OpenBoltdbFile(filepath.Join(tablePathInCache, "0"))
@@ -572,7 +586,7 @@ func TestLoadTable(t *testing.T) {
 	defer table.Close()
 
 	// query the loaded table to see if it has right data.
-	testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, table, 0, 40)
+	testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 0, 40)
 }
 
 func ensureIndexSetExistsInTable(t *testing.T, table *table, indexSetName string) {

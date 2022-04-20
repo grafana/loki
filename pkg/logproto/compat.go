@@ -214,3 +214,54 @@ func init() {
 	jsoniter.RegisterTypeEncoderFunc("logproto.LegacySample", SampleJsoniterEncode, func(unsafe.Pointer) bool { return false })
 	jsoniter.RegisterTypeDecoderFunc("logproto.LegacySample", SampleJsoniterDecode)
 }
+
+// Combine unique values from multiple LabelResponses into a single, sorted LabelResponse.
+func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
+	if len(responses) == 0 {
+		return &LabelResponse{}, nil
+	} else if len(responses) == 1 {
+		return responses[0], nil
+	}
+
+	unique := map[string]struct{}{}
+
+	for _, r := range responses {
+		for _, v := range r.Values {
+			if _, ok := unique[v]; !ok {
+				unique[v] = struct{}{}
+			} else {
+				continue
+			}
+		}
+	}
+
+	result := &LabelResponse{Values: make([]string, 0, len(unique))}
+
+	for value := range unique {
+		result.Values = append(result.Values, value)
+	}
+
+	// Sort the unique values before returning because we can't rely on map key ordering
+	sort.Strings(result.Values)
+
+	return result, nil
+}
+
+// Combine unique label sets from multiple SeriesResponse and return a single SeriesResponse.
+func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) {
+	if len(responses) == 0 {
+		return &SeriesResponse{}, nil
+	} else if len(responses) == 1 {
+		return responses[0], nil
+	}
+
+	result := &SeriesResponse{
+		Series: make([]SeriesIdentifier, 0, len(responses)),
+	}
+
+	for _, r := range responses {
+		result.Series = append(result.Series, r.Series...)
+	}
+
+	return result, nil
+}

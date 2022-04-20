@@ -36,17 +36,17 @@ func ExtractGatewaySecret(s *corev1.Secret, tenantName string) (*manifests.Tenan
 // ExtractStorageSecret reads a k8s secret into a manifest object storage struct if valid.
 func ExtractStorageSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretType) (*storage.Options, error) {
 	var err error
-	storage := storage.Options{}
+	storageOpts := storage.Options{SharedStore: secretType}
 
 	switch secretType {
 	case lokiv1beta1.ObjectStorageSecretAzure:
-		storage.Azure, err = extractAzureConfigSecret(s)
+		storageOpts.Azure, err = extractAzureConfigSecret(s)
 	case lokiv1beta1.ObjectStorageSecretGCS:
-		storage.GCS, err = extractGCSConfigSecret(s)
+		storageOpts.GCS, err = extractGCSConfigSecret(s)
 	case lokiv1beta1.ObjectStorageSecretS3:
-		storage.S3, err = extractS3ConfigSecret(s)
+		storageOpts.S3, err = extractS3ConfigSecret(s)
 	case lokiv1beta1.ObjectStorageSecretSwift:
-		storage.Swift, err = extractSwiftConfigSecret(s)
+		storageOpts.Swift, err = extractSwiftConfigSecret(s)
 	default:
 		return nil, kverrors.New("unknown secret type", "type", secretType)
 	}
@@ -54,7 +54,7 @@ func ExtractStorageSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorage
 	if err != nil {
 		return nil, err
 	}
-	return &storage, nil
+	return &storageOpts, nil
 }
 
 func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, error) {

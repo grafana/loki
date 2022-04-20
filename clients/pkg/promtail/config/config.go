@@ -4,6 +4,10 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	dskit_flagext "github.com/grafana/dskit/flagext"
+
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
@@ -16,6 +20,11 @@ import (
 	"github.com/grafana/loki/pkg/util/flagext"
 )
 
+// Options contains cross-cutting promtail configurations
+type Options struct {
+	StreamLagLabels dskit_flagext.StringSliceCSV `yaml:"stream_lag_labels,omitempty"`
+}
+
 // Config for promtail, describing what files to watch.
 type Config struct {
 	ServerConfig server.Config `yaml:"server,omitempty"`
@@ -25,7 +34,8 @@ type Config struct {
 	PositionsConfig positions.Config      `yaml:"positions,omitempty"`
 	ScrapeConfig    []scrapeconfig.Config `yaml:"scrape_configs,omitempty"`
 	TargetConfig    file.Config           `yaml:"target_config,omitempty"`
-	LimitConfig     limit.Config          `yaml:"limit_config,omitempty"`
+	LimitsConfig    limit.Config          `yaml:"limits_config,omitempty"`
+	Options         Options               `yaml:"options,omitempty"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
@@ -35,7 +45,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	c.ClientConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.PositionsConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.TargetConfig.RegisterFlagsWithPrefix(prefix, f)
-	c.LimitConfig.RegisterFlagsWithPrefix(prefix, f)
+	c.LimitsConfig.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // RegisterFlags registers flags.
@@ -51,8 +61,9 @@ func (c Config) String() string {
 	return string(b)
 }
 
-func (c *Config) Setup() {
+func (c *Config) Setup(l log.Logger) {
 	if c.ClientConfig.URL.URL != nil {
+		level.Warn(l).Log("msg", "use of CLI client.* and config file Client block are both deprecated in favour of the config file Clients block and will be removed in a future release")
 		// if a single client config is used we add it to the multiple client config for backward compatibility
 		c.ClientConfigs = append(c.ClientConfigs, c.ClientConfig)
 	}

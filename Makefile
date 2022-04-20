@@ -27,7 +27,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.20.0
+BUILD_IMAGE_VERSION := 0.20.1
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -236,8 +236,11 @@ dist: clean
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
 packages: dist
+	mkdir -p dist/tmp
+	unzip dist/logcli-linux-amd64.zip -d dist/tmp
 	nfpm package -f tools/nfpm.yaml -p rpm -t dist/
 	nfpm package -f tools/nfpm.yaml -p deb -t dist/
+	rm -rf dist/tmp
 
 publish: packages
 	./tools/release
@@ -249,7 +252,7 @@ publish: packages
 # To run this efficiently on your workstation, run this from the root dir:
 # docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.17.0 lint
 lint:
-	GO111MODULE=on GOGC=10 golangci-lint run -v
+	GO111MODULE=on golangci-lint run -v
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
 ########
@@ -257,7 +260,7 @@ lint:
 ########
 
 test: all
-	GOGC=10 $(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
+	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
 
 #########
 # Clean #
@@ -523,11 +526,11 @@ loki-canary-push: loki-canary-image-cross
 
 # loki-querytee
 loki-querytee-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
 loki-querytee-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
 loki-querytee-push: loki-querytee-image-cross
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG)
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 
 # migrate-image
 migrate-image:
@@ -569,11 +572,11 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	drone jsonnet --stream --format -V __build-image-version=$(BUILD_IMAGE_VERSION) --source .drone/drone.jsonnet --target .drone/drone.yml
 	drone lint .drone/drone.yml --trusted
-	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN"
+	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN. These values can be found on your [drone account](http://drone.grafana.net/account) page."
 endif
 
 check-drone-drift:
-	./tools/check-drone-drift.sh main
+	./tools/check-drone-drift.sh $(BUILD_IMAGE_VERSION)
 
 
 # support go modules
@@ -640,7 +643,7 @@ endif
 # this will run the fuzzing using /tmp/testcase and save benchmark locally.
 test-fuzz:
 	$(GOTEST) -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
-	  -run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s
+	  -run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql/syntax -v -count=1 -timeout=0s
 
 format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \

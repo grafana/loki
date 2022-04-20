@@ -23,9 +23,10 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier/stats"
-	"github.com/grafana/loki/pkg/tenant"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )

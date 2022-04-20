@@ -153,11 +153,6 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		return nil, err
 	}
 
-	zone := cfg.Zone
-	if zone != "" {
-		level.Warn(logger).Log("msg", "experimental feature in use", "feature", "Zone aware replication")
-	}
-
 	// We do allow a nil FlushTransferer, but to keep the ring logic easier we assume
 	// it's always set, so we use a noop FlushTransferer
 	if flushTransferer == nil {
@@ -174,7 +169,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		RingKey:              ringKey,
 		flushOnShutdown:      atomic.NewBool(flushOnShutdown),
 		unregisterOnShutdown: atomic.NewBool(cfg.UnregisterOnShutdown),
-		Zone:                 zone,
+		Zone:                 cfg.Zone,
 		actorChan:            make(chan func()),
 		state:                PENDING,
 		lifecyclerMetrics:    NewLifecyclerMetrics(ringName, reg),

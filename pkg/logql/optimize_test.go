@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 func Test_optimizeSampleExpr(t *testing.T) {
@@ -27,7 +29,7 @@ func Test_optimizeSampleExpr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
-			e, err := ParseSampleExpr(tt.in)
+			e, err := syntax.ParseSampleExpr(tt.in)
 			require.NoError(t, err)
 			got, err := optimizeSampleExpr(e)
 			require.NoError(t, err)
