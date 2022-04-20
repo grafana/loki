@@ -477,5 +477,5 @@ func (c *client) Name() string {
 }
 
 func (c *client) streamLagMetricsMapKey(labels prometheus.Labels) string {
-	return string(labels["filename"]) + c.name + c.cfg.URL.Host
+	return labels["filename"] + c.name + c.cfg.URL.Host
 }
