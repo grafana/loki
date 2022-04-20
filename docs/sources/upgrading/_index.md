@@ -33,10 +33,9 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
-#### `stream_lag_labels` configuration has moved, single client config has been deprecated
+#### `stream_lag_labels` configuration has moved, deprecating the single client configuration
 
-Previously the config for each promtail client looked like: https://grafana.com/docs/loki/v2.4/clients/promtail/configuration/#clients
-example:
+The configuration for each Promtail client previously appeared as: https://grafana.com/docs/loki/v2.4/clients/promtail/configuration/#clients
 ```
 clients:
   - url: http://localhost:3100/loki/api/v1/push
@@ -48,12 +47,10 @@ clients:
     external_labels:
       client: b
 ```
-However due to the way the Promtail client metrics were registered, and more specifically the way the Promtail stream lag metric labels were set, there was a bug
-that should have been caught by Prometheus' metric instrumentation library (duplicate metric registration/attempt to register the same metric with different label sets)
-but was not, and therefore would result in a failure to scrape metrics at runtime. This was due to allowing `stream_lag_labels` to be set for each client,
-which could result in that metric for each client having the same label values. To remedy this, the `stream_lag_labels` config field has been moved to a new
-top level section `options`.
-example:
+A failure to scrape metrics at runtime was caused by the combination of the way the Promtail client metrics were registered and the Prometheus metric instrumentation library not catching a bug in Promtail's metrics.
+This was caused by allowing `stream_lag_labels` to be set for each client, which made it was possible to cause duplicate metric registration/attempt to register the same metric with different label sets. Prometheus will fail scrapes when it detects metrics with the same labelset.
+To rememdy this, the `stream_lag_labels` parameter configuration has been moved to a newtop-level `options` configuration block.
+If you currently set a value for configuration per client, you will need to move and only set it once, as in this example:
 ```
 options:
   - stream_lag_labels: "filename,something_else"
@@ -65,10 +62,9 @@ clients:
     external_labels:
       client: b
 ```
-This means that if you currently set a value for that configuration per client you will need to move and only set it once, as shown above.
-
-At the same time, we have taken steps to deprecate the use of the single client `client` config file block, as well as the `-client.*` command line flags. The interaction between setting any of these plus the usage of `client` with `clients` within the connfig file can be confusing as it was not always clear which values take precedence. Setting any of these
-values will result in Promtail logging an error message about the usage of these fields and exiting.
+At the same time, we have taken steps to deprecate the use of the single client `client` configuration file block, as well as the `-client.*` command line flags. 
+The interaction between setting any of these, plus the usage of `client` with `clients` within the configuration file can be confusing, as it was not always clear which values take precedence. 
+Setting any of these values will result in Promtail logging an error message about the usage of these fields and exiting.
 
 ## 2.5.0
 
