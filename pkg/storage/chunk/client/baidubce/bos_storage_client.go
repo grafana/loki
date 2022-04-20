@@ -156,6 +156,8 @@ func (b *BOSObjectStorage) IsObjectNotFoundErr(err error) bool {
 	case *bce.BceClientError:
 		return false
 	// When an exception occurs on the BOS server, the BOS server returns the corresponding error message to the user to locate the problem.
+	// BceServiceError will return an error message string to contain the error code :
+	// https://github.com/baidubce/bce-sdk-go/blob/1e5bfbecf07c6ed5d97a0090a9faee7d89466239/bce/error.go#L47-L53
 	case *bce.BceServiceError:
 		if realErr.Code == NoSuchKeyErr {
 			return true
