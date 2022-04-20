@@ -376,6 +376,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 			End:       time.Now(),
 			Limit:     req.Limit,
 			Direction: logproto.BACKWARD,
+			// Add these? Deletes: ,
 		},
 	}
 

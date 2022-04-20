@@ -243,6 +243,8 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get deletes for user and store in request?
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		level.Error(logger).Log("msg", "Error in upgrading websocket", "err", err)
