@@ -38,11 +38,11 @@ const (
 // FileTargetManager manages a set of targets.
 // nolint:revive
 type FileTargetManager struct {
-	log            log.Logger
-	quit           context.CancelFunc
-	syncers        map[string]*targetSyncer
-	manager        *discovery.Manager
-	metricsHandler api.LatencyMetricHandler
+	log           log.Logger
+	quit          context.CancelFunc
+	syncers       map[string]*targetSyncer
+	manager       *discovery.Manager
+	metricHandler api.LatencyMetricHandler
 
 	watcher            *fsnotify.Watcher
 	targetEventHandler chan fileTargetEvent
@@ -56,7 +56,7 @@ func NewFileTargetManager(
 	logger log.Logger,
 	positions positions.Positions,
 	client api.EntryHandler,
-	metricsHandler api.LatencyMetricHandler,
+	metricHandler api.LatencyMetricHandler,
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *Config,
 ) (*FileTargetManager, error) {
@@ -74,7 +74,7 @@ func NewFileTargetManager(
 		log:                logger,
 		quit:               quit,
 		watcher:            watcher,
-		metricsHandler:     metricsHandler,
+		metricHandler:      metricHandler,
 		targetEventHandler: make(chan fileTargetEvent),
 		syncers:            map[string]*targetSyncer{},
 		manager:            discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
@@ -130,7 +130,7 @@ func NewFileTargetManager(
 			droppedTargets:    []target.Target{},
 			hostname:          hostname,
 			entryHandler:      pipeline.Wrap(client),
-			metricHandler:     metricsHandler,
+			metricHandler:     metricHandler,
 			targetConfig:      targetConfig,
 			fileEventWatchers: map[string]chan fsnotify.Event{},
 		}

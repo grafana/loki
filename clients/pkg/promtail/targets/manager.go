@@ -59,7 +59,7 @@ func NewTargetManagers(
 	logger log.Logger,
 	positionsConfig positions.Config,
 	client api.EntryHandler,
-	metricsHandler api.LatencyMetricHandler,
+	metricHandler api.LatencyMetricHandler,
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *file.Config,
 ) (*TargetManagers, error) {
@@ -155,7 +155,7 @@ func NewTargetManagers(
 				logger,
 				pos,
 				client,
-				metricsHandler,
+				metricHandler,
 				scrapeConfigs,
 				targetConfig,
 			)
