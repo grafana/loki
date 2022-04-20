@@ -39,7 +39,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
           access_log   /dev/stderr  main;
           sendfile     on;
           tcp_nopush   on;
-          resolver kube-dns.kube-system.svc.cluster.local;
+          resolver $(dns_resolver)s;
 
           server {
             listen               80;
