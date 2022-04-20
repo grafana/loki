@@ -118,7 +118,7 @@ func (cfg *Config) Validate() error {
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, registerer prometheus.Registerer) (index.Client, error) {
+func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, tenantBoundaries downloads.TenantBoundariesClient, registerer prometheus.Registerer) (index.Client, error) {
 	switch name {
 	case config.StorageTypeInMemory:
 		store := testutils.NewMockStorage()
@@ -165,7 +165,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 			return nil, err
 		}
 
-		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, registerer)
+		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, tenantBoundaries, registerer)
 
 		return boltDBIndexClientWithShipper, err
 	default:

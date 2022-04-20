@@ -107,13 +107,13 @@ type Shipper struct {
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) (index.Client, error) {
+func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, tenantBoundariesClient downloads.TenantBoundariesClient, registerer prometheus.Registerer) (index.Client, error) {
 	shipper := Shipper{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
 	}
 
-	err := shipper.init(storageClient, limits, registerer)
+	err := shipper.init(storageClient, limits, tenantBoundariesClient, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.
 	return &shipper, nil
 }
 
-func (s *Shipper) init(storageClient client.ObjectClient, limits downloads.Limits, registerer prometheus.Registerer) error {
+func (s *Shipper) init(storageClient client.ObjectClient, limits downloads.Limits, tenantBoundariesClient downloads.TenantBoundariesClient, registerer prometheus.Registerer) error {
 	// When we run with target querier we don't have ActiveIndexDirectory set so using CacheLocation instead.
 	// Also it doesn't matter which directory we use since BoltDBIndexClient doesn't do anything with it but it is good to have a valid path.
 	boltdbIndexClientDir := s.cfg.ActiveIndexDirectory
@@ -168,7 +168,8 @@ func (s *Shipper) init(storageClient client.ObjectClient, limits downloads.Limit
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 			Limits:            limits,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, indexStorageClient, registerer)
+
+		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, indexStorageClient, tenantBoundariesClient, registerer)
 		if err != nil {
 			return err
 		}

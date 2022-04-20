@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	loki_util "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -54,6 +55,12 @@ type IndexClient interface {
 	Stop()
 }
 
+type ringTenantBuffers struct {
+	bufDescs []ring.InstanceDesc
+	bufHosts []string
+	bufZones []string
+}
+
 type Gateway struct {
 	services.Service
 
@@ -68,6 +75,9 @@ type Gateway struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
+	ready   bool
+	buffers ringTenantBuffers
+
 	ringLifecycler *ring.BasicLifecycler
 	ring           *ring.Ring
 }
@@ -76,12 +86,12 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier, indexClient IndexClient) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
-		indexClient:  indexClient,
 		cfg:          cfg,
 		log:          log,
+		ready:        false,
 	}
 
 	if cfg.Mode == RingMode {
@@ -125,15 +135,31 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 		g.subservicesWatcher = services.NewFailureWatcher()
 		g.subservicesWatcher.WatchManager(g.subservices)
 		g.Service = services.NewBasicService(g.starting, g.running, g.stopping)
+		g.buffers.bufDescs, g.buffers.bufHosts, g.buffers.bufZones = ring.MakeBuffersForGet()
 	} else {
 		g.Service = services.NewIdleService(nil, func(failureCase error) error {
 			g.indexQuerier.Stop()
-			g.indexClient.Stop()
+			if g.ready {
+				g.indexClient.Stop()
+			}
 			return nil
 		})
 	}
 
 	return g, nil
+}
+
+func (g *Gateway) TenantInBoundaries(tenant string) bool {
+	if g.cfg.Mode != RingMode {
+		return true
+	}
+
+	return loki_util.IsAssignedKey(g.ring, g.ringLifecycler, tenant, g.buffers.bufDescs, g.buffers.bufHosts, g.buffers.bufZones)
+}
+
+func (g *Gateway) AssignIndexClient(indexClient IndexClient) {
+	g.indexClient = indexClient
+	g.ready = true
 }
 
 // starting implements the Lifecycler interface and is one of the lifecycle hooks.
@@ -211,12 +237,18 @@ func (g *Gateway) stopping(_ error) error {
 	level.Debug(util_log.Logger).Log("msg", "stopping index gateway")
 	defer func() {
 		g.indexQuerier.Stop()
-		g.indexClient.Stop()
+		if g.ready {
+			g.indexClient.Stop()
+		}
 	}()
 	return services.StopManagerAndAwaitStopped(context.Background(), g.subservices)
 }
 
 func (g *Gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
+	if !g.ready {
+		return fmt.Errorf("index gateway not ready for not assigning index client")
+	}
+
 	var outerErr error
 	var innerErr error
 

@@ -233,14 +233,15 @@ func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 		CacheTTL:          15 * time.Minute,
 		QueryReadyNumDays: 30,
 		Limits:            mockLimits{},
-	}, bclient, storage.NewIndexStorageClient(fs, "index/"), nil)
+	}, bclient, storage.NewIndexStorageClient(fs, "index/"), nil, nil)
 	require.NoError(b, err)
 
 	// initialize the index gateway server
 	var cfg indexgateway.Config
 	flagext.DefaultValues(&cfg)
 
-	gw, err := indexgateway.NewIndexGateway(cfg, util_log.Logger, prometheus.DefaultRegisterer, nil, tm)
+	gw, err := indexgateway.NewIndexGateway(cfg, util_log.Logger, prometheus.DefaultRegisterer, nil)
+	gw.AssignIndexClient(tm)
 	require.NoError(b, err)
 	indexgatewaypb.RegisterIndexGatewayServer(s, gw)
 	go func() {

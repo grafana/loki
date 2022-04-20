@@ -128,7 +128,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 		}
 		expectedQueryKey = util.QueryKey(query)
 
-		gateway.indexClient = mockIndexClient{response: &mockBatch{size: responseSize}}
+		gateway.AssignIndexClient(mockIndexClient{response: &mockBatch{size: responseSize}})
 		err := gateway.QueryIndex(&indexgatewaypb.QueryIndexRequest{Queries: []*indexgatewaypb.IndexQuery{{
 			TableName:        query.TableName,
 			HashValue:        query.HashValue,

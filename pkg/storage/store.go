@@ -203,7 +203,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 	indexClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": "index-store-" + p.From.String()}, s.registerer)
 
-	idx, err := NewIndexClient(p.IndexType, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, indexClientReg)
+	idx, err := NewIndexClient(p.IndexType, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error creating index client")
 	}
