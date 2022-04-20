@@ -58,6 +58,7 @@ message LokiSeriesResponse {
   repeated logproto.SeriesIdentifier Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
   uint32 version = 3;
   repeated queryrangebase.PrometheusResponseHeader Headers = 4 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase.PrometheusResponseHeader"];
+  stats.Result statistics = 5 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "statistics"];
 }
 
 message LokiLabelNamesRequest {
@@ -71,6 +72,7 @@ message LokiLabelNamesResponse {
   repeated string Data = 2 [(gogoproto.jsontag) = "data,omitempty"];
   uint32 version = 3;
   repeated queryrangebase.PrometheusResponseHeader Headers = 4 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase.PrometheusResponseHeader"];
+  stats.Result statistics = 5 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "statistics"];
 }
 
 message LokiData {
