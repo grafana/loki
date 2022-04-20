@@ -315,7 +315,7 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 			return err
 		}
 
-		level.Debug(util_log.Logger).Log("msg", "instance should be query ready for users", "users", usersToBeQueryReadyFor)
+		level.Debug(util_log.Logger).Log("msg", "instance should be query ready for users", "users", usersToBeQueryReadyFor, "query_readiness_duration", time.Since(start))
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
