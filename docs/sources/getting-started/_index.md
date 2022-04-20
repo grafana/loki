@@ -14,7 +14,7 @@ This guide assists the reader to create and use a simple Loki cluster.
 The cluster is intended for testing, development, and evaluation;
 it will not meet most production requirements.
 
-The test environment runs the [flog](https://github.com/mingrammer/flog) app that generates log lines.
+The test environment runs the [flog](https://github.com/mingrammer/flog) app to generate log lines.
 Promtail is the environment's agent (or client) that captures the log lines and pushes them to the Loki cluster through a gateway.
 Grafana provides a way to pose and visualize queries against the logs stored in Loki.
  
@@ -52,26 +52,16 @@ to make them easy to modify.
     wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/promtail-local-config.yaml -O promtail-local-config.yaml
     wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/docker-compose.yaml -O docker-compose.yaml
     ```
-
-1. The `docker-compose.yaml` relies on the [Loki docker driver](https://grafana.com/docs/loki/latest/clients/docker-driver/), 
-aliased to `loki-compose`, to send logs to the loki cluster. If this driver is not installed on your system, you can install it by running the following:
-
-    ```bash
-    docker plugin install grafana/loki-docker-driver:latest --alias loki-compose --grant-all-permissions
-    ```
-
-    If this driver is already installed, but under a different alias, you will have to change `docker-compose.yaml` to use the correct alias.
-
-1. Modify the Promtail configuration file to scrape the output of the flog app. Edit the `promtail-local-config.yaml`. Change the `__path__` value `/path/to/flog.log` to be the path to your current working directory, which is the test environment's directory.
+1. Modify the Promtail configuration file to scrape the output of the flog app. Edit `promtail-local-config.yaml`. Change the `__path__` value `/path/to/flog.log` to be the path to your current working directory, which is the test environment's directory.
 
     Within Promtail configuration, the `scrape_configs` YAML block specifies the logs to scrape.
 
 1. Download and install Promtail.
     1. On the [Loki](https://github.com/grafana/loki) home page, locate and click on the most recent release.  At the bottom of the releases's page are the Assets.  Find and download the Promtail ZIP file for your operating system and architecture.
     1. Uncompress the binary.  For example:
-    ```bash
-    unzip promtail-linux-amd64.zip
-    ```
+        ```bash
+        unzip promtail-linux-amd64.zip
+        ```
 
 ## Deploy the test environment
 
@@ -93,14 +83,57 @@ This example generates 100 log lines in JSON format, at intervals of 5 seconds:
     ./promtail-linux-amd64 -config.file promtail-local-config.yaml
     ```
 
-Navigate to http://localhost:3000 for the Grafana instance that has Loki configured as a datasource.
-
 ## Use Grafana and the test environment
 
 This guide uses Grafana to query and observe the log lines captured in the Loki cluster.
 
-Use Grafana to query and observe the log lines captured in the Loki cluster by navigating a browswer to http://localhost:3000.
+Use Grafana to query and observe the log lines captured in the Loki cluster by navigating a browser to http://localhost:3000.
 The Grafana instance has Loki configured as a [datasource](https://grafana.com/docs/grafana/latest/datasources/loki/).
 
 Click on the Grafana instance's [Explore](https://grafana.com/docs/grafana/latest/explore/) icon to bring up the log browser.
 
+Use Grafana to try some queries.
+Enter your query into the **Log browser** box, and click on the blue **Run query** button.
+
+To see all the log lines that flog has generated:
+```
+{job="flog"}
+```
+
+The flog app will generate log lines for invented HTTP requests.
+To see all `GET` log lines, enter the query:
+
+```
+{job="flog"} |= "GET"
+```
+For `POST` methods:
+```
+{job="flog"} |= "POST"
+```
+
+To see every log line with the value of `401`: 
+```
+{job="flog"} |= "401"
+
+```
+To see every log line other than those the value `401`: 
+```
+{job="flog"} != "401"
+```
+
+## Stop and clean up the test environment
+
+To break down the test environment:
+
+- Close the Grafana browser window
+
+- Stop and remove all the Docker containers. With current working directory of the test environment:
+    ```bash
+    docker-compose down
+    ```
+
+- Use SIGINT to stop Promtail.
+
+- Use SIGINT to stop the flog app, if it hasn't already stopped generating log lines.
+
+- If you wish to restart the test environment, remove the generated `flog.log` file.
