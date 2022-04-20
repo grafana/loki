@@ -225,11 +225,11 @@ func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT t
 
 	var deletes []*logproto.Delete
 	for _, del := range d {
-		if int64(del.StartTime) <= end && int64(del.EndTime) >= start {
+		if del.StartTime.UnixNano() <= end && del.EndTime.UnixNano() >= start {
 			deletes = append(deletes, &logproto.Delete{
 				Selector: del.Query,
-				Start:    int64(del.StartTime),
-				End:      int64(del.EndTime),
+				Start:    del.StartTime.UnixNano(),
+				End:      del.EndTime.UnixNano(),
 			})
 		}
 	}
