@@ -19,10 +19,13 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 	serverutil "github.com/grafana/loki/pkg/util/server"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -200,7 +203,26 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log, ctx := spanlogger.New(r.Context(), "query.Label")
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
 	resp, err := q.querier.Label(r.Context(), req)
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+
+	// record stats about the label query
+	statResult := statsCtx.Result(time.Since(start), queueTime)
+	statResult.Log(level.Debug(log))
+
+	status := "200"
+	if err != nil {
+		status = "500"
+		// TODO(kavi): adjust status based on all possible errors from `q.Label`
+	}
+
+	logql.RecordLabelQueryMetrics(ctx, *req.Start, *req.End, req.Name, status, statResult)
+
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
@@ -350,7 +372,25 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log, ctx := spanlogger.New(r.Context(), "query.Series")
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
 	resp, err := q.querier.Series(r.Context(), req)
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+
+	// record stats about the label query
+	statResult := statsCtx.Result(time.Since(start), queueTime)
+	statResult.Log(level.Debug(log))
+
+	status := "200"
+	if err != nil {
+		status = "500"
+		// TODO(kavi): adjust status based on all possible errors from `q.Series`
+	}
+
+	logql.RecordSeriesQueryMetrics(ctx, req.Start, req.End, req.Groups, status, statResult)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
