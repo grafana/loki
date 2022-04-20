@@ -90,6 +90,56 @@ func TestLogSlowQuery(t *testing.T) {
 	util_log.Logger = log.NewNopLogger()
 }
 
+func TestLogLabelsQuery(t *testing.T) {
+	buf := bytes.NewBufferString("")
+	util_log.Logger = log.NewLogfmtLogger(buf)
+	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
+	defer c.Close()
+	opentracing.SetGlobalTracer(tr)
+	sp := opentracing.StartSpan("")
+	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
+	now := time.Now()
+	RecordLabelQueryMetrics(ctx, now.Add(-1*time.Hour), now, "foo", "200", stats.Result{
+		Summary: stats.Summary{
+			BytesProcessedPerSecond: 100000,
+			ExecTime:                25.25,
+			TotalBytesProcessed:     100000,
+		},
+	})
+	require.Equal(t,
+		fmt.Sprintf(
+			"level=info org_id=foo traceID=%s latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo throughput=100kB total_bytes=100kB\n",
+			sp.Context().(jaeger.SpanContext).SpanID().String(),
+		),
+		buf.String())
+	util_log.Logger = log.NewNopLogger()
+}
+
+func TestLogSeriesQuery(t *testing.T) {
+	buf := bytes.NewBufferString("")
+	util_log.Logger = log.NewLogfmtLogger(buf)
+	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
+	defer c.Close()
+	opentracing.SetGlobalTracer(tr)
+	sp := opentracing.StartSpan("")
+	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
+	now := time.Now()
+	RecordSeriesQueryMetrics(ctx, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", stats.Result{
+		Summary: stats.Summary{
+			BytesProcessedPerSecond: 100000,
+			ExecTime:                25.25,
+			TotalBytesProcessed:     100000,
+		},
+	})
+	require.Equal(t,
+		fmt.Sprintf(
+			"level=info org_id=foo traceID=%s latency=slow query_type=series length=1h0m0s duration=25.25s status=200 match=\"{container_name=~\\\"prometheus.*\\\", component=\\\"server\\\"}:{app=\\\"loki\\\"}\" throughput=100kB total_bytes=100kB\n",
+			sp.Context().(jaeger.SpanContext).SpanID().String(),
+		),
+		buf.String())
+	util_log.Logger = log.NewNopLogger()
+}
+
 func Test_testToKeyValues(t *testing.T) {
 	cases := []struct {
 		name string
