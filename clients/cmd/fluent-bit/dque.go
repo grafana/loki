@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/joncrlsn/dque"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -153,4 +154,9 @@ func (c *dqueClient) enqueuer() {
 
 func (c *dqueClient) Name() string {
 	return ""
+}
+
+// noop
+func (c *dqueClient) UnregisterLatencyMetric(labels prometheus.Labels) bool {
+	return false
 }

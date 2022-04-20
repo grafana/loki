@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 )
@@ -93,4 +94,14 @@ func (m *MultiClient) Name() string {
 		}
 	}
 	return sb.String()
+}
+
+func (m *MultiClient) UnregisterLatencyMetric(labels prometheus.Labels) bool {
+	var ret bool
+	for _, c := range m.clients {
+		if h, ok := c.(api.LatencyMetricHandler); ok {
+			h.UnregisterLatencyMetric(labels)
+		}
+	}
+	return ret
 }

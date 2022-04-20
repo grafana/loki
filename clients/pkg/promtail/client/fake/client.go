@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Client is a fake client used for testing.
@@ -59,4 +60,9 @@ func (c *Client) StopNow() {
 
 func (c *Client) Name() string {
 	return "fake"
+}
+
+// noop
+func (c *Client) UnregisterLatencyMetric(labels prometheus.Labels) bool {
+	return false
 }

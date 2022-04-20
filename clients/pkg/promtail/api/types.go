@@ -15,9 +15,8 @@ type Entry struct {
 	logproto.Entry
 }
 
-type InstrumentedEntryHandler interface {
-	EntryHandler
-	UnregisterLatencyMetric(prometheus.Labels) bool
+type LatencyMetricHandler interface {
+	UnregisterLatencyMetric(labels prometheus.Labels) bool
 }
 
 // EntryHandler is something that can "handle" entries via a channel.

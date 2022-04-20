@@ -9,6 +9,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -84,4 +85,9 @@ func (l *logger) StopNow() { l.Stop() }
 
 func (l *logger) Name() string {
 	return ""
+}
+
+// noop
+func (l *logger) UnregisterLatencyMetric(_ prometheus.Labels) bool {
+	return true
 }

@@ -38,10 +38,11 @@ const (
 // FileTargetManager manages a set of targets.
 // nolint:revive
 type FileTargetManager struct {
-	log     log.Logger
-	quit    context.CancelFunc
-	syncers map[string]*targetSyncer
-	manager *discovery.Manager
+	log            log.Logger
+	quit           context.CancelFunc
+	syncers        map[string]*targetSyncer
+	manager        *discovery.Manager
+	metricsHandler api.LatencyMetricHandler
 
 	watcher            *fsnotify.Watcher
 	targetEventHandler chan fileTargetEvent
@@ -55,6 +56,7 @@ func NewFileTargetManager(
 	logger log.Logger,
 	positions positions.Positions,
 	client api.EntryHandler,
+	metricsHandler api.LatencyMetricHandler,
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *Config,
 ) (*FileTargetManager, error) {
@@ -72,6 +74,7 @@ func NewFileTargetManager(
 		log:                logger,
 		quit:               quit,
 		watcher:            watcher,
+		metricsHandler:     metricsHandler,
 		targetEventHandler: make(chan fileTargetEvent),
 		syncers:            map[string]*targetSyncer{},
 		manager:            discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
@@ -127,6 +130,7 @@ func NewFileTargetManager(
 			droppedTargets:    []target.Target{},
 			hostname:          hostname,
 			entryHandler:      pipeline.Wrap(client),
+			metricHandler:     metricsHandler,
 			targetConfig:      targetConfig,
 			fileEventWatchers: map[string]chan fsnotify.Event{},
 		}
@@ -245,11 +249,12 @@ func (tm *FileTargetManager) AllTargets() map[string][]target.Target {
 
 // targetSyncer sync targets based on service discovery changes.
 type targetSyncer struct {
-	metrics      *Metrics
-	log          log.Logger
-	positions    positions.Positions
-	entryHandler api.EntryHandler
-	hostname     string
+	metrics       *Metrics
+	log           log.Logger
+	positions     positions.Positions
+	entryHandler  api.EntryHandler
+	metricHandler api.LatencyMetricHandler
+	hostname      string
 
 	fileEventWatchers map[string]chan fsnotify.Event
 
@@ -388,7 +393,7 @@ func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
 }
 
 func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventHandler chan fileTargetEvent) (*FileTarget, error) {
-	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler)
+	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.metricHandler, s.positions, path, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler)
 }
 
 func (s *targetSyncer) DroppedTargets() []target.Target {

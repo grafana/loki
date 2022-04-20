@@ -61,6 +61,7 @@ type FileTarget struct {
 	logger  log.Logger
 
 	handler          api.EntryHandler
+	metricHandler    api.LatencyMetricHandler
 	positions        positions.Positions
 	labels           model.LabelSet
 	discoveredLabels model.LabelSet
@@ -82,6 +83,7 @@ func NewFileTarget(
 	metrics *Metrics,
 	logger log.Logger,
 	handler api.EntryHandler,
+	metricHandler api.LatencyMetricHandler,
 	positions positions.Positions,
 	path string,
 	labels model.LabelSet,
@@ -97,6 +99,7 @@ func NewFileTarget(
 		labels:             labels,
 		discoveredLabels:   discoveredLabels,
 		handler:            api.AddLabelsMiddleware(labels).Wrap(handler),
+		metricHandler:      metricHandler,
 		positions:          positions,
 		quit:               make(chan struct{}),
 		done:               make(chan struct{}),
@@ -309,9 +312,7 @@ func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 			t.positions.Remove(tailer.path)
 			delete(t.tails, p)
 		}
-		if h, ok := t.handler.(api.InstrumentedEntryHandler); ok {
-			h.UnregisterLatencyMetric(prometheus.Labels{client.LatencyLabel: p})
-		}
+		t.metricHandler.UnregisterLatencyMetric(prometheus.Labels{client.LatencyLabel: p})
 	}
 }
 
