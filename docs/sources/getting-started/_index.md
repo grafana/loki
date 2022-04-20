@@ -14,9 +14,9 @@ This guide assists the reader to create and use a simple Loki cluster.
 The cluster is intended for testing, development, and evaluation;
 it will not meet most production requirements.
 
-The test environment runs an app (flog) that generates log lines.
+The test environment runs the [flog](https://github.com/mingrammer/flog) app that generates log lines.
 Promtail is the environment's agent (or client) that captures the log lines and pushes them to the Loki cluster through a gateway.
-Grafana provides a way to enter and visualize queries against the logs stored in Loki.
+Grafana provides a way to pose and visualize queries against the logs stored in Loki.
  
 ![Simple scalable deployment test environment](simple-scalable-test-environment.png)
 
@@ -29,138 +29,78 @@ The test environment uses Docker compose to instantiate these services, each in 
 - The **gateway** receives requests and redirects them to the appropriate container based on the request's URL.
 - **Grafana** provides visualization of the log lines captured within Loki.
 
-## Instantiate the environment
+The flog app and Promtail are run on your local machine,
+to make them easy to modify.
 
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/install)
 - [Docker Compose](https://docs.docker.com/compose/install)
+- The [flog](https://github.com/mingrammer/flog) app
 
-## Obtain configuration files
+## Obtain and configure the test environment
 
-Download `loki-config.yaml`, `promtail-config.yaml`, and `docker-compose.yaml` to your current directory:
+1. Create a directory for the test environment; make that new directory your current working directory:
+    ```bash
+    mkdir evaluate-loki
+    cd evaluate-loki
+    ```
+1. Download `loki-config.yaml`, `promtail-local-config.yaml`, and `docker-compose.yaml`:
 
-```bash
-wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/promtail-config.yaml -O promtail-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/loki-config.yaml -O loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/docker-compose.yaml -O docker-compose.yaml
-```
+    ```bash
+    wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/loki-config.yaml -O loki-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/promtail-local-config.yaml -O promtail-local-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/docker-compose.yaml -O docker-compose.yaml
+    ```
 
-This will download `loki-config.yaml`, `promtail-config.yaml`, and `docker-compose.yaml` to your current directory.
-
-The `docker-compose.yaml` relies on the [Loki docker driver](https://grafana.com/docs/loki/latest/clients/docker-driver/), 
+1. The `docker-compose.yaml` relies on the [Loki docker driver](https://grafana.com/docs/loki/latest/clients/docker-driver/), 
 aliased to `loki-compose`, to send logs to the loki cluster. If this driver is not installed on your system, you can install it by running the following:
 
-```bash
-docker plugin install grafana/loki-docker-driver:latest --alias loki-compose --grant-all-permissions
-```
+    ```bash
+    docker plugin install grafana/loki-docker-driver:latest --alias loki-compose --grant-all-permissions
+    ```
 
-If this driver is already installed, but under a different alias, you will have to change `docker-compose.yaml` to use the correct alias.
+    If this driver is already installed, but under a different alias, you will have to change `docker-compose.yaml` to use the correct alias.
 
-## Deploy and verify readiness of the Loki cluster
+1. Modify the Promtail configuration file to scrape the output of the flog app. Edit the `promtail-local-config.yaml`. Change the `__path__` value `/path/to/flog.log` to be the path to your current working directory, which is the test environment's directory.
 
-From the directory containing the configuration files, deploy the cluster with docker-compose:
+    Within Promtail configuration, the `scrape_configs` YAML block specifies the logs to scrape.
 
-```bash
-docker-compose up
-```
+1. Download and install Promtail.
+    1. On the [Loki](https://github.com/grafana/loki) home page, locate and click on the most recent release.  At the bottom of the releases's page are the Assets.  Find and download the Promtail ZIP file for your operating system and architecture.
+    1. Uncompress the binary.  For example:
+    ```bash
+    unzip promtail-linux-amd64.zip
+    ```
 
-The running Docker containers use the directory's configuration files.
+## Deploy the test environment
 
-Navigate to http://localhost:3100/ready to check for cluster readiness.
-Navigate to http://localhost:3100/metrics to view the cluster metrics.
+All shell commands are issued from the test environment's directory.
+
+1. Deploy Grafana and the Loki cluster with `docker-compose`:
+    ```bash
+    docker-compose up
+    ```
+1. (Optional) Verify that the Loki cluster is up and running. The read component returns `ready` when you point a web browser at http://localhost:3101/ready.
+The write component returns `ready` when you point a web browser at http://localhost:3102/ready.
+1. Run the `flog` app to start generating log lines.
+This example generates 100 log lines in JSON format, at intervals of 5 seconds:
+    ```bash
+    flog -f json -o flog.log -t log -n 100 -d 5s
+    ```
+1. Run Promtail to capture the log lines and push them to the Loki cluster. Your binary's name may be different than this example:
+    ```bash
+    ./promtail-linux-amd64 -config.file promtail-local-config.yaml
+    ```
+
 Navigate to http://localhost:3000 for the Grafana instance that has Loki configured as a datasource.
 
-By default, the image runs processes as user loki with  UID `10001` and GID `10001`.
-You can use a different user, specially if you are using bind mounts, by specifying the UID with a `docker run` command and using `--user=UID` with numeric UID suited to your needs.
-Follow the instructions at [Install and deploy a simple scalable cluster with Docker compose](../installation/simple-scalable-docker) to instantiate Grafana and the Loki cluster.
-
-The environment uses Promtail to capture log lines and push them to Loki through
-the gateway service.
-Which logs Promtail scrapes are defined in its configuration;
-`promtail-config.yaml` specifies the configuration for this example environment.
-Within the file, the `scrape_configs` block defines which logs are captured.
-
-## Interact with the environment
+## Use Grafana and the test environment
 
 This guide uses Grafana to query and observe the log lines captured in the Loki cluster.
 
-Use Grafana by navigating a browswer to http://localhost:3000.
+Use Grafana to query and observe the log lines captured in the Loki cluster by navigating a browswer to http://localhost:3000.
 The Grafana instance has Loki configured as a [datasource](https://grafana.com/docs/grafana/latest/datasources/loki/).
 
 Click on the Grafana instance's [Explore](https://grafana.com/docs/grafana/latest/explore/) icon to bring up the log browser.
 
-## Get logs into Grafana Loki
-
-After you [install and run Grafana Loki](../../installation/local/), you probably want to get logs from other applications into it.
-
-To get application logs into Loki, you need to edit the [Promtail]({{< relref "../clients/promtail" >}}) configuration file.
-
-Detailed information about configuring Promtail is available in [Promtail configuration](../../clients/promtail/configuration/).
-
-The following instructions should help you get started.
-
-1. If you haven't already, download a Promtail configuration file. Keep track of where it is, because you will need to cite it when you run the binary.
-
-    ```
-    wget https://raw.githubusercontent.com/grafana/loki/main/clients/cmd/promtail/promtail-local-config.yaml
-    ```
-
-1. Open the configuration file in the text editor of your choice. It should look similar to this:
-
-    ```
-    server:
-      http_listen_port: 9080
-      grpc_listen_port: 0
-    
-    positions:
-      filename: /tmp/positions.yaml
-    
-    clients:
-      - url: http://loki:3100/loki/api/v1/push
-    
-    scrape_configs:
-    - job_name: system
-      static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: varlogs
-          __path__: /var/log/*log
-    ```
-
-    The seven lines under `scrape_configs` are what send the logs that Promtail generates to Loki, which then outputs them in the command line and http://localhost:3100/metrics.
-
-    Copy the seven lines under `scrape_configs`, and then paste them under the original job. You can instead edit the original seven lines.
-
-    Below is an example that sends logs from a default Grafana installation to Loki. We updated the following fields:
-    - job_name - This differentiates the logs collected from other log groups.
-    - targets - Optional for `static_configs`. However, is often defined because in older versions of Promtail it was not optional. This was an artifact from directly using the Prometheus service discovery code, which required this entry.
-    - labels - Static label to apply to every log line scraped by this definition. Good examples include the environment name, job name, or app name.
-    - __path__ - The path to where the logs that Loki is to consume are stored.
-
-    ```
-    - job_name: grafana
-      static_configs:
-      - targets:
-          - grafana
-        labels:
-          job: grafana
-          __path__: "C:/Program Files/GrafanaLabs/grafana/data/log/grafana.log"
-    ```
-
-1. Enter the following command to run Promtail. Examples below assume you have placed the configuration file in the same directory as the binary.
-
-    **Windows**
-
-    ```
-    .\promtail-windows-amd64.exe --config.file=promtail-local-config.yaml
-    ```
-
-    **Linux**
-
-    ```
-    ./promtail-linux-amd64 -config.file=promtail-local-config.yaml
-    ```
-
-You should now see your application logs. If you are using Grafana, you might need to refresh your instance in order to see the logs.
