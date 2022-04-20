@@ -709,7 +709,9 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 			}
 			stats.AddIngesterBatch(int64(size))
 			batch.Stats = stats.Ingester()
-
+			if isDone(ctx) {
+				break
+			}
 			if err := queryServer.Send(batch); err != nil {
 				return err
 			}
@@ -734,7 +736,9 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
-
+		if isDone(ctx) {
+			break
+		}
 		if err := queryServer.Send(batch); err != nil {
 			return err
 		}
@@ -756,7 +760,9 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
-
+		if isDone(ctx) {
+			break
+		}
 		if err := queryServer.Send(batch); err != nil {
 			return err
 		}
