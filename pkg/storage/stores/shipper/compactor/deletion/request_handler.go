@@ -77,7 +77,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		}
 
 		if endTime > int64(model.Now()) {
-			http.Error(w, "deletes in future not allowed", http.StatusBadRequest)
+			http.Error(w, "deletes in the future are not allowed", http.StatusBadRequest)
 			return
 		}
 	}
