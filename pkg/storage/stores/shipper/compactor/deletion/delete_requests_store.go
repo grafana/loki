@@ -112,8 +112,7 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 		[]byte(rangeValue), []byte(query))
 
 	// create a gen number for this result
-	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, userID),
-		[]byte{}, []byte(strconv.FormatInt(time.Now().UnixNano(), 10)))
+	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, userID), []byte{}, generateCacheGenNumber())
 
 	err := ds.indexClient.BatchWrite(ctx, writeBatch)
 	if err != nil {
@@ -150,7 +149,7 @@ func (ds *deleteRequestsStore) UpdateStatus(ctx context.Context, userID, request
 
 	if newStatus == StatusProcessed {
 		// remove runtime filtering for deleted data
-		writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, userID), []byte{}, []byte(strconv.FormatInt(time.Now().UnixNano(), 10)))
+		writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, userID), []byte{}, generateCacheGenNumber())
 	}
 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
@@ -341,4 +340,8 @@ func splitUserIDAndRequestID(rangeValue string) (userID, requestID string) {
 // unsafeGetString is like yolostring but with a meaningful name
 func unsafeGetString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
+}
+
+func generateCacheGenNumber() []byte {
+	return []byte(strconv.FormatInt(time.Now().UnixNano(), 10))
 }

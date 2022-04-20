@@ -494,7 +494,7 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { ret
 func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	genNumberGetter, err := t.frontendGenerationNumberGetter()
+	cacheGenClient, err := t.cacheGenClient()
 	if err != nil {
 		return nil, err
 	}
@@ -504,7 +504,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 		util_log.Logger,
 		t.overrides,
 		t.Cfg.SchemaConfig,
-		generationnumber.NewGenNumberLoader(genNumberGetter, prometheus.DefaultRegisterer),
+		generationnumber.NewGenNumberLoader(cacheGenClient, prometheus.DefaultRegisterer),
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -516,7 +516,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
-func (t *Loki) frontendGenerationNumberGetter() (generationnumber.CacheGenClient, error) {
+func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
 	filteringEnabled, err := deletion.FilteringEnabled(t.Cfg.CompactorConfig.DeletionMode)
 	if err != nil {
 		return nil, err
