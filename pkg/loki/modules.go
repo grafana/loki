@@ -536,7 +536,7 @@ func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
 		return nil, errors.New("query filtering for deletes requires 'compactor_address' to be configured")
 	}
 
-	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second}), nil
+	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
@@ -800,7 +800,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler)))
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler)))
 
-		t.Server.HTTP.Path("/loki/api/v1/generation_numbers").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler)))
+		t.Server.HTTP.Path("/loki/api/v1/cache/generation_numbers").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler)))
 	}
 
 	return t.compactor, nil

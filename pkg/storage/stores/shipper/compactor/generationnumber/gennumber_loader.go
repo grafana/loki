@@ -17,19 +17,14 @@ import (
 const reloadDuration = 5 * time.Minute
 
 type GenNumberLoader struct {
-	numberGetter genNumberGetter
+	numberGetter CacheGenClient
 	numbers      map[string]string
 	quit         chan struct{}
 	lock         sync.RWMutex
 	metrics      *genLoaderMetrics
 }
 
-type genNumberGetter interface {
-	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
-	Name() string
-}
-
-func NewGenNumberLoader(g genNumberGetter, registerer prometheus.Registerer) *GenNumberLoader {
+func NewGenNumberLoader(g CacheGenClient, registerer prometheus.Registerer) *GenNumberLoader {
 	if g == nil {
 		g = &noopNumberGetter{}
 	}

@@ -14,7 +14,7 @@ import (
 
 const (
 	orgHeaderKey    = "X-Scope-OrgID"
-	cacheGenNumPath = "/loki/api/v1/generation_numbers"
+	cacheGenNumPath = "/loki/api/v1/cache/generation_numbers"
 )
 
 type CacheGenClient interface {
@@ -23,7 +23,7 @@ type CacheGenClient interface {
 }
 
 type genNumberClient struct {
-	addr       string
+	url        string
 	httpClient doer
 }
 
@@ -31,26 +31,26 @@ type doer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-func NewGenNumberClient(addr string, c doer) CacheGenClient {
-	return &genNumberClient{
-		addr:       addr,
-		httpClient: c,
+func NewGenNumberClient(addr string, c doer) (CacheGenClient, error) {
+	u, err := url.Parse(addr)
+	if err != nil {
+		level.Error(log.Logger).Log("msg", "error parsing url", "err", err)
+		return nil, err
 	}
+	u.Path = cacheGenNumPath
+
+	return &genNumberClient{
+		url:        u.String(),
+		httpClient: c,
+	}, nil
 }
 
 func (c *genNumberClient) Name() string {
 	return "gen_number_client"
 }
 
-func (c *genNumberClient) GetCacheGenerationNumber(_ context.Context, userID string) (string, error) {
-	u, err := url.Parse(c.addr)
-	if err != nil {
-		level.Error(log.Logger).Log("msg", "error parsing url", "err", err)
-		return "", err
-	}
-
-	u.Path = cacheGenNumPath
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+func (c *genNumberClient) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error getting cache gen numbers from the store", "err", err)
 		return "", err
