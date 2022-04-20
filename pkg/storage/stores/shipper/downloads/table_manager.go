@@ -242,11 +242,9 @@ func (tm *TableManager) cleanupCache() error {
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 	start := time.Now()
-	usersToBeQueryReadyLen := 0
 	defer func() {
 		duration := time.Since(start)
 		tm.metrics.ensureQueryReadinessDurationSeconds.Observe(duration.Seconds())
-		tm.metrics.usersToBeQueryReadyForTotal.Set(float64(usersToBeQueryReadyLen))
 	}()
 
 	activeTableNumber := getActiveTableNumber()
@@ -316,8 +314,6 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-
-		usersToBeQueryReadyLen += len(usersToBeQueryReadyFor)
 
 		level.Debug(util_log.Logger).Log("msg", "instance should be query ready for users", "users", usersToBeQueryReadyFor)
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
