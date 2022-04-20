@@ -28,7 +28,7 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		ensureQueryReadinessDurationSeconds: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "query_readiness_duration_seconds",
-			Help:      "Time (in seconds) spent making an index gateway ready to be queried",
+			Help:      "Time (in seconds) spent making this instance ready to be queried",
 			Buckets:   instrument.DefBuckets,
 		}),
 		tablesSyncOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
