@@ -16,7 +16,6 @@ type metrics struct {
 	tablesSyncOperationTotal               *prometheus.CounterVec
 	tablesDownloadOperationDurationSeconds prometheus.Gauge
 	ensureQueryReadinessDurationSeconds    prometheus.Histogram
-	usersToBeQueryReadyForTotal            prometheus.Gauge
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -31,11 +30,6 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "query_readiness_duration_seconds",
 			Help:      "Time (in seconds) spent making an index gateway ready to be queried",
 			Buckets:   instrument.DefBuckets,
-		}),
-		usersToBeQueryReadyForTotal: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "users_to_be_query_ready_for_total",
-			Help:      "Total number of users an index gateway instance has to be query ready for.",
 		}),
 		tablesSyncOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
