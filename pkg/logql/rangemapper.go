@@ -47,7 +47,7 @@ var splittableRangeVectorOp = map[string]struct{}{
 //    that are merged with vector aggregation using "without" and then aggregated
 //    using the vector aggregation with the same operator,
 //    either with or without grouping.
-// 5) Left and right hand side of binary operations are split individually
+// 5) Left and right-hand side of binary operations are split individually
 //    using the same rules as above.
 type RangeMapper struct {
 	splitByInterval time.Duration
@@ -263,7 +263,6 @@ func (m RangeMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 
 	// in case the interval is smaller than the configured split interval,
 	// don't split it.
-	// TODO: what if there is another internal expr with an interval that can be split?
 	if rangeInterval <= m.splitByInterval {
 		return expr, nil
 	}
@@ -272,8 +271,6 @@ func (m RangeMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 	// we can push down the outer vector aggregation to the downstream query.
 	// This does not work for `count()` and `topk()`, though.
 	// We also do not want to push down, if the inner expression is a binary operation.
-	// TODO: Currently, it is sending the last inner expression grouping dowstream.
-	//  Which grouping should be sent downstream?
 	var vectorAggrPushdown *syntax.VectorAggregationExpr
 	if _, ok := expr.Left.(*syntax.BinOpExpr); !ok && expr.Operation != syntax.OpTypeCount && expr.Operation != syntax.OpTypeTopK {
 		vectorAggrPushdown = expr
@@ -342,7 +339,7 @@ func (m RangeMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 // supported and the inner expression is also splittable.
 // A range aggregation is splittable, if the aggregation operation is
 // supported.
-// A binary expression is splittable, if both the left and the right hand side
+// A binary expression is splittable, if both the left and the right-hand side
 // are splittable.
 func isSplittableByRange(expr syntax.SampleExpr) bool {
 	switch e := expr.(type) {
