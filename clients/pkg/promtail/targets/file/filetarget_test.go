@@ -67,7 +67,7 @@ func TestFileTargetSync(t *testing.T) {
 		}
 	}()
 	path := logDir1 + "/*.log"
-	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
+	target, err := NewFileTarget(metrics, logger, client, client, ps, path, nil, nil, &Config{
 		SyncPeriod: 1 * time.Minute, // assure the sync is not called by the ticker
 	}, nil, fakeHandler)
 	assert.NoError(t, err)
@@ -209,7 +209,7 @@ func TestHandleFileCreationEvent(t *testing.T) {
 		}
 	}()
 
-	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
+	target, err := NewFileTarget(metrics, logger, client, client, ps, path, nil, nil, &Config{
 		// To handle file creation event from channel, set enough long time as sync period
 		SyncPeriod: 10 * time.Minute,
 	}, fakeFileHandler, fakeTargetHandler)

@@ -43,7 +43,7 @@ func newTestPositions(logger log.Logger, filePath string) (positions.Positions, 
 	return pos, nil
 }
 
-func newTestFileTargetManager(logger log.Logger, client api.EntryHandler, positions positions.Positions, observePath string) (*FileTargetManager, error) {
+func newTestFileTargetManager(logger log.Logger, client api.EntryHandler, metricHandler api.LatencyMetricHandler, positions positions.Positions, observePath string) (*FileTargetManager, error) {
 	targetGroup := targetgroup.Group{
 		Targets: []model.LabelSet{{
 			"localhost": "",
@@ -70,7 +70,7 @@ func newTestFileTargetManager(logger log.Logger, client api.EntryHandler, positi
 	}
 
 	metrics := NewMetrics(nil)
-	ftm, err := NewFileTargetManager(metrics, logger, positions, client, []scrapeconfig.Config{sc}, tc)
+	ftm, err := NewFileTargetManager(metrics, logger, positions, client, metricHandler, []scrapeconfig.Config{sc}, tc)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*")
+	ftm, err := newTestFileTargetManager(logger, client, client, ps, logDirName+"/*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*")
+	ftm, err := newTestFileTargetManager(logger, client, client, ps, logDirName+"/*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestFileRolls(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*.log")
+	ftm, err := newTestFileTargetManager(logger, client, client, ps, logDirName+"/*.log")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*.log")
+	ftm, err := newTestFileTargetManager(logger, client, client, ps, logDirName+"/*.log")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +315,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	// Create a new target manager, keep the same client so we can track what was sent through the handler.
-	ftm2, err := newTestFileTargetManager(logger, client, ps2, logDirName+"/*.log")
+	ftm2, err := newTestFileTargetManager(logger, client, client, ps2, logDirName+"/*.log")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +365,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*.log")
+	ftm, err := newTestFileTargetManager(logger, client, client, ps, logDirName+"/*.log")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,7 +484,7 @@ func TestDeadlockStartWatchingDuringSync(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, oldLogDir+"/*")
+	ftm, err := newTestFileTargetManager(logger, client, client, ps, oldLogDir+"/*")
 	assert.NoError(t, err)
 
 	done := make(chan struct{})
