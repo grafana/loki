@@ -1,6 +1,7 @@
 ---
 title: Getting started
 weight: 300
+description: "This guide assists the reader to create and use a simple Loki cluster for testing and evaluation purposes."
 aliases:
     - /docs/loki/latest/getting-started/get-logs-into-loki/
 ---
@@ -9,22 +10,69 @@ aliases:
 
 > **Note:** You can use [Grafana Cloud](https://grafana.com/products/cloud/features/#cloud-logs) to avoid installing, maintaining, and scaling your own instance of Grafana Loki. The free forever plan includes 50GB of free logs. [Create an account to get started](https://grafana.com/auth/sign-up/create-user?pg=docs-loki&plcmt=in-text).
 
-This guide assists the reader through creating and using a simple Loki cluster.
+This guide assists the reader to create and use a simple Loki cluster.
 The cluster is intended for testing, development, and evaluation;
-it would not meet most production requirements.
+it will not meet most production requirements.
 
-This guide uses Docker compose to instantiate these services, each in its own container: 
+The test environment runs an app (flog) that generates log lines.
+Promtail is the environment's agent (or client) that captures the log lines and pushes them to the Loki cluster through a gateway.
+Grafana provides a way to enter and visualize queries against the logs stored in Loki.
+ 
+![Simple scalable deployment test environment](simple-scalable-test-environment.png)
 
-- One [single scalable deployment](../fundamentals/architecture/deployment-modes/) mode **Loki** instance has one read component and one write component:
-    - Loki read
-    - Loki write
-- **Promtail** scrapes logs and pushes them to Loki.
+The test environment uses Docker compose to instantiate these services, each in its own container: 
+
+- One [single scalable deployment](../fundamentals/architecture/deployment-modes/) mode **Loki** instance has:
+    - One Loki read component
+    - One Loki write component
 - **Minio** is the storage back end.
-- The **gateway** receives external requests and redirects them to the appropriate container based on the request's URL.
+- The **gateway** receives requests and redirects them to the appropriate container based on the request's URL.
 - **Grafana** provides visualization of the log lines captured within Loki.
 
 ## Instantiate the environment
 
+## Prerequisites
+
+- [Docker](https://docs.docker.com/install)
+- [Docker Compose](https://docs.docker.com/compose/install)
+
+## Obtain configuration files
+
+Download `loki-config.yaml`, `promtail-config.yaml`, and `docker-compose.yaml` to your current directory:
+
+```bash
+wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/promtail-config.yaml -O promtail-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/loki-config.yaml -O loki-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/docker-compose.yaml -O docker-compose.yaml
+```
+
+This will download `loki-config.yaml`, `promtail-config.yaml`, and `docker-compose.yaml` to your current directory.
+
+The `docker-compose.yaml` relies on the [Loki docker driver](https://grafana.com/docs/loki/latest/clients/docker-driver/), 
+aliased to `loki-compose`, to send logs to the loki cluster. If this driver is not installed on your system, you can install it by running the following:
+
+```bash
+docker plugin install grafana/loki-docker-driver:latest --alias loki-compose --grant-all-permissions
+```
+
+If this driver is already installed, but under a different alias, you will have to change `docker-compose.yaml` to use the correct alias.
+
+## Deploy and verify readiness of the Loki cluster
+
+From the directory containing the configuration files, deploy the cluster with docker-compose:
+
+```bash
+docker-compose up
+```
+
+The running Docker containers use the directory's configuration files.
+
+Navigate to http://localhost:3100/ready to check for cluster readiness.
+Navigate to http://localhost:3100/metrics to view the cluster metrics.
+Navigate to http://localhost:3000 for the Grafana instance that has Loki configured as a datasource.
+
+By default, the image runs processes as user loki with  UID `10001` and GID `10001`.
+You can use a different user, specially if you are using bind mounts, by specifying the UID with a `docker run` command and using `--user=UID` with numeric UID suited to your needs.
 Follow the instructions at [Install and deploy a simple scalable cluster with Docker compose](../installation/simple-scalable-docker) to instantiate Grafana and the Loki cluster.
 
 The environment uses Promtail to capture log lines and push them to Loki through
@@ -39,6 +87,8 @@ This guide uses Grafana to query and observe the log lines captured in the Loki 
 
 Use Grafana by navigating a browswer to http://localhost:3000.
 The Grafana instance has Loki configured as a [datasource](https://grafana.com/docs/grafana/latest/datasources/loki/).
+
+Click on the Grafana instance's [Explore](https://grafana.com/docs/grafana/latest/explore/) icon to bring up the log browser.
 
 ## Get logs into Grafana Loki
 
