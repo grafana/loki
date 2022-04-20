@@ -8,11 +8,12 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"google.golang.org/api/option"
+
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 )
 
 var ossRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
