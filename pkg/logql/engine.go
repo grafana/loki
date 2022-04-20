@@ -202,7 +202,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	}
 
 	if q.record {
-		RecordMetrics(ctx, q.logger, q.params, status, statResult, data)
+		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, status, statResult, data)
 	}
 
 	return logqlmodel.Result{

@@ -28,7 +28,7 @@ const ctxKey ctxKeyType = "stats"
 
 var (
 	defaultMetricRecorder = metricRecorderFn(func(data *queryData) {
-		logql.RecordMetrics(data.ctx, log.With(util_log.Logger, "component", "frontend"), data.params, data.status, *data.statistics, data.result)
+		logql.RecordRangeAndInstantQueryMetrics(data.ctx, log.With(util_log.Logger, "component", "frontend"), data.params, data.status, *data.statistics, data.result)
 	})
 	// StatsHTTPMiddleware is an http middleware to record stats for query_range filter.
 	StatsHTTPMiddleware = statsHTTPMiddleware(defaultMetricRecorder)

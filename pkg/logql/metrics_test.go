@@ -66,7 +66,7 @@ func TestLogSlowQuery(t *testing.T) {
 
 	ctx = context.WithValue(ctx, httpreq.QueryTagsHTTPHeader, "Source=logvolhist,Feature=Beta")
 
-	RecordMetrics(ctx, util_log.Logger, LiteralParams{
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, LiteralParams{
 		qs:        `{foo="bar"} |= "buzz"`,
 		direction: logproto.BACKWARD,
 		end:       now,
