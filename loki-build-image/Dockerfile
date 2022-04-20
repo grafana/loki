@@ -1,4 +1,8 @@
-# NOTICE: Change the verion in Makefile if you make a change here. See ../docs/sources/maintaining/release-loki-build-image.md.
+# This is the Dockerfile for the Loki build image that is used by the CI
+# pipelines.
+# If you make changes to this Dockerfile you also need to update the
+# tag of the Docker image in `../.drone/drone.jsonnet` and run `make drone`.
+# See ../docs/sources/maintaining/release-loki-build-image.md
 
 FROM alpine as helm
 ARG HELM_VER="v3.2.3"
