@@ -465,6 +465,12 @@ func (c *client) UnregisterLatencyMetric(labels prometheus.Labels) bool {
 		level.Debug(c.logger).Log("msg", "no stream lag metric found", "filename", labels["filename"], "client", c.name, "host", c.cfg.URL.Host)
 		return false
 	}
+	// If we found an entry in the map it's always safe to delete it, this is the
+	// only place we try to look for that entry. This guarantees we don't endlessly
+	// grow the map entries + if the entire labelset is seen again we would just
+	// write this entry back into the map the next time we send a batch for the stream.
+	delete(c.streamLagMetricsMap, key)
+
 	if !c.metrics.streamLag.Delete(lset) {
 		level.Debug(c.logger).Log("msg", "no stream lag metric deleted, mismatch between stored metrics map and client library registered metrics", "filename", labels["filename"], "client", c.name, "host", c.cfg.URL.Host)
 		return false

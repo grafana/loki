@@ -111,10 +111,6 @@ func main() {
 		}
 	}
 
-	// TODO (callum): I really don't understand where we set defaults for various config structs
-	if len(config.Config.Options.StreamLagLabels) == 0 {
-		config.Config.Options.StreamLagLabels = flagext.StringSliceCSV{client.LatencyLabel}
-	}
 	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, config.Config.Options.StreamLagLabels)
 	p, err := promtail.New(config.Config, clientMetrics, config.dryRun)
 	if err != nil {

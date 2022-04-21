@@ -526,4 +526,5 @@ func Test_UnregisterLatencyMetric(t *testing.T) {
 	// Fake setting the metric key in the map, which would be done client.sendBatch
 	c.(*client).streamLagMetricsMap[c.(*client).streamLagMetricsMapKey(ls)] = ls
 	require.True(t, c.(api.LatencyMetricHandler).UnregisterLatencyMetric(prometheus.Labels{"filename": "test", "client": c.Name(), "host": cfg.URL.Host}))
+	require.Equal(t, 0, len(c.(*client).streamLagMetricsMap))
 }

@@ -46,6 +46,8 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	c.PositionsConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.TargetConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.LimitsConfig.RegisterFlagsWithPrefix(prefix, f)
+	// Default stream lag labels to "filename"
+	c.Options.StreamLagLabels = []string{client.LatencyLabel}
 }
 
 // RegisterFlags registers flags.
@@ -87,9 +89,5 @@ func (c *Config) Setup(l log.Logger) {
 		for i := range c.ClientConfigs {
 			c.ClientConfigs[i].ExternalLabels = flagext.LabelSet{LabelSet: c.ClientConfig.ExternalLabels.LabelSet.Merge(c.ClientConfigs[i].ExternalLabels.LabelSet)}
 		}
-	}
-
-	if len(c.Options.StreamLagLabels) == 0 {
-		c.Options.StreamLagLabels = dskit_flagext.StringSliceCSV{client.LatencyLabel}
 	}
 }
