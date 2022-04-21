@@ -48,8 +48,8 @@ clients:
       client: b
 ```
 A failure to scrape metrics at runtime was caused by the combination of the way the Promtail client metrics were registered and the Prometheus metric instrumentation library not catching a bug in Promtail's metrics.
-This was caused by allowing `stream_lag_labels` to be set for each client, which made it was possible to cause duplicate metric registration/attempt to register the same metric with different label sets. Prometheus will fail scrapes when it detects metrics with the same labelset.
-To rememdy this, the `stream_lag_labels` parameter configuration has been moved to a newtop-level `options` configuration block.
+This was caused by allowing `stream_lag_labels` to be set for each client, which made it possible to cause a duplicate metric registration/attempt to register the same metric with different label sets. Prometheus will fail scrapes when it detects metrics with the same labelset.
+To remedy this, the `stream_lag_labels` parameter configuration has been moved to a new top-level `options` configuration block.
 If you currently set a value for configuration per client, you will need to move and only set it once, as in this example:
 ```
 options:
