@@ -943,11 +943,11 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 				conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
 			}
 
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+			require.NoError(t, err)
+
 			for _, request := range requests {
 				t.Run(request.name, func(t *testing.T) {
-					limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-					require.NoError(t, err)
-
 					ingesterClient, store, querier, err := setupIngesterQuerierMocks(conf, limits)
 					require.NoError(t, err)
 
