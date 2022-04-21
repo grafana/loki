@@ -15,7 +15,11 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-const errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"
+const (
+	EmptyMatchers = "{}"
+
+	errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"
+)
 
 var parserPool = sync.Pool{
 	New: func() interface{} {
