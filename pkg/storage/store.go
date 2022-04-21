@@ -226,6 +226,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			nodeName,
 			dir,
 			shpr,
+			p.IndexTables.Period,
 			util_log.Logger,
 			tsdbMetrics,
 		)
