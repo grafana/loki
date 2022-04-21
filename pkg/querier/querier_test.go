@@ -836,28 +836,28 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 		expectedCallsIngesters           int
 	}{
 		{
-			desc:                   "query both storage and ingesters",
+			desc:                   "Data in storage and ingesters",
 			start:                  time.Now().Add(-time.Hour * 2),
 			end:                    time.Now(),
 			expectedCallsStore:     1,
 			expectedCallsIngesters: 1,
 		},
 		{
-			desc:                   "query ingesters only (IngesterQueryStoreMaxLookback not set)",
+			desc:                   "Data in ingesters (IngesterQueryStoreMaxLookback not set)",
 			start:                  time.Now().Add(-time.Minute * 15),
 			end:                    time.Now(),
 			expectedCallsStore:     1,
 			expectedCallsIngesters: 1,
 		},
 		{
-			desc:                   "query storage only",
+			desc:                   "Data only in storage",
 			start:                  time.Now().Add(-time.Hour * 2),
 			end:                    time.Now().Add(-time.Hour * 1),
 			expectedCallsStore:     1,
 			expectedCallsIngesters: 0,
 		},
 		{
-			desc:                             "query ingesters only (IngesterQueryStoreMaxLookback set)",
+			desc:                             "Data in ingesters (IngesterQueryStoreMaxLookback set)",
 			start:                            time.Now().Add(-time.Minute * 15),
 			end:                              time.Now(),
 			setIngesterQueryStoreMaxLookback: true,
