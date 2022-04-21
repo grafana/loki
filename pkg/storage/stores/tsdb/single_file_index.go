@@ -25,7 +25,7 @@ type TSDBFile struct {
 	path string
 
 	// reuse TSDBIndex for reading
-	*TSDBIndex
+	Index
 
 	// open the read only fd
 	// to sastisfy Reader() and Close() methods
@@ -39,8 +39,8 @@ func NewShippableTSDBFile(location string) (*TSDBFile, error) {
 	}
 
 	return &TSDBFile{
-		path:      location,
-		TSDBIndex: idx,
+		path:  location,
+		Index: idx,
 	}, err
 }
 
@@ -54,7 +54,7 @@ func (f *TSDBFile) Close() error {
 	f.Lock()
 	defer f.Unlock()
 	var errs multierror.MultiError
-	errs.Add(f.TSDBIndex.Close())
+	errs.Add(f.Index.Close())
 	if f.f != nil {
 		errs.Add(f.f.Close())
 		f.f = nil
