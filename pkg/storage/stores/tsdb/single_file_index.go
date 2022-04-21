@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"sync"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -19,6 +20,8 @@ func LoadTSDBIdentifier(dir string, id index.Identifier) (*TSDBFile, error) {
 // nolint
 // TSDBFile is backed by an actual file and implements the indexshipper/index.Index interface
 type TSDBFile struct {
+	sync.Mutex
+
 	path string
 
 	// reuse TSDBIndex for reading
@@ -35,15 +38,9 @@ func NewShippableTSDBFile(location string) (*TSDBFile, error) {
 		return nil, err
 	}
 
-	f, err := os.Open(location)
-	if err != nil {
-		return nil, err
-	}
-
 	return &TSDBFile{
 		path:      location,
 		TSDBIndex: idx,
-		f:         f,
 	}, err
 }
 
@@ -54,13 +51,28 @@ func (f *TSDBFile) Name() string {
 func (f *TSDBFile) Path() string { return f.path }
 
 func (f *TSDBFile) Close() error {
+	f.Lock()
+	defer f.Unlock()
 	var errs multierror.MultiError
 	errs.Add(f.TSDBIndex.Close())
-	errs.Add(f.f.Close())
+	if f.f != nil {
+		errs.Add(f.f.Close())
+		f.f = nil
+	}
 	return errs.Err()
 }
 
 func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
+	f.Lock()
+	defer f.Unlock()
+	if f.f == nil {
+		fd, err := os.Open(f.path)
+		if err != nil {
+			return nil, err
+		}
+		f.f = fd
+	}
+
 	return f.f, nil
 }
 
