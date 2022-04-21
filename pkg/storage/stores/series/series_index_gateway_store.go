@@ -88,7 +88,7 @@ func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, 
 	})
 	if isUnimplementedCallError(err) {
 		// Handle communication with older index gateways gracefully, by falling back to the index store calls.
-		return c.IndexStore.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+		return c.IndexStore.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
 	}
 	if err != nil {
 		return nil, err
