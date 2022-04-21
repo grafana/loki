@@ -508,7 +508,7 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 			series <- [][]logproto.SeriesIdentifier{storeValues}
 		}()
 	} else {
-		// If we are nor querying the store, send an empty result back to the channel
+		// If we are not querying the store, send an empty result back to the channel
 		series <- [][]logproto.SeriesIdentifier{}
 	}
 
