@@ -369,6 +369,11 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		return nil, err
 	}
 
+	deletes, err := q.deletesForUser(ctx, req.Start, time.Now())
+	if err != nil {
+		return nil, err
+	}
+
 	histReq := logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  req.Query,
@@ -376,6 +381,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 			End:       time.Now(),
 			Limit:     req.Limit,
 			Direction: logproto.BACKWARD,
+			Deletes:   deletes,
 		},
 	}
 
