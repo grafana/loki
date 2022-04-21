@@ -681,12 +681,7 @@ func parseShardFromRequest(reqShards []string) (*astmapper.ShardAnnotation, erro
 }
 
 func isDone(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		return true
-	default:
-		return false
-	}
+	return ctx.Err() != nil
 }
 
 // QuerierQueryServer is the GRPC server stream we use to send batch of entries.
@@ -723,7 +718,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	}
 	// send until the limit is reached.
 	sent := uint32(0)
-	for sent < limit && !isDone(queryServer.Context()) {
+	for sent < limit && !isDone(ctx) {
 		batch, batchSize, err := iter.ReadBatch(i, math.MinUint32(queryBatchSize, limit-sent))
 		if err != nil {
 			return err
