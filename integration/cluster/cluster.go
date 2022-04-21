@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/grafana/dskit/multierror"
@@ -19,7 +20,63 @@ import (
 	"github.com/grafana/loki/pkg/util/cfg"
 )
 
-var wrapRegistryOnce sync.Once
+var (
+	wrapRegistryOnce sync.Once
+
+	configTemplate = template.Must(template.New("").Parse(`
+auth_enabled: true
+
+server:
+  http_listen_port: {{.httpPort}}
+  grpc_listen_port: {{.grpcPort}}
+
+common:
+  path_prefix: {{.dataPath}}
+  storage:
+    filesystem:
+      chunks_directory: {{.sharedDataPath}}/chunks
+      rules_directory: {{.sharedDataPath}}/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+storage_config:
+  boltdb_shipper:
+    shared_store: filesystem
+    active_index_directory: {{.dataPath}}/index
+    cache_location: {{.dataPath}}/boltdb-cache
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+compactor:
+  working_directory: {{.dataPath}}/retention
+  shared_store: filesystem
+  retention_enabled: true
+
+analytics:
+  reporting_enabled: false
+
+ingester:
+  lifecycler:
+    min_ready_duration: 0s
+
+frontend_worker:
+  scheduler_address: localhost:{{.schedulerPort}}
+
+frontend:
+  scheduler_address: localhost:{{.schedulerPort}}
+`))
+)
 
 func wrapRegistry() {
 	wrapRegistryOnce.Do(func() {
@@ -173,80 +230,19 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error creating config file: %w", err)
 	}
 
-	if _, err := configFile.Write([]byte(fmt.Sprintf(`
-auth_enabled: true
-
-server:
-  http_listen_port: %d
-  grpc_listen_port: %d
-
-common:
-  path_prefix: %s
-  storage:
-    filesystem:
-      chunks_directory: %s/chunks
-      rules_directory: %s/rules
-  replication_factor: 1
-  ring:
-    instance_addr: 127.0.0.1
-    kvstore:
-      store: inmemory
-
-storage_config:
-  boltdb_shipper:
-    shared_store: filesystem
-    active_index_directory: %s/index
-    cache_location: %s/boltdb-cache
-
-schema_config:
-  configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-
-compactor:
-  working_directory: %s/retention
-  shared_store: filesystem
-  retention_enabled: true
-
-analytics:
-  reporting_enabled: false
-
-ruler:
-  alertmanager_url: http://localhost:9093
-
-ingester:
-  lifecycler:
-    min_ready_duration: 0s
-
-frontend_worker:
-  scheduler_address: localhost:%d
-
-frontend:
-  scheduler_address: localhost:%d
-
-`,
-		c.httpPort,
-		c.grpcPort,
-		c.dataPath,
-		c.cluster.sharedPath,
-		c.cluster.sharedPath,
-		c.dataPath,
-		c.dataPath,
-		c.dataPath,
-		c.grpcPort,
-		c.grpcPort,
-	))); err != nil {
+	if err := configTemplate.Execute(configFile, map[string]interface{}{
+		"dataPath":       c.dataPath,
+		"sharedDataPath": c.cluster.sharedPath,
+		"grpcPort":       c.grpcPort,
+		"httpPort":       c.httpPort,
+		"schedulerPort":  c.grpcPort,
+	}); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
+
 	if err := configFile.Close(); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
-
 	c.configFile = configFile.Name()
 
 	return nil
