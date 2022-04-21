@@ -14,7 +14,6 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util/httpreq"
@@ -123,7 +122,6 @@ func RecordRangeAndInstantQueryMetrics(ctx context.Context, log log.Logger, p Pa
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
 
-	// we also log queries, useful for troubleshooting slow queries.
 	level.Info(logger).Log(
 		logValues...,
 	)
@@ -146,7 +144,7 @@ func RecordLabelQueryMetrics(
 	ctx context.Context,
 	start, end time.Time,
 	label, status string,
-	stats stats.Result,
+	stats logql_stats.Result,
 ) {
 	var (
 		logger      = util_log.WithContext(ctx, util_log.Logger)
@@ -160,7 +158,6 @@ func RecordLabelQueryMetrics(
 		latencyType = latencyTypeSlow
 	}
 
-	// we also log queries, useful for troubleshooting slow queries.
 	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
@@ -191,7 +188,7 @@ func RecordSeriesQueryMetrics(
 	start, end time.Time,
 	match []string,
 	status string,
-	stats stats.Result,
+	stats logql_stats.Result,
 ) {
 	var (
 		logger      = util_log.WithContext(ctx, util_log.Logger)
