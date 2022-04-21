@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -150,7 +149,7 @@ func (c *Client) pushLogLine(line string, timestamp time.Time, extraLabelList ..
 		return nil
 	}
 
-	buf, err := ioutil.ReadAll(res.Body)
+	buf, err := io.ReadAll(res.Body)
 	if err != nil {
 		return fmt.Errorf("reading request failed with status code %v: %w", res.StatusCode, err)
 	}
@@ -430,7 +429,7 @@ func (c *Client) run(u string) ([]byte, int, error) {
 	}
 	defer res.Body.Close()
 
-	buf, err := ioutil.ReadAll(res.Body)
+	buf, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, 0, fmt.Errorf("request failed with status code %v: %w", res.StatusCode, err)
 	}

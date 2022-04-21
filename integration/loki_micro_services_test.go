@@ -29,7 +29,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		tIngester = clu.AddComponent(
 			"ingester",
 			"-target=ingester",
-			//			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
 		)
 		tQueryScheduler = clu.AddComponent(
 			"query-scheduler",

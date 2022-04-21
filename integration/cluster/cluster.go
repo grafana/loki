@@ -4,7 +4,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http/httptest"
 	"net/url"
@@ -115,7 +114,7 @@ type Cluster struct {
 
 func New() *Cluster {
 	wrapRegistry()
-	sharedPath, err := ioutil.TempDir("", "loki-shared-data")
+	sharedPath, err := os.MkdirTemp("", "loki-shared-data")
 	if err != nil {
 		panic(err.Error())
 	}
@@ -157,7 +156,6 @@ func (c *Cluster) Cleanup() error {
 	c.waitGroup.Wait()
 
 	// cleanup dirs/files
-
 	for _, d := range dirs {
 		errs.Add(os.RemoveAll(d))
 	}
@@ -220,14 +218,14 @@ func (c *Component) GRPCURL() *url.URL {
 func (c *Component) writeConfig() error {
 	var err error
 
-	configFile, err := ioutil.TempFile("", "loki-config")
+	configFile, err := os.CreateTemp("", "loki-config")
 	if err != nil {
 		return fmt.Errorf("error creating config file: %w", err)
 	}
 
-	c.dataPath, err = ioutil.TempDir("", "loki-data")
+	c.dataPath, err = os.MkdirTemp("", "loki-data")
 	if err != nil {
-		return fmt.Errorf("error creating config file: %w", err)
+		return fmt.Errorf("error creating data path: %w", err)
 	}
 
 	if err := configTemplate.Execute(configFile, map[string]interface{}{
@@ -241,7 +239,7 @@ func (c *Component) writeConfig() error {
 	}
 
 	if err := configFile.Close(); err != nil {
-		return fmt.Errorf("error writing config file: %w", err)
+		return fmt.Errorf("error closing config file: %w", err)
 	}
 	c.configFile = configFile.Name()
 
