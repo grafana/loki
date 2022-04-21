@@ -39,7 +39,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
           access_log   /dev/stderr  main;
           sendfile     on;
           tcp_nopush   on;
-          resolver $(dns_resolver)s;
+          resolver %(dns_resolver)s;
 
           server {
             listen               80;
