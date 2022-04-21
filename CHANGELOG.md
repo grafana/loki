@@ -178,6 +178,7 @@ to include only the most relevant.
 * [5543](https://github.com/grafana/loki/pull/5543) **cyriltovena**: update loki go version to 1.17.8
 * [5450](https://github.com/grafana/loki/pull/5450) **BenoitKnecht**: pkg/ruler/base: Add external_labels option
 * [5484](https://github.com/grafana/loki/pull/5450) **sandeepsukhani**: Add support for per user index query readiness with limits overrides
+* [5661](https://github.com/grafana/loki/pull/5450) **masslessparticle**: Invalidate caches on deletes
 * [5358](https://github.com/grafana/loki/pull/5358) **DylanGuedes**: Add `RingMode` support to `IndexGateway`
 * [5435](https://github.com/grafana/loki/pull/5435) **slim-bean**: set match_max_concurrent true by default
 * [5361](https://github.com/grafana/loki/pull/5361) **cyriltovena**: Add usage report into Loki.

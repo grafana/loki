@@ -370,6 +370,10 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
 
+# Address, including port, where the compactor api is served
+# CLI flag: -frontend.compactor-address
+[compactor_address: <string> | default = ""]
+
 # Log queries that are slower than the specified duration. Set to 0 to disable.
 # Set to < 0 to enable on all queries.
 # CLI flag: -frontend.log-queries-longer-than
@@ -2040,6 +2044,11 @@ compacts index shards to more performant forms.
 # Ideally this should be set to at least 24h.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
+
+# Which deletion mode to use. Supported values are: disabled,
+# whole-stream-deletion, filter-only, filter-and-delete
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
+[deletion_mode: <string> | default = "whole-stream-deletion"]
 
 # Maximum number of tables to compact in parallel.
 # While increasing this value, please make sure compactor has enough disk space

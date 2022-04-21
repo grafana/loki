@@ -161,3 +161,25 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// GetCacheGenerationNumberHandler handles requests for a user's cache generation number
+func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cacheGenNumber, err := dm.deleteRequestsStore.GetCacheGenerationNumber(ctx, userID)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error getting cache generation number", "err", err)
+		http.Error(w, fmt.Sprintf("error getting cache generation number %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(cacheGenNumber); err != nil {
+		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
+		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
+	}
+}

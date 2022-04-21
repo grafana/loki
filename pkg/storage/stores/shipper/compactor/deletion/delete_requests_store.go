@@ -12,6 +12,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/weaveworks/common/user"
+
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -29,6 +31,7 @@ const (
 
 	deleteRequestID      indexType = "1"
 	deleteRequestDetails indexType = "2"
+	cacheGenNum          indexType = "3"
 
 	tempFileSuffix          = ".temp"
 	DeleteRequestsTableName = "delete_requests"
@@ -43,7 +46,9 @@ type DeleteRequestsStore interface {
 	UpdateStatus(ctx context.Context, userID, requestID string, newStatus DeleteRequestStatus) error
 	GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error)
 	RemoveDeleteRequest(ctx context.Context, userID, requestID string, createdAt, startTime, endTime model.Time) error
+	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
 	Stop()
+	Name() string
 }
 
 // deleteRequestsStore provides all the methods required to manage lifecycle of delete request and things related to it.
@@ -106,6 +111,9 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
 		[]byte(rangeValue), []byte(query))
 
+	// create a gen number for this result
+	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, userID), []byte{}, generateCacheGenNumber())
+
 	err := ds.indexClient.BatchWrite(ctx, writeBatch)
 	if err != nil {
 		return nil, err
@@ -139,6 +147,11 @@ func (ds *deleteRequestsStore) UpdateStatus(ctx context.Context, userID, request
 	writeBatch := ds.indexClient.NewWriteBatch()
 	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(newStatus))
 
+	if newStatus == StatusProcessed {
+		// remove runtime filtering for deleted data
+		writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, userID), []byte{}, generateCacheGenNumber())
+	}
+
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
 
@@ -160,6 +173,27 @@ func (ds *deleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, req
 	}
 
 	return &deleteRequests[0], nil
+}
+
+func (ds *deleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
+	query := index.Query{TableName: DeleteRequestsTableName, HashValue: fmt.Sprintf("%s:%s", cacheGenNum, userID)}
+	ctx = user.InjectOrgID(ctx, userID)
+
+	genNumber := ""
+	err := ds.indexClient.QueryPages(ctx, []index.Query{query}, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
+		itr := batch.Iterator()
+		for itr.Next() {
+			genNumber = string(itr.Value())
+			break
+		}
+		return false
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return genNumber, nil
 }
 
 func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQuery index.Query) ([]DeleteRequest, error) {
@@ -234,7 +268,15 @@ func (ds *deleteRequestsStore) RemoveDeleteRequest(ctx context.Context, userID, 
 	writeBatch.Delete(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
 		[]byte(rangeValue))
 
+	// ensure caches are invalidated
+	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, userID),
+		[]byte{}, []byte(strconv.FormatInt(time.Now().UnixNano(), 10)))
+
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
+}
+
+func (ds *deleteRequestsStore) Name() string {
+	return "delete_requests_store"
 }
 
 func parseDeleteRequestTimestamps(rangeValue []byte, deleteRequest DeleteRequest) (DeleteRequest, error) {
@@ -298,4 +340,8 @@ func splitUserIDAndRequestID(rangeValue string) (userID, requestID string) {
 // unsafeGetString is like yolostring but with a meaningful name
 func unsafeGetString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
+}
+
+func generateCacheGenNumber() []byte {
+	return []byte(strconv.FormatInt(time.Now().UnixNano(), 10))
 }
