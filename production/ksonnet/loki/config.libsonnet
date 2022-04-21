@@ -91,7 +91,7 @@
     dynamodb_access_key: '',
     dynamodb_secret_access_key: '',
     dynamodb_region: error 'must specify dynamodb_region',
-    
+
     // DNS Resolver
     dns_resolver: 'kube-dns.kube-system.svc.cluster.local',
 
