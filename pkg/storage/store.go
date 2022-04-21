@@ -209,7 +209,6 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			nodeName = s.cfg.TSDBShipperConfig.IngesterName
 			dir      = s.cfg.TSDBShipperConfig.ActiveIndexDirectory
 		)
-		writer := tsdb.NewChunkWriter(f, p)
 		tsdbMetrics := tsdb.NewMetrics(indexClientReg)
 		objectClient, err := NewObjectClient(s.cfg.TSDBShipperConfig.SharedStoreType, s.cfg, s.clientMetrics)
 		if err != nil {
@@ -230,6 +229,8 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			util_log.Logger,
 			tsdbMetrics,
 		)
+		// TODO(owen-d): Only need HeadManager
+		// on the ingester. Otherwise, the TSDBManager is sufficient
 		headManager := tsdb.NewHeadManager(
 			util_log.Logger,
 			dir,
@@ -237,6 +238,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			tsdbManager,
 		)
 		idx := tsdb.NewIndexClient(headManager, p)
+		writer := tsdb.NewChunkWriter(f, p, headManager)
 
 		// TODO(owen-d): add TSDB index-gateway support
 

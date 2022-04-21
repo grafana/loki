@@ -15,28 +15,27 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-type indexWriter interface {
+type IndexWriter interface {
 	Append(userID string, ls labels.Labels, chks index.ChunkMetas) error
 }
-
-// satisfied by HeadManager
-var _ indexWriter = &HeadManager{}
 
 type ChunkWriter struct {
 	schemaCfg   config.SchemaConfig
 	fetcher     *fetcher.Fetcher
-	indexWriter indexWriter
+	indexWriter IndexWriter
 }
 
 func NewChunkWriter(
 	fetcher *fetcher.Fetcher,
 	pd config.PeriodConfig,
+	indexWriter IndexWriter,
 ) *ChunkWriter {
 	return &ChunkWriter{
 		schemaCfg: config.SchemaConfig{
 			Configs: []config.PeriodConfig{pd},
 		},
-		fetcher: fetcher,
+		fetcher:     fetcher,
+		indexWriter: indexWriter,
 	}
 }
 
