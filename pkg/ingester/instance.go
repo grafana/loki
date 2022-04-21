@@ -712,7 +712,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 			if isDone(ctx) {
 				break
 			}
-			if err := queryServer.Send(batch); err != nil {
+			if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 				return err
 			}
 
@@ -739,7 +739,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		if isDone(ctx) {
 			break
 		}
-		if err := queryServer.Send(batch); err != nil {
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 		stats.Reset()
@@ -763,7 +763,7 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		if isDone(ctx) {
 			break
 		}
-		if err := queryServer.Send(batch); err != nil {
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 
