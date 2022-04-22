@@ -113,7 +113,7 @@ func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
 
 	// if we are already dropping streams due to blocked connection, drop new streams directly to save some effort
 	if blockedSince := t.blockedSince(); blockedSince != nil {
-		if blockedSince.Before(time.Now().Add(-time.Second * 15)) {
+		if blockedSince.Before(time.Now().Add(-time.Millisecond * 100)) {
 			t.close()
 			return
 		}
