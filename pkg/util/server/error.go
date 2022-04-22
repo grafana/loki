@@ -26,6 +26,13 @@ const (
 
 // WriteError write a go error with the correct status code.
 func WriteError(err error, w http.ResponseWriter) {
+	cerr, status := ClientErrorAndStatus(err)
+	http.Error(w, cerr.Error(), status)
+}
+
+// ClientErrorAndHTTPStatus returns error and http status that is "safe" to return to client without
+// exposing any implementation details.
+func ClientErrorAndStatus(err error) (error, int) {
 	var (
 		queryErr storage_errors.QueryError
 		promErr  promql.ErrStorage
@@ -33,33 +40,30 @@ func WriteError(err error, w http.ResponseWriter) {
 
 	me, ok := err.(util.MultiError)
 	if ok && me.Is(context.Canceled) {
-		http.Error(w, ErrClientCanceled, StatusClientClosedRequest)
-		return
+		return errors.New(ErrClientCanceled), StatusClientClosedRequest
 	}
 	if ok && me.IsDeadlineExceeded() {
-		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)
-		return
+		return errors.New(ErrDeadlineExceeded), http.StatusGatewayTimeout
 	}
 
 	s, isRPC := status.FromError(err)
 	switch {
 	case errors.Is(err, context.Canceled) ||
 		(errors.As(err, &promErr) && errors.Is(promErr.Err, context.Canceled)):
-		http.Error(w, ErrClientCanceled, StatusClientClosedRequest)
+		return errors.New(ErrClientCanceled), StatusClientClosedRequest
 	case errors.Is(err, context.DeadlineExceeded) ||
 		(isRPC && s.Code() == codes.DeadlineExceeded):
-		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)
+		return errors.New(ErrDeadlineExceeded), http.StatusGatewayTimeout
 	case errors.As(err, &queryErr):
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		return err, http.StatusBadRequest
 	case errors.Is(err, logqlmodel.ErrLimit) || errors.Is(err, logqlmodel.ErrParse) || errors.Is(err, logqlmodel.ErrPipeline):
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		return err, http.StatusBadRequest
 	case errors.Is(err, user.ErrNoOrgID):
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		return err, http.StatusBadRequest
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
-			http.Error(w, string(grpcErr.Body), int(grpcErr.Code))
-			return
+			return errors.New(string(grpcErr.Body)), int(grpcErr.Code)
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return err, http.StatusInternalServerError
 	}
 }

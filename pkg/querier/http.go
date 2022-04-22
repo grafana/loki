@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -24,6 +25,7 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
+	"github.com/grafana/loki/pkg/util/server"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
@@ -215,13 +217,12 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	statResult := statsCtx.Result(time.Since(start), queueTime)
 	statResult.Log(level.Debug(log))
 
-	status := "200"
+	status := 200
 	if err != nil {
-		status = "500"
-		// TODO(kavi): adjust status based on all possible errors from `q.Label`
+		_, status = server.ClientErrorAndStatus(err)
 	}
 
-	logql.RecordLabelQueryMetrics(ctx, *req.Start, *req.End, req.Name, status, statResult)
+	logql.RecordLabelQueryMetrics(ctx, *req.Start, *req.End, req.Name, strconv.Itoa(status), statResult)
 
 	if err != nil {
 		serverutil.WriteError(err, w)
@@ -384,13 +385,12 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	statResult := statsCtx.Result(time.Since(start), queueTime)
 	statResult.Log(level.Debug(log))
 
-	status := "200"
+	status := 200
 	if err != nil {
-		status = "500"
-		// TODO(kavi): adjust status based on all possible errors from `q.Series`
+		_, status = server.ClientErrorAndStatus(err)
 	}
 
-	logql.RecordSeriesQueryMetrics(ctx, req.Start, req.End, req.Groups, status, statResult)
+	logql.RecordSeriesQueryMetrics(ctx, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
