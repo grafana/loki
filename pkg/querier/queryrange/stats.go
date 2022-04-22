@@ -98,12 +98,16 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				case *LokiResponse:
 					statistics = &r.Statistics
 					res = logqlmodel.Streams(r.Data.Result)
+					statistics.Summary.TotalEntriesReturned = int64(len(r.Data.Result))
 				case *LokiPromResponse:
 					statistics = &r.Statistics
+					statistics.Summary.TotalEntriesReturned = int64(len(r.Response.Data.Result))
 				case *LokiSeriesResponse:
 					statistics = &r.Statistics
+					statistics.Summary.TotalEntriesReturned = int64(len(r.Data))
 				case *LokiLabelNamesResponse:
 					statistics = &r.Statistics
+					statistics.Summary.TotalEntriesReturned = int64(len(r.Data))
 				default:
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}

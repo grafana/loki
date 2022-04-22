@@ -116,6 +116,7 @@ func RecordRangeAndInstantQueryMetrics(ctx context.Context, log log.Logger, p Pa
 		"returned_lines", returnedLines,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+		"total_entries", stats.Summary.TotalEntriesReturned,
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"subqueries", stats.Summary.Subqueries,
 	}...)
@@ -168,6 +169,7 @@ func RecordLabelQueryMetrics(
 		"label", label,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
 	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType).
@@ -212,6 +214,7 @@ func RecordSeriesQueryMetrics(
 		"match", strings.Join(match, ":"), // not using comma (,) as separator as matcher may already have comma (e.g: `{a="b", c="d"}`)
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
 	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType).

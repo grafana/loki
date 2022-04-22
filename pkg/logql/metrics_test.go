@@ -79,11 +79,12 @@ func TestLogSlowQuery(t *testing.T) {
 			QueueTime:               0.000000002,
 			ExecTime:                25.25,
 			TotalBytesProcessed:     100000,
+			TotalEntriesReturned:    10,
 		},
 	}, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
 	require.Equal(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s latency=slow query=\"{foo=\\\"bar\\\"} |= \\\"buzz\\\"\" query_type=filter range_type=range length=1h0m0s step=1m0s duration=25.25s status=200 limit=1000 returned_lines=10 throughput=100kB total_bytes=100kB queue_time=2ns subqueries=0 source=logvolhist feature=beta\n",
+			"level=info org_id=foo traceID=%s latency=slow query=\"{foo=\\\"bar\\\"} |= \\\"buzz\\\"\" query_type=filter range_type=range length=1h0m0s step=1m0s duration=25.25s status=200 limit=1000 returned_lines=10 throughput=100kB total_bytes=100kB total_entries=10 queue_time=2ns subqueries=0 source=logvolhist feature=beta\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())
@@ -92,23 +93,24 @@ func TestLogSlowQuery(t *testing.T) {
 
 func TestLogLabelsQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
-	util_log.Logger = log.NewLogfmtLogger(buf)
+	logger := log.NewLogfmtLogger(buf)
 	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
 	defer c.Close()
 	opentracing.SetGlobalTracer(tr)
 	sp := opentracing.StartSpan("")
 	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
 	now := time.Now()
-	RecordLabelQueryMetrics(ctx, now.Add(-1*time.Hour), now, "foo", "200", stats.Result{
+	RecordLabelQueryMetrics(ctx, logger, now.Add(-1*time.Hour), now, "foo", "200", stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,
 			ExecTime:                25.25,
 			TotalBytesProcessed:     100000,
+			TotalEntriesReturned:    12,
 		},
 	})
 	require.Equal(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo throughput=100kB total_bytes=100kB\n",
+			"level=info org_id=foo traceID=%s latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo throughput=100kB total_bytes=100kB total_entries=12\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())
@@ -117,23 +119,24 @@ func TestLogLabelsQuery(t *testing.T) {
 
 func TestLogSeriesQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
-	util_log.Logger = log.NewLogfmtLogger(buf)
+	logger := log.NewLogfmtLogger(buf)
 	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
 	defer c.Close()
 	opentracing.SetGlobalTracer(tr)
 	sp := opentracing.StartSpan("")
 	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
 	now := time.Now()
-	RecordSeriesQueryMetrics(ctx, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", stats.Result{
+	RecordSeriesQueryMetrics(ctx, logger, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,
 			ExecTime:                25.25,
 			TotalBytesProcessed:     100000,
+			TotalEntriesReturned:    10,
 		},
 	})
 	require.Equal(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s latency=slow query_type=series length=1h0m0s duration=25.25s status=200 match=\"{container_name=~\\\"prometheus.*\\\", component=\\\"server\\\"}:{app=\\\"loki\\\"}\" throughput=100kB total_bytes=100kB\n",
+			"level=info org_id=foo traceID=%s latency=slow query_type=series length=1h0m0s duration=25.25s status=200 match=\"{container_name=~\\\"prometheus.*\\\", component=\\\"server\\\"}:{app=\\\"loki\\\"}\" throughput=100kB total_bytes=100kB total_entries=10\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())
