@@ -17,9 +17,7 @@ logfmt:
 
 This stage uses the go-kit/log structured logging parser to extract key/value pairs of data from log lines into the extracted map.
 
-## Examples
-
-### Using log line
+## Example
 
 For the given pipeline:
 
