@@ -219,7 +219,7 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 
 	status := 200
 	if err != nil {
-		_, status = server.ClientErrorAndStatus(err)
+		status, _ = server.ClientHTTPStatusAndError(err)
 	}
 
 	logql.RecordLabelQueryMetrics(ctx, *req.Start, *req.End, req.Name, strconv.Itoa(status), statResult)
@@ -387,7 +387,7 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 
 	status := 200
 	if err != nil {
-		_, status = server.ClientErrorAndStatus(err)
+		status, _ = server.ClientHTTPStatusAndError(err)
 	}
 
 	logql.RecordSeriesQueryMetrics(ctx, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)

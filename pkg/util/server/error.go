@@ -26,13 +26,13 @@ const (
 
 // WriteError write a go error with the correct status code.
 func WriteError(err error, w http.ResponseWriter) {
-	cerr, status := ClientErrorAndStatus(err)
+	status, cerr := ClientHTTPStatusAndError(err)
 	http.Error(w, cerr.Error(), status)
 }
 
-// ClientErrorAndHTTPStatus returns error and http status that is "safe" to return to client without
+// ClientHTTPStatusAndError returns error and http status that is "safe" to return to client without
 // exposing any implementation details.
-func ClientErrorAndStatus(err error) (error, int) {
+func ClientHTTPStatusAndError(err error) (int, error) {
 	var (
 		queryErr storage_errors.QueryError
 		promErr  promql.ErrStorage
@@ -40,30 +40,30 @@ func ClientErrorAndStatus(err error) (error, int) {
 
 	me, ok := err.(util.MultiError)
 	if ok && me.Is(context.Canceled) {
-		return errors.New(ErrClientCanceled), StatusClientClosedRequest
+		return StatusClientClosedRequest, errors.New(ErrClientCanceled)
 	}
 	if ok && me.IsDeadlineExceeded() {
-		return errors.New(ErrDeadlineExceeded), http.StatusGatewayTimeout
+		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	}
 
 	s, isRPC := status.FromError(err)
 	switch {
 	case errors.Is(err, context.Canceled) ||
 		(errors.As(err, &promErr) && errors.Is(promErr.Err, context.Canceled)):
-		return errors.New(ErrClientCanceled), StatusClientClosedRequest
+		return StatusClientClosedRequest, errors.New(ErrClientCanceled)
 	case errors.Is(err, context.DeadlineExceeded) ||
 		(isRPC && s.Code() == codes.DeadlineExceeded):
-		return errors.New(ErrDeadlineExceeded), http.StatusGatewayTimeout
+		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	case errors.As(err, &queryErr):
-		return err, http.StatusBadRequest
+		return http.StatusBadRequest, err
 	case errors.Is(err, logqlmodel.ErrLimit) || errors.Is(err, logqlmodel.ErrParse) || errors.Is(err, logqlmodel.ErrPipeline):
-		return err, http.StatusBadRequest
+		return http.StatusBadRequest, err
 	case errors.Is(err, user.ErrNoOrgID):
-		return err, http.StatusBadRequest
+		return http.StatusBadRequest, err
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
-			return errors.New(string(grpcErr.Body)), int(grpcErr.Code)
+			return int(grpcErr.Code), errors.New(string(grpcErr.Body))
 		}
-		return err, http.StatusInternalServerError
+		return http.StatusInternalServerError, err
 	}
 }
