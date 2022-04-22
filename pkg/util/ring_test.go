@@ -136,6 +136,7 @@ func (m *readLifecyclerMock) HealthyInstancesCount() int {
 	args := m.Called()
 	return args.Int(0)
 }
+
 func (m *readLifecyclerMock) GetInstanceAddr() string {
 	return m.addr
 }
