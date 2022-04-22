@@ -179,8 +179,6 @@ func RecordLabelQueryMetrics(
 	chunkDownloadedTotal.WithLabelValues(status, queryType, "").
 		Add(float64(stats.TotalChunksDownloaded()))
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
-
-	// TODO(kavi): Do we need recordUsageStats for labels query?
 }
 
 func RecordSeriesQueryMetrics(
@@ -224,8 +222,6 @@ func RecordSeriesQueryMetrics(
 	chunkDownloadedTotal.WithLabelValues(status, queryType, "").
 		Add(float64(stats.TotalChunksDownloaded()))
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
-
-	// TODO(kavi): Do we need recordUsageStats for series query?
 }
 
 func recordUsageStats(queryType string, stats logql_stats.Result) {
