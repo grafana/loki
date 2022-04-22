@@ -524,11 +524,13 @@ func (l *SyslogParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	l.lbs = lbs
 	l.reader.Reset(line)
 
-	if line[0] == '<' {
+	switch line[0] {
+	case '<':
 		l.ntParser.Parse(l.reader)
-	} else if line[0] >= '0' && line[0] <= '9' {
+	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 		l.ocParser.Parse(l.reader)
-	} else {
+	default:
+		l.lbs.SetErr(errSyslog)
 		return line, false
 	}
 	return line, true

@@ -735,6 +735,7 @@ func Test_syslogParser_Parse(t *testing.T) {
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
+				{Name: logqlmodel.ErrorLabel, Value: errSyslog},
 			},
 		},
 		{
