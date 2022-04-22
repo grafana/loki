@@ -40,27 +40,27 @@ steps:
   - make BUILD_IN_CONTAINER=false check-drone-drift
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.3
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.3
   name: check-generated-files
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.3
   name: test
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.3
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -68,7 +68,7 @@ steps:
   - clone
   - test
   - lint
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.3
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -79,19 +79,19 @@ steps:
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.3
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.3
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.3
   name: check-example-config-doc
 trigger:
   event:
@@ -1118,6 +1118,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 64871d70248fbe43acab816fe107dc657442ded224b48779ac15f4559143a2c6
+hmac: 6e2865a871f73b7bec7caad285b3999bfdab4e85e29606061663f4c9160cc35c
 
 ...

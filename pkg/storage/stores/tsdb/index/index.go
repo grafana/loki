@@ -1307,7 +1307,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		r.nameSymbols[off] = k
 	}
 
-	r.fingerprintOffsets, err = ReadFingerprintOffsetsTable(r.b, r.toc.FingerprintOffsets)
+	r.fingerprintOffsets, err = readFingerprintOffsetsTable(r.b, r.toc.FingerprintOffsets)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading fingerprint offsets")
 	}
@@ -1522,7 +1522,7 @@ func ReadOffsetTable(bs ByteSlice, off uint64, f func([]string, uint64, int) err
 	return d.Err()
 }
 
-func ReadFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, error) {
+func readFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, error) {
 	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable))
 	cnt := d.Be32()
 	res := make(FingerprintOffsets, 0, int(cnt))
