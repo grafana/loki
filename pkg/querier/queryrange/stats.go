@@ -31,19 +31,7 @@ var (
 		logql.RecordRangeAndInstantQueryMetrics(data.ctx, log.With(util_log.Logger, "component", "frontend"), data.params, data.status, *data.statistics, data.result)
 	})
 
-	seriesQueryMetricsRecorder = metricRecorderFn(func(data *queryData) {
-		logql.RecordSeriesQueryMetrics(data.ctx, data.params.Start(), data.params.End(), data.match, data.status, *data.statistics)
-	})
-
-	labelQueryMetricsRecorder = metricRecorderFn(func(data *queryData) {
-		logql.RecordLabelQueryMetrics(data.ctx, data.params.Start(), data.params.End(), data.label, data.status, *data.statistics)
-	})
-
 	StatsRangeQueryHTTPMiddleware middleware.Interface = statsHTTPMiddleware(defaultMetricRecorder)
-
-	StatsSeriesQueryHTTPMiddleware middleware.Interface = statsHTTPMiddleware(seriesQueryMetricsRecorder)
-
-	StatsLabelQueryHTTPMiddleware middleware.Interface = statsHTTPMiddleware(labelQueryMetricsRecorder)
 )
 
 type metricRecorder interface {
