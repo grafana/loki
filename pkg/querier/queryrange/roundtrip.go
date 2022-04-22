@@ -11,12 +11,13 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -40,7 +41,8 @@ func NewTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	schema chunk.SchemaConfig,
+	schema config.SchemaConfig,
+	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
 	registerer prometheus.Registerer,
 ) (queryrangebase.Tripperware, Stopper, error) {
 	metrics := NewMetrics(registerer)
@@ -60,7 +62,7 @@ func NewTripperware(
 	}
 
 	metricsTripperware, err := NewMetricTripperware(cfg, log, limits, schema, LokiCodec, c,
-		PrometheusExtractor{}, metrics, registerer)
+		cacheGenNumLoader, PrometheusExtractor{}, metrics, registerer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -244,7 +246,7 @@ func NewLogFilterTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	schema chunk.SchemaConfig,
+	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
 	c cache.Cache,
 	metrics *Metrics,
@@ -307,7 +309,7 @@ func NewSeriesTripperware(
 	limits Limits,
 	codec queryrangebase.Codec,
 	metrics *Metrics,
-	schema chunk.SchemaConfig,
+	schema config.SchemaConfig,
 ) (queryrangebase.Tripperware, error) {
 	queryRangeMiddleware := []queryrangebase.Middleware{
 		NewLimitsMiddleware(limits),
@@ -383,9 +385,10 @@ func NewMetricTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	schema chunk.SchemaConfig,
+	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
 	c cache.Cache,
+	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
 	extractor queryrangebase.Extractor,
 	metrics *Metrics,
 	registerer prometheus.Registerer,
@@ -413,7 +416,7 @@ func NewMetricTripperware(
 			limits,
 			codec,
 			extractor,
-			nil,
+			cacheGenNumLoader,
 			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
@@ -469,7 +472,7 @@ func NewInstantMetricTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	schema chunk.SchemaConfig,
+	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
 	metrics *Metrics,
 ) (queryrangebase.Tripperware, error) {
@@ -477,6 +480,7 @@ func NewInstantMetricTripperware(
 
 	if cfg.ShardedQueries {
 		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewSplitByRangeMiddleware(log, limits, nil),
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,

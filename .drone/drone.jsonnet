@@ -25,7 +25,7 @@ local pipeline(name) = {
   kind: 'pipeline',
   name: name,
   steps: [],
-  trigger: { event: ['push', 'pull_request'] },
+  trigger: { event: ['push', 'pull_request', 'tag'] },
 };
 
 local secret(name, vault_path, vault_key) = {
@@ -144,7 +144,7 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
       when: condition('exclude').tagMain,
       settings+: {
         dry_run: true,
-        repo: 'grafana/querytee',
+        repo: 'grafana/loki-query-tee',
       },
     },
   ] + [
@@ -153,7 +153,7 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
       depends_on: ['image-tag'],
       when: condition('include').tagMain,
       settings+: {
-        repo: 'grafana/querytee',
+        repo: 'grafana/loki-query-tee',
       },
     },
   ],
@@ -355,7 +355,7 @@ local manifest(apps) = pipeline('manifest') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: ['0.20.0'],
+          tags: ['0.20.3'],
           dry_run: false,
         },
       },
@@ -432,13 +432,13 @@ local manifest(apps) = pipeline('manifest') {
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMain {
-      event: ['push'],
+      event: ['push', 'tag'],
     },
   },
 ] + [
   pipeline('deploy') {
     trigger: condition('include').tagMain {
-      event: ['push'],
+      event: ['push', 'tag'],
     },
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],

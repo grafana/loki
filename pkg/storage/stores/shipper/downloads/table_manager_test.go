@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/grafana/loki/pkg/validation"
@@ -40,7 +40,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 		tempDir := t.TempDir()
 		objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 
-		var queries []chunk.IndexQuery
+		var queries []index.Query
 		for i, name := range []string{"table1", "table2"} {
 			testutil.SetupTable(t, filepath.Join(objectStoragePath, name), testutil.DBsConfig{
 				NumUnCompactedDBs: 5,
@@ -52,7 +52,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 				},
 				NumUsers: 1,
 			})
-			queries = append(queries, chunk.IndexQuery{TableName: name})
+			queries = append(queries, index.Query{TableName: name})
 		}
 
 		tableManager, stopFunc := buildTestTableManager(t, tempDir)
@@ -63,7 +63,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 
 	t.Run("it doesn't deadlock when table create fails", func(t *testing.T) {
 		tempDir := t.TempDir()
-		require.NoError(t, os.Mkdir(filepath.Join(tempDir, "cache"), 0777))
+		require.NoError(t, os.Mkdir(filepath.Join(tempDir, "cache"), 0o777))
 
 		// This file forces chunk_util.EnsureDirectory to fail. Any write error would cause this
 		// deadlock
@@ -258,10 +258,11 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			},
 		},
 	} {
+		tcCopy := tc
 		t.Run(tc.name, func(t *testing.T) {
 			resetTables()
 			tableManager.cfg.QueryReadyNumDays = tc.queryReadyNumDaysCfg
-			tableManager.cfg.Limits = &tc.queryReadinessLimits
+			tableManager.cfg.Limits = &tcCopy.queryReadinessLimits
 			require.NoError(t, tableManager.ensureQueryReadiness(context.Background()))
 
 			for name, table := range tableManager.tables {
@@ -300,7 +301,7 @@ type mockTable struct {
 
 func (m *mockTable) Close() {}
 
-func (m *mockTable) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (m *mockTable) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	return nil
 }
 

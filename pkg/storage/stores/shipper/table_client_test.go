@@ -1,4 +1,4 @@
-package shipper
+package shipper_test
 
 import (
 	"bytes"
@@ -8,9 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 )
 
 func TestBoltDBShipperTableClient(t *testing.T) {
@@ -35,7 +36,7 @@ func TestBoltDBShipperTableClient(t *testing.T) {
 		}
 	}
 
-	tableClient := NewBoltDBShipperTableClient(objectClient, "index/")
+	tableClient := shipper.NewBoltDBShipperTableClient(objectClient, "index/")
 
 	// check list of tables returns all the folders/tables created above
 	checkExpectedTables(t, tableClient, foldersWithFiles)
@@ -48,7 +49,7 @@ func TestBoltDBShipperTableClient(t *testing.T) {
 	checkExpectedTables(t, tableClient, foldersWithFiles)
 }
 
-func checkExpectedTables(t *testing.T, tableClient chunk.TableClient, expectedTables map[string][]string) {
+func checkExpectedTables(t *testing.T, tableClient index.TableClient, expectedTables map[string][]string) {
 	actualTables, err := tableClient.ListTables(context.Background())
 	require.NoError(t, err)
 

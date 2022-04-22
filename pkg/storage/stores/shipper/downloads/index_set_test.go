@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -42,7 +42,7 @@ func TestIndexSet_Init(t *testing.T) {
 	checkIndexSet := func() {
 		indexSet, stopFunc := buildTestIndexSet(t, userID, tempDir)
 		require.Len(t, indexSet.dbs, len(testDBs))
-		testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, indexSet, 0, len(testDBs)*10)
+		testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, indexSet, 0, len(testDBs)*10)
 		stopFunc()
 	}
 
@@ -69,7 +69,7 @@ func TestIndexSet_Init(t *testing.T) {
 
 	// change a boltdb file to text file which would fail to open.
 	indexSetPathPathInCache := filepath.Join(tempDir, cacheDirName, tableName, userID)
-	require.NoError(t, ioutil.WriteFile(filepath.Join(indexSetPathPathInCache, "0"), []byte("invalid boltdb file"), 0666))
+	require.NoError(t, ioutil.WriteFile(filepath.Join(indexSetPathPathInCache, "0"), []byte("invalid boltdb file"), 0o666))
 
 	// check index set with a corrupt file which should get downloaded again from storage
 	checkIndexSet()
@@ -112,7 +112,7 @@ func TestIndexSet_doConcurrentDownload(t *testing.T) {
 			if tc > 0 {
 				require.Len(t, indexSet.dbs, tc)
 			}
-			testutil.TestSingleTableQuery(t, userID, []chunk.IndexQuery{{}}, indexSet, 0, tc*10)
+			testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, indexSet, 0, tc*10)
 		})
 	}
 }

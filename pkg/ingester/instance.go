@@ -26,9 +26,10 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"
@@ -87,10 +88,10 @@ type instance struct {
 
 	metrics *ingesterMetrics
 
-	chunkFilter storage.RequestChunkFilterer
+	chunkFilter chunk.RequestChunkFilterer
 }
 
-func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch, chunkFilter storage.RequestChunkFilterer) *instance {
+func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch, chunkFilter chunk.RequestChunkFilterer) *instance {
 	i := &instance{
 		cfg:        cfg,
 		streams:    newStreamsMap(),
@@ -317,7 +318,13 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 	if err != nil {
 		return nil, err
 	}
+
 	pipeline, err := expr.Pipeline()
+	if err != nil {
+		return nil, err
+	}
+
+	pipeline, err = deletion.SetupPipeline(req, pipeline)
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +362,13 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	if err != nil {
 		return nil, err
 	}
+
 	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}
@@ -515,7 +528,7 @@ func (i *instance) numStreams() int {
 // forAllStreams will execute a function for all streams in the instance.
 // It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forAllStreams(ctx context.Context, fn func(*stream) error) error {
-	var chunkFilter storage.ChunkFilterer
+	var chunkFilter chunk.Filterer
 	if i.chunkFilter != nil {
 		chunkFilter = i.chunkFilter.ForRequest(ctx)
 	}
@@ -549,7 +562,7 @@ func (i *instance) forMatchingStreams(
 	if err != nil {
 		return err
 	}
-	var chunkFilter storage.ChunkFilterer
+	var chunkFilter chunk.Filterer
 	if i.chunkFilter != nil {
 		chunkFilter = i.chunkFilter.ForRequest(ctx)
 	}
@@ -600,7 +613,7 @@ func (i *instance) addTailersToNewStream(stream *stream) {
 		if t.isClosed() {
 			continue
 		}
-		var chunkFilter storage.ChunkFilterer
+		var chunkFilter chunk.Filterer
 		if i.chunkFilter != nil {
 			chunkFilter = i.chunkFilter.ForRequest(t.conn.Context())
 		}

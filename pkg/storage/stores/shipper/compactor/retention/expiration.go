@@ -81,6 +81,26 @@ func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval
 	return interval.Start.Before(latestRetentionStartTime)
 }
 
+// NeverExpiringExpirationChecker returns an expiration checker that never expires anything
+func NeverExpiringExpirationChecker(limits Limits) ExpirationChecker {
+	return &neverExpiringExpirationChecker{}
+}
+
+type neverExpiringExpirationChecker struct{}
+
+func (e *neverExpiringExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval) {
+	return false, nil
+}
+func (e *neverExpiringExpirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
+	return false
+}
+func (e *neverExpiringExpirationChecker) MarkPhaseStarted()  {}
+func (e *neverExpiringExpirationChecker) MarkPhaseFailed()   {}
+func (e *neverExpiringExpirationChecker) MarkPhaseFinished() {}
+func (e *neverExpiringExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
+	return false
+}
+
 type TenantsRetention struct {
 	limits Limits
 }

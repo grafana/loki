@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -937,7 +937,7 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 	}
 
 	if newChunk.Size() == 0 {
-		return nil, encoding.ErrSliceNoDataInRange
+		return nil, chunk.ErrSliceNoDataInRange
 	}
 
 	if err := newChunk.Close(); err != nil {
@@ -1006,7 +1006,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, ok := pipeline.ProcessString(e.s)
+		newLine, parsedLbs, ok := pipeline.ProcessString(e.t, e.s)
 		if !ok {
 			return
 		}
@@ -1056,7 +1056,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 
 	for _, e := range hb.entries {
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.s)
+		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s)
 		if !ok {
 			continue
 		}
@@ -1263,7 +1263,7 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, lbs, ok := e.pipeline.Process(e.currLine)
+		newLine, lbs, ok := e.pipeline.Process(e.currTs, e.currLine)
 		if !ok {
 			continue
 		}
@@ -1294,7 +1294,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currLine)
+		val, labels, ok := e.extractor.Process(e.currTs, e.currLine)
 		if !ok {
 			continue
 		}

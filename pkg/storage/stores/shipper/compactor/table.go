@@ -17,8 +17,8 @@ import (
 	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -99,7 +99,8 @@ type table struct {
 }
 
 func newTable(ctx context.Context, workingDirectory string, indexStorageClient storage.Client,
-	tableMarker retention.TableMarker, expirationChecker tableExpirationChecker) (*table, error) {
+	tableMarker retention.TableMarker, expirationChecker tableExpirationChecker,
+) (*table, error) {
 	err := chunk_util.EnsureDirectory(workingDirectory)
 	if err != nil {
 		return nil, err

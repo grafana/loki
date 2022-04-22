@@ -12,7 +12,7 @@ func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
 
 type noOpDeleteRequestsStore struct{}
 
-func (d *noOpDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error {
+func (d *noOpDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, query string) error {
 	return nil
 }
 
@@ -36,4 +36,12 @@ func (d *noOpDeleteRequestsStore) RemoveDeleteRequest(ctx context.Context, userI
 	return nil
 }
 
+func (d *noOpDeleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
+	return "", nil
+}
+
 func (d *noOpDeleteRequestsStore) Stop() {}
+
+func (d *noOpDeleteRequestsStore) Name() string {
+	return ""
+}

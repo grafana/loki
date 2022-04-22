@@ -514,7 +514,7 @@ The `| label_format` expression can rename, modify or add labels. It takes as pa
 
 When both side are label identifiers, for example `dst=src`, the operation will rename the `src` label into `dst`.
 
-The left side can alternatively be a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value is replaced by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, which means labels are available as variables and you can use the same list of functions.
+The right side can alternatively be a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value is replaced by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, which means labels are available as variables and you can use the same list of functions.
 
 In both cases, if the destination label doesn't exist, then a new one is created.
 

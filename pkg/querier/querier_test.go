@@ -242,7 +242,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(nil, errors.New("tst-err"))
 
-				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, nil)
+				store.On("Series", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -258,7 +258,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1"},
 				}), nil)
 
-				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
+				store.On("Series", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -271,7 +271,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 			mkReq([]string{`{a="1"}`}),
 			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
-				store.On("GetSeries", mock.Anything, mock.Anything).Return(nil, nil)
+				store.On("Series", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -289,7 +289,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1", "b": "3"},
 				}), nil)
 
-				store.On("GetSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+				store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 					{Labels: map[string]string{"a": "1", "b": "4"}},
 					{Labels: map[string]string{"a": "1", "b": "5"}},
 				}, nil)
@@ -314,7 +314,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1", "b": "2"},
 				}), nil)
 
-				store.On("GetSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+				store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 					{Labels: map[string]string{"a": "1", "b": "2"}},
 					{Labels: map[string]string{"a": "1", "b": "3"}},
 				}, nil)
@@ -686,6 +686,328 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 	}
 }
 
+func TestQuerier_calculateIngesterMaxLookbackPeriod(t *testing.T) {
+	for _, tc := range []struct {
+		name                          string
+		ingesterQueryStoreMaxLookback time.Duration
+		queryIngestersWithin          time.Duration
+		expected                      time.Duration
+	}{
+		{
+			name:     "defaults are set; infinite lookback period if no values are set",
+			expected: -1,
+		},
+		{
+			name:                          "only setting ingesterQueryStoreMaxLookback",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			expected:                      time.Hour,
+		},
+		{
+			name:                          "setting both ingesterQueryStoreMaxLookback and queryIngestersWithin; ingesterQueryStoreMaxLookback takes precedence",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			queryIngestersWithin:          time.Minute,
+			expected:                      time.Hour,
+		},
+		{
+			name:                 "only setting queryIngestersWithin",
+			queryIngestersWithin: time.Minute,
+			expected:             time.Minute,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			querier := SingleTenantQuerier{cfg: Config{
+				IngesterQueryStoreMaxLookback: tc.ingesterQueryStoreMaxLookback,
+				QueryIngestersWithin:          tc.queryIngestersWithin,
+			}}
+
+			assert.Equal(t, tc.expected, querier.calculateIngesterMaxLookbackPeriod())
+		})
+	}
+}
+
+func TestQuerier_isWithinIngesterMaxLookbackPeriod(t *testing.T) {
+	overlappingQuery := interval{
+		start: time.Now().Add(-6 * time.Hour),
+		end:   time.Now(),
+	}
+
+	nonOverlappingQuery := interval{
+		start: time.Now().Add(-24 * time.Hour),
+		end:   time.Now().Add(-12 * time.Hour),
+	}
+
+	for _, tc := range []struct {
+		name                          string
+		ingesterQueryStoreMaxLookback time.Duration
+		queryIngestersWithin          time.Duration
+		overlappingWithinRange        bool
+		nonOverlappingWithinRange     bool
+	}{
+		{
+			name:                      "default values, query ingesters and store for whole duration",
+			overlappingWithinRange:    true,
+			nonOverlappingWithinRange: true,
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 1h",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			overlappingWithinRange:        true,
+			nonOverlappingWithinRange:     false,
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 10h",
+			ingesterQueryStoreMaxLookback: 10 * time.Hour,
+			overlappingWithinRange:        true,
+			nonOverlappingWithinRange:     false,
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 1h and queryIngestersWithin set to 16h, ingesterQueryStoreMaxLookback takes precedence",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			queryIngestersWithin:          16 * time.Hour, // if used, this would put the nonOverlapping query in range
+			overlappingWithinRange:        true,
+			nonOverlappingWithinRange:     false,
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to -1, query just ingesters",
+			ingesterQueryStoreMaxLookback: -1,
+			overlappingWithinRange:        true,
+			nonOverlappingWithinRange:     true,
+		},
+		{
+			name:                      "queryIngestersWithin set to 1h",
+			queryIngestersWithin:      time.Hour,
+			overlappingWithinRange:    true,
+			nonOverlappingWithinRange: false,
+		},
+		{
+			name:                      "queryIngestersWithin set to 10h",
+			queryIngestersWithin:      10 * time.Hour,
+			overlappingWithinRange:    true,
+			nonOverlappingWithinRange: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			querier := SingleTenantQuerier{cfg: Config{
+				IngesterQueryStoreMaxLookback: tc.ingesterQueryStoreMaxLookback,
+				QueryIngestersWithin:          tc.queryIngestersWithin,
+			}}
+
+			lookbackPeriod := querier.calculateIngesterMaxLookbackPeriod()
+			assert.Equal(t, tc.overlappingWithinRange, querier.isWithinIngesterMaxLookbackPeriod(lookbackPeriod, overlappingQuery.end))
+			assert.Equal(t, tc.nonOverlappingWithinRange, querier.isWithinIngesterMaxLookbackPeriod(lookbackPeriod, nonOverlappingQuery.end))
+		})
+	}
+}
+
+func TestQuerier_RequestingIngesters(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	requestMapping := map[string]struct {
+		ingesterMethod string
+		storeMethod    string
+	}{
+		"SelectLogs": {
+			ingesterMethod: "Query",
+			storeMethod:    "SelectLogs",
+		},
+		"SelectSamples": {
+			ingesterMethod: "QuerySample",
+			storeMethod:    "SelectSamples",
+		},
+		"LabelValuesForMetricName": {
+			ingesterMethod: "Label",
+			storeMethod:    "LabelValuesForMetricName",
+		},
+		"LabelNamesForMetricName": {
+			ingesterMethod: "Label",
+			storeMethod:    "LabelNamesForMetricName",
+		},
+		"Series": {
+			ingesterMethod: "Series",
+			storeMethod:    "Series",
+		},
+	}
+
+	tests := []struct {
+		desc                             string
+		start, end                       time.Time
+		setIngesterQueryStoreMaxLookback bool
+		expectedCallsStore               int
+		expectedCallsIngesters           int
+	}{
+		{
+			desc:                   "Data in storage and ingesters",
+			start:                  time.Now().Add(-time.Hour * 2),
+			end:                    time.Now(),
+			expectedCallsStore:     1,
+			expectedCallsIngesters: 1,
+		},
+		{
+			desc:                   "Data in ingesters (IngesterQueryStoreMaxLookback not set)",
+			start:                  time.Now().Add(-time.Minute * 15),
+			end:                    time.Now(),
+			expectedCallsStore:     1,
+			expectedCallsIngesters: 1,
+		},
+		{
+			desc:                   "Data only in storage",
+			start:                  time.Now().Add(-time.Hour * 2),
+			end:                    time.Now().Add(-time.Hour * 1),
+			expectedCallsStore:     1,
+			expectedCallsIngesters: 0,
+		},
+		{
+			desc:                             "Data in ingesters (IngesterQueryStoreMaxLookback set)",
+			start:                            time.Now().Add(-time.Minute * 15),
+			end:                              time.Now(),
+			setIngesterQueryStoreMaxLookback: true,
+			expectedCallsStore:               0,
+			expectedCallsIngesters:           1,
+		},
+	}
+
+	requests := []struct {
+		name string
+		do   func(querier *SingleTenantQuerier, start, end time.Time) error
+	}{
+		{
+			name: "SelectLogs",
+			do: func(querier *SingleTenantQuerier, start, end time.Time) error {
+				_, err := querier.SelectLogs(ctx, logql.SelectLogParams{
+					QueryRequest: &logproto.QueryRequest{
+						Selector:  "{type=\"test\", fail=\"yes\"} |= \"foo\"",
+						Limit:     10,
+						Start:     start,
+						End:       end,
+						Direction: logproto.FORWARD,
+					},
+				})
+
+				return err
+			},
+		},
+		{
+			name: "SelectSamples",
+			do: func(querier *SingleTenantQuerier, start, end time.Time) error {
+				_, err := querier.SelectSamples(ctx, logql.SelectSampleParams{
+					SampleQueryRequest: &logproto.SampleQueryRequest{
+						Selector: "count_over_time({foo=\"bar\"}[5m])",
+						Start:    start,
+						End:      end,
+					},
+				})
+				return err
+			},
+		},
+		{
+			name: "LabelValuesForMetricName",
+			do: func(querier *SingleTenantQuerier, start, end time.Time) error {
+				_, err := querier.Label(ctx, &logproto.LabelRequest{
+					Name:   "type",
+					Values: true,
+					Start:  &start,
+					End:    &end,
+				})
+				return err
+			},
+		},
+		{
+			name: "LabelNamesForMetricName",
+			do: func(querier *SingleTenantQuerier, start, end time.Time) error {
+				_, err := querier.Label(ctx, &logproto.LabelRequest{
+					Values: false,
+					Start:  &start,
+					End:    &end,
+				})
+				return err
+			},
+		},
+		{
+			name: "Series",
+			do: func(querier *SingleTenantQuerier, start, end time.Time) error {
+				_, err := querier.Series(ctx, &logproto.SeriesRequest{
+					Start: start,
+					End:   end,
+				})
+				return err
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+
+			conf := mockQuerierConfig()
+			conf.QueryIngestersWithin = time.Minute * 30
+			if tc.setIngesterQueryStoreMaxLookback {
+				conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+			}
+
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+			require.NoError(t, err)
+
+			for _, request := range requests {
+				t.Run(request.name, func(t *testing.T) {
+					ingesterClient, store, querier, err := setupIngesterQuerierMocks(conf, limits)
+					require.NoError(t, err)
+
+					err = request.do(querier, tc.start, tc.end)
+					require.NoError(t, err)
+
+					callsIngesters := ingesterClient.GetMockedCallsByMethod(requestMapping[request.name].ingesterMethod)
+					assert.Equal(t, tc.expectedCallsIngesters, len(callsIngesters))
+
+					callsStore := store.GetMockedCallsByMethod(requestMapping[request.name].storeMethod)
+					assert.Equal(t, tc.expectedCallsStore, len(callsStore))
+				})
+			}
+		})
+	}
+}
+
+func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*querierClientMock, *storeMock, *SingleTenantQuerier, error) {
+	queryClient := newQueryClientMock()
+	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil)
+
+	querySampleClient := newQuerySampleClientMock()
+	querySampleClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil)
+
+	ingesterClient := newQuerierClientMock()
+	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
+	ingesterClient.On("QuerySample", mock.Anything, mock.Anything, mock.Anything).Return(querySampleClient, nil)
+	ingesterClient.On("Label", mock.Anything, mock.Anything, mock.Anything).Return(mockLabelResponse([]string{"bar"}), nil)
+	ingesterClient.On("Series", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.SeriesResponse{
+		Series: []logproto.SeriesIdentifier{
+			{
+				Labels: map[string]string{"bar": "1"},
+			},
+		},
+	}, nil)
+
+	store := newStoreMock()
+	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
+	store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(querySampleClient), nil)
+	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
+	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
+	store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+		{Labels: map[string]string{"foo": "1"}},
+	}, nil)
+
+	querier, err := newQuerier(
+		conf,
+		mockIngesterClientConfig(),
+		newIngesterClientMockFactory(ingesterClient),
+		mockReadRingWithOneActiveIngester(),
+		&mockDeleteGettter{},
+		store, limits)
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return ingesterClient, store, querier, nil
+}
+
 type fakeTimeLimits struct {
 	maxQueryLookback time.Duration
 	maxQueryLength   time.Duration
@@ -740,11 +1062,11 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 
 	delGetter := &mockDeleteGettter{
 		results: []deletion.DeleteRequest{
-			{Selectors: []string{`0`}, StartTime: 0, EndTime: 100},
-			{Selectors: []string{`1`}, StartTime: 200, EndTime: 400},
-			{Selectors: []string{`2`}, StartTime: 400, EndTime: 500},
-			{Selectors: []string{`3`}, StartTime: 500, EndTime: 700},
-			{Selectors: []string{`4`}, StartTime: 700, EndTime: 900},
+			{Query: `0`, StartTime: 0, EndTime: 100},
+			{Query: `1`, StartTime: 200, EndTime: 400},
+			{Query: `2`, StartTime: 400, EndTime: 500},
+			{Query: `3`, StartTime: 500, EndTime: 700},
+			{Query: `4`, StartTime: 700, EndTime: 900},
 		},
 	}
 
@@ -761,8 +1083,8 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 	request := logproto.QueryRequest{
 		Selector:  `{type="test"} |= "foo"`,
 		Limit:     10,
-		Start:     time.Unix(0, 300),
-		End:       time.Unix(0, 600),
+		Start:     time.Unix(0, 300000000),
+		End:       time.Unix(0, 600000000),
 		Direction: logproto.FORWARD,
 	}
 
@@ -776,9 +1098,9 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 		End:       request.End,
 		Direction: request.Direction,
 		Deletes: []*logproto.Delete{
-			{Selector: "1", Start: 200, End: 400},
-			{Selector: "2", Start: 400, End: 500},
-			{Selector: "3", Start: 500, End: 700},
+			{Selector: "1", Start: 200000000, End: 400000000},
+			{Selector: "2", Start: 400000000, End: 500000000},
+			{Selector: "3", Start: 500000000, End: 700000000},
 		},
 	}
 
@@ -802,11 +1124,11 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 
 	delGetter := &mockDeleteGettter{
 		results: []deletion.DeleteRequest{
-			{Selectors: []string{`0`}, StartTime: 0, EndTime: 100},
-			{Selectors: []string{`1`}, StartTime: 200, EndTime: 400},
-			{Selectors: []string{`2`}, StartTime: 400, EndTime: 500},
-			{Selectors: []string{`3`}, StartTime: 500, EndTime: 700},
-			{Selectors: []string{`4`}, StartTime: 700, EndTime: 900},
+			{Query: `0`, StartTime: 0, EndTime: 100},
+			{Query: `1`, StartTime: 200, EndTime: 400},
+			{Query: `2`, StartTime: 400, EndTime: 500},
+			{Query: `3`, StartTime: 500, EndTime: 700},
+			{Query: `4`, StartTime: 700, EndTime: 900},
 		},
 	}
 
@@ -822,8 +1144,8 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 
 	request := logproto.SampleQueryRequest{
 		Selector: `count_over_time({foo="bar"}[5m])`,
-		Start:    time.Unix(0, 300),
-		End:      time.Unix(0, 600),
+		Start:    time.Unix(0, 300000000),
+		End:      time.Unix(0, 600000000),
 	}
 
 	_, err = q.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: &request})
@@ -835,9 +1157,9 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 			Start:    request.Start,
 			End:      request.End,
 			Deletes: []*logproto.Delete{
-				{Selector: "1", Start: 200, End: 400},
-				{Selector: "2", Start: 400, End: 500},
-				{Selector: "3", Start: 500, End: 700},
+				{Selector: "1", Start: 200000000, End: 400000000},
+				{Selector: "2", Start: 400000000, End: 500000000},
+				{Selector: "3", Start: 500000000, End: 700000000},
 			},
 		},
 	}

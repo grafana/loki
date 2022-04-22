@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -23,7 +23,7 @@ func Test_GetFileFromStorage(t *testing.T) {
 	testData := []byte("test-data")
 	tableName := "test-table"
 	require.NoError(t, util.EnsureDirectory(filepath.Join(tempDir, tableName)))
-	require.NoError(t, ioutil.WriteFile(filepath.Join(tempDir, tableName, "src"), testData, 0666))
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tempDir, tableName, "src"), testData, 0o666))
 
 	// try downloading the file from the storage.
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
@@ -68,7 +68,7 @@ func Test_CompressFile(t *testing.T) {
 
 	testData := []byte("test-data")
 
-	require.NoError(t, ioutil.WriteFile(uncompressedFilePath, testData, 0666))
+	require.NoError(t, ioutil.WriteFile(uncompressedFilePath, testData, 0o666))
 
 	require.NoError(t, CompressFile(uncompressedFilePath, compressedFilePath, true))
 	require.FileExists(t, compressedFilePath)

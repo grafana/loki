@@ -3,6 +3,7 @@ package cloudflare
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,8 @@ import (
 
 // The minimun window size is 1 minute.
 const minDelay = time.Minute
+
+var cloudflareTooEarlyError = regexp.MustCompile(`too early: logs older than \S+ are not available`)
 
 var defaultBackoff = backoff.Config{
 	MinBackoff: 1 * time.Second,
@@ -151,7 +154,10 @@ func (t *Target) pull(ctx context.Context, start, end time.Time) error {
 
 	for backoff.Ongoing() {
 		it, err = t.client.LogpullReceived(ctx, start, end)
-		if err != nil {
+		if err != nil && cloudflareTooEarlyError.MatchString(err.Error()) {
+			level.Warn(t.logger).Log("msg", "failed iterating over logs, out of cloudflare range, not retrying", "err", err, "start", start, "end", end, "retries", backoff.NumRetries())
+			return nil
+		} else if err != nil {
 			errs.Add(err)
 			backoff.Wait()
 			continue
