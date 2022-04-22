@@ -916,6 +916,11 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 }
 
 func (t *Loki) deleteRequestsStore() (deletion.DeleteRequestsStore, error) {
+	// TODO(owen-d): enable delete request storage in tsdb
+	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
+		return deletion.NewNoOpDeleteRequestsStore(), nil
+	}
+
 	filteringEnabled, err := deletion.FilteringEnabled(t.Cfg.CompactorConfig.DeletionMode)
 	if err != nil {
 		return nil, err
