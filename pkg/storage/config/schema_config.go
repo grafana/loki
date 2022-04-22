@@ -220,7 +220,7 @@ func UsingBoltdbShipper(configs []PeriodConfig) bool {
 
 func UsingTSDB(configs []PeriodConfig) bool {
 	fn := func(cfg PeriodConfig) bool {
-		return cfg.IndexType == BoltDBShipperType
+		return cfg.IndexType == TSDBType
 	}
 
 	return usingForPeriodConfigs(configs, fn)
