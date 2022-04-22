@@ -3,7 +3,7 @@ title: logfmt
 ---
 # `logfmt` stage
 
-The `logfmt` stage is a parsing stage that reads the log line as logfmt.
+The `logfmt` stage is a parsing stage that reads the log line as [logfmt](https://www.brandur.org/logfmt).
 
 ## Schema
 
