@@ -35,8 +35,9 @@ Given the following log line:
 level=info tag=stopping_fetchers id=ConsumerFetcherManager-1382721708341 module=kafka.consumer.ConsumerFetcherManager
 ```
 
-The following key-value pairs would be created in the set of extracted data:
+The following key-value pairs will be created in the set of extracted data:
 
 - `level`: `info`
 - `tag`: `stopping_fetchers`
+- `id`: `ConsumerFetcherManager-1382721708341`
 - `module`: `kafka.consumer.ConsumerFetcherManager`
