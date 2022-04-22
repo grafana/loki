@@ -137,3 +137,54 @@ func Test_IsMatching(t *testing.T) {
 		})
 	}
 }
+
+func Test_Allocations(t *testing.T) {
+	tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{}, 10)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ticker := time.NewTicker(500 * time.Millisecond)
+
+	json := `{"first": "some", "nested": {"further":"more"}}`
+
+	go func() {
+		lbs := makeRandomLabels()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+            //case <-ticker.C:
+				tail.send(logproto.Stream{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1), Line: json},
+						{Timestamp: time.Unix(0, 2), Line: json},
+						{Timestamp: time.Unix(0, 3), Line: json},
+					},
+				}, lbs)
+			}
+		}
+	}()
+
+    go func() {
+        for {
+            select {
+            case <-ctx.Done():
+                return
+            case <-ticker.C:
+				stream, ok := <-tail.sendChan
+				if !ok {
+					t.Fail()
+				} else if stream == nil {
+					continue
+				}
+
+				tail.popDroppedStreams()
+            }
+        }
+    }()
+
+	<- time.After(10 * time.Second)
+	cancel()
+}
