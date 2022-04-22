@@ -142,12 +142,13 @@ func RecordRangeAndInstantQueryMetrics(ctx context.Context, log log.Logger, p Pa
 
 func RecordLabelQueryMetrics(
 	ctx context.Context,
+	log log.Logger,
 	start, end time.Time,
 	label, status string,
 	stats logql_stats.Result,
 ) {
 	var (
-		logger      = util_log.WithContext(ctx, util_log.Logger)
+		logger      = util_log.WithContext(ctx, log)
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeLabels
 	)
@@ -183,13 +184,14 @@ func RecordLabelQueryMetrics(
 
 func RecordSeriesQueryMetrics(
 	ctx context.Context,
+	log log.Logger,
 	start, end time.Time,
 	match []string,
 	status string,
 	stats logql_stats.Result,
 ) {
 	var (
-		logger      = util_log.WithContext(ctx, util_log.Logger)
+		logger      = util_log.WithContext(ctx, log)
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeSeries
 	)

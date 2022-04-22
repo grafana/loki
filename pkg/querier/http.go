@@ -222,7 +222,7 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		status, _ = server.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordLabelQueryMetrics(ctx, *req.Start, *req.End, req.Name, strconv.Itoa(status), statResult)
+	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, strconv.Itoa(status), statResult)
 
 	if err != nil {
 		serverutil.WriteError(err, w)
@@ -390,7 +390,7 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		status, _ = server.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordSeriesQueryMetrics(ctx, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)
+	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
