@@ -16,7 +16,9 @@ it will not meet most production requirements.
 
 The test environment runs the [flog](https://github.com/mingrammer/flog) app to generate log lines.
 Promtail is the environment's agent (or client) that captures the log lines and pushes them to the Loki cluster through a gateway.
-Grafana provides a way to pose and visualize queries against the logs stored in Loki.
+In a typical environment, the log-generating app and the agent run in different locations. This guide simulates that by running Loki in Docker containers while flog and the Promtail agent run outside of Docker containers.
+
+In this guide, Grafana provides a way to pose and visualize queries against the logs stored in Loki.
  
 ![Simple scalable deployment test environment](simple-scalable-test-environment.png)
 
@@ -36,7 +38,7 @@ to make them easy to modify.
 
 - [Docker](https://docs.docker.com/install)
 - [Docker Compose](https://docs.docker.com/compose/install)
-- The [flog](https://github.com/mingrammer/flog) app
+- The [flog](https://github.com/mingrammer/flog) app, to be run outside of a Docker environment.
 
 ## Obtain and configure the test environment
 
@@ -52,6 +54,12 @@ to make them easy to modify.
     wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/promtail-local-config.yaml -O promtail-local-config.yaml
     wget https://raw.githubusercontent.com/grafana/loki/main/production/simple-scalable/docker-compose.yaml -O docker-compose.yaml
     ```
+1. The `docker-compose.yaml` relies on the Loki docker driver, aliased to `loki-compose`, to send logs to the Loki cluster. If this driver is not installed on your system, you can install it by running the following:
+
+    ```bash
+    docker plugin install grafana/loki-docker-driver:latest --alias loki-compose --grant-all-permissions
+    ```
+    If this driver is already installed, but under a different alias, you will have to change `docker-compose.yaml` to use the correct alias.
 1. Modify the Promtail configuration file to scrape the output of the flog app. Edit `promtail-local-config.yaml`. Change the `__path__` value `/path/to/flog.log` to be the path to your current working directory, which is the test environment's directory.
 
     Within Promtail configuration, the `scrape_configs` YAML block specifies the logs to scrape.
@@ -71,8 +79,8 @@ All shell commands are issued from the test environment's directory.
     ```bash
     docker-compose up
     ```
-1. (Optional) Verify that the Loki cluster is up and running. The read component returns `ready` when you point a web browser at http://localhost:3101/ready.
-The write component returns `ready` when you point a web browser at http://localhost:3102/ready.
+1. (Optional) Verify that the Loki cluster is up and running. The read component returns `ready` when you point a web browser at http://localhost:3101/ready. The message `Query Frontend not ready: not ready: number of schedulers this worker is connected to is 0` will show prior to the read component being ready.
+The write component returns `ready` when you point a web browser at http://localhost:3102/ready. The message `Ingester not ready: waiting for 15s after being ready` will show prior to the write component being ready.
 1. Run the `flog` app to start generating log lines.
 This example generates 100 log lines in JSON format, at intervals of 5 seconds:
     ```bash
@@ -91,6 +99,8 @@ Use Grafana to query and observe the log lines captured in the Loki cluster by n
 The Grafana instance has Loki configured as a [datasource](https://grafana.com/docs/grafana/latest/datasources/loki/).
 
 Click on the Grafana instance's [Explore](https://grafana.com/docs/grafana/latest/explore/) icon to bring up the log browser.
+
+Use the Explore dropdown menu to choose the Loki datasource.
 
 Use Grafana to try some queries.
 Enter your query into the **Log browser** box, and click on the blue **Run query** button.
