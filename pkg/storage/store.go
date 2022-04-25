@@ -238,6 +238,9 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			tsdbMetrics,
 			tsdbManager,
 		)
+		if err := headManager.Start(); err != nil {
+			return nil, nil, nil, err
+		}
 		idx := tsdb.NewIndexClient(headManager, p)
 		writer := tsdb.NewChunkWriter(f, p, headManager)
 
