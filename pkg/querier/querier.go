@@ -378,23 +378,18 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	var storeValues []string
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		g.Go(func() error {
-			var err error
-			from := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
-			through := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+			var (
+				err     error
+				from    = model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
+				through = model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+			)
 
 			if req.Values {
 				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
-				if err != nil {
-					return err
-				}
 			} else {
 				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
-				if err != nil {
-					return err
-				}
 			}
-
-			return nil
+			return err
 		})
 	}
 
