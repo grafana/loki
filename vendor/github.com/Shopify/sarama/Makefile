@@ -2,7 +2,7 @@ default: fmt get update test lint
 
 GO       := go
 GOBUILD  := CGO_ENABLED=0 $(GO) build $(BUILD_FLAG)
-GOTEST   := $(GO) test -gcflags='-l' -p 3 -v -race -timeout 10m -coverprofile=profile.out -covermode=atomic
+GOTEST   := $(GO) test -gcflags='-l' -p 1 -parallel 1 -race -timeout 10m -coverprofile=profile.out -covermode=atomic
 
 FILES    := $(shell find . -name '*.go' -type f -not -name '*.pb.go' -not -name '*_generated.go' -not -name '*_test.go')
 TESTS    := $(shell find . -name '*.go' -type f -not -name '*.pb.go' -not -name '*_generated.go' -name '*_test.go')

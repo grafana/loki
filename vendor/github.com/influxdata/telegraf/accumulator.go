@@ -41,7 +41,7 @@ type Accumulator interface {
 	// AddMetric adds an metric to the accumulator.
 	AddMetric(Metric)
 
-	// SetPrecision sets the timestamp rounding precision.  All metrics addeds
+	// SetPrecision sets the timestamp rounding precision. All metrics
 	// added to the accumulator will have their timestamp rounded to the
 	// nearest multiple of precision.
 	SetPrecision(precision time.Duration)

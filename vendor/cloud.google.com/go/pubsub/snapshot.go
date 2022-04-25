@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
 	pb "google.golang.org/genproto/googleapis/pubsub/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Snapshot is a reference to a PubSub snapshot.
@@ -100,11 +100,8 @@ func (s *Snapshot) Delete(ctx context.Context) error {
 // creation time), only retained messages will be marked as unacknowledged,
 // and already-expunged messages will not be restored.
 func (s *Subscription) SeekToTime(ctx context.Context, t time.Time) error {
-	ts, err := ptypes.TimestampProto(t)
-	if err != nil {
-		return err
-	}
-	_, err = s.c.subc.Seek(ctx, &pb.SeekRequest{
+	ts := timestamppb.New(t)
+	_, err := s.c.subc.Seek(ctx, &pb.SeekRequest{
 		Subscription: s.name,
 		Target:       &pb.SeekRequest_Time{Time: ts},
 	})
@@ -148,10 +145,7 @@ func (s *Subscription) SeekToSnapshot(ctx context.Context, snap *Snapshot) error
 }
 
 func toSnapshotConfig(snap *pb.Snapshot, c *Client) (*SnapshotConfig, error) {
-	exp, err := ptypes.Timestamp(snap.ExpireTime)
-	if err != nil {
-		return nil, err
-	}
+	exp := snap.ExpireTime.AsTime()
 	return &SnapshotConfig{
 		Snapshot:   &Snapshot{c: c, name: snap.Name},
 		Topic:      newTopic(c, snap.Topic),

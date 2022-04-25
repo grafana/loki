@@ -55,6 +55,9 @@ func newFile(dataSources []dataSource, opts LoadOptions) *File {
 	if len(opts.KeyValueDelimiterOnWrite) == 0 {
 		opts.KeyValueDelimiterOnWrite = "="
 	}
+	if len(opts.ChildSectionDelimiter) == 0 {
+		opts.ChildSectionDelimiter = "."
+	}
 
 	return &File{
 		BlockMode:   true,
@@ -82,7 +85,7 @@ func (f *File) NewSection(name string) (*Section, error) {
 		return nil, errors.New("empty section name")
 	}
 
-	if f.options.Insensitive && name != DefaultSection {
+	if (f.options.Insensitive || f.options.InsensitiveSections) && name != DefaultSection {
 		name = strings.ToLower(name)
 	}
 
@@ -139,12 +142,18 @@ func (f *File) GetSection(name string) (*Section, error) {
 	return secs[0], err
 }
 
+// HasSection returns true if the file contains a section with given name.
+func (f *File) HasSection(name string) bool {
+	section, _ := f.GetSection(name)
+	return section != nil
+}
+
 // SectionsByName returns all sections with given name.
 func (f *File) SectionsByName(name string) ([]*Section, error) {
 	if len(name) == 0 {
 		name = DefaultSection
 	}
-	if f.options.Insensitive {
+	if f.options.Insensitive || f.options.InsensitiveSections {
 		name = strings.ToLower(name)
 	}
 
@@ -165,8 +174,9 @@ func (f *File) SectionsByName(name string) ([]*Section, error) {
 func (f *File) Section(name string) *Section {
 	sec, err := f.GetSection(name)
 	if err != nil {
-		// Note: It's OK here because the only possible error is empty section name,
-		// but if it's empty, this piece of code won't be executed.
+		if name == "" {
+			name = DefaultSection
+		}
 		sec, _ = f.NewSection(name)
 		return sec
 	}
@@ -236,7 +246,7 @@ func (f *File) DeleteSectionWithIndex(name string, index int) error {
 	if len(name) == 0 {
 		name = DefaultSection
 	}
-	if f.options.Insensitive {
+	if f.options.Insensitive || f.options.InsensitiveSections {
 		name = strings.ToLower(name)
 	}
 
@@ -299,6 +309,9 @@ func (f *File) Reload() (err error) {
 			}
 			return err
 		}
+		if f.options.ShortCircuit {
+			return nil
+		}
 	}
 	return nil
 }
@@ -347,7 +360,7 @@ func (f *File) writeToBuffer(indent string) (*bytes.Buffer, error) {
 			}
 		}
 
-		if i > 0 || DefaultHeader {
+		if i > 0 || DefaultHeader || (i == 0 && strings.ToUpper(sec.name) != DefaultSection) {
 			if _, err := buf.WriteString("[" + sname + "]" + LineBreak); err != nil {
 				return nil, err
 			}
@@ -451,6 +464,8 @@ func (f *File) writeToBuffer(indent string) (*bytes.Buffer, error) {
 					val = `"""` + val + `"""`
 				} else if !f.options.IgnoreInlineComment && strings.ContainsAny(val, "#;") {
 					val = "`" + val + "`"
+				} else if len(strings.TrimSpace(val)) != len(val) {
+					val = `"` + val + `"`
 				}
 				if _, err := buf.WriteString(equalSign + val + LineBreak); err != nil {
 					return nil, err
@@ -494,7 +509,7 @@ func (f *File) WriteTo(w io.Writer) (int64, error) {
 // SaveToIndent writes content to file system with given value indention.
 func (f *File) SaveToIndent(filename, indent string) error {
 	// Note: Because we are truncating with os.Create,
-	// 	so it's safer to save to a temporary file location and rename afte done.
+	// 	so it's safer to save to a temporary file location and rename after done.
 	buf, err := f.writeToBuffer(indent)
 	if err != nil {
 		return err
