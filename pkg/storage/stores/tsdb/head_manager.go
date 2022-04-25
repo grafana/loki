@@ -203,7 +203,7 @@ func (m *HeadManager) Start() error {
 		}
 
 		if group.period == curPeriod {
-			if err := recoverHead(m.dir, m.activeHeads, group.wals, false); err != nil {
+			if err := recoverHead(m.dir, m.activeHeads, group.wals); err != nil {
 				return errors.Wrap(err, "recovering tsdb head from wal")
 			}
 		}
@@ -401,7 +401,7 @@ func walPath(parent string, t time.Time) string {
 
 // recoverHead recovers from all WALs belonging to some period
 // and inserts it into the active *tenantHeads
-func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier, addTenantLabels bool) error {
+func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier) error {
 	for _, id := range wals {
 		// use anonymous function for ease of cleanup
 		if err := func(id WALIdentifier) error {
@@ -439,12 +439,6 @@ func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier, addTenant
 					ls, ok := tenant[rec.Chks.Ref]
 					if !ok {
 						return errors.New("found tsdb chunk metas without series in WAL replay")
-					}
-					if addTenantLabels {
-						ls = append(ls, labels.Label{
-							Name:  TenantLabel,
-							Value: rec.UserID,
-						})
 					}
 					_ = heads.Append(rec.UserID, ls, rec.Chks.Chks)
 				}

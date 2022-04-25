@@ -77,7 +77,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	}()
 
 	tmp := newTenantHeads(t, defaultHeadManagerStripeSize, m.metrics, m.log)
-	if err = recoverHead(m.dir, tmp, ids, true); err != nil {
+	if err = recoverHead(m.dir, tmp, ids); err != nil {
 		return errors.Wrap(err, "building TSDB from WALs")
 	}
 
