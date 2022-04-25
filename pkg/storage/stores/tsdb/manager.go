@@ -52,13 +52,13 @@ func NewTSDBManager(
 	dir string,
 	shipper indexshipper.IndexShipper,
 	indexPeriod time.Duration,
-	log log.Logger,
+	logger log.Logger,
 	metrics *Metrics,
 ) TSDBManager {
 	return &tsdbManager{
 		indexPeriod: indexPeriod,
 		nodeName:    nodeName,
-		log:         log,
+		log:         log.With(logger, "component", "tsdb-manager"),
 		dir:         dir,
 		metrics:     metrics,
 		shipper:     shipper,
@@ -66,6 +66,7 @@ func NewTSDBManager(
 }
 
 func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
+	level.Info(m.log).Log("msg", "building WALs", "n", len(ids), "ts", t)
 	// get relevant wals
 	// iterate them, build tsdb in scratch dir
 	defer func() {
@@ -119,11 +120,13 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 			ts:       t,
 		}
 
-		dstFile := filepath.Join(managerBuiltDir(m.dir), desired.Name())
+		dstFile := filepath.Join(managerBuiltDir(m.dir), fmt.Sprint(p), desired.Name())
+		level.Info(m.log).Log("msg", "building tsdb for period", "pd", p, "dst", dstFile)
 
 		// build/move tsdb to multitenant/built dir
+		start := time.Now()
 		_, err = b.Build(
-			context.TODO(),
+			context.Background(),
 			managerScratchDir(m.dir),
 			func(from, through model.Time, checksum uint32) (index.Identifier, string) {
 
@@ -135,6 +138,8 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		if err != nil {
 			return err
 		}
+
+		level.Info(m.log).Log("msg", "finished building tsdb for period", "pd", p, "dst", dstFile, "duration", time.Since(start))
 
 		loaded, err := NewShippableTSDBFile(dstFile)
 		if err != nil {
