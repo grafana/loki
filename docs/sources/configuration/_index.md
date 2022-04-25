@@ -742,7 +742,7 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # Name of the blob container used to store chunks. This container must be
 # created before running cortex.
 # CLI flag: -<prefix>.azure.container-name
-[container_name: <string> | default = "cortex"]
+[container_name: <string> | default = "loki"]
 
 # The Microsoft Azure account name to be used
 # CLI flag: -<prefix>.azure.account-name
@@ -938,7 +938,7 @@ The `swift_storage_config` configures Swift as a general storage for different d
 
 # Name of the Swift container to put chunks in.
 # CLI flag: -<prefix>.swift.container-name
-[container_name: <string> | default = "cortex"]
+[container_name: <string> | default = ""]
 ```
 
 ## hedging
@@ -1488,36 +1488,6 @@ aws:
       # Ignore throttling below this level (rate per second)
       # CLI flag: -metrics.ignore-throttle-below
       [ignore_throttle_below: <float64> | default = 1]
-
-      # Query to fetch ingester queue length
-      # CLI flag: -metrics.queue-length-query
-      [queue_length_query: <string> |
-        default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))"]
-
-      # Query to fetch throttle rates per table
-      # CLI flag: -metrics.write-throttle-query
-      [write_throttle_query: <string> |
-        default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m]))
-        by (table) > 0"]
-
-      # Query to fetch write capacity usage per table
-      # CLI flag: -metrics.usage-query
-      [write_usage_query: <string> |
-        default =
-        "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m]))
-        by (table) > 0"]
-
-      # Query to fetch read capacity usage per table
-      # CLI flag: -metrics.read-usage-query
-      [read_usage_query: <string> |
-        default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h]))
-        by (table) > 0"]
-
-      # Query to fetch read errors per table
-      # CLI flag: -metrics.read-error-query
-      [read_error_query: <string> |
-        default = "sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",
-        error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0"]
 
     # Number of chunks to group together to parallelise fetches (0 to disable)
     # CLI flag: -dynamodb.chunk-gang-size
