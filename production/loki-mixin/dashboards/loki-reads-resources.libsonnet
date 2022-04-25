@@ -106,8 +106,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             $.panel('Query Readiness Duration') +
             $.queryPanel(
-              'sum by (pod) (rate(loki_boltdb_shipper_query_readiness_duration_seconds{%s,container=%s}[$__rate_interval]))' % [$.namespaceMatcher(), 'index-gateway']
-            ) + { yaxes: $.yaxes('s') },
+              ['loki_boltdb_shipper_query_readiness_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']
+            ) +
+            { yaxes: $.yaxes('s') },
           )
         )
         .addRow(
