@@ -243,8 +243,7 @@ func (tm *TableManager) cleanupCache() error {
 func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 	start := time.Now()
 	defer func() {
-		duration := time.Since(start)
-		tm.metrics.ensureQueryReadinessDurationSeconds.Observe(duration.Seconds())
+		tm.metrics.ensureQueryReadinessDurationSeconds.Observe(time.Since(start).Seconds())
 	}()
 
 	activeTableNumber := getActiveTableNumber()
@@ -315,10 +314,11 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 			return err
 		}
 
-		level.Debug(util_log.Logger).Log("msg", "instance should be query ready for users", "users", usersToBeQueryReadyFor, "query_readiness_duration", time.Since(start))
+		perTableStart := time.Now()
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
+		level.Debug(util_log.Logger).Log("msg", "instance query ready for users", "users", usersToBeQueryReadyFor, "query_readiness_duration", time.Since(perTableStart), "table", tableName)
 	}
 
 	return nil
