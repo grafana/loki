@@ -94,10 +94,10 @@ type HeadManager struct {
 	Index
 }
 
-func NewHeadManager(log log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
+func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
 	shards := defaultHeadManagerStripeSize
 	m := &HeadManager{
-		log:         log,
+		log:         log.With(logger, "component", "tsdb-head-manager"),
 		dir:         dir,
 		metrics:     metrics,
 		tsdbManager: tsdbManager,
@@ -268,10 +268,12 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	// build tsdb from rotated-out period
 	// TODO(owen-d): don't block Append() waiting for tsdb building. Use a work channel/etc
 	if m.prev != nil {
+		level.Debug(m.log).Log("msg", "combining tsdb WALs")
 		grp, _, err := walsForPeriod(m.dir, m.period, m.period.PeriodFor(m.prev.initialized))
 		if err != nil {
 			return errors.Wrap(err, "listing wals")
 		}
+		level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
 
 		// TODO(owen-d): It's probably faster to build this from the *tenantHeads instead,
 		// but we already need to impl BuildFromWALs to ensure we can correctly build/ship
@@ -287,6 +289,7 @@ func (m *HeadManager) Rotate(t time.Time) error {
 		if err := m.removeWALGroup(grp); err != nil {
 			return errors.Wrapf(err, "removing prev TSDB WALs for period %d", grp.period)
 		}
+		level.Debug(m.log).Log("msg", "removing wals", "pd", grp.period, "n", len(grp.wals))
 
 	}
 
@@ -400,7 +403,6 @@ func walPath(parent string, t time.Time) string {
 // and inserts it into the active *tenantHeads
 func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier, addTenantLabels bool) error {
 	for _, id := range wals {
-
 		// use anonymous function for ease of cleanup
 		if err := func(id WALIdentifier) error {
 			reader, closer, err := wal.NewWalReader(walPath(dir, id.ts), -1)
@@ -523,13 +525,13 @@ type tenantHeads struct {
 	metrics *Metrics
 }
 
-func newTenantHeads(start time.Time, shards int, metrics *Metrics, log log.Logger) *tenantHeads {
+func newTenantHeads(start time.Time, shards int, metrics *Metrics, logger log.Logger) *tenantHeads {
 	res := &tenantHeads{
 		start:   start,
 		shards:  shards,
 		locks:   make([]sync.RWMutex, shards),
 		tenants: make([]map[string]*Head, shards),
-		log:     log,
+		log:     log.With(logger, "component", "tenant-heads"),
 		metrics: metrics,
 	}
 	for i := range res.tenants {
@@ -661,11 +663,6 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.C
 		t.locks[i].RLock()
 		defer t.locks[i].RUnlock()
 
-		var (
-			ls   labels.Labels
-			chks []index.ChunkMeta
-		)
-
 		for user, tenant := range shard {
 			idx := tenant.Index()
 			ps, err := postingsForMatcher(idx, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
@@ -674,19 +671,18 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.C
 			}
 
 			for ps.Next() {
+				var (
+					ls   labels.Labels
+					chks []index.ChunkMeta
+				)
+
 				_, err := idx.Series(ps.At(), &ls, &chks)
 
 				if err != nil {
 					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
 				}
 
-				// We'll be reusing the slices, so copy before calling fn
-				dst := make(index.ChunkMetas, 0, len(chks))
-				_ = copy(dst, chks)
-				fn(user, ls.Copy(), dst)
-
-				ls = ls[:0]
-				chks = chks[:0]
+				fn(user, ls, chks)
 			}
 		}
 	}
