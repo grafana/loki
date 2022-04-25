@@ -207,7 +207,8 @@ func (t *table) findExpiredIndexSets(ttl time.Duration, now time.Time) []string 
 		}
 	}
 
-	if commonIndexSetExpired {
+	// common index set should expire only after all the user index sets have expired.
+	if commonIndexSetExpired && len(expiredIndexSets) == len(t.indexSets)-1 {
 		expiredIndexSets = append(expiredIndexSets, "")
 	}
 
@@ -223,6 +224,12 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 		t.indexSetsMtx.Lock()
 		defer t.indexSetsMtx.Unlock()
 		for _, userID := range indexSetsToCleanup {
+			// additional check for cleaning up the common index set when it is the only one left.
+			// This is just for safety because the index sets could change between findExpiredIndexSets and the actual cleanup.
+			if userID == "" && len(t.indexSets) != 1 {
+				level.Info(t.logger).Log("msg", "skipping cleanup of common index set because we possibly have unexpired user index sets left")
+				continue
+			}
 			level.Info(t.logger).Log("msg", fmt.Sprintf("cleaning up expired index set %s", userID))
 			err := t.indexSets[userID].DropAllDBs()
 			if err != nil {

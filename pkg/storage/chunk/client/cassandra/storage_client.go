@@ -94,7 +94,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // nolint: revive
 func (cfg *Config) Validate() error {
-	if cfg.Password.Value != "" && cfg.PasswordFile != "" {
+	if cfg.Password.String() != "" && cfg.PasswordFile != "" {
 		return errors.Errorf("The password and password_file config options are mutually exclusive.")
 	}
 	if cfg.SSL && cfg.HostVerification && len(strings.Split(cfg.Addresses, ",")) != 1 {
@@ -200,7 +200,7 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 	}
 
 	if cfg.Auth {
-		password := cfg.Password.Value
+		password := cfg.Password.String()
 		if cfg.PasswordFile != "" {
 			passwordBytes, err := ioutil.ReadFile(cfg.PasswordFile)
 			if err != nil {

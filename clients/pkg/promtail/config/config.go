@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	dskit_flagext "github.com/grafana/dskit/flagext"
 
 	yaml "gopkg.in/yaml.v2"
@@ -59,8 +61,9 @@ func (c Config) String() string {
 	return string(b)
 }
 
-func (c *Config) Setup() {
+func (c *Config) Setup(l log.Logger) {
 	if c.ClientConfig.URL.URL != nil {
+		level.Warn(l).Log("msg", "use of CLI client.* and config file Client block are both deprecated in favour of the config file Clients block and will be removed in a future release")
 		// if a single client config is used we add it to the multiple client config for backward compatibility
 		c.ClientConfigs = append(c.ClientConfigs, c.ClientConfig)
 	}
