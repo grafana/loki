@@ -246,7 +246,7 @@ func (g *Gateway) stopping(_ error) error {
 
 func (g *Gateway) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
 	if !g.ready {
-		return fmt.Errorf("index gateway not ready for not assigning index client")
+		return fmt.Errorf("index gateway not yet ready due to index client")
 	}
 
 	var outerErr error
