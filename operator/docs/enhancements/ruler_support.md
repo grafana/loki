@@ -625,7 +625,7 @@ In detail the separation of concerns between both CRDs looks like:
 #### General constraints
 
 1. The above `LokiRulerConfig` is limited to a single global remote write endpoint for exporting metrics from recording rules. This leaves solving multi-tenancy issues on the remote write server side and provide means (e.g. headers) for spliting/amending metrics ingestion per tenant. On the other hand it simplifies ruler operations as it does not require to spin concurrent remote write clients per tenant.
-2. Additionally the `LokiRulerConfig** requires a user-provided Kubernetes Secret for sensitive information. This adds an extra dependency that requires validation inside the controller-loop.
+2. Additionally the `LokiRulerConfig` requires a user-provided Kubernetes Secret for sensitive information. This adds an extra dependency that requires validation inside the controller-loop.
 
 ### Risks and Mitigations
 
