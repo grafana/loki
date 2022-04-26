@@ -61,15 +61,41 @@ In summary the `LokiStack` ruler component will support by default minimum the f
 The following section describes a set of changes that enable reconciling the Loki ruler component as an optional StatefulSet. The Loki ruler component spec inherits the same node placement capabilities as the rest of the `LokiStack` components, i.e. currently node-selectors and tolerations (defined in `LokiComponentSpec`).
 
 ```go
-// LokiStackSpec defines the desired state of LokiStack
-type LokiStackSpec struct {
-...
-    // EnableRuler defines a flag to enable/disable the ruler component
+// RulesSpec deifnes the spec for the ruler component.
+type RulesSpec struct {
+    // Enabled defines a flag to enable/disable the ruler component
+    //
+    // +required
+    // +kubebuilder:validation:Required
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Enable"
+    Enabled bool `json:"enabled"`
+
+    // A selector to select which LokiRules to mount for loading alerting/recording
+    // rules from.
+    //
+    // +optional
+    // +kubebuilder:validation:optional
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Selector"
+    Selector *metav1.LabelSelector `json:"selector,omitempty"`
+
+    // Namespaces to be selected for PrometheusRules discovery. If unspecified, only
+    // the same namespace as the LokiStack object is in is used.
     //
     // +optional
     // +kubebuilder:validation:Optional
-    // +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Enable Ruler"
-    EnableRuler bool `json:"enableRuler"`
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Namespace Selector"
+    NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
+}
+
+// LokiStackSpec defines the desired state of LokiStack
+type LokiStackSpec struct {
+...
+    // Rules defines the spec for the ruler component
+    //
+    // +optional
+    // +kubebuilder:validation:Optional
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Rules"
+    Rules *RulesSpec `json:"rules,omitempty"`
 ...
 }
 
@@ -100,7 +126,7 @@ type LokiStackComponentStatus struct {
 
 #### LokiRule definition
 
-The `LokiRule` CRD comprises a set of specifications and status definitions to declare groups of alerting and/or recording rules for a single `LokiStack` instance. The syntax for the rule groups resembles the official [Prometheus Rule syntax](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules). In addition the status definition provides support for rule validation conditions:
+The `LokiRule` CRD comprises a set of specifications and webhook validation definitions to declare groups of alerting and/or recording rules for a single `LokiStack` instance. The syntax for the rule groups resembles the official [Prometheus Rule syntax](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules). In addition the webhook validation definition provides support for rule validation conditions:
 
 1. If a `LokiRule` includes an alert name and a record name it is ambiguous if it is an alerting or a recording rule.
 2. If a `LokiRule` includes an invalid `for` period it is an invalid alerting rule.
@@ -117,12 +143,6 @@ type EvaluationDuration string
 
 // LokiRuleSpec defines the desired state of LokiRule
 type LokiRuleSpec struct {
-    // Name of the LokiStack to reconcile the rules for
-    //
-    // +required
-    // +kubebuilder:validation:Required
-    StackName string `json:"stackName"`
-
     // List of groups for alerting and/or recording rules.
     //
     // +optional
@@ -203,43 +223,8 @@ type LokiRuleGroupSpec struct {
     Labels map[string]string `json:"labels,omitempty"`
 }
 
-// LokiRuleConditionType defines the type for LokiRule conditions.
-type LokiRuleConditionType string
-
-const (
-    // ConditionValid defines the condition when all given LokiRule groups expressions are valid.
-    ConditionValid LokiRuleConditionType = "Valid"
-    // ConditionInvalid defines the condition when at least one LokiRule group definition is invalid.
-    ConditionInvalid LokiRuleConditionType = "Invalid"
-)
-
-// LokiRuleConditionReason defines the type for valid reasons of a LokiRule condition.
-type LokiRuleConditionReason string
-
-const (
-    // ReasonAllRulesValid when no rule validation occurred.
-    ReasonAllRulesValid LokiRuleConditionReason = "AllRulesValid"
-    // ReasonAmbiguousRuleConfig when a loki rule includes alerting and recording rule fields.
-    ReasonAmbiguousRuleConfig LokiRuleConditionReason = "AmbiguousRuleConfig"
-    // ReasonInvalidAlertingRuleConfig when a loki alerting rule has an invalid period for firing alerts.
-    ReasonInvalidAlertingRuleConfig LokiRuleConditionReason = "InvalidAlertingRuleConfig"
-    // ReasonInvalidRecordingRuleConfig when a loki recording rules has an invalid record label name.
-    ReasonInvalidRecordingRuleConfig LokiRuleConditionReason = "InvalidRecordingRuleConfig"
-    // ReasonInvalidRuleExpression when a loki rule expression cannot be parsed by the LogQL parser.
-    ReasonInvalidRuleExpression LokiRuleConditionReason = "InvalidRuleExpression"
-    // ReasonNotUniqueRuleGroupName when a loki rule group name is not unique.
-    ReasonNotUniqueRuleGroupName LokiRuleConditionReason = "NotUniqueRuleGroupName"
-)
-
 // LokiRuleStatus defines the observed state of LokiRule
-type LokiRuleStatus struct {
-    // Conditions of the LokiRule generation health.
-    //
-    // +optional
-    // +kubebuilder:validation:Optional
-    // +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:io.kubernetes.conditions"
-    Conditions []metav1.Condition `json:"conditions,omitempty"`
-}
+type LokiRuleStatus struct {}
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
@@ -674,6 +659,7 @@ In detail the separation of concerns between both CRDs looks like:
 
 * 2022-04-21: Initial draft proposal
 * 2022-04-21: Spike implementation for `LokiRule` reconciliation and `LokiRulerConfig` types. (See [PR](https://github.com/grafana/loki/pull/5986))
+* 2022-04-26: Update draft to use `LokiRule` types to use webhook-based validation and `LokiRuleSpec.Selector`, `LokiRuleSpec.NamespaceSelector`. (See [PR](https://github.com/grafana/loki/pull/5986))
 
 ## Drawbacks
 
