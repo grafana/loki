@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
