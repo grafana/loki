@@ -66,7 +66,7 @@ func NewTSDBManager(
 }
 
 func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
-	level.Info(m.log).Log("msg", "building WALs", "n", len(ids), "ts", t)
+	level.Debug(m.log).Log("msg", "building WALs", "n", len(ids), "ts", t)
 	// get relevant wals
 	// iterate them, build tsdb in scratch dir
 	defer func() {
@@ -76,6 +76,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		}
 	}()
 
+	level.Debug(m.log).Log("msg", "recovering tenant heads")
 	tmp := newTenantHeads(t, defaultHeadManagerStripeSize, m.metrics, m.log)
 	if err = recoverHead(m.dir, tmp, ids); err != nil {
 		return errors.Wrap(err, "building TSDB from WALs")
@@ -84,6 +85,13 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	periods := make(map[int]*index.Builder)
 
 	if err := tmp.forAll(func(user string, ls labels.Labels, chks index.ChunkMetas) {
+
+		labelsBuilder := labels.NewBuilder(ls)
+		// TSDB doesnt need the __name__="log" convention the old chunk store index used.
+		labelsBuilder.Del("__name__")
+		labelsBuilder.Set(TenantLabel, user)
+		metric := labelsBuilder.Labels()
+
 		// chunks may overlap index period bounds, in which case they're written to multiple
 		pds := make(map[int]index.ChunkMetas)
 		for _, chk := range chks {
@@ -101,10 +109,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 			}
 
 			b.AddSeries(
-				append(ls, labels.Label{
-					Name:  TenantLabel,
-					Value: user,
-				}),
+				metric,
 				matchingChks,
 			)
 		}
@@ -121,7 +126,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		}
 
 		dstFile := filepath.Join(managerBuiltDir(m.dir), fmt.Sprint(p), desired.Name())
-		level.Info(m.log).Log("msg", "building tsdb for period", "pd", p, "dst", dstFile)
+		level.Debug(m.log).Log("msg", "building tsdb for period", "pd", p, "dst", dstFile)
 
 		// build/move tsdb to multitenant/built dir
 		start := time.Now()
@@ -139,7 +144,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 			return err
 		}
 
-		level.Info(m.log).Log("msg", "finished building tsdb for period", "pd", p, "dst", dstFile, "duration", time.Since(start))
+		level.Debug(m.log).Log("msg", "finished building tsdb for period", "pd", p, "dst", dstFile, "duration", time.Since(start))
 
 		loaded, err := NewShippableTSDBFile(dstFile)
 		if err != nil {
