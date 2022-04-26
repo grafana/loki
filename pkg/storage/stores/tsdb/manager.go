@@ -86,12 +86,6 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 
 	if err := tmp.forAll(func(user string, ls labels.Labels, chks index.ChunkMetas) {
 
-		labelsBuilder := labels.NewBuilder(ls)
-		// TSDB doesnt need the __name__="log" convention the old chunk store index used.
-		labelsBuilder.Del("__name__")
-		labelsBuilder.Set(TenantLabel, user)
-		metric := labelsBuilder.Labels()
-
 		// chunks may overlap index period bounds, in which case they're written to multiple
 		pds := make(map[int]index.ChunkMetas)
 		for _, chk := range chks {
@@ -109,7 +103,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 			}
 
 			b.AddSeries(
-				metric,
+				ls,
 				matchingChks,
 			)
 		}

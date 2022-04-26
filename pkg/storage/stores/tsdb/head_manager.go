@@ -134,6 +134,13 @@ func (m *HeadManager) Stop() error {
 }
 
 func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
+	labelsBuilder := labels.NewBuilder(ls)
+	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
+	labelsBuilder.Del("__name__")
+	// userIDs are also included until compaction occurs in tsdb
+	labelsBuilder.Set(TenantLabel, userID)
+	metric := labelsBuilder.Labels()
+
 	m.mtx.RLock()
 	now := time.Now()
 	if m.period.PeriodFor(now) > m.period.PeriodFor(m.activeHeads.start) {
@@ -144,7 +151,7 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMe
 		m.mtx.RLock()
 	}
 	defer m.mtx.RUnlock()
-	rec := m.activeHeads.Append(userID, ls, chks)
+	rec := m.activeHeads.Append(userID, metric, chks)
 	return m.active.Log(rec)
 }
 
