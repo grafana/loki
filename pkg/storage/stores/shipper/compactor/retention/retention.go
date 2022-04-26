@@ -358,7 +358,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, interva
 			return false, err
 		}
 
-		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(start, end, userID, "logs", newChunk.Metric, c.scfg.ExternalKey(newChunk.ChunkRef))
+		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(newChunk.From, newChunk.Through, userID, "logs", newChunk.Metric, c.scfg.ExternalKey(newChunk.ChunkRef))
 		if err != nil {
 			return false, err
 		}
