@@ -34,7 +34,7 @@ func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, userID strin
 }
 
 func (c *IndexGatewayClientStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
-	return c.GetSeries(ctx, userID, from, through, matchers...)
+	return c.IndexStore.GetSeries(ctx, userID, from, through, matchers...)
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
