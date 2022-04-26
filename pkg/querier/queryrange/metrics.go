@@ -10,7 +10,7 @@ import (
 type Metrics struct {
 	*queryrangebase.InstrumentMiddlewareMetrics
 	*queryrangebase.RetryMiddlewareMetrics
-	*logql.ShardingMetrics
+	*logql.MapperMetrics
 	*SplitByMetrics
 	*LogResultCacheMetrics
 }
@@ -19,7 +19,7 @@ func NewMetrics(registerer prometheus.Registerer) *Metrics {
 	return &Metrics{
 		InstrumentMiddlewareMetrics: queryrangebase.NewInstrumentMiddlewareMetrics(registerer),
 		RetryMiddlewareMetrics:      queryrangebase.NewRetryMiddlewareMetrics(registerer),
-		ShardingMetrics:             logql.NewShardingMetrics(registerer),
+		MapperMetrics:               logql.NewMapperMetrics(registerer),
 		SplitByMetrics:              NewSplitByMetrics(registerer),
 		LogResultCacheMetrics:       NewLogResultCacheMetrics(registerer),
 	}

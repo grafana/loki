@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	nilShardingMetrics = logql.NewShardingMetrics(nil)
+	nilShardingMetrics = logql.NewMapperMetrics(nil)
 	defaultReq         = func() *LokiRequest {
 		return &LokiRequest{
 			Limit:     100,

@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-var nilMetrics = NewShardingMetrics(nil)
+var nilMetrics = NewMapperMetrics(nil)
 
 func TestMappingEquivalence(t *testing.T) {
 	var (
@@ -61,7 +61,7 @@ func TestMappingEquivalence(t *testing.T) {
 
 		opts := EngineOpts{}
 		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, nilMetrics, NoLimits, log.NewNopLogger())
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
 			params := NewLiteralParams(
@@ -260,7 +260,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 		opts := EngineOpts{}
 		regularEngine := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-		downstreamEngine := NewDownstreamEngine(opts, MockDownstreamer{regularEngine}, nilMetrics, NoLimits, log.NewNopLogger())
+		downstreamEngine := NewDownstreamEngine(opts, MockDownstreamer{regularEngine}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
