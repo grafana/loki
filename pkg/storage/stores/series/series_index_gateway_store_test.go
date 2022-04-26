@@ -35,6 +35,10 @@ func Test_IndexGatewayClient(t *testing.T) {
 	}
 	schema, err := index.CreateSchema(schemaCfg.Configs[0])
 	require.NoError(t, err)
+	testutils.ResetMockStorage()
+	tm, err := index.NewTableManager(index.TableManagerConfig{}, schemaCfg, 2*time.Hour, testutils.NewMockStorage(), nil, nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, tm.SyncTables(context.Background()))
 
 	idx := IndexGatewayClientStore{
 		client: fakeClient{},
@@ -45,7 +49,7 @@ func Test_IndexGatewayClient(t *testing.T) {
 			index:          testutils.NewMockStorage(),
 		},
 	}
-	_, err = idx.GetSeries(context.Background(), "foo", model.Earliest, model.Latest, labels.MustNewMatcher(labels.MatchEqual, "__name__", "logs"))
+	_, err = idx.GetSeries(context.Background(), "foo", model.Now(), model.Now().Add(1*time.Hour), labels.MustNewMatcher(labels.MatchEqual, "__name__", "logs"))
 	require.NoError(t, err)
 }
 
