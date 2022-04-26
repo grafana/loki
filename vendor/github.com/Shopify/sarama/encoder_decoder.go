@@ -87,7 +87,9 @@ func versionedDecode(buf []byte, in versionedDecoder, version int16) error {
 	}
 
 	if helper.off != len(buf) {
-		return PacketDecodingError{"invalid length"}
+		return PacketDecodingError{
+			Info: fmt.Sprintf("invalid length (off=%d, len=%d)", helper.off, len(buf)),
+		}
 	}
 
 	return nil

@@ -46,9 +46,16 @@ See [the project documentation](https://pkg.go.dev/github.com/golang-jwt/jwt) fo
 
 ## Extensions
 
-This library publishes all the necessary components for adding your own signing methods.  Simply implement the `SigningMethod` interface and register a factory method using `RegisterSigningMethod`.  
+This library publishes all the necessary components for adding your own signing methods.  Simply implement the `SigningMethod` interface and register a factory method using `RegisterSigningMethod`. 
 
-Here's an example of an extension that integrates with multiple Google Cloud Platform signing tools (AppEngine, IAM API, Cloud KMS): https://github.com/someone1/gcp-jwt-go
+A common use case would be integrating with different 3rd party signature providers, like key management services from various cloud providers or Hardware Security Modules (HSMs).
+
+| Extension | Purpose                                                                                      | Repo                                       |
+|-----------|----------------------------------------------------------------------------------------------|--------------------------------------------|
+| GCP       | Integrates with multiple Google Cloud Platform signing tools (AppEngine, IAM API, Cloud KMS) | https://github.com/someone1/gcp-jwt-go     |
+| AWS       | Integrates with AWS Key Management Service, KMS                                              | https://github.com/matelang/jwt-go-aws-kms |
+
+*Disclaimer*: Unless otherwise specified, these integrations are maintained by third parties and should not be considered as a primary offer by any of the mentioned cloud providers
 
 ## Compliance
 
@@ -112,3 +119,5 @@ This library uses descriptive error messages whenever possible. If you are not g
 Documentation can be found [on pkg.go.dev](https://pkg.go.dev/github.com/golang-jwt/jwt).
 
 The command line utility included in this project (cmd/jwt) provides a straightforward example of token creation and parsing as well as a useful tool for debugging your own integration. You'll also find several implementation examples in the documentation.
+
+[golang-jwt](https://github.com/orgs/golang-jwt) incorporates a modified version of the JWT logo, which is distributed under the terms of the [MIT License](https://github.com/jsonwebtoken/jsonwebtoken.github.io/blob/master/LICENSE.txt).

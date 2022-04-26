@@ -16,6 +16,7 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -232,6 +233,9 @@ func (settings EnvironmentSettings) GetAuthorizer() (autorest.Authorizer, error)
 	}
 
 	// 4. MSI
+	if !adal.MSIAvailable(context.Background(), nil) {
+		return nil, errors.New("MSI not available")
+	}
 	logger.Instance.Writeln(logger.LogInfo, "EnvironmentSettings.GetAuthorizer() using MSI authentication")
 	return settings.GetMSI().Authorizer()
 }

@@ -54,6 +54,26 @@ type ConsumerGroup interface {
 	// Close stops the ConsumerGroup and detaches any running sessions. It is required to call
 	// this function before the object passes out of scope, as it will otherwise leak memory.
 	Close() error
+
+	// Pause suspends fetching from the requested partitions. Future calls to the broker will not return any
+	// records from these partitions until they have been resumed using Resume()/ResumeAll().
+	// Note that this method does not affect partition subscription.
+	// In particular, it does not cause a group rebalance when automatic assignment is used.
+	Pause(partitions map[string][]int32)
+
+	// Resume resumes specified partitions which have been paused with Pause()/PauseAll().
+	// New calls to the broker will return records from these partitions if there are any to be fetched.
+	Resume(partitions map[string][]int32)
+
+	// Pause suspends fetching from all partitions. Future calls to the broker will not return any
+	// records from these partitions until they have been resumed using Resume()/ResumeAll().
+	// Note that this method does not affect partition subscription.
+	// In particular, it does not cause a group rebalance when automatic assignment is used.
+	PauseAll()
+
+	// Resume resumes all partitions which have been paused with Pause()/PauseAll().
+	// New calls to the broker will return records from these partitions if there are any to be fetched.
+	ResumeAll()
 }
 
 type consumerGroup struct {
@@ -186,6 +206,26 @@ func (c *consumerGroup) Consume(ctx context.Context, topics []string, handler Co
 
 	// Gracefully release session claims
 	return sess.release(true)
+}
+
+// Pause implements ConsumerGroup.
+func (c *consumerGroup) Pause(partitions map[string][]int32) {
+	c.consumer.Pause(partitions)
+}
+
+// Resume implements ConsumerGroup.
+func (c *consumerGroup) Resume(partitions map[string][]int32) {
+	c.consumer.Resume(partitions)
+}
+
+// PauseAll implements ConsumerGroup.
+func (c *consumerGroup) PauseAll() {
+	c.consumer.PauseAll()
+}
+
+// ResumeAll implements ConsumerGroup.
+func (c *consumerGroup) ResumeAll() {
+	c.consumer.ResumeAll()
 }
 
 func (c *consumerGroup) retryNewSession(ctx context.Context, topics []string, handler ConsumerGroupHandler, retries int, refreshCoordinator bool) (*consumerGroupSession, error) {
@@ -507,7 +547,9 @@ func (c *consumerGroup) loopCheckPartitionNumbers(topics []string, session *cons
 		select {
 		case <-pause.C:
 		case <-session.ctx.Done():
-			Logger.Printf("loop check partition number coroutine will exit, topics %s", topics)
+			Logger.Printf(
+				"consumergroup/%s loop check partition number coroutine will exit, topics %s\n",
+				c.groupID, topics)
 			// if session closed by other, should be exited
 			return
 		case <-c.closed:
@@ -520,7 +562,9 @@ func (c *consumerGroup) topicToPartitionNumbers(topics []string) (map[string]int
 	topicToPartitionNum := make(map[string]int, len(topics))
 	for _, topic := range topics {
 		if partitionNum, err := c.client.Partitions(topic); err != nil {
-			Logger.Printf("Consumer Group topic %s get partition number failed %v", topic, err)
+			Logger.Printf(
+				"consumergroup/%s topic %s get partition number failed %v\n",
+				c.groupID, err)
 			return nil, err
 		} else {
 			topicToPartitionNum[topic] = len(partitionNum)
@@ -766,12 +810,21 @@ func (s *consumerGroupSession) release(withCleanup bool) (err error) {
 		<-s.hbDead
 	})
 
+	Logger.Printf(
+		"consumergroup/session/%s/%d released\n",
+		s.MemberID(), s.GenerationID())
+
 	return
 }
 
 func (s *consumerGroupSession) heartbeatLoop() {
 	defer close(s.hbDead)
 	defer s.cancel() // trigger the end of the session on exit
+	defer func() {
+		Logger.Printf(
+			"consumergroup/session/%s/%d heartbeat loop stopped\n",
+			s.MemberID(), s.GenerationID())
+	}()
 
 	pause := time.NewTicker(s.parent.config.Consumer.Group.Heartbeat.Interval)
 	defer pause.Stop()
@@ -813,7 +866,10 @@ func (s *consumerGroupSession) heartbeatLoop() {
 		switch resp.Err {
 		case ErrNoError:
 			retries = s.parent.config.Metadata.Retry.Max
-		case ErrRebalanceInProgress, ErrUnknownMemberId, ErrIllegalGeneration:
+		case ErrRebalanceInProgress:
+			retries = s.parent.config.Metadata.Retry.Max
+			s.cancel()
+		case ErrUnknownMemberId, ErrIllegalGeneration:
 			return
 		default:
 			s.parent.handleError(resp.Err, "", -1)

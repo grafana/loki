@@ -15,7 +15,7 @@
 // enough bytes. This library attempts to do no validation, it will only return
 // false if there are not enough bytes for an item to be read. For example, the
 // ReadDocument function checks the length, if that length is larger than the
-// number of bytes availble, it will return false, if there are enough bytes, it
+// number of bytes available, it will return false, if there are enough bytes, it
 // will return those bytes and true. It is the consumers responsibility to
 // validate those bytes.
 //
@@ -69,7 +69,7 @@ func AppendHeader(dst []byte, t bsontype.Type, key string) []byte {
 // was read.
 
 // ReadType will return the first byte of the provided []byte as a type. If
-// there is no availble byte, false is returned.
+// there is no available byte, false is returned.
 func ReadType(src []byte) (bsontype.Type, []byte, bool) {
 	if len(src) < 1 {
 		return 0, src, false
@@ -231,7 +231,7 @@ func AppendDocumentEnd(dst []byte, index int32) ([]byte, error) {
 // AppendDocument will append doc to dst and return the extended buffer.
 func AppendDocument(dst []byte, doc []byte) []byte { return append(dst, doc...) }
 
-// AppendDocumentElement will append a BSON embeded document element using key
+// AppendDocumentElement will append a BSON embedded document element using key
 // and doc to dst and return the extended buffer.
 func AppendDocumentElement(dst []byte, key string, doc []byte) []byte {
 	return AppendDocument(AppendHeader(dst, bsontype.EmbeddedDocument, key), doc)
