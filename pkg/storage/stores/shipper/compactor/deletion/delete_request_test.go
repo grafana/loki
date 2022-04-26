@@ -224,4 +224,19 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 	require.False(t, f(""))
 	require.False(t, f("other line"))
 	require.False(t, f("some line"))
+
+	dr = DeleteRequest{
+		Query: `{namespace="default"}`,
+	}
+
+	lblStr = `{namespace="default"}`
+	lbls = mustParseLabel(lblStr)
+
+	f, err = dr.FilterFunction(lbls)
+	require.NoError(t, err)
+
+	require.True(t, f(`some line`))
+	require.True(t, f(""))
+	require.True(t, f("other line"))
+
 }
