@@ -10,16 +10,28 @@ import (
 type Metrics struct {
 	*queryrangebase.InstrumentMiddlewareMetrics
 	*queryrangebase.RetryMiddlewareMetrics
-	*logql.MapperMetrics
+	*MiddlewareMapperMetrics
 	*SplitByMetrics
 	*LogResultCacheMetrics
+}
+
+type MiddlewareMapperMetrics struct {
+	shardMapper *logql.MapperMetrics
+	rangeMapper *logql.MapperMetrics
+}
+
+func NewMiddlewareMapperMetrics(registerer prometheus.Registerer) *MiddlewareMapperMetrics {
+	return &MiddlewareMapperMetrics{
+		shardMapper: logql.NewShardMapperMetrics(registerer),
+		rangeMapper: logql.NewRangeMapperMetrics(registerer),
+	}
 }
 
 func NewMetrics(registerer prometheus.Registerer) *Metrics {
 	return &Metrics{
 		InstrumentMiddlewareMetrics: queryrangebase.NewInstrumentMiddlewareMetrics(registerer),
 		RetryMiddlewareMetrics:      queryrangebase.NewRetryMiddlewareMetrics(registerer),
-		MapperMetrics:               logql.NewMapperMetrics(registerer),
+		MiddlewareMapperMetrics:     NewMiddlewareMapperMetrics(registerer),
 		SplitByMetrics:              NewSplitByMetrics(registerer),
 		LogResultCacheMetrics:       NewLogResultCacheMetrics(registerer),
 	}

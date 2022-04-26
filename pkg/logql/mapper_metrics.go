@@ -25,31 +25,27 @@ type MapperMetrics struct {
 	DownstreamFactor  prometheus.Histogram   // per request downstream factor
 }
 
-func NewMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
+func newMapperMetrics(registerer prometheus.Registerer, mapper string) *MapperMetrics {
 	return &MapperMetrics{
 		DownstreamQueries: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "query_frontend_shards_total",
-			Help:      "Number of downstream queries by expression type",
+			Namespace:   "loki",
+			Name:        "query_frontend_shards_total",
+			Help:        "Number of downstream queries by expression type",
+			ConstLabels: prometheus.Labels{"mapper": mapper},
 		}, []string{"type"}),
 		ParsedQueries: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "query_frontend_sharding_parsed_queries_total",
-			Help:      "Number of parsed queries by evaluation type",
+			Namespace:   "loki",
+			Name:        "query_frontend_sharding_parsed_queries_total",
+			Help:        "Number of parsed queries by evaluation type",
+			ConstLabels: prometheus.Labels{"mapper": mapper},
 		}, []string{"type"}),
 		DownstreamFactor: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Name:      "query_frontend_shard_factor",
-			Help:      "Number of downstream queries per request",
-			Buckets:   prometheus.LinearBuckets(0, 16, 4),
+			Namespace:   "loki",
+			Name:        "query_frontend_shard_factor",
+			Help:        "Number of downstream queries per request",
+			Buckets:     prometheus.LinearBuckets(0, 16, 4),
+			ConstLabels: prometheus.Labels{"mapper": mapper},
 		}),
-	}
-}
-
-// downstreamRecorder constructs a recorder using the underlying metrics.
-func (m *MapperMetrics) downstreamRecorder() *downstreamRecorder {
-	return &downstreamRecorder{
-		MapperMetrics: m,
 	}
 }
 
@@ -61,6 +57,13 @@ type downstreamRecorder struct {
 	done  bool
 	total int
 	*MapperMetrics
+}
+
+// downstreamRecorder constructs a recorder using the underlying metrics.
+func (m *MapperMetrics) downstreamRecorder() *downstreamRecorder {
+	return &downstreamRecorder{
+		MapperMetrics: m,
+	}
 }
 
 // Add increments both the downstream count and tracks it for the eventual histogram entry.

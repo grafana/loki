@@ -14,7 +14,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-var nilMetrics = NewMapperMetrics(nil)
+var nilShardMetrics = NewShardMapperMetrics(nil)
+var nilRangeMetrics = NewRangeMapperMetrics(nil)
 
 func TestMappingEquivalence(t *testing.T) {
 	var (
@@ -77,7 +78,7 @@ func TestMappingEquivalence(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper, err := NewShardMapper(shards, nilMetrics)
+			mapper, err := NewShardMapper(shards, nilShardMetrics)
 			require.Nil(t, err)
 			_, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
@@ -282,7 +283,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			require.Nil(t, err)
 
 			// Downstream engine - split by range
-			rangeMapper, err := NewRangeMapper(tc.splitByInterval)
+			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics)
 			require.Nil(t, err)
 			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
 			require.Nil(t, err)

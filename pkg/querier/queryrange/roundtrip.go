@@ -281,7 +281,7 @@ func NewLogFilterTripperware(
 				log,
 				schema.Configs,
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-				metrics.MapperMetrics,
+				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
 			),
 		)
@@ -333,7 +333,7 @@ func NewSeriesTripperware(
 				log,
 				schema.Configs,
 				metrics.InstrumentMiddlewareMetrics,
-				metrics.MapperMetrics,
+				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
 				codec,
 			),
@@ -438,7 +438,7 @@ func NewMetricTripperware(
 				log,
 				schema.Configs,
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-				metrics.MapperMetrics,
+				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
 			),
 		)
@@ -480,12 +480,12 @@ func NewInstantMetricTripperware(
 
 	if cfg.ShardedQueries {
 		queryRangeMiddleware = append(queryRangeMiddleware,
-			NewSplitByRangeMiddleware(log, limits, nil),
+			NewSplitByRangeMiddleware(log, limits, metrics.MiddlewareMapperMetrics.rangeMapper),
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-				metrics.MapperMetrics,
+				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
 			),
 		)

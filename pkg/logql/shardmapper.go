@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -24,6 +25,10 @@ func NewShardMapper(shards int, metrics *MapperMetrics) (ShardMapper, error) {
 		shards:  shards,
 		metrics: metrics,
 	}, nil
+}
+
+func NewShardMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
+	return newMapperMetrics(registerer, "shard")
 }
 
 func (m ShardMapper) Parse(query string) (noop bool, expr syntax.Expr, err error) {
