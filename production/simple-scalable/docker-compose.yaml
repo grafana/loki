@@ -35,6 +35,18 @@ services:
     networks:
       <<: *loki-dns
 
+  promtail:
+    image: grafana/promtail:2.5.0
+    volumes:
+      #- /var/log:/var/log
+      - ./promtail-local-config.yaml:/etc/promtail/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      - gateway
+    networks:
+      - loki
+
   minio:
     image: minio/minio
     entrypoint:
@@ -154,5 +166,11 @@ services:
         /docker-entrypoint.sh nginx -g "daemon off;"
     ports:
       - "3100:3100"
+    networks:
+      - loki
+
+  flog:
+    image: mingrammer/flog
+    command: -f json -d 1s -l
     networks:
       - loki
