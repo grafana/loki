@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -318,7 +319,8 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
-		level.Debug(util_log.Logger).Log("msg", "instance query ready for users", "users", usersToBeQueryReadyFor, "query_readiness_duration", time.Since(perTableStart), "table", tableName)
+		joinedUsers := strings.Join(usersToBeQueryReadyFor, ",")
+		level.Debug(util_log.Logger).Log("msg", "instance query ready for users", "users", joinedUsers, "query_readiness_duration", time.Since(perTableStart), "table", tableName)
 	}
 
 	return nil
