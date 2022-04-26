@@ -28,13 +28,24 @@ func (fakeClient) GetChunkRef(ctx context.Context, in *indexgatewaypb.GetChunkRe
 }
 
 func Test_IndexGatewayClient(t *testing.T) {
+	schemaCfg := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{From: config.DayTime{Time: model.Now().Add(-24 * time.Hour)}, Schema: "v12", RowShards: 16},
+		},
+	}
+	schema, err := index.CreateSchema(schemaCfg.Configs[0])
+	require.NoError(t, err)
+
 	idx := IndexGatewayClientStore{
 		client: fakeClient{},
 		IndexStore: &IndexStore{
 			chunkBatchSize: 1,
+			schema:         schema,
+			schemaCfg:      schemaCfg,
+			index:          testutils.NewMockStorage(),
 		},
 	}
-	_, err := idx.GetSeries(context.Background(), "foo", model.Earliest, model.Latest)
+	_, err = idx.GetSeries(context.Background(), "foo", model.Earliest, model.Latest, labels.MustNewMatcher(labels.MatchEqual, "__name__", "logs"))
 	require.NoError(t, err)
 }
 
