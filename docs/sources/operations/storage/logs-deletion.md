@@ -4,10 +4,11 @@ weight: 60
 ---
 # Log Entry Deletion
 
-<span style="background-color:#f3f973;">Log entry deletion is experimental. It is only supported for the BoltDB Shipper index store.</span>
+<span style="background-color:#f3f973;">Log entry deletion is only supported for the BoltDB Shipper index store.</span>
 
-Grafana Loki supports the deletion of log entries from specified streams.
-Log entries that fall within a specified time window are those that will be deleted.
+Grafana Loki supports the deletion of log entries from a specified stream.
+Log entries that fall within a specified time window and and match an optional line filter are those that will be deleted.
+
 
 The Compactor component exposes REST endpoints that process delete requests.
 Hitting the endpoint specifies the streams and the time window.
@@ -17,7 +18,12 @@ Log entry deletion relies on configuration of the custom logs retention workflow
 
 ## Configuration
 
-Enable log entry deletion by setting `retention_enabled` to true and `deletion_enabled` to `whole-stream-deletion` in the Compactor's configuration. See the example in [Retention Configuration](../retention#retention-configuration).
+Enable log entry deletion by setting `retention_enabled` to true and `deletion_enabled` to `whole-stream-deletion`, `filter-only` or `filter-and-delete` in the Compactor's configuration. See the example in [Retention Configuration](../retention#retention-configuration).
+
+With `whole-stream-deletion` all the log entries matching the query given in the delete request are removed.
+With `filter-only` log lines matching the query in the delete request are filtered out when querying Loki. They are not removed from the on-disk chunks.
+With `filter-and-delete` log lines matching the query in the delete request are filtered out when querying Loki and they are also removed from the on-disk chunks.
+
 
 A delete request may be canceled within a configurable cancellation period. Set the `delete_request_cancel_period` in the Compactor's YAML configuration or on the command line when invoking Loki. Its default value is 24h.
 
@@ -34,7 +40,7 @@ PUT /loki/api/v1/delete
 
 Query parameters:
 
-* `query=<series_selector>`: query argument that identifies the streams from which to delete.
+* `query=<series_selector>`: query argument that identifies the streams from which to delete with optional line filters.
 * `start=<rfc3339 | unix_timestamp>`: A timestamp that identifies the start of the time window within which entries will be deleted. If not specified, defaults to 0, the Unix Epoch time.
 * `end=<rfc3339 | unix_timestamp>`: A timestamp that identifies the end of the time window within which entries will be deleted. If not specified, defaults to the current time.
 
@@ -46,6 +52,8 @@ URL encode the `query` parameter. This sample form of a cURL command URL encodes
 curl -g -X POST \
   'http://127.0.0.1:3100/loki/api/v1/delete?query={foo="bar"}&start=1591616227&end=1591619692' \
   -H 'x-scope-orgid: 1'
+
+  The query parameter can also include filter operations. For example `query={foo="bar"} |= "other"` will filter out lines that contain the string "other" for the streams matching the stream selector `{foo="bar"}`.
 ```
 
 ### List delete requests
