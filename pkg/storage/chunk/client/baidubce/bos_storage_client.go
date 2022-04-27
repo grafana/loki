@@ -27,7 +27,7 @@ const DefaultEndpoint = bos.DEFAULT_SERVICE_DOMAIN
 var bosRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "loki",
 	Name:      "bos_request_duration_seconds",
-	Help:      "Time spent doing bos requests.",
+	Help:      "Time spent doing BOS requests.",
 	Buckets:   prometheus.ExponentialBuckets(0.005, 4, 6),
 }, []string{"operation", "status_code"}))
 
