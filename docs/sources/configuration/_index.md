@@ -2585,7 +2585,7 @@ If any specific configuration for an object storage client have been provided el
 # Configures a (local) file system as the common storage.
 [filesystem: <filesystem>]
 
-# Configures Baidu BCE BOS as the common storage.
+# Configures Baidu Object Storage (BOS) as the common storage.
 [bos: <bos_storage_config>]
 
 # The `hedging_config` configures how to hedge requests for the storage.
