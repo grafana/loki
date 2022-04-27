@@ -122,8 +122,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123457, 0), "heyiiiiiii"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123457, 0), Line: "heyiiiiiii"},
 						},
 					},
 				},
@@ -133,8 +133,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123457, 0), "heyiiiiiii"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123457, 0), Line: "heyiiiiiii"},
 						},
 					},
 				},
@@ -147,8 +147,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123456, 0), "heyiiiiiii"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyiiiiiii"},
 						},
 					},
 				},
@@ -158,8 +158,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123456, 0), "heyiiiiiii"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyiiiiiii"},
 						},
 					},
 				},
@@ -172,8 +172,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123456, 0), "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 						},
 					},
 				},
@@ -183,8 +183,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123456, 0), "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 						},
 					},
 				},
@@ -197,8 +197,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123457, 0), "heyiiiiiii"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123457, 0), Line: "heyiiiiiii"},
 						},
 					},
 				},
@@ -208,8 +208,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123457, 0), "heyiiiiiii"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123457, 0), Line: "heyiiiiiii"},
 						},
 					},
 				},
@@ -222,8 +222,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123456, 0), "heyiiiiiii"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyiiiiiii"},
 						},
 					},
 				},
@@ -233,8 +233,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123456, 1), "heyiiiiiii"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 1), Line: "heyiiiiiii"},
 						},
 					},
 				},
@@ -247,8 +247,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123456, 0), "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 						},
 					},
 				},
@@ -258,8 +258,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123456, 0), "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 						},
 					},
 				},
@@ -272,9 +272,9 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123456, 0), "hi"},
-							{time.Unix(123456, 1), "hey there"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "hi"},
+							{Timestamp: time.Unix(123456, 1), Line: "hey there"},
 						},
 					},
 				},
@@ -284,9 +284,9 @@ func Test_FudgeTimestamp(t *testing.T) {
 					{
 						Labels: "{job=\"foo\"}",
 						Entries: []logproto.Entry{
-							{time.Unix(123456, 0), "heyooooooo"},
-							{time.Unix(123456, 1), "hi"},
-							{time.Unix(123456, 2), "hey there"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 1), Line: "hi"},
+							{Timestamp: time.Unix(123456, 2), Line: "hey there"},
 						},
 					},
 				},
