@@ -159,22 +159,26 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	}
 
 	for p, b := range periods {
-		desired := MultitenantTSDBIdentifier{
-			nodeName: m.nodeName,
-			ts:       t,
-		}
+
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
 		dstName := filepath.Join(managerMultitenantDir(V1.PathPrefix()), fmt.Sprint(p))
-		dst := newPrefixedIdentifier(desired, dstDir, dstName)
+		dst := newPrefixedIdentifier(
+			MultitenantTSDBIdentifier{
+				nodeName: m.nodeName,
+				ts:       t,
+			},
+			dstDir,
+			dstName,
+		)
 
 		level.Debug(m.log).Log("msg", "building tsdb for period", "pd", p, "dst", dst.Path())
-		// build/move tsdb to multitenant/built dir
+		// build+move tsdb to multitenant dir
 		start := time.Now()
 		_, err = b.Build(
 			context.Background(),
 			managerScratchDir(m.dir),
 			func(from, through model.Time, checksum uint32) Identifier {
-				return MultitenantTSDBIdentifier{}
+				return dst
 			},
 		)
 		if err != nil {
