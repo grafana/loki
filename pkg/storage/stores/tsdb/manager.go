@@ -25,6 +25,10 @@ func (v VersionPrefix) String() string {
 	return fmt.Sprintf("v%d", v)
 }
 
+func (v VersionPrefix) PathPrefix() string {
+	return fmt.Sprintf("tsdb/%s", v.String())
+}
+
 const (
 	_ VersionPrefix = iota
 	V1
@@ -160,7 +164,8 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 			ts:       t,
 		}
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
-		dst := newPrefixedIdentifier(desired, dstDir, dstDir)
+		dstName := filepath.Join(managerMultitenantDir(V1.PathPrefix()), fmt.Sprint(p))
+		dst := newPrefixedIdentifier(desired, dstDir, dstName)
 
 		level.Debug(m.log).Log("msg", "building tsdb for period", "pd", p, "dst", dst.Path())
 		// build/move tsdb to multitenant/built dir
