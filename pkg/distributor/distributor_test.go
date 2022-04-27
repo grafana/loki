@@ -100,6 +100,214 @@ func TestDistributor(t *testing.T) {
 	}
 }
 
+func Test_FudgeTimestamp(t *testing.T) {
+	fudgingDisabled := &validation.Limits{}
+	flagext.DefaultValues(fudgingDisabled)
+	fudgingDisabled.RejectOldSamples = false
+
+	fudgingEnabled := &validation.Limits{}
+	flagext.DefaultValues(fudgingEnabled)
+	fudgingEnabled.RejectOldSamples = false
+	fudgingEnabled.FudgeDuplicateTimestamp = true
+
+	tests := map[string]struct {
+		limits       *validation.Limits
+		push         *logproto.PushRequest
+		expectedPush *logproto.PushRequest
+	}{
+		"fudging disabled, no dupes": {
+			limits: fudgingDisabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123457, 0), "heyiiiiiii"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123457, 0), "heyiiiiiii"},
+						},
+					},
+				},
+			},
+		},
+		"fudging disabled, with dupe timestamp different entry": {
+			limits: fudgingDisabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123456, 0), "heyiiiiiii"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123456, 0), "heyiiiiiii"},
+						},
+					},
+				},
+			},
+		},
+		"fudging disabled, with dupe timestamp same entry": {
+			limits: fudgingDisabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123456, 0), "heyooooooo"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123456, 0), "heyooooooo"},
+						},
+					},
+				},
+			},
+		},
+		"fudging enabled, no dupes": {
+			limits: fudgingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123457, 0), "heyiiiiiii"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123457, 0), "heyiiiiiii"},
+						},
+					},
+				},
+			},
+		},
+		"fudging enabled, with dupe timestamp different entry": {
+			limits: fudgingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123456, 0), "heyiiiiiii"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123456, 1), "heyiiiiiii"},
+						},
+					},
+				},
+			},
+		},
+		"fudging enabled, with dupe timestamp same entry": {
+			limits: fudgingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123456, 0), "heyooooooo"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123456, 0), "heyooooooo"},
+						},
+					},
+				},
+			},
+		},
+		"fudging enabled, multiple subsequent fudges": {
+			limits: fudgingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123456, 0), "hi"},
+							{time.Unix(123456, 1), "hey there"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{time.Unix(123456, 0), "heyooooooo"},
+							{time.Unix(123456, 1), "hi"},
+							{time.Unix(123456, 2), "hey there"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			ingester := &mockIngester{}
+			d := prepare(t, testData.limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+			_, err := d.Push(ctx, testData.push)
+			assert.NoError(t, err)
+			assert.Equal(t, testData.expectedPush, ingester.pushed[0])
+		})
+	}
+}
+
 func Test_SortLabelsOnPush(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
