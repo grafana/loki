@@ -2,6 +2,7 @@ package log
 
 import (
 	"reflect"
+	"time"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -114,6 +115,91 @@ func NewPipeline(stages []Stage) Pipeline {
 		baseBuilder:     NewBaseLabelsBuilder(),
 		streamPipelines: make(map[uint64]StreamPipeline),
 	}
+}
+
+type PipelineDebugger interface {
+	DebugLine(line string) []StageDebugRecord
+}
+type noopPipelineDebugger struct {
+	origin *pipeline
+}
+
+func (n noopPipelineDebugger) DebugLine(line string) []StageDebugRecord {
+	return []StageDebugRecord{
+		{
+			Processed:    true,
+			LineBefore:   line,
+			LabelsBefore: labels.New(),
+			LineAfter:    line,
+			LabelsAfter:  labels.New(),
+			Successful:   true,
+		},
+	}
+}
+
+type streamPipelineDebugger struct {
+	origin      *pipeline
+	stagesCount int
+}
+
+func NewPipelineDebugger(origin Pipeline) PipelineDebugger {
+	if o, ok := origin.(*pipeline); ok {
+		stagesCount := len(o.stages)
+		return &streamPipelineDebugger{o, stagesCount}
+	}
+	return &noopPipelineDebugger{}
+}
+
+func (p streamPipelineDebugger) DebugLine(line string) []StageDebugRecord {
+	stages := p.origin.stages
+	stageRecorders := make([]Stage, 0, len(stages))
+	debugRecords := make([]StageDebugRecord, len(stages))
+	for i, stage := range stages {
+		stageRecorders = append(stageRecorders, StageDebugRecorder{origin: stage,
+			debugRecords: debugRecords,
+			stageIndex:   i,
+		})
+	}
+	stream := streamPipeline{
+		stages:  stageRecorders,
+		builder: p.origin.baseBuilder.ForLabels(labels.Labels{{Name: "job", Value: "debug"}}, 0),
+	}
+	_, _, _ = stream.ProcessString(time.Now().UnixMilli(), line)
+	return debugRecords
+}
+
+type StageDebugRecorder struct {
+	Stage
+	origin       Stage
+	stageIndex   int
+	debugRecords []StageDebugRecord
+}
+
+func (s StageDebugRecorder) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	labelsBefore := lbs.Labels()
+	lineBefore := unsafeGetString(line)
+	lineResult, ok := s.origin.Process(line, lbs)
+	s.debugRecords[s.stageIndex] = StageDebugRecord{
+		Processed:    true,
+		LabelsBefore: labelsBefore,
+		LineBefore:   lineBefore,
+		LabelsAfter:  lbs.Labels(),
+		LineAfter:    unsafeGetString(lineResult),
+		Successful:   ok,
+	}
+	return lineResult, ok
+}
+func (s StageDebugRecorder) RequiredLabelNames() []string {
+	return s.origin.RequiredLabelNames()
+}
+
+type StageDebugRecord struct {
+	Processed    bool          `json:"processed"`
+	LineBefore   string        `json:"line_before"`
+	LabelsBefore labels.Labels `json:"labels_before"`
+	LineAfter    string        `json:"line_after"`
+	LabelsAfter  labels.Labels `json:"labels_after"`
+	Successful   bool          `json:"successful"`
 }
 
 type streamPipeline struct {
