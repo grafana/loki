@@ -24,10 +24,15 @@ func NewCompactor(tenant, parentDir string) *Compactor {
 	}
 }
 
-func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res index.Identifier, err error) {
+func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res Identifier, err error) {
 	// No need to compact a single index file
 	if len(indices) == 1 {
-		return indices[0].Identifier(c.tenant), nil
+		return newPrefixedIdentifier(
+				indices[0].Identifier(c.tenant),
+				c.parentDir,
+				c.parentDir,
+			),
+			nil
 	}
 
 	ifcs := make([]Index, 0, len(indices))
@@ -35,7 +40,7 @@ func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res ind
 		ifcs = append(ifcs, idx)
 	}
 
-	b := index.NewBuilder()
+	b := NewBuilder()
 	multi, err := NewMultiIndex(ifcs...)
 	if err != nil {
 		return res, err
@@ -50,7 +55,7 @@ func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res ind
 	for _, idx := range multi.indices {
 		casted, ok := idx.(*TSDBIndex)
 		if !ok {
-			return index.Identifier{}, fmt.Errorf("expected tsdb index to compact, found :%T", idx)
+			return nil, fmt.Errorf("expected tsdb index to compact, found :%T", idx)
 		}
 		if err := casted.forSeries(
 			nil,
@@ -67,14 +72,14 @@ func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res ind
 	return b.Build(
 		ctx,
 		c.parentDir,
-		func(from, through model.Time, checksum uint32) (index.Identifier, string) {
-			id := index.Identifier{
+		func(from, through model.Time, checksum uint32) Identifier {
+			id := SingleTenantTSDBIdentifier{
 				Tenant:   c.tenant,
 				From:     from,
 				Through:  through,
 				Checksum: checksum,
 			}
-			return id, id.FilePath(c.parentDir)
+			return newPrefixedIdentifier(id, c.parentDir, c.parentDir)
 		},
 	)
 }

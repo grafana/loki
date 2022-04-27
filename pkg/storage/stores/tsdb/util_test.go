@@ -17,25 +17,24 @@ type LoadableSeries struct {
 }
 
 func BuildIndex(t *testing.T, dir, tenant string, cases []LoadableSeries) *TSDBFile {
-	b := index.NewBuilder()
+	b := NewBuilder()
 
 	for _, s := range cases {
 		b.AddSeries(s.Labels, s.Chunks)
 	}
 
-	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) (index.Identifier, string) {
-		id := index.Identifier{
+	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {
+		id := SingleTenantTSDBIdentifier{
 			Tenant:   tenant,
 			From:     from,
 			Through:  through,
 			Checksum: checksum,
 		}
-		return id, id.FilePath(dir)
+		return newPrefixedIdentifier(id, dir, dir)
 	})
 	require.Nil(t, err)
-	location := dst.FilePath(dir)
 
-	idx, err := NewShippableTSDBFile(location)
+	idx, err := NewShippableTSDBFile(dst)
 	require.Nil(t, err)
 	return idx
 }

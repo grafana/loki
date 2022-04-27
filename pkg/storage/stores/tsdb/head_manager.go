@@ -230,10 +230,21 @@ func managerRequiredDirs(parent string) []string {
 		managerPerTenantDir(parent),
 	}
 }
-func managerScratchDir(parent string) string     { return filepath.Join(parent, "v1", "scratch") }
-func managerWalDir(parent string) string         { return filepath.Join(parent, "v1", "wal") }
-func managerMultitenantDir(parent string) string { return filepath.Join(parent, "v1", "multitenant") }
-func managerPerTenantDir(parent string) string   { return filepath.Join(parent, "v1", "per_tenant") }
+func managerScratchDir(parent string) string {
+	return filepath.Join(parent, V1.String(), "scratch")
+}
+
+func managerWalDir(parent string) string {
+	return filepath.Join(parent, V1.String(), "wal")
+}
+
+func managerMultitenantDir(parent string) string {
+	return filepath.Join(parent, V1.String(), "multitenant")
+}
+
+func managerPerTenantDir(parent string) string {
+	return filepath.Join(parent, V1.String(), "per_tenant")
+}
 
 func (m *HeadManager) Rotate(t time.Time) error {
 	// create new wal
@@ -480,6 +491,11 @@ type MultitenantTSDBIdentifier struct {
 
 func (id MultitenantTSDBIdentifier) Name() string {
 	return fmt.Sprintf("%d-%s.tsdb", id.ts.Unix(), id.nodeName)
+}
+
+func (id MultitenantTSDBIdentifier) Path() string {
+	// There are no directories, so reuse name
+	return id.Name()
 }
 
 func parseMultitenantTSDBPath(p string) (id MultitenantTSDBIdentifier, ok bool) {

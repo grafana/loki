@@ -13,16 +13,13 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
-func LoadTSDBIdentifier(dir string, id index.Identifier) (*TSDBFile, error) {
-	return NewShippableTSDBFile(id.FilePath(dir))
-}
-
 // nolint
 // TSDBFile is backed by an actual file and implements the indexshipper/index.Index interface
 type TSDBFile struct {
 	sync.Mutex
 
-	path string
+	// reuse Identifier for resolving locations
+	Identifier
 
 	// reuse TSDBIndex for reading
 	Index
@@ -32,23 +29,17 @@ type TSDBFile struct {
 	f *os.File
 }
 
-func NewShippableTSDBFile(location string) (*TSDBFile, error) {
-	idx, err := NewTSDBIndexFromFile(location)
+func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
+	idx, err := NewTSDBIndexFromFile(id.Path())
 	if err != nil {
 		return nil, err
 	}
 
 	return &TSDBFile{
-		path:  location,
-		Index: idx,
+		Identifier: id,
+		Index:      idx,
 	}, err
 }
-
-// TODO(owen-d): not yet sure how name vs path differ
-func (f *TSDBFile) Name() string {
-	return f.path
-}
-func (f *TSDBFile) Path() string { return f.path }
 
 func (f *TSDBFile) Close() error {
 	f.Lock()
@@ -66,7 +57,7 @@ func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 	f.Lock()
 	defer f.Unlock()
 	if f.f == nil {
-		fd, err := os.Open(f.path)
+		fd, err := os.Open(f.Path())
 		if err != nil {
 			return nil, err
 		}
@@ -219,9 +210,9 @@ func (i *TSDBIndex) Checksum() uint32 {
 	return i.reader.Checksum()
 }
 
-func (i *TSDBIndex) Identifier(tenant string) index.Identifier {
+func (i *TSDBIndex) Identifier(tenant string) SingleTenantTSDBIdentifier {
 	lower, upper := i.Bounds()
-	return index.Identifier{
+	return SingleTenantTSDBIdentifier{
 		Tenant:   tenant,
 		From:     lower,
 		Through:  upper,

@@ -1,10 +1,11 @@
-package index
+package tsdb
 
 import (
 	"context"
 	"fmt"
 	"math/rand"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 
@@ -13,31 +14,33 @@ import (
 	"github.com/prometheus/prometheus/storage"
 
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 // Identifier has all the information needed to resolve a TSDB index
 // Notably this abstracts away OS path separators, etc.
-type Identifier struct {
+type SingleTenantTSDBIdentifier struct {
 	Tenant        string
 	From, Through model.Time
 	Checksum      uint32
 }
 
-func (i Identifier) String() string {
-	return filepath.Join(
-		i.Tenant,
-		fmt.Sprintf(
-			"%s-%d-%d-%x.tsdb",
-			IndexFilename,
-			i.From,
-			i.Through,
-			i.Checksum,
-		),
+func (i SingleTenantTSDBIdentifier) str() string {
+	return fmt.Sprintf(
+		"%s-%d-%d-%x.tsdb",
+		index.IndexFilename,
+		i.From,
+		i.Through,
+		i.Checksum,
 	)
 }
 
-func (i Identifier) FilePath(parentDir string) string {
-	return filepath.Join(parentDir, i.String())
+func (i SingleTenantTSDBIdentifier) Name() string {
+	return path.Join(i.Tenant, i.str())
+}
+
+func (i SingleTenantTSDBIdentifier) Path() string {
+	return filepath.Join(i.Tenant, i.str())
 }
 
 // Builder is a helper used to create tsdb indices.
@@ -51,14 +54,14 @@ type Builder struct {
 
 type stream struct {
 	labels labels.Labels
-	chunks ChunkMetas
+	chunks index.ChunkMetas
 }
 
 func NewBuilder() *Builder {
 	return &Builder{streams: make(map[string]*stream)}
 }
 
-func (b *Builder) AddSeries(ls labels.Labels, chks []ChunkMeta) {
+func (b *Builder) AddSeries(ls labels.Labels, chks []index.ChunkMeta) {
 	id := ls.String()
 	s, ok := b.streams[id]
 	if !ok {
@@ -78,7 +81,7 @@ func (b *Builder) Build(
 	// This is variable as we use Builder for multiple reasons,
 	// such as building multi-tenant tsdbs on the ingester
 	// and per tenant ones during compaction
-	createFn func(from, through model.Time, checksum uint32) (Identifier, string),
+	createFn func(from, through model.Time, checksum uint32) Identifier,
 ) (id Identifier, err error) {
 	// Ensure the parent dir exists (i.e. index/<bucket>/<tenant>/)
 	if scratchDir != "" {
@@ -89,10 +92,10 @@ func (b *Builder) Build(
 
 	// First write tenant/index-bounds-random.staging
 	rng := rand.Int63()
-	name := fmt.Sprintf("%s-%x.staging", IndexFilename, rng)
+	name := fmt.Sprintf("%s-%x.staging", index.IndexFilename, rng)
 	tmpPath := filepath.Join(scratchDir, name)
 
-	writer, err := NewWriter(ctx, tmpPath)
+	writer, err := index.NewWriter(ctx, tmpPath)
 	if err != nil {
 		return id, err
 	}
@@ -135,7 +138,7 @@ func (b *Builder) Build(
 
 	// Add series
 	for i, s := range streams {
-		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.chunks.finalize()...); err != nil {
+		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.chunks.Finalize()...); err != nil {
 			return id, err
 		}
 	}
@@ -144,7 +147,7 @@ func (b *Builder) Build(
 		return id, err
 	}
 
-	reader, err := NewFileReader(tmpPath)
+	reader, err := index.NewFileReader(tmpPath)
 	if err != nil {
 		return id, err
 	}
@@ -152,7 +155,7 @@ func (b *Builder) Build(
 	from, through := reader.Bounds()
 
 	// load the newly compacted index to grab checksum, promptly close
-	id, dst := createFn(model.Time(from), model.Time(through), reader.Checksum())
+	dst := createFn(model.Time(from), model.Time(through), reader.Checksum())
 
 	reader.Close()
 	defer func() {
@@ -161,12 +164,13 @@ func (b *Builder) Build(
 		}
 	}()
 
-	if err := chunk_util.EnsureDirectory(filepath.Dir(dst)); err != nil {
+	if err := chunk_util.EnsureDirectory(filepath.Dir(dst.Path())); err != nil {
 		return id, err
 	}
-	if err := os.Rename(tmpPath, dst); err != nil {
+	dstPath := dst.Path()
+	if err := os.Rename(tmpPath, dstPath); err != nil {
 		return id, err
 	}
 
-	return id, nil
+	return dst, nil
 }

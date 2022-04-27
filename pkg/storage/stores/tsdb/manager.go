@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path"
 	"path/filepath"
 	"sync"
 	"time"
@@ -18,6 +19,17 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
+type VersionPrefix int
+
+func (v VersionPrefix) String() string {
+	return fmt.Sprintf("v%d", v)
+}
+
+const (
+	_ VersionPrefix = iota
+	V1
+)
+
 // nolint:revive
 // TSDBManager wraps the index shipper and writes/manages
 // TSDB files on  disk
@@ -25,6 +37,35 @@ type TSDBManager interface {
 	Index
 	// Builds a new TSDB file from a set of WALs
 	BuildFromWALs(time.Time, []WALIdentifier) error
+}
+
+// Identifier can resolve an index to a name (in object storage)
+// and a path (on disk)
+type Identifier interface {
+	Name() string
+	Path() string
+}
+
+func newPrefixedIdentifier(id Identifier, path, name string) prefixedIdentifier {
+	return prefixedIdentifier{
+		Identifier: id,
+		parentPath: path,
+		parentName: name,
+	}
+}
+
+// parentIdentifier wraps an Identifier and prepends to its methods
+type prefixedIdentifier struct {
+	parentPath, parentName string
+	Identifier
+}
+
+func (p prefixedIdentifier) Path() string {
+	return filepath.Join(p.parentPath, p.Identifier.Path())
+}
+
+func (p prefixedIdentifier) Name() string {
+	return path.Join(p.parentName, p.Identifier.Name())
 }
 
 /*
@@ -82,7 +123,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		return errors.Wrap(err, "building TSDB from WALs")
 	}
 
-	periods := make(map[int]*index.Builder)
+	periods := make(map[int]*Builder)
 
 	if err := tmp.forAll(func(user string, ls labels.Labels, chks index.ChunkMetas) {
 
@@ -98,7 +139,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		for pd, matchingChks := range pds {
 			b, ok := periods[pd]
 			if !ok {
-				b = index.NewBuilder()
+				b = NewBuilder()
 				periods[pd] = b
 			}
 
@@ -118,29 +159,26 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 			nodeName: m.nodeName,
 			ts:       t,
 		}
+		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
+		dst := newPrefixedIdentifier(desired, dstDir, dstDir)
 
-		dstFile := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p), desired.Name())
-		level.Debug(m.log).Log("msg", "building tsdb for period", "pd", p, "dst", dstFile)
-
+		level.Debug(m.log).Log("msg", "building tsdb for period", "pd", p, "dst", dst.Path())
 		// build/move tsdb to multitenant/built dir
 		start := time.Now()
 		_, err = b.Build(
 			context.Background(),
 			managerScratchDir(m.dir),
-			func(from, through model.Time, checksum uint32) (index.Identifier, string) {
-
-				// We don't use the resulting ID b/c this isn't compaction.
-				// Instead we'll discard this and use our own override.
-				return index.Identifier{}, dstFile
+			func(from, through model.Time, checksum uint32) Identifier {
+				return MultitenantTSDBIdentifier{}
 			},
 		)
 		if err != nil {
 			return err
 		}
 
-		level.Debug(m.log).Log("msg", "finished building tsdb for period", "pd", p, "dst", dstFile, "duration", time.Since(start))
+		level.Debug(m.log).Log("msg", "finished building tsdb for period", "pd", p, "dst", dst.Path(), "duration", time.Since(start))
 
-		loaded, err := NewShippableTSDBFile(dstFile)
+		loaded, err := NewShippableTSDBFile(dst)
 		if err != nil {
 			return err
 		}
