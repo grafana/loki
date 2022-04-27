@@ -1,0 +1,15 @@
+version: "3.3"
+services:
+  backend:
+    build:
+      context: ../../
+      dockerfile: ./cmd/logql-debugger/Dockerfile
+    ports:
+      - "3001:3001"
+
+  docs:
+    image: grafana/docs-base:latest
+    volumes:
+      - ../../docs/sources:/hugo/content/docs/loki/latest
+    ports:
+      - "3002:3002"

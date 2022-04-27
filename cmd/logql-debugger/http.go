@@ -4,25 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/mux"
 	"io/ioutil"
 	"net/http"
 
 	"github.com/go-kit/kit/log/level"
-
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+func corsMiddlware() mux.MiddlewareFunc {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(200)
+				return
+			}
+			h.ServeHTTP(w, r)
+		})
+	}
+}
+
 type debugServer struct {
 }
 
 func (s *debugServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	// todo remove
-	if req.Method == "OPTIONS" {
-		w.WriteHeader(200)
-		return
-	}
 	payload, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		writeError(req.Context(), w, err, http.StatusBadRequest, "unable to read request body")

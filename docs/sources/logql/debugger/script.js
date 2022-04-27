@@ -1,3 +1,4 @@
+let host = "http://localhost:3001";
 let streamSelector = `{job="debug"}`;
 const logsSourceInputElement = document.getElementById("logs-source-input");
 const queryInputElement = document.getElementById("query-input");
@@ -88,7 +89,7 @@ function handleError(error) {
 }
 
 async function sendRequest(payload) {
-  return fetch("http://localhost:3001/api/logql-debug", {
+  return fetch(host + "/api/logql-debug", {
     method: 'POST', headers: {
       'Accept': 'application/json', 'Content-Type': 'application/json'
     }, mode: 'cors', body: JSON.stringify(payload)

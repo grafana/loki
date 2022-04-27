@@ -41,7 +41,9 @@ func getConfig() config {
 
 func createServer(cfg config) (*http.Server, error) {
 	router := mux.NewRouter()
-	router.Handle("/api/logql-debug", &debugServer{})
+	router.Use(mux.CORSMethodMiddleware(router))
+	router.Use(corsMiddlware())
+	router.Handle("/api/logql-debug", &debugServer{}).Methods(http.MethodPost, http.MethodOptions)
 	return &http.Server{
 		Handler: router,
 		Addr:    fmt.Sprintf(":%d", cfg.HTTPListenPort),
