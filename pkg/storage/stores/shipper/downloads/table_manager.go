@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -250,6 +251,7 @@ func (tm *TableManager) cleanupCache() error {
 func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 	start := time.Now()
 	defer func() {
+		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start))
 		tm.metrics.ensureQueryReadinessDurationSeconds.Observe(time.Since(start).Seconds())
 	}()
 
@@ -325,7 +327,8 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
-		level.Debug(util_log.Logger).Log("msg", "instance query ready for users", "users", usersToBeQueryReadyFor, "query_readiness_duration", time.Since(perTableStart), "table", tableName)
+		joinedUsers := strings.Join(usersToBeQueryReadyFor, ",")
+		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users", joinedUsers, "duration", time.Since(perTableStart), "table", tableName)
 	}
 
 	return nil
