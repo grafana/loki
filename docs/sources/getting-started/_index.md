@@ -16,18 +16,18 @@ it will not meet most production requirements.
 
 The test environment runs the [flog](https://github.com/mingrammer/flog) app to generate log lines.
 Promtail is the test environment's agent (or client) that captures the log lines and pushes them to the Loki cluster through a gateway.
-In a typical environment, the log-generating app and the agent run together, but in locations distinct from the Loki cluster. This guide runs each piece of the test environment in Docker containers.
+In a typical environment, the log-generating app and the agent run together, but in locations distinct from the Loki cluster. This guide runs each piece of the test environment locally, in Docker containers.
 
-In this guide, Grafana provides a way to pose and visualize queries against the logs stored in Loki.
+Grafana provides a way to pose queries against the logs stored in Loki and visualize query results.
  
 ![Simple scalable deployment test environment](simple-scalable-test-environment.png)
 
-The test environment uses Docker compose to instantiate these services, each in its own container: 
+The test environment uses Docker compose to instantiate these parts, each in its own container: 
 
 - One [single scalable deployment](../fundamentals/architecture/deployment-modes/) mode **Loki** instance has:
     - One Loki read component
     - One Loki write component
-    - **Minio** is Loki's storage back end.
+    - **Minio** is Loki's storage back end in the test environment.
 - The **gateway** receives requests and redirects them to the appropriate container based on the request's URL.
 - **Flog** generates log lines.
 - **Promtail** scrapes the log lines from flog, and pushes them to Loki through the gateway.
@@ -40,7 +40,7 @@ The test environment uses Docker compose to instantiate these services, each in 
 
 ## Obtain the test environment
 
-1. Create a directory called `evaluate-loki` for the test environment; make that new directory your current working directory:
+1. Create a directory called `evaluate-loki` for the test environment. Make `evaluate-loki` your current working directory:
     ```bash
     mkdir evaluate-loki
     cd evaluate-loki
@@ -66,16 +66,14 @@ The write component returns `ready` when you point a web browser at http://local
 
 ## Use Grafana and the test environment
 
-This guide uses Grafana to query and observe the log lines captured in the Loki cluster.
-
-Use Grafana to query and observe the log lines captured in the Loki cluster by navigating a browser to http://localhost:3000.
+Use [Grafana](https://grafana.com/docs/grafana/latest/) to query and observe the log lines captured in the Loki cluster by navigating a browser to http://localhost:3000.
 The Grafana instance has Loki configured as a [datasource](https://grafana.com/docs/grafana/latest/datasources/loki/).
 
 Click on the Grafana instance's [Explore](https://grafana.com/docs/grafana/latest/explore/) icon to bring up the explore pane.
 
 Use the Explore dropdown menu to choose the Loki datasource and bring up the Loki query browser.
 
-Use Grafana to try some queries.
+Try some queries.
 Enter your query into the **Log browser** box, and click on the blue **Run query** button.
 
 To see all the log lines that flog has generated:
@@ -94,12 +92,12 @@ For `POST` methods:
 {container="evaluate-loki_flog_1"} |= "POST"
 ```
 
-To see every log line with the value of `401`: 
+To see every log line with the value of 401: 
 ```
 {container="evaluate-loki_flog_1"} |= "401"
 
 ```
-To see every log line other than those the value `401`: 
+To see every log line other than those that contain the value 401: 
 ```
 {container="evaluate-loki_flog_1"} != "401"
 ```
@@ -117,5 +115,27 @@ To break down the test environment:
 
 ## Modifying the flog app output
 
-Within Promtail configuration, the `scrape_configs` YAML block specifies the logs to scrape.
+You can modify the flog app's log line generation by changing
+its configuration.
+Choose one of these two ways to apply a new configuration:
+
+- To remove already-generated logs, restart the test environment with a new configuration.
+
+    1. Stop and clean up an existing test environment:
+        ```
+        docker-compose down
+        ```
+    1. Edit the `docker-compose.yaml` file.  Within the YAML file, change the `flog.command` field's value to specify your flog output.
+    1. Instantiate the new test environment:
+        ```
+        docker-compose up
+        ```
+
+- To keep already-generated logs in the running test environment, restart flog with a new configuration.
+
+    1. Edit the `docker-compose.yaml` file.  Within the YAML file, change the `flog.command` field's value to specify your flog output.
+    1. Restart only the flog app within the currently-running test environment:
+        ```
+        docker-compose up -d --force-recreate flog
+        ```
 
