@@ -239,11 +239,13 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 
 	// Write old WALs
 	for i, c := range cases {
+		lbls := labels.NewBuilder(c.Labels)
+		lbls.Set(TenantLabel, c.User)
 		require.Nil(t, w.Log(&WALRecord{
 			UserID: c.User,
 			Series: record.RefSeries{
 				Ref:    chunks.HeadSeriesRef(i),
-				Labels: c.Labels,
+				Labels: lbls.Labels(),
 			},
 			Chks: ChunkMetasRecord{
 				Chks: c.Chunks,
@@ -266,7 +268,10 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 		)
 		require.Nil(t, err)
-		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
+
+		lbls := labels.NewBuilder(c.Labels)
+		lbls.Set(TenantLabel, c.User)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, lbls.Labels().Hash(), c.Chunks), refs)
 	}
 
 	// Add data
@@ -298,7 +303,10 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 		)
 		require.Nil(t, err)
-		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
+
+		lbls := labels.NewBuilder(c.Labels)
+		lbls.Set(TenantLabel, c.User)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, lbls.Labels().Hash(), c.Chunks), refs)
 	}
 
 }
