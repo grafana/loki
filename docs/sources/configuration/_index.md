@@ -739,10 +739,10 @@ The `bos_storage_config` block configures Baidu Object Storage (BOS)  as general
 # BOS endpoint to connect to.
 # CLI flag: <prefix>.baidubce.endpoint
 [ endpoint: <string> | default = "bj.bcebos.com" ]
-# Baidu BCE Access Key ID
+# Baidu Cloud Engine (BCE) Access Key ID
 # CLI flag: <prefix>.baidubce.access-key-id
 [ access_key_id: <string> | default = "" ]
-# Baidu BCE Secret Access Key
+# BCE Secret Access Key
 # CLI flag: <prefix>.baidubce.secret-access-key
 [ secret_access_key: <string> | default = "" ]
 ```
