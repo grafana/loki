@@ -119,7 +119,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 			ts:       t,
 		}
 
-		dstFile := filepath.Join(managerBuiltDir(m.dir), fmt.Sprint(p), desired.Name())
+		dstFile := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p), desired.Name())
 		level.Debug(m.log).Log("msg", "building tsdb for period", "pd", p, "dst", dstFile)
 
 		// build/move tsdb to multitenant/built dir

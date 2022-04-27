@@ -50,27 +50,23 @@ the old versions to build + upload TSDB files.
 On disk, it looks like:
 
 tsdb/
-     # scratch directory used for temp tsdb files during build stage
-     scratch/
-	 # wal directory used to store WALs being written on the ingester.
-	 # These are eventually shipped to storage as multi-tenant TSDB files
-	 # and compacted into per tenant indices
-     wal/
-		 <timestamp>
-	 # multitenant tsdb files which are created on the ingesters/shipped
-     multitenant/
-	             # contains built TSDBs
-	             built/
-				       <timestamp>-<ingester-name>.tsdb
-	             # once shipped successfully, they're moved here and can be safely deleted later
-	             shipped/
-				         <timestamp>-<ingester-name>.tsdb
-	 compacted/
-			   # post-compaction tenant tsdbs which are grouped per
-			   # period bucket
-			   <tenant>/
-					    <bucket>/
-								 index-<from>-<through>-<checksum>.tsdb
+     v1/
+		# scratch directory used for temp tsdb files during build stage
+		scratch/
+		# wal directory used to store WALs being written on the ingester.
+		# These are eventually shipped to storage as multi-tenant TSDB files
+		# and compacted into per tenant indices
+		wal/
+			<timestamp>
+		# multitenant tsdb files which are created on the ingesters/shipped
+		multitenant/
+					<timestamp>-<ingester-name>.tsdb
+		per_tenant/
+		 		  # post-compaction tenant tsdbs which are grouped per
+				  # period bucket
+				  <tenant>/
+						   <bucket>/
+									index-<from>-<through>-<checksum>.tsdb
 */
 
 type HeadManager struct {
@@ -230,14 +226,14 @@ func managerRequiredDirs(parent string) []string {
 	return []string{
 		managerScratchDir(parent),
 		managerWalDir(parent),
-		managerBuiltDir(parent),
-		managerShippedDir(parent),
+		managerMultitenantDir(parent),
+		managerPerTenantDir(parent),
 	}
 }
-func managerScratchDir(parent string) string { return filepath.Join(parent, "scratch") }
-func managerWalDir(parent string) string     { return filepath.Join(parent, "wal") }
-func managerBuiltDir(parent string) string   { return filepath.Join(parent, "multitenant", "built") }
-func managerShippedDir(parent string) string { return filepath.Join(parent, "multitenant", "shipped") }
+func managerScratchDir(parent string) string     { return filepath.Join(parent, "v1", "scratch") }
+func managerWalDir(parent string) string         { return filepath.Join(parent, "v1", "wal") }
+func managerMultitenantDir(parent string) string { return filepath.Join(parent, "v1", "multitenant") }
+func managerPerTenantDir(parent string) string   { return filepath.Join(parent, "v1", "per_tenant") }
 
 func (m *HeadManager) Rotate(t time.Time) error {
 	// create new wal
@@ -309,7 +305,7 @@ func (m *HeadManager) Rotate(t time.Time) error {
 }
 
 func (m *HeadManager) shippedTSDBsBeforePeriod(period int) (res []string, err error) {
-	files, err := ioutil.ReadDir(managerShippedDir(m.dir))
+	files, err := ioutil.ReadDir(managerPerTenantDir(m.dir))
 	if err != nil {
 		return nil, err
 	}
