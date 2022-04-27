@@ -96,7 +96,7 @@ func (b *BOSObjectStorage) GetObject(ctx context.Context, objectKey string) (io.
 		return requestErr
 	})
 	if err != nil {
-		return nil, 0, errors.Wrapf(err, "failed to get bos object [ %s ]", objectKey)
+		return nil, 0, errors.Wrapf(err, "failed to get BOS object [ %s ]", objectKey)
 	}
 	size := res.ContentLength
 	return res.Body, size, nil
