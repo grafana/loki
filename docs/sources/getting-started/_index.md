@@ -92,7 +92,7 @@ For `POST` methods:
 {container="evaluate-loki_flog_1"} |= "POST"
 ```
 
-To see every log line with the value of 401: 
+To see every log line with the value of 401 (unauthorized error): 
 ```
 {container="evaluate-loki_flog_1"} |= "401"
 
