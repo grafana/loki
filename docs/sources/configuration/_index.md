@@ -488,7 +488,7 @@ storage:
   # Configures backend rule storage for a local file system directory.
   [local: <local_storage_config>]
 
-  # Configures backend rule storage for Baidu BCE BOS.
+  # Configures backend rule storage for Baidu Object Storage (BOS).
   [bos: <bos_storage_config>]
 
   # The `hedging` block configures how to hedge storage requests.
