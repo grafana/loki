@@ -161,7 +161,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	for p, b := range periods {
 
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
-		dstName := filepath.Join(managerMultitenantName())
+		dstName := managerMultitenantName()
 		dst := newPrefixedIdentifier(
 			MultitenantTSDBIdentifier{
 				nodeName: m.nodeName,
@@ -209,17 +209,22 @@ func indexBuckets(indexPeriod time.Duration, from, through model.Time) (res []in
 	return
 }
 
-func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, userIDs ...string) ([]Index, error) {
+func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, userIDs ...string) (Index, error) {
 	var indices []Index
 
 	for _, bkt := range indexBuckets(m.indexPeriod, from, through) {
 		for _, user := range userIDs {
 			if err := m.shipper.ForEach(ctx, fmt.Sprintf("%d", bkt), user, func(idx shipper_index.Index) error {
+				_, multitenant := parseMultitenantTSDBName(idx.Name())
 				impl, ok := idx.(Index)
 				if !ok {
 					return fmt.Errorf("unexpected shipper index type: %T", idx)
 				}
-				indices = append(indices, impl)
+				if multitenant {
+					indices = append(indices, NewMultiTenantIndex(impl))
+				} else {
+					indices = append(indices, impl)
+				}
 				return nil
 			}); err != nil {
 				return nil, err
@@ -227,29 +232,11 @@ func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, use
 		}
 
 	}
-	return indices, nil
-}
 
-func (m *tsdbManager) indexForTenant(ctx context.Context, from, through model.Time, userID string) (Index, error) {
-	// Get all the indices with an empty user id. They're multitenant indices.
-	multitenants, err := m.indices(ctx, from, through, "")
-	for i, idx := range multitenants {
-		multitenants[i] = NewMultiTenantIndex(idx)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-	tenant, err := m.indices(ctx, from, through, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	combined := append(multitenants, tenant...)
-	if len(combined) == 0 {
+	if len(indices) == 0 {
 		return NoopIndex{}, nil
 	}
-	return NewMultiIndex(combined...)
+	return NewMultiIndex(indices...)
 }
 
 // TODO(owen-d): how to better implement this?
@@ -266,7 +253,7 @@ func (m *tsdbManager) Close() error {
 }
 
 func (m *tsdbManager) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	idx, err := m.indexForTenant(ctx, from, through, userID)
+	idx, err := m.indices(ctx, from, through, userID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +261,7 @@ func (m *tsdbManager) GetChunkRefs(ctx context.Context, userID string, from, thr
 }
 
 func (m *tsdbManager) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
-	idx, err := m.indexForTenant(ctx, from, through, userID)
+	idx, err := m.indices(ctx, from, through, userID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +269,7 @@ func (m *tsdbManager) Series(ctx context.Context, userID string, from, through m
 }
 
 func (m *tsdbManager) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	idx, err := m.indexForTenant(ctx, from, through, userID)
+	idx, err := m.indices(ctx, from, through, userID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +277,7 @@ func (m *tsdbManager) LabelNames(ctx context.Context, userID string, from, throu
 }
 
 func (m *tsdbManager) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	idx, err := m.indexForTenant(ctx, from, through, userID)
+	idx, err := m.indices(ctx, from, through, userID, "")
 	if err != nil {
 		return nil, err
 	}

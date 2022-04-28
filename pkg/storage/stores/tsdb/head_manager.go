@@ -508,20 +508,26 @@ func (id MultitenantTSDBIdentifier) Path() string {
 }
 
 func parseMultitenantTSDBPath(p string) (id MultitenantTSDBIdentifier, ok bool) {
-	trimmed := strings.TrimSuffix(p, ".tsdb")
+	cleaned := filepath.Base(p)
+	return parseMultitenantTSDBNameFromBase(cleaned)
+}
+
+func parseMultitenantTSDBName(p string) (id MultitenantTSDBIdentifier, ok bool) {
+	cleaned := path.Base(p)
+	return parseMultitenantTSDBNameFromBase(cleaned)
+}
+
+func parseMultitenantTSDBNameFromBase(name string) (res MultitenantTSDBIdentifier, ok bool) {
+
+	trimmed := strings.TrimSuffix(name, ".tsdb")
 
 	// incorrect suffix
-	if trimmed == p {
+	if trimmed == name {
 		return
 	}
 
 	xs := strings.Split(trimmed, "-")
 	if len(xs) != 2 {
-		return
-	}
-
-	// require node name isn't empty
-	if len(xs[1]) == 0 {
 		return
 	}
 
