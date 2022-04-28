@@ -81,6 +81,18 @@ local clients_docker(arch, app) = {
   },
 };
 
+local docker_operator(arch, operator) = {
+  name: '%s-image' % if $.settings.dry_run then 'build-' + operator else 'publish-' + operator,
+  image: 'plugins/docker',
+  settings: {
+    repo: 'grafana/%s' % operator,
+    dockerfile: 'operator/Dockerfile',
+    username: { from_secret: docker_username_secret.name },
+    password: { from_secret: docker_password_secret.name },
+    dry_run: false,
+  },
+};
+
 local lambda_promtail_ecr(app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
   image: 'cstyan/ecr',
@@ -282,6 +294,27 @@ local lambda_promtail(tags='') = pipeline('lambda-promtail') {
   depends_on: ['check'],
 };
 
+local lokiopertor(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
+  steps+: [
+    // dry run for everything that is not tag or main
+    docker_operator(arch, 'loki-operator') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMain,
+      settings+: {
+        dry_run: true,
+      },
+    },
+  ] + [
+    // publish for tag or main
+    docker_operator(arch, 'loki-operator') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMain,
+      settings+: {},
+    },
+  ],
+  depends_on: ['check'],
+};
+
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
@@ -423,6 +456,9 @@ local manifest(apps) = pipeline('manifest') {
     }
     else {}
   )
+  for arch in archs
+] + [
+  lokiopertor(arch)
   for arch in archs
 ] + [
   fluentbit(),

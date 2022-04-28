@@ -550,6 +550,14 @@ endif
 	$(call push,loki-build-image,latest)
 
 
+# loki-operator
+loki-operator-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile .
+loki-operator-image-cross:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile.cross .
+loki-operator-push: loki-operator-image-cross
+        $(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
+	
 ########
 # Misc #
 ########
