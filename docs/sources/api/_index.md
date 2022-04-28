@@ -387,8 +387,8 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
 
 ## `GET /loki/api/v1/labels`
 
-`/loki/api/v1/labels` retrieves the list of known labels within a given time span
-(NOTE: in some cases Loki may use a larger time span than the one specified).
+`/loki/api/v1/labels` retrieves the list of known labels within a given time span.
+Loki may use a larger time span than the one specified.
 It accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
