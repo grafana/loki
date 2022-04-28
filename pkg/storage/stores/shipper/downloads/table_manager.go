@@ -252,7 +252,6 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 	start := time.Now()
 	defer func() {
 		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start))
-		tm.metrics.ensureQueryReadinessDurationSeconds.Observe(time.Since(start).Seconds())
 	}()
 
 	activeTableNumber := getActiveTableNumber()
