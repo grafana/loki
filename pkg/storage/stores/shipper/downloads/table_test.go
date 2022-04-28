@@ -396,6 +396,9 @@ func TestTable_Sync(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, deleteDB)))
 	testutil.AddRecordsToDB(t, filepath.Join(tablePathInStorage, newDB), boltdbClient, 20, 10, nil)
 
+	// refresh the object list cache to get latest list of files
+	table.storageClient.RefreshCache()
+
 	// sync the table
 	require.NoError(t, table.Sync(context.Background()))
 
@@ -577,6 +580,9 @@ func TestLoadTable(t *testing.T) {
 
 	testutil.SetupDBsAtPath(t, tablePathInStorage, commonDBs, nil)
 	testutil.SetupDBsAtPath(t, filepath.Join(tablePathInStorage, userID), userDBs, nil)
+
+	// refresh the object list cache to get latest list of files
+	storageClient.RefreshCache()
 
 	// try loading the table, it should skip loading corrupt file and reload it from storage.
 	table, err = LoadTable(tableName, tablePathInCache, storageClient, boltDBIndexClient, newMetrics(nil))

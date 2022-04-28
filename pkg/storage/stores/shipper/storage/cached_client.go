@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	cacheTimeout = 1 * time.Minute
+	cacheAutoRefreshInterval = 1 * time.Minute
 )
 
 type table struct {
@@ -25,13 +25,29 @@ type table struct {
 	userObjects   map[string][]client.StorageObject
 }
 
+type CacheRefresher interface {
+	EnableCacheAutoRefresh()
+	DisableCacheAutoRefresh()
+	RefreshCache()
+}
+
+type CachedObjectClient interface {
+	client.ObjectClient
+	CacheRefresher
+}
+
 type cachedObjectClient struct {
 	client.ObjectClient
 
-	tables       map[string]*table
-	tableNames   []client.StorageCommonPrefix
-	tablesMtx    sync.RWMutex
-	cacheBuiltAt time.Time
+	tables     map[string]*table
+	tableNames []client.StorageCommonPrefix
+	tablesMtx  sync.RWMutex
+
+	// cacheAutoRefreshEnabledCount keeps a count of number of requests we get for enabling the auto refresh since
+	// there could be multiple services requesting for enabling auto refresh at once.
+	cacheAutoRefreshEnabledCount int
+	cacheAutoRefreshMtx          sync.Mutex
+	cacheAutoRefresher           *cacheAutoRefresher
 
 	buildCacheChan chan struct{}
 	buildCacheWg   sync.WaitGroup
@@ -39,18 +55,63 @@ type cachedObjectClient struct {
 }
 
 func newCachedObjectClient(downstreamClient client.ObjectClient) *cachedObjectClient {
-	return &cachedObjectClient{
+	client := &cachedObjectClient{
 		ObjectClient:   downstreamClient,
 		tables:         map[string]*table{},
 		buildCacheChan: make(chan struct{}, 1),
 	}
+
+	// do the initial build of the cache
+	client.RefreshCache()
+
+	return client
+}
+
+// EnableCacheAutoRefresh enables the cache auto refresh and does the initial refresh once.
+func (c *cachedObjectClient) EnableCacheAutoRefresh() {
+	c.cacheAutoRefreshMtx.Lock()
+	defer c.cacheAutoRefreshMtx.Unlock()
+
+	c.cacheAutoRefreshEnabledCount++
+	// if this is the first request to (re)enable auto refresh, we need to do the initial refresh and reset the timer.
+	if c.cacheAutoRefreshEnabledCount == 1 {
+		c.RefreshCache()
+		c.cacheAutoRefresher = newCacheAutoRefresher(c.RefreshCache, cacheAutoRefreshInterval)
+	}
+}
+
+// DisableCacheAutoRefresh disables the auto refreshing of the cache.
+func (c *cachedObjectClient) DisableCacheAutoRefresh() {
+	c.cacheAutoRefreshMtx.Lock()
+	defer c.cacheAutoRefreshMtx.Unlock()
+
+	c.cacheAutoRefreshEnabledCount--
+	if c.cacheAutoRefreshEnabledCount == 0 {
+		c.cacheAutoRefresher.stop()
+		c.cacheAutoRefresher = nil
+	}
+}
+
+// Stop stops the cache auto refresh loop before stopping the underlying ObjectClient.
+func (c *cachedObjectClient) Stop() {
+	if c.cacheAutoRefresher != nil {
+		c.cacheAutoRefresher.stop()
+	}
+	c.ObjectClient.Stop()
+}
+
+// RefreshCache refreshes the cache. It is safe to call this concurrently.
+// This call is mostly used by tests and would be blocked until the cache is refreshed.
+func (c *cachedObjectClient) RefreshCache() {
+	c.buildCacheOnce()
+	c.buildCacheWg.Wait()
 }
 
 // buildCacheOnce makes sure we build the cache just once when it is called concurrently.
 // We have a buffered channel here with a capacity of 1 to make sure only one concurrent call makes it through.
 // We also have a sync.WaitGroup to make sure all the concurrent calls to buildCacheOnce wait until the cache gets rebuilt since
-// we are doing read-through cache, and we do not want to serve stale results.
-func (c *cachedObjectClient) buildCacheOnce(ctx context.Context) {
+// we want to guarantee the callers that we will have freshly built cache when we return.
+func (c *cachedObjectClient) buildCacheOnce() {
 	c.buildCacheWg.Add(1)
 	defer c.buildCacheWg.Done()
 
@@ -59,7 +120,7 @@ func (c *cachedObjectClient) buildCacheOnce(ctx context.Context) {
 	select {
 	case c.buildCacheChan <- struct{}{}:
 		c.err = nil
-		c.err = c.buildCache(ctx)
+		c.err = c.buildCache(context.Background())
 		<-c.buildCacheChan
 		if c.err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to build cache", "err", c.err)
@@ -74,13 +135,6 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]clie
 	if len(ss) > 2 {
 		return nil, nil, fmt.Errorf("invalid prefix %s", prefix)
 	}
-
-	if time.Since(c.cacheBuiltAt) >= cacheTimeout {
-		c.buildCacheOnce(ctx)
-	}
-
-	// wait for cache build operation to finish, if running
-	c.buildCacheWg.Wait()
 
 	if c.err != nil {
 		return nil, nil, c.err
@@ -121,10 +175,6 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]clie
 
 // buildCache builds the cache if expired
 func (c *cachedObjectClient) buildCache(ctx context.Context) error {
-	if time.Since(c.cacheBuiltAt) < cacheTimeout {
-		return nil
-	}
-
 	logger := spanlogger.FromContextWithFallback(ctx, util_log.Logger)
 	level.Info(logger).Log("msg", "building index list cache")
 	now := time.Now()
@@ -137,11 +187,8 @@ func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 		return err
 	}
 
-	c.tablesMtx.Lock()
-	defer c.tablesMtx.Unlock()
-
-	c.tables = map[string]*table{}
-	c.tableNames = []client.StorageCommonPrefix{}
+	tables := map[string]*table{}
+	tableNames := []client.StorageCommonPrefix{}
 
 	for _, object := range objects {
 		ss := strings.Split(object.Key, delimiter)
@@ -150,15 +197,15 @@ func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 		}
 
 		tableName := ss[0]
-		tbl, ok := c.tables[tableName]
+		tbl, ok := tables[tableName]
 		if !ok {
 			tbl = &table{
 				commonObjects: []client.StorageObject{},
 				userObjects:   map[string][]client.StorageObject{},
 				userIDs:       []client.StorageCommonPrefix{},
 			}
-			c.tables[tableName] = tbl
-			c.tableNames = append(c.tableNames, client.StorageCommonPrefix(tableName))
+			tables[tableName] = tbl
+			tableNames = append(tableNames, client.StorageCommonPrefix(tableName))
 		}
 
 		if len(ss) == 2 {
@@ -172,6 +219,51 @@ func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 		}
 	}
 
-	c.cacheBuiltAt = time.Now()
+	c.tablesMtx.Lock()
+	defer c.tablesMtx.Unlock()
+
+	c.tables = tables
+	c.tableNames = tableNames
+
 	return nil
+}
+
+type cacheAutoRefresher struct {
+	refreshCacheFunc func()
+	interval         time.Duration
+	stopChan         chan struct{}
+	wg               sync.WaitGroup
+}
+
+func newCacheAutoRefresher(refreshCacheFunc func(), interval time.Duration) *cacheAutoRefresher {
+	car := &cacheAutoRefresher{
+		refreshCacheFunc: refreshCacheFunc,
+		interval:         interval,
+		stopChan:         make(chan struct{}),
+	}
+	go car.loop()
+
+	return car
+}
+
+func (c *cacheAutoRefresher) loop() {
+	c.wg.Add(1)
+	defer c.wg.Done()
+
+	ticker := time.NewTicker(c.interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.refreshCacheFunc()
+		case <-c.stopChan:
+			return
+		}
+	}
+}
+
+func (c *cacheAutoRefresher) stop() {
+	close(c.stopChan)
+	c.wg.Wait()
 }

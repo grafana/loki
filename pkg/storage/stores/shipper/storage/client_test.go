@@ -36,6 +36,9 @@ func TestIndexStorageClient(t *testing.T) {
 	indexStorageClient := NewIndexStorageClient(objectClient, storageKeyPrefix)
 
 	verifyFiles := func() {
+		// refresh the object list cache to get latest list of files
+		indexStorageClient.RefreshCache()
+
 		tables, err := indexStorageClient.ListTables(context.Background())
 		require.NoError(t, err)
 		require.Len(t, tables, len(tablesToSetup))
