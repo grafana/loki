@@ -211,8 +211,9 @@ func indexBuckets(indexPeriod time.Duration, from, through model.Time) (res []in
 
 func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, userIDs ...string) ([]Index, error) {
 	var indices []Index
-	for _, user := range userIDs {
-		for _, bkt := range indexBuckets(m.indexPeriod, from, through) {
+
+	for _, bkt := range indexBuckets(m.indexPeriod, from, through) {
+		for _, user := range userIDs {
 			if err := m.shipper.ForEach(ctx, fmt.Sprintf("%d", bkt), user, func(idx shipper_index.Index) error {
 				impl, ok := idx.(Index)
 				if !ok {
@@ -224,6 +225,7 @@ func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, use
 				return nil, err
 			}
 		}
+
 	}
 	return indices, nil
 }
