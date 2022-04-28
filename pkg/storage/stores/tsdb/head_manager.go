@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -242,8 +243,16 @@ func managerMultitenantDir(parent string) string {
 	return filepath.Join(parent, V1.String(), "multitenant")
 }
 
+func managerMultitenantName() string {
+	return path.Join(V1.String(), "multitenant")
+}
+
 func managerPerTenantDir(parent string) string {
 	return filepath.Join(parent, V1.String(), "per_tenant")
+}
+
+func managerPerTenantName() string {
+	return path.Join(V1.String(), "per_tenant")
 }
 
 func (m *HeadManager) Rotate(t time.Time) error {

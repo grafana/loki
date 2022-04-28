@@ -161,7 +161,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	for p, b := range periods {
 
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
-		dstName := filepath.Join(managerMultitenantDir(V1.PathPrefix()), fmt.Sprint(p))
+		dstName := filepath.Join(managerMultitenantName())
 		dst := newPrefixedIdentifier(
 			MultitenantTSDBIdentifier{
 				nodeName: m.nodeName,
