@@ -1,6 +1,8 @@
 ---
 title: Troubleshooting
-weight: 40
+weight: 80
+aliases:
+    - /docs/loki/latest/getting-started/troubleshooting/
 ---
 # Troubleshooting Grafana Loki
 
