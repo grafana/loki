@@ -214,7 +214,7 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	// record stats about the label query
-	statResult := statsCtx.Result(time.Since(start), queueTime)
+	statResult := statsCtx.Result(time.Since(start), queueTime, len(resp.Values))
 	statResult.Log(level.Debug(log))
 
 	status := 200
@@ -382,7 +382,7 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	// record stats about the label query
-	statResult := statsCtx.Result(time.Since(start), queueTime)
+	statResult := statsCtx.Result(time.Since(start), queueTime, len(resp.Series))
 	statResult.Log(level.Debug(log))
 
 	status := 200

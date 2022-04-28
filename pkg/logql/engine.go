@@ -170,6 +170,18 @@ type query struct {
 	record    bool
 }
 
+func (q *query) resultLength(res promql_parser.Value) int {
+	switch r := res.(type) {
+	case promql.Matrix:
+		return r.TotalSamples()
+	case logqlmodel.Streams:
+		return int(r.Lines())
+	default:
+		level.Error(q.logger).Log("msg", "unknown query result type", "err", fmt.Sprintf("expected promql.Matrix or logqlmodel.Streams but got %T", r))
+		return 0
+	}
+}
+
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	log, ctx := spanlogger.New(ctx, "query.Exec")
@@ -187,7 +199,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
-	statResult := statsCtx.Result(time.Since(start), queueTime)
+	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
 	statResult.Log(level.Debug(log))
 
 	status := "200"
