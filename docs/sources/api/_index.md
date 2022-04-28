@@ -103,7 +103,7 @@ query parameters support the following values:
 - `query`: The [LogQL](../logql/) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
-- `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
+- `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward`.
 
 In microservices mode, `/loki/api/v1/query` is exposed by the querier and the frontend.
 
@@ -114,7 +114,7 @@ Response:
   "status": "success",
   "data": {
     "resultType": "vector" | "streams",
-    "result": [<vector value>] | [<stream value>].
+    "result": [<vector value>] | [<stream value>],
     "stats" : [<statistics>]
   }
 }
