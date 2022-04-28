@@ -17,6 +17,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 	user1 := "user1"
 
 	lbl := `{foo="bar", fizz="buzz"}`
+	lblWithFilter := `{foo="bar", fizz="buzz"} |= "filter"`
 
 	chunkEntry := retention.ChunkEntry{
 		ChunkRef: retention.ChunkRef{
@@ -48,6 +49,26 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			expectedResp: resp{
 				isDeleted:           true,
 				nonDeletedIntervals: nil,
+			},
+		},
+		{
+			name: "whole chunk deleted with filter present",
+			deleteRequest: DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     lblWithFilter,
+			},
+			expectedResp: resp{
+				isDeleted: true,
+				nonDeletedIntervals: []retention.IntervalFilter{
+					{
+						Interval: model.Interval{
+							Start: now.Add(-3 * time.Hour),
+							End:   now.Add(-time.Hour),
+						},
+					},
+				},
 			},
 		},
 		{
@@ -97,6 +118,26 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				StartTime: now.Add(-2 * time.Hour),
 				EndTime:   now,
 				Query:     lbl,
+			},
+			expectedResp: resp{
+				isDeleted: true,
+				nonDeletedIntervals: []retention.IntervalFilter{
+					{
+						Interval: model.Interval{
+							Start: now.Add(-3 * time.Hour),
+							End:   now.Add(-2*time.Hour) - 1,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "chunk deleted from end with filter",
+			deleteRequest: DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-2 * time.Hour),
+				EndTime:   now,
+				Query:     lblWithFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
