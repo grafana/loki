@@ -70,7 +70,7 @@ type RulesSpec struct {
     // +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Enable"
     Enabled bool `json:"enabled"`
 
-    // A selector to select which LokiRules to mount for loading alerting/recording
+    // A selector to select which Loki rules to mount for loading alerting/recording
     // rules from.
     //
     // +optional
@@ -124,75 +124,189 @@ type LokiStackComponentStatus struct {
 }
 ```
 
-#### LokiRule definition
+#### AlertingRule definition
 
-The `LokiRule` CRD comprises a set of specifications and webhook validation definitions to declare groups of alerting and/or recording rules for a single `LokiStack` instance. The syntax for the rule groups resembles the official [Prometheus Rule syntax](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules). In addition the webhook validation definition provides support for rule validation conditions:
+The `AlertingRules` CRD comprises a set of specifications and webhook validation definitions to declare groups of alerting rules for a single `LokiStack` instance. The syntax for the rule groups resembles the official [Prometheus Rule syntax](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules). In addition the webhook validation definition provides support for rule validation conditions:
 
-1. If a `LokiRule` includes an alert name and a record name it is ambiguous if it is an alerting or a recording rule.
-2. If a `LokiRule` includes an invalid `for` period it is an invalid alerting rule.
-3. If a `LokiRule` includes an invalid `record` metric name it is an invalid recording rule.
-4. If a `LokiRule` includes an invalid LogQL `expr` it is an invalid rule.
-5. If a `LokiRule` includes two groups with the same name it is an invalid rule.
-6. If none of above applies a `LokiRule` is considered a valid rule.
+1. If a `AlertingRule` includes an invalid `interval` period it is an invalid alerting rule
+2. If a `AlertingRule` includes an invalid `for` period it is an invalid alerting rule.
+3. If a `AlertingRule` includes an invalid LogQL `expr` it is an invalid alerting rule.
+4. If a `AlertingRule` includes two groups with the same name it is an invalid alerting rule.
+5. If none of above applies a `AlertingRule` is considered a valid alerting rule.
 
 ```go
-// EvaluationDuration defines the type for Prometheus durations.
-//
-// +kubebuilder:validation:Pattern:="((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)"
-type EvaluationDuration string
-
-// LokiRuleSpec defines the desired state of LokiRule
-type LokiRuleSpec struct {
-    // List of groups for alerting and/or recording rules.
+// AlertingRuleSpec defines the desired state of AlertingRule
+type AlertingRuleSpec struct {
+    // List of groups for alerting rules.
     //
     // +optional
     // +kubebuilder:validation:Optional
-    Groups []*LokiRuleGroup `json:"groups"`
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Groups"
+    Groups []*AlertingRuleGroup `json:"groups"`
 }
 
-// LokiRuleGroup defines a group of Loki alerting and/or recording rules.
-type LokiRuleGroup struct {
+// AlertingRuleGroup defines a group of Loki alerting rules.
+type AlertingRuleGroup struct {
     // Name defines a name of the present recoding/alerting rule. Must be unique
     // within all loki rules.
     //
     // +required
     // +kubebuilder:validation:Required
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Name"
+    Name string `json:"name"`
+
+    // Interval defines the time interval between evaluation of the given
+    // alerting rule.
+    //
+    // +optional
+    // +kubebuilder:validation:Optional
+    // +kubebuilder:default:="1m"
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Evaluation Interval"
+    Interval PrometheusDuration `json:"interval"`
+
+    // Limit defines the number of alerts an alerting rule can produce. 0 is no limit.
+    //
+    // +optional
+    // +kubebuilder:validation:Optional
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Limit of firing alerts"
+    Limit int32 `json:"limit,omitempty"`
+
+    // Rules defines a list of alerting rules
+    //
+    // +required
+    // +kubebuilder:validation:Required
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Rules"
+    Rules []*AlertingRuleGroupSpec `json:"rules"`
+}
+
+// AlertingRuleGroupSpec defines the spec for a Loki alerting rule.
+type AlertingRuleGroupSpec struct {
+    // The name of the alert. Must be a valid label value.
+    //
+    // +optional
+    // +kubebuilder:validation:Optional
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Name"
+    Alert string `json:"alert,omitempty"`
+
+    // The LogQL expression to evaluate. Every evaluation cycle this is
+    // evaluated at the current time, and all resultant time series become
+    // pending/firing alerts.
+    //
+    // +required
+    // +kubebuilder:validation:Required
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="LogQL Expression"
+    Expr string `json:"expr"`
+
+    // Alerts are considered firing once they have been returned for this long.
+    // Alerts which have not yet fired for long enough are considered pending.
+    //
+    // +optional
+    // +kubebuilder:validation:Optional
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Firing Threshold"
+    For PrometheusDuration `json:"for,omitempty"`
+
+    // Annotations to add to each alert.
+    //
+    // +optional
+    // +kubebuilder:validation:Optional
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Annotations"
+    Annotations map[string]string `json:"annotations,omitempty"`
+
+    // Labels to add to each alert.
+    //
+    // +optional
+    // +kubebuilder:validation:Optional
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Labels"
+    Labels map[string]string `json:"labels,omitempty"`
+}
+
+// AlertingRuleStatus defines the observed state of AlertingRule
+type AlertingRuleStatus struct {
+    // Conditions of the AlertingRule generation health.
+    //
+    // +optional
+    // +kubebuilder:validation:Optional
+    // +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:io.kubernetes.conditions"
+    Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
+
+// AlertingRule is the Schema for the alertingrules API
+//
+// +operator-sdk:csv:customresourcedefinitions:displayName="AlertingRule",resources={{LokiStack,v1beta1}}
+type AlertingRule struct {
+    metav1.TypeMeta   `json:",inline"`
+    metav1.ObjectMeta `json:"metadata,omitempty"`
+
+    Spec   AlertingRuleSpec   `json:"spec,omitempty"`
+    Status AlertingRuleStatus `json:"status,omitempty"`
+}
+```
+
+#### RecordingRule definition
+
+The `RecordingRule` CRD comprises a set of specifications and webhook validation definitions to declare groups of recording rules for a single `LokiStack` instance. The syntax for the rule groups resembles the official [Prometheus Rule syntax](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules). In addition the webhook validation definition provides support for rule validation conditions:
+
+1. If a `RecordingRule` includes an invalid `interval` period it is an invalid recording rule
+2. If a `RecordingRule` includes an invalid metric name for `record` it is an invalid recording rule.
+3. If a `RecordingRule` includes an invalid LogQL `expr` it is an invalid recording rule.
+4. If a `RecordingRule` includes two groups with the same name it is an invalid recording rule.
+4. If none of above applies a `RecordingRule` is considered a valid recording rule.
+
+```go
+// RecordingRuleSpec defines the desired state of RecordingRule
+type RecordingRuleSpec struct {
+    // List of groups for recording rules.
+    //
+    // +optional
+    // +kubebuilder:validation:Optional
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Groups"
+    Groups []*RecordingRuleGroup `json:"groups"`
+}
+
+// RecordingRuleGroup defines a group of Loki  recording rules.
+type RecordingRuleGroup struct {
+    // Name defines a name of the present recoding rule. Must be unique
+    // within all loki rules.
+    //
+    // +required
+    // +kubebuilder:validation:Required
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Name"
     Name string `json:"name"`
 
     // Interval defines the time interval between evaluation of the given
     // recoding rule.
     //
-    // +required
-    // +kubebuilder:validation:Required
-    Interval EvaluationDuration `json:"interval"`
+    // +optional
+    // +kubebuilder:validation:Optional
+    // +kubebuilder:default:="1m"
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Evaluation Interval"
+    Interval PrometheusDuration `json:"interval"`
 
-    // Limit defines the number of alerts an alerting rule and series a recording
-    // rule can produce. 0 is no limit.
+    // Limit defines the number of series a recording rule can produce. 0 is no limit.
     //
     // +optional
     // +kubebuilder:validation:Optional
-    // +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Limit of firing alerts "
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Limit of produced series"
     Limit int32 `json:"limit,omitempty"`
 
-    // Rules defines a list of alerting and/or recording rules
+    // Rules defines a list of recording rules
     //
     // +required
     // +kubebuilder:validation:Required
-    Rules []*LokiRuleGroupSpec `json:"rules"`
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Rules"
+    Rules []*RecordingRuleGroupSpec `json:"rules"`
 }
 
-// LokiRuleGroupSpec defines the spec for a Loki alerting or recording rule.
-type LokiRuleGroupSpec struct {
-    // The name of the alert. Must be a valid label value.
-    //
-    // +optional
-    // +kubebuilder:validation:Optional
-    Alert string `json:"alert,omitempty"`
-
+// RecordingRuleGroupSpec defines the spec for a Loki recording rule.
+type RecordingRuleGroupSpec struct {
     // The name of the time series to output to. Must be a valid metric name.
     //
     // +optional
     // +kubebuilder:validation:Optional
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Metric Name"
     Record string `json:"record,omitempty"`
 
     // The LogQL expression to evaluate. Every evaluation cycle this is
@@ -201,52 +315,43 @@ type LokiRuleGroupSpec struct {
     //
     // +required
     // +kubebuilder:validation:Required
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="LogQL Expression"
     Expr string `json:"expr"`
-
-    // Alerts are considered firing once they have been returned for this long.
-    // Alerts which have not yet fired for long enough are considered pending.
-    //
-    // +optional
-    // +kubebuilder:validation:Optional
-    For EvaluationDuration `json:"for,omitempty"`
-
-    // Annotations to add to each alert.
-    //
-    // +optional
-    // +kubebuilder:validation:Optional
-    Annotations map[string]string `json:"annotations,omitempty"`
-
-    // Labels to add to each alert.
-    //
-    // +optional
-    // +kubebuilder:validation:Optional
-    Labels map[string]string `json:"labels,omitempty"`
 }
 
-// LokiRuleStatus defines the observed state of LokiRule
-type LokiRuleStatus struct {}
+// RecordingRuleStatus defines the observed state of RecordingRule
+type RecordingRuleStatus struct {
+    // Conditions of the RecordingRule generation health.
+    //
+    // +optional
+    // +kubebuilder:validation:Optional
+    // +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:io.kubernetes.conditions"
+    Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// LokiRule is the Schema for the lokirules API
-type LokiRule struct {
+// RecordingRule is the Schema for the recordingrules API
+//
+// +operator-sdk:csv:customresourcedefinitions:displayName="RecordingRule",resources={{LokiStack,v1beta1}}
+type RecordingRule struct {
     metav1.TypeMeta   `json:",inline"`
     metav1.ObjectMeta `json:"metadata,omitempty"`
 
-    Spec   LokiRuleSpec   `json:"spec,omitempty"`
-    Status LokiRuleStatus `json:"status,omitempty"`
+    Spec   RecordingRuleSpec   `json:"spec,omitempty"`
+    Status RecordingRuleStatus `json:"status,omitempty"`
 }
 ```
 
-#### LokiRulerConfig definition
+#### RulerConfig definition
 
 The following CRD defines the ruler configuration to access AlertManager hosts and to access a global Remote-Write-Endpoint (e.g. Prometheus, Thanos, Cortex). The types are split in three groups:
-1. `LokiRulerSpec`: This spec includes general settings like evalution and poll interval.
+1. `RulerSpec`: This spec includes general settings like evalution and poll interval.
 2. `AlertManagerSpec`: This spec includes all settings for pushing alert notifications to a list of AlertManager hosts.
 3. `RemoteWriteSpec`: This spec includes all settings to configure a single global remote write endpoint to send recorded metrics.
 
-**Note**: Sensitive authorization information are provided by a Kubernetes Secret resource, i.e. basic auth user/password, header authorization (See `AuthorizationSecretName`). The Secret is required to live in the same namespace as the `LokiRulerConfig` resource.
+**Note**: Sensitive authorization information are provided by a Kubernetes Secret resource, i.e. basic auth user/password, header authorization (See `AuthorizationSecretName`). The Secret is required to live in the same namespace as the `RulerConfig` resource.
 
 ```go
 package v1beta1
@@ -522,8 +627,8 @@ type RemoteWriteSpec struct {
     QueueSpec *RemoteWriteClientQueueSpec `json:"queueSpec"`
 }
 
-// LokiRulerSpec defines the desired state of LokiRuler
-type LokiRulerSpec struct {
+// RulerSpec defines the desired state of Ruler
+type RulerSpec struct {
     // Interval on how frequently to evaluate rules.
     //
     // +optional
@@ -553,42 +658,42 @@ type LokiRulerSpec struct {
     RemoteWriteSpec *RemoteWriteSpec `json:"remoteWrite,omitempty"`
 }
 
-// LokiRulerStatus defines the observed state of LokiRuler
-type LokiRulerStatus struct {
+// RulerStatus defines the observed state of Ruler
+type RulerStatus struct {
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// LokiRuler is the Schema for the lokirulers API
-type LokiRuler struct {
+// Ruler is the Schema for the lokirulers API
+type Ruler struct {
     metav1.TypeMeta   `json:",inline"`
     metav1.ObjectMeta `json:"metadata,omitempty"`
 
-    Spec   LokiRulerSpec   `json:"spec,omitempty"`
-    Status LokiRulerStatus `json:"status,omitempty"`
+    Spec   RulerSpec   `json:"spec,omitempty"`
+    Status RulerStatus `json:"status,omitempty"`
 }
 ```
 
 ### Implementation Details/Notes/Constraints
 
-#### LokiRule reconciliation
+#### AlertingRule and RecordingRule reconciliation
 
-`LokiRule` custom resources are transformed into a single ruler configuration file for a given `LokiStack` by `StackName`. The following two-step approach is taken:
-1. A dedicated `LokiRuleController` reads all `LokiRule` resources per namespace and creates for each an entry in a single Kubernetes ConfigMap for the given `StackName`, e.g.
+`AlertringRule` and `RecordingRule` custom resources are transformed into a single ruler configuration file for a given `LokiStack` per type (i.e one for alerting and one for recording rules). The following approach is taken:
+1. The `LokiStackController` filters all available cluster namespaces by `RulesSpec.NamespaceSelector`.
+2. The `LokiStackController` filters first all available `AlertingRule` and `RecordingRule` custom resources by `RulesSpec.Selector` and further by the filtered list of namespaces from the previous step.
+3. For `AlertingRule` it transforms the final list into a ConfigMap:
 ```yaml
 apiVersion: loki.grafana.com/v1beta1
-kind: LokiRule
+kind: AlertingRule
 metadata:
-  name: loki-rule-a
+  name: alerting-rule-a
   namespace: ns-a
-spec:
-  stackName: lokistack-dev
 ---
 apiVersion: loki.grafana.com/v1beta1
-kind: LokiRule
+kind: AlertingRule
 metadata:
-  name: loki-rule-b
+  name: alerting-rule-b
   namespace: ns-b
 spec:
   stackName: lokistack-dev
@@ -600,70 +705,98 @@ results in:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: lokistack-dev-rules
+  name: lokistack-dev-alerting-rules
   namespace: lokistack-ns
 data:
-  "ns-a-loki-rule-a.yaml": |
+  "ns-a-alerting-rule-a.yaml": |
     ...
-  "ns-b-loki-rule-b.yaml": |
+  "ns-b-alerting-rule-b.yaml": |
    ...
 ```
 
-2. The `LokiStackController` listens for `LokiRule` create/update/delete events and for a given `StackName` it configures the Loki ruler pod to mount the appropriate ConfigMap. The convention here is to use the `StackName` as a prefix for the ConfigMap name, e.g. for a stack name `lokistack-dev` the ConfigMap name is expected to be `lokistack-dev-rules`.
-3. The `LokiStackController` compiles on each create/update/delete event a SHA1 of the ConfigMap data entries and appends a dedicated annotation `loki.grafana.com/rules-config-hash` to the ruler pod spec. If this hash changes, the change applies to the annotation value and the ruler pods get restarted.
+4. For `RecordingRule` it transforms the final list into a ConfigMap:
+```yaml
+apiVersion: loki.grafana.com/v1beta1
+kind: RecordingRule
+metadata:
+  name: recording-rule-a
+  namespace: ns-a
+---
+apiVersion: loki.grafana.com/v1beta1
+kind: RecordingRule
+metadata:
+  name: recording-rule-b
+  namespace: ns-b
+```
 
-In summary this approach allows to group all `LokiRule` custom resources in the **same** namespace as the `LokiStack` in a single ConfigMap, i.e. where the stack runs is the place where the rules live.
+results in:
 
-#### LokiRulerConfig reconciliation
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lokistack-dev-recording-rules
+  namespace: lokistack-ns
+data:
+  "ns-a-recording-rule-a.yaml": |
+    ...
+  "ns-b-recording-rule-b.yaml": |
+   ...
+```
 
-The `LokiRulerConfig` custom resource is not transformed into a specific ruler configuration file per se. It is considered an optional companion to the `LokiStack` custom resource. Thus the existing `LokiStackController` listens for `LokiRuleConfig` create/update/delete events on the same namespace as for a `LokiStack` custom resource and reconciles the final ruler configuration.
+5. The `AlertingRuleController` listens for `AlertingRule` create/update/delete events and it applies the `loki.grafana.com/rulesDiscoveredAt: time.Now().Format(time.RFC3339)` on each `LokiStack` instance on the cluster. This ensures that the `LokiStack` reconciliation loop starts anew.
+6. The `RecordingRuleController` listens for `RecordingRule` create/update/delete events and it applies the `loki.grafana.com/rulesDiscoveredAt: time.Now().Format(time.RFC3339)` on each `LokiStack` instance on the cluster. This ensures that the `LokiStack` reconciliation loop starts anew.
+7. The `LokiStackController` compiles on each create/update/delete event a SHA1 of the ConfigMap data entries and appends dedicated annotations `loki.grafana.com/alerting-rules-hash` and `loki.grafana.com/recording-rules-hash` to the ruler pod spec. If any of the hash changes, the change applied to the annotation value and the ruler pods get restarted.
+
+In summary this approach allows to group all `AlertingRule` and `RecordingRule` custom resources in the **same** namespace as the `LokiStack` in a two dedicated ConfigMap, i.e. where the stack runs is the place where the rules live.
+
+#### RulerConfig reconciliation
+
+The `RulerConfig` custom resource is not transformed into a specific ruler configuration file per se. It is considered an optional companion to the `LokiStack` custom resource. Thus the existing `LokiStackController` listens for `RulerConfig` create/update/delete events on the same namespace as for a `LokiStack` custom resource and reconciles the final ruler configuration.
 
 In detail the separation of concerns between both CRDs looks like:
 1. `LokiStack`: Defines all required aspects to spin up a Loki ruler component, i.e. size, node placement. In addition it controls the common config settings for the Work-Ahead-Log and Ring configuration.
-2. `LokiRulerConfig`: Defines only the global runtime settings for the ruler, i.e. evaluation/poll intervals, AlertManager configuration, remote write client configuration.
+2. `RulerConfig`: Defines only the global runtime settings for the ruler, i.e. evaluation/poll intervals, AlertManager configuration, remote write client configuration.
 
 #### General constraints
 
-1. The above `LokiRulerConfig` is limited to a single global remote write endpoint for exporting metrics from recording rules. This leaves solving multi-tenancy issues on the remote write server side and provide means (e.g. headers) for spliting/amending metrics ingestion per tenant. On the other hand it simplifies ruler operations as it does not require to spin concurrent remote write clients per tenant.
-2. Additionally the `LokiRulerConfig` requires a user-provided Kubernetes Secret for sensitive information. This adds an extra dependency that requires validation inside the controller-loop.
+1. The above `RulerConfig` is limited to a single global remote write endpoint for exporting metrics from recording rules. This leaves solving multi-tenancy issues on the remote write server side and provide means (e.g. headers) for spliting/amending metrics ingestion per tenant. On the other hand it simplifies ruler operations as it does not require to spin concurrent remote write clients per tenant.
+2. Additionally the `RulerConfig` requires a user-provided Kubernetes Secret for sensitive information. This adds an extra dependency that requires validation inside the controller-loop.
 
 ### Risks and Mitigations
 
 #### Loki Ruler Configuration versioning
 
-**Risk**: The `LokiRulerConfig` CRD exposes an almost identical [ruler config](https://grafana.com/docs/loki/latest/configuration/#ruler) to support AlertManager and Remote-Write. Both sub-specifications are subject of change to the API version of the server endpoint (i.e. AlertManager, Remote-Write). Although AlertManager is using a versioned approach e.g. `EnableV2` switch, we miss a similar approach accross remote write endpoints.
+**Risk**: The `RulerConfig` CRD exposes an almost identical [ruler config](https://grafana.com/docs/loki/latest/configuration/#ruler) to support AlertManager and Remote-Write. Both sub-specifications are subject of change to the API version of the server endpoint (i.e. AlertManager, Remote-Write). Although AlertManager is using a versioned approach e.g. `EnableV2` switch, we miss a similar approach accross remote write endpoints.
 
-**Mitigation**: We require a support matrix for `LokiRulerConfig` versions to AlertManager API versions and Remote Write implementations. For later we could use a list of releases (e.g. Prometheus 2.x, Thanos 0.20.z).
+**Mitigation**: We require a support matrix for `RulerConfig` versions to AlertManager API versions and Remote Write implementations. For later we could use a list of releases (e.g. Prometheus 2.x, Thanos 0.20.z).
 
-#### Single CRD for Alerting and Recording Rules
+#### Two ConfigMaps for all RecordingRule and AlertingRule custom resources
 
-**Risk**: `LokiRule` is an amalgam of types for alerting and recording rules. This requires custom validation to inform the user of bad inputs and in turn extra maintaince over time. In addition alerting rules might deviate with new features in future (See [Feature Request: alert relabel configs](https://github.com/grafana/loki/issues/5886)). Thus a CRD combining both rules types might become confusing and error-prone from a user experience perspective.
+**Risk**: The proposed reconciliation approach manifests that all `AlertingRule` instances are transformed to individual entries in a single ConfigMap. Alerting rules can be become quite big (e.g. large LogQL expresssions). As per ConfigMaps represent Kubernetes resource stored in etcd, this might hit some store limits (See [1MiB limit](https://kubernetes.io/docs/concepts/configuration/configmap/#motivation)). Therefore storing all rules in a single ConfigMap might become impossible over time or on large clusters.
 
-**Mitigation**: Either split the two types in an `AlertingRule` and `RecordingRule` type now or in a future v2 version. Later would probably be harder to support seamless migrations from the Kubernetes API server side.
+**Mitigation**: Introduce some sort of sharding of `AlertingRule** custom resources into multiple ConfigMap resources.
 
-#### Single ConfigMap for all LokiRule instances
-
-**Risk**: The proposed reconciliation approach manifests that all `LokiRule` instances are transformed to individual entries in a single ConfigMap. Alerting/Recording rules can be become quite big (e.g. large LogQL expresssions). As per ConfigMaps represent Kubernetes resource stored in etcd, this might hit some store limits (See [1MiB limit](https://kubernetes.io/docs/concepts/configuration/configmap/#motivation)). Therefore storing all rules in a single ConfigMap might become impossible over time or on large clusters.
-
-**Mitigation**: Introduce some sort of sharding of LokiRules into multiple ConfigMap resources.
+**Note**: The same applies to `RecordingRule`
 
 ## Design Details
 
 ### Open Questions [optional]
 
-1. Do we need to split the `LokiRule` into two types `RecordingRule` and `AlertingRule`?
-2. Do we need to add support for Remote Write Configuration per tenant? (See `ruler_remote_write_*` parameters in [limits_config](https://grafana.com/docs/loki/latest/configuration/#limits_config))
-3. Do we need to add support for the `ruler_evaluation_delay_duration`, `ruler_max_rules_per_rule_group` and `ruler_max_rule_groups_per_tenant` limits?
+1.0000 Do we need to add support for Remote Write Configuration per tenant? (See `ruler_remote_write_*` parameters in [limits_config](https://grafana.com/docs/loki/latest/configuration/#limits_config))
+2. Do we need to add support for the `ruler_evaluation_delay_duration`, `ruler_max_rules_per_rule_group` and `ruler_max_rule_groups_per_tenant` limits?
 
 ## Implementation History
 
 * 2022-04-21: Initial draft proposal
-* 2022-04-21: Spike implementation for `LokiRule` reconciliation and `LokiRulerConfig` types. (See [PR](https://github.com/grafana/loki/pull/5986))
+* 2022-04-21: Spike implementation for `LokiRule` reconciliation and `RulerConfig` types. (See [PR](https://github.com/grafana/loki/pull/5986))
 * 2022-04-26: Update draft to use `LokiRule` types to use webhook-based validation and `LokiRuleSpec.Selector`, `LokiRuleSpec.NamespaceSelector`. (See [PR](https://github.com/grafana/loki/pull/5986))
+* 2022-04-28: Update draft to split `LokiRule` into two distinct types `AlertingRule` and `RecordingRule`. (See [PR](https://github.com/grafana/loki/pull/5986))
+* 2022-04-28: Renamed `LokiRulerConfig` types to `RulerConfig` as per `Loki` prefix is part of the API group `loki.grafana.com`, i.e. fully qualified type is `ruler.loki.grafana.com`
 
 ## Drawbacks
 
-The above proposed design and implementation for LokiStack Ruler support adds a significant amount of new APIs as well as complexity into exposing a declarative approach **only** for the ruler component. Regardless the hard effort to minimize the amount of configuration settings in the proposed CRDs it remains still a huge addition to the operator code base. In contrast to the existing `LokiStack` CRD that is a very slim set of Loki settings (Note: without considering the gateway tenant configuration), the `LokiRulerConfig` is almost one-to-one identical to the [ruler config](https://grafana.com/docs/loki/latest/configuration/#ruler).
+The above proposed design and implementation for LokiStack Ruler support adds a significant amount of new APIs as well as complexity into exposing a declarative approach **only** for the ruler component. Regardless the hard effort to minimize the amount of configuration settings in the proposed CRDs it remains still a huge addition to the operator code base. In contrast to the existing `LokiStack` CRD that is a very slim set of Loki settings (Note: without considering the gateway tenant configuration), the `RulerConfig` is almost one-to-one identical to the [ruler config](https://grafana.com/docs/loki/latest/configuration/#ruler).
 
 ## Alternatives
 
