@@ -193,6 +193,6 @@ func (rm *RingManager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if rm.cfg.Mode == RingMode {
 		rm.Ring.ServeHTTP(w, req)
 	} else {
-		w.Write([]byte("IndexGateway running with 'useIndexGatewayRing' disabled."))
+		_, _ = w.Write([]byte("IndexGateway running with 'useIndexGatewayRing' disabled."))
 	}
 }
