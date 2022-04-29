@@ -259,10 +259,9 @@ func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, bucketName 
 
 func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error {
 	batch := batchPool.Get().(*cursorBatch)
-	batch.reset()
-	batch.cursor = c
-	batch.query = &query
 	defer batchPool.Put(batch)
+
+	batch.reset(c, &query)
 	callback(query, batch)
 	return nil
 }
@@ -349,10 +348,12 @@ func (c *cursorBatch) Value() []byte {
 	return c.currValue
 }
 
-func (c *cursorBatch) reset() {
+func (c *cursorBatch) reset(cur *bbolt.Cursor, q *index.Query) {
 	c.currRangeValue = nil
 	c.currValue = nil
 	c.seeked = false
+	c.cursor = cur
+	c.query = q
 	c.rowPrefix.Reset()
 	c.start.Reset()
 }
