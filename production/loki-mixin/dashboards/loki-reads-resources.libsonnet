@@ -33,6 +33,18 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRow(
+          $.row('Query Scheduler')
+          .addPanel(
+            $.containerCPUUsagePanel('CPU', 'query-scheduler'),
+          )
+          .addPanel(
+            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-scheduler'),
+          )
+          .addPanel(
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'query-scheduler'),
+          )
+        )
+        .addRow(
           $.row('Querier')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'querier'),
