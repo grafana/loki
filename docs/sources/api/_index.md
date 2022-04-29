@@ -1098,7 +1098,7 @@ For more information, please check out the Prometheus [alerts](https://prometheu
 
 ### `GET /compactor/ring`
 
-Displays a web page with the compactor hash ring status, including the state, healthy and last heartbeat time of each compactor.
+Displays a web page with the compactor hash ring status, including the state, health, and last heartbeat time of each compactor.
 
 ### `POST /loki/api/v1/delete`
 
