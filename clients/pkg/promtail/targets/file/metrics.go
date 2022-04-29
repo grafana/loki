@@ -12,6 +12,7 @@ type Metrics struct {
 	totalBytes  *prometheus.GaugeVec
 	readLines   *prometheus.CounterVec
 	filesActive prometheus.Gauge
+	streamLag   *prometheus.GaugeVec
 
 	// Manager metrics
 	failedTargets *prometheus.CounterVec
@@ -44,6 +45,11 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		Name:      "files_active_total",
 		Help:      "Number of active files.",
 	})
+	m.streamLag = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "promtail",
+		Name:      "stream_lag",
+		Help:      "Stream lag per path.",
+	}, []string{"path"})
 
 	m.failedTargets = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
@@ -62,6 +68,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			m.totalBytes,
 			m.readLines,
 			m.filesActive,
+			m.streamLag,
 			m.failedTargets,
 			m.targetsActive,
 		)

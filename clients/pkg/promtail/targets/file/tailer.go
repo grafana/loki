@@ -13,16 +13,17 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/interceptor"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
 
 type tailer struct {
-	metrics   *Metrics
-	logger    log.Logger
-	handler   api.EntryHandler
-	positions positions.Positions
+	metrics     *Metrics
+	logger      log.Logger
+	interceptor interceptor.Interceptor
+	positions   positions.Positions
 
 	path string
 	tail *tail.Tail
@@ -36,7 +37,7 @@ type tailer struct {
 	done    chan struct{}
 }
 
-func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string) (*tailer, error) {
+func newTailer(metrics *Metrics, logger log.Logger, interceptor interceptor.Interceptor, positions positions.Positions, path string) (*tailer, error) {
 	// Simple check to make sure the file we are tailing doesn't
 	// have a position already saved which is past the end of the file.
 	fi, err := os.Stat(path)
@@ -68,17 +69,18 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 	}
 
 	logger = log.With(logger, "component", "tailer")
+	interceptor.PipelineIn = api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(interceptor.PipelineIn)
 	tailer := &tailer{
-		metrics:   metrics,
-		logger:    logger,
-		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
-		positions: positions,
-		path:      path,
-		tail:      tail,
-		running:   atomic.NewBool(false),
-		posquit:   make(chan struct{}),
-		posdone:   make(chan struct{}),
-		done:      make(chan struct{}),
+		metrics:     metrics,
+		logger:      logger,
+		interceptor: interceptor,
+		positions:   positions,
+		path:        path,
+		tail:        tail,
+		running:     atomic.NewBool(false),
+		posquit:     make(chan struct{}),
+		posdone:     make(chan struct{}),
+		done:        make(chan struct{}),
 	}
 
 	go tailer.readLines()
@@ -135,7 +137,10 @@ func (t *tailer) readLines() {
 		level.Info(t.logger).Log("msg", "tail routine: exited", "path", t.path)
 		close(t.done)
 	}()
-	entries := t.handler.Chan()
+	pIn := t.interceptor.PipelineIn.Chan()
+	pOut := t.interceptor.PipelineOut
+	client := t.interceptor.Client.Chan()
+
 	for {
 		line, ok := <-t.tail.Lines
 		if !ok {
@@ -150,14 +155,20 @@ func (t *tailer) readLines() {
 		}
 
 		t.metrics.readLines.WithLabelValues(t.path).Inc()
-		entries <- api.Entry{
+		// Process the entry through the pipeline stages so we can sure we have the correct
+		// timestamp that the user expects to see when we later go to set the stream lag metric.
+		pIn <- api.Entry{
 			Labels: model.LabelSet{},
 			Entry: logproto.Entry{
 				Timestamp: line.Time,
 				Line:      line.Text,
 			},
 		}
+		finalEntry := <-pOut
+		// Set the metric
 
+		t.metrics.streamLag.WithLabelValues(t.path).Set(float64(finalEntry.Entry.Timestamp.Unix()))
+		client <- finalEntry.Entry
 	}
 }
 
@@ -209,7 +220,8 @@ func (t *tailer) stop() {
 		// Wait for readLines() to consume all the remaining messages and exit when the channel is closed
 		<-t.done
 		level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
-		t.handler.Stop()
+		// t.handler.Stop()
+		// what do we call stop for here?
 	})
 }
 

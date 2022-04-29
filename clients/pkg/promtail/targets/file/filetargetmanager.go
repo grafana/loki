@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/interceptor"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
 	"github.com/grafana/loki/pkg/util"
@@ -118,6 +119,11 @@ func NewFileTargetManager(
 			}
 		}
 
+		// create a standalone pipeline so we can capture the modified timestamps before
+		// entries are sent on to the final client
+		p, pout := pipeline.StandalonePipeline()
+		i := interceptor.NewInterceptor(client, p, pout)
+
 		s := &targetSyncer{
 			metrics:           metrics,
 			log:               logger,
@@ -126,7 +132,7 @@ func NewFileTargetManager(
 			targets:           map[string]*FileTarget{},
 			droppedTargets:    []target.Target{},
 			hostname:          hostname,
-			entryHandler:      pipeline.Wrap(client),
+			interceptor:       i,
 			targetConfig:      targetConfig,
 			fileEventWatchers: map[string]chan fsnotify.Event{},
 		}
@@ -245,11 +251,11 @@ func (tm *FileTargetManager) AllTargets() map[string][]target.Target {
 
 // targetSyncer sync targets based on service discovery changes.
 type targetSyncer struct {
-	metrics      *Metrics
-	log          log.Logger
-	positions    positions.Positions
-	entryHandler api.EntryHandler
-	hostname     string
+	metrics     *Metrics
+	log         log.Logger
+	positions   positions.Positions
+	interceptor interceptor.Interceptor
+	hostname    string
 
 	fileEventWatchers map[string]chan fsnotify.Event
 
@@ -388,7 +394,7 @@ func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
 }
 
 func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventHandler chan fileTargetEvent) (*FileTarget, error) {
-	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler)
+	return NewFileTarget(s.metrics, s.log, s.interceptor, s.positions, path, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler)
 }
 
 func (s *targetSyncer) DroppedTargets() []target.Target {
@@ -433,7 +439,8 @@ func (s *targetSyncer) stop() {
 		close(watcher)
 		delete(s.fileEventWatchers, key)
 	}
-	s.entryHandler.Stop()
+	s.interceptor.PipelineIn.Stop()
+	// TODO do we also need to stop the client channel here?
 }
 
 func hostname() (string, error) {

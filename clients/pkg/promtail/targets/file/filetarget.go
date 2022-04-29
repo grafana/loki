@@ -10,13 +10,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	fsnotify "gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/interceptor"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
@@ -60,7 +59,7 @@ type FileTarget struct {
 	metrics *Metrics
 	logger  log.Logger
 
-	handler          api.EntryHandler
+	interceptor      interceptor.Interceptor
 	positions        positions.Positions
 	labels           model.LabelSet
 	discoveredLabels model.LabelSet
@@ -81,7 +80,7 @@ type FileTarget struct {
 func NewFileTarget(
 	metrics *Metrics,
 	logger log.Logger,
-	handler api.EntryHandler,
+	interceptor interceptor.Interceptor,
 	positions positions.Positions,
 	path string,
 	labels model.LabelSet,
@@ -90,13 +89,14 @@ func NewFileTarget(
 	fileEventWatcher chan fsnotify.Event,
 	targetEventHandler chan fileTargetEvent,
 ) (*FileTarget, error) {
+	interceptor.PipelineIn = api.AddLabelsMiddleware(labels).Wrap(interceptor.PipelineIn)
 	t := &FileTarget{
 		logger:             logger,
 		metrics:            metrics,
 		path:               path,
 		labels:             labels,
 		discoveredLabels:   discoveredLabels,
-		handler:            api.AddLabelsMiddleware(labels).Wrap(handler),
+		interceptor:        interceptor,
 		positions:          positions,
 		quit:               make(chan struct{}),
 		done:               make(chan struct{}),
@@ -119,7 +119,8 @@ func (t *FileTarget) Ready() bool {
 func (t *FileTarget) Stop() {
 	close(t.quit)
 	<-t.done
-	t.handler.Stop()
+	t.interceptor.PipelineIn.Stop()
+	// do I also need to close the client here?
 }
 
 // Type implements a Target
@@ -291,7 +292,7 @@ func (t *FileTarget) startTailing(ps []string) {
 		}
 
 		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
-		tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p)
+		tailer, err := newTailer(t.metrics, t.logger, t.interceptor, t.positions, p)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
 			continue
@@ -309,9 +310,10 @@ func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 			t.positions.Remove(tailer.path)
 			delete(t.tails, p)
 		}
-		if h, ok := t.handler.(api.InstrumentedEntryHandler); ok {
-			h.UnregisterLatencyMetric(prometheus.Labels{client.LatencyLabel: p})
-		}
+		// TODO remove the client side metric
+		// if h, ok := t.interceptor.(api.InstrumentedEntryHandler); ok {
+		// 	h.UnregisterLatencyMetric(prometheus.Labels{client.LatencyLabel: p})
+		// }
 	}
 }
 

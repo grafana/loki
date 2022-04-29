@@ -141,6 +141,31 @@ func (p *Pipeline) Size() int {
 	return len(p.stages)
 }
 
+// StandalonePipeline returns the api.EntryHandler to run the pipeline and stop it cleanly
+// and also the channel on which the pipeline will output modified entries.
+func (p *Pipeline) StandalonePipeline() (api.EntryHandler, chan Entry) {
+	handlerIn := make(chan api.Entry)
+	// nextChan := next.Chan()
+	wg, once := sync.WaitGroup{}, sync.Once{}
+	pipelineIn := make(chan Entry)
+	pipelineOut := p.Run(pipelineIn)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(pipelineIn)
+		for e := range handlerIn {
+			pipelineIn <- Entry{
+				Extracted: map[string]interface{}{},
+				Entry:     e,
+			}
+		}
+	}()
+	return api.NewEntryHandler(handlerIn, func() {
+		once.Do(func() { close(handlerIn) })
+		wg.Wait()
+	}), pipelineOut
+}
+
 func SetReadLineRateLimiter(rateVal float64, burstVal int, drop bool) {
 	rateLimiter = rate.NewLimiter(rate.Limit(rateVal), burstVal)
 	rateLimiterDrop = drop
