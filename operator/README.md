@@ -7,23 +7,30 @@ provided by the Grafana Loki SIG operator. **This is currently a work in
 progress and is subject to large scale changes that will break any dependencies.
 Do not use this in any production environment.**
 
-## Development
+### Hacking on Loki Operator on kind or OpenShift
 
-Requirements:
+* If you want to contribute to this repository, you might need a step-by-step guide on how to start [hacking on Loki-operator with kind](https://github.com/grafana/loki/blob/master/operator/docs/hack_loki_operator.md#hacking-on-loki-operator-using-kind).
+* Also, there is a step-by-step guide on how to test Loki-operator on [OpenShift](https://github.com/grafana/loki/blob/master/operator/docs/hack_loki_operator.md#hacking-on-loki-operator-on-openshift).
+* There is also a [basic troubleshooting guide](https://github.com/grafana/loki/blob/master/operator/docs/hack_loki_operator.md#basic-troubleshooting-on-hacking-on-loki-operator) if you run into some common problems.
+* There is also a [document](https://github.com/grafana/loki/blob/master/operator/docs/hack_operator_make_run.md) which demonstrates how to use Loki Operator for development and testing locally without deploying the operator each time on Kind and OpenShift using the `make run` command.
 
-  1. Running Kubernetes cluster. Our team uses
-     [KinD](https://kind.sigs.k8s.io/docs/user/quick-start/) or
-     [K3s](https://k3s.io/) for simplicity.
-  1. A container registry that you and your Kubernetes cluster can reach. We
-     recommend [quay.io](https://quay.io/signin/).
+### Sending Logs to Loki
 
-Build and push the container image and then deploy the operator with `make
-oci-build oci-push deploy IMG=quay.io/my-team/loki-operator:latest`.  This will
-deploy to your active Kubernetes/OpenShift cluster defined by your local
-[kubeconfig](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/).
+#### Sending Logs Through the Gateway Component
 
-For detailed step-by-step guide on how to start development and testing on Kind and OpenShift, 
-check our [documentation](https://github.com/grafana/loki/blob/master/operator/docs/hack_loki_operator.md)
+* The [forwarding logs to LokiStack guide](https://github.com/grafana/loki/tree/master/operator/docs/forwarding_logs_to_gateway.md) provides instructions for configuring forwarding clients to ship logs to Loki through the gateway component.
+* This section details [how to connect to OpenShift Logging](https://github.com/grafana/loki/tree/master/operator/docs/forwarding_logs_to_gateway.md#openshift-logging) installation to the gateway.
+* This section details [how to connect a Promtail](https://github.com/grafana/loki/tree/master/operator/docs/forwarding_logs_to_gateway.md#promtail) installation to the gateway.
+* This section details [how to connect a Grafana Fluentd plugin](https://github.com/grafana/loki/tree/master/operator/docs/forwarding_logs_to_gateway.md#fluentd) installation to the gateway.
 
-Also, there is a [document](https://github.com/grafana/loki/blob/master/operator/docs/hack_operator_make_run.md) which
-demonstrates how to use Loki Operator for development and testing locally without deploying the operator each time on Kind and OpenShift.
+#### Sending Logs Directly to the Distributor Component
+
+* The [forwarding logs to LokiStack without LokiStack Gateway](https://github.com/grafana/loki/tree/master/operator/docs/forwarding_logs_without_gateway.md) is used to send application, infrastructure, and audit logs to the Loki Distributor as different tenants using Fluentd or Vector.
+* The guide has a step-by-step guide to connect with OpenShift Logging for forwarding logs to LokiStack.
+
+### Installation of Storage Size Calculator on OpenShift
+
+* Storage size calculator works out of the box on OpenShift. For non-openshift distributions you will need to create services like prometheus, serviceMonitor, scrape configuration for log-file-metric exporter, promsecret to access the custom prometheus URL, token.
+* The step-by-step guide on how to install [storage size calculator](https://github.com/grafana/loki/blob/master/operator/docs/storage_size_calculator.md) on OpenShift is available.
+* Also, there is a step-by-step guide on how to [contribute](https://github.com/grafana/loki/blob/master/operator/docs/storage_size_calculator.md#contribution) to this along with local development and testing procedure.
+* There is also a [basic troubleshooting guide](https://github.com/grafana/loki/blob/master/operator/docs/storage_size_calculator.md#troubleshooting) if you run into some common problems.
