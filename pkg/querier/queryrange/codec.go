@@ -788,7 +788,7 @@ func paramsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 			LokiLabelNamesRequest: r,
 		}, nil
 	default:
-		return nil, fmt.Errorf("expected one of the *LokiRequestor, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got (%T)", r)
+		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got (%T)", r)
 	}
 }
 
