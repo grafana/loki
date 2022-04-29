@@ -52,11 +52,12 @@ type RingManager struct {
 }
 
 func NewRingManager(cfg Config, log log.Logger, registerer prometheus.Registerer) (*RingManager, error) {
-	if cfg.Mode != RingMode {
-		return nil, nil
-	}
 	rm := &RingManager{
 		cfg: cfg, log: log,
+	}
+
+	if cfg.Mode != RingMode {
+		return rm, nil
 	}
 
 	ringStore, err := kv.NewClient(
