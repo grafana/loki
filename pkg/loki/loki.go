@@ -252,7 +252,7 @@ type Loki struct {
 	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
 	usageReport              *usagestats.Reporter
-	indexGatewayRing         *ring.Ring
+	indexGatewayRingManager  *indexgateway.RingManager
 
 	clientMetrics storage.ClientMetrics
 
@@ -511,7 +511,7 @@ func (t *Loki) setupModuleManager() error {
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
 		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
-		IndexGateway:             {Server, Store, Overrides, UsageReport, MemberlistKV},
+		IndexGateway:             {Server, Store, Overrides, UsageReport, MemberlistKV, IndexGatewayRing},
 		IngesterQuerier:          {Ring},
 		IndexGatewayRing:         {RuntimeConfig, Server, MemberlistKV},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
