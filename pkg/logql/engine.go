@@ -172,6 +172,8 @@ type query struct {
 
 func (q *query) resultLength(res promql_parser.Value) int {
 	switch r := res.(type) {
+	case promql.Vector:
+		return len(r)
 	case promql.Matrix:
 		return r.TotalSamples()
 	case logqlmodel.Streams:

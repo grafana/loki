@@ -914,6 +914,7 @@ var (
 			"queueTime": 21,
 			"subqueries": 1,
 			"totalBytesProcessed": 24,
+                        "totalEntriesReturned": 10,
 			"totalLinesProcessed": 25
 		}
 	},`
@@ -1066,6 +1067,7 @@ var (
 			TotalBytesProcessed:     24,
 			Subqueries:              1,
 			TotalLinesProcessed:     25,
+			TotalEntriesReturned:    10,
 		},
 		Querier: stats.Querier{
 			Store: stats.Store{

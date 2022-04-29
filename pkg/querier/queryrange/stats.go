@@ -127,7 +127,9 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					queryType = queryTypeLog
 				case *LokiPromResponse:
 					statistics = &r.Statistics
-					totalEntries = len(r.Response.Data.Result)
+					if r.Response != nil {
+						totalEntries = len(r.Response.Data.Result)
+					}
 					queryType = queryTypeMetric
 				case *LokiSeriesResponse:
 					statistics = &r.Statistics

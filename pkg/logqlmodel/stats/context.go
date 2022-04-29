@@ -15,7 +15,7 @@ To get the  statistic from the current context you can use:
 
 Finally to get a snapshot of the current query statistic use
 
-	statsCtx.Result(time.Since(start))
+	statsCtx.Result(time.Since(start), queueTime, totalEntriesReturned)
 
 */
 package stats
