@@ -114,7 +114,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 			return nil, err
 		}
 
-		err = userIndexSet.Init()
+		err = userIndexSet.Init(false)
 		if err != nil {
 			return nil, err
 		}
@@ -128,7 +128,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 		return nil, err
 	}
 
-	err = commonIndexSet.Init()
+	err = commonIndexSet.Init(false)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +309,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 			}()
 		}
 
-		err := indexSet.Init()
+		err := indexSet.Init(forQuerying)
 		if err != nil {
 			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
 		}

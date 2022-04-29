@@ -38,8 +38,8 @@ func newStorageClientWithFakeObjectsInList(storageClient storage.Client) storage
 	return storageClientWithFakeObjectsInList{storageClient}
 }
 
-func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, []string, error) {
-	files, userIDs, err := o.Client.ListFiles(ctx, tableName)
+func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string, _ bool) ([]storage.IndexFile, []string, error) {
+	files, userIDs, err := o.Client.ListFiles(ctx, tableName, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -50,6 +50,20 @@ func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, table
 	})
 
 	return files, userIDs, nil
+}
+
+func (o storageClientWithFakeObjectsInList) ListUserFiles(ctx context.Context, tableName, userID string, _ bool) ([]storage.IndexFile, error) {
+	files, err := o.Client.ListUserFiles(ctx, tableName, userID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	files = append(files, storage.IndexFile{
+		Name:       "fake-object",
+		ModifiedAt: time.Now(),
+	})
+
+	return files, nil
 }
 
 type stopFunc func()
@@ -72,7 +86,7 @@ func buildTestTable(t *testing.T, path string) (*table, *local.BoltIndexClient, 
 	cachePath := filepath.Join(path, cacheDirName)
 
 	table := NewTable(tableName, cachePath, storageClient, boltDBIndexClient, newMetrics(nil)).(*table)
-	_, usersWithIndex, err := table.storageClient.ListFiles(context.Background(), tableName)
+	_, usersWithIndex, err := table.storageClient.ListFiles(context.Background(), tableName, false)
 	require.NoError(t, err)
 	require.NoError(t, table.EnsureQueryReadiness(context.Background(), usersWithIndex))
 
@@ -397,6 +411,7 @@ func TestTable_Sync(t *testing.T) {
 	testutil.AddRecordsToDB(t, filepath.Join(tablePathInStorage, newDB), boltdbClient, 20, 10, nil)
 
 	// sync the table
+	table.storageClient.RefreshIndexListCache(context.Background())
 	require.NoError(t, table.Sync(context.Background()))
 
 	// query and verify table has expected records from new db and the records from deleted db are gone
