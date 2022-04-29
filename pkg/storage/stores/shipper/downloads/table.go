@@ -254,6 +254,15 @@ func (t *table) Sync(ctx context.Context) error {
 
 	for userID, indexSet := range t.indexSets {
 		if err := indexSet.Sync(ctx); err != nil {
+			if errors.Is(err, errIndexListCacheTooStale) {
+				level.Info(t.logger).Log("msg", "we have hit stale list cache, refreshing it and running sync again")
+				t.storageClient.RefreshIndexListCache(ctx)
+
+				err = indexSet.Sync(ctx)
+				if err == nil {
+					continue
+				}
+			}
 			return errors.Wrap(err, fmt.Sprintf("failed to sync index set %s for table %s", userID, t.name))
 		}
 	}
