@@ -115,6 +115,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'index-gateway'),
           )
+          .addPanel(
+            $.panel('Query Readiness Duration') +
+            $.queryPanel(
+              ['loki_boltdb_shipper_query_readiness_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']
+            ) +
+            { yaxes: $.yaxes('s') },
+          )
         )
         .addRow(
           $.row('Ingester')
