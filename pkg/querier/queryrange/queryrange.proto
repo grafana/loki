@@ -87,7 +87,10 @@ message LokiSeriesResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase.PrometheusResponseHeader"
   ];
-  stats.Result statistics = 5 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "statistics"];
+  stats.Result statistics = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "statistics"
+  ];
 }
 
 message LokiLabelNamesRequest {
@@ -110,7 +113,10 @@ message LokiLabelNamesResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase.PrometheusResponseHeader"
   ];
-  stats.Result statistics = 5 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "statistics"];
+  stats.Result statistics = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "statistics"
+  ];
 }
 
 message LokiData {
