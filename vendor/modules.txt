@@ -546,6 +546,9 @@ github.com/grafana/dskit/runtimeconfig
 github.com/grafana/dskit/services
 github.com/grafana/dskit/spanlogger
 github.com/grafana/dskit/tenant
+# github.com/grafana/go-gelf/v2 v2.0.1
+## explicit; go 1.17
+github.com/grafana/go-gelf/v2/gelf
 # github.com/grafana/regexp v0.0.0-20220304100321-149c8afcd6cb
 ## explicit; go 1.17
 github.com/grafana/regexp
@@ -607,7 +610,7 @@ github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.9.6
 ## explicit; go 1.12
 github.com/hashicorp/serf/coordinate
-# github.com/hpcloud/tail v1.0.0 => github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03
+# github.com/hpcloud/tail v1.0.0 => github.com/grafana/tail v0.0.0-20220426200921-98e8eb28ea4c
 ## explicit; go 1.13
 github.com/hpcloud/tail
 github.com/hpcloud/tail/ratelimiter
@@ -967,7 +970,7 @@ github.com/spf13/pflag
 # github.com/stretchr/objx v0.2.0
 ## explicit; go 1.12
 github.com/stretchr/objx
-# github.com/stretchr/testify v1.7.0
+# github.com/stretchr/testify v1.7.1
 ## explicit; go 1.13
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
@@ -1153,10 +1156,10 @@ go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
 go.uber.org/zap/zapgrpc
-# go4.org/intern v0.0.0-20210108033219-3eb7198706b2
+# go4.org/intern v0.0.0-20211027215823-ae77deb06f29
 ## explicit; go 1.13
 go4.org/intern
-# go4.org/unsafe/assume-no-moving-gc v0.0.0-20201222180813-1025295fd063
+# go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37
 ## explicit; go 1.11
 go4.org/unsafe/assume-no-moving-gc
 # golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
@@ -1396,9 +1399,6 @@ google.golang.org/protobuf/types/known/emptypb
 google.golang.org/protobuf/types/known/fieldmaskpb
 google.golang.org/protobuf/types/known/timestamppb
 google.golang.org/protobuf/types/known/wrapperspb
-# gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20191017102106-1550ee647df0 => github.com/grafana/go-gelf v0.0.0-20211112153804-126646b86de8
-## explicit
-gopkg.in/Graylog2/go-gelf.v2/gelf
 # gopkg.in/alecthomas/kingpin.v2 v2.2.6
 ## explicit
 gopkg.in/alecthomas/kingpin.v2
@@ -1423,7 +1423,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 ## explicit
 gopkg.in/yaml.v3
-# inet.af/netaddr v0.0.0-20210707202901-70468d781e6c
+# inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 ## explicit; go 1.12
 inet.af/netaddr
 # k8s.io/api v0.22.7 => k8s.io/api v0.21.0
@@ -1651,7 +1651,7 @@ sigs.k8s.io/structured-merge-diff/v4/value
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 # github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
-# github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03
+# github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20220426200921-98e8eb28ea4c
 # github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 # github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20220216145902-b5e698eff68e
 # k8s.io/client-go => k8s.io/client-go v0.21.0
@@ -1660,5 +1660,4 @@ sigs.k8s.io/yaml
 # github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
-# gopkg.in/Graylog2/go-gelf.v2 => github.com/grafana/go-gelf v0.0.0-20211112153804-126646b86de8
 # github.com/cloudflare/cloudflare-go => github.com/cyriltovena/cloudflare-go v0.27.1-0.20211118103540-ff77400bcb93

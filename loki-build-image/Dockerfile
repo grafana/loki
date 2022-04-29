@@ -26,6 +26,12 @@ RUN apk add --no-cache curl && \
     cd / && \
     curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.45.2
 
+FROM alpine:3.15.4 as buf
+
+RUN apk add --no-cache curl && \
+    curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.4.0/buf-$(uname -s)-$(uname -m)" -o "/usr/bin/buf" && \
+    chmod +x "/usr/bin/buf"
+
 FROM alpine:3.15.4 as docker
 RUN apk add --no-cache docker-cli
 
@@ -69,6 +75,7 @@ COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=lychee /usr/bin/lychee /usr/bin/lychee
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
+COPY --from=buf /usr/bin/buf /usr/bin/buf
 COPY --from=drone /usr/local/bin/drone /usr/bin/drone
 COPY --from=faillint /go/bin/faillint /usr/bin/faillint
 COPY --from=delve /go/bin/dlv /usr/bin/dlv
