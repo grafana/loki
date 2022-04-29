@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build gofuzz
 // +build gofuzz
 
 package netaddr
@@ -129,13 +130,18 @@ func checkBinaryMarshaller(x encoding.BinaryMarshaler) {
 	}
 }
 
-type appendMarshaller interface {
+// fuzzAppendMarshaler is identical to appendMarshaler, defined in netaddr_test.go.
+// We have two because the two go-fuzz implementations differ
+// in whether they include _test.go files when typechecking.
+// We need this fuzz file to compile with and without netaddr_test.go,
+// which means defining the interface twice.
+type fuzzAppendMarshaler interface {
 	encoding.TextMarshaler
 	AppendTo([]byte) []byte
 }
 
 // checkTextMarshalMatchesAppendTo checks that x's MarshalText matches x's AppendTo.
-func checkTextMarshalMatchesAppendTo(x appendMarshaller) {
+func checkTextMarshalMatchesAppendTo(x fuzzAppendMarshaler) {
 	buf, err := x.MarshalText()
 	if err != nil {
 		panic(err)
@@ -154,8 +160,8 @@ func parseIPPort(s string) (interface{}, error)   { return ParseIPPort(s) }
 func parseIPPrefix(s string) (interface{}, error) { return ParseIPPrefix(s) }
 
 func checkStringParseRoundTrip(x fmt.Stringer, parse func(string) (interface{}, error)) {
-	v, vok := x.(interface{ Valid() bool })
-	if vok && !v.Valid() {
+	v, vok := x.(interface{ IsValid() bool })
+	if vok && !v.IsValid() {
 		// Ignore invalid values.
 		return
 	}
@@ -163,7 +169,7 @@ func checkStringParseRoundTrip(x fmt.Stringer, parse func(string) (interface{}, 
 	// The exception is if they have a Valid method and that Valid method
 	// explicitly says that the zero value is valid.
 	z, zok := x.(interface{ IsZero() bool })
-	if zok && z.IsZero() && !(vok && v.Valid()) {
+	if zok && z.IsZero() && !(vok && v.IsValid()) {
 		return
 	}
 	s := x.String()
@@ -189,7 +195,7 @@ func checkEncoding(x interface{}) {
 	if bm, ok := x.(encoding.BinaryMarshaler); ok {
 		checkBinaryMarshaller(bm)
 	}
-	if am, ok := x.(appendMarshaller); ok {
+	if am, ok := x.(fuzzAppendMarshaler); ok {
 		checkTextMarshalMatchesAppendTo(am)
 	}
 }

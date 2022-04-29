@@ -46,15 +46,15 @@ func TestDoParallelQueries(t *testing.T) {
 	}{
 		{
 			name:       "queries < maxQueriesPerGoroutine",
-			queryCount: maxQueriesPerGoroutine / 2,
+			queryCount: maxQueriesBatch / 2,
 		},
 		{
 			name:       "queries = maxQueriesPerGoroutine",
-			queryCount: maxQueriesPerGoroutine,
+			queryCount: maxQueriesBatch,
 		},
 		{
 			name:       "queries > maxQueriesPerGoroutine",
-			queryCount: maxQueriesPerGoroutine * 2,
+			queryCount: maxQueriesBatch * 2,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -157,20 +157,39 @@ func TestIndexDeduper(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			actualValues := map[string][][]byte{}
-			deduper := NewIndexDeduper(func(query index.Query, readBatch index.ReadBatchResult) bool {
-				itr := readBatch.Iterator()
-				for itr.Next() {
-					actualValues[query.HashValue] = append(actualValues[query.HashValue], itr.RangeValue())
+			t.Run("sync", func(t *testing.T) {
+				actualValues := map[string][][]byte{}
+				deduper := NewSyncCallbackDeduper(func(query index.Query, readBatch index.ReadBatchResult) bool {
+					itr := readBatch.Iterator()
+					for itr.Next() {
+						actualValues[query.HashValue] = append(actualValues[query.HashValue], itr.RangeValue())
+					}
+					return true
+				}, 0)
+
+				for _, batch := range tc.batches {
+					deduper(index.Query{HashValue: batch.hashValue}, batch)
 				}
-				return true
+
+				require.Equal(t, tc.expectedValues, actualValues)
 			})
 
-			for _, batch := range tc.batches {
-				deduper.Callback(index.Query{HashValue: batch.hashValue}, batch)
-			}
+			t.Run("nosync", func(t *testing.T) {
+				actualValues := map[string][][]byte{}
+				deduper := NewCallbackDeduper(func(query index.Query, readBatch index.ReadBatchResult) bool {
+					itr := readBatch.Iterator()
+					for itr.Next() {
+						actualValues[query.HashValue] = append(actualValues[query.HashValue], itr.RangeValue())
+					}
+					return true
+				}, 0)
 
-			require.Equal(t, tc.expectedValues, actualValues)
+				for _, batch := range tc.batches {
+					deduper(index.Query{HashValue: batch.hashValue}, batch)
+				}
+
+				require.Equal(t, tc.expectedValues, actualValues)
+			})
 		})
 	}
 }
@@ -206,4 +225,82 @@ func (b batchIterator) RangeValue() []byte {
 
 func (b batchIterator) Value() []byte {
 	panic("implement me")
+}
+
+func Benchmark_DedupeCallback(b *testing.B) {
+	deduper := NewCallbackDeduper(func(_ index.Query, readBatch index.ReadBatchResult) bool {
+		itr := readBatch.Iterator()
+		for itr.Next() {
+			_ = itr.RangeValue()
+		}
+		return true
+	}, 1)
+	q := index.Query{HashValue: "1"}
+	batch1 := batch{
+		hashValue:   "1",
+		rangeValues: [][]byte{[]byte("a"), []byte("b"), []byte("c")},
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		deduper(q, batch1)
+	}
+}
+
+type TableQuerierFunc func(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
+
+func (f TableQuerierFunc) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+	return f(ctx, queries, callback)
+}
+
+func Benchmark_MultiQueries(b *testing.B) {
+	benchmarkMultiQueries(b, 50)
+	benchmarkMultiQueries(b, 100)
+	benchmarkMultiQueries(b, 1000)
+	benchmarkMultiQueries(b, 10000)
+	benchmarkMultiQueries(b, 50000)
+}
+
+func benchmarkMultiQueries(b *testing.B, n int) {
+	b.Run(strconv.Itoa(n), func(b *testing.B) {
+		callback := index.QueryPagesCallback(func(_ index.Query, readBatch index.ReadBatchResult) bool {
+			itr := readBatch.Iterator()
+			for itr.Next() {
+				_ = itr.RangeValue()
+			}
+			return true
+		})
+		queries := make([]index.Query, n)
+		for i := range queries {
+			queries[i] = index.Query{HashValue: strconv.Itoa(i)}
+		}
+		ranges := [][]byte{[]byte("a"), []byte("b"), []byte("c")}
+		ctx := context.Background()
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = DoParallelQueries(ctx, TableQuerierFunc(func(_ context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+				for _, query := range queries {
+					callback(query, batch{
+						hashValue:   query.HashValue,
+						rangeValues: ranges,
+					})
+					callback(query, batch{
+						hashValue:   query.HashValue,
+						rangeValues: ranges,
+					})
+					callback(query, batch{
+						hashValue:   query.HashValue,
+						rangeValues: ranges,
+					})
+					callback(query, batch{
+						hashValue:   query.HashValue,
+						rangeValues: ranges,
+					})
+				}
+				return nil
+			}), queries, callback)
+		}
+	})
 }

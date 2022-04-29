@@ -33,6 +33,18 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRow(
+          $.row('Query Scheduler')
+          .addPanel(
+            $.containerCPUUsagePanel('CPU', 'query-scheduler'),
+          )
+          .addPanel(
+            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-scheduler'),
+          )
+          .addPanel(
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'query-scheduler'),
+          )
+        )
+        .addRow(
           $.row('Querier')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'querier'),
@@ -102,6 +114,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
           .addPanel(
             $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'index-gateway'),
+          )
+          .addPanel(
+            $.panel('Query Readiness Duration') +
+            $.queryPanel(
+              ['loki_boltdb_shipper_query_readiness_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']
+            ) +
+            { yaxes: $.yaxes('s') },
           )
         )
         .addRow(

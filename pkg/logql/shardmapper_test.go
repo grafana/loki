@@ -51,7 +51,7 @@ func TestShardedStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-	m, err := NewShardMapper(2, nilMetrics)
+	m, err := NewShardMapper(2, nilShardMetrics)
 	require.Nil(t, err)
 
 	for _, tc := range []struct {
@@ -106,13 +106,13 @@ func TestMapSampleExpr(t *testing.T) {
 		},
 	} {
 		t.Run(tc.in.String(), func(t *testing.T) {
-			require.Equal(t, tc.out, m.mapSampleExpr(tc.in, nilMetrics.shardRecorder()))
+			require.Equal(t, tc.out, m.mapSampleExpr(tc.in, nilShardMetrics.downstreamRecorder()))
 		})
 	}
 }
 
 func TestMappingStrings(t *testing.T) {
-	m, err := NewShardMapper(2, nilMetrics)
+	m, err := NewShardMapper(2, nilShardMetrics)
 	require.Nil(t, err)
 	for _, tc := range []struct {
 		in  string
@@ -260,7 +260,7 @@ func TestMappingStrings(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Nil(t, err)
 
-			mapped, err := m.Map(ast, nilMetrics.shardRecorder())
+			mapped, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
 			require.Nil(t, err)
 
 			require.Equal(t, removeWhiteSpace(tc.out), removeWhiteSpace(mapped.String()))
@@ -269,7 +269,7 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m, err := NewShardMapper(2, nilMetrics)
+	m, err := NewShardMapper(2, nilShardMetrics)
 	require.Nil(t, err)
 
 	for _, tc := range []struct {
@@ -1109,7 +1109,7 @@ func TestMapping(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
 
-			mapped, err := m.Map(ast, nilMetrics.shardRecorder())
+			mapped, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
 
 			require.Equal(t, tc.err, err)
 			require.Equal(t, tc.expr.String(), mapped.String())

@@ -14,7 +14,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-var nilMetrics = NewShardingMetrics(nil)
+var nilShardMetrics = NewShardMapperMetrics(nil)
+var nilRangeMetrics = NewRangeMapperMetrics(nil)
 
 func TestMappingEquivalence(t *testing.T) {
 	var (
@@ -61,7 +62,7 @@ func TestMappingEquivalence(t *testing.T) {
 
 		opts := EngineOpts{}
 		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, nilMetrics, NoLimits, log.NewNopLogger())
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
 			params := NewLiteralParams(
@@ -77,7 +78,7 @@ func TestMappingEquivalence(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper, err := NewShardMapper(shards, nilMetrics)
+			mapper, err := NewShardMapper(shards, nilShardMetrics)
 			require.Nil(t, err)
 			_, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
@@ -260,7 +261,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 		opts := EngineOpts{}
 		regularEngine := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-		downstreamEngine := NewDownstreamEngine(opts, MockDownstreamer{regularEngine}, nilMetrics, NoLimits, log.NewNopLogger())
+		downstreamEngine := NewDownstreamEngine(opts, MockDownstreamer{regularEngine}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
@@ -282,7 +283,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			require.Nil(t, err)
 
 			// Downstream engine - split by range
-			rangeMapper, err := NewRangeMapper(tc.splitByInterval)
+			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics)
 			require.Nil(t, err)
 			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
 			require.Nil(t, err)
