@@ -216,7 +216,7 @@ configures the HTTP and gRPC server communication of the launched service(s).
 [grpc_server_max_recv_msg_size: <int> | default = 4194304]
 
 # Max gRPC message size that can be sent
-# CLI flag: -server.grpc-max-recv-msg-size-bytes
+# CLI flag: -server.grpc-max-send-msg-size-bytes
 [grpc_server_max_send_msg_size: <int> | default = 4194304]
 
 # Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
@@ -296,6 +296,11 @@ The `querier` block configures the Loki Querier.
 # CLI flag: -querier.query-store-only
 [query_store_only: <boolean> | default = false]
 
+# Queriers should only query the ingesters and not try to query any store,
+# useful for when object store is unavailable.
+# CLI flag: -querier.query-ingester-only
+[query_ingester_only: <boolean> | default = false]
+
 # Allow queries for multiple tenants.
 # CLI flag: -querier.multi-tenant-queries-enabled
 [multi_tenant_queries_enabled: <boolean> | default = false]
@@ -364,6 +369,10 @@ The `frontend` block configures the Loki query-frontend.
 # URL of downstream Loki.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
+
+# Address, including port, where the compactor api is served
+# CLI flag: -frontend.compactor-address
+[compactor_address: <string> | default = ""]
 
 # Log queries that are slower than the specified duration. Set to 0 to disable.
 # Set to < 0 to enable on all queries.
@@ -733,7 +742,7 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # Name of the blob container used to store chunks. This container must be
 # created before running cortex.
 # CLI flag: -<prefix>.azure.container-name
-[container_name: <string> | default = "cortex"]
+[container_name: <string> | default = "loki"]
 
 # The Microsoft Azure account name to be used
 # CLI flag: -<prefix>.azure.account-name
@@ -929,7 +938,7 @@ The `swift_storage_config` configures Swift as a general storage for different d
 
 # Name of the Swift container to put chunks in.
 # CLI flag: -<prefix>.swift.container-name
-[container_name: <string> | default = "cortex"]
+[container_name: <string> | default = ""]
 ```
 
 ## hedging
@@ -1480,36 +1489,6 @@ aws:
       # CLI flag: -metrics.ignore-throttle-below
       [ignore_throttle_below: <float64> | default = 1]
 
-      # Query to fetch ingester queue length
-      # CLI flag: -metrics.queue-length-query
-      [queue_length_query: <string> |
-        default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))"]
-
-      # Query to fetch throttle rates per table
-      # CLI flag: -metrics.write-throttle-query
-      [write_throttle_query: <string> |
-        default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m]))
-        by (table) > 0"]
-
-      # Query to fetch write capacity usage per table
-      # CLI flag: -metrics.usage-query
-      [write_usage_query: <string> |
-        default =
-        "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m]))
-        by (table) > 0"]
-
-      # Query to fetch read capacity usage per table
-      # CLI flag: -metrics.read-usage-query
-      [read_usage_query: <string> |
-        default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h]))
-        by (table) > 0"]
-
-      # Query to fetch read errors per table
-      # CLI flag: -metrics.read-error-query
-      [read_error_query: <string> |
-        default = "sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",
-        error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0"]
-
     # Number of chunks to group together to parallelise fetches (0 to disable)
     # CLI flag: -dynamodb.chunk-gang-size
     [chunk_gang_size: <int> | default = 10]
@@ -2036,6 +2015,11 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
+# Which deletion mode to use. Supported values are: disabled,
+# whole-stream-deletion, filter-only, filter-and-delete
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
+[deletion_mode: <string> | default = "whole-stream-deletion"]
+
 # Maximum number of tables to compact in parallel.
 # While increasing this value, please make sure compactor has enough disk space
 # allocated to be able to store and compact as many tables.
@@ -2115,6 +2099,16 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Truncate log lines when they exceed max_line_size.
 # CLI flag: -distributor.max-line-size-truncate
 [max_line_size_truncate: <boolean> | default = false ]
+
+# Fudge the log line timestamp during ingestion when it's the same as the previous entry for the same stream
+# When enabled, if a log line in a push request has the same timestamp as the previous line
+# for the same stream, one nanosecond is added to the log line. This will preserve the received
+# order of log lines with the exact same timestamp when they are queried by slightly altering
+# their stored timestamp. NOTE: this is imperfect because Loki accepts out of order writes
+# and another push request for the same stream could contain duplicate timestamps to existing
+# entries and they will not be fudged.
+# CLI flag: -validation.fudge-duplicate-timestamps
+[fudge_duplicate_timestamp: <boolean> | default = false ]
 
 # Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit

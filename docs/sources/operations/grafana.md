@@ -1,6 +1,8 @@
 ---
 title: Loki in Grafana
-weight: 30
+weight: 15
+aliases:
+    - /docs/loki/latest/getting-started/grafana/
 ---
 # Loki in Grafana
 

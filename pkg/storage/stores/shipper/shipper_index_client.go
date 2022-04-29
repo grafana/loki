@@ -15,8 +15,6 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
@@ -26,11 +24,14 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
+
+type Mode int
 
 const (
 	// ModeReadWrite is to allow both read and write
-	ModeReadWrite = iota
+	ModeReadWrite Mode = iota
 	// ModeReadOnly is to allow only read operations
 	ModeReadOnly
 	// ModeWriteOnly is to allow only write operations
@@ -40,9 +41,20 @@ const (
 	FilesystemObjectStoreType = "filesystem"
 
 	// UploadInterval defines interval for when we check if there are new index files to upload.
-	// It's also used to snapshot the currently written index tables so the snapshots can be used for reads.
 	UploadInterval = 1 * time.Minute
 )
+
+func (m Mode) String() string {
+	switch m {
+	case ModeReadWrite:
+		return "read-write"
+	case ModeReadOnly:
+		return "read-only"
+	case ModeWriteOnly:
+		return "write-only"
+	}
+	return "unknown"
+}
 
 type boltDBIndexClient interface {
 	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error
@@ -62,7 +74,7 @@ type Config struct {
 	IndexGatewayClientConfig IndexGatewayClientConfig `yaml:"index_gateway_client"`
 	BuildPerTenantIndex      bool                     `yaml:"build_per_tenant_index"`
 	IngesterName             string                   `yaml:"-"`
-	Mode                     int                      `yaml:"-"`
+	Mode                     Mode                     `yaml:"-"`
 	IngesterDBRetainPeriod   time.Duration            `yaml:"-"`
 }
 
@@ -106,7 +118,7 @@ func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.
 		return nil, err
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %d mode", cfg.Mode))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %s mode", cfg.Mode))
 
 	return &shipper, nil
 }

@@ -12,15 +12,16 @@ import (
 type Options struct {
 	Stack lokiv1beta1.LokiStackSpec
 
-	Namespace        string
-	Name             string
-	FrontendWorker   Address
-	GossipRing       Address
-	Querier          Address
-	IndexGateway     Address
-	StorageDirectory string
-	MaxConcurrent    MaxConcurrent
-	WriteAheadLog    WriteAheadLog
+	Namespace             string
+	Name                  string
+	FrontendWorker        Address
+	GossipRing            Address
+	Querier               Address
+	IndexGateway          Address
+	StorageDirectory      string
+	MaxConcurrent         MaxConcurrent
+	WriteAheadLog         WriteAheadLog
+	EnableRemoteReporting bool
 
 	ObjectStorage storage.Options
 }

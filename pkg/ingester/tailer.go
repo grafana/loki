@@ -147,7 +147,7 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 
 	sp := t.pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		newLine, parsedLbs, ok := sp.ProcessString(e.Line)
+		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
 		if !ok {
 			continue
 		}

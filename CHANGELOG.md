@@ -1,9 +1,13 @@
 ## Main
+* [5984](https://github.com/grafana/loki/pull/5984) **dannykopping** and **salvacorts**: Querier: prevent unnecessary calls to ingesters.
+* [5899](https://github.com/grafana/loki/pull/5899) **simonswine**: Update go image to 1.17.9.
+* [5888](https://github.com/grafana/loki/pull/5888) **Papawy** Fix common config net interface name overwritten by ring common config
 * [5799](https://github.com/grafana/loki/pull/5799) **cyriltovena** Fix deduping issues when multiple entries with the same timestamp exist.
 * [5799](https://github.com/grafana/loki/pull/5799) **cyriltovena** Fixes deduping issues when multiple entries exists with the same timestamp.
 * [5780](https://github.com/grafana/loki/pull/5780) **simonswine**: Update alpine image to 3.15.4.
 * [5715](https://github.com/grafana/loki/pull/5715) **chaudum** Add option to push RFC5424 syslog messages from Promtail in syslog scrape target.
 * [5696](https://github.com/grafana/loki/pull/5696) **paullryan** don't block scraping of new logs from cloudflare within promtail if an error is received from cloudflare about too early logs.
+* [5662](https://github.com/grafana/loki/pull/5662) **ssncferreira** **chaudum** Improve performance of instant queries by splitting range into multiple subqueries that are executed in parallel.
 * [5685](https://github.com/grafana/loki/pull/5625) **chaudum** Fix bug in push request parser that allowed users to send arbitrary non-string data as "log line".
 * [5707](https://github.com/grafana/loki/pull/5707) **franzwong** Promtail: Rename config name limit_config to limits_config.
 * [5626](https://github.com/grafana/loki/pull/5626) **jeschkies** Support multi-tenant select logs and samples queries.
@@ -64,6 +68,7 @@
 ##### Fixes
 * [5685](https://github.com/grafana/loki/pull/5685) **chaudum**: Assert that push values tuples consist of string values
 ##### Changes
+* [6042](https://github.com/grafana/loki/pull/6042) **slim-bean**: Add a new configuration to allow fudging of ingested timestamps to guarantee sort order of duplicate timestamps at query time.
 * [5777](https://github.com/grafana/loki/pull/5777) **tatchiuleung**: storage: make Azure blobID chunk delimiter configurable
 * [5650](https://github.com/grafana/loki/pull/5650) **cyriltovena**: Remove more chunkstore and schema version below v9
 * [5643](https://github.com/grafana/loki/pull/5643) **simonswine**: Introduce a ChunkRef type as part of logproto
@@ -173,6 +178,9 @@ to include only the most relevant.
 * [5544](https://github.com/grafana/loki/pull/5544) **ssncferreira**: Update vectorAggEvaluator to fail for expressions without grouping
 * [5543](https://github.com/grafana/loki/pull/5543) **cyriltovena**: update loki go version to 1.17.8
 * [5450](https://github.com/grafana/loki/pull/5450) **BenoitKnecht**: pkg/ruler/base: Add external_labels option
+* [5484](https://github.com/grafana/loki/pull/5450) **sandeepsukhani**: Add support for per user index query readiness with limits overrides
+* [5661](https://github.com/grafana/loki/pull/5450) **masslessparticle**: Invalidate caches on deletes
+* [5358](https://github.com/grafana/loki/pull/5358) **DylanGuedes**: Add `RingMode` support to `IndexGateway`
 * [5435](https://github.com/grafana/loki/pull/5435) **slim-bean**: set match_max_concurrent true by default
 * [5361](https://github.com/grafana/loki/pull/5361) **cyriltovena**: Add usage report into Loki.
 * [5243](https://github.com/grafana/loki/pull/5243) **owen-d**: Refactor/remove global splitby
@@ -1041,7 +1049,7 @@ TL;DR Loki 2.2 changes the internal chunk format which limits what versions you 
 * [3225](https://github.com/grafana/loki/pull/3225) **Le0tk0k**: (fix: cmd/docker-driver): Insert a space in the error message
 
 #### Docs
-
+* [5934](https://github.com/grafana/loki/pull/5934) **johgsc**: Docs: revise modes of operation section
 * [3437](https://github.com/grafana/loki/pull/3437) **caleb15**: docs: add note about regex
 * [3421](https://github.com/grafana/loki/pull/3421) **kavirajk**: doc(gcplog): Advanced log export filter example
 * [3419](https://github.com/grafana/loki/pull/3419) **suitupalex**: docs: promtail: Fix typo w/ windows_events hyperlink.

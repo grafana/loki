@@ -92,6 +92,9 @@
     dynamodb_secret_access_key: '',
     dynamodb_region: error 'must specify dynamodb_region',
 
+    // DNS Resolver
+    dns_resolver: 'kube-dns.kube-system.svc.cluster.local',
+
     client_configs: {
       dynamo: {
         dynamodb: {} + if $._config.dynamodb_access_key != '' then {
@@ -153,6 +156,7 @@
       frontend: {
         compress_responses: true,
         log_queries_longer_than: '5s',
+        compactor_address: 'http://compactor.%s.svc.cluster.local:%d' % [$._config.namespace, $._config.http_listen_port],
       },
       frontend_worker: {
         match_max_concurrent: true,

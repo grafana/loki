@@ -233,7 +233,8 @@ func newFileIterator(
 	streams := map[uint64]*logproto.Stream{}
 
 	processLine := func(line string) {
-		parsedLine, parsedLabels, ok := pipeline.ProcessString(line)
+		ts := time.Now()
+		parsedLine, parsedLabels, ok := pipeline.ProcessString(ts.UnixNano(), line)
 		if !ok {
 			return
 		}
@@ -248,7 +249,7 @@ func newFileIterator(
 		}
 
 		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp: time.Now(),
+			Timestamp: ts,
 			Line:      parsedLine,
 		})
 	}

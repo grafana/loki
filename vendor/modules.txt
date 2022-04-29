@@ -549,6 +549,9 @@ github.com/grafana/dskit/runtimeconfig
 github.com/grafana/dskit/services
 github.com/grafana/dskit/spanlogger
 github.com/grafana/dskit/tenant
+# github.com/grafana/go-gelf/v2 v2.0.1
+## explicit; go 1.17
+github.com/grafana/go-gelf/v2/gelf
 # github.com/grafana/regexp v0.0.0-20220304100321-149c8afcd6cb
 ## explicit; go 1.17
 github.com/grafana/regexp
@@ -610,7 +613,7 @@ github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.9.6
 ## explicit; go 1.12
 github.com/hashicorp/serf/coordinate
-# github.com/hpcloud/tail v1.0.0 => github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03
+# github.com/hpcloud/tail v1.0.0 => github.com/grafana/tail v0.0.0-20220426200921-98e8eb28ea4c
 ## explicit; go 1.13
 github.com/hpcloud/tail
 github.com/hpcloud/tail/ratelimiter
@@ -1459,9 +1462,6 @@ google.golang.org/protobuf/types/known/emptypb
 google.golang.org/protobuf/types/known/fieldmaskpb
 google.golang.org/protobuf/types/known/timestamppb
 google.golang.org/protobuf/types/known/wrapperspb
-# gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20191017102106-1550ee647df0 => github.com/grafana/go-gelf v0.0.0-20211112153804-126646b86de8
-## explicit
-gopkg.in/Graylog2/go-gelf.v2/gelf
 # gopkg.in/alecthomas/kingpin.v2 v2.2.6
 ## explicit
 gopkg.in/alecthomas/kingpin.v2
@@ -1714,7 +1714,7 @@ sigs.k8s.io/structured-merge-diff/v4/value
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 # github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
-# github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03
+# github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20220426200921-98e8eb28ea4c
 # github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 # github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20220216145902-b5e698eff68e
 # k8s.io/client-go => k8s.io/client-go v0.21.0
@@ -1723,5 +1723,4 @@ sigs.k8s.io/yaml
 # github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
-# gopkg.in/Graylog2/go-gelf.v2 => github.com/grafana/go-gelf v0.0.0-20211112153804-126646b86de8
 # github.com/cloudflare/cloudflare-go => github.com/cyriltovena/cloudflare-go v0.27.1-0.20211118103540-ff77400bcb93
