@@ -167,7 +167,7 @@ func (t *tailer) readLines() {
 		finalEntry := <-pOut
 		// Set the metric
 
-		t.metrics.streamLag.WithLabelValues(t.path).Set(float64(finalEntry.Entry.Timestamp.Unix()))
+		t.metrics.streamTimestamp.WithLabelValues(t.path).Set(float64(finalEntry.Entry.Timestamp.Unix()))
 		client <- finalEntry.Entry
 	}
 }
