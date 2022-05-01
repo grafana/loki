@@ -121,53 +121,31 @@ func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
 		return
 	}
 
-	streams := t.processStream(stream, lbs)
-	if len(streams) == 0 {
-		return
-	}
-	for _, s := range streams {
-		select {
-		case t.sendChan <- s:
-		default:
-			t.dropStream(*s)
-		}
+	t.processStream(&stream, lbs)
+	select {
+	case t.sendChan <- &stream:
+	default:
+		t.dropStream(stream)
 	}
 }
 
-func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*logproto.Stream {
+func (t *tailer) processStream(stream *logproto.Stream, lbs labels.Labels) {
 	// Optimization: skip filtering entirely, if no filter is set
 	if log.IsNoopPipeline(t.pipeline) {
-		return []*logproto.Stream{&stream}
+		return
 	}
 	// pipeline are not thread safe and tailer can process multiple stream at once.
 	t.pipelineMtx.Lock()
 	defer t.pipelineMtx.Unlock()
 
-	streams := map[uint64]*logproto.Stream{}
-
 	sp := t.pipeline.ForStream(lbs)
-	for _, e := range stream.Entries {
-		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
+	for i, e := range stream.Entries {
+		newLine, _, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
 		if !ok {
 			continue
 		}
-		var stream *logproto.Stream
-		if stream, ok = streams[parsedLbs.Hash()]; !ok {
-			stream = &logproto.Stream{
-				Labels: parsedLbs.String(),
-			}
-			streams[parsedLbs.Hash()] = stream
-		}
-		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp: e.Timestamp,
-			Line:      newLine,
-		})
+		stream.Entries[i].Line = newLine
 	}
-	streamsResult := make([]*logproto.Stream, 0, len(streams))
-	for _, stream := range streams {
-		streamsResult = append(streamsResult, stream)
-	}
-	return streamsResult
 }
 
 // isMatching returns true if lbs matches all matchers.
