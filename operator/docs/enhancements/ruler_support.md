@@ -137,6 +137,13 @@ The `AlertingRules` CRD comprises a set of specifications and webhook validation
 ```go
 // AlertingRuleSpec defines the desired state of AlertingRule
 type AlertingRuleSpec struct {
+    // Tenant to associate the alerting rule groups.
+    //
+    // +required
+    // +kubebuilder:validation:Required
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenant ID"
+    TenantID string `json:"tenantID"`
+
     // List of groups for alerting rules.
     //
     // +optional
@@ -258,6 +265,13 @@ The `RecordingRule` CRD comprises a set of specifications and webhook validation
 ```go
 // RecordingRuleSpec defines the desired state of RecordingRule
 type RecordingRuleSpec struct {
+    // Tenant to associate the recording rule groups.
+    //
+    // +required
+    // +kubebuilder:validation:Required
+    // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenant ID"
+    TenantID string `json:"tenantID"`
+
     // List of groups for recording rules.
     //
     // +optional
@@ -682,13 +696,15 @@ type Ruler struct {
 `AlertringRule` and `RecordingRule` custom resources are transformed into a single ruler configuration file for a given `LokiStack` per type (i.e one for alerting and one for recording rules). The following approach is taken:
 1. The `LokiStackController` filters all available cluster namespaces by `RulesSpec.NamespaceSelector`.
 2. The `LokiStackController` filters first all available `AlertingRule` and `RecordingRule` custom resources by `RulesSpec.Selector` and further by the filtered list of namespaces from the previous step.
-3. For `AlertingRule` it transforms the final list into a ConfigMap:
+3. For `AlertingRule` and `RecordingRule` it transforms the final list into a ConfigMap:
 ```yaml
 apiVersion: loki.grafana.com/v1beta1
 kind: AlertingRule
 metadata:
   name: alerting-rule-a
   namespace: ns-a
+spec:
+  tenantID: application
 ---
 apiVersion: loki.grafana.com/v1beta1
 kind: AlertingRule
@@ -696,7 +712,23 @@ metadata:
   name: alerting-rule-b
   namespace: ns-b
 spec:
-  stackName: lokistack-dev
+  tenantID: infrastructure
+apiVersion: loki.grafana.com/v1beta1
+kind: RecordingRule
+metadata:
+  name: recording-rule-a
+  namespace: ns-a
+spec:
+  tenantID: application
+---
+apiVersion: loki.grafana.com/v1beta1
+kind: RecordingRule
+metadata:
+  name: recording-rule-b
+  namespace: ns-b
+spec:
+  tenantID: infrastructure
+
 ```
 
 results in:
@@ -708,40 +740,47 @@ metadata:
   name: lokistack-dev-alerting-rules
   namespace: lokistack-ns
 data:
-  "ns-a-alerting-rule-a.yaml": |
+  "ns-a-alerting-rule-a-alerts.yaml": |
     ...
-  "ns-b-alerting-rule-b.yaml": |
+  "ns-b-alerting-rule-b-alerts.yaml": |
+   ...
+  "ns-a-recording-rule-a-recs.yaml": |
+    ...
+  "ns-b-recording-rule-b-recs.yaml": |
    ...
 ```
 
-4. For `RecordingRule` it transforms the final list into a ConfigMap:
+In addition the ruler's volumes specs are split in `v1.KeyToPath` items based on `AlertingRuleSpec.TenantID` and `RecordingRuleSpec.TenantID`, i.e:
 ```yaml
-apiVersion: loki.grafana.com/v1beta1
-kind: RecordingRule
-metadata:
-  name: recording-rule-a
-  namespace: ns-a
----
-apiVersion: loki.grafana.com/v1beta1
-kind: RecordingRule
-metadata:
-  name: recording-rule-b
-  namespace: ns-b
+spec:
+  template:
+    spec:
+      containers:
+      - name: "ruler"
+        volumeMounts:
+        - name: "rules"
+          volume: "rules"
+          path: "/tmp/rules"
+      volumes:
+      - name: "rules"
+        items:
+        - key: "ns-a-alerting-rule-a-alerts.yaml"
+          path: "application/ns-a-alerting-rule-a-alerts.yaml"
+        - key: "ns-b-alerting-rule-b-alerts.yaml"
+          path: "infrastructure/ns-b-alerting-rule-b-alerts.yaml"
+        - key: "ns-a-recording-rule-a-recs.yaml"
+          path: "application/ns-a-recording-rule-a-recs.yaml"
+        - key: "ns-b-recording-rule-b-recs.yaml"
+          path: "infrastructure/ns-b-recording-rule-b-recs.yaml"
 ```
 
-results in:
+In turn the rules directory is outlined as such:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: lokistack-dev-recording-rules
-  namespace: lokistack-ns
-data:
-  "ns-a-recording-rule-a.yaml": |
-    ...
-  "ns-b-recording-rule-b.yaml": |
-   ...
+```
+/tmp/rules/application/ns-a-alerting-rule-a-alerts.yaml
+          /application/ns-a-recording-rule-a-recs.yaml
+          /infrastructure/ns-b-alerting-rule-b-alerts.yaml
+          /infrastructure/ns-b-recording-rule-b-recs.yaml
 ```
 
 5. The `AlertingRuleController` listens for `AlertingRule` create/update/delete events and it applies the `loki.grafana.com/rulesDiscoveredAt: time.Now().Format(time.RFC3339)` on each `LokiStack` instance on the cluster. This ensures that the `LokiStack` reconciliation loop starts anew.
