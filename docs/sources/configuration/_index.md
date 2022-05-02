@@ -2100,6 +2100,16 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -distributor.max-line-size-truncate
 [max_line_size_truncate: <boolean> | default = false ]
 
+# Fudge the log line timestamp during ingestion when it's the same as the previous entry for the same stream
+# When enabled, if a log line in a push request has the same timestamp as the previous line
+# for the same stream, one nanosecond is added to the log line. This will preserve the received
+# order of log lines with the exact same timestamp when they are queried by slightly altering
+# their stored timestamp. NOTE: this is imperfect because Loki accepts out of order writes
+# and another push request for the same stream could contain duplicate timestamps to existing
+# entries and they will not be fudged.
+# CLI flag: -validation.fudge-duplicate-timestamps
+[fudge_duplicate_timestamp: <boolean> | default = false ]
+
 # Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit
 [max_entries_limit_per_query: <int> | default = 5000 ]

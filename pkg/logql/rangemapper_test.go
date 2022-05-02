@@ -8,7 +8,7 @@ import (
 )
 
 func Test_SplitRangeInterval(t *testing.T) {
-	rvm, err := NewRangeMapper(2 * time.Second)
+	rvm, err := NewRangeMapper(2*time.Second, nilShardMetrics)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -50,7 +50,7 @@ func Test_SplitRangeInterval(t *testing.T) {
 }
 
 func Test_SplitRangeVectorMapping(t *testing.T) {
-	rvm, err := NewRangeMapper(time.Minute)
+	rvm, err := NewRangeMapper(time.Minute, nilShardMetrics)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -972,7 +972,7 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 }
 
 func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
-	rvm, err := NewRangeMapper(time.Minute)
+	rvm, err := NewRangeMapper(time.Minute, nilShardMetrics)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -1050,7 +1050,7 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 }
 
 func Test_FailQuery(t *testing.T) {
-	rvm, err := NewRangeMapper(2 * time.Minute)
+	rvm, err := NewRangeMapper(2*time.Minute, nilShardMetrics)
 	require.NoError(t, err)
 	_, _, err = rvm.Parse(`{app="foo"} |= "err"`)
 	require.Error(t, err)

@@ -36,11 +36,11 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 
 	tailResponse := new(loghttp.TailResponse)
 
-	if len(q.IgnoreLabelsKey) > 0 {
+	if len(q.IgnoreLabelsKey) > 0 && !q.Quiet {
 		log.Println("Ignoring labels key:", color.RedString(strings.Join(q.IgnoreLabelsKey, ",")))
 	}
 
-	if len(q.ShowLabelsKey) > 0 {
+	if len(q.ShowLabelsKey) > 0 && !q.Quiet {
 		log.Println("Print only labels key:", color.RedString(strings.Join(q.ShowLabelsKey, ",")))
 	}
 

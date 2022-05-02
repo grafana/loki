@@ -1,6 +1,8 @@
 ---
 title: LogCLI
 weight: 20
+aliases:
+    - /docs/loki/latest/getting-started/logcli/
 ---
 # LogCLI, Grafana Loki's command-line interface
 
