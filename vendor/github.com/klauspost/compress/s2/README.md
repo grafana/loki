@@ -704,7 +704,7 @@ To automatically add an index to a stream, add `WriterAddIndex()` option to your
 Then the index will be added to the stream when `Close()` is called.
 
 ```
-    // Add Index to stream...
+	// Add Index to stream...
 	enc := s2.NewWriter(w, s2.WriterAddIndex())
 	io.Copy(enc, r)
 	enc.Close()
@@ -714,7 +714,7 @@ If you want to store the index separately, you can use `CloseIndex()` instead of
 This will return the index. Note that `CloseIndex()` should only be called once, and you shouldn't call `Close()`.
 
 ```
-    // Get index for separate storage... 
+	// Get index for separate storage... 
 	enc := s2.NewWriter(w)
 	io.Copy(enc, r)
 	index, err := enc.CloseIndex()
@@ -894,7 +894,7 @@ for each entry {
     }
     
     // Compressed uses previous and our estimate.
-    entry[entryNum].CompressedOffset = entry[entryNum-1].CompressedOffset + CompressGuess
+    entry[entryNum].CompressedOffset = entry[entryNum-1].CompressedOffset + CompressGuess + cOff
         
      // Adjust compressed offset for next loop, integer truncating division must be used. 
      CompressGuess += cOff/2               

@@ -6,13 +6,12 @@ import (
 )
 
 var (
-	errInvalidArrayLength      = PacketDecodingError{"invalid array length"}
-	errInvalidByteSliceLength  = PacketDecodingError{"invalid byteslice length"}
-	errInvalidStringLength     = PacketDecodingError{"invalid string length"}
-	errVarintOverflow          = PacketDecodingError{"varint overflow"}
-	errUVarintOverflow         = PacketDecodingError{"uvarint overflow"}
-	errInvalidBool             = PacketDecodingError{"invalid bool"}
-	errUnsupportedTaggedFields = PacketDecodingError{"non-empty tagged fields are not supported yet"}
+	errInvalidArrayLength     = PacketDecodingError{"invalid array length"}
+	errInvalidByteSliceLength = PacketDecodingError{"invalid byteslice length"}
+	errInvalidStringLength    = PacketDecodingError{"invalid string length"}
+	errVarintOverflow         = PacketDecodingError{"varint overflow"}
+	errUVarintOverflow        = PacketDecodingError{"uvarint overflow"}
+	errInvalidBool            = PacketDecodingError{"invalid bool"}
 )
 
 type realDecoder struct {
@@ -149,8 +148,21 @@ func (rd *realDecoder) getEmptyTaggedFieldArray() (int, error) {
 		return 0, err
 	}
 
-	if tagCount != 0 {
-		return 0, errUnsupportedTaggedFields
+	// skip over any tagged fields without deserializing them
+	// as we don't currently support doing anything with them
+	for i := uint64(0); i < tagCount; i++ {
+		// fetch and ignore tag identifier
+		_, err := rd.getUVarint()
+		if err != nil {
+			return 0, err
+		}
+		length, err := rd.getUVarint()
+		if err != nil {
+			return 0, err
+		}
+		if _, err := rd.getRawBytes(int(length)); err != nil {
+			return 0, err
+		}
 	}
 
 	return 0, nil

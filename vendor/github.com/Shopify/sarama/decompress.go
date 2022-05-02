@@ -54,7 +54,7 @@ func decompress(cc CompressionCodec, data []byte) ([]byte, error) {
 
 		return io.ReadAll(reader)
 	case CompressionZSTD:
-		return zstdDecompress(nil, data)
+		return zstdDecompress(ZstdDecoderParams{}, nil, data)
 	default:
 		return nil, PacketDecodingError{fmt.Sprintf("invalid compression specified (%d)", cc)}
 	}

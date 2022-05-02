@@ -28,7 +28,7 @@ type Broker struct {
 	connErr       error
 	lock          sync.Mutex
 	opened        int32
-	responses     chan responsePromise
+	responses     chan *responsePromise
 	done          chan bool
 
 	registeredMetrics []string
@@ -121,8 +121,23 @@ type responsePromise struct {
 	requestTime   time.Time
 	correlationID int32
 	headerVersion int16
+	handler       func([]byte, error)
 	packets       chan []byte
 	errors        chan error
+}
+
+func (p *responsePromise) handle(packets []byte, err error) {
+	// Use callback when provided
+	if p.handler != nil {
+		p.handler(packets, err)
+		return
+	}
+	// Otherwise fallback to using channels
+	if err != nil {
+		p.errors <- err
+		return
+	}
+	p.packets <- packets
 }
 
 // NewBroker creates and returns a Broker targeting the given host:port address.
@@ -219,7 +234,7 @@ func (b *Broker) Open(conf *Config) error {
 		}
 
 		b.done = make(chan bool)
-		b.responses = make(chan responsePromise, b.conf.Net.MaxOpenRequests-1)
+		b.responses = make(chan *responsePromise, b.conf.Net.MaxOpenRequests-1)
 
 		if b.id >= 0 {
 			DebugLogger.Printf("Connected to broker at %s (registered as #%d)\n", b.addr, b.id)
@@ -239,6 +254,24 @@ func (b *Broker) Connected() (bool, error) {
 	defer b.lock.Unlock()
 
 	return b.conn != nil, b.connErr
+}
+
+// TLSConnectionState returns the client's TLS connection state. The second return value is false if this is not a tls connection or the connection has not yet been established.
+func (b *Broker) TLSConnectionState() (state tls.ConnectionState, ok bool) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if b.conn == nil {
+		return state, false
+	}
+	conn := b.conn
+	if bconn, ok := b.conn.(*bufConn); ok {
+		conn = bconn.Conn
+	}
+	if tc, ok := conn.(*tls.Conn); ok {
+		return tc.ConnectionState(), true
+	}
+	return state, false
 }
 
 // Close closes the broker resources
@@ -342,7 +375,57 @@ func (b *Broker) GetAvailableOffsets(request *OffsetRequest) (*OffsetResponse, e
 	return response, nil
 }
 
-// Produce returns a produce response or error
+// ProduceCallback function is called once the produce response has been parsed
+// or could not be read.
+type ProduceCallback func(*ProduceResponse, error)
+
+// AsyncProduce sends a produce request and eventually call the provided callback
+// with a produce response or an error.
+//
+// Waiting for the response is generally not blocking on the contrary to using Produce.
+// If the maximum number of in flight request configured is reached then
+// the request will be blocked till a previous response is received.
+//
+// When configured with RequiredAcks == NoResponse, the callback will not be invoked.
+// If an error is returned because the request could not be sent then the callback
+// will not be invoked either.
+//
+// Make sure not to Close the broker in the callback as it will lead to a deadlock.
+func (b *Broker) AsyncProduce(request *ProduceRequest, cb ProduceCallback) error {
+	needAcks := request.RequiredAcks != NoResponse
+	// Use a nil promise when no acks is required
+	var promise *responsePromise
+
+	if needAcks {
+		// Create ProduceResponse early to provide the header version
+		res := new(ProduceResponse)
+		promise = &responsePromise{
+			headerVersion: res.headerVersion(),
+			// Packets will be converted to a ProduceResponse in the responseReceiver goroutine
+			handler: func(packets []byte, err error) {
+				if err != nil {
+					// Failed request
+					cb(nil, err)
+					return
+				}
+
+				if err := versionedDecode(packets, res, request.version()); err != nil {
+					// Malformed response
+					cb(nil, err)
+					return
+				}
+
+				// Wellformed response
+				b.updateThrottleMetric(res.ThrottleTime)
+				cb(res, nil)
+			},
+		}
+	}
+
+	return b.sendWithPromise(request, promise)
+}
+
+//Produce returns a produce response or error
 func (b *Broker) Produce(request *ProduceRequest) (*ProduceResponse, error) {
 	var (
 		response *ProduceResponse
@@ -354,15 +437,7 @@ func (b *Broker) Produce(request *ProduceRequest) (*ProduceResponse, error) {
 	} else {
 		response = new(ProduceResponse)
 		err = b.sendAndReceive(request, response)
-		if response.ThrottleTime != time.Duration(0) {
-			DebugLogger.Printf(
-				"producer/broker/%d ProduceResponse throttled %v\n",
-				b.ID(), response.ThrottleTime)
-			if b.brokerThrottleTime != nil {
-				throttleTimeInMs := int64(response.ThrottleTime / time.Millisecond)
-				b.brokerThrottleTime.Update(throttleTimeInMs)
-			}
-		}
+		b.updateThrottleMetric(response.ThrottleTime)
 	}
 
 	if err != nil {
@@ -807,24 +882,43 @@ func (b *Broker) write(buf []byte) (n int, err error) {
 }
 
 func (b *Broker) send(rb protocolBody, promiseResponse bool, responseHeaderVersion int16) (*responsePromise, error) {
+	var promise *responsePromise
+	if promiseResponse {
+		// Packets or error will be sent to the following channels
+		// once the response is received
+		promise = &responsePromise{
+			headerVersion: responseHeaderVersion,
+			packets:       make(chan []byte),
+			errors:        make(chan error),
+		}
+	}
+
+	if err := b.sendWithPromise(rb, promise); err != nil {
+		return nil, err
+	}
+
+	return promise, nil
+}
+
+func (b *Broker) sendWithPromise(rb protocolBody, promise *responsePromise) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
 	if b.conn == nil {
 		if b.connErr != nil {
-			return nil, b.connErr
+			return b.connErr
 		}
-		return nil, ErrNotConnected
+		return ErrNotConnected
 	}
 
 	if !b.conf.Version.IsAtLeast(rb.requiredVersion()) {
-		return nil, ErrUnsupportedVersion
+		return ErrUnsupportedVersion
 	}
 
 	req := &request{correlationID: b.correlationID, clientID: b.conf.ClientID, body: rb}
 	buf, err := encode(req, b.conf.MetricRegistry)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	requestTime := time.Now()
@@ -834,20 +928,21 @@ func (b *Broker) send(rb protocolBody, promiseResponse bool, responseHeaderVersi
 	b.updateOutgoingCommunicationMetrics(bytes)
 	if err != nil {
 		b.addRequestInFlightMetrics(-1)
-		return nil, err
+		return err
 	}
 	b.correlationID++
 
-	if !promiseResponse {
+	if promise == nil {
 		// Record request latency without the response
 		b.updateRequestLatencyAndInFlightMetrics(time.Since(requestTime))
-		return nil, nil
+		return nil
 	}
 
-	promise := responsePromise{requestTime, req.correlationID, responseHeaderVersion, make(chan []byte), make(chan error)}
+	promise.requestTime = requestTime
+	promise.correlationID = req.correlationID
 	b.responses <- promise
 
-	return &promise, nil
+	return nil
 }
 
 func (b *Broker) sendAndReceive(req protocolBody, res protocolBody) error {
@@ -942,7 +1037,7 @@ func (b *Broker) responseReceiver() {
 			// This was previously incremented in send() and
 			// we are not calling updateIncomingCommunicationMetrics()
 			b.addRequestInFlightMetrics(-1)
-			response.errors <- dead
+			response.handle(nil, dead)
 			continue
 		}
 
@@ -954,7 +1049,7 @@ func (b *Broker) responseReceiver() {
 		if err != nil {
 			b.updateIncomingCommunicationMetrics(bytesReadHeader, requestLatency)
 			dead = err
-			response.errors <- err
+			response.handle(nil, err)
 			continue
 		}
 
@@ -963,7 +1058,7 @@ func (b *Broker) responseReceiver() {
 		if err != nil {
 			b.updateIncomingCommunicationMetrics(bytesReadHeader, requestLatency)
 			dead = err
-			response.errors <- err
+			response.handle(nil, err)
 			continue
 		}
 		if decodedHeader.correlationID != response.correlationID {
@@ -971,7 +1066,7 @@ func (b *Broker) responseReceiver() {
 			// TODO if decoded ID < cur ID, discard until we catch up
 			// TODO if decoded ID > cur ID, save it so when cur ID catches up we have a response
 			dead = PacketDecodingError{fmt.Sprintf("correlation ID didn't match, wanted %d, got %d", response.correlationID, decodedHeader.correlationID)}
-			response.errors <- dead
+			response.handle(nil, dead)
 			continue
 		}
 
@@ -980,11 +1075,11 @@ func (b *Broker) responseReceiver() {
 		b.updateIncomingCommunicationMetrics(bytesReadHeader+bytesReadBody, requestLatency)
 		if err != nil {
 			dead = err
-			response.errors <- err
+			response.handle(nil, err)
 			continue
 		}
 
-		response.packets <- buf
+		response.handle(buf, nil)
 	}
 	close(b.done)
 }
@@ -1542,6 +1637,18 @@ func (b *Broker) updateOutgoingCommunicationMetrics(bytes int) {
 	b.requestSize.Update(requestSize)
 	if b.brokerRequestSize != nil {
 		b.brokerRequestSize.Update(requestSize)
+	}
+}
+
+func (b *Broker) updateThrottleMetric(throttleTime time.Duration) {
+	if throttleTime != time.Duration(0) {
+		DebugLogger.Printf(
+			"producer/broker/%d ProduceResponse throttled %v\n",
+			b.ID(), throttleTime)
+		if b.brokerThrottleTime != nil {
+			throttleTimeInMs := int64(throttleTime / time.Millisecond)
+			b.brokerThrottleTime.Update(throttleTimeInMs)
+		}
 	}
 }
 

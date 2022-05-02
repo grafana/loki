@@ -1,5 +1,17 @@
 package telegraf
 
+var Debug bool
+
+// DeprecationInfo contains information for marking a plugin deprecated.
+type DeprecationInfo struct {
+	// Since specifies the version since when the plugin is deprecated
+	Since string
+	// RemovalIn optionally specifies the version when the plugin is scheduled for removal
+	RemovalIn string
+	// Notice for the user on suggested replacements etc.
+	Notice string
+}
+
 // Initializer is an interface that all plugin types: Inputs, Outputs,
 // Processors, and Aggregators can optionally implement to initialize the
 // plugin.
@@ -21,7 +33,7 @@ type PluginDescriber interface {
 	Description() string
 }
 
-// Logger defines an interface for logging.
+// Logger defines an plugin-related interface for logging.
 type Logger interface {
 	// Errorf logs an error message, patterned after log.Printf.
 	Errorf(format string, args ...interface{})

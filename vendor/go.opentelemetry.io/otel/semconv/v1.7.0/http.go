@@ -167,6 +167,8 @@ func httpBasicAttributesFromHTTPRequest(request *http.Request) []attribute.KeyVa
 
 	if request.Host != "" {
 		attrs = append(attrs, HTTPHostKey.String(request.Host))
+	} else if request.URL != nil && request.URL.Host != "" {
+		attrs = append(attrs, HTTPHostKey.String(request.URL.Host))
 	}
 
 	flavor := ""

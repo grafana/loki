@@ -15,13 +15,11 @@
 package pubsub
 
 import (
-	"fmt"
 	"math"
 	"strings"
 	"time"
 
 	gax "github.com/googleapis/gax-go/v2"
-	pb "google.golang.org/genproto/googleapis/pubsub/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -36,18 +34,6 @@ const (
 	maxPayload       = 512 * 1024
 	maxSendRecvBytes = 20 * 1024 * 1024 // 20M
 )
-
-func convertMessages(rms []*pb.ReceivedMessage) ([]*Message, error) {
-	msgs := make([]*Message, 0, len(rms))
-	for i, m := range rms {
-		msg, err := toMessage(m)
-		if err != nil {
-			return nil, fmt.Errorf("pubsub: cannot decode the retrieved message at index: %d, message: %+v", i, m)
-		}
-		msgs = append(msgs, msg)
-	}
-	return msgs, nil
-}
 
 func trunc32(i int64) int32 {
 	if i > math.MaxInt32 {
@@ -73,6 +59,13 @@ func (r *defaultRetryer) Retry(err error) (pause time.Duration, shouldRetry bool
 	case codes.Unavailable:
 		c := strings.Contains(s.Message(), "Server shutdownNow invoked")
 		if !c {
+			return r.bo.Pause(), true
+		}
+		return 0, false
+	case codes.Unknown:
+		// Retry GOAWAY, see https://github.com/googleapis/google-cloud-go/issues/4257.
+		isGoaway := strings.Contains(s.Message(), "received prior goaway: code: NO_ERROR")
+		if isGoaway {
 			return r.bo.Pause(), true
 		}
 		return 0, false

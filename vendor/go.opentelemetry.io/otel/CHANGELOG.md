@@ -8,6 +8,85 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.6.0/0.28.0] - 2022-03-23
+
+### ⚠️ Notice ⚠️
+
+This update is a breaking change of the unstable Metrics API.
+Code instrumented with the `go.opentelemetry.io/otel/metric` will need to be modified.
+
+### Added
+
+- Add metrics exponential histogram support.
+  New mapping functions have been made available in `sdk/metric/aggregator/exponential/mapping` for other OpenTelemetry projects to take dependencies on. (#2502)
+- Add Go 1.18 to our compatibility tests. (#2679)
+- Allow configuring the Sampler with the `OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG` environment variables. (#2305, #2517)
+- Add the `metric/global` for obtaining and setting the global `MeterProvider`. (#2660)
+
+### Changed
+
+- The metrics API has been significantly changed to match the revised OpenTelemetry specification.
+  High-level changes include:
+
+  - Synchronous and asynchronous instruments are now handled by independent `InstrumentProvider`s.
+    These `InstrumentProvider`s are manged a `Meter`.
+  - Synchronous and asynchronous instruments are grouped into their own packages based on value types.
+  - Asynchronous callbacks can now be registered with a `Meter`.
+
+  Be sure to check out the metric module documentation for more information on how to use the revised API. (#2587, #2660)
+
+### Fixed
+
+- Fallback to general attribute limits when span specific ones are not set in the environment. (#2675, #2677)
+
+## [1.5.0] - 2022-03-16
+
+### Added
+
+- Log the Exporters configuration in the TracerProviders message. (#2578)
+- Added support to configure the span limits with environment variables.
+  The following environment variables are supported. (#2606, #2637)
+  - `OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT`
+  - `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`
+  - `OTEL_SPAN_EVENT_COUNT_LIMIT`
+  - `OTEL_EVENT_ATTRIBUTE_COUNT_LIMIT`
+  - `OTEL_SPAN_LINK_COUNT_LIMIT`
+  - `OTEL_LINK_ATTRIBUTE_COUNT_LIMIT`
+  
+  If the provided environment variables are invalid (negative), the default values would be used.
+- Rename the `gc` runtime name to `go` (#2560)
+- Add resource container ID detection. (#2418)
+- Add span attribute value length limit.
+  The new `AttributeValueLengthLimit` field is added to the `"go.opentelemetry.io/otel/sdk/trace".SpanLimits` type to configure this limit for a `TracerProvider`.
+  The default limit for this resource is "unlimited". (#2637)
+- Add the `WithRawSpanLimits` option to `go.opentelemetry.io/otel/sdk/trace`.
+  This option replaces the `WithSpanLimits` option.
+  Zero or negative values will not be changed to the default value like `WithSpanLimits` does.
+  Setting a limit to zero will effectively disable the related resource it limits and setting to a negative value will mean that resource is unlimited.
+  Consequentially, limits should be constructed using `NewSpanLimits` and updated accordingly. (#2637)
+
+### Changed
+
+- Drop oldest tracestate `Member` when capacity is reached. (#2592)
+- Add event and link drop counts to the exported data from the `oltptrace` exporter. (#2601)
+- Unify path cleaning functionally in the `otlpmetric` and `otlptrace` configuration. (#2639)
+- Change the debug message from the `sdk/trace.BatchSpanProcessor` to reflect the count is cumulative. (#2640)
+- Introduce new internal `envconfig` package for OTLP exporters. (#2608)
+- If `http.Request.Host` is empty, fall back to use `URL.Host` when populating `http.host` in the `semconv` packages. (#2661)
+
+### Fixed
+
+- Remove the OTLP trace exporter limit of SpanEvents when exporting. (#2616)
+- Default to port `4318` instead of `4317` for the `otlpmetrichttp` and `otlptracehttp` client. (#2614, #2625)
+- Unlimited span limits are now supported (negative values). (#2636, #2637)
+
+### Deprecated
+
+- Deprecated `"go.opentelemetry.io/otel/sdk/trace".WithSpanLimits`.
+  Use `WithRawSpanLimits` instead.
+  That option allows setting unlimited and zero limits, this option does not.
+  This option will be kept until the next major version incremented release. (#2637)
+
 ## [1.4.1] - 2022-02-16
 
 ### Fixed
@@ -1689,7 +1768,9 @@ It contains api and sdk for trace and meter.
 - CircleCI build CI manifest files.
 - CODEOWNERS file to track owners of this project.
 
-[Unreleased]: https://github.com/open-telemetry/opentelemetry-go/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/open-telemetry/opentelemetry-go/compare/v1.6.0...HEAD
+[1.6.0/0.28.0]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.6.0
+[1.5.0]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.5.0
 [1.4.1]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.4.1
 [1.4.0]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.4.0
 [1.3.0]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.3.0
