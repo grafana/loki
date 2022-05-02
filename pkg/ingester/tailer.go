@@ -121,31 +121,40 @@ func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
 		return
 	}
 
-	t.processStream(&stream, lbs)
+	processed := t.processStream(stream, lbs)
 	select {
-	case t.sendChan <- &stream:
+	case t.sendChan <- processed:
 	default:
 		t.dropStream(stream)
 	}
 }
 
-func (t *tailer) processStream(stream *logproto.Stream, lbs labels.Labels) {
+func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) *logproto.Stream {
 	// Optimization: skip filtering entirely, if no filter is set
 	if log.IsNoopPipeline(t.pipeline) {
-		return
+		return &stream
 	}
 	// pipeline are not thread safe and tailer can process multiple stream at once.
 	t.pipelineMtx.Lock()
 	defer t.pipelineMtx.Unlock()
 
+	responseStream := &logproto.Stream{
+		Labels:  stream.Labels,
+		Entries: make([]logproto.Entry, 0, len(stream.Entries)),
+	}
 	sp := t.pipeline.ForStream(lbs)
-	for i, e := range stream.Entries {
+	for _, e := range stream.Entries {
 		newLine, _, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
 		if !ok {
+			responseStream.Entries = append(responseStream.Entries, e)
 			continue
 		}
-		stream.Entries[i].Line = newLine
+		responseStream.Entries = append(responseStream.Entries, logproto.Entry{
+			Timestamp: e.Timestamp,
+			Line:      newLine,
+		})
 	}
+	return responseStream
 }
 
 // isMatching returns true if lbs matches all matchers.
