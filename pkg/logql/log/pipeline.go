@@ -19,8 +19,8 @@ type Pipeline interface {
 // A StreamPipeline never mutate the received line.
 type StreamPipeline interface {
 	BaseLabels() LabelsResult
-	Process(ts int64, line []byte) (resultLine []byte, resultLabels LabelsResult, ok bool)
-	ProcessString(ts int64, line string) (resultLine string, resultLabels LabelsResult, ok bool)
+	Process(ts int64, line []byte) (resultLine []byte, resultLabels LabelsResult, matches bool)
+	ProcessString(ts int64, line string) (resultLine string, resultLabels LabelsResult, matches bool)
 }
 
 // Stage is a single step of a Pipeline.
@@ -232,8 +232,8 @@ func (sp *filteringStreamPipeline) Process(ts int64, line []byte) ([]byte, Label
 			continue
 		}
 
-		_, _, ok := filter.pipeline.Process(ts, line)
-		if ok { // When the filter matches, don't run the next step
+		_, _, matches := filter.pipeline.Process(ts, line)
+		if matches { // When the filter matches, don't run the next step
 			return nil, nil, false
 		}
 	}
@@ -247,8 +247,8 @@ func (sp *filteringStreamPipeline) ProcessString(ts int64, line string) (string,
 			continue
 		}
 
-		_, _, ok := filter.pipeline.ProcessString(ts, line)
-		if ok { // When the filter matches, don't run the next step
+		_, _, matches := filter.pipeline.ProcessString(ts, line)
+		if matches { // When the filter matches, don't run the next step
 			return "", nil, false
 		}
 	}

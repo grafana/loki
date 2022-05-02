@@ -1010,12 +1010,13 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, ok := pipeline.ProcessString(e.t, e.s)
-		if !ok {
+		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s)
+		if !matches {
 			return
 		}
 		var stream *logproto.Stream
 		labels := parsedLbs.Labels().String()
+		var ok bool
 		if stream, ok = streams[labels]; !ok {
 			stream = &logproto.Stream{
 				Labels: labels,
@@ -1267,8 +1268,8 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, lbs, ok := e.pipeline.Process(e.currTs, e.currLine)
-		if !ok {
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine)
+		if !matches {
 			continue
 		}
 		e.cur.Timestamp = time.Unix(0, e.currTs)
