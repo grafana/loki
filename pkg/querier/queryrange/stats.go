@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -53,7 +54,7 @@ func recordQueryMetrics(data *queryData) {
 	case queryTypeSeries:
 		logql.RecordSeriesQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.match, data.status, *data.statistics)
 	default:
-		level.Error(logger).Log("msg", "failed to record query metrics", "err", fmt.Errorf("expected one of the *LokiRequestor, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got (%s)", data.queryType))
+		level.Error(logger).Log("msg", "failed to record query metrics", "err", fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got %s", data.queryType))
 	}
 }
 
@@ -165,7 +166,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				// Record information for metadata queries.
 				switch r := req.(type) {
 				case *LokiLabelNamesRequest:
-					data.label = r.Path // TODO(kavi): extract just label from the path
+					data.label = getLabelNameFromLabelsQuery(r.Path)
 				case *LokiSeriesRequest:
 					data.match = r.Match
 				}
@@ -174,6 +175,25 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			return resp, err
 		})
 	})
+}
+
+func getLabelNameFromLabelsQuery(path string) string {
+	if strings.HasSuffix(path, "/values") {
+
+		toks := strings.FieldsFunc(path, func(r rune) bool {
+			return r == '/'
+		})
+
+		// now assuming path has suffix `/values` label name should be second last to the suffix
+		// **if** there exists the second last.
+		length := len(toks)
+		if length >= 2 {
+			return toks[length-1]
+		}
+
+	}
+
+	return ""
 }
 
 // interceptor implements WriteHeader to intercept status codes. WriteHeader

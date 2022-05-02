@@ -179,7 +179,7 @@ func (q *query) resultLength(res promql_parser.Value) int {
 	case logqlmodel.Streams:
 		return int(r.Lines())
 	default:
-		level.Error(q.logger).Log("msg", "unknown query result type", "err", fmt.Sprintf("expected promql.Matrix or logqlmodel.Streams but got %T", r))
+		// for `scalar` or `string` or any other return type, we just return `0` as result length.
 		return 0
 	}
 }
