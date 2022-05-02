@@ -1,21 +1,17 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 
@@ -26,15 +22,15 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 type syncRange struct {
-	from int64
-	to   int64
+	number int
+	from   int64
+	to     int64
 }
 
 func main() {
@@ -60,18 +56,32 @@ func main() {
 	}
 
 	// Copy each defaults to a source and dest config
-	sourceConfig := defaultsConfig
-	destConfig := defaultsConfig
+	//sourceConfig := defaultsConfig
+	//destConfig := defaultsConfig
 
-	// Load each from provided files
-	if err := cfg.YAML(*sf, true)(&sourceConfig); err != nil {
-		log.Printf("Failed parsing source config file %v: %v\n", *sf, err)
+	var sourceConfig loki.ConfigWrapper
+	srcArgs := []string{"-config.file=" + *sf}
+	if err := cfg.DynamicUnmarshal(&sourceConfig, srcArgs, flag.NewFlagSet("config-file-loader", flag.ContinueOnError)); err != nil {
+		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
 	}
-	if err := cfg.YAML(*df, true)(&destConfig); err != nil {
-		log.Printf("Failed parsing dest config file %v: %v\n", *df, err)
+
+	var destConfig loki.ConfigWrapper
+	destArgs := []string{"-config.file=" + *df}
+	if err := cfg.DynamicUnmarshal(&destConfig, destArgs, flag.NewFlagSet("config-file-loader", flag.ContinueOnError)); err != nil {
+		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
 	}
+
+	//// Load each from provided files
+	//if err := cfg.YAML(*sf, true)(&sourceConfig); err != nil {
+	//	log.Printf("Failed parsing source config file %v: %v\n", *sf, err)
+	//	os.Exit(1)
+	//}
+	//if err := cfg.YAML(*df, true)(&destConfig); err != nil {
+	//	log.Printf("Failed parsing dest config file %v: %v\n", *df, err)
+	//	os.Exit(1)
+	//}
 
 	// The long nature of queries requires stretching out the cardinality limit some and removing the query length limit
 	sourceConfig.LimitsConfig.CardinalityLimit = 1e9
@@ -129,35 +139,35 @@ func main() {
 	ctx := context.Background()
 	// This is a little weird but it was the easiest way to guarantee the userID is in the right format
 	ctx = user.InjectOrgID(ctx, *source)
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		panic(err)
-	}
+	//userID, err := tenant.TenantID(ctx)
+	//if err != nil {
+	//	panic(err)
+	//}
 	parsedFrom := mustParse(*from)
 	parsedTo := mustParse(*to)
-	f, t := util.RoundToMilliseconds(parsedFrom, parsedTo)
+	//f, t := util.RoundToMilliseconds(parsedFrom, parsedTo)
 
-	schemaGroups, fetchers, err := s.GetChunkRefs(ctx, userID, f, t, matchers...)
-	if err != nil {
-		log.Println("Error querying index for chunk refs:", err)
-		os.Exit(1)
-	}
+	//schemaGroups, fetchers, err := s.GetChunkRefs(ctx, userID, f, t, matchers...)
+	//if err != nil {
+	//	log.Println("Error querying index for chunk refs:", err)
+	//	os.Exit(1)
+	//}
 
-	var totalChunks int
-	for i := range schemaGroups {
-		totalChunks += len(schemaGroups[i])
-	}
-	rdr := bufio.NewReader(os.Stdin)
-	fmt.Printf("Timespan will sync %v chunks spanning %v schemas.\n", totalChunks, len(fetchers))
-	fmt.Print("Proceed? (Y/n):")
-	in, err := rdr.ReadString('\n')
-	if err != nil {
-		log.Fatalf("Error reading input: %v", err)
-	}
-	if strings.ToLower(strings.TrimSpace(in)) == "n" {
-		log.Println("Exiting")
-		os.Exit(0)
-	}
+	//var totalChunks int
+	//for i := range schemaGroups {
+	//	totalChunks += len(schemaGroups[i])
+	//}
+	//rdr := bufio.NewReader(os.Stdin)
+	//fmt.Printf("Timespan will sync %v chunks spanning %v schemas.\n", totalChunks, len(fetchers))
+	//fmt.Print("Proceed? (Y/n):")
+	//in, err := rdr.ReadString('\n')
+	//if err != nil {
+	//	log.Fatalf("Error reading input: %v", err)
+	//}
+	//if strings.ToLower(strings.TrimSpace(in)) == "n" {
+	//	log.Println("Exiting")
+	//	os.Exit(0)
+	//}
 	start := time.Now()
 
 	shardByNs := *shardBy
@@ -234,12 +244,15 @@ func calcSyncRanges(from, to int64, shardBy int64) []*syncRange {
 	currentFrom := from
 	// currentTo := from
 	currentTo := from + shardBy
+	number := 0
 	for currentFrom < to && currentTo <= to {
 		s := &syncRange{
-			from: currentFrom,
-			to:   currentTo,
+			number: number,
+			from:   currentFrom,
+			to:     currentTo,
 		}
 		syncRanges = append(syncRanges, s)
+		number++
 
 		currentFrom = currentTo + 1
 		currentTo = currentTo + shardBy
@@ -291,7 +304,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 			start := time.Now()
 			totalBytes := 0
 			totalChunks := 0
-			log.Println(threadID, "Processing", time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
+			log.Printf("%d processing sync range %d - Start: %v, End: %v\n", threadID, sr.number, time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
 			schemaGroups, fetchers, err := m.source.GetChunkRefs(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
 			if err != nil {
 				log.Println(threadID, "Error querying index for chunk refs:", err)
@@ -381,7 +394,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 					log.Println(threadID, "Batch sent successfully")
 				}
 			}
-			log.Printf("%v Finished processing sync range, %v chunks, %v bytes in %v seconds\n", threadID, totalChunks, totalBytes, time.Since(start).Seconds())
+			log.Printf("%d Finished processing sync range %d - Start: %v, End: %v, %v chunks, %v bytes in %v seconds %v bytes/second\n", threadID, sr.number, time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC(), totalChunks, totalBytes, time.Since(start).Seconds(), float64(totalBytes)/time.Since(start).Seconds())
 			statsCh <- stats{
 				totalChunks: totalChunks,
 				totalBytes:  totalBytes,

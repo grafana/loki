@@ -217,7 +217,7 @@ clients/cmd/promtail/promtail-debug:
 migrate: cmd/migrate/migrate
 
 cmd/migrate/migrate:
-	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 #############
