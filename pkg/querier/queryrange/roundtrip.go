@@ -232,7 +232,7 @@ func getOperation(path string) string {
 		return QueryRangeOp
 	case strings.HasSuffix(path, "/series"):
 		return SeriesOp
-	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label"):
+	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label") || strings.HasSuffix(path, "/values"):
 		return LabelNamesOp
 	case strings.HasSuffix(path, "/v1/query"):
 		return InstantQueryOp
