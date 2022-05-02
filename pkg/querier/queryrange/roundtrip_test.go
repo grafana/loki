@@ -653,17 +653,6 @@ func counter() (*int, http.Handler) {
 	})
 }
 
-func errorResult() (*int, http.Handler) {
-	count := 0
-	var lock sync.Mutex
-	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		lock.Lock()
-		defer lock.Unlock()
-		count++
-		w.WriteHeader(http.StatusInternalServerError)
-	})
-}
-
 func promqlResult(v parser.Value) (*int, http.Handler) {
 	count := 0
 	var lock sync.Mutex
