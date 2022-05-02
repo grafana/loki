@@ -1317,7 +1317,7 @@ those components specific configuration sections.
 
 # Other cluster members to join. Can be specified multiple times. It can be an
 # IP, hostname or an entry specified in the DNS Service Discovery format (see
-# https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+# https://grafana.com/docs/mimir/latest/operators-guide/configuring/about-dns-service-discovery/
 # for more details).
 # CLI flag: -memberlist.join
 [join_members: <list of string> | default = ]
@@ -1802,7 +1802,7 @@ memcached_client:
   [service: <string> | default = "memcached"]
 
   # (Experimental) Comma-separated addresses list in DNS Service Discovery format:
-  # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+  # https://grafana.com/docs/mimir/latest/operators-guide/configuring/about-dns-service-discovery/
   # CLI flag: -<prefix>.memcached.addresses
   [addresses: <string> | default = ""]
 
