@@ -378,30 +378,6 @@ func TestLogNoRegex(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestUnhandledPath(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, config.SchemaConfig{}, nil, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
-	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
-
-	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := http.NewRequest(http.MethodGet, "/loki/api/v1/labels/foo/values", nil)
-	require.NoError(t, err)
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
-
-	count, h := errorResult()
-	rt.setHandler(h)
-	_, err = tpw(rt).RoundTrip(req)
-	require.Equal(t, 1, *count)
-	require.NoError(t, err)
-}
-
 func TestRegexpParamsSupport(t *testing.T) {
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, 4*time.Hour)
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, l, config.SchemaConfig{}, nil, nil)
