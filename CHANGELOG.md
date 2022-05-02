@@ -1,4 +1,5 @@
 ## Main
+
 * [5984](https://github.com/grafana/loki/pull/5984) **dannykopping** and **salvacorts**: Querier: prevent unnecessary calls to ingesters.
 * [5879](https://github.com/grafana/loki/pull/5879) **MichelHollands**: Remove lines matching delete request expression when using "filter-and-delete" deletion mode. 
 * [5899](https://github.com/grafana/loki/pull/5899) **simonswine**: Update go image to 1.17.9.
@@ -78,7 +79,7 @@
 ##### Enhancements
 * [5715](https://github.com/grafana/loki/pull/5715) **chaudum**: Allow promtail to push RFC5424 formatted syslog messages
 ##### Fixes
-
+* [6034](https://github.com/grafana/loki/pull/6034) **DylanGuedes**: Promtail: Fix symlink tailing behavior.
 ##### Changes
 * [5686](https://github.com/grafana/loki/pull/5686) **ssncferreira**: Move promtail StreamLagLabels config to upper level config.Config
 * [5839](https://github.com/grafana/loki/pull/5839) **marctc**: Add ActiveTargets method to promtail
