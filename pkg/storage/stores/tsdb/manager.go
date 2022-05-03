@@ -19,21 +19,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-type VersionPrefix int
-
-func (v VersionPrefix) String() string {
-	return fmt.Sprintf("v%d", v)
-}
-
-func (v VersionPrefix) PathPrefix() string {
-	return fmt.Sprintf("tsdb/%s", v.String())
-}
-
-const (
-	_ VersionPrefix = iota
-	V1
-)
-
 // nolint:revive
 // TSDBManager wraps the index shipper and writes/manages
 // TSDB files on  disk
@@ -209,8 +194,11 @@ func indexBuckets(indexPeriod time.Duration, from, through model.Time) (res []in
 	return
 }
 
-func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, userIDs ...string) (Index, error) {
+func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, userID string) (Index, error) {
 	var indices []Index
+
+	// Ensure we query both per tenant and multitenant TSDBs
+	userIDs := []string{userID, ""}
 
 	for _, bkt := range indexBuckets(m.indexPeriod, from, through) {
 		for _, user := range userIDs {
@@ -253,7 +241,7 @@ func (m *tsdbManager) Close() error {
 }
 
 func (m *tsdbManager) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	idx, err := m.indices(ctx, from, through, userID, "")
+	idx, err := m.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +249,7 @@ func (m *tsdbManager) GetChunkRefs(ctx context.Context, userID string, from, thr
 }
 
 func (m *tsdbManager) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
-	idx, err := m.indices(ctx, from, through, userID, "")
+	idx, err := m.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +257,7 @@ func (m *tsdbManager) Series(ctx context.Context, userID string, from, through m
 }
 
 func (m *tsdbManager) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	idx, err := m.indices(ctx, from, through, userID, "")
+	idx, err := m.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +265,7 @@ func (m *tsdbManager) LabelNames(ctx context.Context, userID string, from, throu
 }
 
 func (m *tsdbManager) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	idx, err := m.indices(ctx, from, through, userID, "")
+	idx, err := m.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}

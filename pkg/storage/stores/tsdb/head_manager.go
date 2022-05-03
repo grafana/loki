@@ -232,27 +232,27 @@ func managerRequiredDirs(parent string) []string {
 	}
 }
 func managerScratchDir(parent string) string {
-	return filepath.Join(parent, V1.String(), "scratch")
+	return filepath.Join(parent, "scratch")
 }
 
 func managerWalDir(parent string) string {
-	return filepath.Join(parent, V1.String(), "wal")
+	return filepath.Join(parent, "wal")
 }
 
 func managerMultitenantDir(parent string) string {
-	return filepath.Join(parent, V1.String(), "multitenant")
+	return filepath.Join(parent, "multitenant")
 }
 
 func managerMultitenantName() string {
-	return path.Join(V1.String(), "multitenant")
+	return "multitenant"
 }
 
 func managerPerTenantDir(parent string) string {
-	return filepath.Join(parent, V1.String(), "per_tenant")
+	return filepath.Join(parent, "per_tenant")
 }
 
 func managerPerTenantName() string {
-	return path.Join(V1.String(), "per_tenant")
+	return "per_tenant"
 }
 
 func (m *HeadManager) Rotate(t time.Time) error {
