@@ -123,8 +123,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				switch r := resp.(type) {
 				case *LokiResponse:
 					statistics = &r.Statistics
-					res = logqlmodel.Streams(r.Data.Result)
-					totalEntries = len(r.Data.Result)
+					totalEntries = int(logqlmodel.Streams(r.Data.Result).Lines())
 					queryType = queryTypeLog
 				case *LokiPromResponse:
 					statistics = &r.Statistics
