@@ -703,32 +703,40 @@ kind: AlertingRule
 metadata:
   name: alerting-rule-a
   namespace: ns-a
+  UID: kube-uid-a
 spec:
   tenantID: application
+  groups: ...
 ---
 apiVersion: loki.grafana.com/v1beta1
 kind: AlertingRule
 metadata:
   name: alerting-rule-b
   namespace: ns-b
+  UID: kube-uid-b
 spec:
   tenantID: infrastructure
+  groups: ...
+---
 apiVersion: loki.grafana.com/v1beta1
 kind: RecordingRule
 metadata:
   name: recording-rule-a
   namespace: ns-a
+  UID: kube-uid-c
 spec:
   tenantID: application
+  groups: ...
 ---
 apiVersion: loki.grafana.com/v1beta1
 kind: RecordingRule
 metadata:
   name: recording-rule-b
   namespace: ns-b
+  UID: kube-uid-c
 spec:
   tenantID: infrastructure
-
+  groups: ...
 ```
 
 results in:
@@ -740,13 +748,13 @@ metadata:
   name: lokistack-dev-alerting-rules
   namespace: lokistack-ns
 data:
-  "ns-a-alerting-rule-a-alerts.yaml": |
+  "ns-a-alerting-rule-a-kube-uid-a.yaml": |
     ...
-  "ns-b-alerting-rule-b-alerts.yaml": |
+  "ns-b-alerting-rule-b-kube-uid-b.yaml": |
    ...
-  "ns-a-recording-rule-a-recs.yaml": |
+  "ns-a-recording-rule-a-kube-uid-c.yaml": |
     ...
-  "ns-b-recording-rule-b-recs.yaml": |
+  "ns-b-recording-rule-b-kube-uid-c.yaml": |
    ...
 ```
 
@@ -764,28 +772,27 @@ spec:
       volumes:
       - name: "rules"
         items:
-        - key: "ns-a-alerting-rule-a-alerts.yaml"
-          path: "application/ns-a-alerting-rule-a-alerts.yaml"
-        - key: "ns-b-alerting-rule-b-alerts.yaml"
-          path: "infrastructure/ns-b-alerting-rule-b-alerts.yaml"
-        - key: "ns-a-recording-rule-a-recs.yaml"
-          path: "application/ns-a-recording-rule-a-recs.yaml"
-        - key: "ns-b-recording-rule-b-recs.yaml"
-          path: "infrastructure/ns-b-recording-rule-b-recs.yaml"
+        - key: "ns-a-alerting-rule-a-kube-uid-a.yaml"
+          path: "application/ns-a-alerting-rule-a-kube-uid-a.yaml"
+        - key: "ns-b-alerting-rule-b-kube-uid-b.yaml"
+          path: "infrastructure/ns-b-alerting-rule-b-kube-uid-b.yaml"
+        - key: "ns-a-recording-rule-a-kube-uid-c.yaml"
+          path: "application/ns-a-recording-rule-a-kube-uid-c.yaml"
+        - key: "ns-b-recording-rule-b-kube-uid-d.yaml"
+          path: "infrastructure/ns-b-recording-rule-b-kube-uid-d.yaml"
 ```
 
 In turn the rules directory is outlined as such:
 
 ```
-/tmp/rules/application/ns-a-alerting-rule-a-alerts.yaml
-          /application/ns-a-recording-rule-a-recs.yaml
-          /infrastructure/ns-b-alerting-rule-b-alerts.yaml
-          /infrastructure/ns-b-recording-rule-b-recs.yaml
+/tmp/rules/application/ns-a-alerting-rule-a-kube-uid-a.yaml
+          /application/ns-a-recording-rule-a-kube-uid-b.yaml
+          /infrastructure/ns-b-alerting-rule-b-kube-uid-c.yaml
+          /infrastructure/ns-b-recording-rule-b-kube-uid-d.yaml
 ```
 
 5. The `AlertingRuleController` listens for `AlertingRule` create/update/delete events and it applies the `loki.grafana.com/rulesDiscoveredAt: time.Now().Format(time.RFC3339)` on each `LokiStack` instance on the cluster. This ensures that the `LokiStack` reconciliation loop starts anew.
 6. The `RecordingRuleController` listens for `RecordingRule` create/update/delete events and it applies the `loki.grafana.com/rulesDiscoveredAt: time.Now().Format(time.RFC3339)` on each `LokiStack` instance on the cluster. This ensures that the `LokiStack` reconciliation loop starts anew.
-7. The `LokiStackController` compiles on each create/update/delete event a SHA1 of the ConfigMap data entries and appends dedicated annotations `loki.grafana.com/alerting-rules-hash` and `loki.grafana.com/recording-rules-hash` to the ruler pod spec. If any of the hash changes, the change applied to the annotation value and the ruler pods get restarted.
 
 In summary this approach allows to group all `AlertingRule` and `RecordingRule` custom resources in the **same** namespace as the `LokiStack` in a two dedicated ConfigMap, i.e. where the stack runs is the place where the rules live.
 
@@ -832,6 +839,8 @@ In detail the separation of concerns between both CRDs looks like:
 * 2022-04-26: Update draft to use `LokiRule` types to use webhook-based validation and `LokiRuleSpec.Selector`, `LokiRuleSpec.NamespaceSelector`. (See [PR](https://github.com/grafana/loki/pull/5986))
 * 2022-04-28: Update draft to split `LokiRule` into two distinct types `AlertingRule` and `RecordingRule`. (See [PR](https://github.com/grafana/loki/pull/5986))
 * 2022-04-28: Renamed `LokiRulerConfig` types to `RulerConfig` as per `Loki` prefix is part of the API group `loki.grafana.com`, i.e. fully qualified type is `ruler.loki.grafana.com`
+* 2022-05-02: Update rule configmap generation based on per tenant subdirectory structure.
+* 2022-05-03: Update rule configmap entry naming to use Kubernetes `Metadata.UID` as permanent suffix.
 
 ## Drawbacks
 
