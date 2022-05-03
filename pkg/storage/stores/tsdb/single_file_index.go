@@ -1,46 +1,58 @@
 package tsdb
 
 import (
+	"bytes"
 	"context"
 	"io"
-	"os"
-	"sync"
+	"io/ioutil"
+	"strings"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/dskit/multierror"
+	"github.com/grafana/loki/pkg/chunkenc"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
+const (
+	gzipSuffix = ".gz"
+)
+
 func OpenShippableTSDB(p string) (index_shipper.Index, error) {
-	id, err := identifierFromPath(p)
+	var gz bool
+	trimmed := strings.TrimSuffix(p, gzipSuffix)
+	if trimmed != p {
+		gz = true
+	}
+
+	id, err := identifierFromPath(trimmed)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id)
+	return NewShippableTSDBFile(id, gz)
 }
 
 // nolint
 // TSDBFile is backed by an actual file and implements the indexshipper/index.Index interface
 type TSDBFile struct {
-	sync.Mutex
-
 	// reuse Identifier for resolving locations
 	Identifier
 
 	// reuse TSDBIndex for reading
 	Index
 
-	// open the read only fd
 	// to sastisfy Reader() and Close() methods
-	f *os.File
+	r io.ReadSeeker
 }
 
-func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
-	idx, err := NewTSDBIndexFromFile(id.Path())
+func NewShippableTSDBFile(id Identifier, gzip bool) (*TSDBFile, error) {
+	if gzip {
+		id = newSuffixedIdentifier(id, gzipSuffix)
+	}
+
+	idx, b, err := NewTSDBIndexFromFile(id.Path(), gzip)
 	if err != nil {
 		return nil, err
 	}
@@ -48,33 +60,16 @@ func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
 	return &TSDBFile{
 		Identifier: id,
 		Index:      idx,
+		r:          bytes.NewReader(b),
 	}, err
 }
 
 func (f *TSDBFile) Close() error {
-	f.Lock()
-	defer f.Unlock()
-	var errs multierror.MultiError
-	errs.Add(f.Index.Close())
-	if f.f != nil {
-		errs.Add(f.f.Close())
-		f.f = nil
-	}
-	return errs.Err()
+	return f.Index.Close()
 }
 
 func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
-	f.Lock()
-	defer f.Unlock()
-	if f.f == nil {
-		fd, err := os.Open(f.Path())
-		if err != nil {
-			return nil, err
-		}
-		f.f = fd
-	}
-
-	return f.f, nil
+	return f.r, nil
 }
 
 // nolint
@@ -85,12 +80,33 @@ type TSDBIndex struct {
 	reader IndexReader
 }
 
-func NewTSDBIndexFromFile(location string) (*TSDBIndex, error) {
-	reader, err := index.NewFileReader(location)
+// Return the index as well as the underlying []byte which isn't exposed as an index
+// method but is helpful for building an io.reader for the index shipper
+func NewTSDBIndexFromFile(location string, gzip bool) (*TSDBIndex, []byte, error) {
+	raw, err := ioutil.ReadFile(location)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return NewTSDBIndex(reader), nil
+
+	cleaned := raw
+
+	// decompress if needed
+	if gzip {
+		r := chunkenc.Gzip.GetReader(bytes.NewReader(raw))
+		defer chunkenc.Gzip.PutReader(r)
+
+		var err error
+		cleaned, err = io.ReadAll(r)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	reader, err := index.NewReader(index.RealByteSlice(cleaned))
+	if err != nil {
+		return nil, nil, err
+	}
+	return NewTSDBIndex(reader), cleaned, nil
 }
 
 func NewTSDBIndex(reader IndexReader) *TSDBIndex {
