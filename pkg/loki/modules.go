@@ -238,7 +238,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides, deleteStore)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides, deleteStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -412,13 +412,13 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			// have query gaps on chunks flushed after an index entry is cached by keeping them retained in the ingester
 			// and queried as part of live data until the cache TTL expires on the index entry.
 			t.Cfg.Ingester.RetainPeriod = t.Cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
-			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg) + 2*time.Minute
+			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg)
 		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.isModuleActive(IndexGateway):
 			// We do not want query to do any updates to index
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 		default:
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadWrite
-			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg) + 2*time.Minute
+			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg)
 		}
 	}
 
@@ -699,7 +699,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides, deleteStore)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides, deleteStore, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -955,10 +955,12 @@ func calculateAsyncStoreQueryIngestersWithin(queryIngestersWithinConfig, minDura
 }
 
 // boltdbShipperQuerierIndexUpdateDelay returns duration it could take for queriers to serve the index since it was uploaded.
+// It considers upto 3 sync attempts for the indexgateway/queries to be successful in syncing the files to factor in worst case scenarios like
+// failures in sync, low download throughput, various kinds of caches in between etc. which can delay the sync operation from getting all the updates from the storage.
 // It also considers index cache validity because a querier could have cached index just before it was going to resync which means
 // it would keep serving index until the cache entries expire.
 func boltdbShipperQuerierIndexUpdateDelay(cfg Config) time.Duration {
-	return cfg.StorageConfig.IndexCacheValidity + cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval
+	return cfg.StorageConfig.IndexCacheValidity + cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval*3
 }
 
 // boltdbShipperIngesterIndexUploadDelay returns duration it could take for an index file containing id of a chunk to be uploaded to the shared store since it got flushed.
@@ -967,9 +969,9 @@ func boltdbShipperIngesterIndexUploadDelay() time.Duration {
 }
 
 // boltdbShipperMinIngesterQueryStoreDuration returns minimum duration(with some buffer) ingesters should query their stores to
-// avoid missing any logs or chunk ids due to async nature of BoltDB Shipper.
+// avoid queriers from missing any logs or chunk ids due to async nature of BoltDB Shipper.
 func boltdbShipperMinIngesterQueryStoreDuration(cfg Config) time.Duration {
-	return cfg.Ingester.MaxChunkAge + boltdbShipperIngesterIndexUploadDelay() + boltdbShipperQuerierIndexUpdateDelay(cfg) + 2*time.Minute
+	return cfg.Ingester.MaxChunkAge + boltdbShipperIngesterIndexUploadDelay() + boltdbShipperQuerierIndexUpdateDelay(cfg) + 5*time.Minute
 }
 
 // NewServerService constructs service from Server component.

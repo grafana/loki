@@ -1284,6 +1284,9 @@ labels:
   # The path to load logs from. Can use glob patterns (e.g., /var/log/*.log).
   __path__: <string>
 
+  # Used to exclude files from being loaded. Can also use glob patterns.
+  __path_exclude__: <string>
+
   # Additional labels to assign to the logs
   [ <labelname>: <labelvalue> ... ]
 ```

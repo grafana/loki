@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
@@ -377,30 +378,6 @@ func TestLogNoRegex(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestUnhandledPath(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, config.SchemaConfig{}, nil, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
-	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
-
-	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := http.NewRequest(http.MethodGet, "/loki/api/v1/labels/foo/values", nil)
-	require.NoError(t, err)
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
-
-	count, h := errorResult()
-	rt.setHandler(h)
-	_, err = tpw(rt).RoundTrip(req)
-	require.Equal(t, 1, *count)
-	require.NoError(t, err)
-}
-
 func TestRegexpParamsSupport(t *testing.T) {
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, 4*time.Hour)
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, l, config.SchemaConfig{}, nil, nil)
@@ -547,6 +524,77 @@ func TestEntriesLimitWithZeroTripperware(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func Test_getOperation(t *testing.T) {
+	cases := []struct {
+		name       string
+		path       string
+		expectedOp string
+	}{
+		{
+			name:       "instant_query",
+			path:       "/loki/api/v1/query",
+			expectedOp: InstantQueryOp,
+		},
+		{
+			name:       "range_query_prom",
+			path:       "/prom/query",
+			expectedOp: QueryRangeOp,
+		},
+		{
+			name:       "range_query",
+			path:       "/loki/api/v1/query_range",
+			expectedOp: QueryRangeOp,
+		},
+		{
+			name:       "series_query",
+			path:       "/loki/api/v1/series",
+			expectedOp: SeriesOp,
+		},
+		{
+			name:       "series_query_prom",
+			path:       "/prom/series",
+			expectedOp: SeriesOp,
+		},
+		{
+			name:       "labels_query",
+			path:       "/loki/api/v1/labels",
+			expectedOp: LabelNamesOp,
+		},
+		{
+			name:       "labels_query_prom",
+			path:       "/prom/labels",
+			expectedOp: LabelNamesOp,
+		},
+		{
+			name:       "label_query",
+			path:       "/loki/api/v1/label",
+			expectedOp: LabelNamesOp,
+		},
+		{
+			name:       "labels_query_prom",
+			path:       "/prom/label",
+			expectedOp: LabelNamesOp,
+		},
+		{
+			name:       "label_values_query",
+			path:       "/loki/api/v1/label/__name__/values",
+			expectedOp: LabelNamesOp,
+		},
+		{
+			name:       "label_values_query_prom",
+			path:       "/prom/label/__name__/values",
+			expectedOp: LabelNamesOp,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := getOperation(tc.path)
+			assert.Equal(t, tc.expectedOp, got)
+		})
+	}
+}
+
 type fakeLimits struct {
 	maxQueryLength          time.Duration
 	maxQueryParallelism     int
@@ -602,17 +650,6 @@ func counter() (*int, http.Handler) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
-	})
-}
-
-func errorResult() (*int, http.Handler) {
-	count := 0
-	var lock sync.Mutex
-	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		lock.Lock()
-		defer lock.Unlock()
-		count++
-		w.WriteHeader(http.StatusInternalServerError)
 	})
 }
 

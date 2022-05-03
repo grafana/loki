@@ -70,6 +70,7 @@ when using or writing a third-party client.
 - [promtail-client](https://github.com/afiskon/promtail-client) (Go)
 - [push-to-loki.py](https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py) (Python 3)
 - [Serilog-Sinks-Loki](https://github.com/JosephWoodward/Serilog-Sinks-Loki) (C#)
+- [NLog-Targets-Loki](https://github.com/corentinaltepe/nlog.loki) (C#)
 - [loki-logback-appender](https://github.com/loki4j/loki-logback-appender) (Java)
 - [Log4j2 appender for Loki](https://github.com/tkowalcz/tjahzi) (Java)
 - [LokiLogger.jl](https://github.com/JuliaLogging/LokiLogger.jl) (Julia)

@@ -55,8 +55,6 @@ The test environment uses Docker compose to instantiate these parts, each in its
 
 ## Deploy the test environment
 
-All shell commands are issued from the `evaluate-loki` directory.
-
 1. With `evaluate-loki` as the current working directory, deploy the test environment using `docker-compose`:
     ```bash
     docker-compose up -d
@@ -109,7 +107,7 @@ To break down the test environment:
 
 - Close the Grafana browser window
 
-- Stop and remove all the Docker containers. With `evaluate-loki` as the current working directory:
+- With `evaluate-loki` as the current working directory, stop and remove all the Docker containers:
     ```bash
     docker-compose down
     ```
@@ -122,20 +120,20 @@ Choose one of these two ways to apply a new configuration:
 
 - To remove already-generated logs, restart the test environment with a new configuration.
 
-    1. Stop and clean up an existing test environment:
+    1. With `evaluate-loki` as the current working directory, stop and clean up an existing test environment:
         ```
         docker-compose down
         ```
     1. Edit the `docker-compose.yaml` file.  Within the YAML file, change the `flog.command` field's value to specify your flog output.
-    1. Instantiate the new test environment:
+    1. With `evaluate-loki` as the current working directory, instantiate the new test environment:
         ```
-        docker-compose up
+        docker-compose up -d
         ```
 
 - To keep already-generated logs in the running test environment, restart flog with a new configuration.
 
     1. Edit the `docker-compose.yaml` file.  Within the YAML file, change the `flog.command` field's value to specify your flog output.
-    1. Restart only the flog app within the currently-running test environment:
+    1. With `evaluate-loki` as the current working directory, restart only the flog app within the currently-running test environment:
         ```
         docker-compose up -d --force-recreate flog
         ```

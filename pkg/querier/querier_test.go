@@ -1175,7 +1175,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 		return nil, err
 	}
 
-	return New(cfg, store, iq, limits, dg)
+	return New(cfg, store, iq, limits, dg, nil)
 }
 
 type mockDeleteGettter struct {
