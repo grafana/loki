@@ -30,6 +30,6 @@ is defined in the HTTP header.
 
 Instant and range queries support label filtering on the tenant IDs. For example
 `{app="foo", __tenant_id__=~"a.+"} | logfmt` will return results for all tenants
-whose ID stat with `a`. Tenant ID filter in stages is not supported `{app="foo"} | __tenant_id__="1" | logfmt` will not work.
+whose ID stat with `a`. Tenant ID filtering in stages is not supported; `{app="foo"} | __tenant_id__="1" | logfmt` will not work.
 
 In case the label `__tenant_id__` is already present in a log stream it is prepended with `original_`.
