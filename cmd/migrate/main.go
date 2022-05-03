@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"sort"
 	"sync"
@@ -13,11 +15,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -49,6 +50,10 @@ func main() {
 	parallel := flag.Int("parallel", 8, "How many parallel threads to process each shard")
 	flag.Parse()
 
+	go func() {
+		log.Println(http.ListenAndServe("localhost:8080", nil))
+	}()
+
 	// Create a set of defaults
 	if err := cfg.Unmarshal(&defaultsConfig, cfg.Defaults(flag.CommandLine)); err != nil {
 		log.Println("Failed parsing defaults config:", err)
@@ -72,6 +77,22 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
 	}
+
+	// This is a little brittle, if we add a new cache it may easily get missed here but it's important to disable
+	// any of the chunk caches to save on memory because we write chunks to the cache when we call Put operations on the store.
+	sourceConfig.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache = false
+	sourceConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient
+	sourceConfig.ChunkStoreConfig.ChunkCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.Redis
+	sourceConfig.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache = false
+	sourceConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient
+	sourceConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis
+
+	destConfig.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache = false
+	destConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient
+	destConfig.ChunkStoreConfig.ChunkCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.Redis
+	destConfig.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache = false
+	destConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient
+	destConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis
 
 	//// Load each from provided files
 	//if err := cfg.YAML(*sf, true)(&sourceConfig); err != nil {
@@ -312,7 +333,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 				return
 			}
 			for i, f := range fetchers {
-				log.Printf("%v Processing Schema %v which contains %v chunks\n", threadID, i, len(schemaGroups[i]))
+				//log.Printf("%v Processing Schema %v which contains %v chunks\n", threadID, i, len(schemaGroups[i]))
 
 				// Slice up into batches
 				for j := 0; j < len(schemaGroups[i]); j += m.batch {
@@ -336,7 +357,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 						keys = append(keys, key)
 						chks = append(chks, chk)
 					}
-					for retry := 4; retry >= 0; retry-- {
+					for retry := 10; retry >= 0; retry-- {
 						chks, err = f.FetchChunks(m.ctx, chks, keys)
 						if err != nil {
 							if retry == 0 {
@@ -345,6 +366,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 								return
 							}
 							log.Println(threadID, "Error fetching chunks, will retry:", err)
+							time.Sleep(5 * time.Second)
 						} else {
 							break
 						}
@@ -391,7 +413,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 							break
 						}
 					}
-					log.Println(threadID, "Batch sent successfully")
+					//log.Println(threadID, "Batch sent successfully")
 				}
 			}
 			log.Printf("%d Finished processing sync range %d - Start: %v, End: %v, %v chunks, %v bytes in %v seconds %v bytes/second\n", threadID, sr.number, time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC(), totalChunks, totalBytes, time.Since(start).Seconds(), float64(totalBytes)/time.Since(start).Seconds())
