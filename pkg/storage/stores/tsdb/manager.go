@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"path"
 	"path/filepath"
 	"sync"
 	"time"
@@ -26,35 +25,6 @@ type TSDBManager interface {
 	Index
 	// Builds a new TSDB file from a set of WALs
 	BuildFromWALs(time.Time, []WALIdentifier) error
-}
-
-// Identifier can resolve an index to a name (in object storage)
-// and a path (on disk)
-type Identifier interface {
-	Name() string
-	Path() string
-}
-
-func newPrefixedIdentifier(id Identifier, path, name string) prefixedIdentifier {
-	return prefixedIdentifier{
-		Identifier: id,
-		parentPath: path,
-		parentName: name,
-	}
-}
-
-// parentIdentifier wraps an Identifier and prepends to its methods
-type prefixedIdentifier struct {
-	parentPath, parentName string
-	Identifier
-}
-
-func (p prefixedIdentifier) Path() string {
-	return filepath.Join(p.parentPath, p.Identifier.Path())
-}
-
-func (p prefixedIdentifier) Name() string {
-	return path.Join(p.parentName, p.Identifier.Name())
 }
 
 /*
@@ -146,14 +116,13 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	for p, b := range periods {
 
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
-		dstName := managerMultitenantName()
 		dst := newPrefixedIdentifier(
 			MultitenantTSDBIdentifier{
 				nodeName: m.nodeName,
 				ts:       t,
 			},
 			dstDir,
-			dstName,
+			"",
 		)
 
 		level.Debug(m.log).Log("msg", "building tsdb for period", "pd", p, "dst", dst.Path())

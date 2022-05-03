@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 
@@ -16,32 +15,6 @@ import (
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
-
-// Identifier has all the information needed to resolve a TSDB index
-// Notably this abstracts away OS path separators, etc.
-type SingleTenantTSDBIdentifier struct {
-	Tenant        string
-	From, Through model.Time
-	Checksum      uint32
-}
-
-func (i SingleTenantTSDBIdentifier) str() string {
-	return fmt.Sprintf(
-		"%s-%d-%d-%x.tsdb",
-		index.IndexFilename,
-		i.From,
-		i.Through,
-		i.Checksum,
-	)
-}
-
-func (i SingleTenantTSDBIdentifier) Name() string {
-	return path.Join(i.Tenant, i.str())
-}
-
-func (i SingleTenantTSDBIdentifier) Path() string {
-	return filepath.Join(i.Tenant, i.str())
-}
 
 // Builder is a helper used to create tsdb indices.
 // It can accept streams in any order and will create the tsdb

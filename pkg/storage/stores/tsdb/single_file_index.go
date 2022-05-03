@@ -10,8 +10,18 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/dskit/multierror"
+	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
+
+func OpenShippableTSDB(p string) (index_shipper.Index, error) {
+	id, err := identifierFromPath(p)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewShippableTSDBFile(id)
+}
 
 // nolint
 // TSDBFile is backed by an actual file and implements the indexshipper/index.Index interface

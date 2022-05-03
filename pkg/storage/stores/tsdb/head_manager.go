@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -243,16 +241,8 @@ func managerMultitenantDir(parent string) string {
 	return filepath.Join(parent, "multitenant")
 }
 
-func managerMultitenantName() string {
-	return "multitenant"
-}
-
 func managerPerTenantDir(parent string) string {
 	return filepath.Join(parent, "per_tenant")
-}
-
-func managerPerTenantName() string {
-	return "per_tenant"
 }
 
 func (m *HeadManager) Rotate(t time.Time) error {
@@ -490,55 +480,6 @@ func parseWALPath(p string) (id WALIdentifier, ok bool) {
 
 	return WALIdentifier{
 		ts: time.Unix(int64(ts), 0),
-	}, true
-}
-
-type MultitenantTSDBIdentifier struct {
-	nodeName string
-	ts       time.Time
-}
-
-func (id MultitenantTSDBIdentifier) Name() string {
-	return fmt.Sprintf("%d-%s.tsdb", id.ts.Unix(), id.nodeName)
-}
-
-func (id MultitenantTSDBIdentifier) Path() string {
-	// There are no directories, so reuse name
-	return id.Name()
-}
-
-func parseMultitenantTSDBPath(p string) (id MultitenantTSDBIdentifier, ok bool) {
-	cleaned := filepath.Base(p)
-	return parseMultitenantTSDBNameFromBase(cleaned)
-}
-
-func parseMultitenantTSDBName(p string) (id MultitenantTSDBIdentifier, ok bool) {
-	cleaned := path.Base(p)
-	return parseMultitenantTSDBNameFromBase(cleaned)
-}
-
-func parseMultitenantTSDBNameFromBase(name string) (res MultitenantTSDBIdentifier, ok bool) {
-
-	trimmed := strings.TrimSuffix(name, ".tsdb")
-
-	// incorrect suffix
-	if trimmed == name {
-		return
-	}
-
-	xs := strings.Split(trimmed, "-")
-	if len(xs) != 2 {
-		return
-	}
-
-	ts, err := strconv.Atoi(xs[0])
-	if err != nil {
-		return
-	}
-
-	return MultitenantTSDBIdentifier{
-		ts:       time.Unix(int64(ts), 0),
-		nodeName: xs[1],
 	}, true
 }
 
