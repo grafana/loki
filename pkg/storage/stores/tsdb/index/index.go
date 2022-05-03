@@ -597,7 +597,7 @@ func (w *Writer) finishSymbols() error {
 	}
 
 	// Load in the symbol table efficiently for the rest of the index writing.
-	w.symbols, err = NewSymbols(realByteSlice(w.symbolFile.Bytes()), FormatV2, int(w.toc.Symbols))
+	w.symbols, err = NewSymbols(RealByteSlice(w.symbolFile.Bytes()), FormatV2, int(w.toc.Symbols))
 	if err != nil {
 		return errors.Wrap(err, "read symbols")
 	}
@@ -616,7 +616,7 @@ func (w *Writer) writeLabelIndices() error {
 	}
 	defer f.Close()
 
-	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.fPO.pos)))
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.fPO.pos)))
 	cnt := w.cntPO
 	current := []byte{}
 	values := []uint32{}
@@ -786,7 +786,7 @@ func (w *Writer) writePostingsOffsetTable() error {
 			f.Close()
 		}
 	}()
-	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.fPO.pos)))
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.fPO.pos)))
 	cnt := w.cntPO
 	for d.Err() == nil && cnt > 0 {
 		w.buf1.Reset()
@@ -904,7 +904,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 
 	// Write out the special all posting.
 	offsets := []uint32{}
-	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
 	d.Skip(int(w.toc.Series))
 	for d.Len() > 0 {
 		d.ConsumePadding()
@@ -950,7 +950,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 		// Label name -> label value -> positions.
 		postings := map[uint32]map[uint32][]uint32{}
 
-		d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(realByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
+		d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
 		d.Skip(int(w.toc.Series))
 		for d.Len() > 0 {
 			d.ConsumePadding()
@@ -1166,17 +1166,17 @@ type ByteSlice interface {
 	Range(start, end int) []byte
 }
 
-type realByteSlice []byte
+type RealByteSlice []byte
 
-func (b realByteSlice) Len() int {
+func (b RealByteSlice) Len() int {
 	return len(b)
 }
 
-func (b realByteSlice) Range(start, end int) []byte {
+func (b RealByteSlice) Range(start, end int) []byte {
 	return b[start:end]
 }
 
-func (b realByteSlice) Sub(start, end int) ByteSlice {
+func (b RealByteSlice) Sub(start, end int) ByteSlice {
 	return b[start:end]
 }
 
@@ -1188,7 +1188,7 @@ func NewReader(b ByteSlice) (*Reader, error) {
 
 type nopCloser struct{}
 
-func (_ nopCloser) Close() error { return nil }
+func (nopCloser) Close() error { return nil }
 
 // NewFileReader returns a new index reader against the given index file.
 func NewFileReader(path string) (*Reader, error) {
@@ -1196,7 +1196,7 @@ func NewFileReader(path string) (*Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	r, err := newReader(realByteSlice(b), nopCloser{})
+	r, err := newReader(RealByteSlice(b), nopCloser{})
 	if err != nil {
 		return r, err
 	}
