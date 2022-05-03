@@ -7,7 +7,7 @@ weight: 700
 
 # Rules and the Ruler
 
-Grafana Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
+Grafana Loki includes a component called the ruler. The ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
 
 This example configuration sources rules from a local disk.
 
@@ -107,7 +107,7 @@ At the time of writing, these are the compatible backends that support this:
 
 - [Prometheus](https://prometheus.io/docs/prometheus/latest/disabled_features/#remote-write-receiver) (`>=v2.25.0`):
   Prometheus is generally a pull-based system, but since `v2.25.0` has allowed for metrics to be written directly to it as well.
-- [Cortex](https://cortexmetrics.io/docs/api/#remote-write)
+- [Grafana Mimir](https://grafana.com/docs/mimir/latest/operators-guide/reference-http-api/#remote-write)
 - [Thanos (`Receiver`)](https://thanos.io/tip/components/receive.md/)
 
 Here is an example remote-write configuration for sending to a local Prometheus instance:
