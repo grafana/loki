@@ -36,8 +36,7 @@ const (
 	// at the beginning of every WAL. It records the system time
 	// when the WAL was created. This is used to determine when to rotate
 	// WALs and persists across restarts.
-	WALRecordFirstWrite RecordType = iota
-	WalRecordSeries
+	WalRecordSeries RecordType = iota
 	WalRecordChunks
 )
 
