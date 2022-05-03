@@ -188,7 +188,7 @@ func getLabelNameFromLabelsQuery(path string) string {
 		// **if** there exists the second last.
 		length := len(toks)
 		if length >= 2 {
-			return toks[length-1]
+			return toks[length-2]
 		}
 
 	}
