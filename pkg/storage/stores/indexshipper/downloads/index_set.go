@@ -284,7 +284,7 @@ func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock bool) (toDow
 	// listing tables from store
 	var files []storage.IndexFile
 
-	files, err = t.baseIndexSet.ListFiles(ctx, t.tableName, t.userID)
+	files, err = t.baseIndexSet.ListFiles(ctx, t.tableName, t.userID, false)
 	if err != nil {
 		return
 	}
