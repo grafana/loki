@@ -218,6 +218,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			s.cfg.TSDBShipperConfig,
 			objectClient,
 			s.limits,
+			tsdb.OpenShippableTSDB,
 		)
 		if err != nil {
 			return nil, nil, nil, err
