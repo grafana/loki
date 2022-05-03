@@ -551,7 +551,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	return &logproto.PushResponse{}, err
 }
 
-func (i *Ingester) GetOrCreateInstance(instanceID string) *instance {
+func (i *Ingester) GetOrCreateInstance(instanceID string) *instance { //nolint:revive
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
 		return inst

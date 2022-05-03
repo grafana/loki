@@ -65,14 +65,14 @@ func TestCachedObjectClient(t *testing.T) {
 	cachedObjectClient := newCachedObjectClient(objectClient)
 
 	// list tables
-	objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), "", "")
+	objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), "", "", false)
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{"table1", "table2", "table3"}, commonPrefixes)
 
 	// list objects in all 3 tables
-	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table1/", "")
+	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table1/", "", false)
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{
@@ -81,7 +81,7 @@ func TestCachedObjectClient(t *testing.T) {
 	}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 
-	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table2/", "")
+	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table2/", "", false)
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{
@@ -89,14 +89,14 @@ func TestCachedObjectClient(t *testing.T) {
 	}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{"table2/user1"}, commonPrefixes)
 
-	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/", "")
+	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/", "", false)
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{"table3/user1"}, commonPrefixes)
 
 	// list user objects from table2 and table3
-	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table2/user1/", "")
+	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table2/user1/", "", false)
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{
@@ -106,7 +106,7 @@ func TestCachedObjectClient(t *testing.T) {
 	}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 
-	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/user1/", "")
+	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/user1/", "", false)
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{
@@ -116,14 +116,14 @@ func TestCachedObjectClient(t *testing.T) {
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 
 	// list non-existent table
-	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table4/", "")
+	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table4/", "", false)
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 
 	// list non-existent user
-	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/user2/", "")
+	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/user2/", "", false)
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{}, objects)
@@ -141,7 +141,7 @@ func TestCachedObjectClient_errors(t *testing.T) {
 	cachedObjectClient := newCachedObjectClient(objectClient)
 
 	// do the initial listing
-	objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), "", "")
+	objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), "", "", false)
 	require.NoError(t, err)
 	require.Equal(t, 1, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{}, objects)
@@ -157,7 +157,7 @@ func TestCachedObjectClient_errors(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _, err := cachedObjectClient.List(context.Background(), "", "")
+			_, _, err := cachedObjectClient.List(context.Background(), "", "", false)
 			require.Error(t, err)
 			require.Equal(t, 2, objectClient.listCallsCount)
 		}()
@@ -172,7 +172,7 @@ func TestCachedObjectClient_errors(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "", "")
+			objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "", "", false)
 			require.NoError(t, err)
 			require.Equal(t, 3, objectClient.listCallsCount)
 			require.Equal(t, []client.StorageObject{}, objects)

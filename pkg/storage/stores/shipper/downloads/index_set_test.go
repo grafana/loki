@@ -26,7 +26,7 @@ func buildTestIndexSet(t *testing.T, userID, path string) (*indexSet, stopFunc) 
 		boltDBIndexClient, util_log.Logger, newMetrics(nil))
 	require.NoError(t, err)
 
-	require.NoError(t, idxSet.Init())
+	require.NoError(t, idxSet.Init(false))
 
 	return idxSet.(*indexSet), func() {
 		idxSet.Close()

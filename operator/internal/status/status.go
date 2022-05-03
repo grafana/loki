@@ -3,7 +3,7 @@ package status
 import (
 	"context"
 
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 

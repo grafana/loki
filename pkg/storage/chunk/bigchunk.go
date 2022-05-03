@@ -8,6 +8,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 const samplesPerChunk = 120
@@ -85,7 +87,7 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 	return nil
 }
 
-func (b *bigchunk) Rebound(start, end model.Time) (Data, error) {
+func (b *bigchunk) Rebound(start, end model.Time, filter filter.Func) (Data, error) {
 	return nil, errors.New("not implemented")
 }
 

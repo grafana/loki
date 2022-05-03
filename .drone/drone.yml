@@ -12,7 +12,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.20.3
+    - 0.20.4
     username:
       from_secret: docker_username
   when:
@@ -40,27 +40,27 @@ steps:
   - make BUILD_IN_CONTAINER=false check-drone-drift
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.4
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.4
   name: check-generated-files
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.4
   name: test
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.4
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -68,7 +68,7 @@ steps:
   - clone
   - test
   - lint
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.4
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -79,19 +79,19 @@ steps:
   depends_on:
   - clone
   - check-generated-files
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.4
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.4
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.20.1
+  image: grafana/loki-build-image:0.20.4
   name: check-example-config-doc
 trigger:
   event:
@@ -1118,6 +1118,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 64871d70248fbe43acab816fe107dc657442ded224b48779ac15f4559143a2c6
+hmac: 96966b3eec7f8976408f2c2f2c36a29b87a694c8a32afb2fdb16209e1f9e7521
 
 ...

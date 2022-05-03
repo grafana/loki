@@ -251,6 +251,8 @@ func (c *IndexStore) LabelValuesForMetricName(ctx context.Context, userID string
 	if err != nil {
 		return nil, err
 	}
+	// nolint:staticcheck
+	defer entriesPool.Put(entries)
 
 	var result util.UniqueStrings
 	for _, entry := range entries {
@@ -289,6 +291,8 @@ func (c *IndexStore) labelValuesForMetricNameWithMatchers(ctx context.Context, u
 	if err != nil {
 		return nil, err
 	}
+	// nolint:staticcheck
+	defer entriesPool.Put(entries)
 
 	result := util.NewUniqueStrings(len(entries))
 	for _, entry := range entries {
@@ -409,7 +413,6 @@ func (c *IndexStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thr
 	if err != nil {
 		return nil, err
 	}
-	unfilteredQueries := len(queries)
 
 	if filter != nil {
 		queries = filter(queries)
@@ -423,20 +426,13 @@ func (c *IndexStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thr
 	} else if err != nil {
 		return nil, err
 	}
+	// nolint:staticcheck
+	defer entriesPool.Put(entries)
 
 	ids, err := parseIndexEntries(ctx, entries, matcher)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(util_log.WithContext(ctx, util_log.Logger)).
-		Log(
-			"msg", "Store.lookupIdsByMetricNameMatcher",
-			"matcher", formatMatcher(matcher),
-			"queries", unfilteredQueries,
-			"filteredQueries", len(queries),
-			"entries", len(entries),
-			"ids", len(ids),
-		)
 
 	return ids, nil
 }
@@ -486,6 +482,12 @@ func parseIndexEntries(_ context.Context, entries []index.Entry, matcher *labels
 	return result, nil
 }
 
+var entriesPool = sync.Pool{
+	New: func() interface{} {
+		return make([]index.Entry, 0, 1024)
+	},
+}
+
 func (c *IndexStore) lookupEntriesByQueries(ctx context.Context, queries []index.Query) ([]index.Entry, error) {
 	// Nothing to do if there are no queries.
 	if len(queries) == 0 {
@@ -493,7 +495,7 @@ func (c *IndexStore) lookupEntriesByQueries(ctx context.Context, queries []index
 	}
 
 	var lock sync.Mutex
-	var entries []index.Entry
+	entries := entriesPool.Get().([]index.Entry)[:0]
 	err := c.index.QueryPages(ctx, queries, func(query index.Query, resp index.ReadBatchResult) bool {
 		iter := resp.Iterator()
 		lock.Lock()
@@ -532,6 +534,9 @@ func (c *IndexStore) lookupLabelNamesBySeries(ctx context.Context, from, through
 	if err != nil {
 		return nil, err
 	}
+	// nolint:staticcheck
+	defer entriesPool.Put(entries)
+
 	level.Debug(log).Log("entries", len(entries))
 
 	var result util.UniqueStrings
@@ -595,11 +600,8 @@ func (c *IndexStore) lookupChunksBySeries(ctx context.Context, from, through mod
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(util_log.WithContext(ctx, util_log.Logger)).Log(
-		"msg", "SeriesStore.lookupChunksBySeries",
-		"seriesIDs", len(seriesIDs),
-		"queries", len(queries),
-		"entries", len(entries))
+	// nolint:staticcheck
+	defer entriesPool.Put(entries)
 
 	result, err := parseIndexEntries(ctx, entries, nil)
 	return result, err

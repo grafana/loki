@@ -24,21 +24,23 @@ type DeleteRequestsManager struct {
 	deleteRequestCancelPeriod time.Duration
 
 	deleteRequestsToProcess []DeleteRequest
-	chunkIntervalsToRetain  []model.Interval
+	chunkIntervalsToRetain  []retention.IntervalFilter
 	// WARN: If by any chance we change deleteRequestsToProcessMtx to sync.RWMutex to be able to check multiple chunks at a time,
 	// please take care of chunkIntervalsToRetain which should be unique per chunk.
 	deleteRequestsToProcessMtx sync.Mutex
 	metrics                    *deleteRequestsManagerMetrics
 	wg                         sync.WaitGroup
 	done                       chan struct{}
+	deletionMode               Mode
 }
 
-func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer) *DeleteRequestsManager {
+func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer, mode Mode) *DeleteRequestsManager {
 	dm := &DeleteRequestsManager{
 		deleteRequestsStore:       store,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
 		metrics:                   newDeleteRequestsManagerMetrics(registerer),
 		done:                      make(chan struct{}),
+		deletionMode:              mode,
 	}
 
 	go dm.loop()
@@ -123,7 +125,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 	return nil
 }
 
-func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, []model.Interval) {
+func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, []retention.IntervalFilter) {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
@@ -132,20 +134,22 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 	}
 
 	d.chunkIntervalsToRetain = d.chunkIntervalsToRetain[:0]
-	d.chunkIntervalsToRetain = append(d.chunkIntervalsToRetain, model.Interval{
-		Start: ref.From,
-		End:   ref.Through,
+	d.chunkIntervalsToRetain = append(d.chunkIntervalsToRetain, retention.IntervalFilter{
+		Interval: model.Interval{
+			Start: ref.From,
+			End:   ref.Through,
+		},
 	})
 
 	for _, deleteRequest := range d.deleteRequestsToProcess {
-		rebuiltIntervals := make([]model.Interval, 0, len(d.chunkIntervalsToRetain))
-		for _, interval := range d.chunkIntervalsToRetain {
+		rebuiltIntervals := make([]retention.IntervalFilter, 0, len(d.chunkIntervalsToRetain))
+		for _, ivf := range d.chunkIntervalsToRetain {
 			entry := ref
-			entry.From = interval.Start
-			entry.Through = interval.End
+			entry.From = ivf.Interval.Start
+			entry.Through = ivf.Interval.End
 			isDeleted, newIntervalsToRetain := deleteRequest.IsDeleted(entry)
 			if !isDeleted {
-				rebuiltIntervals = append(rebuiltIntervals, interval)
+				rebuiltIntervals = append(rebuiltIntervals, ivf)
 			} else {
 				rebuiltIntervals = append(rebuiltIntervals, newIntervalsToRetain...)
 			}
@@ -158,7 +162,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		}
 	}
 
-	if len(d.chunkIntervalsToRetain) == 1 && d.chunkIntervalsToRetain[0].Start == ref.From && d.chunkIntervalsToRetain[0].End == ref.Through {
+	if len(d.chunkIntervalsToRetain) == 1 && d.chunkIntervalsToRetain[0].Interval.Start == ref.From && d.chunkIntervalsToRetain[0].Interval.End == ref.Through {
 		return false, nil
 	}
 

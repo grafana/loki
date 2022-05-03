@@ -8,8 +8,7 @@ import (
 	"github.com/grafana/loki/operator/controllers/internal/management/state"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 
-	"github.com/ViaQ/logerr/kverrors"
-	"github.com/ViaQ/logerr/log"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,8 +17,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-var logger = log.DefaultLogger()
 
 func TestIsManaged(t *testing.T) {
 	type test struct {
@@ -76,7 +73,7 @@ func TestIsManaged(t *testing.T) {
 				k.SetClientObject(object, &tst.stack)
 				return nil
 			}
-			ok, err := state.IsManaged(context.TODO(), logger, r, k)
+			ok, err := state.IsManaged(context.TODO(), r, k)
 			require.NoError(t, err)
 			require.Equal(t, ok, tst.wantOk)
 		})
@@ -112,7 +109,7 @@ func TestIsManaged_WhenError_ReturnNotManagedWithError(t *testing.T) {
 	for _, tst := range table {
 		t.Run(tst.name, func(t *testing.T) {
 			k.GetReturns(tst.apierror)
-			ok, err := state.IsManaged(context.TODO(), logger, r, k)
+			ok, err := state.IsManaged(context.TODO(), r, k)
 			require.Equal(t, tst.wantErr, err)
 			require.False(t, ok)
 		})

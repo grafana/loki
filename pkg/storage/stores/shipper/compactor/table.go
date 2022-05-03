@@ -123,7 +123,7 @@ func newTable(ctx context.Context, workingDirectory string, indexStorageClient s
 }
 
 func (t *table) compact(applyRetention bool) error {
-	indexFiles, usersWithPerUserIndex, err := t.indexStorageClient.ListFiles(t.ctx, t.name)
+	indexFiles, usersWithPerUserIndex, err := t.indexStorageClient.ListFiles(t.ctx, t.name, false)
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func (t *table) done() error {
 			continue
 		}
 
-		indexFiles, err := t.baseUserIndexSet.ListFiles(t.ctx, t.name, userID)
+		indexFiles, err := t.baseUserIndexSet.ListFiles(t.ctx, t.name, userID, false)
 		if err != nil {
 			return err
 		}

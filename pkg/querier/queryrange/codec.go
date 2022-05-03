@@ -331,7 +331,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		}
 
 		u := &url.URL{
-			Path:     "/loki/api/v1/labels",
+			Path:     request.Path, // NOTE: this could be either /label or /label/{name}/values endpoint. So forward the original path as it is.
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{

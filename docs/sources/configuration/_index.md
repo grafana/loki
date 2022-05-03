@@ -742,7 +742,7 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # Name of the blob container used to store chunks. This container must be
 # created before running cortex.
 # CLI flag: -<prefix>.azure.container-name
-[container_name: <string> | default = "cortex"]
+[container_name: <string> | default = "loki"]
 
 # The Microsoft Azure account name to be used
 # CLI flag: -<prefix>.azure.account-name
@@ -938,7 +938,7 @@ The `swift_storage_config` configures Swift as a general storage for different d
 
 # Name of the Swift container to put chunks in.
 # CLI flag: -<prefix>.swift.container-name
-[container_name: <string> | default = "cortex"]
+[container_name: <string> | default = ""]
 ```
 
 ## hedging
@@ -1488,36 +1488,6 @@ aws:
       # Ignore throttling below this level (rate per second)
       # CLI flag: -metrics.ignore-throttle-below
       [ignore_throttle_below: <float64> | default = 1]
-
-      # Query to fetch ingester queue length
-      # CLI flag: -metrics.queue-length-query
-      [queue_length_query: <string> |
-        default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))"]
-
-      # Query to fetch throttle rates per table
-      # CLI flag: -metrics.write-throttle-query
-      [write_throttle_query: <string> |
-        default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m]))
-        by (table) > 0"]
-
-      # Query to fetch write capacity usage per table
-      # CLI flag: -metrics.usage-query
-      [write_usage_query: <string> |
-        default =
-        "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m]))
-        by (table) > 0"]
-
-      # Query to fetch read capacity usage per table
-      # CLI flag: -metrics.read-usage-query
-      [read_usage_query: <string> |
-        default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h]))
-        by (table) > 0"]
-
-      # Query to fetch read errors per table
-      # CLI flag: -metrics.read-error-query
-      [read_error_query: <string> |
-        default = "sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",
-        error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0"]
 
     # Number of chunks to group together to parallelise fetches (0 to disable)
     # CLI flag: -dynamodb.chunk-gang-size
@@ -2129,6 +2099,16 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Truncate log lines when they exceed max_line_size.
 # CLI flag: -distributor.max-line-size-truncate
 [max_line_size_truncate: <boolean> | default = false ]
+
+# Fudge the log line timestamp during ingestion when it's the same as the previous entry for the same stream
+# When enabled, if a log line in a push request has the same timestamp as the previous line
+# for the same stream, one nanosecond is added to the log line. This will preserve the received
+# order of log lines with the exact same timestamp when they are queried by slightly altering
+# their stored timestamp. NOTE: this is imperfect because Loki accepts out of order writes
+# and another push request for the same stream could contain duplicate timestamps to existing
+# entries and they will not be fudged.
+# CLI flag: -validation.fudge-duplicate-timestamps
+[fudge_duplicate_timestamp: <boolean> | default = false ]
 
 # Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit

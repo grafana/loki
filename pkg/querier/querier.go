@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 
 	"github.com/go-kit/log/level"
@@ -90,6 +92,7 @@ type SingleTenantQuerier struct {
 	limits          *validation.Overrides
 	ingesterQuerier *IngesterQuerier
 	deleteGetter    deleteGetter
+	metrics         *Metrics
 }
 
 type deleteGetter interface {
@@ -97,13 +100,14 @@ type deleteGetter interface {
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides, d deleteGetter) (*SingleTenantQuerier, error) {
+func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
 	return &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
 		ingesterQuerier: ingesterQuerier,
 		limits:          limits,
 		deleteGetter:    d,
+		metrics:         NewMetrics(r),
 	}, nil
 }
 
@@ -454,6 +458,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		},
 		q.cfg.TailMaxDuration,
 		tailerWaitEntryThrottle,
+		q.metrics,
 	), nil
 }
 
