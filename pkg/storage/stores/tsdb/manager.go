@@ -194,29 +194,26 @@ func indexBuckets(indexPeriod time.Duration, from, through model.Time) (res []in
 	return
 }
 
-func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, userID string) (Index, error) {
+func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, user string) (Index, error) {
 	var indices []Index
 
 	// Ensure we query both per tenant and multitenant TSDBs
-	userIDs := []string{userID, ""}
 
 	for _, bkt := range indexBuckets(m.indexPeriod, from, through) {
-		for _, user := range userIDs {
-			if err := m.shipper.ForEach(ctx, fmt.Sprintf("%d", bkt), user, func(idx shipper_index.Index) error {
-				_, multitenant := parseMultitenantTSDBName(idx.Name())
-				impl, ok := idx.(Index)
-				if !ok {
-					return fmt.Errorf("unexpected shipper index type: %T", idx)
-				}
-				if multitenant {
-					indices = append(indices, NewMultiTenantIndex(impl))
-				} else {
-					indices = append(indices, impl)
-				}
-				return nil
-			}); err != nil {
-				return nil, err
+		if err := m.shipper.ForEach(ctx, fmt.Sprintf("%d", bkt), user, func(idx shipper_index.Index) error {
+			_, multitenant := parseMultitenantTSDBName(idx.Name())
+			impl, ok := idx.(Index)
+			if !ok {
+				return fmt.Errorf("unexpected shipper index type: %T", idx)
 			}
+			if multitenant {
+				indices = append(indices, NewMultiTenantIndex(impl))
+			} else {
+				indices = append(indices, impl)
+			}
+			return nil
+		}); err != nil {
+			return nil, err
 		}
 
 	}
