@@ -368,7 +368,7 @@ func TestCompactor(t *testing.T) {
 			}
 			require.Nil(t, err)
 
-			idx, err := NewShippableTSDBFile(out)
+			idx, err := NewShippableTSDBFile(out, false)
 			require.Nil(t, err)
 			defer idx.Close()
 

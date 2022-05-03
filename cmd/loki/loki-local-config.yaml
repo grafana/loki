@@ -8,7 +8,7 @@ common:
   path_prefix: /tmp/loki
   storage:
     filesystem:
-      chunks_directory: /tmp/loki/chunks
+      chunks_directory: /tmp/loki/data
       rules_directory: /tmp/loki/rules
   replication_factor: 1
   ring:
@@ -19,15 +19,23 @@ common:
 schema_config:
   configs:
     - from: 2020-10-24
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v12
       index:
         prefix: index_
         period: 24h
 
+storage_config:
+  tsdb_shipper:
+    query_ready_num_days: 30
+
 ruler:
   alertmanager_url: http://localhost:9093
+
+ingester:
+  max_chunk_age: 10s
+  chunk_idle_period: 10s
 
 # By default, Loki will send anonymous, but uniquely-identifiable usage and configuration
 # analytics to Grafana Labs. These statistics are sent to https://stats.grafana.org/

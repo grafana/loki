@@ -141,7 +141,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 
 		level.Debug(m.log).Log("msg", "finished building tsdb for period", "pd", p, "dst", dst.Path(), "duration", time.Since(start))
 
-		loaded, err := NewShippableTSDBFile(dst)
+		loaded, err := NewShippableTSDBFile(dst, false)
 		if err != nil {
 			return err
 		}
