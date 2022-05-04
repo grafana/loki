@@ -24,8 +24,9 @@ const (
 
 // JSONConfig represents a JSON Stage configuration
 type JSONConfig struct {
-	Expressions map[string]string `mapstructure:"expressions"`
-	Source      *string           `mapstructure:"source"`
+	Expressions   map[string]string `mapstructure:"expressions"`
+	Source        *string           `mapstructure:"source"`
+	DropMalformed bool              `mapstructure:"drop"`
 }
 
 // validateJSONConfig validates a json config and returns a map of necessary jmespath expressions.
@@ -97,7 +98,10 @@ func (j *jsonStage) Run(in chan Entry) chan Entry {
 	go func() {
 		defer close(out)
 		for e := range in {
-			j.Process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
+			err := j.process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
+			if err != nil && j.cfg.DropMalformed {
+				continue
+			}
 			out <- e
 		}
 	}()
@@ -106,6 +110,10 @@ func (j *jsonStage) Run(in chan Entry) chan Entry {
 
 // Process implements Stage
 func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+	j.process(labels, extracted, t, entry)
+}
+
+func (j *jsonStage) process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) error {
 	// If a source key is provided, the json stage should process it
 	// from the extracted map, otherwise should fallback to the entry
 	input := entry
@@ -115,7 +123,7 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 			if Debug {
 				level.Debug(j.logger).Log("msg", "source does not exist in the set of extracted values", "source", *j.cfg.Source)
 			}
-			return
+			return nil
 		}
 
 		value, err := getString(extracted[*j.cfg.Source])
@@ -123,7 +131,7 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 			if Debug {
 				level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]))
 			}
-			return
+			return nil
 		}
 
 		input = &value
@@ -133,7 +141,7 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 		if Debug {
 			level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
 		}
-		return
+		return nil
 	}
 
 	var data map[string]interface{}
@@ -142,7 +150,7 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 		if Debug {
 			level.Debug(j.logger).Log("msg", "failed to unmarshal log line", "err", err)
 		}
-		return
+		return fmt.Errorf("malformed json")
 	}
 
 	for n, e := range j.expressions {
@@ -179,6 +187,7 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 	if Debug {
 		level.Debug(j.logger).Log("msg", "extracted data debug in json stage", "extracted data", fmt.Sprintf("%v", extracted))
 	}
+	return nil
 }
 
 // Name implements Stage
