@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +21,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/clients/pkg/logentry/metric"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	lokiutil "github.com/grafana/loki/pkg/util"
@@ -37,11 +37,12 @@ const (
 
 	LatencyLabel = "filename"
 	HostLabel    = "host"
+	ClientLabel  = "client"
 )
 
 var UserAgent = fmt.Sprintf("promtail/%s", build.Version)
 
-type metrics struct {
+type Metrics struct {
 	encodedBytes     *prometheus.CounterVec
 	sentBytes        *prometheus.CounterVec
 	droppedBytes     *prometheus.CounterVec
@@ -49,12 +50,12 @@ type metrics struct {
 	droppedEntries   *prometheus.CounterVec
 	requestDuration  *prometheus.HistogramVec
 	batchRetries     *prometheus.CounterVec
-	streamLag        *metric.Gauges
 	countersWithHost []*prometheus.CounterVec
+	streamLag        *prometheus.GaugeVec
 }
 
-func newMetrics(reg prometheus.Registerer) *metrics {
-	var m metrics
+func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
+	var m Metrics
 
 	m.encodedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
@@ -92,19 +93,17 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		Help:      "Number of times batches has had to be retried.",
 	}, []string{HostLabel})
 
-	var err error
-	m.streamLag, err = metric.NewGauges("promtail_stream_lag_seconds",
-		"Difference between current time and last batch timestamp for successful sends",
-		metric.GaugeConfig{Action: "set"},
-		int64(1*time.Minute.Seconds()), // This strips out files which update slowly and reduces noise in this metric.
-	)
-	if err != nil {
-		panic(err)
-	}
-
 	m.countersWithHost = []*prometheus.CounterVec{
 		m.encodedBytes, m.sentBytes, m.droppedBytes, m.sentEntries, m.droppedEntries,
 	}
+
+	streamLagLabelsMerged := []string{HostLabel, ClientLabel}
+	streamLagLabelsMerged = append(streamLagLabelsMerged, streamLagLabels...)
+	m.streamLag = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "promtail",
+		Name:      "stream_lag_seconds",
+		Help:      "Difference between current time and last batch timestamp for successful sends",
+	}, streamLagLabelsMerged)
 
 	if reg != nil {
 		m.encodedBytes = mustRegisterOrGet(reg, m.encodedBytes).(*prometheus.CounterVec)
@@ -114,7 +113,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		m.droppedEntries = mustRegisterOrGet(reg, m.droppedEntries).(*prometheus.CounterVec)
 		m.requestDuration = mustRegisterOrGet(reg, m.requestDuration).(*prometheus.HistogramVec)
 		m.batchRetries = mustRegisterOrGet(reg, m.batchRetries).(*prometheus.CounterVec)
-		m.streamLag = mustRegisterOrGet(reg, m.streamLag).(*metric.Gauges)
+		m.streamLag = mustRegisterOrGet(reg, m.streamLag).(*prometheus.GaugeVec)
 	}
 
 	return &m
@@ -135,15 +134,18 @@ type Client interface {
 	api.EntryHandler
 	// Stop goroutine sending batch of entries without retries.
 	StopNow()
+	Name() string
 }
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
 type client struct {
-	metrics *metrics
-	logger  log.Logger
-	cfg     Config
-	client  *http.Client
-	entries chan api.Entry
+	name            string
+	metrics         *Metrics
+	streamLagLabels []string
+	logger          log.Logger
+	cfg             Config
+	client          *http.Client
+	entries         chan api.Entry
 
 	once sync.Once
 	wg   sync.WaitGroup
@@ -159,11 +161,15 @@ type client struct {
 type Tripperware func(http.RoundTripper) http.RoundTripper
 
 // New makes a new Client.
-func New(reg prometheus.Registerer, cfg Config, logger log.Logger) (Client, error) {
-	return newClient(reg, cfg, logger)
+func New(metrics *Metrics, cfg Config, streamLagLabels []string, logger log.Logger) (Client, error) {
+	if cfg.StreamLagLabels.String() != "" {
+		return nil, fmt.Errorf("client config stream_lag_labels is deprecated in favour of the config file options block field, and will be ignored: %+v", cfg.StreamLagLabels.String())
+	}
+	return newClient(metrics, cfg, streamLagLabels, logger)
 }
 
-func newClient(reg prometheus.Registerer, cfg Config, logger log.Logger) (*client, error) {
+func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger log.Logger) (*client, error) {
+
 	if cfg.URL.URL == nil {
 		return nil, errors.New("client needs target URL")
 	}
@@ -171,14 +177,19 @@ func newClient(reg prometheus.Registerer, cfg Config, logger log.Logger) (*clien
 	ctx, cancel := context.WithCancel(context.Background())
 
 	c := &client{
-		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
-		cfg:     cfg,
-		entries: make(chan api.Entry),
-		metrics: newMetrics(reg),
+		logger:          log.With(logger, "component", "client", "host", cfg.URL.Host),
+		cfg:             cfg,
+		entries:         make(chan api.Entry),
+		metrics:         metrics,
+		streamLagLabels: streamLagLabels,
+		name:            asSha256(cfg),
 
 		externalLabels: cfg.ExternalLabels.LabelSet,
 		ctx:            ctx,
 		cancel:         cancel,
+	}
+	if cfg.Name != "" {
+		c.name = cfg.Name
 	}
 
 	err := cfg.Client.Validate()
@@ -205,8 +216,8 @@ func newClient(reg prometheus.Registerer, cfg Config, logger log.Logger) (*clien
 }
 
 // NewWithTripperware creates a new Loki client with a custom tripperware.
-func NewWithTripperware(reg prometheus.Registerer, cfg Config, logger log.Logger, tp Tripperware) (Client, error) {
-	c, err := newClient(reg, cfg, logger)
+func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, logger log.Logger, tp Tripperware) (Client, error) {
+	c, err := newClient(metrics, cfg, streamLagLabels, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -290,6 +301,14 @@ func (c *client) Chan() chan<- api.Entry {
 	return c.entries
 }
 
+func asSha256(o interface{}) string {
+	h := sha256.New()
+	h.Write([]byte(fmt.Sprintf("%v", o)))
+
+	temp := fmt.Sprintf("%x", h.Sum(nil))
+	return temp[:6]
+}
+
 func (c *client) sendBatch(tenantID string, batch *batch) {
 	buf, entriesCount, err := batch.encode()
 	if err != nil {
@@ -318,23 +337,24 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
 					return
 				}
-				var lblSet model.LabelSet
-				for i := range lbls {
-					for _, lbl := range c.cfg.StreamLagLabels {
+				lblSet := make(prometheus.Labels)
+				for _, lbl := range c.streamLagLabels {
+					// label from streamLagLabels may not be found but we still need an empty value
+					// so that the prometheus client library doesn't panic on inconsistent label cardinality
+					value := ""
+					for i := range lbls {
 						if lbls[i].Name == lbl {
-							if lblSet == nil {
-								lblSet = model.LabelSet{}
-							}
-
-							lblSet = lblSet.Merge(model.LabelSet{
-								model.LabelName(lbl): model.LabelValue(lbls[i].Value),
-							})
+							value = lbls[i].Value
 						}
 					}
+					lblSet[lbl] = value
 				}
 				if lblSet != nil {
 					// always set host
-					lblSet = lblSet.Merge(model.LabelSet{model.LabelName(HostLabel): model.LabelValue(c.cfg.URL.Host)})
+					lblSet[HostLabel] = c.cfg.URL.Host
+					// also set client name since if we have multiple promtail clients configured we will run into a
+					// duplicate metric collected with same labels error when trying to hit the /metrics endpoint
+					lblSet[ClientLabel] = c.name
 					c.metrics.streamLag.With(lblSet).Set(time.Since(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
 				}
 			}
@@ -434,7 +454,11 @@ func (c *client) processEntry(e api.Entry) (api.Entry, string) {
 	return e, tenantID
 }
 
-func (c *client) UnregisterLatencyMetric(labels model.LabelSet) {
-	labels[HostLabel] = model.LabelValue(c.cfg.URL.Host)
+func (c *client) UnregisterLatencyMetric(labels prometheus.Labels) {
+	labels[HostLabel] = c.cfg.URL.Host
 	c.metrics.streamLag.Delete(labels)
+}
+
+func (c *client) Name() string {
+	return c.name
 }

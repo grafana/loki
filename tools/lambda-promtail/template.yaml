@@ -1,12 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   lambda-promtail:
-  
+
   propagate Cloudwatch Logs to Loki/Promtail via Loki Write API.
 
 Parameters:
   WriteAddress:
-    Description: 'address to write to in the form of: http<s>://<location><:port>/loki/api/v1/push'
+    Description: 'Address to write to in the form of: http<s>://<location><:port>/loki/api/v1/push'
     Type: String
     Default: 'http://localhost:8080/loki/api/v1/push'
   ReservedConcurrency:
@@ -14,11 +14,11 @@ Parameters:
     Type: Number
     Default: 2
   Username:
-    Description: The basic auth username, necessarry if writing directly to Grafana Cloud Loki.
+    Description: The basic auth username, necessary if writing directly to Grafana Cloud Loki.
     Type: String
     Default: ""
   Password:
-    Description: The basic auth password, necessarry if writing directly to Grafana Cloud Loki.
+    Description: The basic auth password, necessary if writing directly to Grafana Cloud Loki.
     Type: String
     Default: ""
     NoEcho: true
@@ -31,7 +31,7 @@ Parameters:
     Type: String
     Default: "false"
   ExtraLabels:
-    Descripton: Comma seperated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by Lambda-Promtail.
+    Description: Comma separated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by lambda-promtail.
     Type: String
     Default: ""
 
@@ -106,7 +106,7 @@ Resources:
       DestinationArn: !GetAtt LambdaPromtailFunction.Arn
       FilterPattern: ""
       LogGroupName: "/aws/lambda/some-lamda-log-group"
-  
+
 Outputs:
   LambdaPromtailFunction:
     Description: "Lambda Promtail Function ARN"

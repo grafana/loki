@@ -12,12 +12,11 @@ import (
 
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
-	loki_storage "github.com/grafana/loki/pkg/storage"
-	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
@@ -86,6 +85,8 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyInstanceConfigs(r, &defaults)
 
+		applyCommonReplicationFactor(r, &defaults)
+
 		applyDynamicRingConfigs(r, &defaults)
 
 		appendLoopbackInterface(r, &defaults)
@@ -98,7 +99,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return err
 		}
 
-		if len(r.SchemaConfig.Configs) > 0 && loki_storage.UsingBoltdbShipper(r.SchemaConfig.Configs) {
+		if len(r.SchemaConfig.Configs) > 0 && config.UsingBoltdbShipper(r.SchemaConfig.Configs) {
 			betterBoltdbShipperDefaults(r, &defaults)
 		}
 
@@ -122,21 +123,26 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 // - "instance-interface-names", a list of net interfaces used when looking for addresses.
 func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(r.Common.InstanceAddr, defaults.Common.InstanceAddr) {
-		r.Ingester.LifecyclerConfig.Addr = r.Common.InstanceAddr
-		r.CompactorConfig.CompactorRing.InstanceAddr = r.Common.InstanceAddr
-		r.Distributor.DistributorRing.InstanceAddr = r.Common.InstanceAddr
-		r.Ruler.Ring.InstanceAddr = r.Common.InstanceAddr
-		r.QueryScheduler.SchedulerRing.InstanceAddr = r.Common.InstanceAddr
+		if reflect.DeepEqual(r.Common.Ring.InstanceAddr, defaults.Common.Ring.InstanceAddr) {
+			r.Common.Ring.InstanceAddr = r.Common.InstanceAddr
+		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
+		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
-		r.Ingester.LifecyclerConfig.InfNames = r.Common.InstanceInterfaceNames
-		r.CompactorConfig.CompactorRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.Distributor.DistributorRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.Ruler.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		if reflect.DeepEqual(r.Common.Ring.InstanceInterfaceNames, defaults.Common.Ring.InstanceInterfaceNames) {
+			r.Common.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
+		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+	}
+}
+
+// applyCommonReplicationFactor apply the common replication factor to the Index Gateway ring.
+func applyCommonReplicationFactor(r, defaults *ConfigWrapper) {
+	if !reflect.DeepEqual(r.Common.ReplicationFactor, defaults.Common.ReplicationFactor) {
+		r.IndexGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
 	}
 }
 
@@ -148,9 +154,9 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 // 2. If no explicit ring config is set, use the common ring configured if provided.
 // 3. If no common ring was provided, use the memberlist config if provided.
 // 4. If no common ring or memberlist were provided, use the ingester's ring configuration.
-
+//
 // When using the ingester or common ring config, the loopback interface will be appended to the end of
-// the list of default interface names
+// the list of default interface names.
 func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(r.Common.Ring, defaults.Common.Ring) {
 		// common ring is provided, use that for all rings, merging with
@@ -171,13 +177,13 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 	}
 }
 
-//applyConfigToRings will reuse a given RingConfig everywhere else we have a ring configured.
-//`mergeWithExisting` will be true when applying the common config, false when applying the ingester
-//config. This decision was made since the ingester ring copying behavior is likely to be less intuitive,
-//and was added as a stop-gap to prevent the new rings in 2.4 from breaking existing configs before 2.4 that only had an ingester
-//ring defined. When `mergeWithExisting` is false, we will not apply any of the ring config to a ring that has
-//any deviations from defaults. When mergeWithExisting is true, the ring config is overlaid on top of any specified
-//derivations, with the derivations taking precedence.
+// applyConfigToRings will reuse a given RingConfig everywhere else we have a ring configured.
+// `mergeWithExisting` will be true when applying the common config, false when applying the ingester
+// config. This decision was made since the ingester ring copying behavior is likely to be less intuitive,
+// and was added as a stop-gap to prevent the new rings in 2.4 from breaking existing configs before 2.4 that only had an ingester
+// ring defined. When `mergeWithExisting` is false, we will not apply any of the ring config to a ring that has
+// any deviations from defaults. When mergeWithExisting is true, the ring config is overlaid on top of any specified
+// derivations, with the derivations taking precedence.
 func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWithExisting bool) {
 	// Ingester - mergeWithExisting is false when applying the ingester config, and we only want to
 	// change ingester ring values when applying the common config, so there's no need for the DeepEqual
@@ -195,7 +201,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
-		r.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = r.Common.ReplicationFactor
 	}
 
 	// Distributor
@@ -245,6 +250,19 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.CompactorConfig.CompactorRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.CompactorConfig.CompactorRing.KVStore = rc.KVStore
 	}
+
+	// IndexGateway
+	if mergeWithExisting || reflect.DeepEqual(r.IndexGateway.Ring, defaults.IndexGateway.Ring) {
+		r.IndexGateway.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IndexGateway.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IndexGateway.Ring.InstancePort = rc.InstancePort
+		r.IndexGateway.Ring.InstanceAddr = rc.InstanceAddr
+		r.IndexGateway.Ring.InstanceID = rc.InstanceID
+		r.IndexGateway.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.IndexGateway.Ring.InstanceZone = rc.InstanceZone
+		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IndexGateway.Ring.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -268,6 +286,12 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.QueryScheduler.SchedulerRing.TokensFilePath = f
+
+	f, err = tokensFile(cfg, "indexgateway.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.IndexGateway.Ring.TokensFilePath = f
 
 	return nil
 }
@@ -305,8 +329,10 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 	}
 }
 
-// appendLoopbackInterface will append the loopback interface to the interface names used for the ingester ring,
-// v2 frontend, and common ring config unless an explicit list of names was provided.
+// appendLoopbackInterface will append the loopback interface to the interface names used by the Loki components
+// (ex: rings, v2 frontend, etc).
+//
+// The append won't occur for an specific component if an explicit list of net interface names is provided for that component.
 func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	loopbackIface, err := loki_net.LoopbackInterfaceName()
 	if err != nil {
@@ -340,6 +366,10 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.Ruler.Ring.InstanceInterfaceNames, defaults.Ruler.Ring.InstanceInterfaceNames) {
 		cfg.Ruler.Ring.InstanceInterfaceNames = append(cfg.Ruler.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
+		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -352,6 +382,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.Ruler.Ring.KVStore.Store = memberlistStr
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
+	r.IndexGateway.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
@@ -375,7 +406,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Azure = r.Common.Storage.Azure
 			r.StorageConfig.AzureStorageConfig = r.Common.Storage.Azure
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
-			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeAzure
+			r.CompactorConfig.SharedStoreType = config.StorageTypeAzure
 		}
 	}
 
@@ -390,7 +421,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "local"
 			r.Ruler.StoreConfig.Local = local.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
 			r.StorageConfig.FSConfig.Directory = r.Common.Storage.FSConfig.ChunksDirectory
-			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeFileSystem
+			r.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		}
 	}
 
@@ -401,7 +432,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "gcs"
 			r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS
 			r.StorageConfig.GCSConfig = r.Common.Storage.GCS
-			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeGCS
+			r.CompactorConfig.SharedStoreType = config.StorageTypeGCS
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
@@ -413,7 +444,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "s3"
 			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3
 			r.StorageConfig.AWSStorageConfig.S3Config = r.Common.Storage.S3
-			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeS3
+			r.CompactorConfig.SharedStoreType = config.StorageTypeS3
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
@@ -425,7 +456,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "swift"
 			r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift
 			r.StorageConfig.Swift = r.Common.Storage.Swift
-			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeSwift
+			r.CompactorConfig.SharedStoreType = config.StorageTypeSwift
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
@@ -442,7 +473,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 }
 
 func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
-	currentSchemaIdx := loki_storage.ActivePeriodConfig(cfg.SchemaConfig.Configs)
+	currentSchemaIdx := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
 	currentSchema := cfg.SchemaConfig.Configs[currentSchemaIdx]
 
 	if cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType == defaults.StorageConfig.BoltDBShipperConfig.SharedStoreType {

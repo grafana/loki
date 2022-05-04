@@ -45,6 +45,8 @@ import (
 
 const httpTestPort = 9080
 
+var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, nil)
+
 func TestPromtail(t *testing.T) {
 	// Setup.
 	w := log.NewSyncWriter(os.Stderr)
@@ -56,7 +58,7 @@ func TestPromtail(t *testing.T) {
 	dirName := "/tmp/promtail_test_" + randName()
 	positionsFileName := dirName + "/positions.yml"
 
-	err := os.MkdirAll(dirName, 0750)
+	err := os.MkdirAll(dirName, 0o750)
 	if err != nil {
 		t.Error(err)
 		return
@@ -65,7 +67,7 @@ func TestPromtail(t *testing.T) {
 	defer func() { _ = os.RemoveAll(dirName) }()
 
 	testDir := dirName + "/logs"
-	err = os.MkdirAll(testDir, 0750)
+	err = os.MkdirAll(testDir, 0o750)
 	if err != nil {
 		t.Error(err)
 		return
@@ -84,6 +86,9 @@ func TestPromtail(t *testing.T) {
 		server    = &http.Server{Addr: "localhost:3100", Handler: nil}
 	)
 	defer func() {
+		if t.Failed() {
+			return // Test has already failed; don't wait for everything to shut down.
+		}
 		fmt.Fprintf(os.Stdout, "wait close")
 		wg.Wait()
 		if err != nil {
@@ -101,9 +106,8 @@ func TestPromtail(t *testing.T) {
 	defer func() {
 		_ = server.Shutdown(context.Background())
 	}()
-	// Run.
 
-	p, err := New(buildTestConfig(t, positionsFileName, testDir), false, nil)
+	p, err := New(buildTestConfig(t, positionsFileName, testDir), clientMetrics, false, nil)
 	if err != nil {
 		t.Error("error creating promtail", err)
 		return
@@ -116,6 +120,7 @@ func TestPromtail(t *testing.T) {
 			err = errors.Wrap(err, "Failed to start promtail")
 		}
 	}()
+	defer p.Shutdown() // In case the test fails before the call to Shutdown below.
 
 	expectedCounts := map[string]int{}
 
@@ -349,7 +354,7 @@ func fileRoll(t *testing.T, filename string, prefix string) int {
 
 func symlinkRoll(t *testing.T, testDir string, filename string, prefix string) int {
 	symlinkDir := testDir + "/symlink"
-	if err := os.Mkdir(symlinkDir, 0750); err != nil {
+	if err := os.Mkdir(symlinkDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 
@@ -398,7 +403,7 @@ func symlinkRoll(t *testing.T, testDir string, filename string, prefix string) i
 }
 
 func subdirSingleFile(t *testing.T, filename string, prefix string) int {
-	if err := os.MkdirAll(filepath.Dir(filename), 0750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(filename), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	f, err := os.Create(filename)
@@ -512,7 +517,8 @@ func getPromMetrics(t *testing.T) ([]byte, string) {
 func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName string, label string) map[string]float64 {
 	rb := map[string]float64{}
 
-	pr := textparse.New(bytes, contentType)
+	pr, err := textparse.New(bytes, contentType)
+	require.NoError(t, err)
 	for {
 		et, err := pr.Next()
 		if err == io.EOF {
@@ -646,7 +652,7 @@ func Test_DryRun(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
-	_, err = New(config.Config{}, true, nil)
+	_, err = New(config.Config{}, clientMetrics, true, nil)
 	require.Error(t, err)
 
 	// Set the minimum config needed to start a server. We need to do this since we
@@ -668,7 +674,7 @@ func Test_DryRun(t *testing.T) {
 			PositionsFile: f.Name(),
 			SyncPeriod:    time.Second,
 		},
-	}, true, nil)
+	}, clientMetrics, true, nil)
 	require.NoError(t, err)
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
@@ -680,7 +686,7 @@ func Test_DryRun(t *testing.T) {
 			PositionsFile: f.Name(),
 			SyncPeriod:    time.Second,
 		},
-	}, false, nil)
+	}, clientMetrics, false, nil)
 	require.NoError(t, err)
 	require.IsType(t, &client.MultiClient{}, p.client)
 }

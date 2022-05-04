@@ -41,9 +41,9 @@ import (
 //  - *minio.Object
 //  - Any reader which has a method 'ReadAt()'
 //
-func (c Client) putObjectMultipartStream(ctx context.Context, bucketName, objectName string,
-	reader io.Reader, size int64, opts PutObjectOptions) (info UploadInfo, err error) {
-
+func (c *Client) putObjectMultipartStream(ctx context.Context, bucketName, objectName string,
+	reader io.Reader, size int64, opts PutObjectOptions,
+) (info UploadInfo, err error) {
 	if !isObject(reader) && isReadAt(reader) && !opts.SendContentMd5 {
 		// Verify if the reader implements ReadAt and it is not a *minio.Object then we will use parallel uploader.
 		info, err = c.putObjectMultipartStreamFromReadAt(ctx, bucketName, objectName, reader.(io.ReaderAt), size, opts)
@@ -90,8 +90,9 @@ type uploadPartReq struct {
 // temporary files for staging all the data, these temporary files are
 // cleaned automatically when the caller i.e http client closes the
 // stream after uploading all the contents successfully.
-func (c Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketName, objectName string,
-	reader io.ReaderAt, size int64, opts PutObjectOptions) (info UploadInfo, err error) {
+func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketName, objectName string,
+	reader io.ReaderAt, size int64, opts PutObjectOptions,
+) (info UploadInfo, err error) {
 	// Input validation.
 	if err = s3utils.CheckValidBucketName(bucketName); err != nil {
 		return UploadInfo{}, err
@@ -101,7 +102,7 @@ func (c Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketNa
 	}
 
 	// Calculate the optimal parts info for a given size.
-	totalPartsCount, partSize, lastPartSize, err := optimalPartInfo(size, opts.PartSize)
+	totalPartsCount, partSize, lastPartSize, err := OptimalPartInfo(size, opts.PartSize)
 	if err != nil {
 		return UploadInfo{}, err
 	}
@@ -147,7 +148,7 @@ func (c Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketNa
 	}
 	close(uploadPartsCh)
 
-	var partsBuf = make([][]byte, opts.getNumThreads())
+	partsBuf := make([][]byte, opts.getNumThreads())
 	for i := range partsBuf {
 		partsBuf[i] = make([]byte, 0, partSize)
 	}
@@ -171,7 +172,7 @@ func (c Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketNa
 				}
 
 				n, rerr := readFull(io.NewSectionReader(reader, readOffset, partSize), partsBuf[w-1][:partSize])
-				if rerr != nil && rerr != io.ErrUnexpectedEOF && err != io.EOF {
+				if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
 					uploadedPartsCh <- uploadedPartRes{
 						Error: rerr,
 					}
@@ -231,7 +232,7 @@ func (c Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketNa
 	// Sort all completed parts.
 	sort.Sort(completedParts(complMultipartUpload.Parts))
 
-	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload)
+	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload, PutObjectOptions{})
 	if err != nil {
 		return UploadInfo{}, err
 	}
@@ -240,8 +241,9 @@ func (c Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketNa
 	return uploadInfo, nil
 }
 
-func (c Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, bucketName, objectName string,
-	reader io.Reader, size int64, opts PutObjectOptions) (info UploadInfo, err error) {
+func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, bucketName, objectName string,
+	reader io.Reader, size int64, opts PutObjectOptions,
+) (info UploadInfo, err error) {
 	// Input validation.
 	if err = s3utils.CheckValidBucketName(bucketName); err != nil {
 		return UploadInfo{}, err
@@ -251,7 +253,7 @@ func (c Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, bu
 	}
 
 	// Calculate the optimal parts info for a given size.
-	totalPartsCount, partSize, lastPartSize, err := optimalPartInfo(size, opts.PartSize)
+	totalPartsCount, partSize, lastPartSize, err := OptimalPartInfo(size, opts.PartSize)
 	if err != nil {
 		return UploadInfo{}, err
 	}
@@ -358,7 +360,7 @@ func (c Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, bu
 	// Sort all completed parts.
 	sort.Sort(completedParts(complMultipartUpload.Parts))
 
-	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload)
+	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload, PutObjectOptions{})
 	if err != nil {
 		return UploadInfo{}, err
 	}
@@ -369,7 +371,7 @@ func (c Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, bu
 
 // putObject special function used Google Cloud Storage. This special function
 // is used for Google Cloud Storage since Google's multipart API is not S3 compatible.
-func (c Client) putObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, opts PutObjectOptions) (info UploadInfo, err error) {
+func (c *Client) putObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, opts PutObjectOptions) (info UploadInfo, err error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return UploadInfo{}, err
@@ -430,7 +432,7 @@ func (c Client) putObject(ctx context.Context, bucketName, objectName string, re
 
 // putObjectDo - executes the put object http operation.
 // NOTE: You must have WRITE permissions on a bucket to add an object to it.
-func (c Client) putObjectDo(ctx context.Context, bucketName, objectName string, reader io.Reader, md5Base64, sha256Hex string, size int64, opts PutObjectOptions) (UploadInfo, error) {
+func (c *Client) putObjectDo(ctx context.Context, bucketName, objectName string, reader io.Reader, md5Base64, sha256Hex string, size int64, opts PutObjectOptions) (UploadInfo, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return UploadInfo{}, err
@@ -452,8 +454,10 @@ func (c Client) putObjectDo(ctx context.Context, bucketName, objectName string, 
 		contentSHA256Hex: sha256Hex,
 	}
 	if opts.Internal.SourceVersionID != "" {
-		if _, err := uuid.Parse(opts.Internal.SourceVersionID); err != nil {
-			return UploadInfo{}, errInvalidArgument(err.Error())
+		if opts.Internal.SourceVersionID != nullVersionID {
+			if _, err := uuid.Parse(opts.Internal.SourceVersionID); err != nil {
+				return UploadInfo{}, errInvalidArgument(err.Error())
+			}
 		}
 		urlValues := make(url.Values)
 		urlValues.Set("versionId", opts.Internal.SourceVersionID)

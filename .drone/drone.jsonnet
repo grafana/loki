@@ -25,7 +25,7 @@ local pipeline(name) = {
   kind: 'pipeline',
   name: name,
   steps: [],
-  trigger: { event: ['push', 'pull_request'] },
+  trigger: { event: ['push', 'pull_request', 'tag'] },
 };
 
 local secret(name, vault_path, vault_key) = {
@@ -138,6 +138,30 @@ local promtail_win() = pipeline('promtail-windows') {
       ],
     },
   ],
+};
+
+local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
+  steps+: [
+    // dry run for everything that is not tag or main
+    docker('amd64', 'querytee') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMain,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/loki-query-tee',
+      },
+    },
+  ] + [
+    // publish for tag or main
+    docker('amd64', 'querytee') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMain,
+      settings+: {
+        repo: 'grafana/loki-query-tee',
+      },
+    },
+  ],
+  depends_on: ['check'],
 };
 
 local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
@@ -335,7 +359,7 @@ local manifest(apps) = pipeline('manifest') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: ['0.20.0'],
+          tags: ['0.20.4'],
           dry_run: false,
         },
       },
@@ -391,24 +415,6 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
-  pipeline('benchmark-cron') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    node: { type: 'no-parallel' },
-    steps: [
-      run('All', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...']),
-    ],
-    trigger: {
-      event: {
-        include: ['cron'],
-      },
-      cron: {
-        include: ['loki-bench'],
-      },
-    },
-  },
 ] + [
   multiarch_image(arch)
   for arch in archs
@@ -442,16 +448,17 @@ local manifest(apps) = pipeline('manifest') {
   fluentbit(),
   fluentd(),
   logstash(),
+  querytee(),
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMain {
-      event: ['push'],
+      event: ['push', 'tag'],
     },
   },
 ] + [
   pipeline('deploy') {
     trigger: condition('include').tagMain {
-      event: ['push'],
+      event: ['push', 'tag'],
     },
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],

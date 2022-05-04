@@ -34,8 +34,10 @@ type FeatureFlags struct {
 	EnableCertificateSigningService bool
 	EnableServiceMonitors           bool
 	EnableTLSServiceMonitorConfig   bool
+	EnablePrometheusAlerts          bool
 	EnableGateway                   bool
 	EnableGatewayRoute              bool
+	EnableGrafanaLabsStats          bool
 }
 
 // TenantSecrets for clientID, clientSecret and issuerCAPath for tenant's authentication.

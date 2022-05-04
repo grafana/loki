@@ -8,12 +8,21 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
+// IntervalFilter contains the interval to delete
+// and the function that filters lines. These will be
+// applied to a chunk.
+type IntervalFilter struct {
+	Interval model.Interval
+	Filter   filter.Func
+}
+
 type ExpirationChecker interface {
-	Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval)
+	Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter)
 	IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool
 	MarkPhaseStarted()
 	MarkPhaseFailed()
@@ -40,7 +49,7 @@ func NewExpirationChecker(limits Limits) ExpirationChecker {
 }
 
 // Expired tells if a ref chunk is expired based on retention rules.
-func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval) {
+func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter) {
 	userID := unsafeGetString(ref.UserID)
 	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
 	return now.Sub(ref.Through) > period, nil
@@ -79,6 +88,26 @@ func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval
 		}
 	}
 	return interval.Start.Before(latestRetentionStartTime)
+}
+
+// NeverExpiringExpirationChecker returns an expiration checker that never expires anything
+func NeverExpiringExpirationChecker(limits Limits) ExpirationChecker {
+	return &neverExpiringExpirationChecker{}
+}
+
+type neverExpiringExpirationChecker struct{}
+
+func (e *neverExpiringExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter) {
+	return false, nil
+}
+func (e *neverExpiringExpirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
+	return false
+}
+func (e *neverExpiringExpirationChecker) MarkPhaseStarted()  {}
+func (e *neverExpiringExpirationChecker) MarkPhaseFailed()   {}
+func (e *neverExpiringExpirationChecker) MarkPhaseFinished() {}
+func (e *neverExpiringExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
+	return false
 }
 
 type TenantsRetention struct {

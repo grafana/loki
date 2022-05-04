@@ -1,7 +1,8 @@
+local grafana = import 'grafonnet/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  grafanaDashboards+:
+  grafanaDashboards+::
     {
       'loki-reads-resources.json':
         ($.dashboard('Loki / Reads Resources', uid='reads-resources'))
@@ -33,7 +34,19 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRow(
-          $.row('Querier')
+          $.row('Query Scheduler')
+          .addPanel(
+            $.containerCPUUsagePanel('CPU', 'query-scheduler'),
+          )
+          .addPanel(
+            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-scheduler'),
+          )
+          .addPanel(
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'query-scheduler'),
+          )
+        )
+        .addRow(
+          grafana.row.new('Querier')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'querier'),
           )
@@ -43,9 +56,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             $.goHeapInUsePanel('Memory (go heap inuse)', 'querier'),
           )
-        )
-        .addRow(
-          $.row('')
           .addPanel(
             $.panel('Disk Writes') +
             $.queryPanel(
@@ -65,13 +75,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
             { yaxes: $.yaxes('Bps') },
           )
           .addPanel(
-            $.panel('Disk Space Utilization') +
-            $.queryPanel('max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{%s} / kubelet_volume_stats_capacity_bytes{%s}) and count by(persistentvolumeclaim) (kube_persistentvolumeclaim_labels{%s,label_name=~"querier.*"})' % [$.namespaceMatcher(), $.namespaceMatcher(), $.namespaceMatcher()], '{{persistentvolumeclaim}}') +
-            { yaxes: $.yaxes('percentunit') },
+            $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'querier'),
           )
         )
         .addRow(
-          $.row('Index Gateway')
+          grafana.row.new('Index Gateway')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'index-gateway'),
           )
@@ -81,9 +89,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             $.goHeapInUsePanel('Memory (go heap inuse)', 'index-gateway'),
           )
-        )
-        .addRow(
-          $.row('')
           .addPanel(
             $.panel('Disk Writes') +
             $.queryPanel(
@@ -103,9 +108,14 @@ local utils = import 'mixin-utils/utils.libsonnet';
             { yaxes: $.yaxes('Bps') },
           )
           .addPanel(
-            $.panel('Disk Space Utilization') +
-            $.queryPanel('max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{%s} / kubelet_volume_stats_capacity_bytes{%s}) and count by(persistentvolumeclaim) (kube_persistentvolumeclaim_labels{%s,label_name=~"index-gateway.*"})' % [$.namespaceMatcher(), $.namespaceMatcher(), $.namespaceMatcher()], '{{persistentvolumeclaim}}') +
-            { yaxes: $.yaxes('percentunit') },
+            $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'index-gateway'),
+          )
+          .addPanel(
+            $.panel('Query Readiness Duration') +
+            $.queryPanel(
+              ['loki_boltdb_shipper_query_readiness_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']
+            ) +
+            { yaxes: $.yaxes('s') },
           )
         )
         .addRow(
@@ -121,7 +131,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRow(
-          $.row('Ruler')
+          grafana.row.new('Ruler')
           .addPanel(
             $.panel('Rules') +
             $.queryPanel(
@@ -132,9 +142,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'ruler'),
           )
-        )
-        .addRow(
-          $.row('')
           .addPanel(
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'ruler'),
           )

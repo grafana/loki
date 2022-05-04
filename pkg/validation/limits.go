@@ -13,7 +13,7 @@ import (
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/ruler/util"
 	"github.com/grafana/loki/pkg/util/flagext"
 )
@@ -46,18 +46,19 @@ const (
 // to support user-friendly duration format (e.g: "1h30m45s") in JSON value.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRateStrategy  string           `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
-	IngestionRateMB        float64          `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb"`
-	IngestionBurstSizeMB   float64          `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb"`
-	MaxLabelNameLength     int              `yaml:"max_label_name_length" json:"max_label_name_length"`
-	MaxLabelValueLength    int              `yaml:"max_label_value_length" json:"max_label_value_length"`
-	MaxLabelNamesPerSeries int              `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
-	RejectOldSamples       bool             `yaml:"reject_old_samples" json:"reject_old_samples"`
-	RejectOldSamplesMaxAge model.Duration   `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
-	CreationGracePeriod    model.Duration   `yaml:"creation_grace_period" json:"creation_grace_period"`
-	EnforceMetricName      bool             `yaml:"enforce_metric_name" json:"enforce_metric_name"`
-	MaxLineSize            flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
-	MaxLineSizeTruncate    bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
+	IngestionRateStrategy   string           `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
+	IngestionRateMB         float64          `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb"`
+	IngestionBurstSizeMB    float64          `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb"`
+	MaxLabelNameLength      int              `yaml:"max_label_name_length" json:"max_label_name_length"`
+	MaxLabelValueLength     int              `yaml:"max_label_value_length" json:"max_label_value_length"`
+	MaxLabelNamesPerSeries  int              `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
+	RejectOldSamples        bool             `yaml:"reject_old_samples" json:"reject_old_samples"`
+	RejectOldSamplesMaxAge  model.Duration   `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
+	CreationGracePeriod     model.Duration   `yaml:"creation_grace_period" json:"creation_grace_period"`
+	EnforceMetricName       bool             `yaml:"enforce_metric_name" json:"enforce_metric_name"`
+	MaxLineSize             flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
+	MaxLineSizeTruncate     bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
+	FudgeDuplicateTimestamp bool             `yaml:"fudge_duplicate_timestamp" json:"fudge_duplicate_timestamp"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
@@ -135,6 +136,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", true, "Reject old samples.")
+	f.BoolVar(&l.FudgeDuplicateTimestamp, "validation.fudge-duplicate-timestamps", false, "Fudge the timestamp of a log line by one nanosecond in the future from a previous entry for the same stream with the same timestamp, guarantees sort order at query time.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -213,10 +215,9 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Validate validates that this limits config is valid.
 func (l *Limits) Validate() error {
-
 	if l.StreamRetention != nil {
 		for i, rule := range l.StreamRetention {
-			matchers, err := logql.ParseMatchers(rule.Selector)
+			matchers, err := syntax.ParseMatchers(rule.Selector)
 			if err != nil {
 				return fmt.Errorf("invalid labels matchers: %w", err)
 			}
@@ -538,6 +539,10 @@ func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 	}
 }
 
+func (o *Overrides) FudgeDuplicateTimestamps(userID string) bool {
+	return o.getOverridesForUser(userID).FudgeDuplicateTimestamp
+}
+
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.TenantLimits(userID)
@@ -576,7 +581,6 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalJSON(val []byte) error {
 	sm.m = def
 
 	return nil
-
 }
 
 // MarshalYAML explicitly uses the the type receiver and not pointer receiver

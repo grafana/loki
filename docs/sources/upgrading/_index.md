@@ -33,24 +33,53 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
-#### `querier.split-queries-by-interval` flag migrated yaml path and default value.
+#### Tail API no longer creates multiple streams when using parsers.
 
-The CLI flag `querier.split-queries-by-interval` has changed it's corresponding yaml equivalent from
+We expect this change to be non-impactful however it is a breaking change to existing behavior. 
+
+This change would likely only affect anyone who's doing machine to machine type work with Loki's tail API 
+and is expecting a parser in a query to alter the streams in a tail response.
+
+Prior to this change a tail request with a parser (e.g. json, logfmt, regexp, pattern) would split the 
+incoming log stream into multiple streams based on the extracted labels after running the parser.
+
+[PR 6063](https://github.com/grafana/loki/pull/6063) changes this behavior 
+to no longer split incoming streams when using a parser in the query, instead Loki will return exactly
+the same streams with and without a parser in the query.
+
+We found a significant performance impact when using parsers on live tailing queries which would 
+result in turning a single stream with multiple entries into multiple streams with single entries.
+Often leading to the case where the tailing client could not keep up with the number of streams
+being pushed and tailing logs being dropped.
+
+This change will have no impact on viewing the tail output from Grafana or logcli. 
+Parsers can still be used to do filtering and reformatting of live tailed log lines.
+
+## 2.5.0
+
+### Loki
+
+#### `split_queries_by_interval` yaml configuration has moved.
+
+It was previously possible to define this value in two places
+
 ```yaml
 query_range:
   split_queries_by_interval: 10m
 ```
-->
+
+and/or
+
 ```
 limits_config:
   split_queries_by_interval: 10m
-
 ```
+
+In 2.5.0 it can only be defined in the `limits_config` section, **Loki will fail to start if you do not remove the `split_queries_by_interval` config from the `query_range` section.** 
 
 Additionally, it has a new default value of `30m` rather than `0`.
 
-This is part of it's migration path from a global configuration to a per-tenant one (still subject to default tenant limits in the `limits_config`).
-It keeps it's CLI flag as `querier.split-queries-by-interval`.
+The CLI flag is not changed and remains `querier.split-queries-by-interval`.
 
 #### Dropped support for old Prometheus rules configuration format
 
@@ -84,22 +113,6 @@ Meanwhile, the legacy format is a string in the following format:
    [ ANNOTATIONS <label set> ]
 ```
 
-#### Error responses from API
-
-The body of HTTP error responses from API endpoints changed from plain text to
-JSON. The `Content-Type` header was previously already set incorrectly to
-`application/json`. Therefore returning JSON fixes this inconsistency.
-
-The response body has the following schema:
-
-```json
-{
-  "code": <http status code>,
-  "message": "<error message>",
-  "status": "error"
-}
-```
-
 #### Changes to default configuration values
 
 * `parallelise_shardable_queries` under the `query_range` config now defaults to `true`.
@@ -108,6 +121,7 @@ The response body has the following schema:
 * `query_ingesters_within` under the `querier` config now defaults to `3h`, previously it was `0s`. Any query (or subquery) that has an end time more than `3h` ago will not be sent to the ingesters, this saves work on the ingesters for data they normally don't contain. If you regularly write old data to Loki you may need to return this value to `0s` to always query ingesters. 
 * `max_concurrent` under the `querier` config now defaults to `10` instead of `20`.
 * `match_max_concurrent` under the `frontend_worker` config now defaults to true, this supersedes the `parallelism` setting which can now be removed from your config. Controlling query parallelism of a single process can now be done with the `querier` `max_concurrent` setting.
+* `flush_op_timeout` under the `ingester` configuration block now defaults to `10m`, increased from `10s`. This can help when replaying a large WAL on Loki startup, and avoid `msg="failed to flush user" ... context deadline exceeded` errors.
 
 ### Promtail
 
@@ -216,9 +230,9 @@ present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_
 
 | config | new default | old default|
 | --- | --- | --- |
-| chunk_retain_period | 30s | 0s |
-| chunk_idle_period | 1h | 30m |
-| chunk_target_size | 1048576 | 1572864 |
+| chunk_retain_period | 0s | 30s |
+| chunk_idle_period | 30m | 1h |
+| chunk_target_size | 1572864 | 1048576 |
 
 * chunk_retain_period is necessary when using an index queries cache which is not enabled by default. If you have configured an index_queries_cache_config section make sure that you set chunk_retain_period larger than your cache TTL
 * chunk_idle_period is how long before a chunk which receives no logs is flushed.

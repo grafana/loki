@@ -7,14 +7,15 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -29,7 +30,6 @@ const (
 type Limits interface {
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
-	QueryReadyIndexNumDays(userID string) int
 }
 
 type Config struct {
@@ -136,7 +136,7 @@ func (tm *TableManager) Stop() {
 	}
 }
 
-func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (tm *TableManager) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	queriesByTable := util.QueriesByTable(queries)
 	for tableName, queries := range queriesByTable {
 		err := tm.query(ctx, tableName, queries, callback)
@@ -148,7 +148,7 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQue
 	return nil
 }
 
-func (tm *TableManager) query(ctx context.Context, tableName string, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (tm *TableManager) query(ctx context.Context, tableName string, queries []index.Query, callback index.QueryPagesCallback) error {
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	level.Debug(logger).Log("table-name", tableName)
 
@@ -242,6 +242,11 @@ func (tm *TableManager) cleanupCache() error {
 
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
+	start := time.Now()
+	defer func() {
+		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start))
+	}()
+
 	activeTableNumber := getActiveTableNumber()
 
 	// find the largest query readiness number
@@ -292,7 +297,7 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 
 		// list the users that have dedicated index files for this table
-		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName)
+		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName, false)
 		if err != nil {
 			return err
 		}
@@ -310,9 +315,12 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 			return err
 		}
 
+		perTableStart := time.Now()
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
+		joinedUsers := strings.Join(usersToBeQueryReadyFor, ",")
+		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users", joinedUsers, "duration", time.Since(perTableStart), "table", tableName)
 	}
 
 	return nil
@@ -321,7 +329,8 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 // findUsersInTableForQueryReadiness returns the users that needs their index to be query ready based on the tableNumber and
 // query readiness number provided per user
 func (tm *TableManager) findUsersInTableForQueryReadiness(tableNumber int64, usersWithIndexInTable []string,
-	queryReadinessNumByUserID map[string]int) []string {
+	queryReadinessNumByUserID map[string]int,
+) []string {
 	activeTableNumber := getActiveTableNumber()
 	usersToBeQueryReadyFor := []string{}
 

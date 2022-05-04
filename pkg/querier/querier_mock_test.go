@@ -21,8 +21,9 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -41,6 +42,11 @@ func newQuerierClientMock() *querierClientMock {
 func (c *querierClientMock) Query(ctx context.Context, in *logproto.QueryRequest, opts ...grpc.CallOption) (logproto.Querier_QueryClient, error) {
 	args := c.Called(ctx, in, opts)
 	return args.Get(0).(logproto.Querier_QueryClient), args.Error(1)
+}
+
+func (c *querierClientMock) QuerySample(ctx context.Context, in *logproto.SampleQueryRequest, opts ...grpc.CallOption) (logproto.Querier_QuerySampleClient, error) {
+	args := c.Called(ctx, in, opts)
+	return args.Get(0).(logproto.Querier_QuerySampleClient), args.Error(1)
 }
 
 func (c *querierClientMock) Label(ctx context.Context, in *logproto.LabelRequest, opts ...grpc.CallOption) (*logproto.LabelResponse, error) {
@@ -141,6 +147,49 @@ func (c *queryClientMock) Context() context.Context {
 	return context.Background()
 }
 
+// queryClientMock is a mockable version of Querier_QueryClient
+type querySampleClientMock struct {
+	util.ExtendedMock
+	logproto.Querier_QueryClient
+}
+
+func newQuerySampleClientMock() *querySampleClientMock {
+	return &querySampleClientMock{}
+}
+
+func (c *querySampleClientMock) Recv() (*logproto.SampleQueryResponse, error) {
+	args := c.Called()
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.SampleQueryResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.SampleQueryResponse), args.Error(1)
+}
+
+func (c *querySampleClientMock) Header() (grpc_metadata.MD, error) {
+	return nil, nil
+}
+
+func (c *querySampleClientMock) Trailer() grpc_metadata.MD {
+	return nil
+}
+
+func (c *querySampleClientMock) CloseSend() error {
+	return nil
+}
+
+func (c *querySampleClientMock) SendMsg(m interface{}) error {
+	return nil
+}
+
+func (c *querySampleClientMock) RecvMsg(m interface{}) error {
+	return nil
+}
+
+func (c *querySampleClientMock) Context() context.Context {
+	return context.Background()
+}
+
 // tailClientMock is mockable version of Querier_TailClient
 type tailClientMock struct {
 	util.ExtendedMock
@@ -207,7 +256,7 @@ func newStoreMock() *storeMock {
 	return &storeMock{}
 }
 
-func (s *storeMock) SetChunkFilterer(storage.RequestChunkFilterer) {}
+func (s *storeMock) SetChunkFilterer(chunk.RequestChunkFilterer) {}
 
 func (s *storeMock) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	args := s.Called(ctx, req)
@@ -227,14 +276,9 @@ func (s *storeMock) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	return res.(iter.SampleIterator), args.Error(1)
 }
 
-func (s *storeMock) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	args := s.Called(ctx, userID, from, through, matchers)
-	return args.Get(0).([]chunk.Chunk), args.Error(1)
-}
-
-func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
-	args := s.Called(ctx, userID, from, through, matchers)
-	return args.Get(0).([][]chunk.Chunk), args.Get(0).([]*chunk.Fetcher), args.Error(2)
+	return args.Get(0).([][]chunk.Chunk), args.Get(0).([]*fetcher.Fetcher), args.Error(2)
 }
 
 func (s *storeMock) Put(ctx context.Context, chunks []chunk.Chunk) error {
@@ -255,29 +299,25 @@ func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, 
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *storeMock) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+func (s *storeMock) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	panic("don't call me please")
 }
 
-func (s *storeMock) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+func (s *storeMock) GetSchemaConfigs() []config.PeriodConfig {
 	panic("don't call me please")
 }
 
-func (s *storeMock) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
-	panic("don't call me please")
-}
-
-func (s *storeMock) GetSchemaConfigs() []chunk.PeriodConfig {
-	panic("don't call me please")
-}
-
-func (s *storeMock) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+func (s *storeMock) Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	args := s.Called(ctx, req)
 	res := args.Get(0)
 	if res == nil {
 		return []logproto.SeriesIdentifier(nil), args.Error(1)
 	}
 	return res.([]logproto.SeriesIdentifier), args.Error(1)
+}
+
+func (s *storeMock) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	panic("don't call me please")
 }
 
 func (s *storeMock) Stop() {
@@ -381,6 +421,13 @@ func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 	return iter.NewStreamIterator(mockStream(from, quantity))
 }
 
+// mockSampleIterator returns an iterator with 1 stream and quantity entries,
+// where entries timestamp and line string are constructed as sequential numbers
+// starting at from
+func mockSampleIterator(client iter.QuerySampleClient) iter.SampleIterator {
+	return iter.NewSampleQueryClientIterator(client)
+}
+
 // mockStream return a stream with quantity entries, where entries timestamp and
 // line string are constructed as sequential numbers starting at from
 func mockStream(from int, quantity int) logproto.Stream {
@@ -401,4 +448,36 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 		Entries: entries,
 		Labels:  labels,
 	}
+}
+
+type querierMock struct {
+	util.ExtendedMock
+}
+
+func newQuerierMock() *querierMock {
+	return &querierMock{}
+}
+
+func (q *querierMock) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+	args := q.Called(ctx, params)
+	return args.Get(0).(func() iter.EntryIterator)(), args.Error(1)
+}
+
+func (q *querierMock) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+	args := q.Called(ctx, params)
+	return args.Get(0).(func() iter.SampleIterator)(), args.Error(1)
+}
+
+func (q *querierMock) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	args := q.Called(ctx, req)
+	return args.Get(0).(*logproto.LabelResponse), args.Error(1)
+}
+
+func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	args := q.Called(ctx, req)
+	return args.Get(0).(func() *logproto.SeriesResponse)(), args.Error(1)
+}
+
+func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+	return nil, errors.New("querierMock.Tail() has not been mocked")
 }

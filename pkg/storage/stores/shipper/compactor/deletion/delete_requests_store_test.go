@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 )
 
 func TestDeleteRequestsStore(t *testing.T) {
@@ -30,7 +30,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			StartTime: now.Add(-i * time.Hour),
 			EndTime:   now.Add(-i * time.Hour).Add(30 * time.Minute),
 			CreatedAt: now.Add(-i * time.Hour).Add(30 * time.Minute),
-			Selectors: []string{fmt.Sprintf(`{foo="%d", user="%s"}`, i, user1)},
+			Query:     fmt.Sprintf(`{foo="%d", user="%s"}`, i, user1),
 			Status:    StatusReceived,
 		})
 		user2ExpectedRequests = append(user2ExpectedRequests, DeleteRequest{
@@ -38,7 +38,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			StartTime: now.Add(-i * time.Hour),
 			EndTime:   now.Add(-(i + 1) * time.Hour),
 			CreatedAt: now.Add(-(i + 1) * time.Hour),
-			Selectors: []string{fmt.Sprintf(`{foo="%d", user="%s"}`, i, user2)},
+			Query:     fmt.Sprintf(`{foo="%d", user="%s"}`, i, user2),
 			Status:    StatusReceived,
 		})
 	}
@@ -66,10 +66,11 @@ func TestDeleteRequestsStore(t *testing.T) {
 			user1ExpectedRequests[i].CreatedAt,
 			user1ExpectedRequests[i].StartTime,
 			user1ExpectedRequests[i].EndTime,
-			user1ExpectedRequests[i].Selectors,
+			user1ExpectedRequests[i].Query,
 		)
 		require.NoError(t, err)
 		user1ExpectedRequests[i].RequestID = string(requestID)
+		require.NoError(t, user1ExpectedRequests[i].SetQuery(user1ExpectedRequests[i].Query))
 
 		requestID, err = testDeleteRequestsStore.(*deleteRequestsStore).addDeleteRequest(
 			context.Background(),
@@ -77,10 +78,11 @@ func TestDeleteRequestsStore(t *testing.T) {
 			user2ExpectedRequests[i].CreatedAt,
 			user2ExpectedRequests[i].StartTime,
 			user2ExpectedRequests[i].EndTime,
-			user2ExpectedRequests[i].Selectors,
+			user2ExpectedRequests[i].Query,
 		)
 		require.NoError(t, err)
 		user2ExpectedRequests[i].RequestID = string(requestID)
+		require.NoError(t, user2ExpectedRequests[i].SetQuery(user2ExpectedRequests[i].Query))
 	}
 
 	// get all requests with StatusReceived and see if they have expected values
@@ -96,6 +98,14 @@ func TestDeleteRequestsStore(t *testing.T) {
 	user2Requests, err := testDeleteRequestsStore.GetAllDeleteRequestsForUser(context.Background(), user2)
 	require.NoError(t, err)
 	compareRequests(t, user2ExpectedRequests, user2Requests)
+
+	createGenNumber, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user1)
+	require.NoError(t, err)
+	require.NotEmpty(t, createGenNumber)
+
+	createGenNumber2, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user2)
+	require.NoError(t, err)
+	require.NotEmpty(t, createGenNumber2)
 
 	// get individual delete requests by id and see if they have expected values
 	for _, expectedRequest := range append(user1Requests, user2Requests...) {
@@ -131,6 +141,14 @@ func TestDeleteRequestsStore(t *testing.T) {
 	require.NoError(t, err)
 	compareRequests(t, user2ExpectedRequests, user2Requests)
 
+	updateGenNumber, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user1)
+	require.NoError(t, err)
+	require.NotEqual(t, createGenNumber, updateGenNumber)
+
+	updateGenNumber2, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user2)
+	require.NoError(t, err)
+	require.NotEqual(t, createGenNumber2, updateGenNumber2)
+
 	// delete the requests from the store updated previously
 	var remainingRequests []DeleteRequest
 	for i := 0; i < len(user1ExpectedRequests); i++ {
@@ -152,6 +170,14 @@ func TestDeleteRequestsStore(t *testing.T) {
 	deleteRequests, err = testDeleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
 	require.NoError(t, err)
 	compareRequests(t, remainingRequests, deleteRequests)
+
+	deleteGenNumber, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user1)
+	require.NoError(t, err)
+	require.NotEqual(t, updateGenNumber, deleteGenNumber)
+
+	deleteGenNumber2, err := testDeleteRequestsStore.GetCacheGenerationNumber(context.Background(), user2)
+	require.NoError(t, err)
+	require.NotEqual(t, updateGenNumber2, deleteGenNumber2)
 }
 
 func compareRequests(t *testing.T, expected []DeleteRequest, actual []DeleteRequest) {

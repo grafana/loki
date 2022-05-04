@@ -216,7 +216,7 @@ configures the HTTP and gRPC server communication of the launched service(s).
 [grpc_server_max_recv_msg_size: <int> | default = 4194304]
 
 # Max gRPC message size that can be sent
-# CLI flag: -server.grpc-max-recv-msg-size-bytes
+# CLI flag: -server.grpc-max-send-msg-size-bytes
 [grpc_server_max_send_msg_size: <int> | default = 4194304]
 
 # Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
@@ -296,6 +296,11 @@ The `querier` block configures the Loki Querier.
 # CLI flag: -querier.query-store-only
 [query_store_only: <boolean> | default = false]
 
+# Queriers should only query the ingesters and not try to query any store,
+# useful for when object store is unavailable.
+# CLI flag: -querier.query-ingester-only
+[query_ingester_only: <boolean> | default = false]
+
 # Allow queries for multiple tenants.
 # CLI flag: -querier.multi-tenant-queries-enabled
 [multi_tenant_queries_enabled: <boolean> | default = false]
@@ -364,6 +369,10 @@ The `frontend` block configures the Loki query-frontend.
 # URL of downstream Loki.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
+
+# Address, including port, where the compactor api is served
+# CLI flag: -frontend.compactor-address
+[compactor_address: <string> | default = ""]
 
 # Log queries that are slower than the specified duration. Set to 0 to disable.
 # Set to < 0 to enable on all queries.
@@ -733,7 +742,7 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # Name of the blob container used to store chunks. This container must be
 # created before running cortex.
 # CLI flag: -<prefix>.azure.container-name
-[container_name: <string> | default = "cortex"]
+[container_name: <string> | default = "loki"]
 
 # The Microsoft Azure account name to be used
 # CLI flag: -<prefix>.azure.account-name
@@ -742,6 +751,10 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # The Microsoft Azure account key to use.
 # CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
+
+# Chunk delimiter to build the blobID
+# CLI flag: -<prefix>.azure.chunk-delimiter
+[chunk_delimiter: <string> | default = "-"]
 
 # Preallocated buffer size for downloads.
 # CLI flag: -<prefix>.azure.download-buffer-size
@@ -925,7 +938,7 @@ The `swift_storage_config` configures Swift as a general storage for different d
 
 # Name of the Swift container to put chunks in.
 # CLI flag: -<prefix>.swift.container-name
-[container_name: <string> | default = "cortex"]
+[container_name: <string> | default = ""]
 ```
 
 ## hedging
@@ -1109,7 +1122,7 @@ lifecycler:
 
 # The timeout before a flush is cancelled
 # CLI flag: -ingester.flush-op-timeout
-[flush_op_timeout: <duration> | default = 10s]
+[flush_op_timeout: <duration> | default = 10m]
 
 # How long chunks should be retained in-memory after they've been flushed.
 # CLI flag: -ingester.chunks-retain-period
@@ -1304,7 +1317,7 @@ those components specific configuration sections.
 
 # Other cluster members to join. Can be specified multiple times. It can be an
 # IP, hostname or an entry specified in the DNS Service Discovery format (see
-# https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+# https://grafana.com/docs/mimir/latest/operators-guide/configuring/about-dns-service-discovery/
 # for more details).
 # CLI flag: -memberlist.join
 [join_members: <list of string> | default = ]
@@ -1475,36 +1488,6 @@ aws:
       # Ignore throttling below this level (rate per second)
       # CLI flag: -metrics.ignore-throttle-below
       [ignore_throttle_below: <float64> | default = 1]
-
-      # Query to fetch ingester queue length
-      # CLI flag: -metrics.queue-length-query
-      [queue_length_query: <string> |
-        default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))"]
-
-      # Query to fetch throttle rates per table
-      # CLI flag: -metrics.write-throttle-query
-      [write_throttle_query: <string> |
-        default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m]))
-        by (table) > 0"]
-
-      # Query to fetch write capacity usage per table
-      # CLI flag: -metrics.usage-query
-      [write_usage_query: <string> |
-        default =
-        "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m]))
-        by (table) > 0"]
-
-      # Query to fetch read capacity usage per table
-      # CLI flag: -metrics.read-usage-query
-      [read_usage_query: <string> |
-        default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h]))
-        by (table) > 0"]
-
-      # Query to fetch read errors per table
-      # CLI flag: -metrics.read-error-query
-      [read_error_query: <string> |
-        default = "sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",
-        error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0"]
 
     # Number of chunks to group together to parallelise fetches (0 to disable)
     # CLI flag: -dynamodb.chunk-gang-size
@@ -1723,6 +1706,11 @@ boltdb_shipper:
 # CLI flag: -store.index-cache-validity
 [index_cache_validity: <duration> | default = 5m]
 
+# Disable broad index queries which results in reduced cache usage and faster query performance at the expense of
+# somewhat higher QPS on the index store.
+# CLI flag: -store.disable-broad-index-queries
+[disable_broad_index_queries: <bool> | default = false]
+
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
 [max_chunk_batch_size: <int> | default = 50]
@@ -1814,7 +1802,7 @@ memcached_client:
   [service: <string> | default = "memcached"]
 
   # (Experimental) Comma-separated addresses list in DNS Service Discovery format:
-  # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+  # https://grafana.com/docs/mimir/latest/operators-guide/configuring/about-dns-service-discovery/
   # CLI flag: -<prefix>.memcached.addresses
   [addresses: <string> | default = ""]
 
@@ -2027,6 +2015,11 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
+# Which deletion mode to use. Supported values are: disabled,
+# whole-stream-deletion, filter-only, filter-and-delete
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
+[deletion_mode: <string> | default = "whole-stream-deletion"]
+
 # Maximum number of tables to compact in parallel.
 # While increasing this value, please make sure compactor has enough disk space
 # allocated to be able to store and compact as many tables.
@@ -2106,6 +2099,16 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Truncate log lines when they exceed max_line_size.
 # CLI flag: -distributor.max-line-size-truncate
 [max_line_size_truncate: <boolean> | default = false ]
+
+# Fudge the log line timestamp during ingestion when it's the same as the previous entry for the same stream
+# When enabled, if a log line in a push request has the same timestamp as the previous line
+# for the same stream, one nanosecond is added to the log line. This will preserve the received
+# order of log lines with the exact same timestamp when they are queried by slightly altering
+# their stored timestamp. NOTE: this is imperfect because Loki accepts out of order writes
+# and another push request for the same stream could contain duplicate timestamps to existing
+# entries and they will not be fudged.
+# CLI flag: -validation.fudge-duplicate-timestamps
+[fudge_duplicate_timestamp: <boolean> | default = false ]
 
 # Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit
@@ -2513,6 +2516,15 @@ This way, one doesn't have to replicate configuration in multiple places.
 The `analytics` block configures the reporting of Loki analytics to grafana.com
 
 ```yaml
+# By default, Loki will send anonymous, but uniquely-identifiable usage and configuration
+# analytics to Grafana Labs. These statistics are sent to https://stats.grafana.org/
+#
+# Statistics help us better understand how Loki is used, and they show us performance
+# levels for most users. This helps us prioritize features and documentation.
+# For more information on what's sent, look at
+# https://github.com/grafana/loki/blob/main/pkg/usagestats/stats.go
+# Refer to the buildReport method to see what goes into a report.
+#
 # When true, enables usage reporting.
 # CLI flag: -reporting.enabled
 [reporting_enabled: <boolean>: default = true]

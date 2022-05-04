@@ -18,12 +18,12 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 )
 
 var (
-	nilShardingMetrics = logql.NewShardingMetrics(nil)
+	nilShardingMetrics = logql.NewShardMapperMetrics(nil)
 	defaultReq         = func() *LokiRequest {
 		return &LokiRequest{
 			Limit:     100,
@@ -149,7 +149,7 @@ func Test_astMapper(t *testing.T) {
 
 	mware := newASTMapperware(
 		ShardingConfigs{
-			chunk.PeriodConfig{
+			config.PeriodConfig{
 				RowShards: 2,
 			},
 		},
@@ -178,7 +178,7 @@ func Test_ShardingByPass(t *testing.T) {
 
 	mware := newASTMapperware(
 		ShardingConfigs{
-			chunk.PeriodConfig{
+			config.PeriodConfig{
 				RowShards: 2,
 			},
 		},
@@ -249,7 +249,7 @@ func Test_InstantSharding(t *testing.T) {
 	shards := []string{}
 
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
-		chunk.PeriodConfig{
+		config.PeriodConfig{
 			RowShards: 3,
 		},
 	}, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
@@ -305,7 +305,7 @@ func Test_InstantSharding(t *testing.T) {
 
 func Test_SeriesShardingHandler(t *testing.T) {
 	sharding := NewSeriesQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
-		chunk.PeriodConfig{
+		config.PeriodConfig{
 			RowShards: 3,
 		},
 	},

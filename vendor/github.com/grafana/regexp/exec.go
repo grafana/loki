@@ -6,8 +6,9 @@ package regexp
 
 import (
 	"io"
-	"regexp/syntax"
 	"sync"
+
+	"github.com/grafana/regexp/syntax"
 )
 
 // A queue is a 'sparse array' holding pending threads of execution.
@@ -204,6 +205,8 @@ func (m *machine) match(i input, pos int) bool {
 				// Have match; finished exploring alternatives.
 				break
 			}
+			// Note we don't check foldCase here, because Unicode folding is complicated;
+			// just let it fall through to EqualFold on the whole string.
 			if len(m.re.prefix) > 0 && r1 != m.re.prefixRune && i.canCheckPrefix() {
 				// Match requires literal prefix; fast search for it.
 				advance := i.index(m.re, pos)
@@ -401,48 +404,47 @@ func (re *Regexp) doOnePass(ir io.RuneReader, ib []byte, is string, pos, ncap in
 	}
 
 	m := newOnePassMachine()
-	if cap(m.matchcap) < ncap {
-		m.matchcap = make([]int, ncap)
-	} else {
-		m.matchcap = m.matchcap[:ncap]
-	}
-
 	matched := false
-	for i := range m.matchcap {
-		m.matchcap[i] = -1
-	}
-
 	i, _ := m.inputs.init(ir, ib, is)
 
 	r, r1 := endOfText, endOfText
 	width, width1 := 0, 0
-	r, width = i.step(pos)
-	if r != endOfText {
-		r1, width1 = i.step(pos + width)
-	}
 	var flag lazyFlag
-	if pos == 0 {
-		flag = newLazyFlag(-1, r)
-	} else {
-		flag = i.context(pos)
-	}
-	pc := re.onepass.Start
-	inst := re.onepass.Inst[pc]
+	var pc int
+	var inst *onePassInst
+
 	// If there is a simple literal prefix, skip over it.
-	if pos == 0 && flag.match(syntax.EmptyOp(inst.Arg)) &&
-		len(re.prefix) > 0 && i.canCheckPrefix() {
+	if pos == 0 && len(re.prefix) > 0 && i.canCheckPrefix() {
 		// Match requires literal prefix; fast search for it.
 		if !i.hasPrefix(re) {
 			goto Return
 		}
 		pos += len(re.prefix)
-		r, width = i.step(pos)
-		r1, width1 = i.step(pos + width)
-		flag = i.context(pos)
 		pc = int(re.prefixEnd)
+	} else {
+		pc = re.onepass.Start
+	}
+
+	if cap(m.matchcap) < ncap {
+		m.matchcap = make([]int, ncap)
+	} else {
+		m.matchcap = m.matchcap[:ncap]
+	}
+	for i := range m.matchcap {
+		m.matchcap[i] = -1
+	}
+
+	r, width = i.step(pos)
+	if pos == 0 {
+		flag = newLazyFlag(-1, r)
+	} else {
+		flag = i.context(pos)
+	}
+	if r != endOfText {
+		r1, width1 = i.step(pos + width)
 	}
 	for {
-		inst = re.onepass.Inst[pc]
+		inst = &re.onepass.Inst[pc]
 		pc = int(inst.Out)
 		switch inst.Op {
 		default:
@@ -470,7 +472,7 @@ func (re *Regexp) doOnePass(ir io.RuneReader, ib []byte, is string, pos, ncap in
 			}
 		// peek at the input rune to see which branch of the Alt to take
 		case syntax.InstAlt, syntax.InstAltMatch:
-			pc = int(onePassNext(&inst, r))
+			pc = int(onePassNext(inst, r))
 			continue
 		case syntax.InstFail:
 			goto Return
@@ -526,6 +528,29 @@ func (re *Regexp) doExecute(r io.RuneReader, b []byte, s string, pos int, ncap i
 
 	if r == nil && len(b)+len(s) < re.minInputLen {
 		return nil
+	}
+
+	// Check prefix match before allocating data structures
+	if len(re.prefix) > 0 && r == nil {
+		if re.cond&syntax.EmptyBeginText != 0 { // anchored
+			if b != nil && !(&inputBytes{str: b[pos:]}).hasPrefix(re) {
+				return nil
+			}
+			if s != "" && !(&inputString{str: s[pos:]}).hasPrefix(re) {
+				return nil
+			}
+		} else { // non-anchored
+			var advance int
+			if b != nil {
+				advance = (&inputBytes{str: b}).index(re, pos)
+			} else {
+				advance = (&inputString{str: s}).index(re, pos)
+			}
+			if advance < 0 {
+				return nil
+			}
+			pos += advance
+		}
 	}
 
 	if re.onepass != nil {

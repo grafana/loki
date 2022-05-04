@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/loki/operator/internal/sizes"
 	"github.com/prometheus/common/model"
 
-	"github.com/ViaQ/logerr/log"
+	"github.com/ViaQ/logerr/v2/log"
 )
 
 const (
@@ -29,33 +29,31 @@ const (
 	sizeOneXMedium string = "1x.medium"
 )
 
-func init() {
-	log.Init("size-calculator")
-}
-
 func main() {
-	log.Info("starting storage size calculator...")
+	logger := log.NewLogger("size-calculator")
+
+	logger.Info("starting storage size calculator...")
 
 	for {
 		duration, parseErr := model.ParseDuration(defaultDuration)
 		if parseErr != nil {
-			log.Error(parseErr, "failed to parse duration")
+			logger.Error(parseErr, "failed to parse duration")
 			os.Exit(1)
 		}
 
 		logsCollected, err := sizes.PredictFor(duration)
 		if err != nil {
-			log.Error(err, "Failed to collect metrics data")
+			logger.Error(err, "Failed to collect metrics data")
 			os.Exit(1)
 		}
 
 		logsCollectedInGB := int(math.Ceil(logsCollected / math.Pow(1024, 3)))
-		log.Info(fmt.Sprintf("Amount of logs expected in 24 hours is %f Bytes or %dGB", logsCollected, logsCollectedInGB))
+		logger.Info(fmt.Sprintf("Amount of logs expected in 24 hours is %f Bytes or %dGB", logsCollected, logsCollectedInGB))
 
 		if logsCollectedInGB <= range1xSmall {
-			log.Info(fmt.Sprintf("Recommended t-shirt size for %dGB is %s", logsCollectedInGB, sizeOneXSmall))
+			logger.Info(fmt.Sprintf("Recommended t-shirt size for %dGB is %s", logsCollectedInGB, sizeOneXSmall))
 		} else {
-			log.Info(fmt.Sprintf("Recommended t-shirt size for %dGB is %s", logsCollectedInGB, sizeOneXMedium))
+			logger.Info(fmt.Sprintf("Recommended t-shirt size for %dGB is %s", logsCollectedInGB, sizeOneXMedium))
 		}
 
 		time.Sleep(1 * time.Minute)

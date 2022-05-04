@@ -9,31 +9,36 @@ import (
 
 	"github.com/grafana/loki/pkg/util"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
-	userID, _ := tenant.TenantID(r.Context())
-	req, err := push.ParseRequest(logger, userID, r, d.tenantsRetention)
+	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
-		if d.tenantConfigs.LogPushRequest(userID) {
+		level.Error(logger).Log("msg", "error getting tenant id", "err", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention)
+	if err != nil {
+		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", http.StatusBadRequest,
 				"err", err,
 			)
 		}
-		serverutil.JSONError(w, http.StatusBadRequest, err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if d.tenantConfigs.LogPushRequestStreams(userID) {
+	if d.tenantConfigs.LogPushRequestStreams(tenantID) {
 		var sb strings.Builder
 		for _, s := range req.Streams {
 			sb.WriteString(s.Labels)
@@ -46,7 +51,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err = d.Push(r.Context(), req)
 	if err == nil {
-		if d.tenantConfigs.LogPushRequest(userID) {
+		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request successful",
 			)
@@ -58,23 +63,23 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
 		body := string(resp.Body)
-		if d.tenantConfigs.LogPushRequest(userID) {
+		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", resp.Code,
 				"err", body,
 			)
 		}
-		serverutil.JSONError(w, int(resp.Code), body)
+		http.Error(w, body, int(resp.Code))
 	} else {
-		if d.tenantConfigs.LogPushRequest(userID) {
+		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", http.StatusInternalServerError,
 				"err", err.Error(),
 			)
 		}
-		serverutil.JSONError(w, http.StatusInternalServerError, err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 

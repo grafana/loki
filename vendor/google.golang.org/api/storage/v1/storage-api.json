@@ -26,7 +26,7 @@
   "description": "Stores and retrieves potentially large, immutable data objects.",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/storage/docs/json_api/",
-  "etag": "\"3137363332383633313735343831303635323033\"",
+  "etag": "\"3137353238303035303136333633393332333233\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -76,6 +76,11 @@
     },
     "quotaUser": {
       "description": "An opaque string that represents a user for quota purposes. Must not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Upload protocol for media (e.g. \"media\", \"multipart\", \"resumable\").",
       "location": "query",
       "type": "string"
     },
@@ -3230,7 +3235,7 @@
       }
     }
   },
-  "revision": "20211201",
+  "revision": "20220210",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "Bucket": {

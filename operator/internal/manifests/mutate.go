@@ -3,12 +3,10 @@ package manifests
 import (
 	"reflect"
 
-	"github.com/ViaQ/logerr/kverrors"
-	"github.com/ViaQ/logerr/log"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -28,11 +26,15 @@ import (
 func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 	return func() error {
 		existingAnnotations := existing.GetAnnotations()
-		mergeWithOverride(&existingAnnotations, desired.GetAnnotations())
+		if err := mergeWithOverride(&existingAnnotations, desired.GetAnnotations()); err != nil {
+			return err
+		}
 		existing.SetAnnotations(existingAnnotations)
 
 		existingLabels := existing.GetLabels()
-		mergeWithOverride(&existingLabels, desired.GetLabels())
+		if err := mergeWithOverride(&existingLabels, desired.GetLabels()); err != nil {
+			return err
+		}
 		existing.SetLabels(existingLabels)
 
 		switch existing.(type) {
@@ -44,7 +46,7 @@ func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 		case *corev1.Service:
 			svc := existing.(*corev1.Service)
 			wantSvc := desired.(*corev1.Service)
-			mutateService(svc, wantSvc)
+			return mutateService(svc, wantSvc)
 
 		case *corev1.ServiceAccount:
 			sa := existing.(*corev1.ServiceAccount)
@@ -61,15 +63,25 @@ func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 			wantCrb := desired.(*rbacv1.ClusterRoleBinding)
 			mutateClusterRoleBinding(crb, wantCrb)
 
+		case *rbacv1.Role:
+			r := existing.(*rbacv1.Role)
+			wantR := desired.(*rbacv1.Role)
+			mutateRole(r, wantR)
+
+		case *rbacv1.RoleBinding:
+			rb := existing.(*rbacv1.RoleBinding)
+			wantRb := desired.(*rbacv1.RoleBinding)
+			mutateRoleBinding(rb, wantRb)
+
 		case *appsv1.Deployment:
 			dpl := existing.(*appsv1.Deployment)
 			wantDpl := desired.(*appsv1.Deployment)
-			mutateDeployment(dpl, wantDpl)
+			return mutateDeployment(dpl, wantDpl)
 
 		case *appsv1.StatefulSet:
 			sts := existing.(*appsv1.StatefulSet)
 			wantSts := desired.(*appsv1.StatefulSet)
-			mutateStatefulSet(sts, wantSts)
+			return mutateStatefulSet(sts, wantSts)
 
 		case *monitoringv1.ServiceMonitor:
 			svcMonitor := existing.(*monitoringv1.ServiceMonitor)
@@ -86,6 +98,11 @@ func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 			wantRt := desired.(*routev1.Route)
 			mutateRoute(rt, wantRt)
 
+		case *monitoringv1.PrometheusRule:
+			pr := existing.(*monitoringv1.PrometheusRule)
+			wantPr := desired.(*monitoringv1.PrometheusRule)
+			mutatePrometheusRule(pr, wantPr)
+
 		default:
 			t := reflect.TypeOf(existing).String()
 			return kverrors.New("missing mutate implementation for resource type", "type", t)
@@ -94,20 +111,16 @@ func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 	}
 }
 
-func mergeWithOverride(dst, src interface{}) {
+func mergeWithOverride(dst, src interface{}) error {
 	err := mergo.Merge(dst, src, mergo.WithOverride)
 	if err != nil {
-		log.Error(err, "unable to mergeWithOverride", "dst", dst, "src", src)
+		return kverrors.Wrap(err, "unable to mergeWithOverride", "dst", dst, "src", src)
 	}
+	return nil
 }
 
 func mutateConfigMap(existing, desired *corev1.ConfigMap) {
 	existing.BinaryData = desired.BinaryData
-}
-
-func mutateService(existing, desired *corev1.Service) {
-	existing.Spec.Ports = desired.Spec.Ports
-	mergeWithOverride(&existing.Spec.Selector, desired.Spec.Selector)
 }
 
 func mutateServiceAccount(existing, desired *corev1.ServiceAccount) {
@@ -122,37 +135,21 @@ func mutateClusterRole(existing, desired *rbacv1.ClusterRole) {
 }
 
 func mutateClusterRoleBinding(existing, desired *rbacv1.ClusterRoleBinding) {
+	existing.Annotations = desired.Annotations
 	existing.Labels = desired.Labels
 	existing.Subjects = desired.Subjects
-	existing.RoleRef = desired.RoleRef
+}
+
+func mutateRole(existing, desired *rbacv1.Role) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
+	existing.Rules = desired.Rules
+}
+
+func mutateRoleBinding(existing, desired *rbacv1.RoleBinding) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
 	existing.Subjects = desired.Subjects
-}
-
-func mutateDeployment(existing, desired *appsv1.Deployment) {
-	// Deployment selector is immutable so we set this value only if
-	// a new object is going to be created
-	if existing.CreationTimestamp.IsZero() {
-		mergeWithOverride(existing.Spec.Selector, desired.Spec.Selector)
-	}
-	existing.Spec.Replicas = desired.Spec.Replicas
-	mergeWithOverride(&existing.Spec.Template, desired.Spec.Template)
-	mergeWithOverride(&existing.Spec.Strategy, desired.Spec.Strategy)
-}
-
-func mutateStatefulSet(existing, desired *appsv1.StatefulSet) {
-	// StatefulSet selector is immutable so we set this value only if
-	// a new object is going to be created
-	if existing.CreationTimestamp.IsZero() {
-		existing.Spec.Selector = desired.Spec.Selector
-	}
-	existing.Spec.PodManagementPolicy = desired.Spec.PodManagementPolicy
-	existing.Spec.Replicas = desired.Spec.Replicas
-	mergeWithOverride(&existing.Spec.Template, desired.Spec.Template)
-	for i := range existing.Spec.VolumeClaimTemplates {
-		existing.Spec.VolumeClaimTemplates[i].TypeMeta = desired.Spec.VolumeClaimTemplates[i].TypeMeta
-		existing.Spec.VolumeClaimTemplates[i].ObjectMeta = desired.Spec.VolumeClaimTemplates[i].ObjectMeta
-		existing.Spec.VolumeClaimTemplates[i].Spec = desired.Spec.VolumeClaimTemplates[i].Spec
-	}
 }
 
 func mutateServiceMonitor(existing, desired *monitoringv1.ServiceMonitor) {
@@ -172,4 +169,53 @@ func mutateRoute(existing, desired *routev1.Route) {
 	existing.Annotations = desired.Annotations
 	existing.Labels = desired.Labels
 	existing.Spec = desired.Spec
+}
+
+func mutatePrometheusRule(existing, desired *monitoringv1.PrometheusRule) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
+	existing.Spec = desired.Spec
+}
+
+func mutateService(existing, desired *corev1.Service) error {
+	existing.Spec.Ports = desired.Spec.Ports
+	if err := mergeWithOverride(&existing.Spec.Selector, desired.Spec.Selector); err != nil {
+		return err
+	}
+	return nil
+}
+
+func mutateDeployment(existing, desired *appsv1.Deployment) error {
+	// Deployment selector is immutable so we set this value only if
+	// a new object is going to be created
+	if existing.CreationTimestamp.IsZero() {
+		existing.Spec.Selector = desired.Spec.Selector
+	}
+	existing.Spec.Replicas = desired.Spec.Replicas
+	if err := mergeWithOverride(&existing.Spec.Template, desired.Spec.Template); err != nil {
+		return err
+	}
+	if err := mergeWithOverride(&existing.Spec.Strategy, desired.Spec.Strategy); err != nil {
+		return err
+	}
+	return nil
+}
+
+func mutateStatefulSet(existing, desired *appsv1.StatefulSet) error {
+	// StatefulSet selector is immutable so we set this value only if
+	// a new object is going to be created
+	if existing.CreationTimestamp.IsZero() {
+		existing.Spec.Selector = desired.Spec.Selector
+	}
+	existing.Spec.PodManagementPolicy = desired.Spec.PodManagementPolicy
+	existing.Spec.Replicas = desired.Spec.Replicas
+	for i := range existing.Spec.VolumeClaimTemplates {
+		existing.Spec.VolumeClaimTemplates[i].TypeMeta = desired.Spec.VolumeClaimTemplates[i].TypeMeta
+		existing.Spec.VolumeClaimTemplates[i].ObjectMeta = desired.Spec.VolumeClaimTemplates[i].ObjectMeta
+		existing.Spec.VolumeClaimTemplates[i].Spec = desired.Spec.VolumeClaimTemplates[i].Spec
+	}
+	if err := mergeWithOverride(&existing.Spec.Template, desired.Spec.Template); err != nil {
+		return err
+	}
+	return nil
 }

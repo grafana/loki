@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
@@ -37,15 +37,11 @@ func GetTenantSecrets(
 		key := client.ObjectKey{Name: tenant.OIDC.Secret.Name, Namespace: req.Namespace}
 		if err := k.Get(ctx, key, &gatewaySecret); err != nil {
 			if apierrors.IsNotFound(err) {
-				statusErr := status.SetDegradedCondition(ctx, k, req,
-					fmt.Sprintf("Missing secrets for tenant %s", tenant.TenantName),
-					lokiv1beta1.ReasonMissingGatewayTenantSecret,
-				)
-				if statusErr != nil {
-					return nil, statusErr
+				return nil, &status.DegradedError{
+					Message: fmt.Sprintf("Missing secrets for tenant %s", tenant.TenantName),
+					Reason:  lokiv1beta1.ReasonMissingGatewayTenantSecret,
+					Requeue: true,
 				}
-
-				return nil, kverrors.Wrap(err, "Missing gateway secrets")
 			}
 			return nil, kverrors.Wrap(err, "failed to lookup lokistack gateway tenant secret",
 				"name", key)
@@ -54,15 +50,11 @@ func GetTenantSecrets(
 		var ts *manifests.TenantSecrets
 		ts, err := secrets.ExtractGatewaySecret(&gatewaySecret, tenant.TenantName)
 		if err != nil {
-			statusErr := status.SetDegradedCondition(ctx, k, req,
-				"Invalid gateway tenant secret contents",
-				lokiv1beta1.ReasonInvalidGatewayTenantSecret,
-			)
-			if statusErr != nil {
-				return nil, statusErr
+			return nil, &status.DegradedError{
+				Message: "Invalid gateway tenant secret contents",
+				Reason:  lokiv1beta1.ReasonInvalidGatewayTenantSecret,
+				Requeue: true,
 			}
-
-			return nil, kverrors.Wrap(err, "Invalid gateway tenant secret")
 		}
 		tenantSecrets = append(tenantSecrets, ts)
 	}

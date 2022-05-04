@@ -11,13 +11,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 )
 
 // storeMock is a mockable version of Loki's storage, used in querier unit tests
 // to control the behaviour of the store without really hitting any storage backend
 type storeMock struct {
-	chunk.Store
+	Store
 	util.ExtendedMock
 }
 
@@ -25,14 +27,14 @@ func newStoreMock() *storeMock {
 	return &storeMock{}
 }
 
-func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	args := s.Called(ctx, userID, from, through, matchers)
-	return args.Get(0).([][]chunk.Chunk), args.Get(1).([]*chunk.Fetcher), args.Error(2)
+	return args.Get(0).([][]chunk.Chunk), args.Get(1).([]*fetcher.Fetcher), args.Error(2)
 }
 
-func (s *storeMock) GetChunkFetcher(tm model.Time) *chunk.Fetcher {
+func (s *storeMock) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	args := s.Called(tm)
-	return args.Get(0).(*chunk.Fetcher)
+	return args.Get(0).(*fetcher.Fetcher)
 }
 
 type ingesterQuerierMock struct {
@@ -53,10 +55,10 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 	now := time.Now()
 	var chunks []chunk.Chunk
 
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -69,7 +71,7 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 			to:   now.Add(time.Duration(i+1) * time.Minute),
 		}))
 
-		chunkRef, err := chunk.ParseExternalKey(chk.UserID, s.ExternalKey(chk))
+		chunkRef, err := chunk.ParseExternalKey(chk.UserID, s.ExternalKey(chk.ChunkRef))
 		require.NoError(t, err)
 
 		chunks = append(chunks, chunkRef)
@@ -78,10 +80,10 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 	return chunks
 }
 
-func buildMockFetchers(num int) []*chunk.Fetcher {
-	var fetchers []*chunk.Fetcher
+func buildMockFetchers(num int) []*fetcher.Fetcher {
+	var fetchers []*fetcher.Fetcher
 	for i := 0; i < num; i++ {
-		fetchers = append(fetchers, &chunk.Fetcher{})
+		fetchers = append(fetchers, &fetcher.Fetcher{})
 	}
 
 	return fetchers
@@ -91,10 +93,10 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 	testChunks := buildMockChunkRef(t, 10)
 	fetchers := buildMockFetchers(3)
 
-	s := chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
+	s := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
 			{
-				From:      chunk.DayTime{Time: 0},
+				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
 			},
@@ -104,11 +106,11 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 	for _, tc := range []struct {
 		name             string
 		storeChunks      [][]chunk.Chunk
-		storeFetcher     []*chunk.Fetcher
+		storeFetcher     []*fetcher.Fetcher
 		ingesterChunkIDs []string
-		ingesterFetcher  *chunk.Fetcher
+		ingesterFetcher  *fetcher.Fetcher
 		expectedChunks   [][]chunk.Chunk
-		expectedFetchers []*chunk.Fetcher
+		expectedFetchers []*fetcher.Fetcher
 	}{
 		{
 			name: "no chunks from both",
@@ -209,7 +211,8 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			ingesterQuerier := newIngesterQuerierMock()
 			ingesterQuerier.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tc.ingesterChunkIDs, nil)
 
-			asyncStore := NewAsyncStore(store, chunk.SchemaConfig{}, ingesterQuerier, 0)
+			asyncStoreCfg := AsyncStoreCfg{IngesterQuerier: ingesterQuerier}
+			asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
 			chunks, fetchers, err := asyncStore.GetChunkRefs(context.Background(), "fake", model.Now(), model.Now(), nil)
 			require.NoError(t, err)
@@ -261,12 +264,16 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newStoreMock()
-			store.On("GetChunkRefs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*chunk.Fetcher{}, nil)
+			store.On("GetChunkRefs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*fetcher.Fetcher{}, nil)
 
 			ingesterQuerier := newIngesterQuerierMock()
 			ingesterQuerier.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
-			asyncStore := NewAsyncStore(store, chunk.SchemaConfig{}, ingesterQuerier, tc.queryIngestersWithin)
+			asyncStoreCfg := AsyncStoreCfg{
+				IngesterQuerier:      ingesterQuerier,
+				QueryIngestersWithin: tc.queryIngestersWithin,
+			}
+			asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
 			_, _, err := asyncStore.GetChunkRefs(context.Background(), "fake", tc.queryFrom, tc.queryThrough, nil)
 			require.NoError(t, err)
@@ -280,10 +287,10 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 	}
 }
 
-func convertChunksToChunkIDs(s chunk.SchemaConfig, chunks []chunk.Chunk) []string {
+func convertChunksToChunkIDs(s config.SchemaConfig, chunks []chunk.Chunk) []string {
 	var chunkIDs []string
 	for _, chk := range chunks {
-		chunkIDs = append(chunkIDs, s.ExternalKey(chk))
+		chunkIDs = append(chunkIDs, s.ExternalKey(chk.ChunkRef))
 	}
 
 	return chunkIDs

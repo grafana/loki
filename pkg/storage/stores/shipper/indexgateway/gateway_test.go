@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_math "github.com/grafana/loki/pkg/util/math"
@@ -31,7 +31,7 @@ type mockBatch struct {
 	size int
 }
 
-func (r *mockBatch) Iterator() chunk.ReadBatchIterator {
+func (r *mockBatch) Iterator() index.ReadBatchIterator {
 	return &mockBatchIter{
 		curr: -1,
 		size: r.size,
@@ -70,11 +70,11 @@ func (m *mockQueryIndexServer) Context() context.Context {
 }
 
 type mockIndexClient struct {
-	chunk.IndexClient
+	index.Client
 	response *mockBatch
 }
 
-func (m mockIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (m mockIndexClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	for _, query := range queries {
 		callback(query, m.response)
 	}
@@ -108,10 +108,10 @@ func TestGateway_QueryIndex(t *testing.T) {
 		},
 	}
 
-	gateway := gateway{}
+	gateway := Gateway{}
 	responseSizes := []int{0, 99, maxIndexEntriesPerResponse, 2 * maxIndexEntriesPerResponse, 5*maxIndexEntriesPerResponse - 1}
 	for i, responseSize := range responseSizes {
-		query := chunk.IndexQuery{
+		query := index.Query{
 			TableName:        fmt.Sprintf("%s%d", tableNamePrefix, i),
 			HashValue:        fmt.Sprintf("%s%d", hashValuePrefix, i),
 			RangeValuePrefix: []byte(fmt.Sprintf("%s%d", rangeValuePrefixPrefix, i)),
@@ -128,7 +128,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 		}
 		expectedQueryKey = util.QueryKey(query)
 
-		gateway.indexQuerier = mockIndexClient{response: &mockBatch{size: responseSize}}
+		gateway.indexClient = mockIndexClient{response: &mockBatch{size: responseSize}}
 		err := gateway.QueryIndex(&indexgatewaypb.QueryIndexRequest{Queries: []*indexgatewaypb.IndexQuery{{
 			TableName:        query.TableName,
 			HashValue:        query.HashValue,

@@ -6,6 +6,7 @@ services:
       options:
         loki-url: "http://localhost:8001/loki/api/v1/push"
         loki-retries: "1"
+        loki-tenant-id: "1"
     image: consul
     command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
     ports:
@@ -14,9 +15,9 @@ services:
   minio:
     logging:
       <<: *logging
-    image: minio/minio
+    image: minio/minio:RELEASE.2022-03-11T23-57-45Z
     entrypoint: sh
-    command: -c 'mkdir -p /data/loki && /usr/bin/minio server /data'
+    command: -c 'mkdir -p /data/loki && /opt/bin/minio server /data'
     environment:
       - MINIO_ACCESS_KEY=loki
       - MINIO_SECRET_KEY=supersecret
@@ -239,6 +240,8 @@ services:
       - querier
     environment:
       - GF_PATHS_PROVISIONING=/etc/config/grafana/provisioning
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     ports:
       - 3000:3000
     volumes:
@@ -248,6 +251,18 @@ services:
     logging:
       <<: *logging
     image: mingrammer/flog
-    command: ["-f", "json", "-l", "-s", "1s"]
+    command: ["-f", "json", "-l", "-d", "2s"]
+    depends_on:
+      - distributor
+
+  log-gen-2:
+    logging:
+      driver: loki-compose
+      options:
+        loki-url: "http://localhost:8001/loki/api/v1/push"
+        loki-retries: "1"
+        loki-tenant-id: "2"
+    image: mingrammer/flog
+    command: ["-f", "json", "-l", "-d", "2s"]
     depends_on:
       - distributor

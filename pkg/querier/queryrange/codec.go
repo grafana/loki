@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -49,6 +50,13 @@ func (r *LokiRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
 	return &new
 }
 
+func (r *LokiRequest) WithStartEndTime(s time.Time, e time.Time) *LokiRequest {
+	new := *r
+	new.StartTs = s
+	new.EndTs = e
+	return &new
+}
+
 func (r *LokiRequest) WithQuery(query string) queryrangebase.Request {
 	new := *r
 	new.Query = query
@@ -67,6 +75,7 @@ func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("start", timestamp.Time(r.GetStart()).String()),
 		otlog.String("end", timestamp.Time(r.GetEnd()).String()),
 		otlog.Int64("step (ms)", r.GetStep()),
+		otlog.Int64("interval (ms)", r.GetInterval()),
 		otlog.Int64("limit", int64(r.GetLimit())),
 		otlog.String("direction", r.GetDirection().String()),
 		otlog.String("shards", strings.Join(r.GetShards(), ",")),
@@ -210,10 +219,10 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			Direction: req.Direction,
 			StartTs:   req.Start.UTC(),
 			EndTs:     req.End.UTC(),
-			// GetStep must return milliseconds
-			Step:   int64(req.Step) / 1e6,
-			Path:   r.URL.Path,
-			Shards: req.Shards,
+			Step:      req.Step.Milliseconds(),
+			Interval:  req.Interval.Milliseconds(),
+			Path:      r.URL.Path,
+			Shards:    req.Shards,
 		}, nil
 	case InstantQueryOp:
 		req, err := loghttp.ParseInstantQuery(r)
@@ -229,7 +238,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			Shards:    req.Shards,
 		}, nil
 	case SeriesOp:
-		req, err := logql.ParseAndValidateSeriesQuery(r)
+		req, err := loghttp.ParseAndValidateSeriesQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -277,6 +286,9 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		if request.Step != 0 {
 			params["step"] = []string{fmt.Sprintf("%f", float64(request.Step)/float64(1e3))}
 		}
+		if request.Interval != 0 {
+			params["interval"] = []string{fmt.Sprintf("%f", float64(request.Interval)/float64(1e3))}
+		}
 		u := &url.URL{
 			// the request could come /api/prom/query but we want to only use the new api.
 			Path:     "/loki/api/v1/query_range",
@@ -319,7 +331,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		}
 
 		u := &url.URL{
-			Path:     "/loki/api/v1/labels",
+			Path:     request.Path, // NOTE: this could be either /label or /label/{name}/values endpoint. So forward the original path as it is.
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -564,28 +576,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Statistics: mergedStats,
 		}, nil
 	case *LokiResponse:
-		lokiRes := responses[0].(*LokiResponse)
-
-		lokiResponses := make([]*LokiResponse, 0, len(responses))
-		for _, res := range responses {
-			lokiResult := res.(*LokiResponse)
-			mergedStats.Merge(lokiResult.Statistics)
-			lokiResponses = append(lokiResponses, lokiResult)
-		}
-
-		return &LokiResponse{
-			Status:     loghttp.QueryStatusSuccess,
-			Direction:  lokiRes.Direction,
-			Limit:      lokiRes.Limit,
-			Version:    lokiRes.Version,
-			ErrorType:  lokiRes.ErrorType,
-			Error:      lokiRes.Error,
-			Statistics: mergedStats,
-			Data: LokiData{
-				ResultType: loghttp.ResultTypeStream,
-				Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
-			},
-		}, nil
+		return mergeLokiResponse(responses...), nil
 	case *LokiSeriesResponse:
 		lokiSeriesRes := responses[0].(*LokiSeriesResponse)
 
@@ -788,8 +779,16 @@ func paramsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsInstantWrapper{
 			LokiInstantRequest: r,
 		}, nil
+	case *LokiSeriesRequest:
+		return &paramsSeriesWrapper{
+			LokiSeriesRequest: r,
+		}, nil
+	case *LokiLabelNamesRequest:
+		return &paramsLabelNamesWrapper{
+			LokiLabelNamesRequest: r,
+		}, nil
 	default:
-		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
+		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got (%T)", r)
 	}
 }
 
@@ -812,7 +811,9 @@ func (p paramsRangeWrapper) End() time.Time {
 func (p paramsRangeWrapper) Step() time.Duration {
 	return time.Duration(p.GetStep() * 1e6)
 }
-func (p paramsRangeWrapper) Interval() time.Duration { return 0 }
+func (p paramsRangeWrapper) Interval() time.Duration {
+	return time.Duration(p.GetInterval() * 1e6)
+}
 func (p paramsRangeWrapper) Direction() logproto.Direction {
 	return p.GetDirection()
 }
@@ -847,6 +848,62 @@ func (p paramsInstantWrapper) Direction() logproto.Direction {
 func (p paramsInstantWrapper) Limit() uint32 { return p.LokiInstantRequest.Limit }
 func (p paramsInstantWrapper) Shards() []string {
 	return p.GetShards()
+}
+
+type paramsSeriesWrapper struct {
+	*LokiSeriesRequest
+}
+
+func (p paramsSeriesWrapper) Query() string {
+	return p.GetQuery()
+}
+
+func (p paramsSeriesWrapper) Start() time.Time {
+	return p.LokiSeriesRequest.GetStartTs()
+}
+
+func (p paramsSeriesWrapper) End() time.Time {
+	return p.LokiSeriesRequest.GetEndTs()
+}
+
+func (p paramsSeriesWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+func (p paramsSeriesWrapper) Interval() time.Duration { return 0 }
+func (p paramsSeriesWrapper) Direction() logproto.Direction {
+	return logproto.FORWARD
+}
+func (p paramsSeriesWrapper) Limit() uint32 { return 0 }
+func (p paramsSeriesWrapper) Shards() []string {
+	return p.GetShards()
+}
+
+type paramsLabelNamesWrapper struct {
+	*LokiLabelNamesRequest
+}
+
+func (p paramsLabelNamesWrapper) Query() string {
+	return p.GetQuery()
+}
+
+func (p paramsLabelNamesWrapper) Start() time.Time {
+	return p.LokiLabelNamesRequest.GetStartTs()
+}
+
+func (p paramsLabelNamesWrapper) End() time.Time {
+	return p.LokiLabelNamesRequest.GetEndTs()
+}
+
+func (p paramsLabelNamesWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+func (p paramsLabelNamesWrapper) Interval() time.Duration { return 0 }
+func (p paramsLabelNamesWrapper) Direction() logproto.Direction {
+	return logproto.FORWARD
+}
+func (p paramsLabelNamesWrapper) Limit() uint32 { return 0 }
+func (p paramsLabelNamesWrapper) Shards() []string {
+	return make([]string, 0)
 }
 
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrangebase.PrometheusResponseHeader {
@@ -887,11 +944,11 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		}, nil
 	case *LokiRequest:
 		// range query can either be metrics or logs
-		expr, err := logql.ParseExpr(req.Query)
+		expr, err := syntax.ParseExpr(req.Query)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		if _, ok := expr.(logql.SampleExpr); ok {
+		if _, ok := expr.(syntax.SampleExpr); ok {
 			return &LokiPromResponse{
 				Response: queryrangebase.NewEmptyPrometheusResponse(),
 			}, nil
@@ -907,5 +964,36 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
+	}
+}
+
+func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
+	if len(responses) == 0 {
+		return nil
+	}
+	var (
+		lokiRes       = responses[0].(*LokiResponse)
+		mergedStats   stats.Result
+		lokiResponses = make([]*LokiResponse, 0, len(responses))
+	)
+
+	for _, res := range responses {
+		lokiResult := res.(*LokiResponse)
+		mergedStats.Merge(lokiResult.Statistics)
+		lokiResponses = append(lokiResponses, lokiResult)
+	}
+
+	return &LokiResponse{
+		Status:     loghttp.QueryStatusSuccess,
+		Direction:  lokiRes.Direction,
+		Limit:      lokiRes.Limit,
+		Version:    lokiRes.Version,
+		ErrorType:  lokiRes.ErrorType,
+		Error:      lokiRes.Error,
+		Statistics: mergedStats,
+		Data: LokiData{
+			ResultType: loghttp.ResultTypeStream,
+			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
+		},
 	}
 }

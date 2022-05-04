@@ -228,7 +228,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 		if err != nil {
 			return err
 		}
-		client.TLSConfig.ServerName = u.Host
+		client.TLSConfig.ServerName = strings.Split(u.Host, ":")[0]
 		return nil
 	}
 

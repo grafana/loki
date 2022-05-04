@@ -61,33 +61,8 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
 				},
-				ReadinessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
-						HTTPGet: &corev1.HTTPGetAction{
-							Path:   "/ready",
-							Port:   intstr.FromInt(httpPort),
-							Scheme: corev1.URISchemeHTTP,
-						},
-					},
-					PeriodSeconds:       10,
-					InitialDelaySeconds: 15,
-					TimeoutSeconds:      1,
-					SuccessThreshold:    1,
-					FailureThreshold:    3,
-				},
-				LivenessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
-						HTTPGet: &corev1.HTTPGetAction{
-							Path:   "/metrics",
-							Port:   intstr.FromInt(httpPort),
-							Scheme: corev1.URISchemeHTTP,
-						},
-					},
-					TimeoutSeconds:   2,
-					PeriodSeconds:    30,
-					FailureThreshold: 10,
-					SuccessThreshold: 1,
-				},
+				ReadinessProbe: lokiReadinessProbe(),
+				LivenessProbe:  lokiLivenessProbe(),
 				Ports: []corev1.ContainerPort{
 					{
 						Name:          lokiHTTPPortName,

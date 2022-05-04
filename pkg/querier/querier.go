@@ -6,18 +6,23 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
+
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/tenant"
 	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
@@ -67,7 +72,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Validate validates the config.
 func (cfg *Config) Validate() error {
 	if cfg.QueryStoreOnly && cfg.QueryIngesterOnly {
-		return errors.New("querier.query_store_only and querier.query_store_only cannot both be true")
+		return errors.New("querier.query_store_only and querier.query_ingester_only cannot both be true")
 	}
 	return nil
 }
@@ -86,24 +91,35 @@ type SingleTenantQuerier struct {
 	store           storage.Store
 	limits          *validation.Overrides
 	ingesterQuerier *IngesterQuerier
+	deleteGetter    deleteGetter
+	metrics         *Metrics
+}
+
+type deleteGetter interface {
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error)
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides) (*SingleTenantQuerier, error) {
-	querier := SingleTenantQuerier{
+func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
+	return &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
 		ingesterQuerier: ingesterQuerier,
 		limits:          limits,
-	}
-
-	return &querier, nil
+		deleteGetter:    d,
+		metrics:         NewMetrics(r),
+	}, nil
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	params.QueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
 	if err != nil {
 		return nil, err
 	}
@@ -157,6 +173,11 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		return nil, err
 	}
 
+	params.SampleQueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
+	if err != nil {
+		return nil, err
+	}
+
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	iters := []iter.SampleIterator{}
@@ -192,18 +213,69 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 	return iter.NewMergeSampleIterator(ctx, iters), nil
 }
 
+func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT time.Time) ([]*logproto.Delete, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	d, err := q.deleteGetter.GetAllDeleteRequestsForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	start := startT.UnixNano()
+	end := endT.UnixNano()
+
+	var deletes []*logproto.Delete
+	for _, del := range d {
+		if del.StartTime.UnixNano() <= end && del.EndTime.UnixNano() >= start {
+			deletes = append(deletes, &logproto.Delete{
+				Selector: del.Query,
+				Start:    del.StartTime.UnixNano(),
+				End:      del.EndTime.UnixNano(),
+			})
+		}
+	}
+
+	return deletes, nil
+}
+
+func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {
+	// if no lookback limits are configured, always consider this within the range of the lookback period
+	if maxLookback <= 0 {
+		return true
+	}
+
+	// find the first instance that we would want to query the ingester from...
+	ingesterOldestStartTime := time.Now().Add(-maxLookback)
+
+	// ...and if the query range ends before that, don't query the ingester
+	return queryEnd.After(ingesterOldestStartTime)
+}
+
+func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod() time.Duration {
+	mlb := time.Duration(-1)
+	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
+		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
+		mlb = q.cfg.IngesterQueryStoreMaxLookback
+	} else if q.cfg.QueryIngestersWithin != 0 {
+		mlb = q.cfg.QueryIngestersWithin
+	}
+
+	return mlb
+}
+
 func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
 	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
 	limitQueryInterval := false
 	// ingesterMLB having -1 means query ingester for whole duration.
-	ingesterMLB := time.Duration(-1)
 	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
 		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
 		limitQueryInterval = true
-		ingesterMLB = q.cfg.IngesterQueryStoreMaxLookback
-	} else if q.cfg.QueryIngestersWithin != 0 {
-		ingesterMLB = q.cfg.QueryIngestersWithin
 	}
+
+	ingesterMLB := q.calculateIngesterMaxLookbackPeriod()
 
 	// query ingester for whole duration.
 	if ingesterMLB == -1 {
@@ -221,14 +293,17 @@ func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time
 		return i, i
 	}
 
+	ingesterQueryWithinRange := q.isWithinIngesterMaxLookbackPeriod(ingesterMLB, queryEnd)
+
 	// see if there is an overlap between ingester query interval and actual query interval, if not just do the store query.
-	ingesterOldestStartTime := time.Now().Add(-ingesterMLB)
-	if queryEnd.Before(ingesterOldestStartTime) {
+	if !ingesterQueryWithinRange {
 		return nil, &interval{
 			start: queryStart,
 			end:   queryEnd,
 		}
 	}
+
+	ingesterOldestStartTime := time.Now().Add(-ingesterMLB)
 
 	// if there is an overlap and we are not limiting the query interval then do both store and ingester query for whole query interval.
 	if !limitQueryInterval {
@@ -282,17 +357,25 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
 
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
+
 	var ingesterValues [][]string
-	if !q.cfg.QueryStoreOnly {
-		ingesterValues, err = q.ingesterQuerier.Label(ctx, req)
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+		timeFramedReq := *req
+		timeFramedReq.Start = &ingesterQueryInterval.start
+		timeFramedReq.End = &ingesterQueryInterval.end
+
+		ingesterValues, err = q.ingesterQuerier.Label(ctx, &timeFramedReq)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	var storeValues []string
-	if !q.cfg.QueryIngesterOnly {
-		from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+		from := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
+		through := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+
 		if req.Values {
 			storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
 			if err != nil {
@@ -324,6 +407,11 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		return nil, err
 	}
 
+	deletes, err := q.deletesForUser(ctx, req.Start, time.Now())
+	if err != nil {
+		return nil, err
+	}
+
 	histReq := logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  req.Query,
@@ -331,6 +419,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 			End:       time.Now(),
 			Limit:     req.Limit,
 			Direction: logproto.BACKWARD,
+			Deletes:   deletes,
 		},
 	}
 
@@ -369,6 +458,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		},
 		q.cfg.TailMaxDuration,
 		tailerWaitEntryThrottle,
+		q.metrics,
 	), nil
 }
 
@@ -395,13 +485,17 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 	series := make(chan [][]logproto.SeriesIdentifier, 2)
 	errs := make(chan error, 2)
 
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
+
 	// fetch series from ingesters and store concurrently
-	if q.cfg.QueryStoreOnly {
-		series <- [][]logproto.SeriesIdentifier{}
-	} else {
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+		timeFramedReq := *req
+		timeFramedReq.Start = ingesterQueryInterval.start
+		timeFramedReq.End = ingesterQueryInterval.end
+
 		go func() {
 			// fetch series identifiers from ingesters
-			resps, err := q.ingesterQuerier.Series(ctx, req)
+			resps, err := q.ingesterQuerier.Series(ctx, &timeFramedReq)
 			if err != nil {
 				errs <- err
 				return
@@ -409,17 +503,24 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 
 			series <- resps
 		}()
+	} else {
+		// If only queriying the store or the query range does not overlap with the ingester max lookback period (defined by `query_ingesters_within`)
+		// then don't call out to the ingesters, and send an empty result back to the channel
+		series <- [][]logproto.SeriesIdentifier{}
 	}
 
-	if !q.cfg.QueryIngesterOnly {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		go func() {
-			storeValues, err := q.seriesForMatchers(ctx, req.Start, req.End, req.GetGroups(), req.Shards)
+			storeValues, err := q.seriesForMatchers(ctx, storeQueryInterval.start, storeQueryInterval.end, req.GetGroups(), req.Shards)
 			if err != nil {
 				errs <- err
 				return
 			}
 			series <- [][]logproto.SeriesIdentifier{storeValues}
 		}()
+	} else {
+		// If we are not querying the store, send an empty result back to the channel
+		series <- [][]logproto.SeriesIdentifier{}
 	}
 
 	var sets [][]logproto.SeriesIdentifier
@@ -461,7 +562,6 @@ func (q *SingleTenantQuerier) seriesForMatchers(
 	groups []string,
 	shards []string,
 ) ([]logproto.SeriesIdentifier, error) {
-
 	var results []logproto.SeriesIdentifier
 	// If no matchers were specified for the series query,
 	// we send a query with an empty matcher which will match every series.
@@ -485,7 +585,7 @@ func (q *SingleTenantQuerier) seriesForMatchers(
 
 // seriesForMatcher fetches series from the store for a given matcher
 func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
-	ids, err := q.store.GetSeries(ctx, logql.SelectLogParams{
+	ids, err := q.store.Series(ctx, logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  matcher,
 			Limit:     1,

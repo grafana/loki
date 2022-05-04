@@ -5,7 +5,9 @@ import (
 	"fmt"
 	logger "log"
 	"sort"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
@@ -99,7 +101,7 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	for _, stream := range in {
 		for _, e := range stream.Entries {
 			sp := pipeline.ForStream(mustParseLabels(stream.Labels))
-			if l, out, ok := sp.Process([]byte(e.Line)); ok {
+			if l, out, matches := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line)); matches {
 				var s *logproto.Stream
 				var found bool
 				s, found = resByStream[out.String()]
@@ -127,7 +129,7 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Seri
 	for _, stream := range in {
 		for _, e := range stream.Entries {
 			exs := ex.ForStream(mustParseLabels(stream.Labels))
-			if f, lbs, ok := exs.Process([]byte(e.Line)); ok {
+			if f, lbs, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line)); ok {
 				var s *logproto.Series
 				var found bool
 				s, found = resBySeries[lbs.String()]
@@ -259,7 +261,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (stream
 		for j := 0; j <= nEntries; j++ {
 			stream.Entries = append(stream.Entries, logproto.Entry{
 				Timestamp: time.Unix(0, int64(j*int(time.Second))),
-				Line:      fmt.Sprintf("line number: %d", j),
+				Line:      fmt.Sprintf("stream=stderr level=debug line=%d", j),
 			})
 		}
 
@@ -277,4 +279,13 @@ func mustParseLabels(s string) labels.Labels {
 	}
 
 	return labels
+}
+
+func removeWhiteSpace(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == ' ' || unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
 }

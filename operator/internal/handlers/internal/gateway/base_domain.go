@@ -3,7 +3,7 @@ package gateway
 import (
 	"context"
 
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/status"
@@ -23,15 +23,11 @@ func GetOpenShiftBaseDomain(ctx context.Context, k k8s.Client, req ctrl.Request)
 	if err := k.Get(ctx, key, &cluster); err != nil {
 
 		if apierrors.IsNotFound(err) {
-			statusErr := status.SetDegradedCondition(ctx, k, req,
-				"Missing cluster DNS configuration to read base domain",
-				lokiv1beta1.ReasonMissingGatewayOpenShiftBaseDomain,
-			)
-			if statusErr != nil {
-				return "", statusErr
+			return "", &status.DegradedError{
+				Message: "Missing cluster DNS configuration to read base domain",
+				Reason:  lokiv1beta1.ReasonMissingGatewayOpenShiftBaseDomain,
+				Requeue: true,
 			}
-
-			return "", kverrors.Wrap(err, "Missing cluster DNS configuration to read base domain")
 		}
 		return "", kverrors.Wrap(err, "failed to lookup lokistack gateway base domain",
 			"name", key)

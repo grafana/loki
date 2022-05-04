@@ -20,7 +20,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -73,7 +72,6 @@ func (a *PusherAppender) Commit() error {
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
 	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), logproto.ToWriteRequest(a.labels, a.samples, nil, logproto.RULE))
-
 	if err != nil {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
 		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 != 4 {
@@ -165,7 +163,7 @@ func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Coun
 			//
 			// All errors will still be counted towards "evaluation failures" metrics and logged by Prometheus Ruler,
 			// but we only want internal errors here.
-			if _, ok := querier.TranslateToPromqlAPIError(origErr).(promql.ErrStorage); ok {
+			if _, ok := TranslateToPromqlAPIError(origErr).(promql.ErrStorage); ok {
 				failedQueries.Inc()
 			}
 
@@ -251,7 +249,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 	// Wrap errors returned by Queryable to our wrapper, so that we can distinguish between those errors
 	// and errors returned by PromQL engine. Errors from Queryable can be either caused by user (limits) or internal errors.
 	// Errors from PromQL are always "user" errors.
-	q = querier.NewErrorTranslateQueryableWithFn(q, WrapQueryableErrors)
+	q = NewErrorTranslateQueryableWithFn(q, WrapQueryableErrors)
 
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
 		var queryTime prometheus.Counter
