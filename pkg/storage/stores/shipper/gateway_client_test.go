@@ -240,7 +240,7 @@ func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 	var cfg indexgateway.Config
 	flagext.DefaultValues(&cfg)
 
-	gw, err := indexgateway.NewIndexGateway(cfg, util_log.Logger, prometheus.DefaultRegisterer, nil, tm, nil)
+	gw, err := indexgateway.NewIndexGateway(cfg, util_log.Logger, prometheus.DefaultRegisterer, nil, tm)
 	require.NoError(b, err)
 	indexgatewaypb.RegisterIndexGatewayServer(s, gw)
 	go func() {

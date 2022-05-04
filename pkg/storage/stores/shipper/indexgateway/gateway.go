@@ -46,21 +46,18 @@ type Gateway struct {
 	log log.Logger
 
 	shipper IndexQuerier
-
-	ringManager *RingManager
 }
 
 // NewIndexGateway instantiates a new Index Gateway and start its services.
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier, indexClient IndexClient, rm *RingManager) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier, indexClient IndexClient) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		cfg:          cfg,
 		log:          log,
 		indexClient:  indexClient,
-		ringManager:  rm,
 	}
 
 	g.Service = services.NewIdleService(nil, func(failureCase error) error {

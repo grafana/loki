@@ -2,7 +2,6 @@ package indexgateway
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -69,8 +68,27 @@ func NewRingManager(managerMode ManagerMode, cfg Config, log log.Logger, registe
 	}
 
 	rm.buffers.bufDescs, rm.buffers.bufHosts, rm.buffers.bufZones = ring.MakeBuffersForGet()
+
+	// instantiate kv store for both modes.
+	ringStore, err := kv.NewClient(
+		rm.cfg.Ring.KVStore,
+		ring.GetCodec(),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), "index-gateway-ring-manager"),
+		rm.log,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "index gateway ring manager create KV store client")
+	}
+
+	// instantiate ring for both mode modes.
+	ringCfg := rm.cfg.Ring.ToRingConfig(rm.cfg.Ring.ReplicationFactor)
+	rm.Ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), rm.log)
+	if err != nil {
+		return nil, errors.Wrap(err, "index gateway ring manager create ring client")
+	}
+
 	if managerMode == ServerMode {
-		if err := rm.startServerMode(registerer); err != nil {
+		if err := rm.startServerMode(ringStore, registerer); err != nil {
 			return nil, err
 		}
 		return rm, nil
@@ -82,17 +100,7 @@ func NewRingManager(managerMode ManagerMode, cfg Config, log log.Logger, registe
 	}
 }
 
-func (rm *RingManager) startServerMode(registerer prometheus.Registerer) error {
-	ringStore, err := kv.NewClient(
-		rm.cfg.Ring.KVStore,
-		ring.GetCodec(),
-		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), "index-gateway"),
-		rm.log,
-	)
-	if err != nil {
-		return errors.Wrap(err, "create KV store client")
-	}
-
+func (rm *RingManager) startServerMode(ringStore kv.Client, registerer prometheus.Registerer) error {
 	lifecyclerCfg, err := rm.cfg.Ring.ToLifecyclerConfig(ringNumTokens, rm.log)
 	if err != nil {
 		return errors.Wrap(err, "invalid ring lifecycler config")
@@ -105,19 +113,13 @@ func (rm *RingManager) startServerMode(registerer prometheus.Registerer) error {
 
 	rm.RingLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, RingKey, ringStore, delegate, rm.log, registerer)
 	if err != nil {
-		return errors.Wrap(err, "index gateway create ring lifecycler")
-	}
-
-	ringCfg := rm.cfg.Ring.ToRingConfig(rm.cfg.Ring.ReplicationFactor)
-	rm.Ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), rm.log)
-	if err != nil {
-		return errors.Wrap(err, "index gateway create ring client")
+		return errors.Wrap(err, "index gateway ring manager create ring lifecycler")
 	}
 
 	svcs := []services.Service{rm.RingLifecycler, rm.Ring}
 	rm.subservices, err = services.NewManager(svcs...)
 	if err != nil {
-		return fmt.Errorf("new index gateway services manager: %w", err)
+		return errors.Wrap(err, "new index gateway services manager in server mode")
 	}
 
 	rm.subservicesWatcher = services.NewFailureWatcher()
@@ -129,14 +131,23 @@ func (rm *RingManager) startServerMode(registerer prometheus.Registerer) error {
 
 func (rm *RingManager) startClientMode(registerer prometheus.Registerer) error {
 	var err error
-	ringcfg := rm.cfg.Ring.ToRingConfig(rm.cfg.Ring.ReplicationFactor)
 
-	rm.Ring, err = ring.New(ringcfg, ringNameForServer, RingKey, rm.log, registerer)
+	svcs := []services.Service{rm.Ring}
+	rm.subservices, err = services.NewManager(svcs...)
 	if err != nil {
-		return errors.Wrap(err, "create ring")
+		return errors.Wrap(err, "new index gateway services manager in client mode")
 	}
 
-	rm.Service = services.NewIdleService(nil, nil)
+	rm.subservicesWatcher = services.NewFailureWatcher()
+	rm.subservicesWatcher.WatchManager(rm.subservices)
+	rm.Service = services.NewBasicService(rm.starting, rm.running, rm.stopping)
+
+	rm.Service = services.NewIdleService(func(ctx context.Context) error {
+		return services.StartManagerAndAwaitHealthy(ctx, rm.subservices)
+	}, func(failureCase error) error {
+		return services.StopManagerAndAwaitStopped(context.Background(), rm.subservices)
+	})
+
 	return nil
 }
 

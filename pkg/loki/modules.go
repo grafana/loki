@@ -818,7 +818,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Store, indexClient, t.indexGatewayRingManager)
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Store, indexClient)
 	if err != nil {
 		return nil, err
 	}
