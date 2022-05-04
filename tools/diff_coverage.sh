@@ -17,7 +17,7 @@ for pkg in ${3//,/ }; do
   echo | awk -v pkg="${pkg}" -v old="${old:-0}" -v new="${new:-0}" \
   '{
       sign=new - old < 0 ? "-" : "+"
-      printf ("%s %25s\t%%%s\n", sign, pkg, new - old)
+      printf ("%s %18s\t%s%%\n", sign, pkg, new - old)
   }'
 done
 echo '```'
