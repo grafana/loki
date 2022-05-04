@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 

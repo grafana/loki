@@ -3,9 +3,10 @@ package tsdb
 import (
 	"context"
 
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 // Index adapter for a function which returns an index when queried.

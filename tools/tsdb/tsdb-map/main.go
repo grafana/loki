@@ -97,7 +97,9 @@ func main() {
 	}
 
 	log.Println("writing index")
-	if _, err := builder.Build(context.Background(), *dest, "fake"); err != nil {
+	if _, err := builder.Build(context.Background(), *dest, func(from, through model.Time, checksum uint32) tsdb.Identifier {
+		panic("todo")
+	}); err != nil {
 		panic(err)
 	}
 }
