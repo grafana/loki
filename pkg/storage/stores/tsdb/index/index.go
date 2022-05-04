@@ -854,7 +854,9 @@ func (w *Writer) writeFingerprintOffsetsTable() error {
 
 	// write length
 	ln := w.buf1.Len()
-	if ln > math.MaxUint32 {
+	// TODO(owen-d): can remove the uint32 cast in the future
+	// Had to uint32 wrap these for arm32 builds, which we'll remove in the future.
+	if uint32(ln) > uint32(math.MaxUint32) {
 		return errors.Errorf("fingerprint offset size exceeds 4 bytes: %d", ln)
 	}
 
