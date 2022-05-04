@@ -8,6 +8,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
+// TenantLabel is part of the reserved label namespace (__ prefix)
+// It's used to create multi-tenant TSDBs (which do not have a tenancy concept)
+// These labels are stripped out during compaction to single-tenant TSDBs
+const TenantLabel = "__loki_tenant__"
+
 // MultiTenantIndex will inject a tenant label to it's queries
 // This works with pre-compacted TSDBs which aren't yet per tenant.
 type MultiTenantIndex struct {
@@ -25,6 +30,16 @@ func withTenantLabel(userID string, matchers []*labels.Matcher) []*labels.Matche
 	return cpy
 }
 
+func withoutTenantLabel(ls labels.Labels) labels.Labels {
+	for i, l := range ls {
+		if l.Name == TenantLabel {
+			ls = append(ls[:i], ls[i+1:]...)
+			break
+		}
+	}
+	return ls
+}
+
 func (m *MultiTenantIndex) Bounds() (model.Time, model.Time) { return m.idx.Bounds() }
 
 func (m *MultiTenantIndex) Close() error { return m.idx.Close() }
@@ -34,7 +49,14 @@ func (m *MultiTenantIndex) GetChunkRefs(ctx context.Context, userID string, from
 }
 
 func (m *MultiTenantIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
-	return m.idx.Series(ctx, userID, from, through, res, shard, withTenantLabel(userID, matchers)...)
+	xs, err := m.idx.Series(ctx, userID, from, through, res, shard, withTenantLabel(userID, matchers)...)
+	if err != nil {
+		return nil, err
+	}
+	for i := range xs {
+		xs[i].Labels = withoutTenantLabel(xs[i].Labels)
+	}
+	return xs, nil
 }
 
 func (m *MultiTenantIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {

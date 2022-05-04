@@ -27,6 +27,7 @@ type Builder struct {
 
 type stream struct {
 	labels labels.Labels
+	fp     model.Fingerprint
 	chunks index.ChunkMetas
 }
 
@@ -34,12 +35,13 @@ func NewBuilder() *Builder {
 	return &Builder{streams: make(map[string]*stream)}
 }
 
-func (b *Builder) AddSeries(ls labels.Labels, chks []index.ChunkMeta) {
+func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 	id := ls.String()
 	s, ok := b.streams[id]
 	if !ok {
 		s = &stream{
 			labels: ls,
+			fp:     fp,
 		}
 		b.streams[id] = s
 	}
@@ -111,7 +113,7 @@ func (b *Builder) Build(
 
 	// Add series
 	for i, s := range streams {
-		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.chunks.Finalize()...); err != nil {
+		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.fp, s.chunks.Finalize()...); err != nil {
 			return id, err
 		}
 	}

@@ -239,13 +239,11 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 
 	// Write old WALs
 	for i, c := range cases {
-		lbls := labels.NewBuilder(c.Labels)
-		lbls.Set(TenantLabel, c.User)
 		require.Nil(t, w.Log(&WALRecord{
 			UserID: c.User,
 			Series: record.RefSeries{
 				Ref:    chunks.HeadSeriesRef(i),
-				Labels: lbls.Labels(),
+				Labels: c.Labels,
 			},
 			Chks: ChunkMetasRecord{
 				Chks: c.Chunks,
@@ -271,7 +269,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 
 		lbls := labels.NewBuilder(c.Labels)
 		lbls.Set(TenantLabel, c.User)
-		require.Equal(t, chunkMetasToChunkRefs(c.User, lbls.Labels().Hash(), c.Chunks), refs)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
 	}
 
 	// Add data
@@ -306,7 +304,6 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 
 		lbls := labels.NewBuilder(c.Labels)
 		lbls.Set(TenantLabel, c.User)
-		require.Equal(t, chunkMetasToChunkRefs(c.User, lbls.Labels().Hash(), c.Chunks), refs)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
 	}
-
 }

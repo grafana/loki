@@ -30,11 +30,6 @@ type period time.Duration
 
 const defaultRotationPeriod = period(15 * time.Minute)
 
-// TenantLabel is part of the reserved label namespace (__ prefix)
-// It's used to create multi-tenant TSDBs (which do not have a tenancy concept)
-// These labels are stripped out during compaction to single-tenant TSDBs
-const TenantLabel = "__loki_tenant__"
-
 // Do not specify without bit shifting. This allows us to
 // do shard index calcuations via bitwise & rather than modulos.
 const defaultHeadManagerStripeSize = 1 << 7
@@ -132,8 +127,6 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	labelsBuilder := labels.NewBuilder(ls)
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
 	labelsBuilder.Del("__name__")
-	// userIDs are also included until compaction occurs in tsdb
-	labelsBuilder.Set(TenantLabel, userID)
 	metric := labelsBuilder.Labels()
 
 	m.mtx.RLock()

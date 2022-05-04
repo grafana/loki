@@ -86,7 +86,7 @@ func TestQueryIndex(t *testing.T) {
 		},
 	}
 	for _, s := range cases {
-		b.AddSeries(s.labels, s.chunks)
+		b.AddSeries(s.labels, model.Fingerprint(s.labels.Hash()), s.chunks)
 	}
 
 	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {

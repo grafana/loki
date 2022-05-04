@@ -94,6 +94,11 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 			}
 		}
 
+		// Embed the tenant label into TSDB
+		lb := labels.NewBuilder(ls)
+		lb.Set(TenantLabel, user)
+		withTenant := lb.Labels()
+
 		// Add the chunks to all relevant builders
 		for pd, matchingChks := range pds {
 			b, ok := periods[pd]
@@ -103,7 +108,10 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 			}
 
 			b.AddSeries(
-				ls,
+				withTenant,
+				// use the fingerprint without the added tenant label
+				// so queries route to the chunks which actually exist.
+				model.Fingerprint(ls.Hash()),
 				matchingChks,
 			)
 		}
@@ -256,5 +264,6 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 		}
 		dst = append(dst, m)
 	}
+
 	return dst
 }

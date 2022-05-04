@@ -61,7 +61,7 @@ func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res Ide
 			nil,
 			func(ls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) {
 				// AddSeries copies chks into it's own slice
-				b.AddSeries(ls.Copy(), chks)
+				b.AddSeries(ls.Copy(), model.Fingerprint(ls.Hash()), chks)
 			},
 			labels.MustNewMatcher(labels.MatchEqual, "", ""),
 		); err != nil {

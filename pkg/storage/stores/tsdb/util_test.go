@@ -20,7 +20,7 @@ func BuildIndex(t *testing.T, dir, tenant string, cases []LoadableSeries) *TSDBF
 	b := NewBuilder()
 
 	for _, s := range cases {
-		b.AddSeries(s.Labels, s.Chunks)
+		b.AddSeries(s.Labels, model.Fingerprint(s.Labels.Hash()), s.Chunks)
 	}
 
 	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {
