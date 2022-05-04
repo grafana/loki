@@ -306,7 +306,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 					labelNames4, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), "doesn't exist")
 					require.NoError(t, err)
 					if len(labelNames4) != 0 {
-						t.Fatalf("%s: query for non-existant metric yields empty resultset ... actually got %v label names: %#v",
+						t.Fatalf("%s: query for non-existent metric yields empty resultset ... actually got %v label names: %#v",
 							tc.metricName, len(labelNames4), labelNames4)
 					}
 				})
