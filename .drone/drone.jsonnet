@@ -373,8 +373,8 @@ local manifest(apps) = pipeline('manifest') {
     steps: [
       make('check-drone-drift', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
-      make('test', container=false) { depends_on: ['clone'] },
       run('clone-main', commands=['cd ..', 'git clone $CI_REPO_REMOTE loki-main', 'cd -']) { depends_on: ['clone'] },
+      make('test', container=false) { depends_on: ['clone', 'clone-main'] },
       run('test-main', commands=['cd ../loki-main', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-main'] },
       make('compare-coverage', container=false, args=[
         'old=../loki-main/test_results.txt',
