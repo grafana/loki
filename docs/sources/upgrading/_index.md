@@ -31,30 +31,6 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-### Loki
-
-#### Tail API no longer creates multiple streams when using parsers.
-
-We expect this change to be non-impactful however it is a breaking change to existing behavior. 
-
-This change would likely only affect anyone who's doing machine to machine type work with Loki's tail API 
-and is expecting a parser in a query to alter the streams in a tail response.
-
-Prior to this change a tail request with a parser (e.g. json, logfmt, regexp, pattern) would split the 
-incoming log stream into multiple streams based on the extracted labels after running the parser.
-
-[PR 6063](https://github.com/grafana/loki/pull/6063) changes this behavior 
-to no longer split incoming streams when using a parser in the query, instead Loki will return exactly
-the same streams with and without a parser in the query.
-
-We found a significant performance impact when using parsers on live tailing queries which would 
-result in turning a single stream with multiple entries into multiple streams with single entries.
-Often leading to the case where the tailing client could not keep up with the number of streams
-being pushed and tailing logs being dropped.
-
-This change will have no impact on viewing the tail output from Grafana or logcli. 
-Parsers can still be used to do filtering and reformatting of live tailed log lines.
-
 ## 2.5.0
 
 ### Loki
