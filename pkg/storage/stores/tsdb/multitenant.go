@@ -19,7 +19,10 @@ func NewMultiTenantIndex(idx Index) *MultiTenantIndex {
 }
 
 func withTenantLabel(userID string, matchers []*labels.Matcher) []*labels.Matcher {
-	return append(matchers, labels.MustNewMatcher(labels.MatchEqual, TenantLabel, userID))
+	cpy := make([]*labels.Matcher, len(matchers))
+	copy(cpy, matchers)
+	cpy = append(cpy, labels.MustNewMatcher(labels.MatchEqual, TenantLabel, userID))
+	return cpy
 }
 
 func (m *MultiTenantIndex) Bounds() (model.Time, model.Time) { return m.idx.Bounds() }

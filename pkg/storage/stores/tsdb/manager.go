@@ -211,6 +211,7 @@ func (m *tsdbManager) GetChunkRefs(ctx context.Context, userID string, from, thr
 	if err != nil {
 		return nil, err
 	}
+	matchers = withoutNameLabel(matchers)
 	return idx.GetChunkRefs(ctx, userID, from, through, res, shard, matchers...)
 }
 
@@ -219,6 +220,7 @@ func (m *tsdbManager) Series(ctx context.Context, userID string, from, through m
 	if err != nil {
 		return nil, err
 	}
+	matchers = withoutNameLabel(matchers)
 	return idx.Series(ctx, userID, from, through, res, shard, matchers...)
 }
 
@@ -227,6 +229,7 @@ func (m *tsdbManager) LabelNames(ctx context.Context, userID string, from, throu
 	if err != nil {
 		return nil, err
 	}
+	matchers = withoutNameLabel(matchers)
 	return idx.LabelNames(ctx, userID, from, through, matchers...)
 }
 
@@ -235,5 +238,23 @@ func (m *tsdbManager) LabelValues(ctx context.Context, userID string, from, thro
 	if err != nil {
 		return nil, err
 	}
+	matchers = withoutNameLabel(matchers)
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
+}
+
+// TODO(owen-d): in the future, handle this by preventing passing the __name__="logs" label
+// to TSDB indices at all.
+func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
+	if len(matchers) == 0 {
+		return nil
+	}
+
+	dst := make([]*labels.Matcher, 0, len(matchers)-1)
+	for _, m := range matchers {
+		if m.Name == labels.MetricName {
+			continue
+		}
+		dst = append(dst, m)
+	}
+	return dst
 }
