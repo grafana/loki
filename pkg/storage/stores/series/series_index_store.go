@@ -541,7 +541,7 @@ func (c *IndexStore) lookupLabelNamesBySeries(ctx context.Context, from, through
 
 	var result util.UniqueStrings
 	for _, entry := range entries {
-		lbs := []string{}
+		var lbs []string
 		err := jsoniter.ConfigFastest.Unmarshal(entry.Value, &lbs)
 		if err != nil {
 			return nil, err

@@ -135,6 +135,35 @@ func Test_NoMatcherLookup(t *testing.T) {
 	require.Equal(t, model.Fingerprint(1), ids[0])
 }
 
+func Test_LabelNames(t *testing.T) {
+	t.Run("with labels", func(t *testing.T) {
+		lbs := labels.Labels{
+			labels.Label{Name: "hi", Value: "bar"},
+			labels.Label{Name: "foo", Value: "hello"},
+		}
+		// with no shard param
+		ii := NewWithShards(16)
+		ii.Add(logproto.FromLabelsToLabelAdapters(lbs), 1)
+		names, err := ii.LabelNames(nil)
+		require.Nil(t, err)
+		require.Equal(t, []string{"__name__", "foo", "hi"}, names)
+
+		// with shard param
+		ii = NewWithShards(16)
+		ii.Add(logproto.FromLabelsToLabelAdapters(lbs), 1)
+		names, err = ii.LabelNames(&astmapper.ShardAnnotation{Shard: int(labelsSeriesIDHash(lbs) % 16), Of: 16})
+		require.Nil(t, err)
+		require.Equal(t, []string{"__name__", "foo", "hi"}, names)
+	})
+
+	t.Run("without labels", func(t *testing.T) {
+		ii := NewWithShards(16)
+		names, err := ii.LabelNames(nil)
+		require.Nil(t, err)
+		require.Equal(t, []string{}, names)
+	})
+}
+
 func Test_ConsistentMapping(t *testing.T) {
 	a := NewWithShards(16)
 	b := NewWithShards(32)

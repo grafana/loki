@@ -171,11 +171,20 @@ func (ii *InvertedIndex) LabelNames(shard *astmapper.ShardAnnotation) ([]string,
 	if err := validateShard(ii.totalShards, shard); err != nil {
 		return nil, err
 	}
-	shards := ii.getShards(shard)
-	results := make([][]string, 0, len(shards))
+
+	var (
+		shards     = ii.getShards(shard)
+		hasResults = false
+		results    = make([][]string, 0, len(shards))
+	)
 	for i := range shards {
 		shardResult := shards[i].labelNames()
 		results = append(results, shardResult)
+		hasResults = hasResults || len(shardResult) > 0
+	}
+
+	if hasResults {
+		results = append(results, []string{model.MetricNameLabel})
 	}
 
 	return mergeStringSlices(results), nil
