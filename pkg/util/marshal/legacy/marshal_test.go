@@ -85,6 +85,7 @@ var queryTests = []struct {
 					"queueTime": 0,
 					"subqueries": 0,
 					"totalBytesProcessed":0,
+                                        "totalEntriesReturned":0,
 					"totalLinesProcessed":0
 				}
 			}

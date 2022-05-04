@@ -26,7 +26,7 @@ func TestResult(t *testing.T) {
 	fakeIngesterQuery(ctx)
 	fakeIngesterQuery(ctx)
 
-	res := stats.Result(2*time.Second, 2*time.Nanosecond)
+	res := stats.Result(2*time.Second, 2*time.Nanosecond, 10)
 	res.Log(util_log.Logger)
 	expected := Result{
 		Ingester: Ingester{
@@ -67,6 +67,7 @@ func TestResult(t *testing.T) {
 			LinesProcessedPerSecond: int64(50),
 			TotalBytesProcessed:     int64(84),
 			TotalLinesProcessed:     int64(100),
+			TotalEntriesReturned:    int64(10),
 			Subqueries:              1,
 		},
 	}
@@ -114,12 +115,13 @@ func TestSnapshot_JoinResults(t *testing.T) {
 			LinesProcessedPerSecond: int64(50),
 			TotalBytesProcessed:     int64(84),
 			TotalLinesProcessed:     int64(100),
+			TotalEntriesReturned:    int64(10),
 			Subqueries:              2,
 		},
 	}
 
 	JoinResults(ctx, expected)
-	res := statsCtx.Result(2*time.Second, 2*time.Nanosecond)
+	res := statsCtx.Result(2*time.Second, 2*time.Nanosecond, 10)
 	require.Equal(t, expected, res)
 }
 
@@ -243,10 +245,10 @@ func TestResult_Merge(t *testing.T) {
 func TestReset(t *testing.T) {
 	statsCtx, ctx := NewContext(context.Background())
 	fakeIngesterQuery(ctx)
-	res := statsCtx.Result(2*time.Second, 2*time.Millisecond)
+	res := statsCtx.Result(2*time.Second, 2*time.Millisecond, 10)
 	require.NotEmpty(t, res)
 	statsCtx.Reset()
-	res = statsCtx.Result(0, 0)
+	res = statsCtx.Result(0, 0, 0)
 	res.Summary.Subqueries = 0
 	require.Empty(t, res)
 }
