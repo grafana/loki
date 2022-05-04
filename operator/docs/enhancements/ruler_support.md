@@ -61,7 +61,7 @@ In summary the `LokiStack` ruler component will support by default minimum the f
 The following section describes a set of changes that enable reconciling the Loki ruler component as an optional StatefulSet. The Loki ruler component spec inherits the same node placement capabilities as the rest of the `LokiStack` components, i.e. currently node-selectors and tolerations (defined in `LokiComponentSpec`).
 
 ```go
-// RulesSpec deifnes the spec for the ruler component.
+// RulesSpec defines the spec for the ruler component.
 type RulesSpec struct {
     // Enabled defines a flag to enable/disable the ruler component
     //
@@ -78,7 +78,7 @@ type RulesSpec struct {
     // +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Selector"
     Selector *metav1.LabelSelector `json:"selector,omitempty"`
 
-    // Namespaces to be selected for PrometheusRules discovery. If unspecified, only
+    // Namespaces to be selected for AlertingRules/RecordingRules discovery. If unspecified, only
     // the same namespace as the LokiStack object is in is used.
     //
     // +optional
