@@ -90,6 +90,7 @@ var defaultJournalEntryFunc = func(c sdjournal.JournalReaderConfig, cursor strin
 // JournalTarget tails systemd journal entries.
 // nolint
 type JournalTarget struct {
+	metrics       *Metrics
 	logger        log.Logger
 	handler       api.EntryHandler
 	positions     positions.Positions
@@ -104,6 +105,7 @@ type JournalTarget struct {
 
 // NewJournalTarget configures a new JournalTarget.
 func NewJournalTarget(
+	metrics *Metrics,
 	logger log.Logger,
 	handler api.EntryHandler,
 	positions positions.Positions,
@@ -113,6 +115,7 @@ func NewJournalTarget(
 ) (*JournalTarget, error) {
 
 	return journalTargetWithReader(
+		metrics,
 		logger,
 		handler,
 		positions,
@@ -125,6 +128,7 @@ func NewJournalTarget(
 }
 
 func journalTargetWithReader(
+	metrics *Metrics,
 	logger log.Logger,
 	handler api.EntryHandler,
 	pos positions.Positions,
@@ -147,6 +151,7 @@ func journalTargetWithReader(
 
 	until := make(chan time.Time)
 	t := &JournalTarget{
+		metrics:       metrics,
 		logger:        logger,
 		handler:       handler,
 		positions:     pos,
@@ -264,6 +269,7 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 		bb, err := json.Marshal(entry.Fields)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "could not marshal journal fields to JSON", "err", err)
+			t.metrics.journalErrors.WithLabelValues("cannot_marshal").Inc()
 			return journalEmptyStr, nil
 		}
 		msg = string(bb)
@@ -272,6 +278,7 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 		msg, ok = entry.Fields["MESSAGE"]
 		if !ok {
 			level.Debug(t.logger).Log("msg", "received journal entry with no MESSAGE field")
+			t.metrics.journalErrors.WithLabelValues("no_message").Inc()
 			return journalEmptyStr, nil
 		}
 	}
@@ -296,9 +303,11 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 	}
 	if len(labels) == 0 {
 		// No labels, drop journal entry
+		t.metrics.journalErrors.WithLabelValues("empty_labels").Inc()
 		return journalEmptyStr, nil
 	}
 
+	t.metrics.journalLines.Inc()
 	t.positions.PutString(t.positionPath, entry.Cursor)
 	t.handler.Chan() <- api.Entry{
 		Labels: labels,

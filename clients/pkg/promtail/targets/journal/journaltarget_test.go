@@ -11,6 +11,7 @@ import (
 
 	"github.com/coreos/go-systemd/sdjournal"
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -95,7 +96,7 @@ func TestJournalTarget(t *testing.T) {
 	err = yaml.Unmarshal([]byte(relabelCfg), &relabels)
 	require.NoError(t, err)
 
-	jt, err := journalTargetWithReader(logger, client, ps, "test", relabels,
+	jt, err := journalTargetWithReader(NewMetrics(prometheus.NewRegistry()), logger, client, ps, "test", relabels,
 		&scrapeconfig.JournalTargetConfig{}, newMockJournalReader, newMockJournalEntry(nil))
 	require.NoError(t, err)
 
@@ -147,7 +148,7 @@ func TestJournalTarget_JSON(t *testing.T) {
 
 	cfg := &scrapeconfig.JournalTargetConfig{JSON: true}
 
-	jt, err := journalTargetWithReader(logger, client, ps, "test", relabels,
+	jt, err := journalTargetWithReader(NewMetrics(prometheus.NewRegistry()), logger, client, ps, "test", relabels,
 		cfg, newMockJournalReader, newMockJournalEntry(nil))
 	require.NoError(t, err)
 
@@ -197,7 +198,7 @@ func TestJournalTarget_Since(t *testing.T) {
 		MaxAge: "4h",
 	}
 
-	jt, err := journalTargetWithReader(logger, client, ps, "test", nil,
+	jt, err := journalTargetWithReader(NewMetrics(prometheus.NewRegistry()), logger, client, ps, "test", nil,
 		&cfg, newMockJournalReader, newMockJournalEntry(nil))
 	require.NoError(t, err)
 
@@ -237,7 +238,7 @@ func TestJournalTarget_Cursor_TooOld(t *testing.T) {
 		RealtimeTimestamp: uint64(entryTs.UnixNano()),
 	})
 
-	jt, err := journalTargetWithReader(logger, client, ps, "test", nil,
+	jt, err := journalTargetWithReader(NewMetrics(prometheus.NewRegistry()), logger, client, ps, "test", nil,
 		&cfg, newMockJournalReader, journalEntry)
 	require.NoError(t, err)
 
@@ -277,7 +278,7 @@ func TestJournalTarget_Cursor_NotTooOld(t *testing.T) {
 		RealtimeTimestamp: uint64(entryTs.UnixNano() / int64(time.Microsecond)),
 	})
 
-	jt, err := journalTargetWithReader(logger, client, ps, "test", nil,
+	jt, err := journalTargetWithReader(NewMetrics(prometheus.NewRegistry()), logger, client, ps, "test", nil,
 		&cfg, newMockJournalReader, journalEntry)
 	require.NoError(t, err)
 
