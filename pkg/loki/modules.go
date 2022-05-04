@@ -838,7 +838,12 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	rm, err := indexgateway.NewRingManager(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer)
+	managerMode := indexgateway.ClientMode
+	if t.isModuleActive(IndexGateway) && !t.isModuleActive(Ingester) {
+		managerMode = indexgateway.ServerMode
+	}
+	rm, err := indexgateway.NewRingManager(managerMode, t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer)
+
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")
 	}

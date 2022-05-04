@@ -30,6 +30,13 @@ const (
 	RingKey = "index-gateway"
 )
 
+type ManagerMode int
+
+const (
+	ClientMode ManagerMode = iota
+	ServerMode
+)
+
 type ringTenantBuffers struct {
 	bufDescs []ring.InstanceDesc
 	bufHosts []string
@@ -44,6 +51,7 @@ type RingManager struct {
 
 	RingLifecycler *ring.BasicLifecycler
 	Ring           *ring.Ring
+	managerMode    ManagerMode
 
 	buffers ringTenantBuffers
 	cfg     Config
@@ -51,58 +59,85 @@ type RingManager struct {
 	log log.Logger
 }
 
-func NewRingManager(cfg Config, log log.Logger, registerer prometheus.Registerer) (*RingManager, error) {
+func NewRingManager(managerMode ManagerMode, cfg Config, log log.Logger, registerer prometheus.Registerer) (*RingManager, error) {
 	rm := &RingManager{
-		cfg: cfg, log: log,
+		cfg: cfg, log: log, managerMode: managerMode,
 	}
 
 	if cfg.Mode != RingMode {
 		return rm, nil
 	}
 
+	rm.buffers.bufDescs, rm.buffers.bufHosts, rm.buffers.bufZones = ring.MakeBuffersForGet()
+	if managerMode == ServerMode {
+		if err := rm.startServerMode(registerer); err != nil {
+			return nil, err
+		}
+		return rm, nil
+	} else {
+		if err := rm.startClientMode(registerer); err != nil {
+			return nil, err
+		}
+		return rm, nil
+	}
+}
+
+func (rm *RingManager) startServerMode(registerer prometheus.Registerer) error {
 	ringStore, err := kv.NewClient(
-		cfg.Ring.KVStore,
+		rm.cfg.Ring.KVStore,
 		ring.GetCodec(),
 		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), "index-gateway"),
-		log,
+		rm.log,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "create KV store client")
+		return errors.Wrap(err, "create KV store client")
 	}
 
-	lifecyclerCfg, err := cfg.Ring.ToLifecyclerConfig(ringNumTokens, log)
+	lifecyclerCfg, err := rm.cfg.Ring.ToLifecyclerConfig(ringNumTokens, rm.log)
 	if err != nil {
-		return nil, errors.Wrap(err, "invalid ring lifecycler config")
+		return errors.Wrap(err, "invalid ring lifecycler config")
 	}
 
 	delegate := ring.BasicLifecyclerDelegate(rm)
-	delegate = ring.NewLeaveOnStoppingDelegate(delegate, log)
-	delegate = ring.NewTokensPersistencyDelegate(cfg.Ring.TokensFilePath, ring.JOINING, delegate, log)
-	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.Ring.HeartbeatTimeout, delegate, log)
+	delegate = ring.NewLeaveOnStoppingDelegate(delegate, rm.log)
+	delegate = ring.NewTokensPersistencyDelegate(rm.cfg.Ring.TokensFilePath, ring.JOINING, delegate, rm.log)
+	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*rm.cfg.Ring.HeartbeatTimeout, delegate, rm.log)
 
-	rm.RingLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, RingKey, ringStore, delegate, log, registerer)
+	rm.RingLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, RingKey, ringStore, delegate, rm.log, registerer)
 	if err != nil {
-		return nil, errors.Wrap(err, "index gateway create ring lifecycler")
+		return errors.Wrap(err, "index gateway create ring lifecycler")
 	}
 
-	ringCfg := cfg.Ring.ToRingConfig(cfg.Ring.ReplicationFactor)
-	rm.Ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), log)
+	ringCfg := rm.cfg.Ring.ToRingConfig(rm.cfg.Ring.ReplicationFactor)
+	rm.Ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), rm.log)
 	if err != nil {
-		return nil, errors.Wrap(err, "index gateway create ring client")
+		return errors.Wrap(err, "index gateway create ring client")
 	}
 
 	svcs := []services.Service{rm.RingLifecycler, rm.Ring}
 	rm.subservices, err = services.NewManager(svcs...)
 	if err != nil {
-		return nil, fmt.Errorf("new index gateway services manager: %w", err)
+		return fmt.Errorf("new index gateway services manager: %w", err)
 	}
 
 	rm.subservicesWatcher = services.NewFailureWatcher()
 	rm.subservicesWatcher.WatchManager(rm.subservices)
 	rm.Service = services.NewBasicService(rm.starting, rm.running, rm.stopping)
-	rm.buffers.bufDescs, rm.buffers.bufHosts, rm.buffers.bufZones = ring.MakeBuffersForGet()
 
-	return rm, nil
+	return nil
+}
+
+func (rm *RingManager) startClientMode(registerer prometheus.Registerer) error {
+	var err error
+	ringcfg := rm.cfg.Ring.ToRingConfig(rm.cfg.Ring.ReplicationFactor)
+
+	rm.Ring, err = ring.New(ringcfg, ringNameForServer, RingKey, rm.log, registerer)
+	if err != nil {
+		return errors.Wrap(err, "create ring")
+	}
+
+	rm.Service = services.NewIdleService(nil, nil)
+	return nil
 }
 
 // starting implements the Lifecycler interface and is one of the lifecycle hooks.
@@ -182,6 +217,11 @@ func (rm *RingManager) stopping(_ error) error {
 
 func (rm *RingManager) TenantInBoundaries(tenant string) bool {
 	if rm.cfg.Mode != RingMode {
+		return true
+	}
+
+	if rm.managerMode == ClientMode {
+		level.Error(rm.log).Log("msg", "ring manager in client mode doesn't support tenant in boundaries interface")
 		return true
 	}
 
