@@ -51,19 +51,22 @@ steps:
   image: grafana/loki-build-image:0.20.4
   name: check-generated-files
 - commands:
-  - make BUILD_IN_CONTAINER=false test
+  - cd ..
+  - git clone $CI_REPO_REMOTE loki-main
+  - cd -
   depends_on:
   - clone
   environment: {}
   image: grafana/loki-build-image:0.20.4
-  name: test
+  name: clone-main
 - commands:
-  - cd ..
-  - git clone $CI_REPO_REMOTE loki-main
-  - cd -
+  - make BUILD_IN_CONTAINER=false test
+  depends_on:
+  - clone
+  - clone-main
   environment: {}
   image: grafana/loki-build-image:0.20.4
-  name: clone-main
+  name: test
 - commands:
   - cd ../loki-main
   - BUILD_IN_CONTAINER=false make test
@@ -1164,6 +1167,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 4596e741ac788d461b3bbb2429c1f61efabaf943aeec6b3cd59eeff8d769de5e
+hmac: e3f0cead040a655e51244d5d71377a4ba506d7f63fae440593f6e7d14018a1e3
 
 ...
