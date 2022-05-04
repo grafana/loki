@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
@@ -45,7 +46,8 @@ type tsdbManager struct {
 
 	sync.RWMutex
 
-	shipper indexshipper.IndexShipper
+	chunkFilter chunk.RequestChunkFilterer
+	shipper     indexshipper.IndexShipper
 }
 
 func NewTSDBManager(
@@ -199,7 +201,15 @@ func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, use
 	if len(indices) == 0 {
 		return NoopIndex{}, nil
 	}
-	return NewMultiIndex(indices...)
+	idx, err := NewMultiIndex(indices...)
+	if err != nil {
+		return nil, err
+	}
+
+	if m.chunkFilter != nil {
+		idx.SetChunkFilterer(m.chunkFilter)
+	}
+	return idx, nil
 }
 
 // TODO(owen-d): how to better implement this?
@@ -207,6 +217,10 @@ func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, use
 // underlying tsdbs, which is safe, but can we optimize this?
 func (m *tsdbManager) Bounds() (model.Time, model.Time) {
 	return 0, math.MaxInt64
+}
+
+func (m *tsdbManager) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	m.chunkFilter = chunkFilter
 }
 
 // Close implements Index.Close, but we offload this responsibility

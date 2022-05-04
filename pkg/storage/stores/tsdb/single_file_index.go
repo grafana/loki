@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
@@ -77,7 +78,8 @@ func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 // and translates the IndexReader to an Index implementation
 // It loads the file into memory and doesn't keep a file descriptor open
 type TSDBIndex struct {
-	reader IndexReader
+	reader      IndexReader
+	chunkFilter chunk.RequestChunkFilterer
 }
 
 // Return the index as well as the underlying []byte which isn't exposed as an index
@@ -124,9 +126,14 @@ func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
 	return model.Time(from), model.Time(through)
 }
 
+func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	i.chunkFilter = chunkFilter
+}
+
 // fn must NOT capture it's arguments. They're reused across series iterations and returned to
 // a pool after completion.
 func (i *TSDBIndex) forSeries(
+	ctx context.Context,
 	shard *index.ShardAnnotation,
 	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
 	matchers ...*labels.Matcher,
@@ -140,6 +147,11 @@ func (i *TSDBIndex) forSeries(
 	chks := ChunkMetasPool.Get()
 	defer ChunkMetasPool.Put(chks)
 
+	var filterer chunk.Filterer
+	if i.chunkFilter != nil {
+		filterer = i.chunkFilter.ForRequest(ctx)
+	}
+
 	for p.Next() {
 		hash, err := i.reader.Series(p.At(), &ls, &chks)
 		if err != nil {
@@ -151,19 +163,23 @@ func (i *TSDBIndex) forSeries(
 			continue
 		}
 
+		if filterer != nil && filterer.ShouldFilter(ls) {
+			continue
+		}
+
 		fn(ls, model.Fingerprint(hash), chks)
 	}
 	return p.Err()
 }
 
-func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	queryBounds := newBounds(from, through)
 	if res == nil {
 		res = ChunkRefsPool.Get()
 	}
 	res = res[:0]
 
-	if err := i.forSeries(shard,
+	if err := i.forSeries(ctx, shard,
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			// TODO(owen-d): use logarithmic approach
 			for _, chk := range chks {
@@ -189,14 +205,14 @@ func (i *TSDBIndex) GetChunkRefs(_ context.Context, userID string, from, through
 	return res, nil
 }
 
-func (i *TSDBIndex) Series(_ context.Context, _ string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
 	queryBounds := newBounds(from, through)
 	if res == nil {
 		res = SeriesPool.Get()
 	}
 	res = res[:0]
 
-	if err := i.forSeries(shard,
+	if err := i.forSeries(ctx, shard,
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			// TODO(owen-d): use logarithmic approach
 			for _, chk := range chks {

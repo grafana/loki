@@ -114,6 +114,5 @@ func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string
 // This is only used for GetSeries implementation.
 // Todo we might want to pass it as a parameter to GetSeries instead.
 func (c *IndexClient) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	// TODO(owen-d): handle this
-	panic("unimplemented")
+	c.idx.SetChunkFilterer(chunkFilter)
 }

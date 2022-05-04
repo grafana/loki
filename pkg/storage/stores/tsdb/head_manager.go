@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/wal"
@@ -479,12 +480,13 @@ func parseWALPath(p string) (id WALIdentifier, ok bool) {
 type tenantHeads struct {
 	mint, maxt atomic.Int64 // easy lookup for Bounds() impl
 
-	start   time.Time
-	shards  int
-	locks   []sync.RWMutex
-	tenants []map[string]*Head
-	log     log.Logger
-	metrics *Metrics
+	start       time.Time
+	shards      int
+	locks       []sync.RWMutex
+	tenants     []map[string]*Head
+	log         log.Logger
+	chunkFilter chunk.RequestChunkFilterer
+	metrics     *Metrics
 }
 
 func newTenantHeads(start time.Time, shards int, metrics *Metrics, logger log.Logger) *tenantHeads {
@@ -561,6 +563,10 @@ func (t *tenantHeads) shardForTenant(userID string) uint64 {
 
 func (t *tenantHeads) Close() error { return nil }
 
+func (t *tenantHeads) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	t.chunkFilter = chunkFilter
+}
+
 func (t *tenantHeads) Bounds() (model.Time, model.Time) {
 	return model.Time(t.mint.Load()), model.Time(t.maxt.Load())
 }
@@ -574,7 +580,11 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 		return
 	}
 
-	return NewTSDBIndex(tenant.indexRange(int64(from), int64(through))), t.locks[i].RUnlock, true
+	idx = NewTSDBIndex(tenant.indexRange(int64(from), int64(through)))
+	if t.chunkFilter != nil {
+		idx.SetChunkFilterer(t.chunkFilter)
+	}
+	return idx, t.locks[i].RUnlock, true
 
 }
 

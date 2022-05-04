@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -32,6 +33,7 @@ func (r ChunkRef) Less(x ChunkRef) bool {
 
 type Index interface {
 	Bounded
+	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 	Close() error
 	// GetChunkRefs accepts an optional []ChunkRef argument.
 	// If not nil, it will use that slice to build the result,
@@ -68,3 +70,5 @@ func (NoopIndex) LabelNames(ctx context.Context, userID string, from, through mo
 func (NoopIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
+
+func (NoopIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {}

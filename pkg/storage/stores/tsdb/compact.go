@@ -58,6 +58,7 @@ func (c *Compactor) Compact(ctx context.Context, indices ...*TSDBIndex) (res Ide
 			return nil, fmt.Errorf("expected tsdb index to compact, found :%T", idx)
 		}
 		if err := casted.forSeries(
+			ctx,
 			nil,
 			func(ls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) {
 				// AddSeries copies chks into it's own slice
