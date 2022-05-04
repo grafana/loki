@@ -30,6 +30,7 @@ import (
 	"unsafe"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
@@ -133,8 +134,9 @@ type Writer struct {
 	fingerprintOffsets FingerprintOffsets
 
 	// Hold last series to validate that clients insert new series in order.
-	lastSeries labels.Labels
-	lastRef    storage.SeriesRef
+	lastSeries     labels.Labels
+	lastSeriesHash uint64
+	lastRef        storage.SeriesRef
 
 	crc32 hash.Hash
 
@@ -435,13 +437,17 @@ func (w *Writer) writeMeta() error {
 }
 
 // AddSeries adds the series one at a time along with its chunks.
-func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...ChunkMeta) error {
+// Requires a specific fingerprint to be passed in the case where the "desired"
+// fingerprint differs from what labels.Hash() produces. For example,
+// multitenant TSDBs embed a tenant label, but the actual series has no such
+// label and so the derived fingerprint differs.
+func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks ...ChunkMeta) error {
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
 
-	labelHash := lset.Hash()
-	lastHash := w.lastSeries.Hash()
+	labelHash := uint64(fp)
+	lastHash := w.lastSeriesHash
 	// Ensure series are sorted by the priorities: [`hash(labels)`, `labels`]
 	if (labelHash < lastHash && len(w.lastSeries) > 0) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
 		return errors.Errorf("out-of-order series added with label set %q", lset)
@@ -529,6 +535,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 	}
 
 	w.lastSeries = append(w.lastSeries[:0], lset...)
+	w.lastSeriesHash = labelHash
 	w.lastRef = ref
 
 	if ref%fingerprintInterval == 0 {
