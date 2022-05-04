@@ -61,6 +61,8 @@ steps:
   - cd ..
   - git clone $CI_REPO_REMOTE loki-main
   - cd -
+  depends_on:
+  - clone
   environment: {}
   image: grafana/loki-build-image:0.20.4
   name: clone-main
@@ -1164,6 +1166,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 4596e741ac788d461b3bbb2429c1f61efabaf943aeec6b3cd59eeff8d769de5e
+hmac: 7f028ba71e51e1cd0c45fe09e0fa78225674595e9ad9fc1e4f23462c936f4a1c
 
 ...
