@@ -5,10 +5,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 func Test_Encoding_Series(t *testing.T) {

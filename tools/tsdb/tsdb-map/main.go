@@ -7,6 +7,7 @@ import (
 	"log"
 	"strconv"
 
+	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 	"gopkg.in/yaml.v2"
 
@@ -15,7 +16,6 @@ import (
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
-	"github.com/prometheus/common/model"
 )
 
 var (

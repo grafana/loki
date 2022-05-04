@@ -3,9 +3,10 @@ package tsdb
 import (
 	"context"
 
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 // TenantLabel is part of the reserved label namespace (__ prefix)
