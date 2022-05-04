@@ -302,7 +302,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 							tc.metricName, len(labelNames3), labelNames3)
 					}
 
-					// Query asking for a non-existant metric name should return an empty resultset
+					// Query asking for a non-existent metric name should return an empty resultset
 					labelNames4, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), "doesn't exist")
 					require.NoError(t, err)
 					if len(labelNames4) != 0 {
