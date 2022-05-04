@@ -55,7 +55,6 @@ type Config struct {
 	ResyncInterval       time.Duration `yaml:"resync_interval"`
 	QueryReadyNumDays    int           `yaml:"query_ready_num_days"`
 
-	UploaderName           string
 	IngesterName           string
 	Mode                   Mode
 	IngesterDBRetainPeriod time.Duration
@@ -104,7 +103,6 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 
 	if s.cfg.Mode != ModeReadOnly {
 		cfg := uploads.Config{
-			Uploader:       s.cfg.UploaderName,
 			UploadInterval: UploadInterval,
 			DBRetainPeriod: s.cfg.IngesterDBRetainPeriod,
 		}

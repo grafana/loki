@@ -214,6 +214,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		if err != nil {
 			return nil, nil, nil, err
 		}
+
 		shpr, err := indexshipper.NewIndexShipper(
 			s.cfg.TSDBShipperConfig,
 			objectClient,

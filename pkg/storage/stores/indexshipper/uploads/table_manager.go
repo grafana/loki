@@ -13,7 +13,6 @@ import (
 )
 
 type Config struct {
-	Uploader       string
 	UploadInterval time.Duration
 	DBRetainPeriod time.Duration
 }
@@ -101,7 +100,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) Table {
 
 		table, ok = tm.tables[tableName]
 		if !ok {
-			table = NewTable(tableName, tm.cfg.Uploader, tm.storageClient)
+			table = NewTable(tableName, tm.storageClient)
 			tm.tables[tableName] = table
 		}
 	}

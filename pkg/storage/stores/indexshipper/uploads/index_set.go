@@ -31,7 +31,6 @@ type indexSet struct {
 	storageIndexSet   storage.IndexSet
 	tableName, userID string
 	logger            log.Logger
-	uploader          string
 
 	index    map[string]index.Index
 	indexMtx sync.RWMutex
