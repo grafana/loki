@@ -778,8 +778,12 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 // Check implements grpc_health_v1.HealthCheck.
-func (*Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
-	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+func (i *Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	status := grpc_health_v1.HealthCheckResponse_SERVING
+	if (i.State() != services.Running) || (i.lifecycler.GetState() != ring.ACTIVE) {
+		status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+	}
+	return &grpc_health_v1.HealthCheckResponse{Status: status}, nil
 }
 
 // Watch implements grpc_health_v1.HealthCheck.
