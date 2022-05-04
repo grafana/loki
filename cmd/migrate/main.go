@@ -217,7 +217,7 @@ func main() {
 		i := 0
 		length := len(syncRanges)
 		for i < length {
-			log.Printf("Dispatching sync range %v of %v\n", i+1, length)
+			//log.Printf("Dispatching sync range %v of %v\n", i+1, length)
 			syncChan <- syncRanges[i]
 			i++
 		}
@@ -325,7 +325,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 			start := time.Now()
 			totalBytes := 0
 			totalChunks := 0
-			log.Printf("%d processing sync range %d - Start: %v, End: %v\n", threadID, sr.number, time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
+			//log.Printf("%d processing sync range %d - Start: %v, End: %v\n", threadID, sr.number, time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
 			schemaGroups, fetchers, err := m.source.GetChunkRefs(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
 			if err != nil {
 				log.Println(threadID, "Error querying index for chunk refs:", err)
@@ -343,7 +343,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 					}
 
 					chunks := schemaGroups[i][j:k]
-					log.Printf("%v Processing chunks %v-%v of %v\n", threadID, j, k, len(schemaGroups[i]))
+					//log.Printf("%v Processing chunks %v-%v of %v\n", threadID, j, k, len(schemaGroups[i]))
 
 					keys := make([]string, 0, len(chunks))
 					chks := make([]chunk.Chunk, 0, len(chunks))
