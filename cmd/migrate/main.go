@@ -225,8 +225,8 @@ func main() {
 		cancelFunc()
 	}()
 
-	processedChunks := 0
-	processedBytes := 0
+	var processedChunks uint64 = 0
+	var processedBytes uint64 = 0
 
 	// Launch a thread to track stats
 	go func() {
@@ -286,8 +286,8 @@ func calcSyncRanges(from, to int64, shardBy int64) []*syncRange {
 }
 
 type stats struct {
-	totalChunks int
-	totalBytes  int
+	totalChunks uint64
+	totalBytes  uint64
 }
 
 type chunkMover struct {
@@ -323,8 +323,8 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 			return
 		case sr := <-syncRangeCh:
 			start := time.Now()
-			totalBytes := 0
-			totalChunks := 0
+			var totalBytes uint64 = 0
+			var totalChunks uint64 = 0
 			//log.Printf("%d processing sync range %d - Start: %v, End: %v\n", threadID, sr.number, time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
 			schemaGroups, fetchers, err := m.source.GetChunkRefs(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
 			if err != nil {
@@ -372,14 +372,14 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 						}
 					}
 
-					totalChunks += len(chks)
+					totalChunks += uint64(len(chks))
 
 					output := make([]chunk.Chunk, 0, len(chks))
 
 					// Calculate some size stats and change the tenant ID if necessary
 					for i, chk := range chks {
 						if enc, err := chk.Encoded(); err == nil {
-							totalBytes += len(enc)
+							totalBytes += uint64(len(enc))
 						} else {
 							log.Println(threadID, "Error encoding a chunk:", err)
 							errCh <- err
