@@ -312,6 +312,7 @@ func NewSeriesTripperware(
 	schema config.SchemaConfig,
 ) (queryrangebase.Tripperware, error) {
 	queryRangeMiddleware := []queryrangebase.Middleware{
+		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
@@ -357,6 +358,7 @@ func NewLabelsTripperware(
 	metrics *Metrics,
 ) (queryrangebase.Tripperware, error) {
 	queryRangeMiddleware := []queryrangebase.Middleware{
+		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.

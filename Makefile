@@ -10,7 +10,7 @@
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
 
-SHELL = /usr/bin/env bash
+SHELL = /usr/bin/env bash -o pipefail
 
 GOTEST ?= go test
 
@@ -260,7 +260,10 @@ lint:
 ########
 
 test: all
-	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
+	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
+
+compare-coverage:
+	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
 #########
 # Clean #

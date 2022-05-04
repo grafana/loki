@@ -1,9 +1,10 @@
 ## Main
 
+* [5971](https://github.com/grafana/loki/pull/5971) **kavirajk**: Record statistics about metadata queries such as labels and series queries in `metrics.go` as well
 * [5790](https://github.com/grafana/loki/pull/5790) **chaudum**: Add UDP support for Promtail's syslog target.
 * [5984](https://github.com/grafana/loki/pull/5984) **dannykopping** and **salvacorts**: Querier: prevent unnecessary calls to ingesters.
 * [5943](https://github.com/grafana/loki/pull/5943) **tpaschalis**: Add support for exclusion patterns in Promtail's static_config
-* [5879](https://github.com/grafana/loki/pull/5879) **MichelHollands**: Remove lines matching delete request expression when using "filter-and-delete" deletion mode. 
+* [5879](https://github.com/grafana/loki/pull/5879) **MichelHollands**: Remove lines matching delete request expression when using "filter-and-delete" deletion mode.
 * [5899](https://github.com/grafana/loki/pull/5899) **simonswine**: Update go image to 1.17.9.
 * [5888](https://github.com/grafana/loki/pull/5888) **Papawy** Fix common config net interface name overwritten by ring common config
 * [5799](https://github.com/grafana/loki/pull/5799) **cyriltovena** Fix deduping issues when multiple entries with the same timestamp exist.
@@ -107,7 +108,7 @@ Release notes for 2.5.0 can be found on the [release notes page](https://grafana
 
 ### All Changes
 
-Here is a list of all significant changes, in the past we have included all changes 
+Here is a list of all significant changes, in the past we have included all changes
 but with over 500 PR's merged since the last release we decided to curate the list
 to include only the most relevant.
 

@@ -779,8 +779,16 @@ func paramsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsInstantWrapper{
 			LokiInstantRequest: r,
 		}, nil
+	case *LokiSeriesRequest:
+		return &paramsSeriesWrapper{
+			LokiSeriesRequest: r,
+		}, nil
+	case *LokiLabelNamesRequest:
+		return &paramsLabelNamesWrapper{
+			LokiLabelNamesRequest: r,
+		}, nil
 	default:
-		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
+		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got (%T)", r)
 	}
 }
 
@@ -840,6 +848,62 @@ func (p paramsInstantWrapper) Direction() logproto.Direction {
 func (p paramsInstantWrapper) Limit() uint32 { return p.LokiInstantRequest.Limit }
 func (p paramsInstantWrapper) Shards() []string {
 	return p.GetShards()
+}
+
+type paramsSeriesWrapper struct {
+	*LokiSeriesRequest
+}
+
+func (p paramsSeriesWrapper) Query() string {
+	return p.GetQuery()
+}
+
+func (p paramsSeriesWrapper) Start() time.Time {
+	return p.LokiSeriesRequest.GetStartTs()
+}
+
+func (p paramsSeriesWrapper) End() time.Time {
+	return p.LokiSeriesRequest.GetEndTs()
+}
+
+func (p paramsSeriesWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+func (p paramsSeriesWrapper) Interval() time.Duration { return 0 }
+func (p paramsSeriesWrapper) Direction() logproto.Direction {
+	return logproto.FORWARD
+}
+func (p paramsSeriesWrapper) Limit() uint32 { return 0 }
+func (p paramsSeriesWrapper) Shards() []string {
+	return p.GetShards()
+}
+
+type paramsLabelNamesWrapper struct {
+	*LokiLabelNamesRequest
+}
+
+func (p paramsLabelNamesWrapper) Query() string {
+	return p.GetQuery()
+}
+
+func (p paramsLabelNamesWrapper) Start() time.Time {
+	return p.LokiLabelNamesRequest.GetStartTs()
+}
+
+func (p paramsLabelNamesWrapper) End() time.Time {
+	return p.LokiLabelNamesRequest.GetEndTs()
+}
+
+func (p paramsLabelNamesWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+func (p paramsLabelNamesWrapper) Interval() time.Duration { return 0 }
+func (p paramsLabelNamesWrapper) Direction() logproto.Direction {
+	return logproto.FORWARD
+}
+func (p paramsLabelNamesWrapper) Limit() uint32 { return 0 }
+func (p paramsLabelNamesWrapper) Shards() []string {
+	return make([]string, 0)
 }
 
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrangebase.PrometheusResponseHeader {
