@@ -76,11 +76,11 @@ func newJSONStage(logger log.Logger, config interface{}) (Stage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return toStage(&jsonStage{
+	return &jsonStage{
 		cfg:         cfg,
 		expressions: expressions,
 		logger:      log.With(logger, "component", "stage", "type", "json"),
-	}), nil
+	}, nil
 }
 
 func parseJSONConfig(config interface{}) (*JSONConfig, error) {
@@ -90,6 +90,18 @@ func parseJSONConfig(config interface{}) (*JSONConfig, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+func (j *jsonStage) Run(in chan Entry) chan Entry {
+	out := make(chan Entry)
+	go func() {
+		defer close(out)
+		for e := range in {
+			j.Process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
+			out <- e
+		}
+	}()
+	return out
 }
 
 // Process implements Stage
