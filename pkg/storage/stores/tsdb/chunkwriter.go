@@ -4,15 +4,16 @@ import (
 	"context"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 type IndexWriter interface {

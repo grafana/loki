@@ -13,7 +13,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/prometheus/common/model"
 )
 
 var (
@@ -64,7 +66,7 @@ func main() {
 		panic(err)
 	}
 
-	builder := index.NewBuilder()
+	builder := tsdb.NewBuilder()
 
 	log.Println("Loading index into memory")
 
@@ -80,7 +82,7 @@ func main() {
 				return it.Err()
 			}
 			entry := it.Entry()
-			builder.AddSeries(entry.Labels, []index.ChunkMeta{{
+			builder.AddSeries(entry.Labels, model.Fingerprint(entry.Labels.Hash()), []index.ChunkMeta{{
 				Checksum: extractChecksumFromChunkID(entry.ChunkID),
 				MinTime:  int64(entry.From),
 				MaxTime:  int64(entry.Through),

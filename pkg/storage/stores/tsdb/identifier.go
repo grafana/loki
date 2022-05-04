@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 // Identifier can resolve an index to a name (in object storage)
