@@ -15,6 +15,7 @@ type Config struct {
 
 	CompressResponses bool   `yaml:"compress_responses"`
 	DownstreamURL     string `yaml:"downstream_url"`
+	CompactorAddress  string `yaml:"compactor_address"`
 
 	TailProxyURL string `yaml:"tail_proxy_url"`
 }
@@ -27,6 +28,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
-
+	f.StringVar(&cfg.CompactorAddress, "frontend.compactor-address", "", "host and port where the compactor API is listening")
 	f.StringVar(&cfg.TailProxyURL, "frontend.tail-proxy-url", "", "URL of querier for tail proxy.")
 }

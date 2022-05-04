@@ -10,7 +10,8 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/manifests"
 
-	"github.com/ViaQ/logerr/log"
+	"github.com/ViaQ/logerr/v2/log"
+	"github.com/go-logr/logr"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -25,7 +26,7 @@ import (
 )
 
 var (
-	logger = log.NewLogger("testing")
+	logger logr.Logger
 
 	scheme = runtime.NewScheme()
 )
@@ -34,12 +35,10 @@ func TestMain(m *testing.M) {
 	testing.Init()
 	flag.Parse()
 
-	sink := log.MustGetSink(logger)
 	if testing.Verbose() {
-		// set to the highest for verbose testing
-		sink.SetVerbosity(5)
+		logger = log.NewLogger("testing", log.WithVerbosity(5))
 	} else {
-		sink.SetOutput(ioutil.Discard)
+		logger = log.NewLogger("testing", log.WithOutput(ioutil.Discard))
 	}
 
 	// Register the clientgo and CRD schemes

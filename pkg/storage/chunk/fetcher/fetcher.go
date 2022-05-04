@@ -57,6 +57,7 @@ type Fetcher struct {
 	maxAsyncBufferSize  int
 
 	asyncQueue chan []chunk.Chunk
+	stopOnce   sync.Once
 	stop       chan struct{}
 }
 
@@ -126,10 +127,12 @@ func (c *Fetcher) asyncWriteBackCacheQueueProcessLoop() {
 
 // Stop the ChunkFetcher.
 func (c *Fetcher) Stop() {
-	close(c.decodeRequests)
-	c.wait.Wait()
-	c.cache.Stop()
-	close(c.stop)
+	c.stopOnce.Do(func() {
+		close(c.decodeRequests)
+		c.wait.Wait()
+		c.cache.Stop()
+		close(c.stop)
+	})
 }
 
 func (c *Fetcher) worker() {

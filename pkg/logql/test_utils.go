@@ -101,7 +101,7 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	for _, stream := range in {
 		for _, e := range stream.Entries {
 			sp := pipeline.ForStream(mustParseLabels(stream.Labels))
-			if l, out, ok := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line)); ok {
+			if l, out, matches := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line)); matches {
 				var s *logproto.Stream
 				var found bool
 				s, found = resByStream[out.String()]

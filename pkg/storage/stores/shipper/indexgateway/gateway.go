@@ -307,8 +307,8 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *indexgatewaypb.GetChunkR
 		Refs: make([]*logproto.ChunkRef, 0, len(chunks)),
 	}
 	for _, cs := range chunks {
-		for _, c := range cs {
-			result.Refs = append(result.Refs, &c.ChunkRef)
+		for i := range cs {
+			result.Refs = append(result.Refs, &cs[i].ChunkRef)
 		}
 	}
 	return result, nil
@@ -333,9 +333,14 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *indexgatewa
 	if err != nil {
 		return nil, err
 	}
-	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil {
-		return nil, err
+	var matchers []*labels.Matcher
+	// An empty matchers string cannot be parsed,
+	// therefore we check the string representation of the the matchers.
+	if req.Matchers != syntax.EmptyMatchers {
+		matchers, err = syntax.ParseMatchers(req.Matchers)
+		if err != nil {
+			return nil, err
+		}
 	}
 	names, err := g.indexQuerier.LabelValuesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, req.LabelName, matchers...)
 	if err != nil {

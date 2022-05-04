@@ -552,7 +552,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	return &logproto.PushResponse{}, err
 }
 
-func (i *Ingester) GetOrCreateInstance(instanceID string) *instance {
+func (i *Ingester) GetOrCreateInstance(instanceID string) *instance { //nolint:revive
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
 		return inst
@@ -593,6 +593,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			End:       end,
 			Limit:     req.Limit,
 			Shards:    req.Shards,
+			Deletes:   req.Deletes,
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
@@ -629,6 +630,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			End:      end,
 			Selector: req.Selector,
 			Shards:   req.Shards,
+			Deletes:  req.Deletes,
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {

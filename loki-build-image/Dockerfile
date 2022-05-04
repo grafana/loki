@@ -1,4 +1,8 @@
-# NOTICE: Change the verion in Makefile if you make a change here. See ../docs/sources/maintaining/release-loki-build-image.md.
+# This is the Dockerfile for the Loki build image that is used by the CI
+# pipelines.
+# If you make changes to this Dockerfile you also need to update the
+# tag of the Docker image in `../.drone/drone.jsonnet` and run `make drone`.
+# See ../docs/sources/maintaining/release-loki-build-image.md
 
 FROM alpine as helm
 ARG HELM_VER="v3.2.3"
@@ -21,6 +25,12 @@ FROM alpine as golangci
 RUN apk add --no-cache curl && \
     cd / && \
     curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.45.2
+
+FROM alpine:3.15.4 as buf
+
+RUN apk add --no-cache curl && \
+    curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.4.0/buf-$(uname -s)-$(uname -m)" -o "/usr/bin/buf" && \
+    chmod +x "/usr/bin/buf"
 
 FROM alpine:3.15.4 as docker
 RUN apk add --no-cache docker-cli
@@ -65,6 +75,7 @@ COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=lychee /usr/bin/lychee /usr/bin/lychee
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
+COPY --from=buf /usr/bin/buf /usr/bin/buf
 COPY --from=drone /usr/local/bin/drone /usr/bin/drone
 COPY --from=faillint /go/bin/faillint /usr/bin/faillint
 COPY --from=delve /go/bin/dlv /usr/bin/dlv

@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 // GzipLogChunk is a cortex encoding type for our chunks.
@@ -95,8 +96,8 @@ func (f Facade) LokiChunk() Chunk {
 	return f.c
 }
 
-func (f Facade) Rebound(start, end model.Time) (chunk.Data, error) {
-	newChunk, err := f.c.Rebound(start.Time(), end.Time())
+func (f Facade) Rebound(start, end model.Time, filter filter.Func) (chunk.Data, error) {
+	newChunk, err := f.c.Rebound(start.Time(), end.Time(), filter)
 	if err != nil {
 		return nil, err
 	}

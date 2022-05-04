@@ -264,7 +264,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 
 		// list the users that have dedicated index files for this table
-		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName)
+		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName, false)
 		if err != nil {
 			return err
 		}

@@ -234,13 +234,14 @@ func newFileIterator(
 
 	processLine := func(line string) {
 		ts := time.Now()
-		parsedLine, parsedLabels, ok := pipeline.ProcessString(ts.UnixNano(), line)
-		if !ok {
+		parsedLine, parsedLabels, matches := pipeline.ProcessString(ts.UnixNano(), line)
+		if !matches {
 			return
 		}
 
 		var stream *logproto.Stream
 		lhash := parsedLabels.Hash()
+		var ok bool
 		if stream, ok = streams[lhash]; !ok {
 			stream = &logproto.Stream{
 				Labels: parsedLabels.String(),
