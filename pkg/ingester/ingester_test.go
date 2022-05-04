@@ -588,7 +588,7 @@ func Test_InMemoryLabels(t *testing.T) {
 
 	res, err = i.Label(ctx, &logproto.LabelRequest{})
 	require.NoError(t, err)
-	require.Equal(t, []string{"bar", "foo"}, res.Values)
+	require.Equal(t, []string{"__name__", "bar", "foo"}, res.Values)
 }
 
 func Test_DedupeIngester(t *testing.T) {

@@ -214,7 +214,7 @@ func Test_LabelQuery(t *testing.T) {
 				End:   end,
 			},
 			logproto.LabelResponse{
-				Values: []string{"app", "job"},
+				Values: []string{"__name__", "app", "job"},
 			},
 			nil,
 		},
@@ -225,7 +225,7 @@ func Test_LabelQuery(t *testing.T) {
 				End:   end,
 			},
 			logproto.LabelResponse{
-				Values: []string{"app", "job"},
+				Values: []string{"__name__", "app", "job"},
 			},
 			[]*labels.Matcher{m},
 		},
@@ -251,7 +251,7 @@ func Test_LabelQuery(t *testing.T) {
 				End:    end,
 			},
 			logproto.LabelResponse{
-				Values: []string{"test"},
+				Values: []string{"__name__", "test"},
 			},
 			[]*labels.Matcher{m},
 		},

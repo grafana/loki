@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"sort"
 	"sync"
 	"syscall"
 
@@ -456,6 +457,11 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	if len(labels) > 0 {
+		labels = append(labels, model.MetricNameLabel)
+		sort.Strings(labels)
 	}
 
 	return &logproto.LabelResponse{
