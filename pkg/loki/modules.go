@@ -839,7 +839,7 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	managerMode := indexgateway.ClientMode
-	if t.isModuleActive(IndexGateway) && !t.isModuleActive(Ingester) {
+	if t.Cfg.isModuleEnabled(IndexGateway) {
 		managerMode = indexgateway.ServerMode
 	}
 	rm, err := indexgateway.NewRingManager(managerMode, t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer)
