@@ -1,6 +1,9 @@
 package client
 
 import (
+	"fmt"
+	"os"
+	"path"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -10,12 +13,16 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wal"
 )
 
-var recordPool = newRecordPool()
+var (
+	NoopWAL    = &noopWAL{}
+	recordPool = newRecordPool()
+)
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
 type WAL interface {
 	// Log marshalls the records and writes it into the WAL.
 	Log(*ingester.WALRecord) error
+	Delete() error
 }
 
 type noopWAL struct{}
@@ -24,28 +31,42 @@ func (n noopWAL) Log(*ingester.WALRecord) error {
 	return nil
 }
 
+func (n noopWAL) Delete() error {
+	return nil
+}
+
 type walWrapper struct {
-	cfg WALConfig
 	wal *wal.WAL
+	log log.Logger
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
-func newWAL(cfg WALConfig, registerer prometheus.Registerer, log log.Logger) (WAL, error) {
+func newWAL(cfg WALConfig, registerer prometheus.Registerer, log log.Logger, batchID int64, tenantID string) (WAL, error) {
 	if !cfg.Enabled {
-		return noopWAL{}, nil
+		return NoopWAL, nil
 	}
 
-	tsdbWAL, err := wal.NewSize(log, registerer, cfg.Dir, wal.DefaultSegmentSize, false)
+	dir := path.Join(cfg.Dir, tenantID, fmt.Sprintf("%d", batchID))
+	tsdbWAL, err := wal.NewSize(log, registerer, dir, wal.DefaultSegmentSize, false)
 	if err != nil {
 		return nil, err
 	}
 	w := &walWrapper{
-		cfg: cfg,
 		wal: tsdbWAL,
+		log: log,
 	}
-	tsdbWAL.Truncate(i int)
 
 	return w, nil
+}
+
+func (w *walWrapper) Close() error {
+	return w.wal.Close()
+}
+
+func (w *walWrapper) Delete() error {
+	err := w.wal.Close()
+	err = os.RemoveAll(w.wal.Dir())
+	return err
 }
 
 func (w *walWrapper) Log(record *ingester.WALRecord) error {
@@ -53,6 +74,7 @@ func (w *walWrapper) Log(record *ingester.WALRecord) error {
 		return nil
 	}
 
+	// todo we don't new a pool this is synchronous
 	buf := recordPool.GetBytes()[:0]
 	defer func() {
 		recordPool.PutBytes(buf)

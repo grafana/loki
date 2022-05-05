@@ -9,10 +9,23 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/record"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
+	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
+)
+
+var (
+	hashBuffer = make([]byte, 0, 1024)
+	walRecord  = &ingester.WALRecord{
+		RefEntries: make([]ingester.RefEntries, 0, 1),
+		Series:     make([]record.RefSeries, 0, 1),
+	}
 )
 
 const (
@@ -29,14 +42,16 @@ type batch struct {
 	createdAt time.Time
 
 	maxStreams int
+	wal        WAL
 }
 
-func newBatch(maxStreams int, entries ...api.Entry) *batch {
+func newBatch(wal WAL, maxStreams int, entries ...api.Entry) *batch {
 	b := &batch{
 		streams:    map[string]*logproto.Stream{},
 		bytes:      0,
 		createdAt:  time.Now(),
 		maxStreams: maxStreams,
+		wal:        wal,
 	}
 
 	// Add entries to the batch
@@ -48,24 +63,58 @@ func newBatch(maxStreams int, entries ...api.Entry) *batch {
 	return b
 }
 
+func (b *batch) replay(entry api.Entry) {
+	labelsString := labelsMapToString(entry.Labels, ReservedLabelTenantID)
+	if stream, ok := b.streams[labelsString]; ok {
+		stream.Entries = append(stream.Entries, entry.Entry)
+		return
+	}
+	// Add the entry as a new stream
+	b.streams[labelsString] = &logproto.Stream{
+		Labels:  labelsString,
+		Entries: []logproto.Entry{entry.Entry},
+	}
+}
+
 // add an entry to the batch
 func (b *batch) add(entry api.Entry) error {
 	b.bytes += len(entry.Line)
+	walRecord.RefEntries = walRecord.RefEntries[:0]
+	walRecord.Series = walRecord.Series[:0]
+	hashBuffer = hashBuffer[:0]
+
+	// todo: log the error
+	defer b.wal.Log(walRecord)
+
+	var fp uint64
+	lbs := labels.FromMap(util.ModelLabelSetToMap(entry.Labels))
+	sort.Sort(lbs)
+	fp, hashBuffer = lbs.HashWithoutLabels(hashBuffer, []string(nil)...)
 
 	// Append the entry to an already existing stream (if any)
-	labels := labelsMapToString(entry.Labels, ReservedLabelTenantID)
-	if stream, ok := b.streams[labels]; ok {
+	labelsString := labelsMapToString(entry.Labels, ReservedLabelTenantID)
+
+	walRecord.RefEntries = append(walRecord.RefEntries, ingester.RefEntries{
+		Ref: chunks.HeadSeriesRef(fp),
+		Entries: []logproto.Entry{
+			entry.Entry,
+		},
+	})
+	if stream, ok := b.streams[labelsString]; ok {
 		stream.Entries = append(stream.Entries, entry.Entry)
 		return nil
 	}
-
+	walRecord.Series = append(walRecord.Series, record.RefSeries{
+		Ref:    chunks.HeadSeriesRef(fp),
+		Labels: lbs,
+	})
 	streams := len(b.streams)
 	if b.maxStreams > 0 && streams >= b.maxStreams {
-		return fmt.Errorf(errMaxStreamsLimitExceeded, streams, b.maxStreams, labels)
+		return fmt.Errorf(errMaxStreamsLimitExceeded, streams, b.maxStreams, labelsString)
 	}
 	// Add the entry as a new stream
-	b.streams[labels] = &logproto.Stream{
-		Labels:  labels,
+	b.streams[labelsString] = &logproto.Stream{
+		Labels:  labelsString,
 		Entries: []logproto.Entry{entry.Entry},
 	}
 	return nil
