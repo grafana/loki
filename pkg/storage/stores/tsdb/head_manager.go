@@ -125,10 +125,13 @@ func (m *HeadManager) Stop() error {
 }
 
 func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
-	labelsBuilder := labels.NewBuilder(ls)
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
-	labelsBuilder.Del("__name__")
-	metric := labelsBuilder.Labels()
+	for i, l := range ls {
+		if l.Name == labels.MetricName {
+			ls = append(ls[:i], ls[i+1:]...)
+			break
+		}
+	}
 
 	m.mtx.RLock()
 	now := time.Now()
@@ -140,7 +143,7 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMe
 		m.mtx.RLock()
 	}
 	defer m.mtx.RUnlock()
-	rec := m.activeHeads.Append(userID, metric, chks)
+	rec := m.activeHeads.Append(userID, ls, chks)
 	return m.active.Log(rec)
 }
 
@@ -429,6 +432,7 @@ func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier) error {
 					return err
 				}
 
+				// labels are always written to the WAL before corresponding chunks
 				if len(rec.Series.Labels) > 0 {
 					tenant, ok := seriesMap[rec.UserID]
 					if !ok {
@@ -571,12 +575,12 @@ func (t *tenantHeads) Bounds() (model.Time, model.Time) {
 	return model.Time(t.mint.Load()), model.Time(t.maxt.Load())
 }
 
-func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx Index, unlock func(), ok bool) {
+func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx Index, ok bool) {
 	i := t.shardForTenant(userID)
 	t.locks[i].RLock()
+	defer t.locks[i].RUnlock()
 	tenant, ok := t.tenants[i][userID]
 	if !ok {
-		t.locks[i].RUnlock()
 		return
 	}
 
@@ -584,47 +588,43 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	if t.chunkFilter != nil {
 		idx.SetChunkFilterer(t.chunkFilter)
 	}
-	return idx, t.locks[i].RUnlock, true
+	return idx, true
 
 }
 
 func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	defer unlock()
 	return idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
 
 }
 
 // Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
 func (t *tenantHeads) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
-	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	defer unlock()
 	return idx.Series(ctx, userID, from, through, nil, shard, matchers...)
 
 }
 
 func (t *tenantHeads) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	defer unlock()
 	return idx.LabelNames(ctx, userID, from, through, matchers...)
 
 }
 
 func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	defer unlock()
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 
 }
