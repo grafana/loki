@@ -385,7 +385,9 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	// Always set these configs
 	// TODO(owen-d): Do the same for TSDB when we add IndexGatewayClientConfig
 	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
-	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
+		t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+	}
 
 	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
 	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
@@ -439,10 +441,6 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
-	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
-		t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
-	}
 	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		var asyncStore bool
 
