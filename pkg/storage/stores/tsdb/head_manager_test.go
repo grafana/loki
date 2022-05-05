@@ -326,7 +326,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 		},
 	} {
 		b.Run(fmt.Sprintf("%d", tc.readers), func(b *testing.B) {
-			heads := newTenantHeads(time.Now(), NewMetrics(nil), log.NewNopLogger())
+			heads := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
 			// 1000 series across 100 tenants
 			nTenants := 10
 			for i := 0; i < 1000; i++ {

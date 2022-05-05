@@ -27,9 +27,27 @@ import (
 	"github.com/grafana/loki/pkg/util/wal"
 )
 
+/*
+period is a duration which the ingesters use to group index writes into a (WAL,TenantHeads) pair.
+After each period elapses, a set of zero or more multitenant TSDB indices are built (one per
+index bucket, generally 24h).
+
+It's important to note that this cycle occurs in real time as opposed to the timestamps of
+chunk entries. Index writes during the `period` may span multiple index buckets. Periods
+also expose some helper functions to get the remainder-less offset integer for that period,
+which we use in file creation/etc.
+*/
 type period time.Duration
 
 const defaultRotationPeriod = period(15 * time.Minute)
+
+func (p period) PeriodFor(t time.Time) int {
+	return int(t.UnixNano() / int64(p))
+}
+
+func (p period) TimeForPeriod(n int) time.Time {
+	return time.Unix(0, int64(p)*int64(n))
+}
 
 // Do not specify without bit shifting. This allows us to
 // do shard index calcuations via bitwise & rather than modulos.
@@ -147,14 +165,6 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	return m.active.Log(rec)
 }
 
-func (p period) PeriodFor(t time.Time) int {
-	return int(t.UnixNano() / int64(p))
-}
-
-func (p period) TimeForPeriod(n int) time.Time {
-	return time.Unix(0, int64(p)*int64(n))
-}
-
 func (m *HeadManager) Start() error {
 	if err := os.RemoveAll(filepath.Join(m.dir, "scratch")); err != nil {
 		return errors.Wrap(err, "removing tsdb scratch dir")
@@ -169,17 +179,6 @@ func (m *HeadManager) Start() error {
 	now := time.Now()
 	curPeriod := m.period.PeriodFor(now)
 
-	toRemove, err := m.shippedTSDBsBeforePeriod(curPeriod)
-	if err != nil {
-		return err
-	}
-
-	for _, x := range toRemove {
-		if err := os.RemoveAll(x); err != nil {
-			return errors.Wrapf(err, "removing tsdb: %s", x)
-		}
-	}
-
 	walsByPeriod, err := walsByPeriod(m.dir, m.period)
 	if err != nil {
 		return err
@@ -188,7 +187,7 @@ func (m *HeadManager) Start() error {
 	m.activeHeads = newTenantHeads(now, m.shards, m.metrics, m.log)
 
 	for _, group := range walsByPeriod {
-		if group.period < (curPeriod) {
+		if group.period < curPeriod {
 			if err := m.tsdbManager.BuildFromWALs(
 				m.period.TimeForPeriod(group.period),
 				group.wals,
@@ -201,7 +200,7 @@ func (m *HeadManager) Start() error {
 			}
 		}
 
-		if group.period == curPeriod {
+		if group.period >= curPeriod {
 			if err := recoverHead(m.dir, m.activeHeads, group.wals); err != nil {
 				return errors.Wrap(err, "recovering tsdb head from wal")
 			}
@@ -309,21 +308,6 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	m.prev = nil
 	m.mtx.Unlock()
 	return nil
-}
-
-func (m *HeadManager) shippedTSDBsBeforePeriod(period int) (res []string, err error) {
-	files, err := ioutil.ReadDir(managerPerTenantDir(m.dir))
-	if err != nil {
-		return nil, err
-	}
-	for _, f := range files {
-		if id, ok := parseMultitenantTSDBPath(f.Name()); ok {
-			if found := m.period.PeriodFor(id.ts); found < period {
-				res = append(res, f.Name())
-			}
-		}
-	}
-	return
 }
 
 type WalGroup struct {
