@@ -32,9 +32,7 @@ type Limits interface {
 	DefaultLimits() *validation.Limits
 }
 
-type TenantBoundariesClient interface {
-	TenantInBoundaries(tenant string) bool
-}
+type IndexGatewayOwnsTenant func(tenant string) bool
 
 type Config struct {
 	CacheDir          string
@@ -57,24 +55,24 @@ type TableManager struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	tenantBoundariesClient TenantBoundariesClient
+	ownsTenant IndexGatewayOwnsTenant
 }
 
-func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, indexStorageClient storage.Client, boundariesClient TenantBoundariesClient, registerer prometheus.Registerer) (*TableManager, error) {
+func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, indexStorageClient storage.Client, ownsTenantFn IndexGatewayOwnsTenant, registerer prometheus.Registerer) (*TableManager, error) {
 	if err := chunk_util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := &TableManager{
-		cfg:                    cfg,
-		boltIndexClient:        boltIndexClient,
-		indexStorageClient:     indexStorageClient,
-		tenantBoundariesClient: boundariesClient,
-		tables:                 make(map[string]Table),
-		metrics:                newMetrics(registerer),
-		ctx:                    ctx,
-		cancel:                 cancel,
+		cfg:                cfg,
+		boltIndexClient:    boltIndexClient,
+		indexStorageClient: indexStorageClient,
+		ownsTenant:         ownsTenantFn,
+		tables:             make(map[string]Table),
+		metrics:            newMetrics(registerer),
+		ctx:                ctx,
+		cancel:             cancel,
 	}
 
 	// load the existing tables first.
@@ -352,7 +350,7 @@ func (tm *TableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 			continue
 		}
 
-		if tm.tenantBoundariesClient != nil && !tm.tenantBoundariesClient.TenantInBoundaries(userID) {
+		if tm.ownsTenant != nil && !tm.ownsTenant(userID) {
 			continue
 		}
 
