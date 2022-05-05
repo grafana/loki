@@ -47,7 +47,7 @@ type Chunk struct {
 
 	// The encoded version of the chunk, held so we don't need to re-encode it
 	encoded  []byte
-	PreCheck bool
+	PreCheck bool `json:"-"`
 }
 
 // NewChunk creates a new chunk
