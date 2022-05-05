@@ -132,7 +132,6 @@ func (o *client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 		chunkBufs = append(chunkBufs, buf)
 		chunkPreChecks = append(chunkPreChecks, chunks[i].PreCheck)
 	}
-	//
 	incomingErrors := make(chan error)
 	for i := range chunkBufs {
 		go func(i int) {
