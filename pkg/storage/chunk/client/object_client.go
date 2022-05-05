@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)
