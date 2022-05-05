@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -20,15 +19,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/tsdb/chunks"
-	"github.com/prometheus/prometheus/tsdb/record"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
-	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/util"
 	lokiutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/build"
 )
@@ -165,8 +159,6 @@ type client struct {
 	// ctx is used in any upstream calls from the `client`.
 	ctx    context.Context
 	cancel context.CancelFunc
-
-	wal WAL
 }
 
 // Tripperware can wrap a roundtripper.
@@ -186,11 +178,6 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger lo
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	// todo segment size?
-	wal, err := newWAL(cfg.WAL, metrics.registerer, log.With(logger, "component", "wal"))
-	if err != nil {
-		return nil, fmt.Errorf("could not start WAL: %w", err)
-	}
 
 	c := &client{
 		logger:          log.With(logger, "component", "client", "host", cfg.URL.Host),
@@ -203,14 +190,12 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger lo
 		externalLabels: cfg.ExternalLabels.LabelSet,
 		ctx:            ctx,
 		cancel:         cancel,
-
-		wal: wal,
 	}
 	if cfg.Name != "" {
 		c.name = cfg.Name
 	}
 
-	err = cfg.Client.Validate()
+	err := cfg.Client.Validate()
 	if err != nil {
 		return nil, err
 	}
@@ -278,8 +263,6 @@ func (c *client) run() {
 		select {
 		case e, ok := <-c.entries:
 
-			c.appendEntryToWAL(e)
-
 			if !ok {
 				return
 			}
@@ -288,7 +271,9 @@ func (c *client) run() {
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				batches[tenantID] = newBatch(e)
+				b := c.newBatch(tenantID)
+				batches[tenantID] = b
+				b.add(e)
 				break
 			}
 
@@ -296,8 +281,12 @@ func (c *client) run() {
 			// size allowed, we do send the current batch and then create a new one
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
 				c.sendBatch(tenantID, batch)
-
-				batches[tenantID] = newBatch(e)
+				if err := batch.wal.Delete(); err != nil {
+					level.Error(c.logger).Log("msg", "failed to delete WAL", "err", err)
+				}
+				new := c.newBatch(tenantID)
+				new.add(e)
+				batches[tenantID] = new
 				break
 			}
 
@@ -312,37 +301,23 @@ func (c *client) run() {
 				if batch.age() < c.cfg.BatchWait {
 					continue
 				}
-
 				c.sendBatch(tenantID, batch)
+				if err := batch.wal.Delete(); err != nil {
+					level.Error(c.logger).Log("msg", "failed to close delete WAL", "err", err)
+				}
 				delete(batches, tenantID)
 			}
 		}
 	}
 }
 
-func (c *client) appendEntryToWAL(e api.Entry) error {
-	buf := make([]byte, 1024)
-
-	r := &ingester.WALRecord{
-		Series:     make([]record.RefSeries, 0, 1),
-		RefEntries: make([]ingester.RefEntries, 0, 1),
+func (c *client) newBatch(tenantID string) *batch {
+	wal, err := newWAL(c.cfg.WAL, c.metrics.registerer, c.logger, time.Now().UnixNano(), tenantID)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "could not start WAL", "err", err)
+		// set the wall to noop
 	}
-	r.Reset()
-
-	lbs := labels.FromMap(util.ModelLabelSetToMap(e.Labels))
-	sort.Sort(lbs)
-	var fp uint64
-	fp, buf = lbs.HashWithoutLabels(buf, []string(nil)...)
-	r.Series = []record.RefSeries{
-		{
-			Labels: lbs,
-			Ref:    chunks.HeadSeriesRef(fp),
-		},
-	}
-	r.AddEntries(fp, 0, e.Entry)
-	c.wal.Log(r)
-
-	return nil
+	return newBatch(wal)
 }
 
 func (c *client) Chan() chan<- api.Entry {

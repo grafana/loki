@@ -52,7 +52,7 @@ func TestBatch_add(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			b := newBatch()
+			b := newBatch(NoopWAL)
 
 			for _, entry := range testData.inputEntries {
 				b.add(entry)
@@ -67,32 +67,44 @@ func TestBatch_encode(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		inputBatch           *batch
+		inputBatch           func() *batch
 		expectedEntriesCount int
 	}{
 		"empty batch": {
-			inputBatch:           newBatch(),
+			inputBatch:           func() *batch { return newBatch(NoopWAL) },
 			expectedEntriesCount: 0,
 		},
 		"single stream with single log entry": {
-			inputBatch: newBatch(
-				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
-			),
+			inputBatch: func() *batch {
+				b := newBatch(
+					NoopWAL,
+				)
+				b.add(api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry})
+				return b
+			},
 			expectedEntriesCount: 1,
 		},
 		"single stream with multiple log entries": {
-			inputBatch: newBatch(
-				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
-				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[1].Entry},
-			),
+			inputBatch: func() *batch {
+				b := newBatch(
+					NoopWAL,
+				)
+				b.add(api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry})
+				b.add(api.Entry{Labels: model.LabelSet{}, Entry: logEntries[1].Entry})
+				return b
+			},
 			expectedEntriesCount: 2,
 		},
 		"multiple streams with multiple log entries": {
-			inputBatch: newBatch(
-				api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[0].Entry},
-				api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[1].Entry},
-				api.Entry{Labels: model.LabelSet{"type": "b"}, Entry: logEntries[2].Entry},
-			),
+			inputBatch: func() *batch {
+				b := newBatch(
+					NoopWAL,
+				)
+				b.add(api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[0].Entry})
+				b.add(api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[1].Entry})
+				b.add(api.Entry{Labels: model.LabelSet{"type": "b"}, Entry: logEntries[2].Entry})
+				return b
+			},
 			expectedEntriesCount: 3,
 		},
 	}
@@ -103,7 +115,7 @@ func TestBatch_encode(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			_, entriesCount, err := testData.inputBatch.encode()
+			_, entriesCount, err := testData.inputBatch().encode()
 			require.NoError(t, err)
 			assert.Equal(t, testData.expectedEntriesCount, entriesCount)
 		})
@@ -111,7 +123,7 @@ func TestBatch_encode(t *testing.T) {
 }
 
 func TestHashCollisions(t *testing.T) {
-	b := newBatch()
+	b := newBatch(NoopWAL)
 
 	ls1 := model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}
 	ls2 := model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}
