@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
@@ -61,8 +62,9 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	MaxChunkBatchSize   int            `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig shipper.Config `yaml:"boltdb_shipper"`
+	MaxChunkBatchSize   int                 `yaml:"max_chunk_batch_size"`
+	BoltDBShipperConfig shipper.Config      `yaml:"boltdb_shipper"`
+	TSDBShipperConfig   indexshipper.Config `yaml:"tsdb_shipper"`
 
 	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
@@ -89,6 +91,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
 	cfg.BoltDBShipperConfig.RegisterFlags(f)
 	f.IntVar(&cfg.MaxChunkBatchSize, "store.max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
+	cfg.TSDBShipperConfig.RegisterFlagsWithPrefix("tsdb.", f)
 }
 
 // Validate config and returns error on failure
@@ -150,7 +153,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 			return boltDBIndexClientWithShipper, nil
 		}
 
-		if shouldUseIndexGatewayClient(cfg) {
+		if shouldUseBoltDBIndexGatewayClient(cfg) {
 			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
 			if err != nil {
 				return nil, err

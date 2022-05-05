@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,12 +15,17 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+)
+
+const (
+	gzipExtension = ".gz"
 )
 
 type IndexSet interface {
@@ -300,11 +306,12 @@ func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock bool) (toDow
 	}
 
 	for _, file := range files {
-		listedDBs[file.Name] = struct{}{}
+		normalized := strings.TrimSuffix(file.Name, gzipExtension)
+		listedDBs[normalized] = struct{}{}
 
 		// Checking whether file was already downloaded, if not, download it.
 		// We do not ever upload files in the object store with the same name but different contents so we do not consider downloading modified files again.
-		_, ok := t.index[file.Name]
+		_, ok := t.index[normalized]
 		if !ok {
 			toDownload = append(toDownload, file)
 		}
@@ -323,11 +330,65 @@ func (t *indexSet) AwaitReady(ctx context.Context) error {
 	return t.indexMtx.awaitReady(ctx)
 }
 
-func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folderPathForTable string) error {
-	return shipper_util.DownloadFileFromStorage(filepath.Join(folderPathForTable, fileName), shipper_util.IsCompressedFile(fileName),
-		true, shipper_util.LoggerWithFilename(t.logger, fileName), func() (io.ReadCloser, error) {
+func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folderPathForTable string) (string, error) {
+	decompress := shipper_util.IsCompressedFile(fileName)
+	dst := filepath.Join(folderPathForTable, fileName)
+	if decompress {
+		dst = strings.Trim(dst, gzipExtension)
+	}
+	return filepath.Base(dst), downloadFileFromStorage(
+		dst,
+		decompress,
+		true,
+		shipper_util.LoggerWithFilename(t.logger, fileName),
+		func() (io.ReadCloser, error) {
 			return t.baseIndexSet.GetFile(ctx, t.tableName, t.userID, fileName)
-		})
+		},
+	)
+}
+
+// DownloadFileFromStorage downloads a file from storage to given location.
+func downloadFileFromStorage(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc shipper_util.GetFileFunc) error {
+	start := time.Now()
+	readCloser, err := getFileFunc()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err := readCloser.Close(); err != nil {
+			level.Error(logger).Log("msg", "failed to close read closer", "err", err)
+		}
+	}()
+
+	f, err := os.Create(destination)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err := f.Close(); err != nil {
+			level.Warn(logger).Log("msg", "failed to close file", "file", destination)
+		}
+	}()
+	var objectReader io.Reader = readCloser
+	if decompressFile {
+		decompressedReader := chunkenc.Gzip.GetReader(readCloser)
+		defer chunkenc.Gzip.PutReader(decompressedReader)
+
+		objectReader = decompressedReader
+	}
+
+	_, err = io.Copy(f, objectReader)
+	if err != nil {
+		return err
+	}
+
+	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
+	if sync {
+		return f.Sync()
+	}
+	return nil
 }
 
 // doConcurrentDownload downloads objects(files) concurrently. It ignores only missing file errors caused by removal of file by compaction.
@@ -337,8 +398,7 @@ func (t *indexSet) doConcurrentDownload(ctx context.Context, files []storage.Ind
 	downloadedFilesMtx := sync.Mutex{}
 
 	err := concurrency.ForEachJob(ctx, len(files), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
-		fileName := files[idx].Name
-		err := t.downloadFileFromStorage(ctx, fileName, t.cacheLocation)
+		fileName, err := t.downloadFileFromStorage(ctx, files[idx].Name, t.cacheLocation)
 		if err != nil {
 			if t.baseIndexSet.IsFileNotFoundErr(err) {
 				level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing file %s, possibly removed during compaction", fileName))

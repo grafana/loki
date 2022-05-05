@@ -32,7 +32,6 @@ type Table interface {
 // All the public methods are concurrency safe and take care of mutexes to avoid any data race.
 type table struct {
 	name                                 string
-	uploader                             string
 	baseUserIndexSet, baseCommonIndexSet storage.IndexSet
 	logger                               log.Logger
 
@@ -41,10 +40,9 @@ type table struct {
 }
 
 // NewTable create a new table instance.
-func NewTable(name, uploader string, storageClient storage.Client) Table {
+func NewTable(name string, storageClient storage.Client) Table {
 	return &table{
 		name:               name,
-		uploader:           uploader,
 		baseUserIndexSet:   storage.NewIndexSet(storageClient, true),
 		baseCommonIndexSet: storage.NewIndexSet(storageClient, false),
 		logger:             log.With(util_log.Logger, "table-name", name),

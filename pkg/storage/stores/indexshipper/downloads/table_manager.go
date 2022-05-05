@@ -241,18 +241,19 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		return err
 	}
 
-	// regex for finding daily tables which have a 5 digit number at the end.
-	re, err := regexp.Compile(`.+[0-9]{5}$`)
+	// regexp for finding the trailing index bucket number at the end
+	re, err := regexp.Compile(`[0-9]+$`)
 	if err != nil {
 		return err
 	}
 
 	for _, tableName := range tables {
-		if !re.MatchString(tableName) {
+		match := re.Find([]byte(tableName))
+		if match == nil {
 			continue
 		}
 
-		tableNumber, err := strconv.ParseInt(tableName[len(tableName)-5:], 10, 64)
+		tableNumber, err := strconv.ParseInt(string(match), 10, 64)
 		if err != nil {
 			return err
 		}
