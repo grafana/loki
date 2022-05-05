@@ -425,6 +425,33 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 	})
 }
 
+func (a *S3ObjectClient) IsObjectExist(ctx context.Context, objectKey string) (bool, error) {
+	bucket := a.bucketFromKey(objectKey)
+	exist := false
+	err := instrument.CollectedRequest(ctx, "S3.HeadObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		_, requestErr := a.hedgedS3.HeadObjectWithContext(ctx, &s3.HeadObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(objectKey),
+		})
+		if requestErr != nil {
+			if aerr, ok := requestErr.(awserr.Error); ok {
+				switch aerr.Code() {
+				case s3.ErrCodeNoSuchKey:
+					exist = false
+					return nil
+				default:
+					return requestErr
+				}
+			}
+			return requestErr
+		}
+		exist = true
+		return nil
+	})
+
+	return exist, err
+}
+
 // List implements chunk.ObjectClient.
 func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject

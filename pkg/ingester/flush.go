@@ -378,8 +378,11 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		if err := i.encodeChunk(ctx, &ch, c); err != nil {
 			return err
 		}
-
+		if c.failed {
+			ch.PreCheck = true
+		}
 		if err := i.flushChunk(ctx, &ch); err != nil {
+			i.markChunkAsFailed(cs[j], chunkMtx)
 			return err
 		}
 
@@ -403,6 +406,12 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 	chunkMtx.Lock()
 	defer chunkMtx.Unlock()
 	desc.flushed = time.Now()
+}
+
+func (i *Ingester) markChunkAsFailed(desc *chunkDesc, chunkMtx sync.Locker) {
+	chunkMtx.Lock()
+	defer chunkMtx.Unlock()
+	desc.failed = true
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.

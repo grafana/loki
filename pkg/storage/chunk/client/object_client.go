@@ -37,6 +37,10 @@ type ObjectClient interface {
 	Stop()
 }
 
+type ObjectMetaClient interface {
+	IsObjectExist(ctx context.Context, objectKey string) (bool, error)
+}
+
 // StorageObject represents an object being stored in an Object Store
 type StorageObject struct {
 	Key        string
@@ -106,8 +110,9 @@ func (o *client) Stop() {
 // returned, the last one sequentially will be propagated up.
 func (o *client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var (
-		chunkKeys []string
-		chunkBufs [][]byte
+		chunkKeys      []string
+		chunkBufs      [][]byte
+		chunkPreChecks []bool
 	)
 
 	for i := range chunks {
@@ -125,12 +130,27 @@ func (o *client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 
 		chunkKeys = append(chunkKeys, key)
 		chunkBufs = append(chunkBufs, buf)
+		chunkPreChecks = append(chunkPreChecks, chunks[i].PreCheck)
 	}
-
+	//
 	incomingErrors := make(chan error)
 	for i := range chunkBufs {
 		go func(i int) {
-			incomingErrors <- o.store.PutObject(ctx, chunkKeys[i], bytes.NewReader(chunkBufs[i]))
+			key := chunkKeys[i]
+			if chunkPreChecks[i] {
+				if objectMetaClient, ok := o.store.(ObjectMetaClient); ok {
+					exist, err := objectMetaClient.IsObjectExist(ctx, key)
+					if err != nil {
+						incomingErrors <- err
+						return
+					}
+					if exist {
+						incomingErrors <- nil
+						return
+					}
+				}
+			}
+			incomingErrors <- o.store.PutObject(ctx, key, bytes.NewReader(chunkBufs[i]))
 		}(i)
 	}
 
