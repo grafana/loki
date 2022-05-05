@@ -439,6 +439,9 @@ func (a *S3ObjectClient) IsObjectExist(ctx context.Context, objectKey string) (b
 				case s3.ErrCodeNoSuchKey:
 					exist = false
 					return nil
+				case "NotFound": // s3.ErrCodeNoSuchKey does not work, aws is missing this error code so we hardwire a string
+					exist = false
+					return nil
 				default:
 					return requestErr
 				}
