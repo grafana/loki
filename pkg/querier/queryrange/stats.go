@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -26,13 +27,36 @@ type ctxKeyType string
 
 const ctxKey ctxKeyType = "stats"
 
+const (
+	queryTypeLog    = "log"
+	queryTypeMetric = "metric"
+	queryTypeSeries = "series"
+	queryTypeLabel  = "label"
+)
+
 var (
 	defaultMetricRecorder = metricRecorderFn(func(data *queryData) {
-		logql.RecordMetrics(data.ctx, log.With(util_log.Logger, "component", "frontend"), data.params, data.status, *data.statistics, data.result)
+		recordQueryMetrics(data)
 	})
-	// StatsHTTPMiddleware is an http middleware to record stats for query_range filter.
-	StatsHTTPMiddleware = statsHTTPMiddleware(defaultMetricRecorder)
+
+	StatsHTTPMiddleware middleware.Interface = statsHTTPMiddleware(defaultMetricRecorder)
 )
+
+// recordQueryMetrics will be called from Query Frontend middleware chain for any type of query.
+func recordQueryMetrics(data *queryData) {
+	logger := log.With(util_log.Logger, "component", "frontend")
+
+	switch data.queryType {
+	case queryTypeLog, queryTypeMetric:
+		logql.RecordRangeAndInstantQueryMetrics(data.ctx, logger, data.params, data.status, *data.statistics, data.result)
+	case queryTypeLabel:
+		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.status, *data.statistics)
+	case queryTypeSeries:
+		logql.RecordSeriesQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.match, data.status, *data.statistics)
+	default:
+		level.Error(logger).Log("msg", "failed to record query metrics", "err", fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got %s", data.queryType))
+	}
+}
 
 type metricRecorder interface {
 	Record(data *queryData)
@@ -50,6 +74,9 @@ type queryData struct {
 	statistics *stats.Result
 	result     promql_parser.Value
 	status     string
+	queryType  string
+	match      []string // used in `series` query.
+	label      string   // used in `labels` query
 
 	recorded bool
 }
@@ -64,8 +91,6 @@ func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
 				interceptor,
 				r,
 			)
-			// http middlewares runs for every http request.
-			// but we want only to record query_range filters.
 			if data.recorded {
 				if data.statistics == nil {
 					data.statistics = &stats.Result{}
@@ -91,21 +116,38 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			// collect stats and status
 			var statistics *stats.Result
 			var res promql_parser.Value
+			var queryType string
+			var totalEntries int
+
 			if resp != nil {
 				switch r := resp.(type) {
 				case *LokiResponse:
 					statistics = &r.Statistics
-					res = logqlmodel.Streams(r.Data.Result)
+					totalEntries = int(logqlmodel.Streams(r.Data.Result).Lines())
+					queryType = queryTypeLog
 				case *LokiPromResponse:
 					statistics = &r.Statistics
+					if r.Response != nil {
+						totalEntries = len(r.Response.Data.Result)
+					}
+					queryType = queryTypeMetric
+				case *LokiSeriesResponse:
+					statistics = &r.Statistics
+					totalEntries = len(r.Data)
+					queryType = queryTypeSeries
+				case *LokiLabelNamesResponse:
+					statistics = &r.Statistics
+					totalEntries = len(r.Data)
+					queryType = queryTypeLabel
 				default:
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}
 			}
+
 			if statistics != nil {
 				// Re-calculate the summary: the queueTime result is already merged so should not be updated
 				// Log and record metrics for the current query
-				statistics.ComputeSummary(time.Since(start), 0)
+				statistics.ComputeSummary(time.Since(start), 0, totalEntries)
 				statistics.Log(level.Debug(logger))
 			}
 			ctxValue := ctx.Value(ctxKey)
@@ -113,15 +155,44 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				data.recorded = true
 				data.statistics = statistics
 				data.result = res
+				data.queryType = queryType
 				p, errReq := paramsFromRequest(req)
 				if errReq != nil {
 					return nil, errReq
 				}
 				data.params = p
+
+				// Record information for metadata queries.
+				switch r := req.(type) {
+				case *LokiLabelNamesRequest:
+					data.label = getLabelNameFromLabelsQuery(r.Path)
+				case *LokiSeriesRequest:
+					data.match = r.Match
+				}
+
 			}
 			return resp, err
 		})
 	})
+}
+
+func getLabelNameFromLabelsQuery(path string) string {
+	if strings.HasSuffix(path, "/values") {
+
+		toks := strings.FieldsFunc(path, func(r rune) bool {
+			return r == '/'
+		})
+
+		// now assuming path has suffix `/values` label name should be second last to the suffix
+		// **if** there exists the second last.
+		length := len(toks)
+		if length >= 2 {
+			return toks[length-2]
+		}
+
+	}
+
+	return ""
 }
 
 // interceptor implements WriteHeader to intercept status codes. WriteHeader

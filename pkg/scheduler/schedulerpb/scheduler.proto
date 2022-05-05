@@ -2,11 +2,10 @@ syntax = "proto3";
 
 package schedulerpb;
 
-option go_package = "schedulerpb";
-
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
 
+option go_package = "schedulerpb";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -18,7 +17,7 @@ service SchedulerForQuerier {
   //
   // Long-running loop is used to detect broken connection between scheduler and querier. This is important
   // for scheduler to keep a list of connected queriers up-to-date.
-  rpc QuerierLoop(stream QuerierToScheduler) returns (stream SchedulerToQuerier) { };
+  rpc QuerierLoop(stream QuerierToScheduler) returns (stream SchedulerToQuerier) {}
 
   // The querier notifies the query-scheduler that it started a graceful shutdown.
   rpc NotifyQuerierShutdown(NotifyQuerierShutdownRequest) returns (NotifyQuerierShutdownResponse);
@@ -55,7 +54,7 @@ service SchedulerForFrontend {
   // Long-running loop is used to detect broken connection between frontend and scheduler. This is important for both
   // parties... if connection breaks, frontend can cancel (and possibly retry on different scheduler) all pending
   // requests sent to this scheduler, while scheduler can cancel queued requests from given frontend.
-  rpc FrontendLoop(stream FrontendToScheduler) returns (stream SchedulerToFrontend) { };
+  rpc FrontendLoop(stream FrontendToScheduler) returns (stream SchedulerToFrontend) {}
 }
 
 enum FrontendToSchedulerType {

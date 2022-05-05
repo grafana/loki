@@ -27,6 +27,7 @@ dlv
 rootfs/
 dist
 coverage.txt
+test_results.txt
 .DS_Store
 .aws-sam
 .idea

@@ -103,7 +103,7 @@ query parameters support the following values:
 - `query`: The [LogQL](../logql/) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
-- `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
+- `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward`.
 
 In microservices mode, `/loki/api/v1/query` is exposed by the querier and the frontend.
 
@@ -114,7 +114,7 @@ Response:
   "status": "success",
   "data": {
     "resultType": "vector" | "streams",
-    "result": [<vector value>] | [<stream value>].
+    "result": [<vector value>] | [<stream value>],
     "stats" : [<statistics>]
   }
 }
@@ -387,8 +387,9 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
 
 ## `GET /loki/api/v1/labels`
 
-`/loki/api/v1/labels` retrieves the list of known labels within a given time span. It
-accepts the following query parameters in the URL:
+`/loki/api/v1/labels` retrieves the list of known labels within a given time span.
+Loki may use a larger time span than the one specified.
+It accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
@@ -424,8 +425,8 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/labels" | jq
 ## `GET /loki/api/v1/label/<name>/values`
 
 `/loki/api/v1/label/<name>/values` retrieves the list of known values for a given
-label within a given time span. It accepts the following query parameters in
-the URL:
+label within a given time span. Loki may use a larger time span than the one specified.
+It accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.

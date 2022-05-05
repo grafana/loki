@@ -10,7 +10,7 @@
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
 
-SHELL = /usr/bin/env bash
+SHELL = /usr/bin/env bash -o pipefail
 
 GOTEST ?= go test
 
@@ -27,7 +27,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.20.3
+BUILD_IMAGE_VERSION := 0.20.4
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -115,8 +115,8 @@ binfmt:
 all: promtail logcli loki loki-canary
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
-check-generated-files: yacc ragel protos clients/pkg/promtail/server/ui/assets_vfsdata.go
-	@if ! (git diff --exit-code $(YACC_GOS) $(RAGEL_GOS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
+check-generated-files: yacc ragel fmt-proto protos clients/pkg/promtail/server/ui/assets_vfsdata.go
+	@if ! (git diff --exit-code $(YACC_GOS) $(RAGEL_GOS) $(PROTO_DEFS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
 		echo "\nChanges found in generated files"; \
 		echo "Run 'make check-generated-files' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
@@ -260,7 +260,10 @@ lint:
 ########
 
 test: all
-	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
+	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
+
+compare-coverage:
+	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
 #########
 # Clean #
@@ -619,6 +622,22 @@ lint-jsonnet:
 fmt-jsonnet:
 	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
 		xargs -n 1 -- jsonnetfmt -i
+
+fmt-proto:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	# I wish we could make this a multiline variable however you can't pass more than simple arguments to them
+	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
+		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
+	echo '$(PROTO_DEFS)' | \
+		xargs -n 1 -- buf format -w
+endif
+
 
 lint-scripts:
     # Ignore https://github.com/koalaman/shellcheck/wiki/SC2312
