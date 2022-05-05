@@ -46,15 +46,19 @@ local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
 local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
 
-
-local run(name, commands) = {
+local run(name, commands, env={}) = {
   name: name,
   image: 'grafana/loki-build-image:%s' % build_image_version,
   commands: commands,
+  environment: env,
 };
 
-local make(target, container=true) = run(target, [
-  'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target,
+local make(target, container=true, args=[]) = run(target, [
+  std.join(' ', [
+    'make',
+    'BUILD_IN_CONTAINER=' + container,
+    target,
+  ] + args),
 ]);
 
 local docker(arch, app) = {
@@ -369,7 +373,23 @@ local manifest(apps) = pipeline('manifest') {
     steps: [
       make('check-drone-drift', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
-      make('test', container=false) { depends_on: ['clone', 'check-generated-files'] },
+      run('clone-main', commands=['cd ..', 'git clone $CI_REPO_REMOTE loki-main', 'cd -']) { depends_on: ['clone'] },
+      make('test', container=false) { depends_on: ['clone', 'clone-main'] },
+      run('test-main', commands=['cd ../loki-main', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-main'] },
+      make('compare-coverage', container=false, args=[
+        'old=../loki-main/test_results.txt',
+        'new=test_results.txt',
+        'packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki',
+        '> diff.txt',
+      ]) { depends_on: ['test', 'test-main'] },
+      run('report-coverage', commands=[
+        "pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')",
+        "body=$(jq -Rs '{body: . }' diff.txt)",
+        'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d "$body" > /dev/null',
+      ], env={
+        USER: 'grafanabot',
+        TOKEN: { from_secret: github_secret.name },
+      }) { depends_on: ['compare-coverage'] },
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {

@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 	errUtil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/wal"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -420,7 +421,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		)
 
 		level.Info(util_log.Logger).Log("msg", "recovering from WAL")
-		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
+		segmentReader, segmentCloser, err := wal.NewWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
 		}
@@ -778,8 +779,12 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 // Check implements grpc_health_v1.HealthCheck.
-func (*Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
-	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+func (i *Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	status := grpc_health_v1.HealthCheckResponse_SERVING
+	if (i.State() != services.Running) || (i.lifecycler.GetState() != ring.ACTIVE) {
+		status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+	}
+	return &grpc_health_v1.HealthCheckResponse{Status: status}, nil
 }
 
 // Watch implements grpc_health_v1.HealthCheck.

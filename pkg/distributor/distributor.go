@@ -271,7 +271,21 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				validationErr = err
 				continue
 			}
+
 			stream.Entries[n] = entry
+
+			// If configured for this tenant, fudge duplicate timestamps. Note, this is imperfect
+			// since Loki will accept out of order writes it doesn't account for separate
+			// pushes with overlapping time ranges having entries with duplicate timestamps
+			if validationContext.fudgeDuplicateTimestamps && n != 0 && stream.Entries[n-1].Timestamp.Equal(entry.Timestamp) {
+				// Traditional logic for Loki is that 2 lines with the same timestamp and
+				// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
+				// To maintain this behavior, only fudge the timestamp if the log content is different
+				if stream.Entries[n-1].Line != entry.Line {
+					stream.Entries[n].Timestamp = entry.Timestamp.Add(1 * time.Nanosecond)
+				}
+			}
+
 			n++
 			validatedSamplesSize += len(entry.Line)
 			validatedSamplesCount++
@@ -415,8 +429,12 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 }
 
 // Check implements the grpc healthcheck
-func (*Distributor) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
-	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+func (d *Distributor) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	status := grpc_health_v1.HealthCheckResponse_SERVING
+	if (d.State() != services.Running) || (d.distributorsLifecycler.GetState() != ring.ACTIVE) {
+		status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+	}
+	return &grpc_health_v1.HealthCheckResponse{Status: status}, nil
 }
 
 func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, error) {

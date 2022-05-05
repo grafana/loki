@@ -68,7 +68,7 @@ RUN apt-get update && \
     musl gnupg ragel \
     file zip unzip jq gettext\
     protobuf-compiler libprotobuf-dev \
-    libsystemd-dev && \
+    libsystemd-dev jq && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY --from=docker /usr/bin/docker /usr/bin/docker

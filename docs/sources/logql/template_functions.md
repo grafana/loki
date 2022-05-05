@@ -627,7 +627,7 @@ fromJson "{\"foo\": 55}"
 Example of a query to print a newline per queries stored as a json array in the log line:
 
 ```logql
-{job="cortex/querier"} |= "finish in prometheus" | logfmt | line_format "{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}"
+{job="loki/querier"} |= "finish in prometheus" | logfmt | line_format "{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}"
 ```
 
 ## now
@@ -662,7 +662,7 @@ Example of a query to print a newline per queries stored as a json array in the 
 { unixEpoch now }}
 ```
 
-Example of a query to filter cortex querier jobs which create time is 1 day before:
+Example of a query to filter Loki querier jobs which create time is 1 day before:
 ```logql
-{job="cortex/querier"} | label_format nowEpoch=`{{(unixEpoch now)}}`,createDateEpoch=`{{unixEpoch (toDate "2006-01-02" .createDate)}}` | label_format dateTimeDiff="{{sub .nowEpoch .createDateEpoch}}" | dateTimeDiff > 86400
+{job="loki/querier"} | label_format nowEpoch=`{{(unixEpoch now)}}`,createDateEpoch=`{{unixEpoch (toDate "2006-01-02" .createDate)}}` | label_format dateTimeDiff="{{sub .nowEpoch .createDateEpoch}}" | dateTimeDiff > 86400
 ```

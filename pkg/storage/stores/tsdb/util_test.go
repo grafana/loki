@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -15,18 +16,25 @@ type LoadableSeries struct {
 	Chunks index.ChunkMetas
 }
 
-func BuildIndex(t *testing.T, dir, tenant string, cases []LoadableSeries) *TSDBIndex {
-	b := index.NewBuilder()
+func BuildIndex(t *testing.T, dir, tenant string, cases []LoadableSeries) *TSDBFile {
+	b := NewBuilder()
 
 	for _, s := range cases {
-		b.AddSeries(s.Labels, s.Chunks)
+		b.AddSeries(s.Labels, model.Fingerprint(s.Labels.Hash()), s.Chunks)
 	}
 
-	dst, err := b.Build(context.Background(), dir, tenant)
+	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {
+		id := SingleTenantTSDBIdentifier{
+			Tenant:   tenant,
+			From:     from,
+			Through:  through,
+			Checksum: checksum,
+		}
+		return newPrefixedIdentifier(id, dir, dir)
+	})
 	require.Nil(t, err)
-	location := dst.FilePath(dir)
 
-	idx, err := LoadTSDB(location)
+	idx, err := NewShippableTSDBFile(dst, false)
 	require.Nil(t, err)
 	return idx
 }

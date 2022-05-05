@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 const (
@@ -122,7 +123,7 @@ func (c *dumbChunk) Close() error {
 	return nil
 }
 
-func (c *dumbChunk) Rebound(start, end time.Time) (Chunk, error) {
+func (c *dumbChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
 	return nil, nil
 }
 

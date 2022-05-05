@@ -34,6 +34,10 @@ Parameters:
     Description: Comma separated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by lambda-promtail.
     Type: String
     Default: ""
+  TenantID:
+    Description: Tenant ID to be added when writing logs from lambda-promtail.
+    Type: String
+    Default: ""
 
 Resources:
   LambdaPromtailRole:
@@ -80,6 +84,7 @@ Resources:
           PASSWORD: !Ref Password
           KEEP_STREAM: !Ref KeepStream
           EXTRA_LABELS: !Ref ExtraLabels
+          TENANT_ID: !Ref TenantID
   LambdaPromtailVersion:
     Type: AWS::Lambda::Version
     Properties:

@@ -304,6 +304,26 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
 	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
 	require.Equal(t, "/loki/api/v1/labels", req.(*LokiLabelNamesRequest).Path)
+
+	// Test labels values endpoint
+	toEncode = &LokiLabelNamesRequest{
+		Path:    "/loki/api/v1/labels/__name__/values",
+		StartTs: start,
+		EndTs:   end,
+	}
+	got, err = LokiCodec.EncodeRequest(ctx, toEncode)
+	require.NoError(t, err)
+	require.Equal(t, ctx, got.Context())
+	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
+	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
+	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+
+	// testing a full roundtrip
+	req, err = LokiCodec.DecodeRequest(context.TODO(), got, nil)
+	require.NoError(t, err)
+	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
+	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
+	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
 }
 
 func Test_codec_EncodeResponse(t *testing.T) {
@@ -914,6 +934,7 @@ var (
 			"queueTime": 21,
 			"subqueries": 1,
 			"totalBytesProcessed": 24,
+                        "totalEntriesReturned": 10,
 			"totalLinesProcessed": 25
 		}
 	},`
@@ -1066,6 +1087,7 @@ var (
 			TotalBytesProcessed:     24,
 			Subqueries:              1,
 			TotalLinesProcessed:     25,
+			TotalEntriesReturned:    10,
 		},
 		Querier: stats.Querier{
 			Store: stats.Store{

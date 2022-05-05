@@ -185,6 +185,15 @@ github.com/aws/aws-sdk-go/service/sso
 github.com/aws/aws-sdk-go/service/sso/ssoiface
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
+# github.com/baidubce/bce-sdk-go v0.9.81
+## explicit; go 1.11
+github.com/baidubce/bce-sdk-go/auth
+github.com/baidubce/bce-sdk-go/bce
+github.com/baidubce/bce-sdk-go/http
+github.com/baidubce/bce-sdk-go/services/bos
+github.com/baidubce/bce-sdk-go/services/bos/api
+github.com/baidubce/bce-sdk-go/util
+github.com/baidubce/bce-sdk-go/util/log
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
@@ -706,6 +715,7 @@ github.com/klauspost/compress/fse
 github.com/klauspost/compress/gzip
 github.com/klauspost/compress/huff0
 github.com/klauspost/compress/internal/snapref
+github.com/klauspost/compress/s2
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/klauspost/cpuid v1.3.1
@@ -741,8 +751,8 @@ github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.0
 ## explicit; go 1.14
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.10
-## explicit; go 1.12
+# github.com/minio/minio-go/v7 v7.0.24
+## explicit; go 1.17
 github.com/minio/minio-go/v7
 github.com/minio/minio-go/v7/pkg/credentials
 github.com/minio/minio-go/v7/pkg/encrypt
@@ -1156,10 +1166,10 @@ go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
 go.uber.org/zap/zapgrpc
-# go4.org/intern v0.0.0-20210108033219-3eb7198706b2
+# go4.org/intern v0.0.0-20211027215823-ae77deb06f29
 ## explicit; go 1.13
 go4.org/intern
-# go4.org/unsafe/assume-no-moving-gc v0.0.0-20201222180813-1025295fd063
+# go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37
 ## explicit; go 1.11
 go4.org/unsafe/assume-no-moving-gc
 # golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
@@ -1423,7 +1433,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 ## explicit
 gopkg.in/yaml.v3
-# inet.af/netaddr v0.0.0-20210707202901-70468d781e6c
+# inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 ## explicit; go 1.12
 inet.af/netaddr
 # k8s.io/api v0.22.7 => k8s.io/api v0.21.0

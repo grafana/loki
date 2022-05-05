@@ -3,34 +3,24 @@ package tsdb
 import (
 	"context"
 	"errors"
-	"sort"
 
+	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 type MultiIndex struct {
-	indices []*TSDBIndex
+	indices []Index
 }
 
-func NewMultiIndex(indices ...*TSDBIndex) (*MultiIndex, error) {
+func NewMultiIndex(indices ...Index) (*MultiIndex, error) {
 	if len(indices) == 0 {
 		return nil, errors.New("must supply at least one index")
 	}
-
-	sort.Slice(indices, func(i, j int) bool {
-		aFrom, aThrough := indices[i].Bounds()
-		bFrom, bThrough := indices[j].Bounds()
-
-		if aFrom != bFrom {
-			return aFrom < bFrom
-		}
-		// tiebreaker uses through
-		return aThrough <= bThrough
-	})
 
 	return &MultiIndex{indices: indices}, nil
 }
@@ -51,7 +41,24 @@ func (i *MultiIndex) Bounds() (model.Time, model.Time) {
 	return lowest, highest
 }
 
-func (i *MultiIndex) forIndices(ctx context.Context, from, through model.Time, fn func(context.Context, *TSDBIndex) (interface{}, error)) ([]interface{}, error) {
+func (i *MultiIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	for _, x := range i.indices {
+		x.SetChunkFilterer(chunkFilter)
+	}
+}
+
+func (i *MultiIndex) Close() error {
+	var errs multierror.MultiError
+	for _, idx := range i.indices {
+		if err := idx.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errs.Err()
+
+}
+
+func (i *MultiIndex) forIndices(ctx context.Context, from, through model.Time, fn func(context.Context, Index) (interface{}, error)) ([]interface{}, error) {
 	queryBounds := newBounds(from, through)
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -64,14 +71,20 @@ func (i *MultiIndex) forIndices(ctx context.Context, from, through model.Time, f
 		if Overlap(queryBounds, idx) {
 			// run all queries in linked goroutines (cancel after first err),
 			// bounded by parallelism controls if applicable.
-			g.Go(func() error {
-				got, err := fn(ctx, idx)
-				if err != nil {
-					return err
-				}
-				ch <- got
-				return nil
-			})
+
+			// must wrap g.Go in anonymous function to capture
+			// idx variable during iteration
+			func(idx Index) {
+				g.Go(func() error {
+					got, err := fn(ctx, idx)
+					if err != nil {
+						return err
+					}
+					ch <- got
+					return nil
+				})
+			}(idx)
+
 		}
 	}
 
@@ -94,7 +107,7 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 	}
 	res = res[:0]
 
-	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
+	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
 		return idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
 	})
 	if err != nil {
@@ -128,7 +141,7 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 	}
 	res = res[:0]
 
-	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
+	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
 		return idx.Series(ctx, userID, from, through, nil, shard, matchers...)
 	})
 	if err != nil {
@@ -154,7 +167,7 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 }
 
 func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
+	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
 		return idx.LabelNames(ctx, userID, from, through, matchers...)
 	})
 	if err != nil {
@@ -189,7 +202,7 @@ func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, throug
 }
 
 func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx *TSDBIndex) (interface{}, error) {
+	groups, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
 		return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 	})
 	if err != nil {
