@@ -44,6 +44,8 @@ message Summary {
   double queueTime = 6 [(gogoproto.jsontag) = "queueTime"];
   // Total of subqueries created to fulfill this query.
   int64 subqueries = 7 [(gogoproto.jsontag) = "subqueries"];
+  // Total number of result entries returned
+  int64 totalEntriesReturned = 8 [(gogoproto.jsontag) = "totalEntriesReturned"];
 }
 
 message Querier {

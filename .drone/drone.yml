@@ -40,26 +40,70 @@ steps:
   - make BUILD_IN_CONTAINER=false check-drone-drift
   depends_on:
   - clone
+  environment: {}
   image: grafana/loki-build-image:0.20.4
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
+  environment: {}
   image: grafana/loki-build-image:0.20.4
   name: check-generated-files
+- commands:
+  - cd ..
+  - git clone $CI_REPO_REMOTE loki-main
+  - cd -
+  depends_on:
+  - clone
+  environment: {}
+  image: grafana/loki-build-image:0.20.4
+  name: clone-main
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
-  - check-generated-files
+  - clone-main
+  environment: {}
   image: grafana/loki-build-image:0.20.4
   name: test
+- commands:
+  - cd ../loki-main
+  - BUILD_IN_CONTAINER=false make test
+  depends_on:
+  - clone-main
+  environment: {}
+  image: grafana/loki-build-image:0.20.4
+  name: test-main
+- commands:
+  - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
+    new=test_results.txt packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki
+    > diff.txt
+  depends_on:
+  - test
+  - test-main
+  environment: {}
+  image: grafana/loki-build-image:0.20.4
+  name: compare-coverage
+- commands:
+  - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
+  - 'body=$(jq -Rs ''{body: . }'' diff.txt)'
+  - 'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments
+    -d "$body" > /dev/null'
+  depends_on:
+  - compare-coverage
+  environment:
+    TOKEN:
+      from_secret: github_token
+    USER: grafanabot
+  image: grafana/loki-build-image:0.20.4
+  name: report-coverage
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
   - check-generated-files
+  environment: {}
   image: grafana/loki-build-image:0.20.4
   name: lint
 - commands:
@@ -68,6 +112,7 @@ steps:
   - clone
   - test
   - lint
+  environment: {}
   image: grafana/loki-build-image:0.20.4
   name: check-mod
 - commands:
@@ -79,18 +124,21 @@ steps:
   depends_on:
   - clone
   - check-generated-files
+  environment: {}
   image: grafana/loki-build-image:0.20.4
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
+  environment: {}
   image: grafana/loki-build-image:0.20.4
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
+  environment: {}
   image: grafana/loki-build-image:0.20.4
   name: check-example-config-doc
 trigger:
@@ -109,6 +157,7 @@ steps:
   - make BUILD_IN_CONTAINER=false lint-jsonnet
   depends_on:
   - clone
+  environment: {}
   image: grafana/jsonnet-build:c8b75df
   name: lint-jsonnet
 trigger:
@@ -1118,6 +1167,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 96966b3eec7f8976408f2c2f2c36a29b87a694c8a32afb2fdb16209e1f9e7521
+hmac: e3f0cead040a655e51244d5d71377a4ba506d7f63fae440593f6e7d14018a1e3
 
 ...

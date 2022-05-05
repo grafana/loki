@@ -184,7 +184,7 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 	return chunks, nil
 }
 
-func shouldUseIndexGatewayClient(cfg Config) bool {
+func shouldUseBoltDBIndexGatewayClient(cfg Config) bool {
 	if cfg.BoltDBShipperConfig.Mode != shipper.ModeReadOnly || cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled {
 		return false
 	}
@@ -198,8 +198,6 @@ func shouldUseIndexGatewayClient(cfg Config) bool {
 }
 
 func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, stores.Index, func(), error) {
-	// todo switch tsdb.
-
 	indexClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": "index-store-" + p.From.String()}, s.registerer)
 
@@ -222,7 +220,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		index        stores.Index       = seriesdIndex
 	)
 
-	if shouldUseIndexGatewayClient(s.cfg) {
+	if shouldUseBoltDBIndexGatewayClient(s.cfg) {
 		// inject the index-gateway client into the index store
 		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 		if err != nil {

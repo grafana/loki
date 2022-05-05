@@ -193,9 +193,9 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 
 			p, err := expr.Pipeline()
 			require.Nil(t, err)
-			_, _, ok := p.ForStream(labelBar).Process(0, []byte("bleepbloop"))
+			_, _, matches := p.ForStream(labelBar).Process(0, []byte("bleepbloop"))
 
-			require.True(t, ok)
+			require.True(t, matches)
 		})
 	}
 }
@@ -287,8 +287,8 @@ func Test_FilterMatcher(t *testing.T) {
 			} else {
 				sp := p.ForStream(labelBar)
 				for _, lc := range tt.lines {
-					_, _, ok := sp.Process(0, []byte(lc.l))
-					assert.Equalf(t, lc.e, ok, "query for line '%s' was %v and not %v", lc.l, ok, lc.e)
+					_, _, matches := sp.Process(0, []byte(lc.l))
+					assert.Equalf(t, lc.e, matches, "query for line '%s' was %v and not %v", lc.l, matches, lc.e)
 				}
 			}
 		})

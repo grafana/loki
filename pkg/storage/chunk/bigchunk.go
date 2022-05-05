@@ -34,6 +34,10 @@ func newBigchunk() *bigchunk {
 	return &bigchunk{}
 }
 
+// TODO(owen-d): remove bigchunk from our code, we don't use it.
+// Hack an Entries() impl
+func (b *bigchunk) Entries() int { return 0 }
+
 func (b *bigchunk) Add(sample model.SamplePair) (Data, error) {
 	if b.remainingSamples == 0 {
 		if bigchunkSizeCapBytes > 0 && b.Size() > bigchunkSizeCapBytes {
