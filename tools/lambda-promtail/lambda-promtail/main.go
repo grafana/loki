@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-        "github.com/prometheus/common/model"
+	"github.com/prometheus/common/model"
 	"net/url"
 	"os"
 	"strconv"
