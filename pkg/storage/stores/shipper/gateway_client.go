@@ -70,7 +70,7 @@ type IndexGatewayClientConfig struct {
 
 	// LogGatewayRequests configures if requests sent to the gateway should be logged or not.
 	// The log messages are of type debug and contains the address of the gateway and the relevant tenant.
-	LogGatewayRequests bool `yaml:"log_gateway_requests`
+	LogGatewayRequests bool `yaml:"log_gateway_requests"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.

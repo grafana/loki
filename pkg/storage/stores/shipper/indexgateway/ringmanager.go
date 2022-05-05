@@ -84,12 +84,12 @@ func NewRingManager(managerMode ManagerMode, cfg Config, log log.Logger, registe
 			return nil, err
 		}
 		return rm, nil
-	} else {
-		if err := rm.startClientMode(registerer); err != nil {
-			return nil, err
-		}
-		return rm, nil
 	}
+
+	if err := rm.startClientMode(); err != nil {
+		return nil, err
+	}
+	return rm, nil
 }
 
 func (rm *RingManager) startServerMode(ringStore kv.Client, registerer prometheus.Registerer) error {
@@ -121,7 +121,7 @@ func (rm *RingManager) startServerMode(ringStore kv.Client, registerer prometheu
 	return nil
 }
 
-func (rm *RingManager) startClientMode(registerer prometheus.Registerer) error {
+func (rm *RingManager) startClientMode() error {
 	var err error
 
 	svcs := []services.Service{rm.Ring}
