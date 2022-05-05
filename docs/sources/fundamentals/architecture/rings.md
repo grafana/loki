@@ -97,4 +97,4 @@ The ruler ring is used to determine which rulers evaluate which rule groups.
 
 ## About the index gateway ring
 
-The index gateway ring is used to determine which gateway is responsible for which tenant's indices when queried by rulers or queriers.
+The index gateway ring is used to determine which gateway is responsible for which tenant's indexes when queried by rulers or queriers.
