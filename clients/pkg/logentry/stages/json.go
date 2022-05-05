@@ -98,7 +98,7 @@ func (j *jsonStage) Run(in chan Entry) chan Entry {
 	go func() {
 		defer close(out)
 		for e := range in {
-			err := j.process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
+			err := j.process(e.Extracted, &e.Line)
 			if err != nil && j.cfg.DropMalformed {
 				continue
 			}
@@ -109,11 +109,12 @@ func (j *jsonStage) Run(in chan Entry) chan Entry {
 }
 
 // Process implements Stage
-func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
-	j.process(labels, extracted, t, entry)
+func (j *jsonStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
+	//nolint:errcheck
+	j.process(extracted, entry)
 }
 
-func (j *jsonStage) process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) error {
+func (j *jsonStage) process(extracted map[string]interface{}, entry *string) error {
 	// If a source key is provided, the json stage should process it
 	// from the extracted map, otherwise should fallback to the entry
 	input := entry
