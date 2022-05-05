@@ -1,6 +1,7 @@
 package file
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -219,9 +220,16 @@ func (t *tailer) isRunning() bool {
 
 // cleanupMetrics removes all metrics exported by this tailer
 func (t *tailer) cleanupMetrics() {
+	fmt.Println("cleanup metrics called for path: ", t.path)
 	// When we stop tailing the file, also un-export metrics related to the file
 	t.metrics.filesActive.Add(-1.)
-	t.metrics.readLines.DeleteLabelValues(t.path)
-	t.metrics.readBytes.DeleteLabelValues(t.path)
-	t.metrics.totalBytes.DeleteLabelValues(t.path)
+	if ok := t.metrics.readLines.DeleteLabelValues(t.path); !ok {
+		fmt.Println("didn't readLines delete metric for: ", t.path)
+	}
+	if ok := t.metrics.readBytes.DeleteLabelValues(t.path); !ok {
+		fmt.Println("didn't readBytes delete metric for: ", t.path)
+	}
+	if ok := t.metrics.totalBytes.DeleteLabelValues(t.path); !ok {
+		fmt.Println("didn't totalBytes delete metric for: ", t.path)
+	}
 }
