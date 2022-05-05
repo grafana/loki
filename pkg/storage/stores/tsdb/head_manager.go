@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cespare/xxhash"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -30,10 +29,6 @@ import (
 type period time.Duration
 
 const defaultRotationPeriod = period(15 * time.Minute)
-
-// Do not specify without bit shifting. This allows us to
-// do shard index calcuations via bitwise & rather than modulos.
-const defaultHeadManagerStripeSize = 1 << 7
 
 /*
 HeadManager both accepts flushed chunk writes
@@ -79,14 +74,12 @@ type HeadManager struct {
 	tsdbManager  TSDBManager
 	active, prev *headWAL
 
-	shards                 int
 	activeHeads, prevHeads *tenantHeads
 
 	Index
 }
 
 func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
-	shards := defaultHeadManagerStripeSize
 	m := &HeadManager{
 		log:         log.With(logger, "component", "tsdb-head-manager"),
 		dir:         dir,
@@ -94,7 +87,6 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 		tsdbManager: tsdbManager,
 
 		period: defaultRotationPeriod,
-		shards: shards,
 	}
 
 	m.Index = LazyIndex(func() (Index, error) {
@@ -185,7 +177,7 @@ func (m *HeadManager) Start() error {
 		return err
 	}
 
-	m.activeHeads = newTenantHeads(now, m.shards, m.metrics, m.log)
+	m.activeHeads = newTenantHeads(now, m.metrics, m.log)
 
 	for _, group := range walsByPeriod {
 		if group.period < (curPeriod) {
@@ -251,7 +243,7 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	}
 
 	// create new tenant heads
-	nextHeads := newTenantHeads(t, m.shards, m.metrics, m.log)
+	nextHeads := newTenantHeads(t, m.metrics, m.log)
 
 	stopPrev := func(s string) {
 		if m.prev != nil {
@@ -485,31 +477,36 @@ type tenantHeads struct {
 	mint, maxt atomic.Int64 // easy lookup for Bounds() impl
 
 	start       time.Time
-	shards      int
-	locks       []sync.RWMutex
-	tenants     []map[string]*Head
+	tenants     sync.Map
 	log         log.Logger
 	chunkFilter chunk.RequestChunkFilterer
 	metrics     *Metrics
 }
 
-func newTenantHeads(start time.Time, shards int, metrics *Metrics, logger log.Logger) *tenantHeads {
+func newTenantHeads(start time.Time, metrics *Metrics, logger log.Logger) *tenantHeads {
 	res := &tenantHeads{
 		start:   start,
-		shards:  shards,
-		locks:   make([]sync.RWMutex, shards),
-		tenants: make([]map[string]*Head, shards),
 		log:     log.With(logger, "component", "tenant-heads"),
 		metrics: metrics,
 	}
-	for i := range res.tenants {
-		res.tenants[i] = make(map[string]*Head)
-	}
+
 	return res
 }
 
+func (t *tenantHeads) getOrCreateTenant(userID string) *Head {
+	x, ok := t.tenants.Load(userID)
+	if ok {
+		return x.(*Head)
+	}
+
+	head := NewHead(userID, t.metrics, t.log)
+	// User LoadOrStore in case another goroutine has written
+	// the same key
+	res, _ := t.tenants.LoadOrStore(userID, head)
+	return res.(*Head)
+}
+
 func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMetas) *WALRecord {
-	idx := t.shardForTenant(userID)
 
 	var mint, maxt int64
 	for _, chk := range chks {
@@ -523,25 +520,8 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	}
 	updateMintMaxt(mint, maxt, &t.mint, &t.maxt)
 
-	// First, check if this tenant has been created
-	var (
-		mtx       = &t.locks[idx]
-		newStream bool
-		refID     uint64
-	)
-	mtx.RLock()
-	if head, ok := t.tenants[idx][userID]; ok {
-		newStream, refID = head.Append(ls, chks)
-		mtx.RUnlock()
-	} else {
-		// tenant does not exist, so acquire write lock to insert it
-		mtx.RUnlock()
-		mtx.Lock()
-		head := NewHead(userID, t.metrics, t.log)
-		t.tenants[idx][userID] = head
-		newStream, refID = head.Append(ls, chks)
-		mtx.Unlock()
-	}
+	head := t.getOrCreateTenant(userID)
+	newStream, refID := head.Append(ls, chks)
 
 	rec := &WALRecord{
 		UserID: userID,
@@ -561,10 +541,6 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	return rec
 }
 
-func (t *tenantHeads) shardForTenant(userID string) uint64 {
-	return xxhash.Sum64String(userID) & uint64(t.shards-1)
-}
-
 func (t *tenantHeads) Close() error { return nil }
 
 func (t *tenantHeads) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
@@ -576,15 +552,12 @@ func (t *tenantHeads) Bounds() (model.Time, model.Time) {
 }
 
 func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx Index, ok bool) {
-	i := t.shardForTenant(userID)
-	t.locks[i].RLock()
-	defer t.locks[i].RUnlock()
-	tenant, ok := t.tenants[i][userID]
+	res, ok := t.tenants.Load(userID)
 	if !ok {
-		return
+		return nil, false
 	}
 
-	idx = NewTSDBIndex(tenant.indexRange(int64(from), int64(through)))
+	idx = NewTSDBIndex(res.(*Head).indexRange(int64(from), int64(through)))
 	if t.chunkFilter != nil {
 		idx.SetChunkFilterer(t.chunkFilter)
 	}
@@ -631,33 +604,37 @@ func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, thro
 
 // helper only used in building TSDBs
 func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.ChunkMetas)) error {
-	for i, shard := range t.tenants {
-		t.locks[i].RLock()
-		defer t.locks[i].RUnlock()
 
-		for user, tenant := range shard {
-			idx := tenant.Index()
-			ps, err := postingsForMatcher(idx, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
-			if err != nil {
-				return err
-			}
+	var firstErr error
 
-			for ps.Next() {
-				var (
-					ls   labels.Labels
-					chks []index.ChunkMeta
-				)
+	t.tenants.Range(func(key, value interface{}) bool {
+		user := key.(string)
+		tenant := value.(*Head)
 
-				_, err := idx.Series(ps.At(), &ls, &chks)
-
-				if err != nil {
-					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
-				}
-
-				fn(user, ls, chks)
-			}
+		idx := tenant.Index()
+		ps, err := postingsForMatcher(idx, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+		if err != nil {
+			firstErr = err
+			return false
 		}
-	}
 
-	return nil
+		for ps.Next() {
+			var (
+				ls   labels.Labels
+				chks []index.ChunkMeta
+			)
+
+			_, err := idx.Series(ps.At(), &ls, &chks)
+
+			if err != nil {
+				firstErr = errors.Wrapf(err, "iterating postings for tenant: %s", user)
+				return false
+			}
+
+			fn(user, ls, chks)
+		}
+		return true
+	})
+
+	return firstErr
 }

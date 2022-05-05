@@ -36,7 +36,7 @@ func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []C
 
 // Test append
 func Test_TenantHeads_Append(t *testing.T) {
-	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
+	h := newTenantHeads(time.Now(), NewMetrics(nil), log.NewNopLogger())
 	ls := mustParseLabels(`{foo="bar"}`)
 	chks := []index.ChunkMeta{
 		{
@@ -64,7 +64,7 @@ func Test_TenantHeads_Append(t *testing.T) {
 
 // Test multitenant reads
 func Test_TenantHeads_MultiRead(t *testing.T) {
-	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
+	h := newTenantHeads(time.Now(), NewMetrics(nil), log.NewNopLogger())
 	ls := mustParseLabels(`{foo="bar"}`)
 	chks := []index.ChunkMeta{
 		{
