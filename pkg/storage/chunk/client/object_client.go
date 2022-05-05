@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -138,10 +140,9 @@ func (o *client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 			key := chunkKeys[i]
 			if chunkPreChecks[i] {
 				if objectMetaClient, ok := o.store.(ObjectMetaClient); ok {
-					exist, err := objectMetaClient.IsObjectExist(ctx, key)
-					if err != nil {
-						incomingErrors <- err
-						return
+					exist, metaErr := objectMetaClient.IsObjectExist(ctx, key)
+					if metaErr != nil {
+						level.Warn(util_log.Logger).Log("msg", "objectMetaClient IsObjectExist failure", "err", metaErr, "key", key)
 					}
 					if exist {
 						incomingErrors <- nil
