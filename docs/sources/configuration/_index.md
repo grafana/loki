@@ -2348,8 +2348,7 @@ without the need to constantly interact with the object store.
 # 'simple': an index gateway server instance is responsible for handling,
 #     storing and returning requests for all indices for all tenants.
 # 'ring': an index gateway server instance is responsible for a subset of tenants instead
-#     of all tenants, such that they don't have to be query ready for all existing index
-#     data in the cluster. This is accomplished through a dedicated ring.
+#     of all tenants.
 [mode: <string> | default = simple]
 
 # Defines the ring to be used by the index gateway servers and clients in case the servers

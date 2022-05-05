@@ -32,7 +32,8 @@ func IsInReplicationSet(r *ring.Ring, ringKey uint32, address string) (bool, err
 	return false, nil
 }
 
-func IsAssignedKey(ringClient ring.ReadRing, lifecycler HasDedicatedAddress, key string, bufDescs []ring.InstanceDesc, bufHosts []string, bufZones []string) bool {
+func IsAssignedKey(ringClient ring.ReadRing, lifecycler HasDedicatedAddress, key string) bool {
+	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 	token := TokenFor(key, "" /* labels */)
 	rs, err := ringClient.Get(token, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
 	if err == nil {

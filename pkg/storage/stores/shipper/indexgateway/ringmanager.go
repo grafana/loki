@@ -2,6 +2,7 @@ package indexgateway
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -36,12 +37,6 @@ const (
 	ServerMode
 )
 
-type ringTenantBuffers struct {
-	bufDescs []ring.InstanceDesc
-	bufHosts []string
-	bufZones []string
-}
-
 type RingManager struct {
 	services.Service
 
@@ -52,8 +47,7 @@ type RingManager struct {
 	Ring           *ring.Ring
 	managerMode    ManagerMode
 
-	buffers ringTenantBuffers
-	cfg     Config
+	cfg Config
 
 	log log.Logger
 }
@@ -64,10 +58,8 @@ func NewRingManager(managerMode ManagerMode, cfg Config, log log.Logger, registe
 	}
 
 	if cfg.Mode != RingMode {
-		return rm, nil
+		return nil, fmt.Errorf("ring manager shouldn't be invoked when index gateway not in ring mode")
 	}
-
-	rm.buffers.bufDescs, rm.buffers.bufHosts, rm.buffers.bufZones = ring.MakeBuffersForGet()
 
 	// instantiate kv store for both modes.
 	ringStore, err := kv.NewClient(
@@ -236,7 +228,7 @@ func (rm *RingManager) TenantInBoundaries(tenant string) bool {
 		return true
 	}
 
-	return loki_util.IsAssignedKey(rm.Ring, rm.RingLifecycler, tenant, rm.buffers.bufDescs, rm.buffers.bufHosts, rm.buffers.bufZones)
+	return loki_util.IsAssignedKey(rm.Ring, rm.RingLifecycler, tenant)
 }
 
 // ServeHTTP serves the HTTP route /indexgateway/ring.
