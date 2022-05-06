@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
@@ -18,173 +17,12 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-const (
-	jsonSpacer      = '_'
-	duplicateSuffix = "_extracted"
-	trueString      = "true"
-	falseString     = "false"
-)
-
 var (
-	_ Stage = &JSONParser{}
 	_ Stage = &RegexpParser{}
 	_ Stage = &LogfmtParser{}
 
-	errUnexpectedJSONObject = fmt.Errorf("expecting json object(%d), but it is not", jsoniter.ObjectValue)
-	errMissingCapture       = errors.New("at least one named capture must be supplied")
+	errMissingCapture = errors.New("at least one named capture must be supplied")
 )
-
-type JSONParser struct {
-	buf []byte // buffer used to build json keys
-	lbs *LabelsBuilder
-
-	keys internedStringSet
-}
-
-// NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
-func NewJSONParser() *JSONParser {
-	return &JSONParser{
-		buf:  make([]byte, 0, 1024),
-		keys: internedStringSet{},
-	}
-}
-
-func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if lbs.ParserLabelHints().NoLabels() {
-		return line, true
-	}
-	it := jsoniter.ConfigFastest.BorrowIterator(line)
-	defer jsoniter.ConfigFastest.ReturnIterator(it)
-
-	// reset the state.
-	j.buf = j.buf[:0]
-	j.lbs = lbs
-
-	if err := j.readObject(it); err != nil {
-		lbs.SetErr(errJSON)
-		return line, true
-	}
-	return line, true
-}
-
-func (j *JSONParser) readObject(it *jsoniter.Iterator) error {
-	// we only care about object and values.
-	if nextType := it.WhatIsNext(); nextType != jsoniter.ObjectValue {
-		return errUnexpectedJSONObject
-	}
-	_ = it.ReadMapCB(j.parseMap(""))
-	if it.Error != nil && it.Error != io.EOF {
-		return it.Error
-	}
-	return nil
-}
-
-func (j *JSONParser) parseMap(prefix string) func(iter *jsoniter.Iterator, field string) bool {
-	return func(iter *jsoniter.Iterator, field string) bool {
-		switch iter.WhatIsNext() {
-		// are we looking at a value that needs to be added ?
-		case jsoniter.StringValue, jsoniter.NumberValue, jsoniter.BoolValue:
-			j.parseLabelValue(iter, prefix, field)
-		// Or another new object based on a prefix.
-		case jsoniter.ObjectValue:
-			if key, ok := j.nextKeyPrefix(prefix, field); ok {
-				return iter.ReadMapCB(j.parseMap(key))
-			}
-			// If this keys is not expected we skip the object
-			iter.Skip()
-		default:
-			iter.Skip()
-		}
-		return true
-	}
-}
-
-func (j *JSONParser) nextKeyPrefix(prefix, field string) (string, bool) {
-	// first time we add return the field as prefix.
-	if len(prefix) == 0 {
-		field = sanitizeLabelKey(field, true)
-		if j.lbs.ParserLabelHints().ShouldExtractPrefix(field) {
-			return field, true
-		}
-		return "", false
-	}
-	// otherwise we build the prefix and check using the buffer
-	j.buf = j.buf[:0]
-	j.buf = append(j.buf, prefix...)
-	j.buf = append(j.buf, byte(jsonSpacer))
-	j.buf = append(j.buf, sanitizeLabelKey(field, false)...)
-	// if matches keep going
-	if j.lbs.ParserLabelHints().ShouldExtractPrefix(unsafeGetString(j.buf)) {
-		return string(j.buf), true
-	}
-	return "", false
-}
-
-func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field string) {
-	// the first time we use the field as label key.
-	if len(prefix) == 0 {
-		key, ok := j.keys.Get(unsafeGetBytes(field), func() (string, bool) {
-			field = sanitizeLabelKey(field, true)
-			if !j.lbs.ParserLabelHints().ShouldExtract(field) {
-				return "", false
-			}
-			if j.lbs.BaseHas(field) {
-				field = field + duplicateSuffix
-			}
-			return field, true
-		})
-		if !ok {
-			iter.Skip()
-			return
-		}
-		j.lbs.Set(key, readValue(iter))
-		return
-
-	}
-	// otherwise we build the label key using the buffer
-	j.buf = j.buf[:0]
-	j.buf = append(j.buf, prefix...)
-	j.buf = append(j.buf, byte(jsonSpacer))
-	j.buf = append(j.buf, sanitizeLabelKey(field, false)...)
-	key, ok := j.keys.Get(j.buf, func() (string, bool) {
-		if j.lbs.BaseHas(string(j.buf)) {
-			j.buf = append(j.buf, duplicateSuffix...)
-		}
-		if !j.lbs.ParserLabelHints().ShouldExtract(string(j.buf)) {
-			return "", false
-		}
-		return string(j.buf), true
-	})
-	if !ok {
-		iter.Skip()
-		return
-	}
-	j.lbs.Set(key, readValue(iter))
-}
-
-func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
-
-func readValue(iter *jsoniter.Iterator) string {
-	switch iter.WhatIsNext() {
-	case jsoniter.StringValue:
-		v := iter.ReadString()
-		// the rune error replacement is rejected by Prometheus, so we skip it.
-		if strings.ContainsRune(v, utf8.RuneError) {
-			return ""
-		}
-		return v
-	case jsoniter.NumberValue:
-		return iter.ReadNumber().String()
-	case jsoniter.BoolValue:
-		if iter.ReadBool() {
-			return trueString
-		}
-		return falseString
-	default:
-		iter.Skip()
-		return ""
-	}
-}
 
 type RegexpParser struct {
 	regex     *regexp.Regexp
