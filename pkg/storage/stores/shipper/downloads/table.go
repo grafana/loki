@@ -108,8 +108,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 		}
 
 		userID := fileInfo.Name()
-		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
-			table.baseUserIndexSet, boltDBIndexClient, loggerWithUserID(table.logger, userID), metrics)
+		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID), table.baseUserIndexSet, boltDBIndexClient, loggerWithUserID(table.logger, userID))
 		if err != nil {
 			return nil, err
 		}
@@ -122,8 +121,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, boltDBI
 		table.indexSets[userID] = userIndexSet
 	}
 
-	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet,
-		boltDBIndexClient, table.logger, metrics)
+	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet, boltDBIndexClient, table.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -298,8 +296,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 	}
 
 	// instantiate the index set, add it to the map
-	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient,
-		loggerWithUserID(t.logger, id), t.metrics)
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.boltDBIndexClient, loggerWithUserID(t.logger, id))
 	if err != nil {
 		return nil, err
 	}
