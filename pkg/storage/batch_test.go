@@ -1373,7 +1373,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 			ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 			require.NoError(t, err)
 
-			it, err := newSampleBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), ex, tt.start, tt.end, nil)
+			it, err := newSampleBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), ex, tt.start, tt.end, nil, nil)
 			require.NoError(t, err)
 			series, _, err := iter.ReadSampleBatch(it, 1000)
 			_ = it.Close()

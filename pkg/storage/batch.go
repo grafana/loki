@@ -481,13 +481,14 @@ func newSampleBatchIterator(
 	extractor syntax.SampleExtractor,
 	start, end time.Time,
 	chunkFilterer chunk.Filterer,
+	postFetcherChunkFilterer PostFetcherChunkFilterer,
 ) (iter.SampleIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &sampleBatchIterator{
 		extractor:          extractor,
 		ctx:                ctx,
 		cancel:             cancel,
-		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers, chunkFilterer, nil),
+		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers, chunkFilterer, postFetcherChunkFilterer),
 	}, nil
 }
 

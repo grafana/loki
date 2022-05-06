@@ -195,7 +195,8 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 
 // RequestChunkFilterer creates ChunkFilterer for a given request context.
 type RequestPostFetcherChunkFilterer interface {
-	ForRequest(req logql.SelectLogParams) PostFetcherChunkFilterer
+	ForRequest(req *logproto.QueryRequest) PostFetcherChunkFilterer
+	ForSampleRequest(req *logproto.SampleQueryRequest) PostFetcherChunkFilterer
 }
 
 // PostFetcherChunkFilterer filters chunks based on pipeline for log selector expr.
@@ -211,13 +212,19 @@ type requestPostFetcherChunkFilterer struct {
 func NewRequestPostFetcherChunkFiltererForRequest(maxParallelPipelineChunk int) RequestPostFetcherChunkFilterer {
 	return &requestPostFetcherChunkFilterer{maxParallelPipelineChunk: maxParallelPipelineChunk}
 }
-func (c *requestPostFetcherChunkFilterer) ForRequest(req logql.SelectLogParams) PostFetcherChunkFilterer {
-	return &chunkFiltererByExpr{req: req, maxParallelPipelineChunk: c.maxParallelPipelineChunk}
+func (c *requestPostFetcherChunkFilterer) ForRequest(req *logproto.QueryRequest) PostFetcherChunkFilterer {
+	return &chunkFiltererByExpr{selector: req.Selector, direction: req.Direction, maxParallelPipelineChunk: c.maxParallelPipelineChunk}
+}
+
+func (c *requestPostFetcherChunkFilterer) ForSampleRequest(sampleReq *logproto.SampleQueryRequest) PostFetcherChunkFilterer {
+	return &chunkFiltererByExpr{selector: sampleReq.Selector, direction: logproto.FORWARD, isSampleExpr: true, maxParallelPipelineChunk: c.maxParallelPipelineChunk}
 }
 
 type chunkFiltererByExpr struct {
+	isSampleExpr             bool
 	maxParallelPipelineChunk int
-	req                      logql.SelectLogParams
+	direction                logproto.Direction
+	selector                 string
 	from                     time.Time
 	through                  time.Time
 	nextChunk                *LazyChunk
@@ -241,11 +248,22 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 		log.Span.Finish()
 	}()
 
-	logSelector, err := syntax.ParseLogSelector(c.req.Selector, true)
-	if err != nil {
-		return nil, nil, err
+	var postFilterLogSelector syntax.LogSelectorExpr
+	if c.isSampleExpr {
+		sampleExpr, err := syntax.ParseSampleExpr(c.selector)
+		if err != nil {
+			return nil, nil, err
+		}
+		postFilterLogSelector = sampleExpr.Selector()
+	} else {
+		logSelector, err := syntax.ParseLogSelector(c.selector, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		postFilterLogSelector = logSelector
 	}
-	if !logSelector.HasFilter() {
+
+	if !postFilterLogSelector.HasFilter() {
 		return chunks, nil, nil
 	}
 	//
@@ -267,7 +285,7 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 	for i := 0; i < min(c.maxParallelPipelineChunk, len(chunks)); i++ {
 		go func() {
 			for cnk := range queuedChunks {
-				cnkWithKey, err := c.pipelineExecChunk(ctx, cnk, logSelector, s)
+				cnkWithKey, err := c.pipelineExecChunk(ctx, cnk, postFilterLogSelector, s)
 				if err != nil {
 					errors <- err
 				} else {
@@ -309,7 +327,7 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	chunkData := cnk.Data
 	lazyChunk := LazyChunk{Chunk: cnk}
 	newCtr, statCtx := stats.NewContext(ctx)
-	iterator, err := lazyChunk.Iterator(statCtx, c.from, c.through, c.req.Direction, streamPipeline, c.nextChunk)
+	iterator, err := lazyChunk.Iterator(statCtx, c.from, c.through, c.direction, streamPipeline, c.nextChunk)
 	if err != nil {
 		return nil, err
 	}
@@ -659,7 +677,7 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 	}
 	var postFetcherChunkFilterer PostFetcherChunkFilterer
 	if s.requestPostFetcherChunkFilterer != nil {
-		postFetcherChunkFilterer = s.requestPostFetcherChunkFilterer.ForRequest(req)
+		postFetcherChunkFilterer = s.requestPostFetcherChunkFilterer.ForRequest(req.QueryRequest)
 	}
 
 	return newLogBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer, postFetcherChunkFilterer)
@@ -700,7 +718,12 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newSampleBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
+	var postFetcherChunkFilterer PostFetcherChunkFilterer
+	if s.requestPostFetcherChunkFilterer != nil {
+		postFetcherChunkFilterer = s.requestPostFetcherChunkFilterer.ForSampleRequest(req.SampleQueryRequest)
+	}
+
+	return newSampleBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer, postFetcherChunkFilterer)
 }
 
 func (s *store) GetSchemaConfigs() []config.PeriodConfig {
