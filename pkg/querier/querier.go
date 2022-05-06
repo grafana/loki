@@ -68,7 +68,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries.")
 	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Queriers should only query the store and not try to query any ingesters")
 	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "Queriers should only query the ingesters and not try to query any store")
-	f.IntVar(&cfg.PostFilterMaxParallel, "querier.post_filter-max-parallel", 32, "post filter max parallel")
+	f.BoolVar(&cfg.PostFilterChunk, "querier.query-post-filter-chunk", true, "")
+	f.IntVar(&cfg.PostFilterMaxParallel, "querier.post_filter-max-parallel", 256, "post filter max parallel")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "Enable queries across multiple tenants. (Experimental)")
 }
 
