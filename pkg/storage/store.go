@@ -23,13 +23,16 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -200,6 +203,57 @@ func shouldUseBoltDBIndexGatewayClient(cfg Config) bool {
 func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, stores.Index, func(), error) {
 	indexClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": "index-store-" + p.From.String()}, s.registerer)
+
+	if p.IndexType == config.TSDBType {
+		var (
+			nodeName = s.cfg.TSDBShipperConfig.IngesterName
+			dir      = s.cfg.TSDBShipperConfig.ActiveIndexDirectory
+		)
+		tsdbMetrics := tsdb.NewMetrics(indexClientReg)
+		objectClient, err := NewObjectClient(s.cfg.TSDBShipperConfig.SharedStoreType, s.cfg, s.clientMetrics)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		shpr, err := indexshipper.NewIndexShipper(
+			s.cfg.TSDBShipperConfig,
+			objectClient,
+			s.limits,
+			tsdb.OpenShippableTSDB,
+		)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		tsdbManager := tsdb.NewTSDBManager(
+			nodeName,
+			dir,
+			shpr,
+			p.IndexTables.Period,
+			util_log.Logger,
+			tsdbMetrics,
+		)
+		// TODO(owen-d): Only need HeadManager
+		// on the ingester. Otherwise, the TSDBManager is sufficient
+		headManager := tsdb.NewHeadManager(
+			util_log.Logger,
+			dir,
+			tsdbMetrics,
+			tsdbManager,
+		)
+		if err := headManager.Start(); err != nil {
+			return nil, nil, nil, err
+		}
+		idx := tsdb.NewIndexClient(headManager, p)
+		writer := tsdb.NewChunkWriter(f, p, headManager)
+
+		// TODO(owen-d): add TSDB index-gateway support
+
+		return writer, idx,
+			func() {
+				chunkClient.Stop()
+				f.Stop()
+			}, nil
+	}
 
 	idx, err := NewIndexClient(p.IndexType, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg)
 	if err != nil {
