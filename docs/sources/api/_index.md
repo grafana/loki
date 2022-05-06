@@ -821,13 +821,13 @@ In microservices mode, the `/config` endpoint is exposed by all components.
 
 ## `GET /services`
 
-`/services` returns a list of all running services, and their current states.
+`/services` returns a list of all running services and their current states.
 
 Services can have the following states:
 
 - **New**: Service is new, not running yet (initial state)
-- **Starting**: Service is starting. If starting succeeds, service enters **Running** state
-- **Running**: Service is fully running now. When service stops running, it enters **Stopping** state
+- **Starting**: Service is starting; if starting succeeds, service enters **Running** state
+- **Running**: Service is fully running now; when service stops running, it enters **Stopping** state
 - **Stopping**: Service is shutting down
 - **Terminated**: Service has stopped successfully (terminal state)
 - **Failed**: Service has failed in **Starting**, **Running** or **Stopping** state (terminal state)
