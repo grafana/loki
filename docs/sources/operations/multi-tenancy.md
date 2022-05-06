@@ -19,8 +19,8 @@ required. In single-tenant mode, the tenant ID defaults to `fake`.
 
 ## Multi-tenant Queries
 
-If run in multi-tenant mode, queries across different tenants can be enabled via
-`multi_tenant_queries_enabled: true` option in the querier. Once enabled multiple
+If run in multi-tenant mode, queries that gather results from multiple tenants can be enabled with
+the `multi_tenant_queries_enabled: true` configuration option in the querier. Once enabled, multiple
 tenant IDs can be defined in the HTTP header `X-Scope-OrgID` by concatenating them
 with `|`. For instance a query for tenant A and B can set `X-Scope-OrgID: A|B`.
 
