@@ -120,7 +120,7 @@ func TestLoki_CustomRunOptsBehavior(t *testing.T) {
 	httpPort := ports[0]
 	grpcPort := ports[1]
 
-	yamlConfig := fmt.Sprintf(`target: distributor
+	yamlConfig := fmt.Sprintf(`target: querier
 server:
   http_listen_port: %d
   grpc_listen_port: %d

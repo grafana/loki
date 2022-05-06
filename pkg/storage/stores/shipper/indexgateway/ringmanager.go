@@ -218,7 +218,7 @@ func (rm *RingManager) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), rm.subservices)
 }
 
-func (rm *RingManager) TenantInBoundaries(tenant string) bool {
+func (rm *RingManager) IndexGatewayOwnsTenant(tenant string) bool {
 	if rm.cfg.Mode != RingMode {
 		return true
 	}
