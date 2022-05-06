@@ -354,6 +354,8 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		return err
 	}
 
+	// NB(owen-d): No longer needed in TSDB (and is removed in that code path)
+	// It's required by historical index stores so we keep it for now.
 	labelsBuilder := labels.NewBuilder(labelPairs)
 	labelsBuilder.Set(nameLabel, logsValue)
 	metric := labelsBuilder.Labels()
