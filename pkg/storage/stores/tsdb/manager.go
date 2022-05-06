@@ -71,7 +71,22 @@ func NewTSDBManager(
 	}
 }
 
-func (m *tsdbManager) Start() error {
+func (m *tsdbManager) Start() (err error) {
+	var (
+		buckets, indices, loadingErrors int
+	)
+
+	defer func() {
+		level.Info(m.log).Log(
+			"msg", "loaded leftover local indices",
+			"err", err,
+			"successful", err == nil,
+			"buckets", buckets,
+			"indices", indices,
+			"failures", loadingErrors,
+		)
+	}()
+
 	// load list of multitenant tsdbs
 	mulitenantDir := managerMultitenantDir(m.dir)
 	files, err := ioutil.ReadDir(mulitenantDir)
@@ -92,6 +107,7 @@ func (m *tsdbManager) Start() error {
 			)
 			continue
 		}
+		buckets++
 
 		tsdbs, err := ioutil.ReadDir(filepath.Join(mulitenantDir, f.Name()))
 		if err != nil {
@@ -108,6 +124,7 @@ func (m *tsdbManager) Start() error {
 			if !ok {
 				continue
 			}
+			indices++
 
 			prefixed := newPrefixedIdentifier(id, filepath.Join(mulitenantDir, f.Name()), "")
 			loaded, err := NewShippableTSDBFile(
@@ -121,9 +138,11 @@ func (m *tsdbManager) Start() error {
 					"tsdbPath", prefixed.Path(),
 					"err", err.Error(),
 				)
+				loadingErrors++
 			}
 
 			if err := m.shipper.AddIndex(f.Name(), "", loaded); err != nil {
+				loadingErrors++
 				return err
 			}
 		}

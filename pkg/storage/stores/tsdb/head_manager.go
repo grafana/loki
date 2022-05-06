@@ -182,6 +182,7 @@ func (m *HeadManager) Start() error {
 	if err != nil {
 		return err
 	}
+	level.Info(m.log).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
 
 	m.activeHeads = newTenantHeads(now, m.shards, m.metrics, m.log)
 
