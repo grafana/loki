@@ -81,6 +81,7 @@ type BaseLabelsBuilder struct {
 // LabelsBuilder is the same as labels.Builder but tailored for this package.
 type LabelsBuilder struct {
 	base          labels.Labels
+	baseMap       map[string]string
 	buf           labels.Labels
 	currentResult LabelsResult
 	groupedResult LabelsResult
@@ -219,16 +220,15 @@ func (b *LabelsBuilder) labels() labels.Labels {
 
 func (b *LabelsBuilder) unsortedLabels(buf labels.Labels) labels.Labels {
 	if len(b.del) == 0 && len(b.add) == 0 {
-		if b.err == "" {
-			return b.base
-		}
 		if buf == nil {
 			buf = make(labels.Labels, 0, len(b.base)+1)
 		} else {
 			buf = buf[:0]
 		}
 		buf = append(buf, b.base...)
-		buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
+		if b.err != "" {
+			buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
+		}
 		return buf
 	}
 
@@ -262,7 +262,15 @@ Outer:
 }
 
 func (b *LabelsBuilder) Map() map[string]string {
+	if len(b.del) == 0 && len(b.add) == 0 && b.err == "" {
+		if b.baseMap == nil {
+			b.baseMap = b.base.Map()
+		}
+		return b.baseMap
+	}
 	b.buf = b.unsortedLabels(b.buf)
+	// todo should we also cache maps since limited by the result ?
+	// Maps also don't create a copy of the labels.
 	res := make(map[string]string, len(b.buf))
 	for _, l := range b.buf {
 		res[l.Name] = l.Value
