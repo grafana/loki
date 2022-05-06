@@ -31,6 +31,10 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+#### Default value for `azure.container-name` changed
+
+This value now defaults to `loki`, it was previously set to `cortex`. If you are relying on this container name for your chunks or ruler storage, you will have to manually specify `-azure.container-name=cortex` or `-ruler.storage.azure.container-name=cortex` respectively.
+
 ## 2.5.0
 
 ### Loki
