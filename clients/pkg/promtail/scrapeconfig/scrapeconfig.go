@@ -165,6 +165,10 @@ type SyslogTargetConfig struct {
 	// ListenAddress is the address to listen on for syslog messages.
 	ListenAddress string `yaml:"listen_address"`
 
+	// ListenProtocol is the protocol used to listen for syslog messages.
+	// Must be either `tcp` (default) or `udp`
+	ListenProtocol string `yaml:"listen_protocol"`
+
 	// IdleTimeout is the idle timeout for tcp connections.
 	IdleTimeout time.Duration `yaml:"idle_timeout"`
 
@@ -179,6 +183,10 @@ type SyslogTargetConfig struct {
 	// UseIncomingTimestamp sets the timestamp to the incoming syslog messages
 	// timestamp if it's set.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// UseRFC5424Message defines whether the full RFC5424 formatted syslog
+	// message should be pushed to Loki
+	UseRFC5424Message bool `yaml:"use_rfc5424_message"`
 
 	// MaxMessageLength sets the maximum limit to the length of syslog messages
 	MaxMessageLength int `yaml:"max_message_length"`

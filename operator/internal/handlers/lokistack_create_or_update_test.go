@@ -8,15 +8,17 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ViaQ/logerr/log"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers"
 	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/grafana/loki/operator/internal/status"
+
+	"github.com/ViaQ/logerr/v2/log"
+	"github.com/go-logr/logr"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,12 +28,13 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/utils/pointer"
-
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
+	logger logr.Logger
+
 	scheme = runtime.NewScheme()
 	flags  = manifests.FeatureFlags{
 		EnableCertificateSigningService: false,
@@ -79,14 +82,9 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 
 	if testing.Verbose() {
-		// set to the highest for verbose testing
-		log.SetLogLevel(5)
+		logger = log.NewLogger("testing", log.WithVerbosity(5))
 	} else {
-		if err := log.SetOutput(ioutil.Discard); err != nil {
-			// This would only happen if the default logger was changed which it hasn't so
-			// we can assume that a panic is necessary and the developer is to blame.
-			panic(err)
-		}
+		logger = log.NewLogger("testing", log.WithOutput(ioutil.Discard))
 	}
 
 	// Register the clientgo and CRD schemes
@@ -94,7 +92,6 @@ func TestMain(m *testing.M) {
 	utilruntime.Must(routev1.AddToScheme(scheme))
 	utilruntime.Must(lokiv1beta1.AddToScheme(scheme))
 
-	log.Init("testing")
 	os.Exit(m.Run())
 }
 
@@ -111,7 +108,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNotFound_DoesNotError(t *testing.
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 	require.NoError(t, err)
 
 	// make sure create was NOT called because the Get failed
@@ -132,7 +129,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsT
 		return badRequestErr
 	}
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
 	require.Equal(t, badRequestErr, errors.Unwrap(err))
 
@@ -209,7 +206,7 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 		return nil
 	}
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 	require.NoError(t, err)
 
 	// make sure create was called
@@ -307,7 +304,7 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 		return nil
 	}
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 	require.NoError(t, err)
 
 	// make sure create was called
@@ -357,7 +354,7 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 		return nil
 	}
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -377,7 +374,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 			Kind: "LokiStack",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "someStack",
+			Name:      "my-stack",
 			Namespace: "some-ns",
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
@@ -398,7 +395,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "loki-gossip-ring-my-stack",
+			Name:      "my-stack-gossip-ring",
 			Namespace: "some-ns",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":     "loki",
@@ -412,7 +409,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 				{
 					APIVersion:         "loki.grafana.com/v1beta1",
 					Kind:               "LokiStack",
-					Name:               "someStack",
+					Name:               "my-stack",
 					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
 					Controller:         pointer.BoolPtr(true),
 					BlockOwnerDeletion: pointer.BoolPtr(true),
@@ -450,7 +447,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 		return nil
 	}
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 	require.NoError(t, err)
 
 	// make sure create not called
@@ -508,7 +505,7 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 		return apierrors.NewTooManyRequestsError("too many create requests")
 	}
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -528,7 +525,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 			Kind: "LokiStack",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "someStack",
+			Name:      "my-stack",
 			Namespace: "some-ns",
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
@@ -549,7 +546,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "loki-gossip-ring-my-stack",
+			Name:      "my-stack-gossip-ring",
 			Namespace: "some-ns",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":     "loki",
@@ -607,7 +604,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 		return apierrors.NewTooManyRequestsError("too many create requests")
 	}
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -621,6 +618,12 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Missing object storage secret",
+		Reason:  lokiv1beta1.ReasonMissingObjectStorageSecret,
+		Requeue: false,
 	}
 
 	stack := &lokiv1beta1.LokiStack{
@@ -655,14 +658,11 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
-	// make sure error is returned to re-trigger reconciliation
-	require.NoError(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
 }
 
 func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
@@ -673,6 +673,12 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid object storage secret contents",
+		Reason:  lokiv1beta1.ReasonInvalidObjectStorageSecret,
+		Requeue: false,
 	}
 
 	stack := &lokiv1beta1.LokiStack{
@@ -711,14 +717,11 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
-	// make sure error is returned to re-trigger reconciliation
-	require.NoError(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
 }
 
 func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *testing.T) {
@@ -729,6 +732,12 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid tenants configuration: mandatory configuration - missing OPA Url",
+		Reason:  lokiv1beta1.ReasonInvalidTenantsConfiguration,
+		Requeue: false,
 	}
 
 	ff := manifests.FeatureFlags{
@@ -786,14 +795,11 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
 
-	// make sure error is returned to re-trigger reconciliation
-	require.NoError(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
 }
 
 func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing.T) {
@@ -804,6 +810,12 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Missing secrets for tenant test",
+		Reason:  lokiv1beta1.ReasonMissingGatewayTenantSecret,
+		Requeue: true,
 	}
 
 	ff := manifests.FeatureFlags{
@@ -866,14 +878,11 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	require.Equal(t, degradedErr, err)
 }
 
 func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing.T) {
@@ -884,6 +893,12 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid gateway tenant secret contents",
+		Reason:  lokiv1beta1.ReasonInvalidGatewayTenantSecret,
+		Requeue: true,
 	}
 
 	ff := manifests.FeatureFlags{
@@ -950,14 +965,11 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	require.Equal(t, degradedErr, err)
 }
 
 func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
@@ -968,6 +980,12 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid tenants configuration - TenantsSpec cannot be nil when gateway flag is enabled",
+		Reason:  lokiv1beta1.ReasonInvalidTenantsConfiguration,
+		Requeue: false,
 	}
 
 	ff := manifests.FeatureFlags{
@@ -1012,12 +1030,9 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
 
-	// make sure no error is returned
-	require.NoError(t, err)
-
-	// make sure status and status-update calls
-	require.NotZero(t, k.StatusCallCount())
-	require.NotZero(t, sw.UpdateCallCount())
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
 }

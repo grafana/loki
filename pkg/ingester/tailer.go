@@ -11,8 +11,8 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -28,8 +28,8 @@ type tailer struct {
 	id          uint32
 	orgID       string
 	matchers    []*labels.Matcher
-	pipeline    logql.Pipeline
-	expr        logql.Expr
+	pipeline    syntax.Pipeline
+	expr        syntax.Expr
 	pipelineMtx sync.Mutex
 
 	sendChan chan *logproto.Stream
@@ -48,7 +48,7 @@ type tailer struct {
 }
 
 func newTailer(orgID, query string, conn TailServer, maxDroppedStreams int) (*tailer, error) {
-	expr, err := logql.ParseLogSelector(query, true)
+	expr, err := syntax.ParseLogSelector(query, true)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 
 	sp := t.pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		newLine, parsedLbs, ok := sp.ProcessString(e.Line)
+		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
 		if !ok {
 			continue
 		}

@@ -19,8 +19,8 @@ type Pipeline interface {
 // A StreamPipeline never mutate the received line.
 type StreamPipeline interface {
 	BaseLabels() LabelsResult
-	Process(line []byte) (resultLine []byte, resultLabels LabelsResult, skip bool)
-	ProcessString(line string) (resultLine string, resultLabels LabelsResult, skip bool)
+	Process(ts int64, line []byte) (resultLine []byte, resultLabels LabelsResult, matches bool)
+	ProcessString(ts int64, line string) (resultLine string, resultLabels LabelsResult, matches bool)
 }
 
 // Stage is a single step of a Pipeline.
@@ -52,11 +52,11 @@ type noopStreamPipeline struct {
 	LabelsResult
 }
 
-func (n noopStreamPipeline) Process(line []byte) ([]byte, LabelsResult, bool) {
+func (n noopStreamPipeline) Process(_ int64, line []byte) ([]byte, LabelsResult, bool) {
 	return line, n.LabelsResult, true
 }
 
-func (n noopStreamPipeline) ProcessString(line string) (string, LabelsResult, bool) {
+func (n noopStreamPipeline) ProcessString(_ int64, line string) (string, LabelsResult, bool) {
 	return line, n.LabelsResult, true
 }
 
@@ -135,7 +135,7 @@ func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	return res
 }
 
-func (p *streamPipeline) Process(line []byte) ([]byte, LabelsResult, bool) {
+func (p *streamPipeline) Process(_ int64, line []byte) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
 	for _, s := range p.stages {
@@ -147,16 +147,114 @@ func (p *streamPipeline) Process(line []byte) ([]byte, LabelsResult, bool) {
 	return line, p.builder.LabelsResult(), true
 }
 
-func (p *streamPipeline) ProcessString(line string) (string, LabelsResult, bool) {
+func (p *streamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
 	// Stages only read from the line.
 	lb := unsafeGetBytes(line)
-	lb, lr, ok := p.Process(lb)
+	lb, lr, ok := p.Process(ts, lb)
 	// either the line is unchanged and we can just send back the same string.
 	// or we created a new buffer for it in which case it is still safe to avoid the string(byte) copy.
 	return unsafeGetString(lb), lr, ok
 }
 
 func (p *streamPipeline) BaseLabels() LabelsResult { return p.builder.currentResult }
+
+// PipelineFilter contains a set of matchers and a pipeline that, when matched,
+// causes an entry from a log stream to be skipped. Matching entries must also
+// fall between 'start' and 'end', inclusive
+type PipelineFilter struct {
+	Start    int64
+	End      int64
+	Matchers []*labels.Matcher
+	Pipeline Pipeline
+}
+
+// NewFilteringPipeline creates a pipeline where entries from the underlying
+// log stream are filtered by pipeline filters before being passed to the
+// pipeline representing the queried data. Filters are always upstream of the
+// pipeline
+func NewFilteringPipeline(f []PipelineFilter, p Pipeline) Pipeline {
+	return &filteringPipeline{
+		filters:  f,
+		pipeline: p,
+	}
+}
+
+type filteringPipeline struct {
+	filters  []PipelineFilter
+	pipeline Pipeline
+}
+
+func (p *filteringPipeline) ForStream(labels labels.Labels) StreamPipeline {
+	var streamFilters []streamFilter
+	for _, f := range p.filters {
+		if allMatch(f.Matchers, labels) {
+			streamFilters = append(streamFilters, streamFilter{
+				start:    f.Start,
+				end:      f.End,
+				pipeline: f.Pipeline.ForStream(labels),
+			})
+		}
+	}
+
+	return &filteringStreamPipeline{
+		filters:  streamFilters,
+		pipeline: p.pipeline.ForStream(labels),
+	}
+}
+
+func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
+	for _, m := range matchers {
+		if !m.Matches(labels.Get(m.Name)) {
+			return false
+		}
+	}
+	return true
+}
+
+type streamFilter struct {
+	start    int64
+	end      int64
+	pipeline StreamPipeline
+}
+
+type filteringStreamPipeline struct {
+	filters  []streamFilter
+	pipeline StreamPipeline
+}
+
+func (sp *filteringStreamPipeline) BaseLabels() LabelsResult {
+	return sp.pipeline.BaseLabels()
+}
+
+func (sp *filteringStreamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
+	for _, filter := range sp.filters {
+		if ts < filter.start || ts > filter.end {
+			continue
+		}
+
+		_, _, matches := filter.pipeline.Process(ts, line)
+		if matches { // When the filter matches, don't run the next step
+			return nil, nil, false
+		}
+	}
+
+	return sp.pipeline.Process(ts, line)
+}
+
+func (sp *filteringStreamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
+	for _, filter := range sp.filters {
+		if ts < filter.start || ts > filter.end {
+			continue
+		}
+
+		_, _, matches := filter.pipeline.ProcessString(ts, line)
+		if matches { // When the filter matches, don't run the next step
+			return "", nil, false
+		}
+	}
+
+	return sp.pipeline.ProcessString(ts, line)
+}
 
 // ReduceStages reduces multiple stages into one.
 func ReduceStages(stages []Stage) Stage {

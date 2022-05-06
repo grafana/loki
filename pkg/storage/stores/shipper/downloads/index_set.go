@@ -13,22 +13,24 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/tenant"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/tenant"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
+var errIndexListCacheTooStale = fmt.Errorf("index list cache too stale")
+
 type IndexSet interface {
-	Init() error
+	Init(forQuerying bool) error
 	Close()
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error
+	MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 	DropAllDBs() error
 	Err() error
 	LastUsedAt() time.Time
@@ -43,7 +45,6 @@ type indexSet struct {
 	baseIndexSet      storage.IndexSet
 	tableName, userID string
 	cacheLocation     string
-	metrics           *metrics
 	boltDBIndexClient BoltDBIndexClient
 	logger            log.Logger
 
@@ -56,7 +57,7 @@ type indexSet struct {
 }
 
 func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet,
-	boltDBIndexClient BoltDBIndexClient, logger log.Logger, metrics *metrics) (IndexSet, error) {
+	boltDBIndexClient BoltDBIndexClient, logger log.Logger) (IndexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -73,7 +74,6 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		tableName:         tableName,
 		userID:            userID,
 		cacheLocation:     cacheLocation,
-		metrics:           metrics,
 		boltDBIndexClient: boltDBIndexClient,
 		logger:            logger,
 		lastUsedAt:        time.Now(),
@@ -86,7 +86,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 }
 
 // Init downloads all the db files for the table from object storage.
-func (t *indexSet) Init() (err error) {
+func (t *indexSet) Init(forQuerying bool) (err error) {
 	// Using background context to avoid cancellation of download when request times out.
 	// We would anyways need the files for serving next requests.
 	ctx, cancelFunc := context.WithTimeout(context.Background(), downloadTimeout)
@@ -96,13 +96,13 @@ func (t *indexSet) Init() (err error) {
 
 	defer func() {
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to initialize table %s, cleaning it up", t.tableName), "err", err)
+			level.Error(t.logger).Log("msg", "failed to initialize table, cleaning it up", "err", err)
 			t.err = err
 
 			// cleaning up files due to error to avoid returning invalid results.
 			for fileName := range t.dbs {
 				if err := t.cleanupDB(fileName); err != nil {
-					level.Error(util_log.Logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
+					level.Error(t.logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
 				}
 			}
 		}
@@ -141,7 +141,7 @@ func (t *indexSet) Init() (err error) {
 	level.Debug(logger).Log("msg", fmt.Sprintf("opened %d local files, now starting sync operation", len(t.dbs)))
 
 	// sync the table to get new files and remove the deleted ones from storage.
-	err = t.sync(ctx, false)
+	err = t.sync(ctx, false, forQuerying)
 	if err != nil {
 		return
 	}
@@ -173,7 +173,7 @@ func (t *indexSet) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk.QueryPagesCallback) error {
+func (t *indexSet) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
@@ -194,7 +194,7 @@ func (t *indexSet) MultiQueries(ctx context.Context, queries []chunk.IndexQuery,
 	t.lastUsedAt = time.Now()
 
 	logger := util_log.WithContext(ctx, t.logger)
-	level.Debug(logger).Log("table-name", t.tableName, "query-count", len(queries))
+	level.Debug(logger).Log("query-count", len(queries), "dbs-count", len(t.dbs))
 
 	for name, db := range t.dbs {
 		err := db.View(func(tx *bbolt.Tx) error {
@@ -274,31 +274,31 @@ func (t *indexSet) cleanupDB(fileName string) error {
 }
 
 func (t *indexSet) Sync(ctx context.Context) (err error) {
-	return t.sync(ctx, true)
+	return t.sync(ctx, true, false)
 }
 
 // sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
-func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.tableName))
+func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err error) {
+	level.Debug(t.logger).Log("msg", "syncing index files")
 
-	defer func() {
-		status := statusSuccess
-		if err != nil {
-			status = statusFailure
-		}
-		t.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
-	}()
-
-	toDownload, toDelete, err := t.checkStorageForUpdates(ctx, lock)
+	toDownload, toDelete, err := t.checkStorageForUpdates(ctx, lock, bypassListCache)
 	if err != nil {
 		return err
 	}
 
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("updates for table %s. toDownload: %s, toDelete: %s", t.tableName, toDownload, toDelete))
+	level.Debug(t.logger).Log("msg", "index sync updates", "toDownload", fmt.Sprint(toDownload), "toDelete", fmt.Sprint(toDelete))
 
 	downloadedFiles, err := t.doConcurrentDownload(ctx, toDownload)
 	if err != nil {
 		return err
+	}
+
+	// if we did not bypass list cache and skipped downloading all the new files due to them being removed by compaction,
+	// it means the cache is not valid anymore since compaction would have happened after last index list cache refresh.
+	// Let us return error to ask the caller to re-run the sync after the list cache refresh.
+	if !bypassListCache && len(downloadedFiles) == 0 && len(toDownload) > 0 {
+		level.Error(t.logger).Log("msg", "we skipped downloading all the new files, possibly removed by compaction", "files", toDownload)
+		return errIndexListCacheTooStale
 	}
 
 	if lock {
@@ -330,11 +330,11 @@ func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
 }
 
 // checkStorageForUpdates compares files from cache with storage and builds the list of files to be downloaded from storage and to be deleted from cache
-func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock bool) (toDownload []storage.IndexFile, toDelete []string, err error) {
+func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock, bypassListCache bool) (toDownload []storage.IndexFile, toDelete []string, err error) {
 	// listing tables from store
 	var files []storage.IndexFile
 
-	files, err = t.baseIndexSet.ListFiles(ctx, t.tableName, t.userID)
+	files, err = t.baseIndexSet.ListFiles(ctx, t.tableName, t.userID, bypassListCache)
 	if err != nil {
 		return
 	}

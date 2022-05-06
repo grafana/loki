@@ -13,3 +13,4 @@ spec:
           - "--with-cert-signing-service"
           - "--with-service-monitors"
           - "--with-tls-service-monitors"
+          - "--with-prometheus-alerts"

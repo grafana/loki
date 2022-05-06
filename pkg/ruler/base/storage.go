@@ -16,14 +16,15 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore/configdb"
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
+	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/bucket"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/azure"
-	"github.com/grafana/loki/pkg/storage/chunk/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/hedging"
-	"github.com/grafana/loki/pkg/storage/chunk/openstack"
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
+	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 )
 
 // RuleStoreConfig configures a rule store.
@@ -33,11 +34,12 @@ type RuleStoreConfig struct {
 	ConfigDB configClient.Config `yaml:"configdb"`
 
 	// Object Storage Configs
-	Azure azure.BlobStorageConfig `yaml:"azure"`
-	GCS   gcp.GCSConfig           `yaml:"gcs"`
-	S3    aws.S3Config            `yaml:"s3"`
-	Swift openstack.SwiftConfig   `yaml:"swift"`
-	Local local.Config            `yaml:"local"`
+	Azure azure.BlobStorageConfig   `yaml:"azure"`
+	GCS   gcp.GCSConfig             `yaml:"gcs"`
+	S3    aws.S3Config              `yaml:"s3"`
+	BOS   baidubce.BOSStorageConfig `yaml:"bos"`
+	Swift openstack.SwiftConfig     `yaml:"swift"`
+	Local local.Config              `yaml:"local"`
 
 	mock rulestore.RuleStore `yaml:"-"`
 }
@@ -50,7 +52,7 @@ func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.Swift.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.Local.RegisterFlagsWithPrefix("ruler.storage.", f)
-
+	cfg.BOS.RegisterFlagsWithPrefix("ruler.storage.", f)
 	f.StringVar(&cfg.Type, "ruler.storage.type", "configdb", "Method to use for backend rule storage (configdb, azure, gcs, s3, swift, local)")
 }
 
@@ -86,7 +88,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 	}
 
 	var err error
-	var client chunk.ObjectClient
+	var client client.ObjectClient
 
 	switch cfg.Type {
 	case "configdb":
@@ -101,6 +103,8 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 		client, err = gcp.NewGCSObjectClient(context.Background(), cfg.GCS, hedgeCfg)
 	case "s3":
 		client, err = aws.NewS3ObjectClient(cfg.S3, hedgeCfg)
+	case "bos":
+		client, err = baidubce.NewBOSObjectStorage(&cfg.BOS)
 	case "swift":
 		client, err = openstack.NewSwiftObjectClient(cfg.Swift, hedgeCfg)
 	case "local":
@@ -120,7 +124,6 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, loader promRules.GroupLoader, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
 	if cfg.Backend == configdb.Name {
 		c, err := configClient.New(cfg.ConfigDB)
-
 		if err != nil {
 			return nil, err
 		}

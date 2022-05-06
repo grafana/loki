@@ -608,7 +608,7 @@ func Test_DuplicateCount(t *testing.T) {
 			defer it.Close()
 			for it.Next() {
 			}
-			require.Equal(t, test.expectedDuplicates, stats.FromContext(ctx).Result(0, 0).TotalDuplicates())
+			require.Equal(t, test.expectedDuplicates, stats.FromContext(ctx).Result(0, 0, 0).TotalDuplicates())
 		})
 	}
 }
@@ -718,6 +718,7 @@ func BenchmarkSortIterator(b *testing.B) {
 	})
 
 	b.Run("merge sort", func(b *testing.B) {
+		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			b.StopTimer()
@@ -844,4 +845,56 @@ func Test_EntrySortIterator(t *testing.T) {
 			i++
 		}
 	})
+}
+
+func TestDedupeMergeEntryIterator(t *testing.T) {
+	it := NewMergeEntryIterator(context.Background(),
+		[]EntryIterator{
+			NewStreamIterator(logproto.Stream{
+				Labels: ``,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(1, 0),
+						Line:      "0",
+					},
+					{
+						Timestamp: time.Unix(1, 0),
+						Line:      "2",
+					},
+					{
+						Timestamp: time.Unix(2, 0),
+						Line:      "3",
+					},
+				},
+			}),
+			NewStreamIterator(logproto.Stream{
+				Labels: ``,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(1, 0),
+						Line:      "1",
+					},
+					{
+						Timestamp: time.Unix(1, 0),
+						Line:      "0",
+					},
+					{
+						Timestamp: time.Unix(1, 0),
+						Line:      "2",
+					},
+				},
+			}),
+		}, logproto.FORWARD)
+	require.True(t, it.Next())
+	require.Equal(t, "0", it.Entry().Line)
+	require.Equal(t, time.Unix(1, 0), it.Entry().Timestamp)
+	require.True(t, it.Next())
+	require.Equal(t, "2", it.Entry().Line)
+	require.Equal(t, time.Unix(1, 0), it.Entry().Timestamp)
+	require.True(t, it.Next())
+	require.Equal(t, "1", it.Entry().Line)
+	require.Equal(t, time.Unix(1, 0), it.Entry().Timestamp)
+	require.True(t, it.Next())
+	require.Equal(t, "3", it.Entry().Line)
+	require.Equal(t, time.Unix(2, 0), it.Entry().Timestamp)
 }

@@ -165,7 +165,7 @@ section of the Loki configuration reference for all available options.
 Alternatively, the `table-manager.retention-period` and
 `table-manager.retention-deletes-enabled` command line flags can be used. The
 provided retention period needs to be a duration represented as a string that
-can be parsed using Go's [time.Duration](https://golang.org/pkg/time/#ParseDuration).
+can be parsed using prometheus common [model.Duration](https://pkg.go.dev/github.com/prometheus/common/model#ParseDuration) e.g. `7d`, `1w`, `168h`.
 
 > **WARNING**: The retention period must be a multiple of the index and chunks table
 `period`, configured in the [`period_config`](../../../configuration#period_config)

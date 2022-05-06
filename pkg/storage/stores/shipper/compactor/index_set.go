@@ -11,8 +11,8 @@ import (
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk/local"
-	"github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -41,7 +41,8 @@ type indexSet struct {
 
 // newCommonIndex initializes a new index set for common index. It simply creates instance of indexSet without any processing.
 func newCommonIndex(ctx context.Context, tableName, workingDir string, compactedDB *bbolt.DB, uploadCompactedDB bool,
-	sourceFiles []storage.IndexFile, removeSourceFiles bool, baseCommonIndexSet storage.IndexSet, logger log.Logger) (*indexSet, error) {
+	sourceFiles []storage.IndexFile, removeSourceFiles bool, baseCommonIndexSet storage.IndexSet, logger log.Logger,
+) (*indexSet, error) {
 	if baseCommonIndexSet.IsUserBasedIndexSet() {
 		return nil, fmt.Errorf("base index set is not for common index")
 	}
@@ -93,7 +94,7 @@ func (is *indexSet) initUserIndexSet(workingDir string) {
 	ctx, cancelFunc := context.WithTimeout(is.ctx, userIndexReadinessTimeout)
 	defer cancelFunc()
 
-	is.sourceObjects, is.err = is.baseIndexSet.ListFiles(is.ctx, is.tableName, is.userID)
+	is.sourceObjects, is.err = is.baseIndexSet.ListFiles(is.ctx, is.tableName, is.userID, false)
 	if is.err != nil {
 		return
 	}

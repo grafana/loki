@@ -3,12 +3,11 @@ package manifests_test
 import (
 	"testing"
 
+	"github.com/grafana/loki/operator/internal/manifests"
+
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -306,6 +305,12 @@ func TestGetMutateFunc_MutateClusterRole(t *testing.T) {
 }
 
 func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
+	roleRef := rbacv1.RoleRef{
+		APIGroup: "rbac.authorization.k8s.io",
+		Kind:     "ClusterRole",
+		Name:     "a-role",
+	}
+
 	got := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
@@ -315,11 +320,7 @@ func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
 				"test": "test",
 			},
 		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "ClusterRole",
-			Name:     "a-role",
-		},
+		RoleRef: roleRef,
 		Subjects: []rbacv1.Subject{
 			{
 				Kind:      "ServiceAccount",
@@ -365,7 +366,127 @@ func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
 	// Partial mutation checks
 	require.Exactly(t, got.Labels, want.Labels)
 	require.Exactly(t, got.Annotations, want.Annotations)
-	require.Exactly(t, got.RoleRef, want.RoleRef)
+	require.Exactly(t, got.RoleRef, roleRef)
+	require.Exactly(t, got.Subjects, want.Subjects)
+}
+
+func TestGetMutateFunc_MutateRole(t *testing.T) {
+	got := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"test": "test",
+			},
+			Annotations: map[string]string{
+				"test": "test",
+			},
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{"group-a"},
+				Resources: []string{"res-a"},
+				Verbs:     []string{"get"},
+			},
+		},
+	}
+
+	want := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"test":  "test",
+				"other": "label",
+			},
+			Annotations: map[string]string{
+				"test":  "test",
+				"other": "annotation",
+			},
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{"groupa-a"},
+				Resources: []string{"resa-a"},
+				Verbs:     []string{"get", "create"},
+			},
+			{
+				APIGroups: []string{"groupa-b"},
+				Resources: []string{"resa-b"},
+				Verbs:     []string{"list", "create"},
+			},
+		},
+	}
+
+	f := manifests.MutateFuncFor(got, want)
+	err := f()
+	require.NoError(t, err)
+
+	// Partial mutation checks
+	require.Exactly(t, got.Labels, want.Labels)
+	require.Exactly(t, got.Annotations, want.Annotations)
+	require.Exactly(t, got.Rules, want.Rules)
+}
+
+func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
+	roleRef := rbacv1.RoleRef{
+		APIGroup: "rbac.authorization.k8s.io",
+		Kind:     "Role",
+		Name:     "a-role",
+	}
+
+	got := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"test": "test",
+			},
+			Annotations: map[string]string{
+				"test": "test",
+			},
+		},
+		RoleRef: roleRef,
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      "service-me",
+				Namespace: "stack-ns",
+			},
+		},
+	}
+
+	want := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"test":  "test",
+				"other": "label",
+			},
+			Annotations: map[string]string{
+				"test":  "test",
+				"other": "annotation",
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "Role",
+			Name:     "b-role",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      "service-me",
+				Namespace: "stack-ns",
+			},
+			{
+				Kind: "User",
+				Name: "a-user",
+			},
+		},
+	}
+
+	f := manifests.MutateFuncFor(got, want)
+	err := f()
+	require.NoError(t, err)
+
+	// Partial mutation checks
+	require.Exactly(t, got.Labels, want.Labels)
+	require.Exactly(t, got.Annotations, want.Annotations)
+	require.Exactly(t, got.RoleRef, roleRef)
 	require.Exactly(t, got.Subjects, want.Subjects)
 }
 

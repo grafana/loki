@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
@@ -11,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -22,6 +24,8 @@ const (
 	QueryTypeMetric  = "metric"
 	QueryTypeFilter  = "filter"
 	QueryTypeLimited = "limited"
+	QueryTypeLabels  = "labels"
+	QueryTypeSeries  = "series"
 
 	latencyTypeSlow = "slow"
 	latencyTypeFast = "fast"
@@ -73,7 +77,14 @@ var (
 	linePerSecondLogUsage    = usagestats.NewStatistics("query_log_lines_per_second")
 )
 
-func RecordMetrics(ctx context.Context, log log.Logger, p Params, status string, stats logql_stats.Result, result promql_parser.Value) {
+func RecordRangeAndInstantQueryMetrics(
+	ctx context.Context,
+	log log.Logger,
+	p Params,
+	status string,
+	stats logql_stats.Result,
+	result promql_parser.Value,
+) {
 	var (
 		logger        = util_log.WithContext(ctx, log)
 		rt            = string(GetRangeType(p))
@@ -112,13 +123,13 @@ func RecordMetrics(ctx context.Context, log log.Logger, p Params, status string,
 		"returned_lines", returnedLines,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+		"total_entries", stats.Summary.TotalEntriesReturned,
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"subqueries", stats.Summary.Subqueries,
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
 
-	// we also log queries, useful for troubleshooting slow queries.
 	level.Info(logger).Log(
 		logValues...,
 	)
@@ -137,6 +148,94 @@ func RecordMetrics(ctx context.Context, log log.Logger, p Params, status string,
 	recordUsageStats(queryType, stats)
 }
 
+func RecordLabelQueryMetrics(
+	ctx context.Context,
+	log log.Logger,
+	start, end time.Time,
+	label, status string,
+	stats logql_stats.Result,
+) {
+	var (
+		logger      = util_log.WithContext(ctx, log)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeLabels
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	level.Info(logger).Log(
+		"latency", latencyType,
+		"query_type", queryType,
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"label", label,
+		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
+		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+		"total_entries", stats.Summary.TotalEntriesReturned,
+	)
+
+	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType).
+		Observe(float64(stats.Summary.BytesProcessedPerSecond))
+	execLatency.WithLabelValues(status, queryType, "").
+		Observe(stats.Summary.ExecTime)
+	chunkDownloadLatency.WithLabelValues(status, queryType, "").
+		Observe(stats.ChunksDownloadTime().Seconds())
+	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
+	chunkDownloadedTotal.WithLabelValues(status, queryType, "").
+		Add(float64(stats.TotalChunksDownloaded()))
+	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
+}
+
+func RecordSeriesQueryMetrics(
+	ctx context.Context,
+	log log.Logger,
+	start, end time.Time,
+	match []string,
+	status string,
+	stats logql_stats.Result,
+) {
+	var (
+		logger      = util_log.WithContext(ctx, log)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeSeries
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	// we also log queries, useful for troubleshooting slow queries.
+	level.Info(logger).Log(
+		"latency", latencyType,
+		"query_type", queryType,
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"match", strings.Join(match, ":"), // not using comma (,) as separator as matcher may already have comma (e.g: `{a="b", c="d"}`)
+		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
+		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+		"total_entries", stats.Summary.TotalEntriesReturned,
+	)
+
+	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType).
+		Observe(float64(stats.Summary.BytesProcessedPerSecond))
+	execLatency.WithLabelValues(status, queryType, "").
+		Observe(stats.Summary.ExecTime)
+	chunkDownloadLatency.WithLabelValues(status, queryType, "").
+		Observe(stats.ChunksDownloadTime().Seconds())
+	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
+	chunkDownloadedTotal.WithLabelValues(status, queryType, "").
+		Add(float64(stats.TotalChunksDownloaded()))
+	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
+}
+
 func recordUsageStats(queryType string, stats logql_stats.Result) {
 	if queryType == QueryTypeMetric {
 		bytePerSecondMetricUsage.Record(float64(stats.Summary.BytesProcessedPerSecond))
@@ -148,14 +247,14 @@ func recordUsageStats(queryType string, stats logql_stats.Result) {
 }
 
 func QueryType(query string) (string, error) {
-	expr, err := ParseExpr(query)
+	expr, err := syntax.ParseExpr(query)
 	if err != nil {
 		return "", err
 	}
 	switch e := expr.(type) {
-	case SampleExpr:
+	case syntax.SampleExpr:
 		return QueryTypeMetric, nil
-	case LogSelectorExpr:
+	case syntax.LogSelectorExpr:
 		if e.HasFilter() {
 			return QueryTypeFilter, nil
 		}

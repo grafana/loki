@@ -83,7 +83,7 @@ aws iam attach-role-policy --role-name ecsTaskExecutionRole --policy-arn "arn:aw
 
 Amazon [Firelens][Firelens] is a log router (usually `fluentd` or `fluentbit`) you run along the same task definition next to your application containers to route their logs to Loki.
 
-In this example we will use [fluentbit][fluentbit] (with the [Loki plugin][fluentbit loki] installed) but if you prefer [fluentd][fluentd] make sure to check the [fluentd output plugin][fluentd loki] documentation.
+In this example we will use [fluentbit][fluentbit] with the [fluentbit output plugin][fluentbit loki] installed but if you prefer [fluentd][fluentd] make sure to check the [fluentd output plugin][fluentd loki] documentation.
 
 > We recommend you to use [fluentbit][fluentbit] as it's less resources consuming than [fluentd][fluentd].
 
@@ -149,6 +149,8 @@ The `log_router` container image is the [Fluent bit Loki docker image][fluentbit
 The second container is our `sample-app`, a simple [alpine][alpine] container that prints to stdout welcoming messages. To send those logs to Loki, we will configure this container to use the log driver `awsfirelens`.
 
 Go ahead and replace the `Url` property with your [GrafanaCloud][GrafanaCloud] credentials, you can find them in your [account][grafanacloud account] in the Loki instance page. If you're running your own Loki instance replace completely the URL (e.g `http://my-loki.com:3100/loki/api/v1/push`).
+
+We include plain text credentials in `options` for simplicity. However, this exposes credentials in your ECS task definition and in any version-controlled configuration. Mitigate this issue by using a secret store such as [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html), combined with the `secretOptions` configuration option for [injecting sensitive data in a log configuration](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/specifying-sensitive-data-secrets.html#secrets-logconfig).
 
 All `options` of the `logConfiguration` will be automatically translated into [fluentbit ouput][fluentbit ouput]. For example, the above options will produce this fluent bit `OUTPUT` config section:
 
@@ -228,8 +230,8 @@ That's it ! Make sure to checkout LogQL to learn more about Loki powerful query 
 [ecs iam]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 [arn]: https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html
 [task]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html
-[fluentd loki]: https://github.com/grafana/loki/tree/master/cmd/fluentd
-[fluentbit loki]: https://github.com/grafana/loki/tree/master/cmd/fluent-bit
+[fluentd loki]: https://grafana.com/docs/loki/latest/clients/fluentd/
+[fluentbit loki]: https://grafana.com/docs/loki/latest/clients/fluentbit/
 [fluentbit]: https://fluentbit.io/
 [fluentd]: https://www.fluentd.org/
 [fluentbit loki image]: https://hub.docker.com/r/grafana/fluent-bit-plugin-loki

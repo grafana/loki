@@ -1,7 +1,7 @@
 package manifests
 
 import (
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
@@ -29,12 +29,13 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	case lokiv1beta1.OpenshiftLogging:
 		defaults := openshift.NewOptions(
 			opts.Name,
-			GatewayName(opts.Name),
 			opts.Namespace,
+			GatewayName(opts.Name),
 			opts.GatewayBaseDomain,
 			serviceNameGatewayHTTP(opts.Name),
 			gatewayHTTPPortName,
 			ComponentLabels(LabelGatewayComponent, opts.Name),
+			opts.Flags.EnableServiceMonitors,
 			opts.Flags.EnableCertificateSigningService,
 			opts.TenantConfigMap,
 		)

@@ -1,7 +1,7 @@
 package manifests
 
 import (
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 
@@ -69,6 +69,14 @@ func BuildAll(opts Options) ([]client.Object, error) {
 
 	if opts.Flags.EnableServiceMonitors {
 		res = append(res, BuildServiceMonitors(opts)...)
+	}
+
+	if opts.Flags.EnablePrometheusAlerts {
+		prometheusRuleObjs, err := BuildPrometheusRule(opts)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, prometheusRuleObjs...)
 	}
 
 	return res, nil

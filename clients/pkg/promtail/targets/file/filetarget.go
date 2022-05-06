@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	fsnotify "gopkg.in/fsnotify.v1"
 
@@ -68,6 +69,7 @@ type FileTarget struct {
 	targetEventHandler chan fileTargetEvent
 	watches            map[string]struct{}
 	path               string
+	pathExclude        string
 	quit               chan struct{}
 	done               chan struct{}
 
@@ -83,6 +85,7 @@ func NewFileTarget(
 	handler api.EntryHandler,
 	positions positions.Positions,
 	path string,
+	pathExclude string,
 	labels model.LabelSet,
 	discoveredLabels model.LabelSet,
 	targetConfig *Config,
@@ -93,6 +96,7 @@ func NewFileTarget(
 		logger:             logger,
 		metrics:            metrics,
 		path:               path,
+		pathExclude:        pathExclude,
 		labels:             labels,
 		discoveredLabels:   discoveredLabels,
 		handler:            api.AddLabelsMiddleware(labels).Wrap(handler),
@@ -183,7 +187,7 @@ func (t *FileTarget) run() {
 }
 
 func (t *FileTarget) sync() error {
-	var matches []string
+	var matches, matchesExcluded []string
 	if fi, err := os.Stat(t.path); err == nil && !fi.IsDir() {
 		// if the path points to a file that exists, then it we can skip the Glob search
 		matches = []string{t.path}
@@ -195,8 +199,26 @@ func (t *FileTarget) sync() error {
 		}
 	}
 
+	if fi, err := os.Stat(t.pathExclude); err == nil && !fi.IsDir() {
+		matchesExcluded = []string{t.pathExclude}
+	} else {
+		matchesExcluded, err = doublestar.Glob(t.pathExclude)
+		if err != nil {
+			return errors.Wrap(err, "filetarget.sync.filepathexclude.Glob")
+		}
+	}
+
+	for i := 0; i < len(matchesExcluded); i++ {
+		for j := 0; j < len(matches); j++ {
+			if matchesExcluded[i] == matches[j] {
+				// exclude this specific match
+				matches = append(matches[:j], matches[j+1:]...)
+			}
+		}
+	}
+
 	if len(matches) == 0 {
-		level.Debug(t.logger).Log("msg", "no files matched requested path, nothing will be tailed", "path", t.path)
+		level.Debug(t.logger).Log("msg", "no files matched requested path, nothing will be tailed", "path", t.path, "pathExclude", t.pathExclude)
 	}
 
 	// Gets absolute path for each pattern.
@@ -275,15 +297,20 @@ func (t *FileTarget) startTailing(ps []string) {
 		if _, ok := t.tails[p]; ok {
 			continue
 		}
+
 		fi, err := os.Stat(p)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to tail file, stat failed", "error", err, "filename", p)
+			t.metrics.totalBytes.DeleteLabelValues(p)
 			continue
 		}
+
 		if fi.IsDir() {
 			level.Info(t.logger).Log("msg", "failed to tail file", "error", "file is a directory", "filename", p)
+			t.metrics.totalBytes.DeleteLabelValues(p)
 			continue
 		}
+
 		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
 		tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p)
 		if err != nil {
@@ -304,7 +331,7 @@ func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 			delete(t.tails, p)
 		}
 		if h, ok := t.handler.(api.InstrumentedEntryHandler); ok {
-			h.UnregisterLatencyMetric(model.LabelSet{model.LabelName(client.LatencyLabel): model.LabelValue(p)})
+			h.UnregisterLatencyMetric(prometheus.Labels{client.LatencyLabel: p})
 		}
 	}
 }

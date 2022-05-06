@@ -3,6 +3,7 @@ package api
 import (
 	"sync"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -16,7 +17,7 @@ type Entry struct {
 
 type InstrumentedEntryHandler interface {
 	EntryHandler
-	UnregisterLatencyMetric(labels model.LabelSet)
+	UnregisterLatencyMetric(prometheus.Labels)
 }
 
 // EntryHandler is something that can "handle" entries via a channel.

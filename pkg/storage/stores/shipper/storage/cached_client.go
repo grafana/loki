@@ -10,8 +10,9 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
@@ -19,16 +20,16 @@ const (
 )
 
 type table struct {
-	commonObjects []chunk.StorageObject
-	userIDs       []chunk.StorageCommonPrefix
-	userObjects   map[string][]chunk.StorageObject
+	commonObjects []client.StorageObject
+	userIDs       []client.StorageCommonPrefix
+	userObjects   map[string][]client.StorageObject
 }
 
 type cachedObjectClient struct {
-	chunk.ObjectClient
+	client.ObjectClient
 
 	tables       map[string]*table
-	tableNames   []chunk.StorageCommonPrefix
+	tableNames   []client.StorageCommonPrefix
 	tablesMtx    sync.RWMutex
 	cacheBuiltAt time.Time
 
@@ -37,7 +38,7 @@ type cachedObjectClient struct {
 	err            error
 }
 
-func newCachedObjectClient(downstreamClient chunk.ObjectClient) *cachedObjectClient {
+func newCachedObjectClient(downstreamClient client.ObjectClient) *cachedObjectClient {
 	return &cachedObjectClient{
 		ObjectClient:   downstreamClient,
 		tables:         map[string]*table{},
@@ -49,7 +50,7 @@ func newCachedObjectClient(downstreamClient chunk.ObjectClient) *cachedObjectCli
 // We have a buffered channel here with a capacity of 1 to make sure only one concurrent call makes it through.
 // We also have a sync.WaitGroup to make sure all the concurrent calls to buildCacheOnce wait until the cache gets rebuilt since
 // we are doing read-through cache, and we do not want to serve stale results.
-func (c *cachedObjectClient) buildCacheOnce(ctx context.Context) {
+func (c *cachedObjectClient) buildCacheOnce(ctx context.Context, forceRefresh bool) {
 	c.buildCacheWg.Add(1)
 	defer c.buildCacheWg.Done()
 
@@ -58,7 +59,7 @@ func (c *cachedObjectClient) buildCacheOnce(ctx context.Context) {
 	select {
 	case c.buildCacheChan <- struct{}{}:
 		c.err = nil
-		c.err = c.buildCache(ctx)
+		c.err = c.buildCache(ctx, forceRefresh)
 		<-c.buildCacheChan
 		if c.err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to build cache", "err", c.err)
@@ -67,7 +68,16 @@ func (c *cachedObjectClient) buildCacheOnce(ctx context.Context) {
 	}
 }
 
-func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+func (c *cachedObjectClient) RefreshIndexListCache(ctx context.Context) {
+	c.buildCacheOnce(ctx, true)
+	c.buildCacheWg.Wait()
+}
+
+func (c *cachedObjectClient) List(ctx context.Context, prefix, objectDelimiter string, bypassCache bool) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	if bypassCache {
+		return c.ObjectClient.List(ctx, prefix, objectDelimiter)
+	}
+
 	prefix = strings.TrimSuffix(prefix, delimiter)
 	ss := strings.Split(prefix, delimiter)
 	if len(ss) > 2 {
@@ -75,7 +85,7 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]chun
 	}
 
 	if time.Since(c.cacheBuiltAt) >= cacheTimeout {
-		c.buildCacheOnce(ctx)
+		c.buildCacheOnce(ctx, false)
 	}
 
 	// wait for cache build operation to finish, if running
@@ -90,7 +100,7 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]chun
 
 	// list of tables were requested
 	if prefix == "" {
-		return []chunk.StorageObject{}, c.tableNames, nil
+		return []client.StorageObject{}, c.tableNames, nil
 	}
 
 	// common objects and list of users having objects in a table were requested
@@ -100,29 +110,36 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]chun
 			return table.commonObjects, table.userIDs, nil
 		}
 
-		return []chunk.StorageObject{}, []chunk.StorageCommonPrefix{}, nil
+		return []client.StorageObject{}, []client.StorageCommonPrefix{}, nil
 	}
 
 	// user objects in a table were requested
 	tableName := ss[0]
 	table, ok := c.tables[tableName]
 	if !ok {
-		return []chunk.StorageObject{}, []chunk.StorageCommonPrefix{}, nil
+		return []client.StorageObject{}, []client.StorageCommonPrefix{}, nil
 	}
 
 	userID := ss[1]
 	if objects, ok := table.userObjects[userID]; ok {
-		return objects, []chunk.StorageCommonPrefix{}, nil
+		return objects, []client.StorageCommonPrefix{}, nil
 	}
 
-	return []chunk.StorageObject{}, []chunk.StorageCommonPrefix{}, nil
+	return []client.StorageObject{}, []client.StorageCommonPrefix{}, nil
 }
 
 // buildCache builds the cache if expired
-func (c *cachedObjectClient) buildCache(ctx context.Context) error {
-	if time.Since(c.cacheBuiltAt) < cacheTimeout {
+func (c *cachedObjectClient) buildCache(ctx context.Context, forceRefresh bool) error {
+	if !forceRefresh && time.Since(c.cacheBuiltAt) < cacheTimeout {
 		return nil
 	}
+
+	logger := spanlogger.FromContextWithFallback(ctx, util_log.Logger)
+	level.Info(logger).Log("msg", "building index list cache")
+	now := time.Now()
+	defer func() {
+		level.Info(logger).Log("msg", "index list cache built", "duration", time.Since(now))
+	}()
 
 	objects, _, err := c.ObjectClient.List(ctx, "", "")
 	if err != nil {
@@ -133,7 +150,7 @@ func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 	defer c.tablesMtx.Unlock()
 
 	c.tables = map[string]*table{}
-	c.tableNames = []chunk.StorageCommonPrefix{}
+	c.tableNames = []client.StorageCommonPrefix{}
 
 	for _, object := range objects {
 		ss := strings.Split(object.Key, delimiter)
@@ -145,12 +162,12 @@ func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 		tbl, ok := c.tables[tableName]
 		if !ok {
 			tbl = &table{
-				commonObjects: []chunk.StorageObject{},
-				userObjects:   map[string][]chunk.StorageObject{},
-				userIDs:       []chunk.StorageCommonPrefix{},
+				commonObjects: []client.StorageObject{},
+				userObjects:   map[string][]client.StorageObject{},
+				userIDs:       []client.StorageCommonPrefix{},
 			}
 			c.tables[tableName] = tbl
-			c.tableNames = append(c.tableNames, chunk.StorageCommonPrefix(tableName))
+			c.tableNames = append(c.tableNames, client.StorageCommonPrefix(tableName))
 		}
 
 		if len(ss) == 2 {
@@ -158,7 +175,7 @@ func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 		} else {
 			userID := ss[1]
 			if len(tbl.userObjects[userID]) == 0 {
-				tbl.userIDs = append(tbl.userIDs, chunk.StorageCommonPrefix(path.Join(tableName, userID)))
+				tbl.userIDs = append(tbl.userIDs, client.StorageCommonPrefix(path.Join(tableName, userID)))
 			}
 			tbl.userObjects[userID] = append(tbl.userObjects[userID], object)
 		}

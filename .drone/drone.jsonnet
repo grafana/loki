@@ -25,7 +25,7 @@ local pipeline(name) = {
   kind: 'pipeline',
   name: name,
   steps: [],
-  trigger: { event: ['push', 'pull_request'] },
+  trigger: { event: ['push', 'pull_request', 'tag'] },
 };
 
 local secret(name, vault_path, vault_key) = {
@@ -46,15 +46,19 @@ local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
 local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
 
-
-local run(name, commands) = {
+local run(name, commands, env={}) = {
   name: name,
   image: 'grafana/loki-build-image:%s' % build_image_version,
   commands: commands,
+  environment: env,
 };
 
-local make(target, container=true) = run(target, [
-  'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target,
+local make(target, container=true, args=[]) = run(target, [
+  std.join(' ', [
+    'make',
+    'BUILD_IN_CONTAINER=' + container,
+    target,
+  ] + args),
 ]);
 
 local docker(arch, app) = {
@@ -134,6 +138,30 @@ local promtail_win() = pipeline('promtail-windows') {
       ],
     },
   ],
+};
+
+local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
+  steps+: [
+    // dry run for everything that is not tag or main
+    docker('amd64', 'querytee') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMain,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/loki-query-tee',
+      },
+    },
+  ] + [
+    // publish for tag or main
+    docker('amd64', 'querytee') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMain,
+      settings+: {
+        repo: 'grafana/loki-query-tee',
+      },
+    },
+  ],
+  depends_on: ['check'],
 };
 
 local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
@@ -331,7 +359,7 @@ local manifest(apps) = pipeline('manifest') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: ['0.20.0'],
+          tags: ['0.20.4'],
           dry_run: false,
         },
       },
@@ -345,7 +373,23 @@ local manifest(apps) = pipeline('manifest') {
     steps: [
       make('check-drone-drift', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
-      make('test', container=false) { depends_on: ['clone', 'check-generated-files'] },
+      run('clone-main', commands=['cd ..', 'git clone $CI_REPO_REMOTE loki-main', 'cd -']) { depends_on: ['clone'] },
+      make('test', container=false) { depends_on: ['clone', 'clone-main'] },
+      run('test-main', commands=['cd ../loki-main', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-main'] },
+      make('compare-coverage', container=false, args=[
+        'old=../loki-main/test_results.txt',
+        'new=test_results.txt',
+        'packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki',
+        '> diff.txt',
+      ]) { depends_on: ['test', 'test-main'] },
+      run('report-coverage', commands=[
+        "pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')",
+        "body=$(jq -Rs '{body: . }' diff.txt)",
+        'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d "$body" > /dev/null',
+      ], env={
+        USER: 'grafanabot',
+        TOKEN: { from_secret: github_secret.name },
+      }) { depends_on: ['compare-coverage'] },
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {
@@ -370,24 +414,6 @@ local manifest(apps) = pipeline('manifest') {
         depends_on: ['clone'],
       },
     ],
-  },
-  pipeline('benchmark-cron') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    node: { type: 'no-parallel' },
-    steps: [
-      run('All', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...']),
-    ],
-    trigger: {
-      event: {
-        include: ['cron'],
-      },
-      cron: {
-        include: ['loki-bench'],
-      },
-    },
   },
 ] + [
   multiarch_image(arch)
@@ -422,16 +448,17 @@ local manifest(apps) = pipeline('manifest') {
   fluentbit(),
   fluentd(),
   logstash(),
+  querytee(),
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMain {
-      event: ['push'],
+      event: ['push', 'tag'],
     },
   },
 ] + [
   pipeline('deploy') {
     trigger: condition('include').tagMain {
-      event: ['push'],
+      event: ['push', 'tag'],
     },
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],

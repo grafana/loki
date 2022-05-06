@@ -34,6 +34,18 @@ func Test_splitQuery(t *testing.T) {
 		}
 	}
 
+	buildLokiRequestWithInterval := func(start, end time.Time) queryrangebase.Request {
+		return &LokiRequest{
+			Query:     "foo",
+			Limit:     1,
+			Interval:  2,
+			StartTs:   start,
+			EndTs:     end,
+			Direction: logproto.BACKWARD,
+			Path:      "/path",
+		}
+	}
+
 	buildLokiSeriesRequest := func(start, end time.Time) queryrangebase.Request {
 		return &LokiSeriesRequest{
 			Match:   []string{"match1"},
@@ -61,6 +73,10 @@ func Test_splitQuery(t *testing.T) {
 	}{
 		"LokiRequest": {
 			buildLokiRequest,
+			false,
+		},
+		"LokiRequestWithInterval": {
+			buildLokiRequestWithInterval,
 			false,
 		},
 		"LokiSeriesRequest": {

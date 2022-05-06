@@ -3,19 +3,16 @@ package gateway
 import (
 	"context"
 
+	"github.com/grafana/loki/operator/internal/external/k8s"
+	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
-	"github.com/ViaQ/logerr/log"
-
-	"github.com/ViaQ/logerr/kverrors"
-	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/json"
-	"sigs.k8s.io/yaml"
-
-	"github.com/grafana/loki/operator/internal/external/k8s"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -41,29 +38,26 @@ type openShiftSpec struct {
 
 // GetTenantConfigMapData returns the tenantName, tenantId, cookieSecret
 // clusters to auto-create redirect URLs for OpenShift Auth or an error.
-func GetTenantConfigMapData(ctx context.Context, k k8s.Client, req ctrl.Request) map[string]openshift.TenantData {
+func GetTenantConfigMapData(ctx context.Context, k k8s.Client, req ctrl.Request) (map[string]openshift.TenantData, error) {
 	var tenantConfigMap corev1.ConfigMap
-	key := client.ObjectKey{Name: manifests.LabelGatewayComponent, Namespace: req.Namespace}
+	key := client.ObjectKey{Name: manifests.GatewayName(req.Name), Namespace: req.Namespace}
 	if err := k.Get(ctx, key, &tenantConfigMap); err != nil {
-		log.Error(err, "couldn't find")
-		return nil
+		return nil, kverrors.Wrap(err, "couldn't find tenant configMap.")
 	}
 
 	tcm, err := extractTenantConfigMap(&tenantConfigMap)
 	if err != nil {
-		log.Error(err, "error occurred in extracting tenants.yaml configMap.")
-		return nil
+		return nil, kverrors.Wrap(err, "error occurred in extracting tenants.yaml configMap.")
 	}
 
 	tcmMap := make(map[string]openshift.TenantData)
 	for _, tenant := range tcm.Tenants {
 		tcmMap[tenant.Name] = openshift.TenantData{
-			TenantID:     tenant.ID,
 			CookieSecret: tenant.OpenShift.CookieSecret,
 		}
 	}
 
-	return tcmMap
+	return tcmMap, nil
 }
 
 // extractTenantConfigMap extracts tenants.yaml data if valid.

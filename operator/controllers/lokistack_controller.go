@@ -2,7 +2,10 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"time"
+
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"github.com/go-logr/logr"
 	"github.com/grafana/loki/operator/controllers/internal/management/state"
@@ -74,8 +77,8 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups="",resources=pods;nodes;services;endpoints;configmaps;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;clusterroles,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;clusterroles;roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors;prometheusrules,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=config.openshift.io,resources=dnses,verbs=get;list;watch
@@ -103,7 +106,24 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	err = handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme, r.Flags)
+	err = handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.Flags)
+
+	var degraded *status.DegradedError
+	if errors.As(err, &degraded) {
+		err = status.SetDegradedCondition(ctx, r.Client, req, degraded.Message, degraded.Reason)
+		if err != nil {
+			return ctrl.Result{
+				Requeue:      true,
+				RequeueAfter: time.Second,
+			}, err
+		}
+
+		return ctrl.Result{
+			Requeue:      degraded.Requeue,
+			RequeueAfter: time.Second,
+		}, nil
+	}
+
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,
@@ -137,7 +157,13 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&appsv1.Deployment{}, updateOrDeleteOnlyPred).
 		Owns(&appsv1.StatefulSet{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.ClusterRole{}, updateOrDeleteOnlyPred).
-		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred)
+		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
+		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
+		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred)
+
+	if r.Flags.EnablePrometheusAlerts {
+		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
+	}
 
 	if r.Flags.EnableGatewayRoute {
 		bld = bld.Owns(&routev1.Route{}, updateOrDeleteOnlyPred)

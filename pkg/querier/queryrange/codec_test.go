@@ -37,26 +37,27 @@ func Test_codec_DecodeRequest(t *testing.T) {
 		wantErr    bool
 	}{
 		{"wrong", func() (*http.Request, error) { return http.NewRequest(http.MethodGet, "/bad?step=bad", nil) }, nil, true},
-		{"ok", func() (*http.Request, error) {
+		{"query_range", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
-				fmt.Sprintf(`/query_range?start=%d&end=%d&query={foo="bar"}&step=1&limit=200&direction=FORWARD`, start.UnixNano(), end.UnixNano()), nil)
+				fmt.Sprintf(`/query_range?start=%d&end=%d&query={foo="bar"}&step=10&limit=200&direction=FORWARD`, start.UnixNano(), end.UnixNano()), nil)
 		}, &LokiRequest{
 			Query:     `{foo="bar"}`,
 			Limit:     200,
-			Step:      1000, // step is expected in ms.
+			Step:      10000, // step is expected in ms
 			Direction: logproto.FORWARD,
 			Path:      "/query_range",
 			StartTs:   start,
 			EndTs:     end,
 		}, false},
-		{"ok", func() (*http.Request, error) {
+		{"query_range", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
-				fmt.Sprintf(`/query_range?start=%d&end=%d&query={foo="bar"}&step=86400&limit=200&direction=FORWARD`, start.UnixNano(), end.UnixNano()), nil)
+				fmt.Sprintf(`/query_range?start=%d&end=%d&query={foo="bar"}&interval=10&limit=200&direction=BACKWARD`, start.UnixNano(), end.UnixNano()), nil)
 		}, &LokiRequest{
 			Query:     `{foo="bar"}`,
 			Limit:     200,
-			Step:      86400000, // step is expected in ms.
-			Direction: logproto.FORWARD,
+			Step:      14000, // step is expected in ms; calculated default if request param not present
+			Interval:  10000, // interval is expected in ms
+			Direction: logproto.BACKWARD,
 			Path:      "/query_range",
 			StartTs:   start,
 			EndTs:     end,
@@ -222,7 +223,8 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	toEncode := &LokiRequest{
 		Query:     `{foo="bar"}`,
 		Limit:     200,
-		Step:      86400000,
+		Step:      86400000, // nanoseconds
+		Interval:  10000000, // nanoseconds
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
 		StartTs:   start,
@@ -238,12 +240,14 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, fmt.Sprintf("%d", 200), got.URL.Query().Get("limit"))
 	require.Equal(t, `FORWARD`, got.URL.Query().Get("direction"))
 	require.Equal(t, "86400.000000", got.URL.Query().Get("step"))
+	require.Equal(t, "10000.000000", got.URL.Query().Get("interval"))
 
 	// testing a full roundtrip
 	req, err := LokiCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.Query, req.(*LokiRequest).Query)
 	require.Equal(t, toEncode.Step, req.(*LokiRequest).Step)
+	require.Equal(t, toEncode.Interval, req.(*LokiRequest).Interval)
 	require.Equal(t, toEncode.StartTs, req.(*LokiRequest).StartTs)
 	require.Equal(t, toEncode.EndTs, req.(*LokiRequest).EndTs)
 	require.Equal(t, toEncode.Direction, req.(*LokiRequest).Direction)
@@ -300,6 +304,26 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
 	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
 	require.Equal(t, "/loki/api/v1/labels", req.(*LokiLabelNamesRequest).Path)
+
+	// Test labels values endpoint
+	toEncode = &LokiLabelNamesRequest{
+		Path:    "/loki/api/v1/labels/__name__/values",
+		StartTs: start,
+		EndTs:   end,
+	}
+	got, err = LokiCodec.EncodeRequest(ctx, toEncode)
+	require.NoError(t, err)
+	require.Equal(t, ctx, got.Context())
+	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
+	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
+	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+
+	// testing a full roundtrip
+	req, err = LokiCodec.DecodeRequest(context.TODO(), got, nil)
+	require.NoError(t, err)
+	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
+	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
+	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
 }
 
 func Test_codec_EncodeResponse(t *testing.T) {
@@ -910,6 +934,7 @@ var (
 			"queueTime": 21,
 			"subqueries": 1,
 			"totalBytesProcessed": 24,
+                        "totalEntriesReturned": 10,
 			"totalLinesProcessed": 25
 		}
 	},`
@@ -1062,6 +1087,7 @@ var (
 			TotalBytesProcessed:     24,
 			Subqueries:              1,
 			TotalLinesProcessed:     25,
+			TotalEntriesReturned:    10,
 		},
 		Querier: stats.Querier{
 			Store: stats.Store{

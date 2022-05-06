@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -26,16 +27,18 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/tenant"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	errUtil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/wal"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -92,7 +95,7 @@ type Config struct {
 
 	WAL WALConfig `yaml:"wal,omitempty"`
 
-	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
+	ChunkFilterer chunk.RequestChunkFilterer `yaml:"-"`
 	// Optional wrapper that can be used to modify the behaviour of the ingester
 	Wrapper Wrapper `yaml:"-"`
 
@@ -109,7 +112,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 0, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "")
-	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
@@ -156,8 +159,8 @@ type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
-	GetSchemaConfigs() []chunk.PeriodConfig
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
+	GetSchemaConfigs() []config.PeriodConfig
 }
 
 // Interface is an interface for the Ingester
@@ -190,7 +193,7 @@ type Ingester struct {
 	lifecyclerWatcher *services.FailureWatcher
 
 	store           ChunkStore
-	periodicConfigs []chunk.PeriodConfig
+	periodicConfigs []config.PeriodConfig
 
 	loopDone    sync.WaitGroup
 	loopQuit    chan struct{}
@@ -214,7 +217,7 @@ type Ingester struct {
 
 	wal WAL
 
-	chunkFilter storage.RequestChunkFilterer
+	chunkFilter chunk.RequestChunkFilterer
 }
 
 // New makes a new Ingester.
@@ -286,7 +289,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	return i, nil
 }
 
-func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
+func (i *Ingester) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
 }
 
@@ -418,7 +421,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		)
 
 		level.Info(util_log.Logger).Log("msg", "recovering from WAL")
-		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
+		segmentReader, segmentCloser, err := wal.NewWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
 		}
@@ -549,7 +552,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	return &logproto.PushResponse{}, err
 }
 
-func (i *Ingester) GetOrCreateInstance(instanceID string) *instance {
+func (i *Ingester) GetOrCreateInstance(instanceID string) *instance { //nolint:revive
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
 		return inst
@@ -590,6 +593,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			End:       end,
 			Limit:     req.Limit,
 			Shards:    req.Shards,
+			Deletes:   req.Deletes,
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
@@ -626,6 +630,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			End:      end,
 			Selector: req.Selector,
 			Shards:   req.Shards,
+			Deletes:  req.Deletes,
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
@@ -645,14 +650,14 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 // max look back is limited to from time of boltdb-shipper config.
 // It considers previous periodic config's from time if that also has index type set to boltdb-shipper.
 func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
-	activePeriodicConfigIndex := storage.ActivePeriodConfig(i.periodicConfigs)
+	activePeriodicConfigIndex := config.ActivePeriodConfig(i.periodicConfigs)
 	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
-	if activePeriodicConfig.IndexType != shipper.BoltDBShipperType {
+	if activePeriodicConfig.IndexType != config.BoltDBShipperType {
 		return 0
 	}
 
 	startTime := activePeriodicConfig.From
-	if activePeriodicConfigIndex != 0 && i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == shipper.BoltDBShipperType {
+	if activePeriodicConfigIndex != 0 && i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == config.BoltDBShipperType {
 		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
 	}
 
@@ -677,7 +682,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 	// parse the request
 	start, end := errUtil.RoundToMilliseconds(reqStart, req.End)
-	matchers, err := logql.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -689,7 +694,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	// todo (Callum) ingester should maybe store the whole schema config?
-	s := chunk.SchemaConfig{
+	s := config.SchemaConfig{
 		Configs: i.periodicConfigs,
 	}
 
@@ -697,7 +702,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	resp := logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
 	for _, chunks := range chunksGroups {
 		for _, chk := range chunks {
-			resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk))
+			resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk.ChunkRef))
 		}
 	}
 
@@ -727,10 +732,9 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return resp, nil
 	}
 
-	// Only continue if the store is a chunk.Store
-	var cs chunk.Store
+	var cs storage.Store
 	var ok bool
-	if cs, ok = i.store.(chunk.Store); !ok {
+	if cs, ok = i.store.(storage.Store); !ok {
 		return resp, nil
 	}
 
@@ -775,8 +779,12 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 // Check implements grpc_health_v1.HealthCheck.
-func (*Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
-	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+func (i *Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	status := grpc_health_v1.HealthCheckResponse_SERVING
+	if (i.State() != services.Running) || (i.lifecycler.GetState() != ring.ACTIVE) {
+		status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+	}
+	return &grpc_health_v1.HealthCheckResponse{Status: status}, nil
 }
 
 // Watch implements grpc_health_v1.HealthCheck.

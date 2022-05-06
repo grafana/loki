@@ -221,3 +221,4 @@ Filtering stages:
 
   - [match](../stages/match/): Conditionally run stages based on the label set.
   - [drop](../stages/drop/): Conditionally drop log lines based on several options.
+  - [limit](../stages/limit/): Conditionally rate limit log lines based on several options.

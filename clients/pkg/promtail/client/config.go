@@ -21,8 +21,9 @@ const (
 	Timeout        = 10 * time.Second
 )
 
-// Config describes configuration for a HTTP pusher client.
+// Config describes configuration for an HTTP pusher client.
 type Config struct {
+	Name      string `yaml:"name,omitempty"`
 	URL       flagext.URLValue
 	BatchWait time.Duration
 	BatchSize int
@@ -38,26 +39,24 @@ type Config struct {
 	// single tenant mode)
 	TenantID string `yaml:"tenant_id"`
 
+	// deprecated use StreamLagLabels from config.Config instead
 	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
 // prefix. If prefix is a non-empty string, prefix should end with a period.
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.Var(&c.URL, prefix+"client.url", "URL of log server")
-	f.DurationVar(&c.BatchWait, prefix+"client.batch-wait", BatchWait, "Maximum wait period before sending batch.")
-	f.IntVar(&c.BatchSize, prefix+"client.batch-size-bytes", BatchSize, "Maximum batch size to accrue before sending. ")
+	f.Var(&c.URL, prefix+"client.url", "URL of log server (deprecated).")
+	f.DurationVar(&c.BatchWait, prefix+"client.batch-wait", BatchWait, "Maximum wait period before sending batch (deprecated).")
+	f.IntVar(&c.BatchSize, prefix+"client.batch-size-bytes", BatchSize, "Maximum batch size to accrue before sending (deprecated).")
 	// Default backoff schedule: 0.5s, 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s(4.267m) For a total time of 511.5s(8.5m) before logs are lost
-	f.IntVar(&c.BackoffConfig.MaxRetries, prefix+"client.max-retries", MaxRetries, "Maximum number of retires when sending batches.")
-	f.DurationVar(&c.BackoffConfig.MinBackoff, prefix+"client.min-backoff", MinBackoff, "Initial backoff time between retries.")
-	f.DurationVar(&c.BackoffConfig.MaxBackoff, prefix+"client.max-backoff", MaxBackoff, "Maximum backoff time between retries.")
-	f.DurationVar(&c.Timeout, prefix+"client.timeout", Timeout, "Maximum time to wait for server to respond to a request")
-	f.Var(&c.ExternalLabels, prefix+"client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2)")
+	f.IntVar(&c.BackoffConfig.MaxRetries, prefix+"client.max-retries", MaxRetries, "Maximum number of retires when sending batches (deprecated).")
+	f.DurationVar(&c.BackoffConfig.MinBackoff, prefix+"client.min-backoff", MinBackoff, "Initial backoff time between retries (deprecated).")
+	f.DurationVar(&c.BackoffConfig.MaxBackoff, prefix+"client.max-backoff", MaxBackoff, "Maximum backoff time between retries (deprecated).")
+	f.DurationVar(&c.Timeout, prefix+"client.timeout", Timeout, "Maximum time to wait for server to respond to a request (deprecated).")
+	f.Var(&c.ExternalLabels, prefix+"client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2) (deprecated).")
 
-	f.StringVar(&c.TenantID, prefix+"client.tenant-id", "", "Tenant ID to use when pushing logs to Loki.")
-
-	c.StreamLagLabels = []string{"filename"}
-	f.Var(&c.StreamLagLabels, prefix+"client.stream-lag-labels", "Comma-separated list of labels to use when calculating stream lag")
+	f.StringVar(&c.TenantID, prefix+"client.tenant-id", "", "Tenant ID to use when pushing logs to Loki (deprecated).")
 }
 
 // RegisterFlags registers flags.
@@ -80,10 +79,9 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 				MaxRetries: MaxRetries,
 				MinBackoff: MinBackoff,
 			},
-			BatchSize:       BatchSize,
-			BatchWait:       BatchWait,
-			Timeout:         Timeout,
-			StreamLagLabels: []string{"filename"},
+			BatchSize: BatchSize,
+			BatchWait: BatchWait,
+			Timeout:   Timeout,
 		}
 	}
 
