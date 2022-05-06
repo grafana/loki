@@ -19,6 +19,7 @@ These endpoints are exposed by all components:
 - [`GET /ready`](#get-ready)
 - [`GET /metrics`](#get-metrics)
 - [`GET /config`](#get-config)
+- [`GET /services`](#get-services)
 - [`GET /loki/api/v1/status/buildinfo`](#get-lokiapiv1statusbuildinfo)
 
 These endpoints are exposed by the querier and the query frontend:
@@ -817,6 +818,19 @@ modify the output. If it has the value `diff` only the differences between the d
 and the current are returned. A value of `defaults` returns the default configuration.
 
 In microservices mode, the `/config` endpoint is exposed by all components.
+
+## `GET /services`
+
+`/services` returns a list of all running services and their current states.
+
+Services can have the following states:
+
+- **New**: Service is new, not running yet (initial state)
+- **Starting**: Service is starting; if starting succeeds, service enters **Running** state
+- **Running**: Service is fully running now; when service stops running, it enters **Stopping** state
+- **Stopping**: Service is shutting down
+- **Terminated**: Service has stopped successfully (terminal state)
+- **Failed**: Service has failed in **Starting**, **Running** or **Stopping** state (terminal state)
 
 ## `GET /loki/api/v1/status/buildinfo`
 
