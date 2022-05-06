@@ -58,7 +58,7 @@ type Limits struct {
 	EnforceMetricName       bool             `yaml:"enforce_metric_name" json:"enforce_metric_name"`
 	MaxLineSize             flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
 	MaxLineSizeTruncate     bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
-	FudgeDuplicateTimestamp bool             `yaml:"fudge_duplicate_timestamp" json:"fudge_duplicate_timestamp"`
+	IncrementDuplicateTimestamp bool         `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
@@ -136,7 +136,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", true, "Reject old samples.")
-	f.BoolVar(&l.FudgeDuplicateTimestamp, "validation.fudge-duplicate-timestamps", false, "Fudge the timestamp of a log line by one nanosecond in the future from a previous entry for the same stream with the same timestamp, guarantees sort order at query time.")
+	f.BoolVar(&l.IncrementDuplicateTimestamp, "validation.increment-duplicate-timestamps", false, "Increment the timestamp of a log line by one nanosecond in the future from a previous entry for the same stream with the same timestamp; guarantees sort order at query time.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -539,8 +539,8 @@ func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 	}
 }
 
-func (o *Overrides) FudgeDuplicateTimestamps(userID string) bool {
-	return o.getOverridesForUser(userID).FudgeDuplicateTimestamp
+func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
+	return o.getOverridesForUser(userID).IncrementDuplicateTimestamp
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
