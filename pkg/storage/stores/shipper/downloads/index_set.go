@@ -45,7 +45,6 @@ type indexSet struct {
 	baseIndexSet      storage.IndexSet
 	tableName, userID string
 	cacheLocation     string
-	metrics           *metrics
 	boltDBIndexClient BoltDBIndexClient
 	logger            log.Logger
 
@@ -58,8 +57,7 @@ type indexSet struct {
 }
 
 func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet,
-	boltDBIndexClient BoltDBIndexClient, logger log.Logger, metrics *metrics,
-) (IndexSet, error) {
+	boltDBIndexClient BoltDBIndexClient, logger log.Logger) (IndexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -76,7 +74,6 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		tableName:         tableName,
 		userID:            userID,
 		cacheLocation:     cacheLocation,
-		metrics:           metrics,
 		boltDBIndexClient: boltDBIndexClient,
 		logger:            logger,
 		lastUsedAt:        time.Now(),
@@ -283,14 +280,6 @@ func (t *indexSet) Sync(ctx context.Context) (err error) {
 // sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
 func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err error) {
 	level.Debug(t.logger).Log("msg", "syncing index files")
-
-	defer func() {
-		status := statusSuccess
-		if err != nil {
-			status = statusFailure
-		}
-		t.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
-	}()
 
 	toDownload, toDelete, err := t.checkStorageForUpdates(ctx, lock, bypassListCache)
 	if err != nil {
