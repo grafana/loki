@@ -39,7 +39,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.withArgsMixin(k.util.mapToFlags($.query_scheduler_args)) +
     $.jaeger_mixin +
     k.util.resourcesRequests('2', '600Mi') +
-    k.util.resourcesLimits(null, '1200Mi')
+    k.util.resourcesLimits(null, '1200Mi') +
+    container.withEnvMixin($._config.commonEnvs)
   else {},
 
   local deployment = k.apps.v1.deployment,
