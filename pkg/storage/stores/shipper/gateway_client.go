@@ -79,7 +79,7 @@ type IndexGatewayClientConfig struct {
 func (i *IndexGatewayClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
 	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode.")
-	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, "Wether requests sent to the gateway should be logged or not.")
+	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, "Whether requests sent to the gateway should be logged or not.")
 }
 
 func (i *IndexGatewayClientConfig) RegisterFlags(f *flag.FlagSet) {
