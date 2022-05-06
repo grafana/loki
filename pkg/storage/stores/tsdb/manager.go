@@ -3,8 +3,10 @@ package tsdb
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 // TSDBManager wraps the index shipper and writes/manages
 // TSDB files on  disk
 type TSDBManager interface {
+	Start() error
 	Index
 	// Builds a new TSDB file from a set of WALs
 	BuildFromWALs(time.Time, []WALIdentifier) error
@@ -66,6 +69,68 @@ func NewTSDBManager(
 		metrics:     metrics,
 		shipper:     shipper,
 	}
+}
+
+func (m *tsdbManager) Start() error {
+	// load list of multitenant tsdbs
+	mulitenantDir := managerMultitenantDir(m.dir)
+	files, err := ioutil.ReadDir(mulitenantDir)
+	if err != nil {
+		return err
+	}
+
+	for _, f := range files {
+		if !f.IsDir() {
+			continue
+		}
+
+		bucket, err := strconv.Atoi(f.Name())
+		if err != nil {
+			level.Warn(m.log).Log(
+				"msg", "failed to parse bucket in multitenant dir ",
+				"err", err.Error(),
+			)
+			continue
+		}
+
+		tsdbs, err := ioutil.ReadDir(filepath.Join(mulitenantDir, f.Name()))
+		if err != nil {
+			level.Warn(m.log).Log(
+				"msg", "failed to open period bucket dir",
+				"bucket", bucket,
+				"err", err.Error(),
+			)
+			continue
+		}
+
+		for _, db := range tsdbs {
+			id, ok := parseMultitenantTSDBPath(db.Name())
+			if !ok {
+				continue
+			}
+
+			prefixed := newPrefixedIdentifier(id, filepath.Join(mulitenantDir, f.Name()), "")
+			loaded, err := NewShippableTSDBFile(
+				prefixed,
+				false,
+			)
+
+			if err != nil {
+				level.Warn(m.log).Log(
+					"msg", "",
+					"tsdbPath", prefixed.Path(),
+					"err", err.Error(),
+				)
+			}
+
+			if err := m.shipper.AddIndex(f.Name(), "", loaded); err != nil {
+				return err
+			}
+		}
+
+	}
+
+	return nil
 }
 
 func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
