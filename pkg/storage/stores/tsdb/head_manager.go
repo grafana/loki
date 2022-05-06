@@ -182,9 +182,16 @@ func (m *HeadManager) Start() error {
 	if err != nil {
 		return err
 	}
+	level.Info(m.log).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
 
 	m.activeHeads = newTenantHeads(now, m.shards, m.metrics, m.log)
 
+	// Load the shipper with any previously built TSDBs
+	if err := m.tsdbManager.Start(); err != nil {
+		return errors.Wrap(err, "failed to start tsdb manager")
+	}
+
+	// Build any old WALs into TSDBs for the shipper
 	for _, group := range walsByPeriod {
 		if group.period < curPeriod {
 			if err := m.tsdbManager.BuildFromWALs(

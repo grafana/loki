@@ -22,6 +22,7 @@ import (
 type noopTSDBManager struct{ NoopIndex }
 
 func (noopTSDBManager) BuildFromWALs(_ time.Time, _ []WALIdentifier) error { return nil }
+func (noopTSDBManager) Start() error                                       { return nil }
 
 func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []ChunkRef) {
 	for _, x := range xs {
