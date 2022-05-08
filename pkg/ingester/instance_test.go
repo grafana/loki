@@ -43,7 +43,7 @@ func TestLabelsCollisions(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(defaultConfig(), "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, nil, &OnceSwitch{}, nil)
+	i := newInstance(defaultConfig(), "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)

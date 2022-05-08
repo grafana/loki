@@ -98,7 +98,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		if err != nil {
 			return err
 		}
-		memoryChunks.Add(float64(len(series.Chunks)))
+		r.ing.metrics.memoryChunks.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredEntriesTotal.Add(float64(entriesAdded))
 		r.ing.replayController.Add(int64(bytesAdded))

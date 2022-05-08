@@ -136,7 +136,7 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 
 	err := s.consumeChunk(ctx, chunk)
 	if err == nil {
-		memoryChunks.Inc()
+		i.metrics.memoryChunks.Inc()
 	}
 
 	return err
