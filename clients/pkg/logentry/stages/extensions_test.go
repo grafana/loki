@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -86,6 +87,52 @@ var (
 	criTestTime, _ = time.Parse(time.RFC3339Nano, criTestTimeStr)
 	criTestTime2   = time.Now()
 )
+
+func TestCRI_tags(t *testing.T) {
+	cases := []struct {
+		name     string
+		lines    []string
+		expected []string
+		err      error
+	}{
+		{
+			name: "handle tag F",
+			lines: []string{
+				"2019-05-07T18:57:50.904275087+00:00 stdout F some full line",
+				"2019-05-07T18:57:55.904275087+00:00 stdout F log",
+			},
+			expected: []string{"some full line", "log"},
+		},
+		{
+			name: "handle tag P",
+			lines: []string{
+				"2019-05-07T18:57:50.904275087+00:00 stdout P some full line",
+				"2019-05-07T18:57:55.904275087+00:00 stdout F log",
+			},
+			expected: []string{"some full line\nlog"},
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := NewCRI(util_log.Logger, prometheus.DefaultRegisterer)
+			require.NoError(t, err)
+
+			got := make([]string, 0)
+
+			for _, line := range tt.lines {
+				out := processEntries(p, newEntry(nil, nil, line, time.Now()))
+				if len(out) > 0 {
+					for _, en := range out {
+						got = append(got, en.Line)
+
+					}
+				}
+			}
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
 
 func TestNewCri(t *testing.T) {
 	tests := map[string]struct {
