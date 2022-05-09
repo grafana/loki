@@ -62,6 +62,11 @@ const (
 	LabelIndexGatewayComponent string = "index-gateway"
 	// LabelGatewayComponent is the label value for the lokiStack-gateway component
 	LabelGatewayComponent string = "lokistack-gateway"
+
+	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
+	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
+	// GCSFileName is the file containing the Google credentials for authentication
+	GCSFileName = "key.json"
 )
 
 var (

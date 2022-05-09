@@ -91,6 +91,12 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 		return nil, kverrors.New("missing secret field", "field", "bucketname")
 	}
 
+	// Check if google authentication credentials is provided
+	_, ok = s.Data["key.json"]
+	if !ok {
+		return nil, kverrors.New("missing google authentication credentials", "field", "key.json")
+	}
+
 	return &storage.GCSStorageConfig{
 		Bucket: string(bucket),
 	}, nil
