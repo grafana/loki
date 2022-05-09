@@ -151,7 +151,9 @@ And `<stream value>` is:
 }
 ```
 
-The items in the `values` array are sorted by their timestamp in a descending (when using `direction=backward`) or ascending (when using `direction=forward`) order.
+The items in the `values` array are sorted by timestamp.
+The most recent item is first when using `direction=backward`.
+The oldest item is first when using `direction=forward`.
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
