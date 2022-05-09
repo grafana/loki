@@ -153,6 +153,11 @@ func (c *cachedObjectClient) buildCache(ctx context.Context, forceRefresh bool) 
 	c.tableNames = []client.StorageCommonPrefix{}
 
 	for _, object := range objects {
+		// The s3 client can also return the directory itself in the ListObjects.
+		if object.Key == "" {
+			continue
+		}
+
 		ss := strings.Split(object.Key, delimiter)
 		if len(ss) < 2 || len(ss) > 3 {
 			return fmt.Errorf("invalid key: %s", object.Key)
