@@ -286,7 +286,7 @@ Where `<matrix value>` is:
 }
 ```
 
-The items in the `values` array are sorted by their timestamp in an ascending order.
+The items in the `values` array are sorted by timestamp, and the oldest item is first.
 
 And `<stream value>` is:
 
