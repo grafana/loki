@@ -99,23 +99,7 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 	}
 
 	if opts.Stack.Storage.Secret.Type == lokiv1beta1.ObjectStorageSecretGCS {
-		podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-			Name: opts.Stack.Storage.Secret.Name,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: opts.Stack.Storage.Secret.Name,
-				},
-			},
-		})
-		podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
-			Name:      opts.Stack.Storage.Secret.Name,
-			ReadOnly:  false,
-			MountPath: secretDirectory,
-		})
-		podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
-			Name:  EnvGoogleApplicationCredentials,
-			Value: path.Join(secretDirectory, GCSFileName),
-		})
+		ensureCredentialsForGCS(&podSpec, opts.Stack.Storage.Secret.Name)
 	}
 
 	l := ComponentLabels(LabelQuerierComponent, opts.Name)
