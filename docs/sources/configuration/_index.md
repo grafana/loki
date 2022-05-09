@@ -56,7 +56,7 @@ References to undefined variables are replaced by empty strings unless you speci
 To specify a default value, use:
 
 ```
-${VAR:default_value}
+${VAR:-default_value}
 ```
 
 Where default_value is the value to use if the environment variable is undefined.

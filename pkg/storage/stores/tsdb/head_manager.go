@@ -144,12 +144,11 @@ func (m *HeadManager) Stop() error {
 
 func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
-	for i, l := range ls {
-		if l.Name == labels.MetricName {
-			ls = append(ls[:i], ls[i+1:]...)
-			break
-		}
-	}
+	// We must create a copy of the labels here to avoid mutating the existing
+	// labels when writing across index buckets.
+	b := labels.NewBuilder(ls)
+	b.Del(labels.MetricName)
+	ls = b.Labels()
 
 	m.mtx.RLock()
 	now := time.Now()
@@ -183,9 +182,16 @@ func (m *HeadManager) Start() error {
 	if err != nil {
 		return err
 	}
+	level.Info(m.log).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
 
 	m.activeHeads = newTenantHeads(now, m.shards, m.metrics, m.log)
 
+	// Load the shipper with any previously built TSDBs
+	if err := m.tsdbManager.Start(); err != nil {
+		return errors.Wrap(err, "failed to start tsdb manager")
+	}
+
+	// Build any old WALs into TSDBs for the shipper
 	for _, group := range walsByPeriod {
 		if group.period < curPeriod {
 			if err := m.tsdbManager.BuildFromWALs(
