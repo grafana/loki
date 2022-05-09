@@ -3,4 +3,5 @@ resources:
 - loki_v1beta1_lokistack.yaml
 - loki_v1beta1_alertingrule.yaml
 - loki_v1beta1_recordingrule.yaml
+- loki_v1beta1_rulerconfig.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

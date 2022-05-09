@@ -85,6 +85,66 @@ metadata:
             ],
             "tenantID": "test-tenant"
           }
+        },
+        {
+          "apiVersion": "loki.grafana.com/v1beta1",
+          "kind": "RulerConfig",
+          "metadata": {
+            "name": "rulerconfig-sample"
+          },
+          "spec": {
+            "alertmanager": {
+              "discoverySpec": {
+                "enabled": true,
+                "refreshInterval": "1m"
+              },
+              "enableV2": true,
+              "endpoints": [
+                "http://alertmanager-host1.mycompany.org",
+                "http://alertmanager-host2.mycompany.org"
+              ],
+              "externalLabels": {
+                "environment": "production",
+                "region": "us-east-2"
+              },
+              "externalUrl": "http://www.mycompany.org/alerts",
+              "notificationSpec": {
+                "forGracePeriod": "10m",
+                "forOutageTolerance": "1h",
+                "queueCapacity": 1000,
+                "resendDelay": "1m",
+                "timeout": "30s"
+              }
+            },
+            "evaluationInterval": "1m",
+            "pollInterval": "1m",
+            "remoteWrite": {
+              "client": {
+                "authorization": "basic",
+                "authorizationSecretName": "my-secret-resource",
+                "followRedirects": true,
+                "name": "remote-write-log-metrics",
+                "proxyURL": "http://proxy-host.mycompany.org",
+                "relabelConfigs": [
+                  {
+                    "action": "replace",
+                    "regex": "ALERTS.*",
+                    "replacement": "$1",
+                    "separator": ";",
+                    "source_labels": [
+                      "labelc",
+                      "labeld"
+                    ],
+                    "target_label": "labelnew"
+                  }
+                ],
+                "timeout": "30s",
+                "url": "http://remote-write-host.mycompany.org"
+              },
+              "enabled": true,
+              "refreshPeriod": "10s"
+            }
+          }
         }
       ]
     capabilities: Full Lifecycle
@@ -636,6 +696,209 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
       version: v1beta1
+    - description: RulerConfig is the Schema for the rulerconfigs API
+      displayName: AlertingRule
+      kind: RulerConfig
+      name: rulerconfigs.loki.grafana.com
+      resources:
+      - kind: LokiStack
+        name: ""
+        version: v1beta1
+      specDescriptors:
+      - description: Defines alert manager configuration to notify on firing alerts.
+        displayName: Alert Manager Configuration
+        path: alertmanager
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Defines the configuration for DNS-based discovery of AlertManager
+          hosts.
+        displayName: DNS Discovery
+        path: alertmanager.discoverySpec
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Use DNS SRV records to discover Alertmanager hosts.
+        displayName: Enabled
+        path: alertmanager.discoverySpec.enabled
+      - description: How long to wait between refreshing DNS resolutions of Alertmanager
+          hosts.
+        displayName: Refresh Interval
+        path: alertmanager.discoverySpec.refreshInterval
+      - description: If enabled, then requests to Alertmanager use the v2 API.
+        displayName: Enable AlertManager V2 API
+        path: alertmanager.enableV2
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: List of AlertManager URLs to send notifications to. Each Alertmanager
+          URL is treated as a separate group in the configuration. Multiple Alertmanagers
+          in HA per group can be supported by using DNS resolution (See EnableDNSDiscovery).
+        displayName: AlertManager Endpoints
+        path: alertmanager.endpoints
+      - description: Additional labels to add to all alerts.
+        displayName: Extra Alert Labels
+        path: alertmanager.externalLabels
+      - description: URL for alerts return path.
+        displayName: Alert External URL
+        path: alertmanager.externalUrl
+      - description: Defines the configuration for the notification queue to AlertManager
+          hosts.
+        displayName: Notification Queue
+        path: alertmanager.notificationSpec
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Minimum duration between alert and restored "for" state. This
+          is maintained only for alerts with configured "for" time greater than the
+          grace period.
+        displayName: Firing Grace Period
+        path: alertmanager.notificationSpec.forGracePeriod
+      - description: Max time to tolerate outage for restoring "for" state of alert.
+        displayName: Outage Tolerance
+        path: alertmanager.notificationSpec.forOutageTolerance
+      - description: Capacity of the queue for notifications to be sent to the Alertmanager.
+        displayName: Notification Queue Capacity
+        path: alertmanager.notificationSpec.queueCapacity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Minimum amount of time to wait before resending an alert to Alertmanager.
+        displayName: Resend Delay
+        path: alertmanager.notificationSpec.resendDelay
+      - description: HTTP timeout duration when sending notifications to the Alertmanager.
+        displayName: Timeout
+        path: alertmanager.notificationSpec.timeout
+      - description: Interval on how frequently to evaluate rules.
+        displayName: Evaluation Interval
+        path: evaluationInterval
+      - description: Interval on how frequently to poll for new rule definitions.
+        displayName: Poll Interval
+        path: pollInterval
+      - description: Defines a remote write endpoint to write recording rule metrics.
+        displayName: Remote Write Configuration
+        path: remoteWrite
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Defines the configuration for remote write client.
+        displayName: Client
+        path: remoteWrite.clientSpec
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Type of Authorzation to use to access the remote write endpoint
+        displayName: Authorization Type
+        path: remoteWrite.clientSpec.authorization
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:basic
+        - urn:alm:descriptor:com.tectonic.ui:select:header
+      - description: Name of a secret in the namespace configured for authorization
+          secrets.
+        displayName: Authorization Secret Name
+        path: remoteWrite.clientSpec.authorizationSecretName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:Secret
+      - description: Configure whether HTTP requests follow HTTP 3xx redirects.
+        displayName: Follow HTTP Redirects
+        path: remoteWrite.clientSpec.followRedirects
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: Name of the remote write config, which if specified must be unique
+          among remote write configs.
+        displayName: Name
+        path: remoteWrite.clientSpec.name
+      - description: Optional proxy URL.
+        displayName: HTTP Proxy URL
+        path: remoteWrite.clientSpec.proxyUrl
+      - description: List of remote write relabel configurations.
+        displayName: Metric Relabel Configuration
+        path: remoteWrite.clientSpec.relabelConfigs
+      - description: Action to perform based on regex matching. Default is 'replace'
+        displayName: Action
+        path: remoteWrite.clientSpec.relabelConfigs[0].action
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:drop
+        - urn:alm:descriptor:com.tectonic.ui:select:hashmod
+        - urn:alm:descriptor:com.tectonic.ui:select:keep
+        - urn:alm:descriptor:com.tectonic.ui:select:labeldrop
+        - urn:alm:descriptor:com.tectonic.ui:select:labelkeep
+        - urn:alm:descriptor:com.tectonic.ui:select:labelmap
+        - urn:alm:descriptor:com.tectonic.ui:select:replace
+      - description: Modulus to take of the hash of the source label values.
+        displayName: Modulus
+        path: remoteWrite.clientSpec.relabelConfigs[0].modulus
+      - description: Regular expression against which the extracted value is matched.
+          Default is '(.*)'
+        displayName: Regex
+        path: remoteWrite.clientSpec.relabelConfigs[0].regex
+      - description: Replacement value against which a regex replace is performed
+          if the regular expression matches. Regex capture groups are available. Default
+          is '$1'
+        displayName: Replacement
+        path: remoteWrite.clientSpec.relabelConfigs[0].replacement
+      - description: Separator placed between concatenated source label values. default
+          is ';'.
+        displayName: Separator
+        path: remoteWrite.clientSpec.relabelConfigs[0].separator
+      - description: The source labels select values from existing labels. Their content
+          is concatenated using the configured separator and matched against the configured
+          regular expression for the replace, keep, and drop actions.
+        displayName: Source Labels
+        path: remoteWrite.clientSpec.relabelConfigs[0].sourceLabels
+      - description: Label to which the resulting value is written in a replace action.
+          It is mandatory for replace actions. Regex capture groups are available.
+        displayName: Target Label
+        path: remoteWrite.clientSpec.relabelConfigs[0].targetLabel
+      - description: Timeout for requests to the remote write endpoint.
+        displayName: Remote Write Timeout
+        path: remoteWrite.clientSpec.timeout
+      - description: The URL of the endpoint to send samples to.
+        displayName: Endpoint
+        path: remoteWrite.clientSpec.url
+      - description: Enable remote-write functionality.
+        displayName: Enabled
+        path: remoteWrite.enabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: Defines the configuration for remote write client queue.
+        displayName: Client Queue
+        path: remoteWrite.queueSpec
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Maximum time a sample will wait in buffer.
+        displayName: Batch Send Deadline
+        path: remoteWrite.queueSpec.batchSendDeadline
+      - description: Number of samples to buffer per shard before we block reading
+          of more
+        displayName: Queue Capacity
+        path: remoteWrite.queueSpec.capacity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Maximum retry delay.
+        displayName: Max BackOff Period
+        path: remoteWrite.queueSpec.maxBackOffPeriod
+      - description: Maximum number of samples per send.
+        displayName: Maximum Shards per Send
+        path: remoteWrite.queueSpec.maxSamplesPerSend
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Maximum number of shards, i.e. amount of concurrency.
+        displayName: Maximum Shards
+        path: remoteWrite.queueSpec.maxShards
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Initial retry delay. Gets doubled for every retry.
+        displayName: Min BackOff Period
+        path: remoteWrite.queueSpec.minBackOffPeriod
+      - description: Minimum number of shards, i.e. amount of concurrency.
+        displayName: Minimum Shards
+        path: remoteWrite.queueSpec.minShards
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Minimum period to wait between refreshing remote-write reconfigurations.
+        displayName: Min Refresh Period
+        path: remoteWrite.refreshPeriod
+      statusDescriptors:
+      - description: Conditions of the RulerConfig health.
+        displayName: Conditions
+        path: conditions
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes.conditions
+      version: v1beta1
   description: |
     The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
     ## Prerequisites and Requirements
@@ -781,6 +1044,32 @@ spec:
           - loki.grafana.com
           resources:
           - recordingrules/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - rulerconfigs
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - rulerconfigs/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - rulerconfigs/status
           verbs:
           - get
           - patch

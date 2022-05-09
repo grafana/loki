@@ -161,6 +161,121 @@ schema_config:
 ruler:
   enable_api: true
   enable_sharding: true
+  {{ with .Ruler.EvaluationInterval }}
+  evaluation_interval: {{ . }}
+  {{ end }}
+  {{ with .Ruler.PollInterval }}
+  poll_interval: {{ . }}
+  {{ end }}
+  {{ with .Ruler.AlertManager }}
+  external_url: {{ .ExternalURL }}
+  {{ with .ExternalLabels }}
+  external_labels:
+    {{ range $name, $value := . }}
+    {{ $name }}: {{ $value }}
+    {{ end }}
+  {{ end}}
+  alertmanager_url: {{ .Hosts }}
+  {{ if .EnableV2 }}
+  enable_alertmanager_v2: {{ .EnableV2 }}
+  {{ end }}
+  {{ if .EnableDiscovery }}
+  enable_alertmanager_discovery: {{ .EnableDiscovery }}
+  alertmanager_refresh_interval: {{ .RefreshInterval }}
+  {{ end }}
+  {{ if .QueueCapacity }}
+  notification_queue_capacity: {{ .QueueCapacity }}
+  {{ end }}
+  {{ if .Timeout }}
+  notification_timeout: {{ .Timeout }}
+  {{ end }}
+  {{ if .ForOutageTolerance }}
+  for_outage_tolerance: {{ .ForOutageTolerance }}
+  {{ end }}
+  {{ if .ForGracePeriod }}
+  for_grace_period: {{ .ForGracePeriod }}
+  {{ end }}
+  {{ if .ResendDelay }}
+  resend_delay: {{ .ResendDelay }}
+  {{ end }}
+  {{ end}}
+  {{ with .Ruler.RemoteWrite }}
+  {{ if .Enabled }}
+  remote_write:
+    enabled: {{ .Enabled }}
+    config_refresh_period: {{ .RefreshPeriod }}
+    client:
+      {{  with .Client }}
+      name: {{ .Name }}
+      url: {{ .URL }}
+      timeout: {{ .RemoteTimeout }}
+      proxy_url: {{ .ProxyURL }}
+      follow_redirects: {{ .FollowRedirects }}
+      headers:
+      {{ range $key, $val := .Headers }}
+        {{ $key }}: {{ $val }}
+      {{ end }}
+      {{ if and .BasicAuthUsername .BasicAuthPassword }}
+      basic_auth:
+        username: {{ .BasicAuthUsername }}
+        password: {{ .BasicAuthPassword }}
+      {{ end }}
+      {{ if .HeaderBearerToken }}
+      authorization:
+        type: bearer
+        credentials: {{ .HeaderBearerToken }}
+      {{ end }}
+      {{ end}}
+      {{ with .RelabelConfigs }}
+      write_relabel_configs:
+        {{ range $k, $cfg := . }}
+        - {{ if $cfg.SourceLabels}}
+          source_labels: {{ $cfg.SourceLabelsString }}
+          {{ end }}
+          {{ if $cfg.Regex }}
+          regex: {{ $cfg.Regex }}
+          {{ end }}
+          {{ if $cfg.Action }}
+          action: {{ $cfg.Action }}
+          {{ end }}
+          separator: {{ $cfg.SeparatorString }}
+          {{ if $cfg.Replacement }}
+          replacement: {{ $cfg.Replacement }}
+          {{ end }}
+          {{ if $cfg.TargetLabel }}
+          target_label: {{ $cfg.TargetLabel }}
+          {{ end }}
+          {{ if $cfg.Modulus }}
+          modulus: {{ $cfg.Modulus }}
+          {{ end }}
+        {{ end}}
+      {{end }}
+      {{ with .Queue }}
+      queue_config:
+        {{ if .Capacity }}
+        capacity: {{ .Capacity }}
+        {{ end }}
+        {{ if .MaxShards }}
+        max_shards: {{ .MaxShards }}
+        {{ end }}
+        {{ if .MinShards }}
+        min_shards: {{ .MinShards }}
+        {{ end }}
+        {{ if .MaxSamplesPerSend }}
+        max_samples_per_send: {{ .MaxSamplesPerSend }}
+        {{ end }}
+        {{ if .BatchSendDeadline }}
+        batch_send_deadline: {{ .BatchSendDeadline }}
+        {{ end }}
+        {{ if .MinBackOffPeriod }}
+        min_backoff: {{ .MinBackOffPeriod }}
+        {{ end }}
+        {{ if .MaxBackOffPeriod }}
+        max_backoff: {{ .MaxBackOffPeriod }}
+        {{ end }}
+      {{ end }}
+  {{ end }}
+  {{ end }}
   wal:
     dir: {{ .WriteAheadLog.Directory }}
     truncate_frequency: 60m

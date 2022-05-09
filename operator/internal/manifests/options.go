@@ -24,6 +24,7 @@ type Options struct {
 
 	AlertingRules  []lokiv1beta1.AlertingRule
 	RecordingRules []lokiv1beta1.RecordingRule
+	Ruler          Ruler
 
 	ObjectStorage storage.Options
 
@@ -76,4 +77,20 @@ type TenantOPASpec struct{}
 // TenantOpenShiftSpec config for OpenShift authentication options (e.g. used in openshift-logging mode)
 type TenantOpenShiftSpec struct {
 	CookieSecret string
+}
+
+// Ruler configuration for manifests generation.
+type Ruler struct {
+	Spec   *lokiv1beta1.RulerConfigSpec
+	Secret *RulerSecret
+}
+
+// RulerSecret defines the ruler secret for remote write client auth
+type RulerSecret struct {
+	// Username, password for BasicAuth only
+	Username string
+	Password string
+
+	// Credentials for Bearer Token
+	BearerToken string
 }
