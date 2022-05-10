@@ -74,6 +74,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
             location ~ /loki/api/.* {
               proxy_pass       http://query-frontend.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
             }
+
+            %(server_snippet)s
           }
         }
       ||| % $._config,
