@@ -43,7 +43,7 @@
     jaeger_reporter_max_queue: 1000,
 
     // This is inserted into the gateway Nginx config file
-    // under the server
+    // under the server directive
 
     server_snippet: '',
 
