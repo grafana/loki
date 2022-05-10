@@ -343,7 +343,7 @@ func (m RangeMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 
 	// We cannot execute downstream queries that would potentially produce a huge amount of series
 	// and therefore would very likely fail.
-	if expr.Grouping == nil && hasLabelExtractionStage(expr) {
+	if expr.Grouping == nil && vectorAggrPushdown == nil && hasLabelExtractionStage(expr) {
 		return expr
 	}
 	switch expr.Operation {
