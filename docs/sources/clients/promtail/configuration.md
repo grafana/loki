@@ -60,6 +60,11 @@ ${VAR:default_value}
 
 Where default_value is the value to use if the environment variable is undefined.
 
+**Note**: With `expand-env=true` the configuration will first run through
+[envsubst](https://linux.die.net/man/1/envsubst) which will replace double
+slashes with single slashes. Because of this every use of a slash `\` needs to
+be replaced with a double slash `\\`
+
 ### Generic placeholders:
 
 - `<boolean>`: a boolean that can take the values `true` or `false`
