@@ -385,11 +385,11 @@ const (
 // ObjectStorageSpec defines the requirements to access the object
 // storage bucket to persist logs by the ingester component.
 type ObjectStorageSpec struct {
-	// Type of object storage that should be used
+	// Type of schema which should be used for
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +kubebuilder:default:=v12
+	// +kubebuilder:default:=v11
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:v11","urn:alm:descriptor:com.tectonic.ui:select:v12"},displayName="Schema Version"
 	SchemaVersion ObjectStorageSchemaVersion `json:"schemaVersion"`
 
@@ -746,6 +746,33 @@ type LokiStackComponentStatus struct {
 	Ruler PodStatusMap `json:"ruler,omitempty"`
 }
 
+// StorageSchemaStatus defines the observed state of a single
+// change to the Loki Storage Schema.
+type StorageSchemaStatus struct {
+	// DateApplied is the date the schema was applied on.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	DateApplied string `json:"dateApplied"`
+
+	// Version describes which schema was applied.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	Version ObjectStorageSchemaVersion `json:"version"`
+}
+
+// LokiStackStorageStatus defines the observed state of
+// the Loki storage configuration.
+type LokiStackStorageStatus struct {
+	// Schemas is a list of schemas which have been applied
+	// to the LokiStack.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Schemas []StorageSchemaStatus `json:"schemas,omitempty"`
+}
+
 // LokiStackStatus defines the observed state of LokiStack
 type LokiStackStatus struct {
 	// Components provides summary of all Loki pod status grouped
@@ -754,6 +781,13 @@ type LokiStackStatus struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Components LokiStackComponentStatus `json:"components,omitempty"`
+
+	// Storage provides summary of all changes that have occurred
+	// to the storage configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Storage LokiStackStorageStatus `json:"storage,omitempty"`
 
 	// Conditions of the Loki deployment health.
 	//

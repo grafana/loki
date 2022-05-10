@@ -310,8 +310,8 @@ spec:
                   to store logs.
                 properties:
                   schemaVersion:
-                    default: v12
-                    description: Type of object storage that should be used
+                    default: v11
+                    description: Type of schema which should be used for
                     enum:
                     - v11
                     - v12
@@ -1124,6 +1124,33 @@ spec:
                   - type
                   type: object
                 type: array
+              storage:
+                description: Storage provides summary of all changes that have occurred
+                  to the storage configuration.
+                properties:
+                  schemas:
+                    description: Schemas is a list of schemas which have been applied
+                      to the LokiStack.
+                    items:
+                      description: StorageSchemaStatus defines the observed state
+                        of a single change to the Loki Storage Schema.
+                      properties:
+                        dateApplied:
+                          description: DateApplied is the date the schema was applied
+                            on.
+                          type: string
+                        version:
+                          description: Version describes which schema was applied.
+                          enum:
+                          - v11
+                          - v12
+                          type: string
+                      required:
+                      - dateApplied
+                      - version
+                      type: object
+                    type: array
+                type: object
             type: object
         type: object
     served: true

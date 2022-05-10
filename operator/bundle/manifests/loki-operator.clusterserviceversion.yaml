@@ -439,7 +439,7 @@ spec:
           logs.
         displayName: Object Storage
         path: storage
-      - description: Type of object storage that should be used
+      - description: Type of schema which should be used for
         displayName: Schema Version
         path: storage.schemaVersion
         x-descriptors:

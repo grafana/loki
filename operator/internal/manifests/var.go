@@ -29,15 +29,15 @@ const (
 	gatewayHTTPPortName     = "public"
 	gatewayInternalPortName = "metrics"
 
-	walVolumeName     = "wal"
-	configVolumeName  = "config"
-	storageVolumeName = "storage"
+	walVolumeName          = "wal"
+	configVolumeName       = "config"
+	storageVolumeName      = "storage"
 	rulesStorageVolumeName = "rules"
 
-	walDirectory    = "/tmp/wal"
-	dataDirectory   = "/tmp/loki"
-	secretDirectory = "/etc/proxy/secrets"
-	rulesStorageDirectory  = "/tmp/rules"
+	walDirectory          = "/tmp/wal"
+	dataDirectory         = "/tmp/loki"
+	secretDirectory       = "/etc/proxy/secrets"
+	rulesStorageDirectory = "/tmp/rules"
 
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"

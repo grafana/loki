@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
@@ -13,9 +14,7 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests"
 	storageoptions "github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/metrics"
-	"github.com/grafana/loki/operator/internal/migrations/storageschema"
 	"github.com/grafana/loki/operator/internal/status"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
@@ -80,6 +79,19 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
+	storageSchemas := storage.UpdateSchemas(
+		time.Now().UTC(),
+		stack.Spec.Storage.SchemaVersion,
+		stack.Status.Storage.Schemas,
+	)
+
+	err = status.SetStorageSchemaStatus(ctx, k, req, storageSchemas)
+	if err != nil {
+		ll.Error(err, "failed to set storage schema status")
+		return err
+	}
+
+	objStore.Schemas = storageSchemas
 	if stack.Spec.Storage.TLS != nil {
 		var cm corev1.ConfigMap
 		key := client.ObjectKey{Name: stack.Spec.Storage.TLS.CA, Namespace: stack.Namespace}
@@ -203,11 +215,7 @@ func CreateOrUpdateLokiStack(
 		GatewayBaseDomain: baseDomain,
 		Stack:             stack.Spec,
 		Flags:             flags,
-<<<<<<< HEAD
-		ObjectStorage:     *objstorage,
-=======
 		ObjectStorage:     *objStore,
->>>>>>> 46e521841 (Doing configmap look up during createorupdate; Fixing test cases)
 		AlertingRules:     alertingRules,
 		RecordingRules:    recordingRules,
 		Ruler: manifests.Ruler{
@@ -239,6 +247,7 @@ func CreateOrUpdateLokiStack(
 		ll.Error(err, "failed to build manifests")
 		return err
 	}
+
 	ll.Info("manifests built", "count", len(objects))
 
 	var errCount int32

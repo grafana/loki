@@ -1,0 +1,127 @@
+package status_test
+
+import (
+	"context"
+	"testing"
+
+	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
+	"github.com/grafana/loki/operator/internal/status"
+	"github.com/stretchr/testify/require"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+func TestSetStorageSchemaStatus_WhenGetLokiStackReturnsError_ReturnError(t *testing.T) {
+	k := &k8sfakes.FakeClient{}
+
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		return apierrors.NewBadRequest("something wasn't found")
+	}
+
+	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []storage.Schema{})
+	require.Error(t, err)
+}
+
+func TestSetStorageSchemaStatus_WhenGetLokiStackReturnsNotFound_DoNothing(t *testing.T) {
+	k := &k8sfakes.FakeClient{}
+
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+
+	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []storage.Schema{})
+	require.NoError(t, err)
+}
+
+func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	s := lokiv1beta1.LokiStack{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+		Status: lokiv1beta1.LokiStackStatus{
+			Storage: lokiv1beta1.LokiStackStorageStatus{
+				Schemas: []lokiv1beta1.StorageSchemaStatus{
+					{
+						DateApplied: "2020-10-11",
+						Version:     lokiv1beta1.ObjectStorageSchemaV11,
+					},
+				},
+			},
+		},
+	}
+
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	schemas := []storage.Schema{
+		{
+			From:    "2020-10-11",
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+		},
+		{
+			From:    "2021-10-11",
+			Version: lokiv1beta1.ObjectStorageSchemaV12,
+		},
+	}
+
+	expected := []lokiv1beta1.StorageSchemaStatus{
+		{
+			DateApplied: "2020-10-11",
+			Version:     lokiv1beta1.ObjectStorageSchemaV11,
+		},
+		{
+			DateApplied: "2021-10-11",
+			Version:     lokiv1beta1.ObjectStorageSchemaV12,
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, &s)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+
+	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
+		stack := obj.(*lokiv1beta1.LokiStack)
+		require.Equal(t, expected, stack.Status.Storage.Schemas)
+		return nil
+	}
+
+	err := status.SetStorageSchemaStatus(context.TODO(), k, r, schemas)
+	require.NoError(t, err)
+	require.NotZero(t, k.StatusCallCount())
+	require.NotZero(t, sw.UpdateCallCount())
+}

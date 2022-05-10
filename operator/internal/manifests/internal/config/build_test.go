@@ -1556,6 +1556,12 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
+			Schemas: []storage.Schema{
+				{
+					From:    "2020-10-01",
+					Version: "v11",
+				},
+			},
 		},
 		EnableRemoteReporting: true,
 	}

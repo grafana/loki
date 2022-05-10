@@ -10,14 +10,18 @@ import (
 )
 
 func TestUpdateSchema_AddNewSchema(t *testing.T) {
+	current := time.Now().UTC()
+
 	expected := []Schema{
 		{
-			From:    time.Now().Format(DateTimeFormat),
+			From:    "2020-10-01",
 			Version: lokiv1beta1.ObjectStorageSchemaV12,
 		},
 	}
 
-	actual := UpdateSchemas(lokiv1beta1.ObjectStorageSchemaV12, []Schema{})
+	test := []lokiv1beta1.StorageSchemaStatus{}
+
+	actual := UpdateSchemas(current, lokiv1beta1.ObjectStorageSchemaV12, test)
 
 	require.Len(t, actual, len(expected))
 	for i := range expected {
@@ -27,25 +31,27 @@ func TestUpdateSchema_AddNewSchema(t *testing.T) {
 }
 
 func TestUpdateSchema_AppendNewSchema(t *testing.T) {
+	current := time.Now().UTC()
+
 	expected := []Schema{
 		{
-			From:    DateTimeFormat,
-			Version: lokiv1beta1.ObjectStorageSchemaV11,
-		},
-		{
-			From:    time.Now().Add(UpdateDelay).Format(DateTimeFormat),
+			From:    current.Format(DateTimeFormat),
 			Version: lokiv1beta1.ObjectStorageSchemaV12,
 		},
-	}
-
-	test := []Schema{
 		{
-			From:    DateTimeFormat,
+			From:    current.Add(UpdateDelay).Format(DateTimeFormat),
 			Version: lokiv1beta1.ObjectStorageSchemaV11,
 		},
 	}
 
-	actual := UpdateSchemas(lokiv1beta1.ObjectStorageSchemaV12, test)
+	test := []lokiv1beta1.StorageSchemaStatus{
+		{
+			DateApplied: current.Format(DateTimeFormat),
+			Version:     lokiv1beta1.ObjectStorageSchemaV12,
+		},
+	}
+
+	actual := UpdateSchemas(current, lokiv1beta1.ObjectStorageSchemaV11, test)
 
 	require.Len(t, actual, len(expected))
 	for i := range expected {
@@ -55,21 +61,23 @@ func TestUpdateSchema_AppendNewSchema(t *testing.T) {
 }
 
 func TestUpdateSchema_IgnoreSameSchema(t *testing.T) {
+	current := time.Now().UTC()
+
 	expected := []Schema{
 		{
-			From:    DateTimeFormat,
-			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			From:    current.Format(DateTimeFormat),
+			Version: lokiv1beta1.ObjectStorageSchemaV12,
 		},
 	}
 
-	test := []Schema{
+	test := []lokiv1beta1.StorageSchemaStatus{
 		{
-			From:    DateTimeFormat,
-			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			DateApplied: current.Format(DateTimeFormat),
+			Version:     lokiv1beta1.ObjectStorageSchemaV12,
 		},
 	}
 
-	actual := UpdateSchemas(lokiv1beta1.ObjectStorageSchemaV11, test)
+	actual := UpdateSchemas(current, lokiv1beta1.ObjectStorageSchemaV12, test)
 
 	require.Len(t, actual, len(expected))
 	for i := range expected {
@@ -79,33 +87,37 @@ func TestUpdateSchema_IgnoreSameSchema(t *testing.T) {
 }
 
 func TestUpdateSchema_ModifyUnappliedSchema(t *testing.T) {
+	// This scenario can only be tested with 3+ version in play.
+	// Otherwise, this test will just reduce the list. So, this
+	// "v10" is used as a placeholder for an eventual supported
+	// third version.
 	var testVersion lokiv1beta1.ObjectStorageSchemaVersion = "v10"
 
-	from := time.Now().Add(UpdateDelay).Format(DateTimeFormat)
+	current := time.Now().UTC()
 
 	expected := []Schema{
 		{
-			From:    time.Now().Format(DateTimeFormat),
+			From:    current.Format(DateTimeFormat),
 			Version: lokiv1beta1.ObjectStorageSchemaV11,
 		},
 		{
-			From:    from,
+			From:    current.Add(UpdateDelay).Format(DateTimeFormat),
 			Version: lokiv1beta1.ObjectStorageSchemaV12,
 		},
 	}
 
-	test := []Schema{
+	test := []lokiv1beta1.StorageSchemaStatus{
 		{
-			From:    time.Now().Format(DateTimeFormat),
-			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			DateApplied: current.Format(DateTimeFormat),
+			Version:     lokiv1beta1.ObjectStorageSchemaV11,
 		},
 		{
-			From:    from,
-			Version: testVersion,
+			DateApplied: current.Add(UpdateDelay).Format(DateTimeFormat),
+			Version:     testVersion,
 		},
 	}
 
-	actual := UpdateSchemas(lokiv1beta1.ObjectStorageSchemaV12, test)
+	actual := UpdateSchemas(current, lokiv1beta1.ObjectStorageSchemaV12, test)
 
 	require.Len(t, actual, len(expected))
 	for i := range expected {
@@ -115,27 +127,27 @@ func TestUpdateSchema_ModifyUnappliedSchema(t *testing.T) {
 }
 
 func TestUpdateSchema_ModifyUnappliedSchema_ReduceSameVersion(t *testing.T) {
-	from := time.Now().Add(UpdateDelay).Format(DateTimeFormat)
+	current := time.Now().UTC()
 
 	expected := []Schema{
 		{
-			From:    time.Now().Format(DateTimeFormat),
+			From:    current.Format(DateTimeFormat),
 			Version: lokiv1beta1.ObjectStorageSchemaV12,
 		},
 	}
 
-	test := []Schema{
+	test := []lokiv1beta1.StorageSchemaStatus{
 		{
-			From:    time.Now().Format(DateTimeFormat),
-			Version: lokiv1beta1.ObjectStorageSchemaV12,
+			DateApplied: current.Format(DateTimeFormat),
+			Version:     lokiv1beta1.ObjectStorageSchemaV12,
 		},
 		{
-			From:    from,
-			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			DateApplied: current.Add(UpdateDelay).Format(DateTimeFormat),
+			Version:     lokiv1beta1.ObjectStorageSchemaV11,
 		},
 	}
 
-	actual := UpdateSchemas(lokiv1beta1.ObjectStorageSchemaV12, test)
+	actual := UpdateSchemas(current, lokiv1beta1.ObjectStorageSchemaV12, test)
 
 	require.Len(t, actual, len(expected))
 	for i := range expected {
