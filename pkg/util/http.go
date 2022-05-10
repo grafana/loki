@@ -43,6 +43,23 @@ func (b BasicAuth) IsEnabled() bool {
 	return b.Username != "" || b.Password != ""
 }
 
+// HeaderAuth condigures header based authorization for HTTP clients.
+type HeaderAuth struct {
+	Type            string `yaml:"type,omitempty"`
+	Credentials     string `yaml:"credentials,omitempty"`
+	CredentialsFile string `yaml:"credentials_file,omitempty"`
+}
+
+func (h *HeaderAuth) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&h.Credentials, prefix+"credentials", "", "HTTP Header authentication credentials.")
+	f.StringVar(&h.CredentialsFile, prefix+"credentials-file", "", "HTTP Header authentication credentials file.")
+}
+
+// IsEnabled returns false if header authorization isn't enabled.
+func (h HeaderAuth) IsEnabled() bool {
+	return h.Credentials != "" || h.CredentialsFile != ""
+}
+
 // WriteJSONResponse writes some JSON as a HTTP response.
 func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
