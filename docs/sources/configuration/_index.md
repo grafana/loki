@@ -1585,9 +1585,17 @@ cassandra:
   # CLI flag: -cassandra.host-verification
   [host_verification: <boolean> | default = true]
 
-  # Path to certificate file to verify the peer when SSL is enabled.
+  # Path to CA certificate file to verify the peer when SSL is enabled.
   # CLI flag: -cassandra.ca-path
   [CA_path: <string>]
+
+  # Path to client certificate file when SSL is enabled.
+  # CLI flag: -cassandra.tls-cert-path
+  [tls_cert_path: <string>]
+
+  # Path to key certificate file when SSL is enabled.
+  # CLI flag: -cassandra.tls-key-path
+  [tls_key_path: <string>]
 
   # Enable password authentication when connecting to Cassandra.
   # CLI flag: -cassandra.auth
