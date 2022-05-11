@@ -186,7 +186,7 @@ func parseMultitenantTSDBNameFromBase(name string) (res MultitenantTSDBIdentifie
 	}
 
 	xs := strings.Split(trimmed, "-")
-	if len(xs) != 2 {
+	if len(xs) < 2 {
 		return
 	}
 
@@ -197,6 +197,6 @@ func parseMultitenantTSDBNameFromBase(name string) (res MultitenantTSDBIdentifie
 
 	return MultitenantTSDBIdentifier{
 		ts:       time.Unix(int64(ts), 0),
-		nodeName: xs[1],
+		nodeName: strings.Join(xs[1:], "-"),
 	}, true
 }
