@@ -1274,6 +1274,7 @@ func (e *entryBufferedIterator) Next() bool {
 		}
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
+		e.cur.OriginalLine = string(e.currLine)
 		e.currLabels = lbs
 		return true
 	}

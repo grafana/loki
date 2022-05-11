@@ -19,8 +19,9 @@ type Stream struct {
 
 // Entry is a log entry with a timestamp.
 type Entry struct {
-	Timestamp time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
-	Line      string    `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
+	Timestamp    time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
+	Line         string    `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
+	OriginalLine string    `json:"-"`
 }
 
 func (m *Stream) Marshal() (dAtA []byte, err error) {

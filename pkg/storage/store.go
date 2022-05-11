@@ -250,17 +250,20 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 	}()
 
 	var postFilterLogSelector syntax.LogSelectorExpr
+	var queryLogql string
 	if c.isSampleExpr {
 		sampleExpr, err := syntax.ParseSampleExpr(c.selector)
 		if err != nil {
 			return nil, nil, err
 		}
+		queryLogql = sampleExpr.String()
 		postFilterLogSelector = sampleExpr.Selector()
 	} else {
 		logSelector, err := syntax.ParseLogSelector(c.selector, true)
 		if err != nil {
 			return nil, nil, err
 		}
+		queryLogql = logSelector.String()
 		postFilterLogSelector = logSelector
 	}
 
@@ -268,6 +271,8 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 		return chunks, nil, nil
 	}
 	preFilterLogql := postFilterLogSelector.String()
+	log.Span.SetTag("postFilter", true)
+	log.Span.LogFields(otlog.String("logql", queryLogql))
 	log.Span.LogFields(otlog.String("postFilterPreFilterLogql", preFilterLogql))
 	removeLineFmtAbel := false
 	if strings.Contains(preFilterLogql, "line_format") {
@@ -380,6 +385,7 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	decompressedLines := int64(0)
 	for iterator.Next() {
 		entry := iterator.Entry()
+		entry.Line = entry.OriginalLine
 		err := postFilterChunkData.Append(&entry)
 		if err != nil {
 			return nil, err
