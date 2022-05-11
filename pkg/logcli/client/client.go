@@ -55,6 +55,7 @@ type DefaultClient struct {
 	OrgID           string
 	Tripperware     Tripperware
 	BearerToken     string
+	AuthHeader      string
 	BearerTokenFile string
 	Retries         int
 	QueryTags       string
@@ -261,7 +262,11 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	}
 
 	if c.BearerToken != "" {
-		h.Set("Authorization", "Bearer "+c.BearerToken)
+		if c.AuthHeader != "" {
+			h.Set(c.AuthHeader, "Bearer "+c.BearerToken)
+		} else {
+			h.Set("Authorization", "Bearer "+c.BearerToken)
+		}
 	}
 
 	if c.BearerTokenFile != "" {
@@ -270,7 +275,11 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 			return nil, fmt.Errorf("unable to read authorization credentials file %s: %s", c.BearerTokenFile, err)
 		}
 		bearerToken := strings.TrimSpace(string(b))
-		h.Set("Authorization", "Bearer "+bearerToken)
+		if c.AuthHeader != "" {
+			h.Set(c.AuthHeader, "Bearer "+bearerToken)
+		} else {
+			h.Set("Authorization", "Bearer "+bearerToken)
+		}
 	}
 	return h, nil
 }
