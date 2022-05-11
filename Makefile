@@ -152,6 +152,25 @@ cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
+ARCH := linux-amd64 linux-arm64 linux-arm darwin-amd64 darwin-arm64 freebsd-amd64 windows-amd64
+
+.PHONY: tarball
+tarball: crossbuilds-loki crossbuilds-logcli
+	@for arch in $(ARCH); do \
+		$(MAKE) dist/loki-$(IMAGE_TAG)-$$arch.tar.gz; \
+	done
+
+dist/%.tar.gz:
+	$(eval DIR=$(@D)/$(*F))
+	$(eval ARCH=$(shell echo $(*F) | rev | cut -d '-' -f -2 | rev))
+	mkdir -pv $(DIR)/{bin,config}
+	mkdir -pv $(DIR)/data/{index,chunks,rules}
+	@cp $(@D)/loki-$(ARCH)* $(DIR)/bin/loki
+	@cp $(@D)/logcli-$(ARCH)* $(DIR)/bin/logcli
+	@cp examples/getting-started/local-filesystem.yaml $(DIR)/config/config.yaml
+	tar czf $@ -C $(@D) $(*F)
+	@rm -rf $(DIR) $(@D)/loki-$(ARCH)* $(@D)/logcli-$(ARCH)*
+
 ###############
 # Loki-Canary #
 ###############
@@ -226,12 +245,23 @@ cmd/migrate/migrate:
 # concurrency is limited to 2 to prevent CircleCI from OOMing. Sorry
 GOX = gox $(GO_FLAGS) -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
-dist: clean
+
+crossbuilds: crossbuilds-loki crossbuilds-logcli crossbuilds-canary crrossbuilds-promtail
+
+crossbuilds-loki:
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
+
+crossbuilds-logcli:
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
+
+crossbuilds-canary:
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
+
+crossbuilds-promtail:
 	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./clients/cmd/promtail
+
+dist: clean crossbuilds
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
@@ -272,19 +302,23 @@ compare-coverage:
 clean-protos:
 	rm -rf $(PROTO_GOS)
 
-clean:
-	rm -rf clients/cmd/promtail/promtail
+clean-dist:
+	rm -rf dist/
+
+clean-cache:
+	rm -rf .cache
+	go clean ./...
+
+clean: clean-protos clean-dist clean-cache
 	rm -rf cmd/loki/loki
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/loki-canary/loki-canary
 	rm -rf cmd/querytee/querytee
-	rm -rf .cache
+	rm -rf cmd/migrate/migrate
+	rm -rf clients/cmd/promtail/promtail
 	rm -rf clients/cmd/docker-driver/rootfs
-	rm -rf dist/
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
-	rm -rf cmd/migrate/migrate
-	go clean ./...
 
 #########
 # YACCs #

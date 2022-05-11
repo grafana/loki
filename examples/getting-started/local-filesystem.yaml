@@ -1,0 +1,39 @@
+# Minimal config.yaml for single-binary installation using local file system storage.
+# This is not intended for production usage!
+---
+auth_enabled: true
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+
+schema_config:
+  configs:
+    - from: 2022-01-01
+      store: boltdb
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+common:
+  path_prefix: ./data
+  replication_factor: 1
+  storage:
+    filesystem:
+      chunks_directory: ./data/chunks
+      rules_directory: ./data/rules
+  ring:
+    kvstore:
+      store: memberlist
+
+storage_config:
+  boltdb:
+    directory: ./data/boltdb
+  filesystem:
+    directory: ./data/chunks
+
+memberlist:
+  join_members:
+    - localhost:7946
