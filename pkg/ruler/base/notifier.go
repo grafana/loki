@@ -31,7 +31,7 @@ type NotifierConfig struct {
 func (cfg *NotifierConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.TLS.RegisterFlagsWithPrefix("ruler.alertmanager-client", f)
 	cfg.BasicAuth.RegisterFlagsWithPrefix("ruler.alertmanager-client.", f)
-	cfg.HeaderAuth.RegisterFlagsWithPrefix("ruler.alertmanager-client", f)
+	cfg.HeaderAuth.RegisterFlagsWithPrefix("ruler.alertmanager-client.", f)
 }
 
 // rulerNotifier bundles a notifier.Manager together with an associated
