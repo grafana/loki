@@ -1113,6 +1113,12 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 			`max_over_time({app="foo"} | json | unwrap bar [3m])`,
 			`max_over_time({app="foo"} | json | unwrap bar [3m])`,
 		},
+
+		// if one side of a binary expression is a noop, the full query is a noop as well
+		{
+			`sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m])`,
+			`sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m])`,
+		},
 	} {
 		tc := tc
 		t.Run(tc.expr, func(t *testing.T) {
