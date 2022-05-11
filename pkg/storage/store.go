@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -266,7 +267,15 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 	if !postFilterLogSelector.HasFilter() {
 		return chunks, nil, nil
 	}
-	//
+	preFilterLogql := postFilterLogSelector.String()
+	log.Span.LogFields(otlog.String("postFilterPreFilterLogql", preFilterLogql))
+	removeLineFmtAbel := false
+	if strings.Contains(preFilterLogql, "line_format") {
+		removeLineFmt(postFilterLogSelector)
+		removeLineFmtAbel = true
+		log.Span.LogFields(otlog.String("resultPostFilterPreFilterLogql", postFilterLogSelector.String()))
+	}
+	log.Span.SetTag("remove_line_format", removeLineFmtAbel)
 	result := make([]chunk.Chunk, 0)
 	resultKeys := make([]string, 0)
 
@@ -308,6 +317,39 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 		}
 	}
 	return result, resultKeys, lastErr
+}
+
+func removeLineFmt(selector syntax.LogSelectorExpr) {
+	selector.Walk(func(e interface{}) {
+		pipelineExpr, ok := e.(*syntax.PipelineExpr)
+		if !ok {
+			return
+		}
+		stages := pipelineExpr.MultiStages
+		temp := pipelineExpr.MultiStages[:0]
+		for i, stageExpr := range stages {
+			_, ok := stageExpr.(*syntax.LineFmtExpr)
+			if !ok {
+				temp = append(temp, stageExpr)
+				continue
+			}
+			var found bool
+			for j := i; j < len(pipelineExpr.MultiStages); j++ {
+				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LabelParserExpr); ok {
+					found = true
+					break
+				}
+				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LineFilterExpr); ok {
+					found = true
+					break
+				}
+			}
+			if found {
+				temp = append(temp, stageExpr)
+			}
+		}
+		pipelineExpr.MultiStages = temp
+	})
 }
 
 func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.Chunk, logSelector syntax.LogSelectorExpr, s config.SchemaConfig) (*chunkWithKey, error) {
