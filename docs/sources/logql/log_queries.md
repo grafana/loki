@@ -313,7 +313,7 @@ The **json** parser operates in two modes:
    "request_size" => "55"
    "response_status" => "401"
    "response_size" => "228"
-   "response_size" => "228"
+   "response_latency_seconds" => "6.031"
    ```
 
 2. **with** parameters:
