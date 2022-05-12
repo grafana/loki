@@ -23,6 +23,12 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	storageType := opts.Stack.Storage.Secret.Type
+	secretName := opts.Stack.Storage.Secret.Name
+	if err := configureDeploymentForStorageType(deployment, storageType, secretName); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		deployment,
 		NewQuerierGRPCService(opts),

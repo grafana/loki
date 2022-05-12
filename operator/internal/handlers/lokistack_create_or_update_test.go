@@ -676,7 +676,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid object storage secret contents",
+		Message: "Invalid object storage secret contents: missing secret field",
 		Reason:  lokiv1beta1.ReasonInvalidObjectStorageSecret,
 		Requeue: false,
 	}
