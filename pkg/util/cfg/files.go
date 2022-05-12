@@ -66,7 +66,7 @@ func dYAML(y []byte) Source {
 	}
 }
 
-func YAMLFlag(args []string, name string) Source {
+func ConfigFileLoader(args []string, name string) Source {
 
 	return func(dst Cloneable) error {
 		freshFlags := flag.NewFlagSet("config-file-loader", flag.ContinueOnError)
