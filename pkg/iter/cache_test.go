@@ -252,6 +252,7 @@ func (errorIter) Next() bool              { return false }
 func (errorIter) Error() error            { return errors.New("error") }
 func (errorIter) Labels() string          { return "" }
 func (errorIter) StreamHash() uint64      { return 0 }
+func (errorIter) ProcessLine() string     { return "" }
 func (errorIter) Entry() logproto.Entry   { return logproto.Entry{} }
 func (errorIter) Sample() logproto.Sample { return logproto.Sample{} }
 func (errorIter) Close() error            { return errors.New("close") }
