@@ -54,7 +54,7 @@ func (i *streamIterator) Entry() logproto.Entry {
 }
 
 func (i *streamIterator) ProcessLine() string {
-	panic("not implemented")
+	return ""
 }
 
 func (i *streamIterator) Close() error {
