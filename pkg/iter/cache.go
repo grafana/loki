@@ -80,6 +80,13 @@ func (it *cachedIterator) Entry() logproto.Entry {
 	return it.cache[it.curr].Entry
 }
 
+func (it *cachedIterator) ProcessLine() string {
+	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
+		return ""
+	}
+	return it.cache[it.curr].processLine
+}
+
 func (it *cachedIterator) Labels() string {
 	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
 		return ""

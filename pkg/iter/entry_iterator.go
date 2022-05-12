@@ -17,6 +17,7 @@ import (
 type EntryIterator interface {
 	Iterator
 	Entry() logproto.Entry
+	ProcessLine() string
 }
 
 // streamIterator iterates over entries in a stream.
@@ -50,6 +51,10 @@ func (i *streamIterator) StreamHash() uint64 { return i.stream.Hash }
 
 func (i *streamIterator) Entry() logproto.Entry {
 	return i.stream.Entries[i.i]
+}
+
+func (i *streamIterator) ProcessLine() string {
+	panic("not implemented")
 }
 
 func (i *streamIterator) Close() error {
@@ -230,11 +235,12 @@ Outer:
 			}
 		}
 		if !dupe {
-			i.buffer = append(i.buffer, entryWithLabels{
-				Entry:      entry,
-				labels:     next.Labels(),
-				streamHash: next.StreamHash(),
-			})
+			i.buffer = append(i.buffer, *NewEntryWithLabels(
+				entry,
+				next.Labels(),
+				next.StreamHash(),
+				next.ProcessLine(),
+			))
 		}
 	inner:
 		for {
@@ -252,11 +258,12 @@ Outer:
 					continue inner
 				}
 			}
-			i.buffer = append(i.buffer, entryWithLabels{
-				Entry:      entry,
-				labels:     next.Labels(),
-				streamHash: next.StreamHash(),
-			})
+			i.buffer = append(i.buffer, *NewEntryWithLabels(
+				entry,
+				next.Labels(),
+				next.StreamHash(),
+				next.ProcessLine(),
+			))
 		}
 		i.pushBuffer = append(i.pushBuffer, next)
 	}
@@ -271,10 +278,15 @@ Outer:
 	return true
 }
 
+func (i *mergeEntryIterator) ProcessLine() string {
+	return i.currEntry.processLine
+}
+
 func (i *mergeEntryIterator) nextFromBuffer() {
 	i.currEntry.Entry = i.buffer[0].Entry
 	i.currEntry.labels = i.buffer[0].labels
 	i.currEntry.streamHash = i.buffer[0].streamHash
+	i.currEntry.processLine = i.buffer[0].processLine
 	if len(i.buffer) == 1 {
 		i.buffer = i.buffer[:0]
 		return
@@ -445,6 +457,7 @@ func (i *entrySortIterator) Next() bool {
 	i.currEntry.Entry = next.Entry()
 	i.currEntry.labels = next.Labels()
 	i.currEntry.streamHash = next.StreamHash()
+	i.currEntry.processLine = next.ProcessLine()
 	// if the top iterator is empty, we remove it.
 	if !next.Next() {
 		i.is = i.is[1:]
@@ -460,6 +473,10 @@ func (i *entrySortIterator) Next() bool {
 	}
 
 	return true
+}
+
+func (i *entrySortIterator) ProcessLine() string {
+	return i.currEntry.processLine
 }
 
 func (i *entrySortIterator) Entry() logproto.Entry {
@@ -544,6 +561,10 @@ func (i *queryClientIterator) Entry() logproto.Entry {
 	return i.curr.Entry()
 }
 
+func (i *queryClientIterator) ProcessLine() string {
+	return i.curr.ProcessLine()
+}
+
 func (i *queryClientIterator) Labels() string {
 	return i.curr.Labels()
 }
@@ -589,6 +610,10 @@ func (i *nonOverlappingIterator) Next() bool {
 
 func (i *nonOverlappingIterator) Entry() logproto.Entry {
 	return i.curr.Entry()
+}
+
+func (i *nonOverlappingIterator) ProcessLine() string {
+	return i.curr.ProcessLine()
 }
 
 func (i *nonOverlappingIterator) Labels() string {
@@ -668,8 +693,15 @@ func (i *timeRangedIterator) Next() bool {
 
 type entryWithLabels struct {
 	logproto.Entry
-	labels     string
-	streamHash uint64
+	labels      string
+	streamHash  uint64
+	processLine string
+}
+
+func NewEntryWithLabels(entry logproto.Entry, labels string, streamHash uint64, processLine string) *entryWithLabels {
+	return &entryWithLabels{
+		entry, labels, streamHash, processLine,
+	}
 }
 
 type reverseIterator struct {
@@ -705,7 +737,7 @@ func (i *reverseIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for count := uint32(0); (i.limit == 0 || count < i.limit) && i.iter.Next(); count++ {
-			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash()})
+			i.entriesWithLabels = append(i.entriesWithLabels, *NewEntryWithLabels(i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash(), i.iter.ProcessLine()))
 		}
 		i.iter.Close()
 	}
@@ -723,6 +755,10 @@ func (i *reverseIterator) Next() bool {
 
 func (i *reverseIterator) Entry() logproto.Entry {
 	return i.cur.Entry
+}
+
+func (i *reverseIterator) ProcessLine() string {
+	return i.cur.processLine
 }
 
 func (i *reverseIterator) Labels() string {
@@ -780,7 +816,7 @@ func (i *reverseEntryIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for i.iter.Next() {
-			i.buf.entries = append(i.buf.entries, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash()})
+			i.buf.entries = append(i.buf.entries, *NewEntryWithLabels(i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash(), i.iter.ProcessLine()))
 		}
 		i.iter.Close()
 	}
@@ -798,6 +834,10 @@ func (i *reverseEntryIterator) Next() bool {
 
 func (i *reverseEntryIterator) Entry() logproto.Entry {
 	return i.cur.Entry
+}
+
+func (i *reverseEntryIterator) ProcessLine() string {
+	return i.cur.processLine
 }
 
 func (i *reverseEntryIterator) Labels() string {
@@ -888,13 +928,15 @@ func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
 	var cache *entryWithLabels
 	next := &entryWithLabels{}
 	if iter.Next() {
-		cache = &entryWithLabels{
-			Entry:      iter.Entry(),
-			labels:     iter.Labels(),
-			streamHash: iter.StreamHash(),
-		}
+		cache = NewEntryWithLabels(
+			iter.Entry(),
+			iter.Labels(),
+			iter.StreamHash(),
+			iter.ProcessLine(),
+		)
 		next.Entry = cache.Entry
 		next.labels = cache.labels
+		next.processLine = cache.processLine
 	}
 	return &peekingEntryIterator{
 		iter:  iter,
@@ -909,6 +951,7 @@ func (it *peekingEntryIterator) Next() bool {
 		it.next.Entry = it.cache.Entry
 		it.next.labels = it.cache.labels
 		it.next.streamHash = it.cache.streamHash
+		it.next.processLine = it.cache.processLine
 		it.cacheNext()
 		return true
 	}
@@ -921,6 +964,7 @@ func (it *peekingEntryIterator) cacheNext() {
 		it.cache.Entry = it.iter.Entry()
 		it.cache.labels = it.iter.Labels()
 		it.cache.streamHash = it.iter.StreamHash()
+		it.cache.processLine = it.iter.ProcessLine()
 		return
 	}
 	// nothing left removes the cached entry
@@ -961,6 +1005,13 @@ func (it *peekingEntryIterator) Entry() logproto.Entry {
 // Error implements `EntryIterator`
 func (it *peekingEntryIterator) Error() error {
 	return it.iter.Error()
+}
+
+func (it *peekingEntryIterator) ProcessLine() string {
+	if it.next != nil {
+		return it.next.processLine
+	}
+	return ""
 }
 
 // Close implements `EntryIterator`

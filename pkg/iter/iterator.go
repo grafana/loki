@@ -22,6 +22,7 @@ var NoopIterator = noOpIterator{}
 func (noOpIterator) Next() bool              { return false }
 func (noOpIterator) Error() error            { return nil }
 func (noOpIterator) Labels() string          { return "" }
+func (noOpIterator) ProcessLine() string     { panic("not implemented") }
 func (noOpIterator) StreamHash() uint64      { return 0 }
 func (noOpIterator) Entry() logproto.Entry   { return logproto.Entry{} }
 func (noOpIterator) Sample() logproto.Sample { return logproto.Sample{} }

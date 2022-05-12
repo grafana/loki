@@ -385,7 +385,8 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	decompressedLines := int64(0)
 	for iterator.Next() {
 		entry := iterator.Entry()
-		entry.Line = entry.OriginalLine
+		//reset line after post filter.
+		entry.Line = iterator.ProcessLine()
 		err := postFilterChunkData.Append(&entry)
 		if err != nil {
 			return nil, err

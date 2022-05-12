@@ -41,7 +41,6 @@ func TestLazyChunkIterator(t *testing.T) {
 						{
 							Timestamp:    from,
 							Line:         "1",
-							OriginalLine: "1",
 						},
 					},
 				},

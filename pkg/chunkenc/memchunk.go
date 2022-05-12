@@ -1254,12 +1254,17 @@ type entryBufferedIterator struct {
 	*bufferedIterator
 	pipeline log.StreamPipeline
 
-	cur        logproto.Entry
-	currLabels log.LabelsResult
+	cur            logproto.Entry
+	currLabels     log.LabelsResult
+	curProcessLine string
 }
 
 func (e *entryBufferedIterator) Entry() logproto.Entry {
 	return e.cur
+}
+
+func (e *entryBufferedIterator) ProcessLine() string {
+	return e.curProcessLine
 }
 
 func (e *entryBufferedIterator) Labels() string { return e.currLabels.String() }
@@ -1274,7 +1279,7 @@ func (e *entryBufferedIterator) Next() bool {
 		}
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
-		e.cur.OriginalLine = string(e.currLine)
+		e.curProcessLine = string(e.currLine)
 		e.currLabels = lbs
 		return true
 	}
