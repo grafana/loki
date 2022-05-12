@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/go-kit/log/level"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -32,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -358,10 +360,16 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 }
 
 func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	log, ctx := spanlogger.New(ctx, "instance.QuerySample")
+	log.Span.LogFields(otlog.String("params", req.Selector))
+	defer func() {
+		log.Span.Finish()
+	}()
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
 	}
+	log.Span.LogFields(otlog.String("expr", expr.String()))
 
 	extractor, err := expr.Extractor()
 	if err != nil {
@@ -744,9 +752,16 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 }
 
 func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+	log, ctx := spanlogger.New(ctx, "instance.sendSampleBatches")
+	log.Span.LogFields(otlog.Int("queryBatchSampleSize", queryBatchSampleSize))
+	defer func() {
+		log.Span.Finish()
+	}()
 	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
+		readSampleBatchLog, _ := spanlogger.New(ctx, "instance.ReadSampleBatch")
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
+		readSampleBatchLog.Span.Finish()
 		if err != nil {
 			return err
 		}

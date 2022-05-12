@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -38,6 +39,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 	errUtil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/wal"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -612,7 +614,11 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
-
+	log, ctx := spanlogger.New(ctx, "Ingester.QuerySample")
+	log.Span.LogFields(otlog.String("params", req.Selector))
+	defer func() {
+		log.Span.Finish()
+	}()
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
