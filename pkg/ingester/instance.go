@@ -783,10 +783,13 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
 
+		sendSpan, _ := spanlogger.New(ctx, "instance.queryServer.SendBatch")
+		sendSpan.Span.LogFields(otlog.Int("batch.Series.size", len(batch.Series)))
 		if err := queryServer.Send(batch); err != nil {
+			sendSpan.Span.Finish()
 			return err
 		}
-
+		sendSpan.Span.Finish()
 		stats.Reset()
 
 	}
