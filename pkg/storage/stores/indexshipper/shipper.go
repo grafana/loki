@@ -139,11 +139,15 @@ func (s *indexShipper) AddIndex(tableName, userID string, index index.Index) err
 
 func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, callback func(index index.Index) error) error {
 	if s.downloadsManager != nil {
-		return s.downloadsManager.ForEach(ctx, tableName, userID, callback)
+		if err := s.downloadsManager.ForEach(ctx, tableName, userID, callback); err != nil {
+			return err
+		}
 	}
 
 	if s.uploadsManager != nil {
-		return s.uploadsManager.ForEach(tableName, userID, callback)
+		if err := s.uploadsManager.ForEach(tableName, userID, callback); err != nil {
+			return err
+		}
 	}
 
 	return nil
