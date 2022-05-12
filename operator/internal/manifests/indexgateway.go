@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -23,6 +22,12 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		if err := configureIndexGatewayServiceMonitorPKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
+	}
+
+	storageType := opts.Stack.Storage.Secret.Type
+	secretName := opts.Stack.Storage.Secret.Name
+	if err := configureStatefulSetForStorageType(statefulSet, storageType, secretName); err != nil {
+		return nil, err
 	}
 
 	return []client.Object{
@@ -97,10 +102,6 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 	if opts.Stack.Template != nil && opts.Stack.Template.IndexGateway != nil {
 		podSpec.Tolerations = opts.Stack.Template.IndexGateway.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.IndexGateway.NodeSelector
-	}
-
-	if opts.Stack.Storage.Secret.Type == lokiv1beta1.ObjectStorageSecretGCS {
-		ensureCredentialsForGCS(&podSpec, opts.Stack.Storage.Secret.Name)
 	}
 
 	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)

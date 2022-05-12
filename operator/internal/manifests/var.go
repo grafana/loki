@@ -2,7 +2,6 @@ package manifests
 
 import (
 	"fmt"
-	"path"
 
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -63,11 +62,6 @@ const (
 	LabelIndexGatewayComponent string = "index-gateway"
 	// LabelGatewayComponent is the label value for the lokiStack-gateway component
 	LabelGatewayComponent string = "lokistack-gateway"
-
-	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
-	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
-	// GCSFileName is the file containing the Google credentials for authentication
-	GCSFileName = "key.json"
 )
 
 var (
@@ -278,24 +272,4 @@ func lokiReadinessProbe() *corev1.Probe {
 		SuccessThreshold:    1,
 		FailureThreshold:    3,
 	}
-}
-
-func ensureCredentialsForGCS(podSpec *corev1.PodSpec, secretName string) {
-	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-		Name: secretName,
-		VolumeSource: corev1.VolumeSource{
-			Secret: &corev1.SecretVolumeSource{
-				SecretName: secretName,
-			},
-		},
-	})
-	podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
-		Name:      secretName,
-		ReadOnly:  false,
-		MountPath: secretDirectory,
-	})
-	podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
-		Name:  EnvGoogleApplicationCredentials,
-		Value: path.Join(secretDirectory, GCSFileName),
-	})
 }
