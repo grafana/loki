@@ -364,6 +364,18 @@ The **json** parser operates in two modes:
    "server_list" => `["129.0.1.1","10.2.1.3"]`
    "headers" => `{"Accept": "*/*", "User-Agent": "curl/7.68.0"}`
    ```
+ 
+   If the label to be extracted is same as the original JSON field, expression can be written as just `| json <label>`
+
+   For example, to extract `servers` fields as label, expression can be written as following
+    
+   `| json servers` will extract:
+
+    ```kv
+   "servers" => `["129.0.1.1","10.2.1.3"]`
+   ```
+
+   Note that `| json servers` is same as `| json servers="servers"`
 
 #### logfmt
 
