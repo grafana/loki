@@ -761,14 +761,25 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 	for !isDone(ctx) {
 		readSampleBatchLog, _ := spanlogger.New(ctx, "instance.ReadSampleBatch")
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
-		readSampleBatchLog.Span.Finish()
 		if err != nil {
+			readSampleBatchLog.Span.LogFields(otlog.String("type", "err"))
+			readSampleBatchLog.Span.LogFields(otlog.String("err", err.Error()))
+			readSampleBatchLog.Span.Finish()
 			return err
 		}
 		if len(batch.Series) == 0 {
+			readSampleBatchLog.Span.LogFields(otlog.String("type", "batch.Series==0"))
+			readSampleBatchLog.Span.Finish()
 			return nil
 		}
-
+		readSampleBatchLog.Span.LogFields(otlog.String("type", "success"))
+		tracingLabel := batch.Series[0].Labels
+		readSampleBatchLog.Span.LogFields(otlog.String("tracingLabel", tracingLabel))
+		if len(batch.Series[0].Samples) > 0 {
+			tracingSample := batch.Series[0].Samples[0].String()
+			readSampleBatchLog.Span.LogFields(otlog.String("tracingSample", tracingSample))
+		}
+		readSampleBatchLog.Span.Finish()
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
 
