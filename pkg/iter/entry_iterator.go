@@ -934,7 +934,7 @@ func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
 			iter.StreamHash(),
 			iter.ProcessLine(),
 		)
-		cache := &entry
+		cache = &entry
 		next.Entry = cache.Entry
 		next.labels = cache.labels
 		next.processLine = cache.processLine
