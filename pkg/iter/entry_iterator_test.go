@@ -673,6 +673,7 @@ type CloseTestingIterator struct {
 func (i *CloseTestingIterator) Next() bool            { return true }
 func (i *CloseTestingIterator) Entry() logproto.Entry { return i.e }
 func (i *CloseTestingIterator) Labels() string        { return "" }
+func (i *CloseTestingIterator) ProcessLine() string   { return "" }
 func (i *CloseTestingIterator) StreamHash() uint64    { return 0 }
 func (i *CloseTestingIterator) Error() error          { return nil }
 func (i *CloseTestingIterator) Close() error {

@@ -260,7 +260,7 @@ func (it mockEntryIterator) Next() bool {
 	return true
 }
 
-func (i mockEntryIterator) ProcessLine() string {
+func (it mockEntryIterator) ProcessLine() string {
 	panic("unsupported")
 }
 
