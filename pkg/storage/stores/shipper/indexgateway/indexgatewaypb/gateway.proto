@@ -11,7 +11,7 @@ service IndexGateway {
   rpc QueryIndex(QueryIndexRequest) returns (stream QueryIndexResponse);
   /// GetChunkRef returns chunk reference that match the provided label matchers
   rpc GetChunkRef(GetChunkRefRequest) returns (GetChunkRefResponse) {}
-
+  rpc GetSeries(GetSeriesRequest) returns (GetSeriesResponse) {}
   rpc LabelNamesForMetricName(LabelNamesForMetricNameRequest) returns (LabelResponse) {}
 
   rpc LabelValuesForMetricName(LabelValuesForMetricNameRequest) returns (LabelResponse) {}
@@ -61,6 +61,29 @@ message GetChunkRefRequest {
 
 message GetChunkRefResponse {
   repeated logproto.ChunkRef refs = 1;
+}
+
+message GetSeriesRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+}
+
+message GetSeriesResponse {
+  repeated Series series = 1 [(gogoproto.nullable) = false];
+}
+
+message Series {
+  repeated logproto.LabelPair labels = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+  ];
 }
 
 message QueryIndexResponse {

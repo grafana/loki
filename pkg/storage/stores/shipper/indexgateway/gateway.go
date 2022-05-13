@@ -44,6 +44,7 @@ const (
 
 type IndexQuerier interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
+	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
 	Stop()
@@ -312,6 +313,32 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *indexgatewaypb.GetChunkR
 		}
 	}
 	return result, nil
+}
+
+func (g *Gateway) GetSeries(ctx context.Context, req *indexgatewaypb.GetSeriesRequest) (*indexgatewaypb.GetSeriesResponse, error) {
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil {
+		return nil, err
+	}
+	series, err := g.indexQuerier.GetSeries(ctx, instanceID, req.From, req.Through, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &indexgatewaypb.GetSeriesResponse{
+		Series: make([]indexgatewaypb.Series, len(series)),
+	}
+	for i := range series {
+		resp.Series[i] = indexgatewaypb.Series{
+			Labels: logproto.FromLabelsToLabelAdapters(series[i]),
+		}
+	}
+	return resp, nil
 }
 
 func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *indexgatewaypb.LabelNamesForMetricNameRequest) (*indexgatewaypb.LabelResponse, error) {
