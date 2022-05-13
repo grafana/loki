@@ -676,7 +676,11 @@ Signature: `default(d string,src string) string`
 Examples:
 
 ```template
-{{ .http_request_headers_x_forwarded_for | default "-" }}
 {{ default "-" "" }} // output: -
 {{ default "-" "foo" }} // output: foo
+```
+
+Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` label is empty:
+```logql
+{job="access_log"} | json | line_format `{{.http_request_headers_x_forwarded_for | default "-"}}`
 ```
