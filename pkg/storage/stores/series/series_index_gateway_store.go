@@ -3,17 +3,20 @@ package series
 import (
 	"context"
 
+	"github.com/gogo/status"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 )
 
 type IndexGatewayClientStore struct {
 	client IndexGatewayClient
-	*IndexStore
+	IndexStore
 }
 
 type IndexGatewayClient interface {
@@ -23,7 +26,7 @@ type IndexGatewayClient interface {
 	LabelValuesForMetricName(ctx context.Context, in *indexgatewaypb.LabelValuesForMetricNameRequest, opts ...grpc.CallOption) (*indexgatewaypb.LabelResponse, error)
 }
 
-func NewIndexGatewayClientStore(client IndexGatewayClient, index *IndexStore) *IndexGatewayClientStore {
+func NewIndexGatewayClientStore(client IndexGatewayClient, index IndexStore) IndexStore {
 	return &IndexGatewayClientStore{
 		client:     client,
 		IndexStore: index,
