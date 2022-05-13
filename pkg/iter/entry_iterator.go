@@ -235,7 +235,7 @@ Outer:
 			}
 		}
 		if !dupe {
-			i.buffer = append(i.buffer, *NewEntryWithLabels(
+			i.buffer = append(i.buffer, NewEntryWithLabels(
 				entry,
 				next.Labels(),
 				next.StreamHash(),
@@ -258,7 +258,7 @@ Outer:
 					continue inner
 				}
 			}
-			i.buffer = append(i.buffer, *NewEntryWithLabels(
+			i.buffer = append(i.buffer, NewEntryWithLabels(
 				entry,
 				next.Labels(),
 				next.StreamHash(),
@@ -698,8 +698,8 @@ type entryWithLabels struct {
 	processLine string
 }
 
-func NewEntryWithLabels(entry logproto.Entry, labels string, streamHash uint64, processLine string) *entryWithLabels {
-	return &entryWithLabels{
+func NewEntryWithLabels(entry logproto.Entry, labels string, streamHash uint64, processLine string) entryWithLabels {
+	return entryWithLabels{
 		entry, labels, streamHash, processLine,
 	}
 }
@@ -737,7 +737,7 @@ func (i *reverseIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for count := uint32(0); (i.limit == 0 || count < i.limit) && i.iter.Next(); count++ {
-			i.entriesWithLabels = append(i.entriesWithLabels, *NewEntryWithLabels(i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash(), i.iter.ProcessLine()))
+			i.entriesWithLabels = append(i.entriesWithLabels, NewEntryWithLabels(i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash(), i.iter.ProcessLine()))
 		}
 		i.iter.Close()
 	}
@@ -816,7 +816,7 @@ func (i *reverseEntryIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for i.iter.Next() {
-			i.buf.entries = append(i.buf.entries, *NewEntryWithLabels(i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash(), i.iter.ProcessLine()))
+			i.buf.entries = append(i.buf.entries, NewEntryWithLabels(i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash(), i.iter.ProcessLine()))
 		}
 		i.iter.Close()
 	}
@@ -928,12 +928,13 @@ func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
 	var cache *entryWithLabels
 	next := &entryWithLabels{}
 	if iter.Next() {
-		cache = NewEntryWithLabels(
+		entry := NewEntryWithLabels(
 			iter.Entry(),
 			iter.Labels(),
 			iter.StreamHash(),
 			iter.ProcessLine(),
 		)
+		cache := &entry
 		next.Entry = cache.Entry
 		next.labels = cache.labels
 		next.processLine = cache.processLine
