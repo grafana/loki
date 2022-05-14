@@ -237,6 +237,9 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	h := make(http.Header)
 
 	if c.Username != "" && c.Password != "" {
+		if c.AuthHeader == "" {
+			c.AuthHeader = "Authorization"
+		}
 		h.Set(
 			c.AuthHeader,
 			"Basic "+base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password)),
@@ -262,6 +265,10 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	}
 
 	if c.BearerToken != "" {
+		if c.AuthHeader == "" {
+			c.AuthHeader = "Authorization"
+		}
+
 		h.Set(c.AuthHeader, "Bearer "+c.BearerToken)
 	}
 
@@ -271,6 +278,9 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 			return nil, fmt.Errorf("unable to read authorization credentials file %s: %s", c.BearerTokenFile, err)
 		}
 		bearerToken := strings.TrimSpace(string(b))
+		if c.AuthHeader == "" {
+			c.AuthHeader = "Authorization"
+		}
 		h.Set(c.AuthHeader, "Bearer "+bearerToken)
 	}
 	return h, nil
