@@ -22,12 +22,13 @@ import (
 )
 
 const (
-	queryPath       = "/loki/api/v1/query"
-	queryRangePath  = "/loki/api/v1/query_range"
-	labelsPath      = "/loki/api/v1/labels"
-	labelValuesPath = "/loki/api/v1/label/%s/values"
-	seriesPath      = "/loki/api/v1/series"
-	tailPath        = "/loki/api/v1/tail"
+	queryPath         = "/loki/api/v1/query"
+	queryRangePath    = "/loki/api/v1/query_range"
+	labelsPath        = "/loki/api/v1/labels"
+	labelValuesPath   = "/loki/api/v1/label/%s/values"
+	seriesPath        = "/loki/api/v1/series"
+	tailPath          = "/loki/api/v1/tail"
+	defaultAuthHeader = "Authorization"
 )
 
 var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
@@ -238,7 +239,7 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 
 	if c.Username != "" && c.Password != "" {
 		if c.AuthHeader == "" {
-			c.AuthHeader = "Authorization"
+			c.AuthHeader = defaultAuthHeader
 		}
 		h.Set(
 			c.AuthHeader,
@@ -266,7 +267,7 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 
 	if c.BearerToken != "" {
 		if c.AuthHeader == "" {
-			c.AuthHeader = "Authorization"
+			c.AuthHeader = defaultAuthHeader
 		}
 
 		h.Set(c.AuthHeader, "Bearer "+c.BearerToken)
@@ -279,7 +280,7 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 		}
 		bearerToken := strings.TrimSpace(string(b))
 		if c.AuthHeader == "" {
-			c.AuthHeader = "Authorization"
+			c.AuthHeader = defaultAuthHeader
 		}
 		h.Set(c.AuthHeader, "Bearer "+bearerToken)
 	}
