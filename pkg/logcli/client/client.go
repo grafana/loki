@@ -58,6 +58,7 @@ type DefaultClient struct {
 	BearerTokenFile string
 	Retries         int
 	QueryTags       string
+	AuthHeader      string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -237,7 +238,7 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 
 	if c.Username != "" && c.Password != "" {
 		h.Set(
-			"Authorization",
+			c.AuthHeader,
 			"Basic "+base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password)),
 		)
 	}
@@ -261,7 +262,7 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	}
 
 	if c.BearerToken != "" {
-		h.Set("Authorization", "Bearer "+c.BearerToken)
+		h.Set(c.AuthHeader, "Bearer "+c.BearerToken)
 	}
 
 	if c.BearerTokenFile != "" {
@@ -270,7 +271,7 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 			return nil, fmt.Errorf("unable to read authorization credentials file %s: %s", c.BearerTokenFile, err)
 		}
 		bearerToken := strings.TrimSpace(string(b))
-		h.Set("Authorization", "Bearer "+bearerToken)
+		h.Set(c.AuthHeader, "Bearer "+bearerToken)
 	}
 	return h, nil
 }
