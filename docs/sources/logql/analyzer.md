@@ -1,14 +1,14 @@
 ---
-title: LoqQL Debugger
+title: LoqQL Analyzer
 weight: 60
 ---
 
-<link rel="stylesheet" href="../debugger/style.css">
-<script src="../debugger/handlebars.js"></script>
+<link rel="stylesheet" href="../analyzer/style.css">
+<script src="../analyzer/handlebars.js"></script>
 
-# LogQL Debugger
+# LogQL Analyzer
 
-<main class="logql-debugger">
+<main class="logql-analyzer">
     <section class="logs-source panel-container">
         <div class="logs-source__header">
             <div class="examples">
@@ -38,7 +38,7 @@ weight: 60
             </div>
         </div>
         <div class="panel-header">
-            {job="debug"}
+            {job="analyze"}
         </div>
         <textarea id="logs-source-input" class="logs-source__input"></textarea>
     </section>
@@ -48,7 +48,7 @@ weight: 60
         </div>
         <div class="query-container">
             <div class="input-box">
-                <span class="prefix">{job="debug"} </span>
+                <span class="prefix">{job="analyze"} </span>
                 <input id="query-input" class="query_input">
             </div>
             <button class="query_submit primary-button">Run query</button>
@@ -70,9 +70,6 @@ weight: 60
                 <div class="line-index">
                     <i class="line-cursor expand-cursor"></i>
                     Line {{@index}}
-                    {{#if this.filtered_out}}
-                        <i class="fa fa-times fa-times-red" aria-hidden="true"></i>
-                    {{/if}}
                 </div>
 
                 <span {{#if this.filtered_out}}class="filtered-out"{{/if}}>{{this.log_result}}</span>
@@ -82,7 +79,7 @@ weight: 60
                 <div class="explain-section origin-line">
                     <div class="explain-section__header">
                         Origin log line
-                        <span class="stage-expression">{job="debug"}</span>
+                        <span class="stage-expression">{{../stream_selector}}</span>
                     </div>
                     <div class="explain-section__body">{{this.stages.0.line_before}}</div>
                 </div>
@@ -92,9 +89,6 @@ weight: 60
                     </div>
                     <div class="explain-section stage-line">
                         <div class="explain-section__header">
-                            {{#unless this.successful}}
-                                <i class="fa fa-times fa-times-red" aria-hidden="true"></i>
-                            {{/unless}}
                             <span>stage #{{@index}}:</span>
                             <span class="stage-expression"> {{stage_expression}} </span>
                         </div>
@@ -110,7 +104,7 @@ weight: 60
                                     {{#if labels_before}}
                                         {{#each labels_before}}
                                             <article class="label-value" style="background-color: {{background_color}}">
-                                                {{label_name}}={{label_value}}
+                                                {{name}}={{value}}
                                             </article>
                                         {{/each}}
                                     {{/if}}
@@ -121,12 +115,12 @@ weight: 60
                                     Line after this stage:
                                 </div>
                                 <div class="explain-section__row-body">
-                                    <span {{#unless this.successful}}class="filtered-out"{{/unless}}>
+                                    <span {{#if this.filtered_out}}class="filtered-out"{{/if}}>
                                         {{line_after}}
                                     </span>
-                                    {{#unless this.successful}}
+                                    {{#if this.filtered_out}}
                                         <span class="important-text">the line has been filtered out on this stage</span>
-                                    {{/unless}}                                    
+                                    {{/if}}                                    
                                 </div>
                             </div>
                             {{#if added_labels}}
@@ -137,7 +131,7 @@ weight: 60
                                     <div class="explain-section__row-body">
                                         {{#each added_labels}}
                                             <article class="label-value"  style="background-color: {{background_color}}">
-                                                {{label_name}}={{label_value}}
+                                                {{name}}={{value}}
                                             </article>
                                         {{/each}}
                                     </div>
@@ -194,6 +188,6 @@ level=info ts=2022-03-23T11:55:45.221254326Z caller=loki.go:355 msg="Loki starte
 </script>
 
 
-<script src="../debugger/script.js"> </script>
+<script src="../analyzer/script.js"> </script>
 
 

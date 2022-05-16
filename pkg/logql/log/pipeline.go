@@ -117,89 +117,84 @@ func NewPipeline(stages []Stage) Pipeline {
 	}
 }
 
-type PipelineDebugger interface {
-	DebugLine(line string) []StageDebugRecord
+type PipelineAnalyzer interface {
+	AnalyzeLine(line string) []StageAnalysisRecord
 }
-type noopPipelineDebugger struct {
-	origin *pipeline
-}
-
-func (n noopPipelineDebugger) DebugLine(line string) []StageDebugRecord {
-	return []StageDebugRecord{
-		{
-			Processed:    true,
-			LineBefore:   line,
-			LabelsBefore: labels.New(),
-			LineAfter:    line,
-			LabelsAfter:  labels.New(),
-			Successful:   true,
-		},
-	}
+type noopPipelineAnalyzer struct {
+	_ *pipeline
 }
 
-type streamPipelineDebugger struct {
-	origin      *pipeline
-	stagesCount int
+func (n noopPipelineAnalyzer) AnalyzeLine(_ string) []StageAnalysisRecord {
+	return []StageAnalysisRecord{}
 }
 
-func NewPipelineDebugger(origin Pipeline) PipelineDebugger {
+type streamPipelineAnalyzer struct {
+	origin       *pipeline
+	stagesCount  int
+	streamLabels labels.Labels
+}
+
+func NewPipelineAnalyzer(origin Pipeline, streamLabels labels.Labels) PipelineAnalyzer {
 	if o, ok := origin.(*pipeline); ok {
 		stagesCount := len(o.stages)
-		return &streamPipelineDebugger{o, stagesCount}
+		return &streamPipelineAnalyzer{o, stagesCount, streamLabels}
 	}
-	return &noopPipelineDebugger{}
+	return &noopPipelineAnalyzer{}
 }
 
-func (p streamPipelineDebugger) DebugLine(line string) []StageDebugRecord {
+func (p streamPipelineAnalyzer) AnalyzeLine(line string) []StageAnalysisRecord {
 	stages := p.origin.stages
 	stageRecorders := make([]Stage, 0, len(stages))
-	debugRecords := make([]StageDebugRecord, len(stages))
+	records := make([]StageAnalysisRecord, len(stages))
 	for i, stage := range stages {
-		stageRecorders = append(stageRecorders, StageDebugRecorder{origin: stage,
-			debugRecords: debugRecords,
-			stageIndex:   i,
+		stageRecorders = append(stageRecorders, StageAnalysisRecorder{origin: stage,
+			records:    records,
+			stageIndex: i,
 		})
 	}
 	stream := streamPipeline{
 		stages:  stageRecorders,
-		builder: p.origin.baseBuilder.ForLabels(labels.Labels{{Name: "job", Value: "debug"}}, 0),
+		builder: p.origin.baseBuilder.ForLabels(p.streamLabels, p.streamLabels.Hash()),
 	}
 	_, _, _ = stream.ProcessString(time.Now().UnixMilli(), line)
-	return debugRecords
+	return records
 }
 
-type StageDebugRecorder struct {
+type StageAnalysisRecorder struct {
 	Stage
-	origin       Stage
-	stageIndex   int
-	debugRecords []StageDebugRecord
+	origin     Stage
+	stageIndex int
+	records    []StageAnalysisRecord
 }
 
-func (s StageDebugRecorder) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	labelsBefore := lbs.Labels()
+func (s StageAnalysisRecorder) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lineBefore := unsafeGetString(line)
+	labelsBefore, _ := lbs.LabelsUnsorted()
+
 	lineResult, ok := s.origin.Process(line, lbs)
-	s.debugRecords[s.stageIndex] = StageDebugRecord{
+
+	labelsAfter, _ := lbs.LabelsUnsorted()
+	s.records[s.stageIndex] = StageAnalysisRecord{
 		Processed:    true,
 		LabelsBefore: labelsBefore,
 		LineBefore:   lineBefore,
-		LabelsAfter:  lbs.Labels(),
+		LabelsAfter:  labelsAfter,
 		LineAfter:    unsafeGetString(lineResult),
-		Successful:   ok,
+		FilteredOut:  !ok,
 	}
 	return lineResult, ok
 }
-func (s StageDebugRecorder) RequiredLabelNames() []string {
+func (s StageAnalysisRecorder) RequiredLabelNames() []string {
 	return s.origin.RequiredLabelNames()
 }
 
-type StageDebugRecord struct {
-	Processed    bool          `json:"processed"`
-	LineBefore   string        `json:"line_before"`
-	LabelsBefore labels.Labels `json:"labels_before"`
-	LineAfter    string        `json:"line_after"`
-	LabelsAfter  labels.Labels `json:"labels_after"`
-	Successful   bool          `json:"successful"`
+type StageAnalysisRecord struct {
+	Processed    bool
+	LineBefore   string
+	LabelsBefore labels.Labels
+	LineAfter    string
+	LabelsAfter  labels.Labels
+	FilteredOut  bool
 }
 
 type streamPipeline struct {

@@ -2,7 +2,7 @@
     display: none !important;
 }
 
-.logql-debugger {
+.logql-analyzer {
     word-break: break-all;
     position: relative;
     display: grid;
@@ -21,7 +21,7 @@
     align-content: center;
 }
 
-.example{
+.example {
     display: flex;
     align-items: center;
     column-gap: 5px;
@@ -72,11 +72,11 @@
     padding: 10px 15px;
 }
 
-.share-link-copied-notification{
+.share-link-copied-notification {
     color: #1b855e;
 }
 
-.logs-source__header{
+.logs-source__header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -196,10 +196,6 @@
     align-content: center;
 }
 
-.fa-times-red {
-    color: #ff0000;
-}
-
 .filtered-out {
     text-decoration: line-through;
     font-weight: 300;
@@ -211,5 +207,5 @@
 }
 
 .important-text {
-    color: #ff0000!important;
+    color: #ff0000 !important;
 }

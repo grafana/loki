@@ -1,5 +1,5 @@
 let host = "http://localhost:3001";
-let streamSelector = `{job="debug"}`;
+let streamSelector = `{job="analyze"}`;
 const logsSourceInputElement = document.getElementById("logs-source-input");
 const queryInputElement = document.getElementById("query-input");
 const resultsElement = document.getElementById("results");
@@ -89,50 +89,49 @@ function handleError(error) {
 }
 
 async function sendRequest(payload) {
-  return fetch(host + "/api/logql-debug", {
+  return fetch(host + "/api/logql-analyze", {
     method: 'POST', headers: {
       'Accept': 'application/json', 'Content-Type': 'application/json'
     }, mode: 'cors', body: JSON.stringify(payload)
   });
 }
 
-function findLastProcessed(stages) {
-  return [...stages].reverse().find(stage => stage.processed)
+function findAddedLabels(stageInfo) {
+  const labelsBefore = new Map(stageInfo.labels_before.map(it => [it.name, it.value]));
+  return stageInfo.labels_after
+    .filter(labelValue => labelsBefore.get(labelValue.name) !== labelValue.value);
 }
 
-function adjustResponseMode(response) {
+function adjustStagesModel(stages, response) {
+  return stages.map((stageInfo, stageIndex) => {
+    const addedLabels = findAddedLabels(stageInfo);
+    return {
+      ...stageInfo,
+      labels_before: computeLabelColor(stageInfo.labels_before),
+      labels_after: computeLabelColor(stageInfo.labels_after),
+      added_labels: computeLabelColor(addedLabels),
+      stage_expression: response.stages[stageIndex]
+    }
+  });
+}
+
+function adjustResponseModel(response) {
   return {
-    ...response, results: response.results.map(stages => {
+    ...response,
+    results: response.results.map(stages => {
       return {
-        log_result: findLastProcessed(stages).line_after, filtered_out: stages.some(st => !st.successful), stages: stages.filter(stage => stage.processed)
-          .map((stageInfo, stageIndex) => {
-            const addedLabels = {};
-            Object.keys(stageInfo.labels_after)
-              .filter(label => {
-                let valueBefore = stageInfo.labels_before[label];
-                let valueAfter = stageInfo.labels_after[label];
-                return valueBefore !== valueAfter;
-              })
-              .forEach(label => addedLabels[label] = stageInfo.labels_after[label]);
-            return {
-              ...stageInfo,
-              labels_before: convertLabelsMapToArray(stageInfo.labels_before),
-              labels_after: convertLabelsMapToArray(stageInfo.labels_after),
-              added_labels: convertLabelsMapToArray(addedLabels),
-              stage_expression: response.stages[stageIndex]
-            }
-          })
+        log_result: stages[stages.length - 1].line_after,
+        filtered_out: stages.some(st => st.filtered_out),
+        stages: adjustStagesModel(stages, response)
       }
     })
   }
 }
 
-function convertLabelsMapToArray(labels) {
-  return Object.keys(labels)
-    .sort()
-    .map(labelName => {
-      return {label_name: labelName, label_value: labels[labelName], background_color: getBackgroundColor(labelName)}
-    })
+function computeLabelColor(labels) {
+  return labels.map(labelValue => {
+    return {...labelValue, background_color: getBackgroundColor(labelValue.name)}
+  })
 }
 
 function initResultsSectionListeners() {
@@ -141,7 +140,7 @@ function initResultsSectionListeners() {
 
 function renderResponse(response) {
   resetErrorContainer();
-  const adjustedResponse = adjustResponseMode(response);
+  const adjustedResponse = adjustResponseModel(response);
   const rawResultsTemplate = document.getElementById("log-result-template").innerHTML;
   const template = Handlebars.compile(rawResultsTemplate);
   resultsElement.innerHTML = template(adjustedResponse);
@@ -168,7 +167,6 @@ function loadExampleFromUrlIfExist() {
   if (!query) {
     return
   }
-  console.log(query)
   const logLines = urlSearchParams.getAll("line[]")
     .join("\n");
   updateInputs(logLines, query);

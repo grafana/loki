@@ -208,16 +208,23 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 	return b
 }
 
-// Labels returns the labels from the builder. If no modifications
+// Labels returns sorted labels from the builder. If no modifications
 // were made, the original labels are returned.
 func (b *LabelsBuilder) Labels() labels.Labels {
+	result, modified := b.LabelsUnsorted()
+	if modified {
+		sort.Sort(result)
+	}
+	return result
+}
+
+func (b *LabelsBuilder) LabelsUnsorted() (labels.Labels, bool) {
 	if len(b.del) == 0 && len(b.add) == 0 {
 		if b.err == "" {
-			return b.base
+			return b.base, false
 		}
 		res := append(b.base.Copy(), labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
-		sort.Sort(res)
-		return res
+		return res, true
 	}
 
 	// In the general case, labels are removed, modified or moved
@@ -241,9 +248,8 @@ Outer:
 	if b.err != "" {
 		res = append(res, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
 	}
-	sort.Sort(res)
 
-	return res
+	return res, true
 }
 
 // LabelsResult returns the LabelsResult from the builder.

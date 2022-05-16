@@ -3,7 +3,7 @@ services:
   backend:
     build:
       context: ../../
-      dockerfile: ./cmd/logql-debugger/Dockerfile
+      dockerfile: ./cmd/logql-analyzer/Dockerfile
     ports:
       - "3001:3001"
 
