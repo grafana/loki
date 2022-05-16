@@ -671,7 +671,7 @@ Example of a query to filter Loki querier jobs which create time is 1 day before
 
 `default` checks whether the string(`src`) is set, and returns default(`d`) if not set.
 
-Signature: `default(d string,src string) string`
+Signature: `default(d string, src string) string`
 
 Examples:
 
