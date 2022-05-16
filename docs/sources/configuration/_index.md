@@ -2048,6 +2048,13 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
 
+# Deletion mode.
+# Can be one of "disabled", "whole-stream-deletion", "filter-only", or "filter-and-delete".
+# When set to the default value of "whole-stream-deletion", and if
+# retention_enabled is true, then the log entry deletion API endpoints are available.
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
+[deletion_mode: <string> | default = "whole-stream-deletion"]
+
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
 [compactor_ring: <ring>]
