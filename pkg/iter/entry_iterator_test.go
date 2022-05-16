@@ -608,7 +608,7 @@ func Test_DuplicateCount(t *testing.T) {
 			defer it.Close()
 			for it.Next() {
 			}
-			require.Equal(t, test.expectedDuplicates, stats.FromContext(ctx).Result(0, 0).TotalDuplicates())
+			require.Equal(t, test.expectedDuplicates, stats.FromContext(ctx).Result(0, 0, 0).TotalDuplicates())
 		})
 	}
 }

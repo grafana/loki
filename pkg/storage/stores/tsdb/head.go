@@ -36,6 +36,8 @@ const (
 	// 1) Heads are per-tenant in Loki
 	// 2) Loki tends to have a few orders of magnitude less series per node than
 	// Prometheus|Cortex|Mimir.
+	// Do not specify without bit shifting. This allows us to
+	// do shard index calcuations via bitwise & rather than modulos.
 	defaultStripeSize = 64
 )
 
@@ -53,15 +55,35 @@ guaranteeing we maintain querying consistency for the entire data lifecycle.
 */
 
 // TODO(owen-d)
-type HeadMetrics struct {
-	seriesNotFound prometheus.Counter
+type Metrics struct {
+	seriesNotFound                prometheus.Counter
+	tsdbCreationsTotal            prometheus.Counter
+	tsdbCreationFailures          prometheus.Counter
+	tsdbManagerUpdatesTotal       prometheus.Counter
+	tsdbManagerUpdatesFailedTotal prometheus.Counter
 }
 
-func NewHeadMetrics(r prometheus.Registerer) *HeadMetrics {
-	return &HeadMetrics{
+func NewMetrics(r prometheus.Registerer) *Metrics {
+	return &Metrics{
 		seriesNotFound: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_tsdb_head_series_not_found_total",
 			Help: "Total number of requests for series that were not found.",
+		}),
+		tsdbCreationsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_creations_total",
+			Help: "Total number of tsdb creations attempted",
+		}),
+		tsdbCreationFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_creations_failed_total",
+			Help: "Total number of tsdb creations failed",
+		}),
+		tsdbManagerUpdatesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_manager_updates_total",
+			Help: "Total number of tsdb manager updates (loading/rotating tsdbs in mem)",
+		}),
+		tsdbManagerUpdatesFailedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_tsdb_manager_updates_failed_total",
+			Help: "Total number of tsdb manager update failures (loading/rotating tsdbs in mem)",
 		}),
 	}
 }
@@ -75,26 +97,21 @@ type Head struct {
 	// in the MemPostings, but is eventually discarded when we create a real TSDB index.
 	lastSeriesID atomic.Uint64
 
-	metrics *HeadMetrics
+	metrics *Metrics
 	logger  log.Logger
 
 	series *stripeSeries
 
 	postings *index.MemPostings // Postings lists for terms.
-
-	closedMtx sync.Mutex
-	closed    bool
 }
 
-func NewHead(tenant string, metrics *HeadMetrics, logger log.Logger) *Head {
+func NewHead(tenant string, metrics *Metrics, logger log.Logger) *Head {
 	return &Head{
-		tenant:    tenant,
-		metrics:   metrics,
-		logger:    logger,
-		series:    newStripeSeries(),
-		postings:  index.NewMemPostings(),
-		closedMtx: sync.Mutex{},
-		closed:    false,
+		tenant:   tenant,
+		metrics:  metrics,
+		logger:   logger,
+		series:   newStripeSeries(),
+		postings: index.NewMemPostings(),
 	}
 }
 
@@ -108,42 +125,44 @@ func (h *Head) MaxTime() int64 {
 	return h.maxTime.Load()
 }
 
-func (h *Head) updateMinMaxTime(mint, maxt int64) {
+// Will CAS until successfully updates bounds or the condition is no longer valid
+func updateMintMaxt(mint, maxt int64, mintSrc, maxtSrc *atomic.Int64) {
 	for {
-		lt := h.MinTime()
-		if mint >= lt {
+		lt := mintSrc.Load()
+		if mint >= lt && lt != 0 {
 			break
 		}
-		if h.minTime.CAS(lt, mint) {
+		if mintSrc.CAS(lt, mint) {
 			break
 		}
 	}
 	for {
-		ht := h.MaxTime()
+		ht := maxtSrc.Load()
 		if maxt <= ht {
 			break
 		}
-		if h.maxTime.CAS(ht, maxt) {
+		if maxtSrc.CAS(ht, maxt) {
 			break
 		}
 	}
 }
 
 // Note: chks must not be nil or zero-length
-func (h *Head) Append(ls labels.Labels, chks index.ChunkMetas) {
+func (h *Head) Append(ls labels.Labels, chks index.ChunkMetas) (created bool, refID uint64) {
 	from, through := chks.Bounds()
 	var id uint64
-	created := h.series.Append(ls, chks, func() *memSeries {
+	created, refID = h.series.Append(ls, chks, func() *memSeries {
 		id = h.lastSeriesID.Inc()
 		return newMemSeries(id, ls)
 	})
-	h.updateMinMaxTime(int64(from), int64(through))
+	updateMintMaxt(int64(from), int64(through), &h.minTime, &h.maxTime)
 
 	if !created {
 		return
 	}
 	h.postings.Add(storage.SeriesRef(id), ls)
 	h.numSeries.Inc()
+	return
 }
 
 // seriesHashmap is a simple hashmap for memSeries by their label set. It is built
@@ -211,7 +230,7 @@ func (s *stripeSeries) Append(
 	ls labels.Labels,
 	chks index.ChunkMetas,
 	createFn func() *memSeries,
-) (created bool) {
+) (created bool, refID uint64) {
 	fp := ls.Hash()
 	i := fp & uint64(s.shards-1)
 	mtx := &s.locks[i]
@@ -222,7 +241,7 @@ func (s *stripeSeries) Append(
 		series = createFn()
 		s.hashes[i].set(fp, series)
 
-		// the series locks are modulo'd by the ref, not fingerprint
+		// the series locks are determined by the ref, not fingerprint
 		refIdx := series.ref & uint64(s.shards-1)
 		s.series[refIdx][series.ref] = series
 		created = true
@@ -231,6 +250,7 @@ func (s *stripeSeries) Append(
 
 	series.Lock()
 	series.chks = append(series.chks, chks...)
+	refID = series.ref
 	series.Unlock()
 
 	return

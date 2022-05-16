@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/grpc"
@@ -23,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
@@ -44,16 +46,17 @@ type StoreLimits interface {
 
 // Config chooses which storage client to use.
 type Config struct {
-	AWSStorageConfig       aws.StorageConfig       `yaml:"aws"`
-	AzureStorageConfig     azure.BlobStorageConfig `yaml:"azure"`
-	GCPStorageConfig       gcp.Config              `yaml:"bigtable"`
-	GCSConfig              gcp.GCSConfig           `yaml:"gcs"`
-	CassandraStorageConfig cassandra.Config        `yaml:"cassandra"`
-	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
-	FSConfig               local.FSConfig          `yaml:"filesystem"`
-	Swift                  openstack.SwiftConfig   `yaml:"swift"`
-	GrpcConfig             grpc.Config             `yaml:"grpc_store"`
-	Hedging                hedging.Config          `yaml:"hedging"`
+	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
+	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
+	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
+	GCPStorageConfig       gcp.Config                `yaml:"bigtable"`
+	GCSConfig              gcp.GCSConfig             `yaml:"gcs"`
+	CassandraStorageConfig cassandra.Config          `yaml:"cassandra"`
+	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb"`
+	FSConfig               local.FSConfig            `yaml:"filesystem"`
+	Swift                  openstack.SwiftConfig     `yaml:"swift"`
+	GrpcConfig             grpc.Config               `yaml:"grpc_store"`
+	Hedging                hedging.Config            `yaml:"hedging"`
 
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
@@ -61,8 +64,9 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	MaxChunkBatchSize   int            `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig shipper.Config `yaml:"boltdb_shipper"`
+	MaxChunkBatchSize   int                 `yaml:"max_chunk_batch_size"`
+	BoltDBShipperConfig shipper.Config      `yaml:"boltdb_shipper"`
+	TSDBShipperConfig   indexshipper.Config `yaml:"tsdb_shipper"`
 
 	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
@@ -74,6 +78,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.AzureStorageConfig.RegisterFlags(f)
+	cfg.BOSStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
@@ -89,6 +94,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
 	cfg.BoltDBShipperConfig.RegisterFlags(f)
 	f.IntVar(&cfg.MaxChunkBatchSize, "store.max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
+	cfg.TSDBShipperConfig.RegisterFlagsWithPrefix("tsdb.", f)
 }
 
 // Validate config and returns error on failure
@@ -150,7 +156,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 			return boltDBIndexClientWithShipper, nil
 		}
 
-		if shouldUseIndexGatewayClient(cfg) {
+		if shouldUseBoltDBIndexGatewayClient(cfg) {
 			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
 			if err != nil {
 				return nil, err
@@ -199,6 +205,12 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 			return nil, err
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+	case config.StorageTypeBOS:
+		c, err := baidubce.NewBOSObjectStorage(&cfg.BOSStorageConfig)
+		if err != nil {
+			return nil, err
+		}
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxChunkBatchSize, schemaCfg), nil
 	case config.StorageTypeGCP:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
@@ -311,6 +323,8 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		return testutils.NewMockStorage(), nil
 	case config.StorageTypeFileSystem:
 		return local.NewFSObjectClient(cfg.FSConfig)
+	case config.StorageTypeBOS:
+		return baidubce.NewBOSObjectStorage(&cfg.BOSStorageConfig)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS, config.StorageTypeAzure, config.StorageTypeFileSystem)
 	}

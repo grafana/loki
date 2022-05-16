@@ -55,7 +55,6 @@ type Config struct {
 	ResyncInterval       time.Duration `yaml:"resync_interval"`
 	QueryReadyNumDays    int           `yaml:"query_ready_num_days"`
 
-	UploaderName           string
 	IngesterName           string
 	Mode                   Mode
 	IngesterDBRetainPeriod time.Duration
@@ -83,9 +82,10 @@ type indexShipper struct {
 
 // NewIndexShipper creates a shipper for providing index store functionality using index files and object storage.
 // It manages the whole life cycle of uploading the index and downloading the index at query time.
-func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits) (IndexShipper, error) {
+func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, open index.OpenIndexFileFunc) (IndexShipper, error) {
 	shipper := indexShipper{
-		cfg: cfg,
+		cfg:               cfg,
+		openIndexFileFunc: open,
 	}
 
 	err := shipper.init(storageClient, limits)
@@ -103,7 +103,6 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 
 	if s.cfg.Mode != ModeReadOnly {
 		cfg := uploads.Config{
-			Uploader:       s.cfg.UploaderName,
 			UploadInterval: UploadInterval,
 			DBRetainPeriod: s.cfg.IngesterDBRetainPeriod,
 		}
@@ -140,11 +139,15 @@ func (s *indexShipper) AddIndex(tableName, userID string, index index.Index) err
 
 func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, callback func(index index.Index) error) error {
 	if s.downloadsManager != nil {
-		return s.downloadsManager.ForEach(ctx, tableName, userID, callback)
+		if err := s.downloadsManager.ForEach(ctx, tableName, userID, callback); err != nil {
+			return err
+		}
 	}
 
 	if s.uploadsManager != nil {
-		return s.uploadsManager.ForEach(tableName, userID, callback)
+		if err := s.uploadsManager.ForEach(tableName, userID, callback); err != nil {
+			return err
+		}
 	}
 
 	return nil

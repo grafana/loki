@@ -14,7 +14,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-var nilMetrics = NewShardingMetrics(nil)
+var nilShardMetrics = NewShardMapperMetrics(nil)
+var nilRangeMetrics = NewRangeMapperMetrics(nil)
 
 func TestMappingEquivalence(t *testing.T) {
 	var (
@@ -61,7 +62,7 @@ func TestMappingEquivalence(t *testing.T) {
 
 		opts := EngineOpts{}
 		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, nilMetrics, NoLimits, log.NewNopLogger())
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
 			params := NewLiteralParams(
@@ -77,7 +78,7 @@ func TestMappingEquivalence(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper, err := NewShardMapper(shards, nilMetrics)
+			mapper, err := NewShardMapper(shards, nilShardMetrics)
 			require.Nil(t, err)
 			_, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
@@ -131,14 +132,19 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 		// sum
 		{`sum(bytes_over_time({a=~".+"}[2s]))`, time.Second},
+		{`sum(bytes_over_time({a=~".+"} | logfmt | line > 5 [2s]))`, time.Second},
 		{`sum(count_over_time({a=~".+"}[2s]))`, time.Second},
+		{`sum(count_over_time({a=~".+"} | logfmt | line > 5 [2s]))`, time.Second},
 		{`sum(sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
+		{`sum(sum_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
 		{`sum(max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`sum(max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`sum(max_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
 		{`sum(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`sum(min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`sum(min_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
 		{`sum(rate({a=~".+"}[2s]))`, time.Second},
 		{`sum(bytes_rate({a=~".+"}[2s]))`, time.Second},
 
@@ -214,9 +220,11 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`min(max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`min(max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`min(max_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
 		{`min(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
 		{`min(min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`min(min_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
 		{`min(rate({a=~".+"}[2s]))`, time.Second},
 		{`min(bytes_rate({a=~".+"}[2s]))`, time.Second},
 
@@ -236,6 +244,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		// Binary operations
 		{`bytes_over_time({a=~".+"}[3s]) + count_over_time({a=~".+"}[5s])`, time.Second},
 		{`sum(count_over_time({a=~".+"}[3s]) * count(sum_over_time({a=~".+"} | unwrap b [5s])))`, time.Second},
+		{`sum(count_over_time({a=~".+"} | logfmt | b > 2 [3s])) / sum(count_over_time({a=~".+"} [3s]))`, time.Second},
 
 		// Multi vector aggregator layer queries
 		{`sum(max(bytes_over_time({a=~".+"}[3s])))`, time.Second},
@@ -260,7 +269,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 		opts := EngineOpts{}
 		regularEngine := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-		downstreamEngine := NewDownstreamEngine(opts, MockDownstreamer{regularEngine}, nilMetrics, NoLimits, log.NewNopLogger())
+		downstreamEngine := NewDownstreamEngine(opts, MockDownstreamer{regularEngine}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
@@ -282,7 +291,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			require.Nil(t, err)
 
 			// Downstream engine - split by range
-			rangeMapper, err := NewRangeMapper(tc.splitByInterval)
+			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics)
 			require.Nil(t, err)
 			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
 			require.Nil(t, err)

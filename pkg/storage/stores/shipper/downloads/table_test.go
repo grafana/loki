@@ -38,8 +38,8 @@ func newStorageClientWithFakeObjectsInList(storageClient storage.Client) storage
 	return storageClientWithFakeObjectsInList{storageClient}
 }
 
-func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, []string, error) {
-	files, userIDs, err := o.Client.ListFiles(ctx, tableName)
+func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string, _ bool) ([]storage.IndexFile, []string, error) {
+	files, userIDs, err := o.Client.ListFiles(ctx, tableName, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -50,6 +50,20 @@ func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, table
 	})
 
 	return files, userIDs, nil
+}
+
+func (o storageClientWithFakeObjectsInList) ListUserFiles(ctx context.Context, tableName, userID string, _ bool) ([]storage.IndexFile, error) {
+	files, err := o.Client.ListUserFiles(ctx, tableName, userID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	files = append(files, storage.IndexFile{
+		Name:       "fake-object",
+		ModifiedAt: time.Now(),
+	})
+
+	return files, nil
 }
 
 type stopFunc func()
@@ -72,7 +86,7 @@ func buildTestTable(t *testing.T, path string) (*table, *local.BoltIndexClient, 
 	cachePath := filepath.Join(path, cacheDirName)
 
 	table := NewTable(tableName, cachePath, storageClient, boltDBIndexClient, newMetrics(nil)).(*table)
-	_, usersWithIndex, err := table.storageClient.ListFiles(context.Background(), tableName)
+	_, usersWithIndex, err := table.storageClient.ListFiles(context.Background(), tableName, false)
 	require.NoError(t, err)
 	require.NoError(t, table.EnsureQueryReadiness(context.Background(), usersWithIndex))
 
@@ -397,6 +411,7 @@ func TestTable_Sync(t *testing.T) {
 	testutil.AddRecordsToDB(t, filepath.Join(tablePathInStorage, newDB), boltdbClient, 20, 10, nil)
 
 	// sync the table
+	table.storageClient.RefreshIndexListCache(context.Background())
 	require.NoError(t, table.Sync(context.Background()))
 
 	// query and verify table has expected records from new db and the records from deleted db are gone
@@ -416,6 +431,27 @@ func TestTable_Sync(t *testing.T) {
 		_, ok := expectedFilesInDir[fileInfo.Name()]
 		require.True(t, ok)
 	}
+
+	// let us simulate a compaction to test stale index list cache handling
+
+	// first, let us add a new file and refresh the index list cache
+	oneMoreDB := "one-more-db"
+	testutil.AddRecordsToDB(t, filepath.Join(tablePathInStorage, oneMoreDB), boltdbClient, 30, 10, nil)
+	table.storageClient.RefreshIndexListCache(context.Background())
+
+	// now, without syncing the table, let us compact the index in storage
+	compactedDBName := "compacted-db"
+	testutil.AddRecordsToDB(t, filepath.Join(tablePathInStorage, compactedDBName), boltdbClient, 10, 30, nil)
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, noUpdatesDB)))
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, newDB)))
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, oneMoreDB)))
+
+	// let us run a sync which should detect the stale index list cache and sync the table after refreshing the cache
+	require.NoError(t, table.Sync(context.Background()))
+	// query and verify table has expected records
+	testutil.TestSingleTableQuery(t, userID, []index.Query{{}}, table, 10, 30)
+
+	require.Len(t, table.indexSets[""].(*indexSet).dbs, 1)
 }
 
 func TestTable_QueryResponse(t *testing.T) {

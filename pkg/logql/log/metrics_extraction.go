@@ -249,8 +249,8 @@ func (sp *filteringStreamExtractor) Process(ts int64, line []byte) (float64, Lab
 			continue
 		}
 
-		_, _, skip := filter.pipeline.Process(ts, line)
-		if skip { //When the filter matches, don't run the next step
+		_, _, matches := filter.pipeline.Process(ts, line)
+		if matches { //When the filter matches, don't run the next step
 			return 0, nil, false
 		}
 	}
@@ -264,8 +264,8 @@ func (sp *filteringStreamExtractor) ProcessString(ts int64, line string) (float6
 			continue
 		}
 
-		_, _, skip := filter.pipeline.ProcessString(ts, line)
-		if skip { //When the filter matches, don't run the next step
+		_, _, matches := filter.pipeline.ProcessString(ts, line)
+		if matches { //When the filter matches, don't run the next step
 			return 0, nil, false
 		}
 	}

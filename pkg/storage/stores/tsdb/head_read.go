@@ -24,8 +24,8 @@ import (
 )
 
 // Index returns an IndexReader against the block.
-func (h *Head) Index() (IndexReader, error) {
-	return h.indexRange(math.MinInt64, math.MaxInt64), nil
+func (h *Head) Index() IndexReader {
+	return h.indexRange(math.MinInt64, math.MaxInt64)
 }
 
 func (h *Head) indexRange(mint, maxt int64) *headIndexReader {

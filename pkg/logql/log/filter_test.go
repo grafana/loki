@@ -56,6 +56,7 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{"(?i)foo", true, newContainsFilter([]byte("foo"), true), true},
 		{"(?i)界", true, newContainsFilter([]byte("界"), true), true},
 		{"(?i)ïB", true, newContainsFilter([]byte("ïB"), true), true},
+		{"(?:)foo|fatal|exception", true, newOrFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("fatal"), false)), newContainsFilter([]byte("exception"), false)), true},
 
 		// regex we are not supporting.
 		{"[a-z]+foo", true, nil, false},
@@ -160,6 +161,7 @@ func Benchmark_LineFilter(b *testing.B) {
 		{"(node:24) buzz*"},
 		{"(HTTP/.*\\\"|HEAD|GET) (2..|5..)"},
 		{"\"@l\":\"(Warning|Error|Fatal)\""},
+		{"(?:)foo|fatal|exception"},
 	} {
 		benchmarkRegex(b, test.re, logline, true)
 		benchmarkRegex(b, test.re, logline, false)
