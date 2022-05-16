@@ -227,6 +227,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 				AlertmanagerURL: "http://alertmanager-0.default.svc.cluster.local/alertmanager",
 				Notifier: NotifierConfig{
 					HeaderAuth: util.HeaderAuth{
+						Type:        "Bearer",
 						Credentials: "jacob",
 					},
 				},
@@ -262,6 +263,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 				AlertmanagerURL: "http://alertmanager-0.default.svc.cluster.local/alertmanager",
 				Notifier: NotifierConfig{
 					HeaderAuth: util.HeaderAuth{
+						Type:            "Bearer",
 						CredentialsFile: "/path/to/secret/file",
 					},
 				},
