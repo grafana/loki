@@ -202,12 +202,12 @@ func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.Alertm
 	if rulerConfig.Notifier.HeaderAuth.IsEnabled() {
 		if rulerConfig.Notifier.HeaderAuth.Credentials != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
-				Type:        "Bearer",
+				Type:        rulerConfig.Notifier.HeaderAuth.Type,
 				Credentials: config_util.Secret(rulerConfig.Notifier.HeaderAuth.Credentials),
 			}
 		} else if rulerConfig.Notifier.HeaderAuth.CredentialsFile != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
-				Type:            "Bearer",
+				Type:            rulerConfig.Notifier.HeaderAuth.Type,
 				CredentialsFile: rulerConfig.Notifier.HeaderAuth.CredentialsFile,
 			}
 

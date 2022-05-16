@@ -51,8 +51,9 @@ type HeaderAuth struct {
 }
 
 func (h *HeaderAuth) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&h.Credentials, prefix+"credentials", "", "HTTP Header authentication credentials.")
-	f.StringVar(&h.CredentialsFile, prefix+"credentials-file", "", "HTTP Header authentication credentials file.")
+	f.StringVar(&h.Type, prefix+"type", "Bearer", "HTTP Header authorization type (default: Bearer).")
+	f.StringVar(&h.Credentials, prefix+"credentials", "", "HTTP Header authorization credentials.")
+	f.StringVar(&h.CredentialsFile, prefix+"credentials-file", "", "HTTP Header authorization credentials file.")
 }
 
 // IsEnabled returns false if header authorization isn't enabled.
