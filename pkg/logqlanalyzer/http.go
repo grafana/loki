@@ -70,9 +70,14 @@ type Request struct {
 }
 
 type Result struct {
-	StreamSelector string          `json:"stream_selector"`
-	Stages         []string        `json:"stages"`
-	Results        [][]StageRecord `json:"results"`
+	StreamSelector string       `json:"stream_selector"`
+	Stages         []string     `json:"stages"`
+	Results        []LineResult `json:"results"`
+}
+
+type LineResult struct {
+	OriginLine   string        `json:"origin_line"`
+	StageRecords []StageRecord `json:"stage_records"`
 }
 
 type StageRecord struct {

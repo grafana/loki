@@ -32,10 +32,10 @@ func (a logQLAnalyzer) analyze(query string, logs []string) (*Result, error) {
 		return nil, errors.Wrap(err, "can not parse labels from stream selector")
 	}
 	analyzer := log.NewPipelineAnalyzer(pipeline, streamLabels)
-	response := &Result{StreamSelector: streamSelector, Stages: stages, Results: make([][]StageRecord, 0, len(logs))}
+	response := &Result{StreamSelector: streamSelector, Stages: stages, Results: make([]LineResult, 0, len(logs))}
 	for _, line := range logs {
 		analysisRecords := analyzer.AnalyzeLine(line)
-		response.Results = append(response.Results, mapAllToStageRecord(analysisRecords))
+		response.Results = append(response.Results, mapAllToLineResult(line, analysisRecords))
 	}
 	return response, nil
 }
@@ -57,7 +57,7 @@ func (a logQLAnalyzer) extractExpressionParts(expr syntax.LogSelectorExpr) (stri
 
 }
 
-func mapAllToStageRecord(analysisRecords []log.StageAnalysisRecord) []StageRecord {
+func mapAllToLineResult(originLine string, analysisRecords []log.StageAnalysisRecord) LineResult {
 	stageRecords := make([]StageRecord, 0, len(analysisRecords))
 	for _, record := range analysisRecords {
 		if !record.Processed {
@@ -71,7 +71,7 @@ func mapAllToStageRecord(analysisRecords []log.StageAnalysisRecord) []StageRecor
 			FilteredOut:  record.FilteredOut,
 		})
 	}
-	return stageRecords
+	return LineResult{originLine, stageRecords}
 }
 
 func mapAllToLabelsResponse(labels labels.Labels) []Label {
