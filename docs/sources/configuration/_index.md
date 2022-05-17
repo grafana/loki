@@ -33,7 +33,11 @@ that the order of configs reads correctly top to bottom when viewed in Grafana's
 
 To specify which configuration file to load, pass the `-config.file` flag at the
 command line. The value can be a list of comma separated paths, then the first
-file that exists will be used. The file is written in [YAML
+file that exists will be used.
+If no `-config.file` argument is specified, Loki will look up the `config.yaml` in the
+current working directory and the `config/` sub-directory and try to use that.
+
+The file is written in [YAML
 format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below.
 Brackets indicate that a parameter is optional. For non-list parameters the
 value is set to the specified default.
