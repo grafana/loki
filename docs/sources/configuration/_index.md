@@ -32,9 +32,11 @@ that the order of configs reads correctly top to bottom when viewed in Grafana's
 ## Configuration File Reference
 
 To specify which configuration file to load, pass the `-config.file` flag at the
-command line. The file is written in [YAML format](https://en.wikipedia.org/wiki/YAML),
-defined by the scheme below. Brackets indicate that a parameter is optional. For
-non-list parameters the value is set to the specified default.
+command line. The value can be a list of comma separated paths, then the first
+file that exists will be used. The file is written in [YAML
+format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below.
+Brackets indicate that a parameter is optional. For non-list parameters the
+value is set to the specified default.
 
 ### Use environment variables in the configuration
 

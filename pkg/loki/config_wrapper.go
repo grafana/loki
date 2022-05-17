@@ -42,7 +42,7 @@ func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.ListTargets, "list-targets", false, "List available targets")
 	f.BoolVar(&c.LogConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
-	f.StringVar(&c.ConfigFile, "config.file", "config.yaml,config/config.yaml", "yaml file to load")
+	f.StringVar(&c.ConfigFile, "config.file", "config.yaml,config/config.yaml", "configuration file to load, can be a comma separated list of paths, first existing file will be used")
 	f.BoolVar(&c.ConfigExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
 	c.Config.RegisterFlags(f)
 }
