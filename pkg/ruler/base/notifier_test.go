@@ -222,6 +222,78 @@ func TestBuildNotifierConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "with Header Authorization",
+			cfg: &Config{
+				AlertmanagerURL: "http://alertmanager-0.default.svc.cluster.local/alertmanager",
+				Notifier: NotifierConfig{
+					HeaderAuth: util.HeaderAuth{
+						Type:        "Bearer",
+						Credentials: "jacob",
+					},
+				},
+			},
+			ncfg: &config.Config{
+				AlertingConfig: config.AlertingConfig{
+					AlertmanagerConfigs: []*config.AlertmanagerConfig{
+						{
+							HTTPClientConfig: config_util.HTTPClientConfig{
+								Authorization: &config_util.Authorization{
+									Type:        "Bearer",
+									Credentials: config_util.Secret("jacob"),
+								},
+							},
+							APIVersion: "v1",
+							Scheme:     "http",
+							PathPrefix: "/alertmanager",
+							ServiceDiscoveryConfigs: discovery.Configs{
+								discovery.StaticConfig{
+									{
+										Targets: []model.LabelSet{{"__address__": "alertmanager-0.default.svc.cluster.local"}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "with Header Authorization and credentials file",
+			cfg: &Config{
+				AlertmanagerURL: "http://alertmanager-0.default.svc.cluster.local/alertmanager",
+				Notifier: NotifierConfig{
+					HeaderAuth: util.HeaderAuth{
+						Type:            "Bearer",
+						CredentialsFile: "/path/to/secret/file",
+					},
+				},
+			},
+			ncfg: &config.Config{
+				AlertingConfig: config.AlertingConfig{
+					AlertmanagerConfigs: []*config.AlertmanagerConfig{
+						{
+							HTTPClientConfig: config_util.HTTPClientConfig{
+								Authorization: &config_util.Authorization{
+									Type:            "Bearer",
+									CredentialsFile: "/path/to/secret/file",
+								},
+							},
+							APIVersion: "v1",
+							Scheme:     "http",
+							PathPrefix: "/alertmanager",
+							ServiceDiscoveryConfigs: discovery.Configs{
+								discovery.StaticConfig{
+									{
+										Targets: []model.LabelSet{{"__address__": "alertmanager-0.default.svc.cluster.local"}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "with external labels",
 			cfg: &Config{
 				AlertmanagerURL: "http://alertmanager.default.svc.cluster.local/alertmanager",

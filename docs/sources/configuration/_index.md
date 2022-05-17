@@ -636,6 +636,26 @@ wal_cleaner:
 # CLI flag: -ruler.alertmanager-url
 [alertmanager_url: <string> | default = ""]
 
+
+alertmanager_client:
+  # Sets the `Authorization` header on every remote write request with the
+  # configured username and password.
+  # password and password_file are mutually exclusive.
+  basic_auth:
+    [username: <string>]
+    [password: <secret>]
+
+  # Optional `Authorization` header configuration.
+  authorization:
+    # Sets the authentication type.
+    [type: <string> | default: Bearer]
+    # Sets the credentials. It is mutually exclusive with
+    # `credentials_file`.
+    [credentials: <secret>]
+    # Sets the credentials to the credentials read from the configured file.
+    # It is mutually exclusive with `credentials`.
+    [credentials_file: <filename>]
+
 # Use DNS SRV records to discover Alertmanager hosts.
 # CLI flag: -ruler.alertmanager-discovery
 [enable_alertmanager_discovery: <boolean> | default = false]
