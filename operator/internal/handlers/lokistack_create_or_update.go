@@ -71,7 +71,7 @@ func CreateOrUpdateLokiStack(
 	storage, err := secrets.ExtractStorageSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
 		return &status.DegradedError{
-			Message: "Invalid object storage secret contents",
+			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
 			Reason:  lokiv1beta1.ReasonInvalidObjectStorageSecret,
 			Requeue: false,
 		}

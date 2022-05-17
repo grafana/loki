@@ -48,7 +48,8 @@
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    k.util.resourcesRequests('500m', '2Gi')
+    k.util.resourcesRequests('500m', '2Gi') +
+    container.withEnvMixin($._config.commonEnvs)
   else {},
 
   index_gateway_statefulset: if $._config.use_index_gateway then

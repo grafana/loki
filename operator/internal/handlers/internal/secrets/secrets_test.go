@@ -92,10 +92,20 @@ func TestGCSExtract(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "missing key.json",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+				},
+			},
+			wantErr: true,
+		},
+		{
 			name: "all set",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"bucketname": []byte("here"),
+					"key.json":   []byte("{\"type\": \"SA\"}"),
 				},
 			},
 		},

@@ -1585,9 +1585,17 @@ cassandra:
   # CLI flag: -cassandra.host-verification
   [host_verification: <boolean> | default = true]
 
-  # Path to certificate file to verify the peer when SSL is enabled.
+  # Path to CA certificate file to verify the peer when SSL is enabled.
   # CLI flag: -cassandra.ca-path
   [CA_path: <string>]
+
+  # Path to client certificate file when SSL is enabled.
+  # CLI flag: -cassandra.tls-cert-path
+  [tls_cert_path: <string>]
+
+  # Path to key certificate file when SSL is enabled.
+  # CLI flag: -cassandra.tls-key-path
+  [tls_key_path: <string>]
 
   # Enable password authentication when connecting to Cassandra.
   # CLI flag: -cassandra.auth
@@ -2047,6 +2055,13 @@ compacts index shards to more performant forms.
 # allocated to be able to store and compact as many tables.
 # CLI flag: -boltdb.shipper.compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
+
+# Deletion mode.
+# Can be one of "disabled", "whole-stream-deletion", "filter-only", or "filter-and-delete".
+# When set to the default value of "whole-stream-deletion", and if
+# retention_enabled is true, then the log entry deletion API endpoints are available.
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
+[deletion_mode: <string> | default = "whole-stream-deletion"]
 
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
