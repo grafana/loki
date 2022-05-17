@@ -3,6 +3,10 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 {
   _config+:: {
     htpasswd_contents: error 'must specify htpasswd contents',
+
+    // This is inserted into the gateway Nginx config file
+    // under the server directive
+    gateway_server_snippet: '',
   },
 
   _images+:: {
@@ -75,7 +79,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
               proxy_pass       http://query-frontend.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
             }
 
-            %(server_snippet)s
+            %(gateway_server_snippet)s
           }
         }
       ||| % $._config,

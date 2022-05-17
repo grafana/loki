@@ -42,11 +42,6 @@
 
     jaeger_reporter_max_queue: 1000,
 
-    // This is inserted into the gateway Nginx config file
-    // under the server directive
-
-    server_snippet: '',
-
     querier: {
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
       // A higher value will lead to a querier trying to process more requests than there are available
