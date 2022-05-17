@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"sort"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -66,7 +67,18 @@ func (m *MultiTenantIndex) Series(ctx context.Context, userID string, from, thro
 }
 
 func (m *MultiTenantIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	return m.idx.LabelNames(ctx, userID, from, through, withTenantLabel(userID, matchers)...)
+	res, err := m.idx.LabelNames(ctx, userID, from, through, withTenantLabel(userID, matchers)...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Strip out the tenant label in response.
+	i := sort.SearchStrings(res, TenantLabel)
+	if i == len(res) || res[i] != TenantLabel {
+		return res, nil
+	}
+
+	return append(res[:i], res[i+1:]...), nil
 }
 
 func (m *MultiTenantIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
