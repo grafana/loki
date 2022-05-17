@@ -367,58 +367,31 @@ func TestJSONParser_Parse(t *testing.T) {
 }
 
 func TestValidateJSONDrop(t *testing.T) {
-	// name := fmt.Sprintf("%s/%s/%s", tt.selector, tt.labels, tt.action)
-	test := struct {
-		selector string
-		labels   map[string]string
-		action   string
-
-		shouldDrop bool
-		shouldRun  bool
-		wantErr    bool
-	}{
-		selector:   `{foo="bar"}`,
-		labels:     map[string]string{"foo": "bar"},
-		action:     MatchActionDrop,
-		shouldDrop: true,
-		shouldRun:  true,
-		wantErr:    false,
+	labels := map[string]string{"foo": "bar"}
+	matchConfig := JSONConfig{
+		DropMalformed: true,
+		Expressions:   map[string]string{"page": "page"},
 	}
-	t.Run("TestValidateJSONDrop", func(t *testing.T) {
-		// Build a match config which has a simple label stage that when matched will add the test_label to
-		// the labels in the pipeline.
-		// var stages PipelineStages
-		matchConfig := JSONConfig{
-			DropMalformed: true,
-			Expressions:   map[string]string{"page": "page"},
-		}
-		s, err := newJSONStage(util_log.Logger, matchConfig)
-		if (err != nil) != test.wantErr {
-			t.Errorf("withMatcher() error = %v, wantErr %v", err, test.wantErr)
-			return
-		}
-		if s != nil {
-			out := processEntries(s, newEntry(map[string]interface{}{
-				"test_label": "unimportant value",
-			}, toLabelSet(test.labels), `{"page": 1, "fruits": ["apple", "peach"]}`, time.Now()))
+	s, err := newJSONStage(util_log.Logger, matchConfig)
+	if err != nil {
+		t.Errorf("withMatcher() error = %v", err)
+		return
+	}
+	if s != nil {
+		out := processEntries(s, newEntry(map[string]interface{}{
+			"test_label": "unimportant value",
+		}, toLabelSet(labels), `{"page": 1, "fruits": ["apple", "peach"]}`, time.Now()))
 
-			if len(out) != 1 {
-				t.Errorf("stage should have kept valid json line but got %v", out)
-			}
-			// test_label should only be in the label set if the stage ran
-			if _, ok := out[0].Labels["test_label"]; ok {
-				if !test.shouldRun {
-					t.Error("stage ran but should have not")
-				}
-			}
-
-			out = processEntries(s, newEntry(map[string]interface{}{
-				"test_label": "unimportant value",
-			}, toLabelSet(test.labels), `{"page": 1, fruits": ["apple", "peach"]}`, time.Now()))
-
-			if len(out) != 0 {
-				t.Errorf("stage should have dropped invalid json line but got %v", out)
-			}
+		if len(out) != 1 {
+			t.Errorf("stage should have kept valid json line but got %v", out)
 		}
-	})
+
+		out = processEntries(s, newEntry(map[string]interface{}{
+			"test_label": "unimportant value",
+		}, toLabelSet(labels), `{"page": 1, fruits": ["apple", "peach"]}`, time.Now()))
+
+		if len(out) != 0 {
+			t.Errorf("stage should have dropped invalid json line but got %v", out)
+		}
+	}
 }
