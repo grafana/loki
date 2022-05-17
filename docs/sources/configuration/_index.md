@@ -329,7 +329,7 @@ The `query_scheduler` block configures the Loki query scheduler.
 [max_outstanding_requests_per_tenant: <int> | default = 100]
 
 # If a querier disconnects without sending notification about graceful shutdown,
-# the query-frontend will keep the querier in the tenant's shard until the forget delay has passed.
+# the query-scheduler will keep the querier in the tenant's shard until the forget delay has passed.
 # This feature is useful to reduce the blast radius when shuffle-sharding is enabled.
 # CLI flag: -query-scheduler.querier-forget-delay
 [querier_forget_delay: <duration> | default = 0]
