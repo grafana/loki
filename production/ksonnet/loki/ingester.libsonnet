@@ -25,6 +25,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     k.util.resourcesRequests('1', '5Gi') +
     k.util.resourcesLimits('2', '10Gi') +
+    container.withEnvMixin($._config.commonEnvs) +
     if $._config.stateful_ingesters then
       container.withVolumeMountsMixin([
         volumeMount.new('ingester-data', '/data'),

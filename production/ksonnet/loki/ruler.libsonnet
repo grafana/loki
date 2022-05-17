@@ -27,6 +27,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       k.util.resourcesRequests('1', '6Gi') +
       k.util.resourcesLimits('16', '16Gi') +
       $.util.readinessProbe +
+      container.withEnvMixin($._config.commonEnvs) +
       $.jaeger_mixin +
       if $._config.stateful_rulers then
         container.withVolumeMountsMixin([
