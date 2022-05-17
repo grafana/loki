@@ -42,7 +42,7 @@ function loadCheckedExample() {
 }
 
 function updateInputs(logLines, query) {
-  logsSourceInputElement.innerHTML = logLines.trim();
+  logsSourceInputElement.value = logLines.trim();
   queryInputElement.value = query.trim();
 }
 
@@ -118,9 +118,11 @@ function adjustStagesModel(stages, response) {
 function adjustResponseModel(response) {
   return {
     ...response,
-    results: response.results.map(stages => {
+    results: response.results.map(result => {
+      let stages = result.stage_records;
       return {
-        log_result: stages[stages.length - 1].line_after,
+        ...result,
+        log_result: stages.length > 0 ? stages[stages.length - 1].line_after : result.origin_line,
         filtered_out: stages.some(st => st.filtered_out),
         stages: adjustStagesModel(stages, response)
       }

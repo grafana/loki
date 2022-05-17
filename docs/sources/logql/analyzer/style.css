@@ -202,6 +202,12 @@
     color: #999;
 }
 
+.note-text {
+    font-weight: 300;
+    color: #999;
+    font-style: italic;
+}
+
 .stage-expression {
     color: #1f60c4;
 }
