@@ -19,7 +19,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -426,15 +425,6 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
 	return err
-}
-
-// Check implements the grpc healthcheck
-func (d *Distributor) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
-	status := grpc_health_v1.HealthCheckResponse_SERVING
-	if (d.State() != services.Running) || (d.distributorsLifecycler.GetState() != ring.ACTIVE) {
-		status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
-	}
-	return &grpc_health_v1.HealthCheckResponse{Status: status}, nil
 }
 
 func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, error) {

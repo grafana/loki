@@ -666,3 +666,21 @@ Example of a query to filter Loki querier jobs which create time is 1 day before
 ```logql
 {job="loki/querier"} | label_format nowEpoch=`{{(unixEpoch now)}}`,createDateEpoch=`{{unixEpoch (toDate "2006-01-02" .createDate)}}` | label_format dateTimeDiff="{{sub .nowEpoch .createDateEpoch}}" | dateTimeDiff > 86400
 ```
+
+## default
+
+`default` checks whether the string(`src`) is set, and returns default(`d`) if not set.
+
+Signature: `default(d string, src string) string`
+
+Examples:
+
+```template
+{{ default "-" "" }} // output: -
+{{ default "-" "foo" }} // output: foo
+```
+
+Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` label is empty:
+```logql
+{job="access_log"} | json | line_format `{{.http_request_headers_x_forwarded_for | default "-"}}`
+```

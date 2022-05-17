@@ -1,5 +1,6 @@
 ## Main
 
+* [6136](https://github.com/grafana/loki/pull/6136) **periklis**: Add support for alertmanager header authorization
 * [6102](https://github.com/grafana/loki/pull/6102) **timchenko-a**: Add multi-tenancy support to lambda-promtail
 * [5971](https://github.com/grafana/loki/pull/5971) **kavirajk**: Record statistics about metadata queries such as labels and series queries in `metrics.go` as well
 * [5790](https://github.com/grafana/loki/pull/5790) **chaudum**: Add UDP support for Promtail's syslog target.
@@ -64,6 +65,7 @@
 * [4860](https://github.com/grafana/loki/pull/4860) **cyriltovena**: Add rate limiting and metrics to hedging
 * [4865](https://github.com/grafana/loki/pull/4865) **taisho6339**: Fix duplicate registry.MustRegister call in Promtail Kafka
 * [4845](https://github.com/grafana/loki/pull/4845) **chaudum** Return error responses consistently as JSON
+* [6163](https://github.com/grafana/loki/pull/6163) **jburnham**: LogQL: add `default` sprig template function in logql label/line formatter
 ## Unreleased
 
 ### All Changes
@@ -73,6 +75,7 @@
 ##### Enhancements
 
 ##### Fixes
+* [6152](https://github.com/grafana/loki/pull/6152) **slim-bean**: Fixes unbounded ingester memory growth when live tailing under specific circumstances.
 * [5685](https://github.com/grafana/loki/pull/5685) **chaudum**: Assert that push values tuples consist of string values
 ##### Changes
 * [6042](https://github.com/grafana/loki/pull/6042) **slim-bean**: Add a new configuration to allow fudging of ingested timestamps to guarantee sort order of duplicate timestamps at query time.

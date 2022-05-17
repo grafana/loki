@@ -115,7 +115,7 @@ func InitWorkerService(
 	if cfg.SchedulerRing == nil && (*cfg.QuerierWorkerConfig).FrontendAddress == "" && (*cfg.QuerierWorkerConfig).SchedulerAddress == "" {
 		address := fmt.Sprintf("127.0.0.1:%d", cfg.GrpcListenPort)
 		level.Warn(util_log.Logger).Log(
-			"msg", "Worker address is empty, attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.",
+			"msg", "Worker address is empty, attempting automatic worker configuration. If queries are unresponsive consider configuring the worker explicitly.",
 			"address", address)
 		cfg.QuerierWorkerConfig.FrontendAddress = address
 	}

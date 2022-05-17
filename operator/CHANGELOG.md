@@ -1,5 +1,6 @@
 ## Main
 
+- [6125](https://github.com/grafana/loki/pull/6125) **sasagarw**: Add method to get authenticated from GCP
 - [5987](https://github.com/grafana/loki/pull/5987) **Red-GV**: Update logerr to v2.0.0
 - [5907](https://github.com/grafana/loki/pull/5907) **xperimental**: Do not include non-static labels in pod selectors
 - [5893](https://github.com/grafana/loki/pull/5893) **periklis**: Align PVC storage size requests for all lokistack t-shirt sizes

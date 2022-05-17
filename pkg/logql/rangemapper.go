@@ -128,9 +128,21 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		if err != nil {
 			return nil, err
 		}
+		// if left hand side is a noop, we need to return the original expression
+		// so the whole expression is a noop and thus not executed using the
+		// downstream engine
+		if e.SampleExpr.String() == lhsMapped.String() {
+			return e, nil
+		}
 		rhsMapped, err := m.Map(e.RHS, vectorAggrPushdown, recorder)
 		if err != nil {
 			return nil, err
+		}
+		// if right hand side is a noop, we need to return the original expression
+		// so the whole expression is a noop and thus not executed using the
+		// downstream engine
+		if e.RHS.String() == rhsMapped.String() {
+			return e, nil
 		}
 		e.SampleExpr = lhsMapped
 		e.RHS = rhsMapped
@@ -331,7 +343,7 @@ func (m RangeMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 
 	// We cannot execute downstream queries that would potentially produce a huge amount of series
 	// and therefore would very likely fail.
-	if expr.Grouping == nil && hasLabelExtractionStage(expr) {
+	if expr.Grouping == nil && vectorAggrPushdown == nil && hasLabelExtractionStage(expr) {
 		return expr
 	}
 	switch expr.Operation {

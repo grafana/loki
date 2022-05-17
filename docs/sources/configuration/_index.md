@@ -56,7 +56,7 @@ References to undefined variables are replaced by empty strings unless you speci
 To specify a default value, use:
 
 ```
-${VAR:default_value}
+${VAR:-default_value}
 ```
 
 Where default_value is the value to use if the environment variable is undefined.
@@ -330,6 +330,12 @@ The `query_scheduler` block configures the Loki query scheduler.
 # 429.
 # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
 [max_outstanding_requests_per_tenant: <int> | default = 100]
+
+# If a querier disconnects without sending notification about graceful shutdown,
+# the query-scheduler will keep the querier in the tenant's shard until the forget delay has passed.
+# This feature is useful to reduce the blast radius when shuffle-sharding is enabled.
+# CLI flag: -query-scheduler.querier-forget-delay
+[querier_forget_delay: <duration> | default = 0]
 
 # This configures the gRPC client used to report errors back to the
 # query-frontend.
@@ -638,6 +644,26 @@ wal_cleaner:
 # resolution via -ruler.alertmanager-discovery.
 # CLI flag: -ruler.alertmanager-url
 [alertmanager_url: <string> | default = ""]
+
+
+alertmanager_client:
+  # Sets the `Authorization` header on every remote write request with the
+  # configured username and password.
+  # password and password_file are mutually exclusive.
+  basic_auth:
+    [username: <string>]
+    [password: <secret>]
+
+  # Optional `Authorization` header configuration.
+  authorization:
+    # Sets the authentication type.
+    [type: <string> | default: Bearer]
+    # Sets the credentials. It is mutually exclusive with
+    # `credentials_file`.
+    [credentials: <secret>]
+    # Sets the credentials to the credentials read from the configured file.
+    # It is mutually exclusive with `credentials`.
+    [credentials_file: <filename>]
 
 # Use DNS SRV records to discover Alertmanager hosts.
 # CLI flag: -ruler.alertmanager-discovery
@@ -1588,9 +1614,17 @@ cassandra:
   # CLI flag: -cassandra.host-verification
   [host_verification: <boolean> | default = true]
 
-  # Path to certificate file to verify the peer when SSL is enabled.
+  # Path to CA certificate file to verify the peer when SSL is enabled.
   # CLI flag: -cassandra.ca-path
   [CA_path: <string>]
+
+  # Path to client certificate file when SSL is enabled.
+  # CLI flag: -cassandra.tls-cert-path
+  [tls_cert_path: <string>]
+
+  # Path to key certificate file when SSL is enabled.
+  # CLI flag: -cassandra.tls-key-path
+  [tls_key_path: <string>]
 
   # Enable password authentication when connecting to Cassandra.
   # CLI flag: -cassandra.auth
@@ -2050,6 +2084,13 @@ compacts index shards to more performant forms.
 # allocated to be able to store and compact as many tables.
 # CLI flag: -boltdb.shipper.compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
+
+# Deletion mode.
+# Can be one of "disabled", "whole-stream-deletion", "filter-only", or "filter-and-delete".
+# When set to the default value of "whole-stream-deletion", and if
+# retention_enabled is true, then the log entry deletion API endpoints are available.
+# CLI flag: -boltdb.shipper.compactor.deletion-mode
+[deletion_mode: <string> | default = "whole-stream-deletion"]
 
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
