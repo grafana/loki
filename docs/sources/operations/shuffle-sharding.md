@@ -47,7 +47,8 @@ In the event a tenant is repeatedly sending a “query of death” which leads t
 
 To mitigate it, Loki allows to configure a delay between when a querier disconnects because of a crash and when the crashed querier is actually removed from the tenant’s shard (and another healthy querier is added as replacement). A delay of 1 minute may be a reasonable trade-off:
 
-- Query-frontend: `-query-frontend.querier-forget-delay=1m`
+- Query-Frontend: `-query-frontend.querier-forget-delay=1m`
+- Query-Scheduler: `-query-scheduler.querier-forget-delay=1m`
 
 ## Key Configs.
 1. `max_queriers_per_tenant` - per-tenant config (or `frontend.max-queriers-per-tenant` global config) which allocates **only** this many queriers to specific tenant for all their queries
