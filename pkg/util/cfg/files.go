@@ -105,6 +105,6 @@ func ConfigFileLoader(args []string, name string) Source {
 				return YAML(val, expandEnv)(dst)
 			}
 		}
-		return fmt.Errorf("%s does not exist", f.Value.String())
+		return fmt.Errorf("%s does not exist, set %s for custom config path", f.Value.String(), name)
 	}
 }
