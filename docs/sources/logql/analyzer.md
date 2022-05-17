@@ -71,8 +71,15 @@ weight: 60
                     <i class="line-cursor expand-cursor"></i>
                     Line {{@index}}
                 </div>
-
-                <span {{#if this.filtered_out}}class="filtered-out"{{/if}}>{{this.log_result}}</span>
+                
+                {{#if this.log_result}}
+                    <span {{#if this.filtered_out}}class="filtered-out"{{/if}}>
+                        {{this.log_result}}
+                    </span>
+                {{/if}}
+                {{#unless this.log_result}}
+                    <span class="note-text">(empty line)</span>
+                {{/unless}}
             </div>
 
             <div class="debug-result-row__explain hide">
@@ -81,7 +88,12 @@ weight: 60
                         Origin log line
                         <span class="stage-expression">{{../stream_selector}}</span>
                     </div>
-                    <div class="explain-section__body">{{this.stages.0.line_before}}</div>
+                    <div class="explain-section__body">
+                        {{this.origin_line}}
+                        {{#unless this.log_result}}
+                            <span class="note-text">(empty line)</span>
+                        {{/unless}}
+                    </div>
                 </div>
                 {{#each this.stages}}
                     <div class="arrow-wrapper">
@@ -115,9 +127,14 @@ weight: 60
                                     Line after this stage:
                                 </div>
                                 <div class="explain-section__row-body">
-                                    <span {{#if this.filtered_out}}class="filtered-out"{{/if}}>
-                                        {{line_after}}
-                                    </span>
+                                    {{#if line_after}}
+                                        <span {{#if this.filtered_out}}class="filtered-out"{{/if}}>
+                                            {{line_after}}
+                                        </span>
+                                    {{/if}}
+                                    {{#unless line_after}}
+                                        <span class="note-text">(empty line)</span>
+                                    {{/unless}}
                                     {{#if this.filtered_out}}
                                         <span class="important-text">the line has been filtered out on this stage</span>
                                     {{/if}}                                    
@@ -172,7 +189,7 @@ level=info ts=2022-03-23T11:55:45.221254326Z caller=loki.go:355 msg="Loki starte
 </script>
 
 <script type="text/plain" id="json-parser-example-query">
-| json | level="INFO" | line_format "msg=\"{{.message}}\""
+| json | level="INFO" | line_format "{{.message}}"
 </script>
 
 
