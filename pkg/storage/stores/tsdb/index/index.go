@@ -446,7 +446,12 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 		return err
 	}
 
+	// Put the supplied fingerprint instead of the calculated hash.
+	// This allows us to have a synthetic label (__loki_tenant__) in
+	// the pre-compacted TSDBs which map to fingerprints (and chunks)
+	// without this label in storage.
 	labelHash := uint64(fp)
+
 	lastHash := w.lastSeriesHash
 	// Ensure series are sorted by the priorities: [`hash(labels)`, `labels`]
 	if (labelHash < lastHash && len(w.lastSeries) > 0) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {

@@ -81,9 +81,14 @@ func (b *Builder) Build(
 	for _, s := range b.streams {
 		streams = append(streams, s)
 	}
+
+	// Use the supplied fingerprints instead of hashing labels for two reasons:
+	// 1) Correctness: fingerprints differ from label hashes because
+	// we add a synthesized __loki_tennat__ label, which is eventually compacted away.
+	// 2) Speed: No hashing required
 	sort.Slice(streams, func(i, j int) bool {
-		if a, b := streams[i].labels.Hash(), streams[j].labels.Hash(); a != b {
-			return a < b
+		if streams[i].fp != streams[j].fp {
+			return streams[i].fp < streams[j].fp
 		}
 		return labels.Compare(streams[i].labels, streams[j].labels) < 0
 	})
