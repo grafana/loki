@@ -46,19 +46,19 @@ const (
 // to support user-friendly duration format (e.g: "1h30m45s") in JSON value.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRateStrategy   string           `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
-	IngestionRateMB         float64          `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb"`
-	IngestionBurstSizeMB    float64          `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb"`
-	MaxLabelNameLength      int              `yaml:"max_label_name_length" json:"max_label_name_length"`
-	MaxLabelValueLength     int              `yaml:"max_label_value_length" json:"max_label_value_length"`
-	MaxLabelNamesPerSeries  int              `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
-	RejectOldSamples        bool             `yaml:"reject_old_samples" json:"reject_old_samples"`
-	RejectOldSamplesMaxAge  model.Duration   `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
-	CreationGracePeriod     model.Duration   `yaml:"creation_grace_period" json:"creation_grace_period"`
-	EnforceMetricName       bool             `yaml:"enforce_metric_name" json:"enforce_metric_name"`
-	MaxLineSize             flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
-	MaxLineSizeTruncate     bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
-	IncrementDuplicateTimestamp bool         `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
+	IngestionRateStrategy       string           `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
+	IngestionRateMB             float64          `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb"`
+	IngestionBurstSizeMB        float64          `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb"`
+	MaxLabelNameLength          int              `yaml:"max_label_name_length" json:"max_label_name_length"`
+	MaxLabelValueLength         int              `yaml:"max_label_value_length" json:"max_label_value_length"`
+	MaxLabelNamesPerSeries      int              `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
+	RejectOldSamples            bool             `yaml:"reject_old_samples" json:"reject_old_samples"`
+	RejectOldSamplesMaxAge      model.Duration   `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
+	CreationGracePeriod         model.Duration   `yaml:"creation_grace_period" json:"creation_grace_period"`
+	EnforceMetricName           bool             `yaml:"enforce_metric_name" json:"enforce_metric_name"`
+	MaxLineSize                 flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
+	MaxLineSizeTruncate         bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
+	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
