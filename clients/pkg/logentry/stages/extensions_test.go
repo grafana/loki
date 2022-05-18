@@ -144,7 +144,7 @@ func TestNewCri(t *testing.T) {
 		expectedLabels map[string]string
 	}{
 		"happy path": {
-			criTestTimeStr + " stderr P message",
+			criTestTimeStr + " stderr F message",
 			"message",
 			time.Now(),
 			criTestTime,
@@ -154,7 +154,7 @@ func TestNewCri(t *testing.T) {
 			},
 		},
 		"multi line pass": {
-			criTestTimeStr + " stderr P message\nmessage2",
+			criTestTimeStr + " stderr F message\nmessage2",
 			"message\nmessage2",
 			time.Now(),
 			criTestTime,
@@ -164,7 +164,7 @@ func TestNewCri(t *testing.T) {
 			},
 		},
 		"invalid timestamp": {
-			"3242 stderr P message",
+			"3242 stderr F message",
 			"message",
 			criTestTime2,
 			criTestTime2,
