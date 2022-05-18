@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -115,7 +114,7 @@ func createTestGrpcServer(t *testing.T) (func(), string) {
 	indexgatewaypb.RegisterIndexGatewayServer(s, &server)
 	go func() {
 		if err := s.Serve(lis); err != nil {
-			log.Fatalf("Failed to serve: %v", err)
+			t.Logf("Failed to serve: %v", err)
 		}
 	}()
 
