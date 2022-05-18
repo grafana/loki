@@ -234,7 +234,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// Querier worker's max concurrent requests must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 
-	deleteStore, err := t.deleteRequestsStore()
+	deleteStore, err := t.deleteRequestsClient()
 	if err != nil {
 		return nil, err
 	}
@@ -568,17 +568,25 @@ func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
-	compactorAddress := t.Cfg.Frontend.CompactorAddress
-	if t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read) {
-		// In single binary or read modes, this module depends on Server
-		compactorAddress = fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort)
-	}
-
-	if compactorAddress == "" {
-		return nil, errors.New("query filtering for deletes requires 'compactor_address' to be configured")
+	compactorAddress, err := t.compactorAddress()
+	if err != nil {
+		return nil, err
 	}
 
 	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+}
+
+func (t *Loki) compactorAddress() (string, error) {
+	if t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read) {
+		// In single binary or read modes, this module depends on Server
+		return fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort), nil
+	}
+
+	if t.Cfg.CompactorConfig.Address == "" {
+		return "", errors.New("query filtering for deletes requires 'compactor_address' to be configured")
+	}
+
+	return t.Cfg.CompactorConfig.Address, nil
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
@@ -736,7 +744,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
-	deleteStore, err := t.deleteRequestsStore()
+	deleteStore, err := t.deleteRequestsClient()
 	if err != nil {
 		return nil, err
 	}
@@ -949,7 +957,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 	return ur, nil
 }
 
-func (t *Loki) deleteRequestsStore() (deletion.DeleteRequestsStore, error) {
+func (t *Loki) deleteRequestsClient() (deletion.DeleteRequestsClient, error) {
 	// TODO(owen-d): enable delete request storage in tsdb
 	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
@@ -960,16 +968,16 @@ func (t *Loki) deleteRequestsStore() (deletion.DeleteRequestsStore, error) {
 		return nil, err
 	}
 
-	deleteStore := deletion.NewNoOpDeleteRequestsStore()
-	if config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) && filteringEnabled {
-		indexClient, err := storage.NewIndexClient(config.BoltDBShipperType, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer)
-		if err != nil {
-			return nil, err
-		}
-
-		deleteStore = deletion.NewDeleteStoreFromIndexClient(indexClient)
+	if !filteringEnabled {
+		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
-	return deleteStore, nil
+
+	compactorAddress, err := t.compactorAddress()
+	if err != nil {
+		return nil, err
+	}
+
+	return deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
 }
 
 func calculateMaxLookBack(pc config.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {
