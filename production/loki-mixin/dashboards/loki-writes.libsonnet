@@ -16,9 +16,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               [],
 
                           matchers:: {
-                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
-                            distributor: [utils.selector.re('job', '($namespace)/distributor')],
-                            ingester: [utils.selector.re('job', '($namespace)/ingester')],
+                            cortexgateway: [utils.selector.re('job', '($namespace)|cortex-gw')],
+                            distributor: [utils.selector.re('job', '($namespace)|distributor')],
+                            ingester: [utils.selector.re('job', '($namespace)|ingester')],
                           },
 
                           local selector(matcherId) =

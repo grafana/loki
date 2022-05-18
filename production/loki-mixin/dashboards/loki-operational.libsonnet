@@ -14,10 +14,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                clusterLabel:: 'cluster',
 
                                matchers:: {
-                                 cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
-                                 distributor: [utils.selector.re('job', '($namespace)/distributor')],
-                                 ingester: [utils.selector.re('job', '($namespace)/ingester')],
-                                 querier: [utils.selector.re('job', '($namespace)/querier')],
+                                 cortexgateway: [utils.selector.re('job', '($namespace)|cortex-gw')],
+                                 distributor: [utils.selector.re('job', '($namespace)|distributor')],
+                                 ingester: [utils.selector.re('job', '($namespace)|ingester')],
+                                 querier: [utils.selector.re('job', '($namespace)|querier')],
                                },
                              }
                              + lokiOperational + {

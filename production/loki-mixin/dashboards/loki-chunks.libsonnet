@@ -6,7 +6,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     local dashboards = self,
     'loki-chunks.json': {
                           local cfg = self,
-                          labelsSelector:: 'cluster="$cluster", job="$namespace/ingester"',
+                          labelsSelector:: 'cluster="$cluster", job=~"$namespace|ingester"',
                         } +
                         $.dashboard('Loki / Chunks', uid='chunks')
                         .addCluster()

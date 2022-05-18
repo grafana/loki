@@ -82,7 +82,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     },
 
   jobMatcher(job)::
-    'cluster=~"$cluster", job=~"($namespace)/%s"' % job,
+    'cluster=~"$cluster", job=~"($namespace)|%s"' % job,
 
   namespaceMatcher()::
     'cluster=~"$cluster", namespace=~"$namespace"',
