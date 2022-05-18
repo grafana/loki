@@ -1,5 +1,5 @@
 ## Main
-* [6189](https://github.com/grafana/loki/pull/6189) **irizzant**: Fix issues with selectors in Prometheus mixin
+* [6189](https://github.com/grafana/loki/pull/6189) **irizzant**: Fix incorrect selectors and simplify mixin usage
 * [6136](https://github.com/grafana/loki/pull/6136) **periklis**: Add support for alertmanager header authorization
 * [6102](https://github.com/grafana/loki/pull/6102) **timchenko-a**: Add multi-tenancy support to lambda-promtail
 * [5971](https://github.com/grafana/loki/pull/5971) **kavirajk**: Record statistics about metadata queries such as labels and series queries in `metrics.go` as well
