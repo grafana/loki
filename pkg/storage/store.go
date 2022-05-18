@@ -210,6 +210,9 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 
 		// ToDo(Sandeep): Avoid initializing writer when in read only mode
 		writer, idx, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits, indexClientReg)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 
 		// ToDo(Sandeep): Refactor code to not use boltdb-shipper index gateway client config
 		if shouldUseBoltDBIndexGatewayClient(s.cfg) {

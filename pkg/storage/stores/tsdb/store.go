@@ -1,6 +1,8 @@
 package tsdb
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -9,7 +11,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 func NewStore(indexShipperCfg indexshipper.Config, p config.PeriodConfig, f *fetcher.Fetcher,
