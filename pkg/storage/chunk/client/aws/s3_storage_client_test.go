@@ -154,14 +154,14 @@ func Test_Hedging(t *testing.T) {
 
 func Test_ConfigRedactsCredentials(t *testing.T) {
 	underTest := S3Config{
-		AccessKeyID:     "secret key id",
+		AccessKeyID:     "access key id",
 		SecretAccessKey: flagext.SecretWithValue("secret access key"),
 	}
 
 	output, err := yaml.Marshal(underTest)
 	require.NoError(t, err)
 
-	require.False(t, bytes.Contains(output, []byte("secret key id")))
+	require.True(t, bytes.Contains(output, []byte("access key id")))
 	require.False(t, bytes.Contains(output, []byte("secret access id")))
 }
 
