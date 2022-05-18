@@ -40,7 +40,7 @@ func TestRequestMiddleware(t *testing.T) {
 		BucketNames:      "buck-o",
 		S3ForcePathStyle: true,
 		Insecure:         true,
-		AccessKeyID:      flagext.SecretWithValue("key"),
+		AccessKeyID:      "key",
 		SecretAccessKey:  flagext.SecretWithValue("secret"),
 	}
 
@@ -129,7 +129,7 @@ func Test_Hedging(t *testing.T) {
 			count := atomic.NewInt32(0)
 
 			c, err := NewS3ObjectClient(S3Config{
-				AccessKeyID:     flagext.SecretWithValue("foo"),
+				AccessKeyID:     "foo",
 				SecretAccessKey: flagext.SecretWithValue("bar"),
 				BackoffConfig:   backoff.Config{MaxRetries: 1},
 				BucketNames:     "foo",
@@ -154,7 +154,7 @@ func Test_Hedging(t *testing.T) {
 
 func Test_ConfigRedactsCredentials(t *testing.T) {
 	underTest := S3Config{
-		AccessKeyID:     flagext.SecretWithValue("secret key id"),
+		AccessKeyID:     "secret key id",
 		SecretAccessKey: flagext.SecretWithValue("secret access key"),
 	}
 
@@ -174,7 +174,7 @@ secret_access_key: secret access key
 	err := yaml.Unmarshal([]byte(yamlCfg), &underTest)
 	require.NoError(t, err)
 
-	require.Equal(t, underTest.AccessKeyID.String(), "access key id")
+	require.Equal(t, underTest.AccessKeyID, "access key id")
 	require.Equal(t, underTest.SecretAccessKey.String(), "secret access key")
 
 }
