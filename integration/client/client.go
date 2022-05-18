@@ -206,6 +206,77 @@ func (c *Client) Flush() error {
 	return fmt.Errorf("request failed with status code %d", res.StatusCode)
 }
 
+type DeleteRequestParams struct {
+	Query string `json:"query"`
+	Start string `json:"start,omitempty"`
+	End   string `json:"end,omitempty"`
+}
+
+// AddDeleteRequest adds a new delete request
+func (c *Client) AddDeleteRequest(params DeleteRequestParams) error {
+	apiEndpoint := fmt.Sprintf("%s/loki/api/v1/delete", c.baseURL)
+
+	req, err := http.NewRequest("POST", apiEndpoint, nil)
+	if err != nil {
+		return err
+	}
+
+	q := req.URL.Query()
+	q.Add("query", params.Query)
+	q.Add("start", params.Start)
+	q.Add("end", params.End)
+	req.URL.RawQuery = q.Encode()
+	fmt.Printf("Delete request URL: %v\n", req.URL.String())
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode != http.StatusNoContent {
+		buf, err := io.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("reading request failed with status code %v: %w", res.StatusCode, err)
+		}
+		defer res.Body.Close()
+		return fmt.Errorf("request failed with status code %v: %w", res.StatusCode, errors.New(string(buf)))
+	}
+
+	return nil
+}
+
+type DeleteRequests []DeleteRequest
+type DeleteRequest struct {
+	RequestID string  `json:"request_id"`
+	StartTime float64 `json:"start_time"`
+	EndTime   float64 `json:"end_time"`
+	Query     string  `json:"query"`
+	Status    string  `json:"status"`
+	CreatedAt float64 `json:"created_at"`
+}
+
+// GetDeleteRequest gets a delete request using the request ID
+func (c *Client) GetDeleteRequests() (DeleteRequests, error) {
+	resp, err := c.Get("/loki/api/v1/delete")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	buf, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading request failed with status code %v: %w", resp.StatusCode, err)
+	}
+
+	var deleteReqs DeleteRequests
+	err = json.Unmarshal(buf, &deleteReqs)
+	if err != nil {
+		return nil, fmt.Errorf("parsing json output failed: %w", err)
+	}
+
+	return deleteReqs, nil
+}
+
 // StreamValues holds a label key value pairs for the Stream and a list of a list of values
 type StreamValues struct {
 	Stream map[string]string
