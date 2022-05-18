@@ -115,4 +115,19 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.Equal(t, `{job="fake"} |= "lineB"`, deleteRequests[0].Query)
 		require.Equal(t, "received", deleteRequests[0].Status)
 	})
+
+	// Wait until delete request is finished
+	t.Run("wait-until-delete-request-processed", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			deleteRequests, err := cliCompactor.GetDeleteRequests()
+			require.NoError(t, err)
+			require.NotEmpty(t, deleteRequests)
+			require.Len(t, deleteRequests, 1)
+			t.Logf("Current entry: %+v", deleteRequests[0])
+			return deleteRequests[0].Status == "processed"
+		}, 25*time.Second, 1*time.Second)
+	})
+
+	// Query lines, should not be there
+
 }
