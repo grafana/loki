@@ -31,6 +31,9 @@ type Limits interface {
 	DefaultLimits() *validation.Limits
 }
 
+// IndexGatewayOwnsTenant is invoked by an IndexGateway instance and answers whether if the given tenant is assigned to this instance or not.
+//
+// It is only relevant by an IndexGateway in the ring mode and if it returns false for a given tenant, that tenant will be ignored by this IndexGateway.
 type IndexGatewayOwnsTenant func(tenant string) bool
 
 type Config struct {

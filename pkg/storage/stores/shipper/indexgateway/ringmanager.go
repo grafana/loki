@@ -30,13 +30,26 @@ const (
 	RingKey = "index-gateway"
 )
 
+// ManagerMode defines the different modes for the RingManager to execute.
+//
+// The RingManager and its modes are only relevant if the IndexGateway is running in ring mode.
 type ManagerMode int
 
 const (
+	// ClientMode is the RingManager mode executed by Loki components that are clients of the IndexGateway.
+	// The RingManager in client will have its own ring key-value store but it won't try to register itself in the ring.
 	ClientMode ManagerMode = iota
+
+	// ServerMode is the RingManager mode execute by the IndexGateway.
+	// The RingManager in server mode will register itself in the ring.
 	ServerMode
 )
 
+// RingManager is a component instantiated before all the others and is responsible for the ring setup.
+//
+// All Loki components that are involved with the IndexGateway (including the IndexGateway itself) will
+// require a RingManager. However, the components that are clients of the IndexGateway will ran it in client
+// mode while the IndexGateway itself will ran the manager in server mode.
 type RingManager struct {
 	services.Service
 
@@ -52,6 +65,9 @@ type RingManager struct {
 	log log.Logger
 }
 
+// NewRingManager is the recommended way of instantiating a RingManager.
+//
+// The other functions will assume the RingManager was instantiated through this function.
 func NewRingManager(managerMode ManagerMode, cfg Config, log log.Logger, registerer prometheus.Registerer) (*RingManager, error) {
 	rm := &RingManager{
 		cfg: cfg, log: log, managerMode: managerMode,
@@ -144,8 +160,6 @@ func (rm *RingManager) startClientMode() error {
 }
 
 // starting implements the Lifecycler interface and is one of the lifecycle hooks.
-//
-// Only invoked if the Index Gateway is in ring mode.
 func (rm *RingManager) starting(ctx context.Context) (err error) {
 	// In case this function will return error we want to unregister the instance
 	// from the ring. We do it ensuring dependencies are gracefully stopped if they
@@ -193,8 +207,6 @@ func (rm *RingManager) starting(ctx context.Context) (err error) {
 }
 
 // running implements the Lifecycler interface and is one of the lifecycle hooks.
-//
-// Only invoked if the Index Gateway is in ring mode.
 func (rm *RingManager) running(ctx context.Context) error {
 	t := time.NewTicker(ringCheckPeriod)
 	defer t.Stop()
@@ -211,13 +223,16 @@ func (rm *RingManager) running(ctx context.Context) error {
 }
 
 // stopping implements the Lifecycler interface and is one of the lifecycle hooks.
-//
-// Only invoked if the Index Gateway is in ring mode.
 func (rm *RingManager) stopping(_ error) error {
 	level.Debug(rm.log).Log("msg", "stopping index gateway ring manager")
 	return services.StopManagerAndAwaitStopped(context.Background(), rm.subservices)
 }
 
+// IndexGatewayOwnsTenant dictates if a given tenant should be ignored by an IndexGateway or not.
+//
+// It fallbacks to true so that the IndexGateway will only skip tenants if it is certain of that.
+// This implementation relies on the tokens assigned to an IndexGateway instance to define if a tenant
+// is assigned or not.
 func (rm *RingManager) IndexGatewayOwnsTenant(tenant string) bool {
 	if rm.cfg.Mode != RingMode {
 		return true

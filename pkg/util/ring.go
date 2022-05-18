@@ -32,12 +32,15 @@ func IsInReplicationSet(r *ring.Ring, ringKey uint32, address string) (bool, err
 	return false, nil
 }
 
-func IsAssignedKey(ringClient ring.ReadRing, lifecycler HasDedicatedAddress, key string) bool {
+// IsAssignedKey replies wether the given component instance address is in the ReplicationSet responsible for the given key or not.
+//
+// The result will be defined based on the tokens assigned to each ring component.
+func IsAssignedKey(ringClient ring.ReadRing, instance HasDedicatedAddress, key string) bool {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 	token := TokenFor(key, "" /* labels */)
 	rs, err := ringClient.Get(token, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
 	if err == nil {
-		addr := lifecycler.GetInstanceAddr()
+		addr := instance.GetInstanceAddr()
 		if !rs.Includes(addr) {
 			return false
 		}
@@ -46,6 +49,7 @@ func IsAssignedKey(ringClient ring.ReadRing, lifecycler HasDedicatedAddress, key
 	return true
 }
 
+// HasDedicatedAddress specify an instance support for replying its own address.
 type HasDedicatedAddress interface {
 	GetInstanceAddr() string
 }

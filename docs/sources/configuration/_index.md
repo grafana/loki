@@ -1760,6 +1760,10 @@ boltdb_shipper:
     # The CLI flags prefix for this block config is: boltdb.shipper.index-gateway-client
     [grpc_client_config: <grpc_client_config>]
 
+    # Configures if log gateway requests should log debug messages or not.
+    # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
+    [log_gateway_requests: <bool> | default = false]
+
 # Cache validity for active index entries. Should be no higher than
 # the chunk_idle_period in the ingester settings.
 # CLI flag: -store.index-cache-validity

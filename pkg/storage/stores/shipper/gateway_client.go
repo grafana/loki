@@ -69,7 +69,7 @@ type IndexGatewayClientConfig struct {
 	Disabled bool `yaml:"-"`
 
 	// LogGatewayRequests configures if requests sent to the gateway should be logged or not.
-	// The log messages are of type debug and contains the address of the gateway and the relevant tenant.
+	// The log messages are of type debug and contain the address of the gateway and the relevant tenant.
 	LogGatewayRequests bool `yaml:"log_gateway_requests"`
 }
 
