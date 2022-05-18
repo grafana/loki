@@ -83,7 +83,10 @@ func (f *fixture) Clients() (
 
 	if f.gcsObjectClient {
 		var c *GCSObjectClient
-		c, err = newGCSObjectClient(ctx, GCSConfig{BucketName: "chunks"}, hedging.Config{}, func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error) {
+		c, err = newGCSObjectClient(ctx, GCSConfig{
+			BucketName: "chunks",
+			Insecure:   true,
+		}, hedging.Config{}, func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error) {
 			return f.gcssrv.Client(), nil
 		})
 		if err != nil {
