@@ -118,16 +118,13 @@ func createTestGrpcServer(t *testing.T) (func(), string) {
 			log.Fatalf("Failed to serve: %v", err)
 		}
 	}()
-	cleanup := func() {
-		s.GracefulStop()
-	}
 
-	return cleanup, lis.Addr().String()
+	return s.GracefulStop, lis.Addr().String()
 }
 
 func TestGatewayClient(t *testing.T) {
 	cleanup, storeAddress := createTestGrpcServer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	var cfg IndexGatewayClientConfig
 	cfg.Mode = indexgateway.SimpleMode
@@ -313,7 +310,7 @@ func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
 func TestDoubleRegistration(t *testing.T) {
 	r := prometheus.NewRegistry()
 	cleanup, storeAddress := createTestGrpcServer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	_, err := NewGatewayClient(IndexGatewayClientConfig{
 		Address: storeAddress,
