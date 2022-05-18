@@ -103,7 +103,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	})
 
 	t.Run("add-delete-request", func(t *testing.T) {
-		params := client.DeleteRequestParams{Query: `{job="fake"}`}
+		params := client.DeleteRequestParams{Query: `{job="fake"} |= "lineB"`}
 		require.NoError(t, cliCompactor.AddDeleteRequest(params))
 	})
 
@@ -112,7 +112,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, deleteRequests)
 		require.Len(t, deleteRequests, 1)
-		require.Equal(t, `{job="fake"}`, deleteRequests[0].Query)
+		require.Equal(t, `{job="fake"} |= "lineB"`, deleteRequests[0].Query)
 		require.Equal(t, "received", deleteRequests[0].Status)
 	})
 }
