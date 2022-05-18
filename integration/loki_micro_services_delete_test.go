@@ -21,8 +21,8 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=10s",
-			"-boltdb.shipper.compactor.retention-delete-delay=10s",
+			"-boltdb.shipper.compactor.compaction-interval=1s",
+			"-boltdb.shipper.compactor.retention-delete-delay=1s",
 			"-boltdb.shipper.compactor.deletion-mode=filter-and-delete",
 			"-boltdb.shipper.compactor.delete-request-cancel-period=0s",
 		)
@@ -48,6 +48,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			"query-frontend",
 			"-target=query-frontend",
 			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL().Host,
+			"-frontend.default-validity=0s",
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL().Host,
 		)
 		_ = clu.AddComponent(
@@ -125,9 +126,23 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			require.Len(t, deleteRequests, 1)
 			t.Logf("Current entry: %+v", deleteRequests[0])
 			return deleteRequests[0].Status == "processed"
-		}, 25*time.Second, 1*time.Second)
+		}, 110*time.Second, 1*time.Second)
 	})
 
-	// Query lines, should not be there
+	// clear caches
 
+	// Query lines, lineB should not be there
+	t.Run("query", func(t *testing.T) {
+		resp, err := cliQueryFrontend.RunRangeQuery(`{job="fake"}`)
+		require.NoError(t, err)
+		assert.Equal(t, "streams", resp.Data.ResultType)
+
+		var lines []string
+		for _, stream := range resp.Data.Stream {
+			for _, val := range stream.Values {
+				lines = append(lines, val[1])
+			}
+		}
+		assert.ElementsMatch(t, []string{"lineA", "lineC", "lineD"}, lines)
+	})
 }

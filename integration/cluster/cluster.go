@@ -301,7 +301,8 @@ func (c *Component) run() error {
 		defer c.cluster.waitGroup.Done()
 		err := c.loki.Run(loki.RunOpts{})
 		if err != nil {
-			errCh <- err
+			newErr := fmt.Errorf("error starting component %v: %w", c.name, err)
+			errCh <- newErr
 		}
 	}()
 
