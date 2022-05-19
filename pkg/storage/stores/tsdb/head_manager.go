@@ -175,7 +175,6 @@ func (m *HeadManager) Start() error {
 		}
 	}
 
-	now := time.Now()
 	walsByPeriod, err := walsByPeriod(m.dir, m.period)
 	if err != nil {
 		return err
@@ -193,9 +192,9 @@ func (m *HeadManager) Start() error {
 		allWALs = append(allWALs, group.wals...)
 	}
 
-	curPeriod := m.period.PeriodFor(now)
+	now := time.Now()
 	if err := m.tsdbManager.BuildFromWALs(
-		m.period.TimeForPeriod(curPeriod),
+		now,
 		allWALs,
 	); err != nil {
 		return errors.Wrap(err, "building tsdb")
