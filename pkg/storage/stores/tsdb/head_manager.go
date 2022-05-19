@@ -176,51 +176,36 @@ func (m *HeadManager) Start() error {
 	}
 
 	now := time.Now()
-	curPeriod := m.period.PeriodFor(now)
-
 	walsByPeriod, err := walsByPeriod(m.dir, m.period)
 	if err != nil {
 		return err
 	}
 	level.Info(m.log).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
 
-	m.activeHeads = newTenantHeads(now, m.shards, m.metrics, m.log)
-
 	// Load the shipper with any previously built TSDBs
 	if err := m.tsdbManager.Start(); err != nil {
 		return errors.Wrap(err, "failed to start tsdb manager")
 	}
 
-	// Build any old WALs into TSDBs for the shipper
+	// Build any old WALs into a TSDB for the shipper
+	var allWALs []WALIdentifier
 	for _, group := range walsByPeriod {
-		if group.period < curPeriod {
-			if err := m.tsdbManager.BuildFromWALs(
-				m.period.TimeForPeriod(group.period),
-				group.wals,
-			); err != nil {
-				return errors.Wrap(err, "building tsdb")
-			}
-			// Now that we've built tsdbs of this data, we can safely remove the WALs
-			if err := m.removeWALGroup(group); err != nil {
-				return errors.Wrapf(err, "removing wals for period %d", group.period)
-			}
-		}
-
-		if group.period >= curPeriod {
-			if err := recoverHead(m.dir, m.activeHeads, group.wals); err != nil {
-				return errors.Wrap(err, "recovering tsdb head from wal")
-			}
-		}
+		allWALs = append(allWALs, group.wals...)
 	}
 
-	nextWALPath := walPath(m.dir, now)
-	nextWAL, err := newHeadWAL(m.log, nextWALPath, now)
-	if err != nil {
-		return errors.Wrapf(err, "creating tsdb wal: %s", nextWALPath)
+	curPeriod := m.period.PeriodFor(now)
+	if err := m.tsdbManager.BuildFromWALs(
+		m.period.TimeForPeriod(curPeriod),
+		allWALs,
+	); err != nil {
+		return errors.Wrap(err, "building tsdb")
 	}
-	m.active = nextWAL
 
-	return nil
+	if err := os.RemoveAll(managerWalDir(m.dir)); err != nil {
+		return errors.New("cleaning (removing) wal dir")
+	}
+
+	return m.Rotate(now)
 }
 
 func managerRequiredDirs(parent string) []string {

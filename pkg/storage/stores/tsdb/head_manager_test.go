@@ -19,10 +19,22 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
-type noopTSDBManager struct{ NoopIndex }
+type noopTSDBManager struct {
+	dir string
+	*tenantHeads
+}
 
-func (noopTSDBManager) BuildFromWALs(_ time.Time, _ []WALIdentifier) error { return nil }
-func (noopTSDBManager) Start() error                                       { return nil }
+func newNoopTSDBManager(dir string) noopTSDBManager {
+	return noopTSDBManager{
+		dir:         dir,
+		tenantHeads: newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger()),
+	}
+}
+
+func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier) error {
+	return recoverHead(m.dir, m.tenantHeads, wals)
+}
+func (m noopTSDBManager) Start() error { return nil }
 
 func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []ChunkRef) {
 	for _, x := range xs {
@@ -154,7 +166,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, noopTSDBManager{})
+	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, newNoopTSDBManager(dir))
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
 	for _, d := range managerRequiredDirs(dir) {
@@ -237,7 +249,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, noopTSDBManager{})
+	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, newNoopTSDBManager(dir))
 	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.dir, curPeriod), curPeriod)
 	require.Nil(t, err)
 
