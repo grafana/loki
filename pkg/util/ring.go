@@ -3,7 +3,9 @@ package util
 import (
 	"hash/fnv"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // TokenFor generates a token used for finding ingesters from ring
@@ -39,6 +41,7 @@ func IsAssignedKey(ringClient ring.ReadRing, instanceAddress string, key string)
 	token := TokenFor(key, "" /* labels */)
 	inSet, err := IsInReplicationSet(ringClient, token, instanceAddress)
 	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error checking if key is in replicationset", "error", err, "key", key)
 		return false
 	}
 	return inSet
