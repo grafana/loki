@@ -273,13 +273,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			stream.Entries[n] = entry
 
-			// If configured for this tenant, fudge duplicate timestamps. Note, this is imperfect
+			// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
 			// since Loki will accept out of order writes it doesn't account for separate
 			// pushes with overlapping time ranges having entries with duplicate timestamps
-			if validationContext.fudgeDuplicateTimestamps && n != 0 && stream.Entries[n-1].Timestamp.Equal(entry.Timestamp) {
+			if validationContext.incrementDuplicateTimestamps && n != 0 && stream.Entries[n-1].Timestamp.Equal(entry.Timestamp) {
 				// Traditional logic for Loki is that 2 lines with the same timestamp and
 				// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
-				// To maintain this behavior, only fudge the timestamp if the log content is different
+				// To maintain this behavior, only increment the timestamp if the log content is different
 				if stream.Entries[n-1].Line != entry.Line {
 					stream.Entries[n].Timestamp = entry.Timestamp.Add(1 * time.Nanosecond)
 				}
