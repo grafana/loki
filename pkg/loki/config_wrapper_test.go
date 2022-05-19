@@ -270,8 +270,8 @@ memberlist:
 				assert.Equal(t, false, actual.S3ForcePathStyle)
 				assert.Equal(t, "s3://foo-bucket", actual.Endpoint)
 				assert.Equal(t, "us-east1", actual.Region)
-				assert.Equal(t, "abc123", actual.AccessKeyID.Value)
-				assert.Equal(t, "def789", actual.SecretAccessKey.Value)
+				assert.Equal(t, "abc123", actual.AccessKeyID)
+				assert.Equal(t, "def789", actual.SecretAccessKey.String())
 				assert.Equal(t, true, actual.Insecure)
 				assert.Equal(t, false, actual.SSEEncryption)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
@@ -406,7 +406,7 @@ memberlist:
 				assert.Equal(t, "arcosx", actual.BucketName)
 				assert.Equal(t, "bj.bcebos.com", actual.Endpoint)
 				assert.Equal(t, "baidu", actual.AccessKeyID)
-				assert.Equal(t, "bce", actual.SecretAccessKey)
+				assert.Equal(t, "bce", actual.SecretAccessKey.String())
 			}
 
 			// should remain empty
@@ -538,8 +538,8 @@ ruler:
 			assert.Equal(t, "s3", config.Ruler.StoreConfig.Type)
 			assert.Equal(t, "s3://foo-bucket", config.Ruler.StoreConfig.S3.Endpoint)
 			assert.Equal(t, "us-east1", config.Ruler.StoreConfig.S3.Region)
-			assert.Equal(t, "abc123", config.Ruler.StoreConfig.S3.AccessKeyID.Value)
-			assert.Equal(t, "def789", config.Ruler.StoreConfig.S3.SecretAccessKey.Value)
+			assert.Equal(t, "abc123", config.Ruler.StoreConfig.S3.AccessKeyID)
+			assert.Equal(t, "def789", config.Ruler.StoreConfig.S3.SecretAccessKey.String())
 
 			// should be set by common config
 			assert.EqualValues(t, "foobar", config.StorageConfig.GCSConfig.BucketName)
@@ -568,8 +568,8 @@ storage_config:
 
 			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
 			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.S3Config.Region)
-			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.S3Config.AccessKeyID.Value)
-			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.S3Config.SecretAccessKey.Value)
+			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.S3Config.AccessKeyID)
+			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.S3Config.SecretAccessKey.String())
 
 			// should be set by common config
 			assert.EqualValues(t, "foobar", config.Ruler.StoreConfig.GCS.BucketName)
