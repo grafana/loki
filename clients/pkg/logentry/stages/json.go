@@ -3,7 +3,6 @@ package stages
 import (
 	"fmt"
 	"reflect"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -11,7 +10,6 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 )
 
 // Config Errors
@@ -20,6 +18,7 @@ const (
 	ErrCouldNotCompileJMES  = "could not compile JMES expression"
 	ErrEmptyJSONStageConfig = "empty json stage configuration"
 	ErrEmptyJSONStageSource = "empty source"
+	ErrMalformedJSON        = "malformed json"
 )
 
 // JSONConfig represents a JSON Stage configuration
@@ -98,7 +97,7 @@ func (j *jsonStage) Run(in chan Entry) chan Entry {
 	go func() {
 		defer close(out)
 		for e := range in {
-			err := j.process(e.Extracted, &e.Line)
+			err := j.processEntry(e.Extracted, &e.Line)
 			if err != nil && j.cfg.DropMalformed {
 				continue
 			}
@@ -108,13 +107,7 @@ func (j *jsonStage) Run(in chan Entry) chan Entry {
 	return out
 }
 
-// Process implements Stage
-func (j *jsonStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
-	//nolint:errcheck
-	j.process(extracted, entry)
-}
-
-func (j *jsonStage) process(extracted map[string]interface{}, entry *string) error {
+func (j *jsonStage) processEntry(extracted map[string]interface{}, entry *string) error {
 	// If a source key is provided, the json stage should process it
 	// from the extracted map, otherwise should fallback to the entry
 	input := entry
@@ -151,7 +144,7 @@ func (j *jsonStage) process(extracted map[string]interface{}, entry *string) err
 		if Debug {
 			level.Debug(j.logger).Log("msg", "failed to unmarshal log line", "err", err)
 		}
-		return fmt.Errorf("malformed json")
+		return errors.New(ErrMalformedJSON)
 	}
 
 	for n, e := range j.expressions {

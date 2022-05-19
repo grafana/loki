@@ -375,7 +375,6 @@ func TestValidateJSONDrop(t *testing.T) {
 	s, err := newJSONStage(util_log.Logger, matchConfig)
 	if err != nil {
 		t.Errorf("withMatcher() error = %v", err)
-		return
 	}
 	if s != nil {
 		out := processEntries(s, newEntry(map[string]interface{}{
