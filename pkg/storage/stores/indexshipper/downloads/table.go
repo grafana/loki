@@ -3,7 +3,6 @@ package downloads
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/util/spanlogger"
 	"io/ioutil"
 	"path/filepath"
 	"sync"
@@ -18,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
