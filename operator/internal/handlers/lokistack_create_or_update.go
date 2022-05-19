@@ -78,7 +78,7 @@ func CreateOrUpdateLokiStack(
 	}
 
 	if stack.Spec.Storage.Secret.CAName != "" {
-		key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
+		key := client.ObjectKey{Name: stack.Spec.Storage.Secret.CAName, Namespace: stack.Namespace}
 		err = k.Get(ctx, key, storage.CA)
 		if err != nil {
 			return &status.DegradedError{
