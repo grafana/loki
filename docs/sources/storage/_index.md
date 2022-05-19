@@ -213,7 +213,7 @@ storage_config:
 schema_config:
   configs:
     - from: 2020-07-01
-      store: aws
+      store: boltdb-shipper
       object_store: aws
       schema: v11
       index:
