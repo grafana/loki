@@ -78,8 +78,9 @@ func CreateOrUpdateLokiStack(
 	}
 
 	if stack.Spec.Storage.Secret.CAName != "" {
+		var cm corev1.ConfigMap
 		key := client.ObjectKey{Name: stack.Spec.Storage.Secret.CAName, Namespace: stack.Namespace}
-		if err := k.Get(ctx, key, storage.CA); err != nil {
+		if err = k.Get(ctx, key, &cm); err != nil {
 			if apierrors.IsNotFound(err) {
 				return &status.DegradedError{
 					Message: "Missing object storage CA config map",
@@ -89,6 +90,8 @@ func CreateOrUpdateLokiStack(
 			}
 			return kverrors.Wrap(err, "failed to lookup lokistack storage CA config map", "name", key)
 		}
+
+		storage.CAName = cm.Name
 	}
 
 	var (

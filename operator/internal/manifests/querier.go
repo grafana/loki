@@ -29,8 +29,8 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if opts.ObjectStorage.CA != nil {
-		err := configureDeploymentForStorageCA(deployment, storageType, opts.ObjectStorage.CA.Name)
+	if opts.ObjectStorage.CAName != "" {
+		err := configureDeploymentForStorageCA(deployment, storageType, opts.ObjectStorage.CAName)
 		if err != nil {
 			return nil, err
 		}
