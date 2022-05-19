@@ -124,12 +124,28 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			require.NoError(t, err)
 			require.NotEmpty(t, deleteRequests)
 			require.Len(t, deleteRequests, 1)
-			t.Logf("Current entry: %+v", deleteRequests[0])
 			return deleteRequests[0].Status == "processed"
 		}, 110*time.Second, 1*time.Second)
-	})
 
-	// clear caches
+		// Check metrics
+		metrics, err := cliCompactor.Metrics()
+		require.NoError(t, err)
+		val, labels, err := extractCounterMetric("loki_compactor_delete_requests_processed_total", metrics)
+		require.NoError(t, err)
+		require.NotNil(t, labels)
+		require.Len(t, labels, 1)
+		require.Contains(t, labels, "user")
+		require.Equal(t, labels["user"], tenantID)
+		require.Equal(t, float64(1), val)
+
+		val, labels, err = extractCounterMetric("loki_compactor_deleted_lines", metrics)
+		require.NoError(t, err)
+		require.NotNil(t, labels)
+		require.Len(t, labels, 1)
+		require.Contains(t, labels, "user")
+		require.Equal(t, labels["user"], tenantID)
+		require.Equal(t, float64(1), val)
+	})
 
 	// Query lines, lineB should not be there
 	t.Run("query", func(t *testing.T) {
