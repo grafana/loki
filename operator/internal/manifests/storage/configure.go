@@ -18,7 +18,7 @@ const (
 	GCSFileName = "key.json"
 
 	secretDirectory = "/etc/storage/secrets"
-	caDirectory     = "/var/run/ca"
+	caDirectory     = "/etc/storage/ca"
 )
 
 // ConfigureDeployment merges a GCS Object Storage volume into the deployment spec.

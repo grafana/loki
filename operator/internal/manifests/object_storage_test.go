@@ -513,11 +513,11 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 										{
 											Name:      "test",
 											ReadOnly:  false,
-											MountPath: "/var/run/ca",
+											MountPath: "/etc/storage/ca",
 										},
 									},
 									Args: []string{
-										"-s3.http.ca-file=/var/run/ca/service-ca.crt",
+										"-s3.http.ca-file=/etc/storage/ca/service-ca.crt",
 									},
 								},
 							},
@@ -696,11 +696,11 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 										{
 											Name:      "test",
 											ReadOnly:  false,
-											MountPath: "/var/run/ca",
+											MountPath: "/etc/storage/ca",
 										},
 									},
 									Args: []string{
-										"-s3.http.ca-file=/var/run/ca/service-ca.crt",
+										"-s3.http.ca-file=/etc/storage/ca/service-ca.crt",
 									},
 								},
 							},
