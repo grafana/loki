@@ -188,6 +188,21 @@ func (s *GatewayClient) GetChunkRef(ctx context.Context, in *indexgatewaypb.GetC
 	return s.grpcClient.GetChunkRef(ctx, in, opts...)
 }
 
+func (s *GatewayClient) GetSeries(ctx context.Context, in *indexgatewaypb.GetSeriesRequest, opts ...grpc.CallOption) (*indexgatewaypb.GetSeriesResponse, error) {
+	if s.cfg.Mode == indexgateway.RingMode {
+		var (
+			resp *indexgatewaypb.GetSeriesResponse
+			err  error
+		)
+		err = s.ringModeDo(ctx, func(client indexgatewaypb.IndexGatewayClient) error {
+			resp, err = client.GetSeries(ctx, in, opts...)
+			return err
+		})
+		return resp, err
+	}
+	return s.grpcClient.GetSeries(ctx, in, opts...)
+}
+
 func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *indexgatewaypb.LabelNamesForMetricNameRequest, opts ...grpc.CallOption) (*indexgatewaypb.LabelResponse, error) {
 	if s.cfg.Mode == indexgateway.RingMode {
 		var (
