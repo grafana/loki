@@ -126,7 +126,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			require.NotEmpty(t, deleteRequests)
 			require.Len(t, deleteRequests, 1)
 			return deleteRequests[0].Status == "processed"
-		}, 110*time.Second, 1*time.Second)
+		}, 10*time.Second, 1*time.Second)
 
 		// Check metrics
 		metrics, err := cliCompactor.Metrics()
