@@ -96,7 +96,7 @@ func TestCRI_tags(t *testing.T) {
 		err      error
 	}{
 		{
-			name: "handle tag F",
+			name: "simple tag F",
 			lines: []string{
 				"2019-05-07T18:57:50.904275087+00:00 stdout F some full line",
 				"2019-05-07T18:57:55.904275087+00:00 stdout F log",
@@ -104,12 +104,34 @@ func TestCRI_tags(t *testing.T) {
 			expected: []string{"some full line", "log"},
 		},
 		{
-			name: "handle tag P",
+			name: "simple tag P",
 			lines: []string{
-				"2019-05-07T18:57:50.904275087+00:00 stdout P some full line",
-				"2019-05-07T18:57:55.904275087+00:00 stdout F log",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 1",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 2",
+				"2019-05-07T18:57:55.904275087+00:00 stdout F log finished",
+				"2019-05-07T18:57:55.904275087+00:00 stdout F another full log",
 			},
-			expected: []string{"some full line\nlog"},
+			expected: []string{
+				"partial line 1\npartial line 2\nlog finished",
+				"another full log",
+			},
+		},
+		{
+			name: "panic",
+			lines: []string{
+				"2019-05-07T18:57:50.904275087+00:00 stdout P panic: I'm pannicing",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P ",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P goroutine 1 [running]:",
+				"2019-05-07T18:57:55.904275087+00:00 stdout P main.main()",
+				"2019-05-07T18:57:55.904275087+00:00 stdout F 	/home/kavirajk/src/go-play/main.go:11 +0x27",
+			},
+			expected: []string{
+				`panic: I'm pannicing
+
+goroutine 1 [running]:
+main.main()
+	/home/kavirajk/src/go-play/main.go:11 +0x27`,
+			},
 		},
 	}
 
