@@ -9,7 +9,8 @@ import (
 func configureDeploymentForStorageType(
 	d *appsv1.Deployment,
 	t lokiv1beta1.ObjectStorageSecretType,
-	secretName string) error {
+	secretName string,
+) error {
 	switch t {
 	case lokiv1beta1.ObjectStorageSecretGCS:
 		return storage.ConfigureDeployment(d, secretName)
@@ -21,10 +22,37 @@ func configureDeploymentForStorageType(
 func configureStatefulSetForStorageType(
 	d *appsv1.StatefulSet,
 	t lokiv1beta1.ObjectStorageSecretType,
-	secretName string) error {
+	secretName string,
+) error {
 	switch t {
 	case lokiv1beta1.ObjectStorageSecretGCS:
 		return storage.ConfigureStatefulSet(d, secretName)
+	default:
+		return nil
+	}
+}
+
+func configureDeploymentForStorageCA(
+	d *appsv1.Deployment,
+	t lokiv1beta1.ObjectStorageSecretType,
+	cmName string,
+) error {
+	switch t {
+	case lokiv1beta1.ObjectStorageSecretS3:
+		return storage.ConfigureDeploymentCA(d, cmName)
+	default:
+		return nil
+	}
+}
+
+func configureStatefulSetForStorageCA(
+	s *appsv1.StatefulSet,
+	t lokiv1beta1.ObjectStorageSecretType,
+	cmName string,
+) error {
+	switch t {
+	case lokiv1beta1.ObjectStorageSecretS3:
+		return storage.ConfigureStatefulSetCA(s, cmName)
 	default:
 		return nil
 	}

@@ -620,6 +620,9 @@ const (
 	ReasonMissingObjectStorageSecret LokiStackConditionReason = "MissingObjectStorageSecret"
 	// ReasonInvalidObjectStorageSecret when the format of the secret is invalid.
 	ReasonInvalidObjectStorageSecret LokiStackConditionReason = "InvalidObjectStorageSecret"
+	// ReasonMissingObjectStorageCAConfigMap when the required configmap to verify object storage
+	// certificates is missing.
+	ReasonMissingObjectStorageCAConfigMap LokiStackConditionReason = "MissingObjectStorageCAConfigMap"
 	// ReasonInvalidReplicationConfiguration when the configurated replication factor is not valid
 	// with the select cluster size.
 	ReasonInvalidReplicationConfiguration LokiStackConditionReason = "InvalidReplicationConfiguration"

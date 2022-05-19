@@ -31,6 +31,13 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if opts.ObjectStorage.CA != nil {
+		err := configureStatefulSetForStorageCA(statefulSet, storageType, opts.ObjectStorage.CA.Name)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewCompactorGRPCService(opts),

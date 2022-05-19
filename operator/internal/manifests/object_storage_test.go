@@ -378,3 +378,369 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigureDeploymentForStorageCA(t *testing.T) {
+	type tt struct {
+		desc        string
+		storageType lokiv1beta1.ObjectStorageSecretType
+		cmName      string
+		dpl         *appsv1.Deployment
+		want        *appsv1.Deployment
+	}
+
+	tc := []tt{
+		{
+			desc:        "object storage other than S3",
+			storageType: lokiv1beta1.ObjectStorageSecretAzure,
+			cmName:      "test",
+			dpl: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-querier",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      configVolumeName,
+											ReadOnly:  false,
+											MountPath: config.LokiConfigMountDir,
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: configVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											DefaultMode: &defaultConfigMapMode,
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: lokiConfigMapName("stack-name"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-querier",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      configVolumeName,
+											ReadOnly:  false,
+											MountPath: config.LokiConfigMountDir,
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: configVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											DefaultMode: &defaultConfigMapMode,
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: lokiConfigMapName("stack-name"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc:        "object storage S3",
+			storageType: lokiv1beta1.ObjectStorageSecretS3,
+			cmName:      "test",
+			dpl: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-querier",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      configVolumeName,
+											ReadOnly:  false,
+											MountPath: config.LokiConfigMountDir,
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: configVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											DefaultMode: &defaultConfigMapMode,
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: lokiConfigMapName("stack-name"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-querier",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      configVolumeName,
+											ReadOnly:  false,
+											MountPath: config.LokiConfigMountDir,
+										},
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/var/run/ca",
+										},
+									},
+									Args: []string{
+										"-s3.http.ca-file=/var/run/ca/ca.crt",
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: configVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											DefaultMode: &defaultConfigMapMode,
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: lokiConfigMapName("stack-name"),
+											},
+										},
+									},
+								},
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "test",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tc {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			err := configureDeploymentForStorageCA(tc.dpl, tc.storageType, tc.cmName)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, tc.dpl)
+		})
+	}
+}
+
+func TestConfigureStatefulSetForStorageCA(t *testing.T) {
+	type tt struct {
+		desc        string
+		storageType lokiv1beta1.ObjectStorageSecretType
+		cmName      string
+		sts         *appsv1.StatefulSet
+		want        *appsv1.StatefulSet
+	}
+
+	tc := []tt{
+		{
+			desc:        "object storage other than S3",
+			storageType: lokiv1beta1.ObjectStorageSecretAzure,
+			cmName:      "test",
+			sts: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      configVolumeName,
+											ReadOnly:  false,
+											MountPath: config.LokiConfigMountDir,
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: configVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											DefaultMode: &defaultConfigMapMode,
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: lokiConfigMapName("stack-name"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      configVolumeName,
+											ReadOnly:  false,
+											MountPath: config.LokiConfigMountDir,
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: configVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											DefaultMode: &defaultConfigMapMode,
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: lokiConfigMapName("stack-name"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc:        "object storage S3",
+			storageType: lokiv1beta1.ObjectStorageSecretS3,
+			cmName:      "test",
+			sts: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      configVolumeName,
+											ReadOnly:  false,
+											MountPath: config.LokiConfigMountDir,
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: configVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											DefaultMode: &defaultConfigMapMode,
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: lokiConfigMapName("stack-name"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      configVolumeName,
+											ReadOnly:  false,
+											MountPath: config.LokiConfigMountDir,
+										},
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/var/run/ca",
+										},
+									},
+									Args: []string{
+										"-s3.http.ca-file=/var/run/ca/ca.crt",
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: configVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											DefaultMode: &defaultConfigMapMode,
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: lokiConfigMapName("stack-name"),
+											},
+										},
+									},
+								},
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "test",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tc {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			err := configureStatefulSetForStorageCA(tc.sts, tc.storageType, tc.cmName)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, tc.sts)
+		})
+	}
+}

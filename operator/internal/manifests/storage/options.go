@@ -2,6 +2,7 @@ package storage
 
 import (
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // Options is used to configure Loki to integrate with
@@ -12,6 +13,7 @@ type Options struct {
 	GCS         *GCSStorageConfig
 	S3          *S3StorageConfig
 	Swift       *SwiftStorageConfig
+	CA          *corev1.ConfigMap
 }
 
 // AzureStorageConfig for Azure storage config
