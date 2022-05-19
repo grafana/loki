@@ -148,7 +148,6 @@ func (rm *RingManager) startClientMode() error {
 
 	rm.subservicesWatcher = services.NewFailureWatcher()
 	rm.subservicesWatcher.WatchManager(rm.subservices)
-	rm.Service = services.NewBasicService(rm.starting, rm.running, rm.stopping)
 
 	rm.Service = services.NewIdleService(func(ctx context.Context) error {
 		return services.StartManagerAndAwaitHealthy(ctx, rm.subservices)
