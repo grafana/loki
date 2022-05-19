@@ -302,6 +302,10 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client ind
 	})
 	var lastErr error
 	for _, addr := range addrs {
+		if s.cfg.LogGatewayRequests {
+			level.Debug(util_log.Logger).Log("msg", "sending request to gateway", "gateway", addr, "tenant", userID)
+		}
+
 		genericClient, err := s.pool.GetClientFor(addr)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", addr), "err", err)
@@ -313,10 +317,6 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client ind
 			lastErr = err
 			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
 			continue
-		}
-
-		if s.cfg.LogGatewayRequests {
-			level.Debug(util_log.Logger).Log("msg", "sending request to gateway", "gateway", addr, "tenant", userID)
 		}
 
 		return nil

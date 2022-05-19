@@ -1760,7 +1760,7 @@ boltdb_shipper:
     # The CLI flags prefix for this block config is: boltdb.shipper.index-gateway-client
     [grpc_client_config: <grpc_client_config>]
 
-    # Configures if log gateway requests should log debug messages or not.
+    # Configures if gateway requests should be logged or not.
     # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <bool> | default = false]
 
