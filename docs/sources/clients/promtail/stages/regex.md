@@ -40,7 +40,7 @@ But these are not:
 
 
 If you run Promtail with the `--config.expand-env=true` flag the configuration
-will run through [envsubst](https://linux.die.net/man/1/envsubst) which will
+will run through [envsubst](https://pkg.go.dev/github.com/drone/envsubst)  which will
 replace double slashes with single slashes. Because of this when using
 `expand-env=true` you need to use double slashes for each single slash. For
 example:
