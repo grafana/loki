@@ -39,7 +39,7 @@ func TestIsAssignedKey(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			if res := IsAssignedKey(tc.ring, newReadLifecyclerMock(tc.addr), tc.userID); res != tc.exp {
+			if res := IsAssignedKey(tc.ring, newReadLifecyclerMock(tc.addr).addr, tc.userID); res != tc.exp {
 				t.Errorf("IsAssignedKey(%v, %v) = %v, want %v", tc.ring, tc.userID, res, tc.exp)
 			}
 		})

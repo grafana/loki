@@ -16,7 +16,7 @@ func TokenFor(userID, labels string) uint32 {
 
 // IsInReplicationSet will query the provided ring for the provided key
 // and see if the provided address is in the resulting ReplicationSet
-func IsInReplicationSet(r *ring.Ring, ringKey uint32, address string) (bool, error) {
+func IsInReplicationSet(r ring.ReadRing, ringKey uint32, address string) (bool, error) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 	rs, err := r.Get(ringKey, ring.Write, bufDescs, bufHosts, bufZones)
 	if err != nil {
@@ -32,24 +32,14 @@ func IsInReplicationSet(r *ring.Ring, ringKey uint32, address string) (bool, err
 	return false, nil
 }
 
-// IsAssignedKey replies wether the given component instance address is in the ReplicationSet responsible for the given key or not.
+// IsAssignedKey replies wether the given instance address is in the ReplicationSet responsible for the given key or not, based on the tokens.
 //
-// The result will be defined based on the tokens assigned to each ring component.
-func IsAssignedKey(ringClient ring.ReadRing, instance HasDedicatedAddress, key string) bool {
-	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
+// The result will be defined based on the tokens assigned to each ring component, queried through the ring client.
+func IsAssignedKey(ringClient ring.ReadRing, instanceAddress string, key string) bool {
 	token := TokenFor(key, "" /* labels */)
-	rs, err := ringClient.Get(token, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
-	if err == nil {
-		addr := instance.GetInstanceAddr()
-		if !rs.Includes(addr) {
-			return false
-		}
+	inSet, err := IsInReplicationSet(ringClient, token, instanceAddress)
+	if err != nil {
+		return false
 	}
-
-	return true
-}
-
-// HasDedicatedAddress specify an instance support for replying its own address.
-type HasDedicatedAddress interface {
-	GetInstanceAddr() string
+	return inSet
 }

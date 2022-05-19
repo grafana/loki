@@ -243,7 +243,7 @@ func (rm *RingManager) IndexGatewayOwnsTenant(tenant string) bool {
 		return true
 	}
 
-	return loki_util.IsAssignedKey(rm.Ring, rm.RingLifecycler, tenant)
+	return loki_util.IsAssignedKey(rm.Ring, rm.RingLifecycler.GetInstanceAddr(), tenant)
 }
 
 // ServeHTTP serves the HTTP route /indexgateway/ring.
