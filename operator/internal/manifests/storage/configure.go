@@ -121,7 +121,7 @@ func ensureCAForS3(p *corev1.PodSpec, cmName string) corev1.PodSpec {
 	})
 
 	container.Args = append(container.Args,
-		fmt.Sprintf("-s3.http.ca-file=%s", path.Join(caDirectory, "ca.crt")),
+		fmt.Sprintf("-s3.http.ca-file=%s", path.Join(caDirectory, "service-ca.crt")),
 	)
 
 	return corev1.PodSpec{

@@ -517,7 +517,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 										},
 									},
 									Args: []string{
-										"-s3.http.ca-file=/var/run/ca/ca.crt",
+										"-s3.http.ca-file=/var/run/ca/service-ca.crt",
 									},
 								},
 							},
@@ -700,7 +700,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 										},
 									},
 									Args: []string{
-										"-s3.http.ca-file=/var/run/ca/ca.crt",
+										"-s3.http.ca-file=/var/run/ca/service-ca.crt",
 									},
 								},
 							},
