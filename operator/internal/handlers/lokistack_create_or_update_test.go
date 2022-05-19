@@ -75,6 +75,14 @@ var (
 		},
 		Data: map[string][]byte{},
 	}
+
+	invalidCAConfigMap = corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "some-stack-ca-configmap",
+			Namespace: "some-ns",
+		},
+		Data: map[string]string{},
+	}
 )
 
 func TestMain(m *testing.M) {
@@ -710,6 +718,133 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 		}
 		if name.Name == invalidSecret.Name {
 			k.SetClientObject(object, &invalidSecret)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
+
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}
+
+func TestCreateOrUpdateLokiStack_WhenMissingCAConfigMap_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Missing object storage CA config map",
+		Reason:  lokiv1beta1.ReasonMissingObjectStorageCAConfigMap,
+		Requeue: false,
+	}
+
+	stack := &lokiv1beta1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name:   defaultSecret.Name,
+					Type:   lokiv1beta1.ObjectStorageSecretS3,
+					CAName: "not-existing",
+				},
+			},
+		},
+	}
+
+	// GetStub looks up the CR first, so we need to return our fake stack
+	// return NotFound for everything else to trigger create.
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, stack)
+			return nil
+		}
+
+		if name.Name == defaultSecret.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
+
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}
+
+func TestCreateOrUpdateLokiStack_WhenInvalidCAConfigMap_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid object storage CA configmap contents: missing key `service-ca.crt` or no contents",
+		Reason:  lokiv1beta1.ReasonInvalidObjectStorageCAConfigMap,
+		Requeue: false,
+	}
+
+	stack := &lokiv1beta1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name:   defaultSecret.Name,
+					Type:   lokiv1beta1.ObjectStorageSecretS3,
+					CAName: invalidCAConfigMap.Name,
+				},
+			},
+		},
+	}
+
+	// GetStub looks up the CR first, so we need to return our fake stack
+	// return NotFound for everything else to trigger create.
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, stack)
+			return nil
+		}
+		if name.Name == defaultSecret.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+
+		if name.Name == invalidCAConfigMap.Name {
+			k.SetClientObject(object, &invalidCAConfigMap)
 			return nil
 		}
 		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")

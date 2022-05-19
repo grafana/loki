@@ -1,10 +1,10 @@
-package secrets_test
+package storage_test
 
 import (
 	"testing"
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/internal/handlers/internal/secrets"
+	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -68,7 +68,7 @@ func TestAzureExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := secrets.ExtractStorageSecret(tst.secret, lokiv1beta1.ObjectStorageSecretAzure)
+			_, err := storage.ExtractSecret(tst.secret, lokiv1beta1.ObjectStorageSecretAzure)
 			if !tst.wantErr {
 				require.NoError(t, err)
 			}
@@ -115,7 +115,7 @@ func TestGCSExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := secrets.ExtractStorageSecret(tst.secret, lokiv1beta1.ObjectStorageSecretGCS)
+			_, err := storage.ExtractSecret(tst.secret, lokiv1beta1.ObjectStorageSecretGCS)
 			if !tst.wantErr {
 				require.NoError(t, err)
 			}
@@ -185,7 +185,7 @@ func TestS3Extract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := secrets.ExtractStorageSecret(tst.secret, lokiv1beta1.ObjectStorageSecretS3)
+			_, err := storage.ExtractSecret(tst.secret, lokiv1beta1.ObjectStorageSecretS3)
 			if !tst.wantErr {
 				require.NoError(t, err)
 			}
@@ -330,7 +330,7 @@ func TestSwiftExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := secrets.ExtractStorageSecret(tst.secret, lokiv1beta1.ObjectStorageSecretSwift)
+			_, err := storage.ExtractSecret(tst.secret, lokiv1beta1.ObjectStorageSecretSwift)
 			if !tst.wantErr {
 				require.NoError(t, err)
 			}

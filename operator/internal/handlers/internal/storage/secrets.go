@@ -1,4 +1,4 @@
-package secrets
+package storage
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -8,8 +8,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// ExtractStorageSecret reads a k8s secret into a manifest object storage struct if valid.
-func ExtractStorageSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretType) (*storage.Options, error) {
+// ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
+func ExtractSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretType) (*storage.Options, error) {
 	var err error
 	storageOpts := storage.Options{SharedStore: secretType}
 

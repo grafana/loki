@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
-	"github.com/grafana/loki/operator/internal/handlers/internal/secrets"
+	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
@@ -68,7 +68,7 @@ func CreateOrUpdateLokiStack(
 		return kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	storage, err := secrets.ExtractStorageSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
+	objstorage, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
@@ -91,7 +91,15 @@ func CreateOrUpdateLokiStack(
 			return kverrors.Wrap(err, "failed to lookup lokistack storage CA config map", "name", key)
 		}
 
-		storage.CAName = cm.Name
+		if !storage.IsValidCAConfigMap(&cm) {
+			return &status.DegradedError{
+				Message: "Invalid object storage CA configmap contents: missing key `service-ca.crt` or no contents",
+				Reason:  lokiv1beta1.ReasonInvalidObjectStorageCAConfigMap,
+				Requeue: false,
+			}
+		}
+
+		objstorage.CAName = cm.Name
 	}
 
 	var (
@@ -155,7 +163,7 @@ func CreateOrUpdateLokiStack(
 		GatewayBaseDomain: baseDomain,
 		Stack:             stack.Spec,
 		Flags:             flags,
-		ObjectStorage:     *storage,
+		ObjectStorage:     *objstorage,
 		AlertingRules:     alertingRules,
 		RecordingRules:    recordingRules,
 		Tenants: manifests.Tenants{
