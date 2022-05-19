@@ -42,7 +42,7 @@ func IsAssignedKey(ringClient ring.ReadRing, instanceAddress string, key string)
 	inSet, err := IsInReplicationSet(ringClient, token, instanceAddress)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error checking if key is in replicationset", "error", err, "key", key)
-		return false
+		return true
 	}
 	return inSet
 }
