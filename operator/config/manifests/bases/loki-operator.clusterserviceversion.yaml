@@ -294,6 +294,12 @@ spec:
           logs.
         displayName: Object Storage
         path: storage
+      - description: ConfigMap for object storage ca file. Name of a ConfigMap in
+          the same namespace as the lokistack custom resource.
+        displayName: CA ConfigMap Name
+        path: storage.secret.caName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: Name of a secret in the namespace configured for object storage
           secrets.
         displayName: Object Storage Secret Name

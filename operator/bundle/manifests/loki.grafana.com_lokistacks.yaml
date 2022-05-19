@@ -316,8 +316,13 @@ spec:
                 properties:
                   secret:
                     description: Secret for object storage authentication. Name of
-                      a secret in the same namespace as the cluster logging operator.
+                      a secret in the same namespace as the lokistack custom resource.
                     properties:
+                      caName:
+                        description: ConfigMap for object storage ca file. Name of
+                          a ConfigMap in the same namespace as the lokistack custom
+                          resource.
+                        type: string
                       name:
                         description: Name of a secret in the namespace configured
                           for object storage secrets.

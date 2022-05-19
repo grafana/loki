@@ -348,13 +348,21 @@ type ObjectStorageSecretSpec struct {
 	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:Secret",displayName="Object Storage Secret Name"
 	Name string `json:"name"`
+
+	// ConfigMap for object storage ca file.
+	// Name of a ConfigMap in the same namespace as the lokistack custom resource.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
+	CAName string `json:"caName"`
 }
 
 // ObjectStorageSpec defines the requirements to access the object
 // storage bucket to persist logs by the ingester component.
 type ObjectStorageSpec struct {
 	// Secret for object storage authentication.
-	// Name of a secret in the same namespace as the cluster logging operator.
+	// Name of a secret in the same namespace as the lokistack custom resource.
 	//
 	// +required
 	// +kubebuilder:validation:Required
