@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -242,8 +244,16 @@ func mustParseLabel(input string) labels.Labels {
 }
 
 func TestDeleteRequest_FilterFunction(t *testing.T) {
+	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "compactor_deleted_lines",
+		Help:      "Number of deleted lines per user",
+	}, []string{"user"}).WithLabelValues("userID")
+	prometheus.MustRegister(counter)
+
 	dr := DeleteRequest{
-		Query: `{foo="bar"} |= "some"`,
+		Query:             `{foo="bar"} |= "some"`,
+		deletedLinesTotal: counter,
 	}
 
 	lblStr := `{foo="bar"}`
@@ -255,6 +265,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 	require.True(t, f(`some line`))
 	require.False(t, f(""))
 	require.False(t, f("other line"))
+	require.Equal(t, float64(1), testutil.ToFloat64(counter))
 
 	lblStr = `{foo2="buzz"}`
 	lbls = mustParseLabel(lblStr)
@@ -265,9 +276,11 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 	require.False(t, f(""))
 	require.False(t, f("other line"))
 	require.False(t, f("some line"))
+	require.Equal(t, float64(1), testutil.ToFloat64(counter))
 
 	dr = DeleteRequest{
-		Query: `{namespace="default"}`,
+		Query:             `{namespace="default"}`,
+		deletedLinesTotal: counter,
 	}
 
 	lblStr = `{namespace="default"}`
@@ -279,5 +292,5 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 	require.True(t, f(`some line`))
 	require.True(t, f(""))
 	require.True(t, f("other line"))
-
+	require.Equal(t, float64(4), testutil.ToFloat64(counter))
 }
