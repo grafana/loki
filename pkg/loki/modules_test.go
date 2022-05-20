@@ -6,13 +6,15 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
+
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/require"
 )
 
 func Test_calculateMaxLookBack(t *testing.T) {
@@ -145,8 +147,8 @@ func TestMultiKVSetup(t *testing.T) {
 			cfg.SchemaConfig = config.SchemaConfig{
 				Configs: []config.PeriodConfig{
 					{
-						IndexType:  "inmemory",
-						ObjectType: "filesystem",
+						IndexType:  config.StorageTypeInMemory,
+						ObjectType: config.StorageTypeFileSystem,
 						RowShards:  16,
 						Schema:     "v11",
 						From: config.DayTime{
@@ -168,12 +170,12 @@ func TestMultiKVSetup(t *testing.T) {
 			cfg.StorageConfig = storage.Config{
 				FSConfig: local.FSConfig{Directory: dir},
 				BoltDBShipperConfig: shipper.Config{
-					SharedStoreType:      "filesystem",
+					SharedStoreType:      config.StorageTypeFileSystem,
 					ActiveIndexDirectory: dir,
 					CacheLocation:        dir,
 					Mode:                 shipper.ModeWriteOnly},
 			}
-			cfg.Ruler.Config.StoreConfig.Type = "local"
+			cfg.Ruler.Config.StoreConfig.Type = config.StorageTypeLocal
 			cfg.Ruler.Config.StoreConfig.Local.Directory = dir
 
 			c, err := New(cfg)
