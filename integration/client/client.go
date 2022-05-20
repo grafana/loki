@@ -37,7 +37,7 @@ func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return r.next.RoundTrip(req)
 }
 
-type ClientOption interface {
+type Option interface {
 	Type() string
 }
 
@@ -57,7 +57,7 @@ type Client struct {
 }
 
 // NewLogsClient creates a new client
-func New(instanceID, token, baseURL string, opts ...ClientOption) *Client {
+func New(instanceID, token, baseURL string, opts ...Option) *Client {
 	rt := &roundTripper{
 		instanceID: instanceID,
 		token:      token,
