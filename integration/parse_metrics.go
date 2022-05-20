@@ -13,15 +13,7 @@ var (
 	ErrInvalidMetricType = fmt.Errorf("invalid metric type")
 )
 
-func extractGaugeMetric(metricName, metrics string) (float64, map[string]string, error) {
-	return extractMetric(metricName, metrics, io_prometheus_client.MetricType_GAUGE)
-}
-
-func extractCounterMetric(metricName, metrics string) (float64, map[string]string, error) {
-	return extractMetric(metricName, metrics, io_prometheus_client.MetricType_COUNTER)
-}
-
-func extractMetric(metricName, metrics string, metricType io_prometheus_client.MetricType) (float64, map[string]string, error) {
+func extractMetric(metricName, metrics string) (float64, map[string]string, error) {
 	var parser expfmt.TextParser
 	mfs, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
 	if err != nil {

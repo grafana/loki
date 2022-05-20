@@ -155,7 +155,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 func checkLabelValue(t *testing.T, metricName, metrics, tenantID string, expectedValue float64) {
 	t.Helper()
-	val, labels, err := extractCounterMetric(metricName, metrics)
+	val, labels, err := extractMetric(metricName, metrics)
 	require.NoError(t, err)
 	require.NotNil(t, labels)
 	require.Len(t, labels, 1)

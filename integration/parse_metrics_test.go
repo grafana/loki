@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var example = `
+var exampleMetricOutput = `
 # HELP loki_compactor_delete_requests_processed_total Number of delete requests processed per user
 # TYPE loki_compactor_delete_requests_processed_total counter
 loki_compactor_delete_requests_processed_total{user="eEWxEcgwRQcf"} 1
@@ -25,13 +25,13 @@ loki_compactor_pending_delete_requests_count 0
 `
 
 func TestExtractCounterMetric(t *testing.T) {
-	val, labels, err := extractGaugeMetric("loki_compactor_oldest_pending_delete_request_age_seconds", example)
+	val, labels, err := extractMetric("loki_compactor_oldest_pending_delete_request_age_seconds", exampleMetricOutput)
 	require.NoError(t, err)
 	require.NotNil(t, labels)
 	require.Len(t, labels, 0)
 	require.Equal(t, float64(0), val)
 
-	val, labels, err = extractCounterMetric("loki_compactor_delete_requests_processed_total", example)
+	val, labels, err = extractMetric("loki_compactor_delete_requests_processed_total", exampleMetricOutput)
 	require.NoError(t, err)
 	require.NotNil(t, labels)
 	require.Len(t, labels, 1)
