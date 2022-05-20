@@ -81,7 +81,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 		// TODO: Flushing is currently causing a panic, as the boltdb shipper is shared using a global variable in:
 		// https://github.com/grafana/loki/blob/66a4692423582ed17cce9bd86b69d55663dc7721/pkg/storage/factory.go#L32-L35
-		//require.NoError(t, cliIngester.Flush())
+		// require.NoError(t, cliIngester.Flush())
 	})
 
 	t.Run("ingest-logs-ingester", func(t *testing.T) {
@@ -131,21 +131,8 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		// Check metrics
 		metrics, err := cliCompactor.Metrics()
 		require.NoError(t, err)
-		val, labels, err := extractCounterMetric("loki_compactor_delete_requests_processed_total", metrics)
-		require.NoError(t, err)
-		require.NotNil(t, labels)
-		require.Len(t, labels, 1)
-		require.Contains(t, labels, "user")
-		require.Equal(t, labels["user"], tenantID)
-		require.Equal(t, float64(1), val)
-
-		val, labels, err = extractCounterMetric("loki_compactor_deleted_lines", metrics)
-		require.NoError(t, err)
-		require.NotNil(t, labels)
-		require.Len(t, labels, 1)
-		require.Contains(t, labels, "user")
-		require.Equal(t, labels["user"], tenantID)
-		require.Equal(t, float64(1), val)
+		checkLabelValue(t, "loki_compactor_delete_requests_processed_total", metrics, tenantID, 1)
+		checkLabelValue(t, "loki_compactor_deleted_lines", metrics, tenantID, 1)
 	})
 
 	// Query lines, lineB should not be there
@@ -162,4 +149,15 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		}
 		assert.ElementsMatch(t, []string{"lineA", "lineC", "lineD"}, lines)
 	})
+}
+
+func checkLabelValue(t *testing.T, metricName, metrics, tenantID string, expectedValue float64) {
+	t.Helper()
+	val, labels, err := extractCounterMetric(metricName, metrics)
+	require.NoError(t, err)
+	require.NotNil(t, labels)
+	require.Len(t, labels, 1)
+	require.Contains(t, labels, "user")
+	require.Equal(t, labels["user"], tenantID)
+	require.Equal(t, expectedValue, val)
 }
