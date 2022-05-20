@@ -229,7 +229,7 @@ func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 		CacheTTL:          15 * time.Minute,
 		QueryReadyNumDays: 30,
 		Limits:            mockLimits{},
-	}, bclient, storage.NewIndexStorageClient(fs, "index/"), nil)
+	}, bclient, storage.NewIndexStorageClient(fs, "index/"), nil, nil)
 	require.NoError(b, err)
 
 	// initialize the index gateway server

@@ -26,7 +26,7 @@ func buildTestTableManager(t *testing.T, path string) (*TableManager, stopFunc) 
 		CacheTTL:     time.Hour,
 		Limits:       &mockLimits{},
 	}
-	tableManager, err := NewTableManager(cfg, boltDBIndexClient, indexStorageClient, nil)
+	tableManager, err := NewTableManager(cfg, boltDBIndexClient, indexStorageClient, nil, nil)
 	require.NoError(t, err)
 
 	return tableManager, func() {

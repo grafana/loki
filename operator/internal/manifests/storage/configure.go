@@ -14,8 +14,9 @@ const (
 	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
 	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
 	// GCSFileName is the file containing the Google credentials for authentication
-	GCSFileName     = "key.json"
-	secretDirectory = "/etc/proxy/secrets"
+	GCSFileName = "key.json"
+
+	secretDirectory = "/etc/storage/secrets"
 )
 
 // ConfigureDeployment merges a GCS Object Storage volume into the deployment spec.
