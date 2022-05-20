@@ -25,7 +25,7 @@ const (
 type JSONConfig struct {
 	Expressions   map[string]string `mapstructure:"expressions"`
 	Source        *string           `mapstructure:"source"`
-	DropMalformed bool              `mapstructure:"drop"`
+	DropMalformed bool              `mapstructure:"drop_malformed"`
 }
 
 // validateJSONConfig validates a json config and returns a map of necessary jmespath expressions.

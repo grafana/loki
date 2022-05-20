@@ -1,5 +1,6 @@
 ## Main
 
+* [6099](https://github.com/grafana/loki/pull/6099/files) **cstyan**: drop lines with malformed json in promtail json pipeline stage
 * [6102](https://github.com/grafana/loki/pull/6102) **timchenko-a**: Add multi-tenancy support to lambda-promtail
 * [5971](https://github.com/grafana/loki/pull/5971) **kavirajk**: Record statistics about metadata queries such as labels and series queries in `metrics.go` as well
 * [5790](https://github.com/grafana/loki/pull/5790) **chaudum**: Add UDP support for Promtail's syslog target.
