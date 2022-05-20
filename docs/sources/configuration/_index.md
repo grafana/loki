@@ -132,6 +132,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # key value store.
 [ingester: <ingester>]
 
+# Configures the index gateway server.
+[index_gateway: <index_gateway>]
+
 # Configures where Loki will store data.
 [storage_config: <storage_config>]
 
@@ -1757,6 +1760,10 @@ boltdb_shipper:
     # The CLI flags prefix for this block config is: boltdb.shipper.index-gateway-client
     [grpc_client_config: <grpc_client_config>]
 
+    # Configures if gateway requests should be logged or not.
+    # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
+    [log_gateway_requests: <bool> | default = false]
+
 # Cache validity for active index entries. Should be no higher than
 # the chunk_idle_period in the ingester settings.
 # CLI flag: -store.index-cache-validity
@@ -2396,6 +2403,26 @@ backoff_config:
   # Number of times to backoff and retry before failing.
   # CLI flag: -<prefix>.backoff-retries
   [max_retries: <int> | default = 10]
+```
+
+## index_gateway
+
+The `index_gateway` block configures the Loki index gateway server, responsible for serving index queries
+without the need to constantly interact with the object store.
+
+```yaml
+# Defines in which mode the index gateway server will operate (default to 'simple').
+# It supports two modes:
+# 'simple': an index gateway server instance is responsible for handling,
+#     storing and returning requests for all indices for all tenants.
+# 'ring': an index gateway server instance is responsible for a subset of tenants instead
+#     of all tenants.
+[mode: <string> | default = simple]
+
+# Defines the ring to be used by the index gateway servers and clients in case the servers
+# are configured to run in 'ring' mode. In case this isn't configured, this block supports
+# inheriting configuration from the common ring section.
+[ring: <ring>]
 ```
 
 ## table_manager
