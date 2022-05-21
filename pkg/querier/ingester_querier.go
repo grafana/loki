@@ -35,6 +35,15 @@ type IngesterQuerier struct {
 	extraQueryDelay time.Duration
 }
 
+type querierRspClient struct {
+	rsp    logproto.Querier_QueryClient
+	client logproto.QuerierClient
+}
+type querierSampleRspClient struct {
+	rsp    logproto.Querier_QuerySampleClient
+	client logproto.QuerierClient
+}
+
 func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration) (*IngesterQuerier, error) {
 	factory := func(addr string) (ring_client.PoolClient, error) {
 		return client.New(clientCfg, addr)
@@ -100,11 +109,10 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 }
 
 func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
-	var ingesters []logproto.QuerierClient
 	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		stats.FromContext(ctx).AddIngesterReached(1)
-		ingesters = append(ingesters, client)
-		return client.Query(ctx, params.QueryRequest)
+		rsp, err := client.Query(ctx, params.QueryRequest)
+		return querierRspClient{rsp, client}, err
 	})
 	if err != nil {
 		return nil, err
@@ -112,17 +120,17 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 
 	iterators := make([]iter.EntryIterator, len(resps))
 	for i := range resps {
-		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Querier_QueryClient), ingesters[i], params.Direction)
+		r := resps[i].response.(querierRspClient)
+		iterators[i] = iter.NewQueryClientIterator(r.rsp, r.client, params.Direction)
 	}
 	return iterators, nil
 }
 
 func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
-	var ingesters []logproto.QuerierClient
 	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		stats.FromContext(ctx).AddIngesterReached(1)
-		ingesters = append(ingesters, client)
-		return client.QuerySample(ctx, params.SampleQueryRequest)
+		rsp, err := client.QuerySample(ctx, params.SampleQueryRequest)
+		return querierSampleRspClient{rsp, client}, err
 	})
 	if err != nil {
 		return nil, err
@@ -130,7 +138,8 @@ func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectS
 
 	iterators := make([]iter.SampleIterator, len(resps))
 	for i := range resps {
-		iterators[i] = iter.NewSampleQueryClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient), ingesters[i])
+		r := resps[i].response.(querierSampleRspClient)
+		iterators[i] = iter.NewSampleQueryClientIterator(r.rsp, r.client)
 	}
 	return iterators, nil
 }
