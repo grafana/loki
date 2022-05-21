@@ -1,7 +1,7 @@
 package secrets
 
 import (
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
@@ -89,6 +89,12 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 	bucket, ok := s.Data["bucketname"]
 	if !ok {
 		return nil, kverrors.New("missing secret field", "field", "bucketname")
+	}
+
+	// Check if google authentication credentials is provided
+	_, ok = s.Data["key.json"]
+	if !ok {
+		return nil, kverrors.New("missing google authentication credentials", "field", "key.json")
 	}
 
 	return &storage.GCSStorageConfig{

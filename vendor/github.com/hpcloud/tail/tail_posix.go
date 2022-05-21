@@ -4,6 +4,7 @@ package tail
 
 import (
 	"os"
+	"path/filepath"
 )
 
 func OpenFile(name string) (file *os.File, err error) {
@@ -14,7 +15,7 @@ func OpenFile(name string) (file *os.File, err error) {
 		return nil, err
 	}
 	if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
-		filename, err = os.Readlink(name)
+		filename, err = filepath.EvalSymlinks(name)
 		if err != nil {
 			return nil, err
 		}

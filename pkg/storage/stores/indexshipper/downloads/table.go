@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
@@ -143,7 +144,7 @@ func (t *table) Close() {
 func (t *table) ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
 	// iterate through both user and common index
 	for _, uid := range []string{userID, ""} {
-		indexSet, err := t.getOrCreateIndexSet(uid, true)
+		indexSet, err := t.getOrCreateIndexSet(ctx, uid, true)
 		if err != nil {
 			return err
 		}
@@ -191,7 +192,8 @@ func (t *table) findExpiredIndexSets(ttl time.Duration, now time.Time) []string 
 		}
 	}
 
-	if commonIndexSetExpired {
+	// common index set should expire only after all the user index sets have expired.
+	if commonIndexSetExpired && len(expiredIndexSets) == len(t.indexSets)-1 {
 		expiredIndexSets = append(expiredIndexSets, "")
 	}
 
@@ -207,6 +209,13 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 		t.indexSetsMtx.Lock()
 		defer t.indexSetsMtx.Unlock()
 		for _, userID := range indexSetsToCleanup {
+			// additional check for cleaning up the common index set when it is the only one left.
+			// This is just for safety because the index sets could change between findExpiredIndexSets and the actual cleanup.
+			if userID == "" && len(t.indexSets) != 1 {
+				level.Info(t.logger).Log("msg", "skipping cleanup of common index set because we possibly have unexpired user index sets left")
+				continue
+			}
+
 			level.Info(t.logger).Log("msg", fmt.Sprintf("cleaning up expired index set %s", userID))
 			err := t.indexSets[userID].DropAllDBs()
 			if err != nil {
@@ -243,7 +252,7 @@ func (t *table) Sync(ctx context.Context) error {
 // Caller can use IndexSet.AwaitReady() to wait until the IndexSet gets ready, if required.
 // forQuerying must be set to true only getting the index for querying since
 // it captures the amount of time it takes to download the index at query time.
-func (t *table) getOrCreateIndexSet(id string, forQuerying bool) (IndexSet, error) {
+func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying bool) (IndexSet, error) {
 	t.indexSetsMtx.RLock()
 	indexSet, ok := t.indexSets[id]
 	t.indexSetsMtx.RUnlock()
@@ -278,8 +287,9 @@ func (t *table) getOrCreateIndexSet(id string, forQuerying bool) (IndexSet, erro
 		if forQuerying {
 			start := time.Now()
 			defer func() {
-				duration := time.Since(start).Seconds()
-				level.Info(loggerWithUserID(t.logger, id)).Log("msg", "downloaded index set at query time", "duration", duration)
+				duration := time.Since(start)
+				logger := spanlogger.FromContextWithFallback(ctx, loggerWithUserID(t.logger, id))
+				level.Info(logger).Log("msg", "downloaded index set at query time", "duration", duration)
 			}()
 		}
 
@@ -295,7 +305,7 @@ func (t *table) getOrCreateIndexSet(id string, forQuerying bool) (IndexSet, erro
 // EnsureQueryReadiness ensures that we have downloaded the common index as well as user index for the provided userIDs.
 // When ensuring query readiness for a table, we will always download common index set because it can include index for one of the provided user ids.
 func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) error {
-	commonIndexSet, err := t.getOrCreateIndexSet("", false)
+	commonIndexSet, err := t.getOrCreateIndexSet(ctx, "", false)
 	if err != nil {
 		return err
 	}
@@ -323,7 +333,7 @@ func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) erro
 // downloadUserIndexes downloads user specific index files concurrently.
 func (t *table) downloadUserIndexes(ctx context.Context, userIDs []string) error {
 	return concurrency.ForEachJob(ctx, len(userIDs), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
-		indexSet, err := t.getOrCreateIndexSet(userIDs[idx], false)
+		indexSet, err := t.getOrCreateIndexSet(ctx, userIDs[idx], false)
 		if err != nil {
 			return err
 		}

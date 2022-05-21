@@ -23,13 +23,15 @@ import (
 )
 
 type NotifierConfig struct {
-	TLS       tls.ClientConfig `yaml:",inline"`
-	BasicAuth util.BasicAuth   `yaml:",inline"`
+	TLS        tls.ClientConfig `yaml:",inline"`
+	BasicAuth  util.BasicAuth   `yaml:",inline"`
+	HeaderAuth util.HeaderAuth  `yaml:",inline"`
 }
 
 func (cfg *NotifierConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.TLS.RegisterFlagsWithPrefix("ruler.alertmanager-client", f)
 	cfg.BasicAuth.RegisterFlagsWithPrefix("ruler.alertmanager-client.", f)
+	cfg.HeaderAuth.RegisterFlagsWithPrefix("ruler.alertmanager-client.", f)
 }
 
 // rulerNotifier bundles a notifier.Manager together with an associated
@@ -194,6 +196,21 @@ func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.Alertm
 		amConfig.HTTPClientConfig.BasicAuth = &config_util.BasicAuth{
 			Username: rulerConfig.Notifier.BasicAuth.Username,
 			Password: config_util.Secret(rulerConfig.Notifier.BasicAuth.Password),
+		}
+	}
+
+	if rulerConfig.Notifier.HeaderAuth.IsEnabled() {
+		if rulerConfig.Notifier.HeaderAuth.Credentials != "" {
+			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
+				Type:        rulerConfig.Notifier.HeaderAuth.Type,
+				Credentials: config_util.Secret(rulerConfig.Notifier.HeaderAuth.Credentials),
+			}
+		} else if rulerConfig.Notifier.HeaderAuth.CredentialsFile != "" {
+			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
+				Type:            rulerConfig.Notifier.HeaderAuth.Type,
+				CredentialsFile: rulerConfig.Notifier.HeaderAuth.CredentialsFile,
+			}
+
 		}
 	}
 

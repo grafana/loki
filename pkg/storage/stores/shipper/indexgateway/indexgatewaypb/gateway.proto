@@ -2,66 +2,108 @@ syntax = "proto3";
 
 package indexgatewaypb;
 
-import "pkg/logproto/logproto.proto";
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-
+import "pkg/logproto/logproto.proto";
 
 service IndexGateway {
-    /// QueryIndex reads the indexes required for given query & sends back the batch of rows
-    /// in rpc streams
-    rpc QueryIndex(QueryIndexRequest) returns (stream QueryIndexResponse);
-    /// GetChunkRef returns chunk reference that match the provided label matchers
-    rpc GetChunkRef(GetChunkRefRequest) returns (GetChunkRefResponse) {};
-    rpc LabelNamesForMetricName(LabelNamesForMetricNameRequest) returns (LabelResponse)  {};
-    rpc LabelValuesForMetricName(LabelValuesForMetricNameRequest) returns (LabelResponse) {};
+  /// QueryIndex reads the indexes required for given query & sends back the batch of rows
+  /// in rpc streams
+  rpc QueryIndex(QueryIndexRequest) returns (stream QueryIndexResponse);
+  /// GetChunkRef returns chunk reference that match the provided label matchers
+  rpc GetChunkRef(GetChunkRefRequest) returns (GetChunkRefResponse) {}
+  rpc GetSeries(GetSeriesRequest) returns (GetSeriesResponse) {}
+  rpc LabelNamesForMetricName(LabelNamesForMetricNameRequest) returns (LabelResponse) {}
+
+  rpc LabelValuesForMetricName(LabelValuesForMetricNameRequest) returns (LabelResponse) {}
 }
 
 message LabelValuesForMetricNameRequest {
-    string metric_name = 1;
-    string label_name = 2;
-    int64 from = 3 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
-    int64 through = 4 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
-    string matchers = 5;
+  string metric_name = 1;
+  string label_name = 2;
+  int64 from = 3 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 4 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 5;
 }
 
 message LabelNamesForMetricNameRequest {
-    string metric_name = 1;
-    int64 from = 2 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
-    int64 through = 3 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
+  string metric_name = 1;
+  int64 from = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 3 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
 }
 
 message LabelResponse {
-    repeated string values = 1;
+  repeated string values = 1;
 }
 
 message GetChunkRefRequest {
-    int64 from = 1 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
-    int64 through = 2 [ (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
-    string matchers = 3;
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
 }
 
 message GetChunkRefResponse {
-    repeated logproto.ChunkRef refs = 1;
+  repeated logproto.ChunkRef refs = 1;
+}
+
+message GetSeriesRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+}
+
+message GetSeriesResponse {
+  repeated Series series = 1 [(gogoproto.nullable) = false];
+}
+
+message Series {
+  repeated logproto.LabelPair labels = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+  ];
 }
 
 message QueryIndexResponse {
-    string QueryKey = 1;
-    repeated Row rows = 2;
+  string QueryKey = 1;
+  repeated Row rows = 2;
 }
 
 message Row {
-    bytes rangeValue = 1;
-    bytes value      = 2;
+  bytes rangeValue = 1;
+  bytes value = 2;
 }
 
 message QueryIndexRequest {
-    repeated IndexQuery Queries = 1;
+  repeated IndexQuery Queries = 1;
 }
 
 message IndexQuery {
-    string tableName          = 1;
-    string hashValue          = 2;
-    bytes rangeValuePrefix    = 3;
-    bytes rangeValueStart     = 4;
-    bytes valueEqual          = 5;
+  string tableName = 1;
+  string hashValue = 2;
+  bytes rangeValuePrefix = 3;
+  bytes rangeValueStart = 4;
+  bytes valueEqual = 5;
 }

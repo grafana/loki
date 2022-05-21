@@ -16,7 +16,6 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 var (
@@ -322,10 +321,6 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 }
 
 func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
-	spanLogger := spanlogger.FromContext(ctx)
-	logger := util_log.WithContext(ctx, s.logger)
-	level.Debug(spanLogger).Log("requested", len(keys))
-
 	cacheGets.Add(float64(len(keys)))
 
 	// Build a map from hash -> key; NB there can be collisions here; we'll fetch
@@ -354,7 +349,7 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 		var readBatch ReadBatch
 
 		if err := proto.Unmarshal(bufs[j], &readBatch); err != nil {
-			level.Warn(spanLogger).Log("msg", "error unmarshalling index entry from cache", "err", err)
+			level.Warn(util_log.Logger).Log("msg", "error unmarshalling index entry from cache", "err", err)
 			cacheCorruptErrs.Inc()
 			continue
 		}
@@ -362,17 +357,12 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 		// Make sure the hash(key) is not a collision in the cache by looking at the
 		// key in the value.
 		if key != readBatch.Key {
-			level.Debug(spanLogger).Log("msg", "dropping index cache entry due to key collision", "key", key, "readBatch.Key", readBatch.Key, "expiry")
+			level.Debug(util_log.Logger).Log("msg", "dropping index cache entry due to key collision", "key", key, "readBatch.Key", readBatch.Key, "expiry")
 			continue
 		}
 
 		if readBatch.Expiry != 0 && time.Now().After(time.Unix(0, readBatch.Expiry)) {
 			continue
-		}
-
-		if len(readBatch.Entries) != 0 {
-			// not using spanLogger to avoid over-inflating traces since the query count can go much higher
-			level.Debug(logger).Log("msg", "found index cache entries", "key", key, "count", len(readBatch.Entries))
 		}
 
 		cacheHits.Inc()
@@ -392,6 +382,5 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 		missed = append(missed, miss)
 	}
 
-	level.Debug(spanLogger).Log("hits", len(batches), "misses", len(misses))
 	return batches, missed
 }

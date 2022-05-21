@@ -27,10 +27,14 @@ func (fakeClient) GetChunkRef(ctx context.Context, in *indexgatewaypb.GetChunkRe
 	return &indexgatewaypb.GetChunkRefResponse{}, nil
 }
 
+func (fakeClient) GetSeries(ctx context.Context, in *indexgatewaypb.GetSeriesRequest, opts ...grpc.CallOption) (*indexgatewaypb.GetSeriesResponse, error) {
+	return &indexgatewaypb.GetSeriesResponse{}, nil
+}
+
 func Test_IndexGatewayClient(t *testing.T) {
 	idx := IndexGatewayClientStore{
 		client: fakeClient{},
-		IndexStore: &IndexStore{
+		IndexStore: &indexStore{
 			chunkBatchSize: 1,
 		},
 	}
@@ -91,7 +95,7 @@ func Test_IndexGatewayClient_Fallback(t *testing.T) {
 	require.NoError(t, tm.SyncTables(context.Background()))
 	idx := NewIndexGatewayClientStore(
 		indexgatewaypb.NewIndexGatewayClient(conn),
-		&IndexStore{
+		&indexStore{
 			chunkBatchSize: 1,
 			schema:         schema,
 			schemaCfg:      schemaCfg,

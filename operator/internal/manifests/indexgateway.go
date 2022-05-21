@@ -24,6 +24,12 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	storageType := opts.Stack.Storage.Secret.Type
+	secretName := opts.Stack.Storage.Secret.Name
+	if err := configureStatefulSetForStorageType(statefulSet, storageType, secretName); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIndexGatewayGRPCService(opts),

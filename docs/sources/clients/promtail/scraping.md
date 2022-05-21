@@ -53,6 +53,12 @@ There are different types of labels present in Promtail:
 - The `__path__` label is a special label which Promtail uses after discovery to
   figure out where the file to read is located. Wildcards are allowed, for example `/var/log/*.log` to get all files with a `log` extension in the specified directory, and `/var/log/**/*.log` for matching files and directories recursively. For a full list of options check out the docs for the [library](https://github.com/bmatcuk/doublestar) Promtail uses.
 
+- The `__path_exclude__` label is another special label Promtail uses after 
+  discovery, to exclude a subset of the files discovered using `__path__` from 
+  being read in the current scrape_config block. It uses the same 
+  [library](https://github.com/bmatcuk/doublestar) to enable usage of
+  wildcards and glob patterns.
+
 - The label `filename` is added for every file found in `__path__` to ensure the
   uniqueness of the streams. It is set to the absolute path of the file the line
   was read from.
@@ -220,7 +226,7 @@ When Promtail receives GCP logs, various internal labels are made available for 
 ## Syslog Receiver
 
 Promtail supports receiving [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
-messages from a tcp stream. Receiving syslog messages is defined in a `syslog`
+messages from a TCP or UDP stream. Receiving syslog messages is defined in a `syslog`
 stanza:
 
 ```yaml
@@ -228,6 +234,7 @@ scrape_configs:
   - job_name: syslog
     syslog:
       listen_address: 0.0.0.0:1514
+      listen_protocol: tcp
       idle_timeout: 60s
       label_structured_data: yes
       labels:
@@ -238,8 +245,11 @@ scrape_configs:
 ```
 
 The only required field in the syslog section is the `listen_address` field,
-where a valid network address should be provided. The `idle_timeout` can help
-with cleaning up stale syslog connections. If `label_structured_data` is set,
+where a valid network address must be provided. The default protocol for
+receiving messages is TCP. To change the protocol, the `listen_protocol` field
+can be changed to `udp`. Note, that UDP does not support TLS.
+The `idle_timeout` can help with cleaning up stale syslog connections.
+If `label_structured_data` is set,
 [structured data](https://tools.ietf.org/html/rfc5424#section-6.3) in the
 syslog header will be translated to internal labels in the form of
 `__syslog_message_sd_<ID>_<KEY>`.
@@ -269,10 +279,17 @@ destination d_loki {
 
 ### Rsyslog Output Configuration
 
+For sending messages via TCP:
+
 ```
-action(type="omfwd" protocol="tcp" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format" TCP_Framing="octet-counted")
+*.* action(type="omfwd" protocol="tcp" target="<promtail_host>" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format" TCP_Framing="octet-counted" KeepAlive="on")
 ```
 
+For sending messages via UDP:
+
+```
+*.* action(type="omfwd" protocol="udp" target="<promtail_host>" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format")
+```
 
 ## Kafka
 

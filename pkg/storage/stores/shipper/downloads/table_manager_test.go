@@ -26,7 +26,7 @@ func buildTestTableManager(t *testing.T, path string) (*TableManager, stopFunc) 
 		CacheTTL:     time.Hour,
 		Limits:       &mockLimits{},
 	}
-	tableManager, err := NewTableManager(cfg, boltDBIndexClient, indexStorageClient, nil)
+	tableManager, err := NewTableManager(cfg, boltDBIndexClient, indexStorageClient, nil, nil)
 	require.NoError(t, err)
 
 	return tableManager, func() {
@@ -328,6 +328,6 @@ func (m *mockIndexStorageClient) ListTables(ctx context.Context) ([]string, erro
 	return m.tablesInStorage, nil
 }
 
-func (m *mockIndexStorageClient) ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, []string, error) {
+func (m *mockIndexStorageClient) ListFiles(ctx context.Context, tableName string, bypassCache bool) ([]storage.IndexFile, []string, error) {
 	return []storage.IndexFile{}, m.userIndexesInTables[tableName], nil
 }

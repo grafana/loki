@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/encoding"
@@ -168,10 +169,10 @@ func TestIndexRW_Postings(t *testing.T) {
 
 	// Postings lists are only written if a series with the respective
 	// reference was added before.
-	require.NoError(t, iw.AddSeries(1, series[0]))
-	require.NoError(t, iw.AddSeries(2, series[1]))
-	require.NoError(t, iw.AddSeries(3, series[2]))
-	require.NoError(t, iw.AddSeries(4, series[3]))
+	require.NoError(t, iw.AddSeries(1, series[0], model.Fingerprint(series[0].Hash())))
+	require.NoError(t, iw.AddSeries(2, series[1], model.Fingerprint(series[1].Hash())))
+	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(series[2].Hash())))
+	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(series[3].Hash())))
 
 	require.NoError(t, iw.Close())
 
@@ -257,7 +258,7 @@ func TestPostingsMany(t *testing.T) {
 	})
 
 	for i, s := range series {
-		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s))
+		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(s.Hash())))
 	}
 	require.NoError(t, iw.Close())
 
@@ -384,7 +385,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 	mi := newMockIndex()
 
 	for i, s := range input {
-		err = iw.AddSeries(storage.SeriesRef(i), s.labels, s.chunks...)
+		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks...)
 		require.NoError(t, err)
 		require.NoError(t, mi.AddSeries(storage.SeriesRef(i), s.labels, s.chunks...))
 
@@ -465,14 +466,14 @@ func TestPersistence_index_e2e(t *testing.T) {
 }
 
 func TestDecbufUvarintWithInvalidBuffer(t *testing.T) {
-	b := realByteSlice([]byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81})
+	b := RealByteSlice([]byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81})
 
 	db := encoding.NewDecbufUvarintAt(b, 0, castagnoliTable)
 	require.Error(t, db.Err())
 }
 
 func TestReaderWithInvalidBuffer(t *testing.T) {
-	b := realByteSlice([]byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81})
+	b := RealByteSlice([]byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81})
 
 	_, err := NewReader(b)
 	require.Error(t, err)
@@ -509,7 +510,7 @@ func TestSymbols(t *testing.T) {
 	checksum := crc32.Checksum(buf.Get()[symbolsStart+4:], castagnoliTable)
 	buf.PutBE32(checksum) // Check sum at the end.
 
-	s, err := NewSymbols(realByteSlice(buf.Get()), FormatV2, symbolsStart)
+	s, err := NewSymbols(RealByteSlice(buf.Get()), FormatV2, symbolsStart)
 	require.NoError(t, err)
 
 	// We store only 4 offsets to symbols.

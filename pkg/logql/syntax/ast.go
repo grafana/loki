@@ -909,12 +909,19 @@ func (e *VectorAggregationExpr) String() string {
 // impl SampleExpr
 func (e *VectorAggregationExpr) Shardable() bool {
 	if e.Operation == OpTypeCount || e.Operation == OpTypeAvg {
-		// count is shardable is labels are not mutated
+		if !e.Left.Shardable() {
+			return false
+		}
+		// count is shardable if labels are not mutated
 		// otherwise distinct values can be counted twice per shard
 		shardable := true
-		e.Walk(func(e interface{}) {
+		e.Left.Walk(func(e interface{}) {
 			switch e.(type) {
-			case *LabelParserExpr, LabelFmtExpr:
+			// LabelParserExpr is normally shardable, but not in this case.
+			// TODO(owen-d): I think LabelParserExpr is shardable
+			// for avg, but not for count. Let's refactor to make this
+			// cleaner. For now I'm disallowing sharding on both.
+			case *LabelParserExpr:
 				shardable = false
 			}
 		})

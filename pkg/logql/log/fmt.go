@@ -84,6 +84,7 @@ var (
 		"toDate",
 		"now",
 		"unixEpoch",
+		"default",
 	}
 )
 

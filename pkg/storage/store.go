@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
@@ -184,7 +185,7 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 	return chunks, nil
 }
 
-func shouldUseIndexGatewayClient(cfg Config) bool {
+func shouldUseBoltDBIndexGatewayClient(cfg Config) bool {
 	if cfg.BoltDBShipperConfig.Mode != shipper.ModeReadOnly || cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled {
 		return false
 	}
@@ -197,13 +198,41 @@ func shouldUseIndexGatewayClient(cfg Config) bool {
 	return true
 }
 
-func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, stores.Index, func(), error) {
-	// todo switch tsdb.
-
+func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, series.IndexStore, func(), error) {
 	indexClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": "index-store-" + p.From.String()}, s.registerer)
 
-	idx, err := NewIndexClient(p.IndexType, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, indexClientReg)
+	if p.IndexType == config.TSDBType {
+		objectClient, err := NewObjectClient(s.cfg.TSDBShipperConfig.SharedStoreType, s.cfg, s.clientMetrics)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		// ToDo(Sandeep): Avoid initializing writer when in read only mode
+		writer, idx, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits, indexClientReg)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		// ToDo(Sandeep): Refactor code to not use boltdb-shipper index gateway client config
+		if shouldUseBoltDBIndexGatewayClient(s.cfg) {
+			// inject the index-gateway client into the index store
+			gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			idx = series.NewIndexGatewayClientStore(gw, idx)
+		}
+
+		return writer, idx,
+			func() {
+				f.Stop()
+				chunkClient.Stop()
+				objectClient.Stop()
+			}, nil
+	}
+
+	idx, err := NewIndexClient(p.IndexType, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error creating index client")
 	}
@@ -217,22 +246,22 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 	}
 
 	var (
-		writer       stores.ChunkWriter = series.NewWriter(f, s.schemaCfg, idx, schema, s.writeDedupeCache, s.storeCfg.DisableIndexDeduplication)
-		seriesdIndex *series.IndexStore = series.NewIndexStore(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize)
-		index        stores.Index       = seriesdIndex
+		writer     stores.ChunkWriter = series.NewWriter(f, s.schemaCfg, idx, schema, s.writeDedupeCache, s.storeCfg.DisableIndexDeduplication)
+		indexStore                    = series.NewIndexStore(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize)
 	)
 
-	if shouldUseIndexGatewayClient(s.cfg) {
+	// (Sandeep): Disable IndexGatewayClientStore for stores other than tsdb until we are ready to enable it again
+	/*if shouldUseBoltDBIndexGatewayClient(s.cfg) {
 		// inject the index-gateway client into the index store
 		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		index = series.NewIndexGatewayClientStore(gw, seriesdIndex)
-	}
+		indexStore = series.NewIndexGatewayClientStore(gw, indexStore)
+	}*/
 
 	return writer,
-		index,
+		indexStore,
 		func() {
 			chunkClient.Stop()
 			f.Stop()

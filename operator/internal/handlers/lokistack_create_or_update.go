@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
 
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -71,7 +71,7 @@ func CreateOrUpdateLokiStack(
 	storage, err := secrets.ExtractStorageSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
 		return &status.DegradedError{
-			Message: "Invalid object storage secret contents",
+			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
 			Reason:  lokiv1beta1.ReasonInvalidObjectStorageSecret,
 			Requeue: false,
 		}
@@ -111,7 +111,10 @@ func CreateOrUpdateLokiStack(
 			}
 
 			// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
-			tenantConfigMap = gateway.GetTenantConfigMapData(ctx, log, k, req)
+			tenantConfigMap, err = gateway.GetTenantConfigMapData(ctx, k, req)
+			if err != nil {
+				ll.Error(err, "error in getting tenant config map data")
+			}
 		}
 	}
 
@@ -169,7 +172,7 @@ func CreateOrUpdateLokiStack(
 		}
 
 		desired := obj.DeepCopyObject().(client.Object)
-		mutateFn := manifests.MutateFuncFor(log, obj, desired)
+		mutateFn := manifests.MutateFuncFor(obj, desired)
 
 		op, err := ctrl.CreateOrUpdate(ctx, k, obj, mutateFn)
 		if err != nil {

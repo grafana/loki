@@ -13,13 +13,12 @@ import (
 
 const (
 	testTableName = "test-table"
-	uploader      = "test-uploader"
 )
 
 func TestTable(t *testing.T) {
 	tempDir := t.TempDir()
 	storageClient := buildTestStorageClient(t, tempDir)
-	testTable := NewTable(testTableName, uploader, storageClient)
+	testTable := NewTable(testTableName, storageClient)
 	defer testTable.Stop()
 
 	for userIdx := 0; userIdx < 2; userIdx++ {

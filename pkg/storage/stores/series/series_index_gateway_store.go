@@ -16,16 +16,17 @@ import (
 
 type IndexGatewayClientStore struct {
 	client IndexGatewayClient
-	*IndexStore
+	IndexStore
 }
 
 type IndexGatewayClient interface {
 	GetChunkRef(ctx context.Context, in *indexgatewaypb.GetChunkRefRequest, opts ...grpc.CallOption) (*indexgatewaypb.GetChunkRefResponse, error)
+	GetSeries(ctx context.Context, in *indexgatewaypb.GetSeriesRequest, opts ...grpc.CallOption) (*indexgatewaypb.GetSeriesResponse, error)
 	LabelNamesForMetricName(ctx context.Context, in *indexgatewaypb.LabelNamesForMetricNameRequest, opts ...grpc.CallOption) (*indexgatewaypb.LabelResponse, error)
 	LabelValuesForMetricName(ctx context.Context, in *indexgatewaypb.LabelValuesForMetricNameRequest, opts ...grpc.CallOption) (*indexgatewaypb.LabelResponse, error)
 }
 
-func NewIndexGatewayClientStore(client IndexGatewayClient, index *IndexStore) *IndexGatewayClientStore {
+func NewIndexGatewayClientStore(client IndexGatewayClient, index IndexStore) IndexStore {
 	return &IndexGatewayClientStore{
 		client:     client,
 		IndexStore: index,
@@ -54,11 +55,25 @@ func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, userID strin
 }
 
 func (c *IndexGatewayClientStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
-	refs, err := c.GetChunkRefs(ctx, userID, from, through, matchers...)
+	resp, err := c.client.GetSeries(ctx, &indexgatewaypb.GetSeriesRequest{
+		From:     from,
+		Through:  through,
+		Matchers: (&syntax.MatchersExpr{Mts: matchers}).String(),
+	})
 	if err != nil {
+		if isUnimplementedCallError(err) {
+			// Handle communication with older index gateways gracefully, by falling back to the index store calls.
+			return c.IndexStore.GetSeries(ctx, userID, from, through, matchers...)
+		}
 		return nil, err
 	}
-	return c.chunksToSeries(ctx, refs, matchers)
+
+	result := make([]labels.Labels, len(resp.Series))
+	for i, s := range resp.Series {
+		result[i] = logproto.FromLabelAdaptersToLabels(s.Labels)
+	}
+
+	return result, nil
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.

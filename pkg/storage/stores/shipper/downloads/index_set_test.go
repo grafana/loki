@@ -22,11 +22,10 @@ func buildTestIndexSet(t *testing.T, userID, path string) (*indexSet, stopFunc) 
 	cachePath := filepath.Join(path, cacheDirName)
 
 	baseIndexSet := storage.NewIndexSet(storageClient, userID != "")
-	idxSet, err := NewIndexSet(tableName, userID, filepath.Join(cachePath, tableName, userID), baseIndexSet,
-		boltDBIndexClient, util_log.Logger, newMetrics(nil))
+	idxSet, err := NewIndexSet(tableName, userID, filepath.Join(cachePath, tableName, userID), baseIndexSet, boltDBIndexClient, util_log.Logger)
 	require.NoError(t, err)
 
-	require.NoError(t, idxSet.Init())
+	require.NoError(t, idxSet.Init(false))
 
 	return idxSet.(*indexSet), func() {
 		idxSet.Close()

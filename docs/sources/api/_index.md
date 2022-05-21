@@ -19,6 +19,7 @@ These endpoints are exposed by all components:
 - [`GET /ready`](#get-ready)
 - [`GET /metrics`](#get-metrics)
 - [`GET /config`](#get-config)
+- [`GET /services`](#get-services)
 - [`GET /loki/api/v1/status/buildinfo`](#get-lokiapiv1statusbuildinfo)
 
 These endpoints are exposed by the querier and the query frontend:
@@ -69,6 +70,9 @@ These endpoints are exposed by the ruler:
 
 These endpoints are exposed by the compactor:
 - [`GET /compactor/ring`](#get-compactorring)
+- [`POST /loki/api/v1/delete`](#post-lokiapiv1delete)
+- [`GET /loki/api/v1/delete`](#get-lokiapiv1delete)
+- [`DELETE /loki/api/v1/delete`](#delete-lokiapiv1delete)
 
 A [list of clients](../clients) can be found in the clients documentation.
 
@@ -103,7 +107,7 @@ query parameters support the following values:
 - `query`: The [LogQL](../logql/) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
-- `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
+- `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward`.
 
 In microservices mode, `/loki/api/v1/query` is exposed by the querier and the frontend.
 
@@ -114,7 +118,7 @@ Response:
   "status": "success",
   "data": {
     "resultType": "vector" | "streams",
-    "result": [<vector value>] | [<stream value>].
+    "result": [<vector value>] | [<stream value>],
     "stats" : [<statistics>]
   }
 }
@@ -150,6 +154,10 @@ And `<stream value>` is:
   ]
 }
 ```
+
+The items in the `values` array are sorted by timestamp.
+The most recent item is first when using `direction=backward`.
+The oldest item is first when using `direction=forward`.
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
@@ -273,11 +281,16 @@ Where `<matrix value>` is:
     <label key-value pairs>
   },
   "values": [
-    <number: second unix epoch>,
-    <string: value>
+    [
+      <number: second unix epoch>,
+      <string: value>
+    ],
+    ...
   ]
 }
 ```
+
+The items in the `values` array are sorted by timestamp, and the oldest item is first.
 
 And `<stream value>` is:
 
@@ -295,6 +308,10 @@ And `<stream value>` is:
   ]
 }
 ```
+
+The items in the `values` array are sorted by timestamp.
+The most recent item is first when using `direction=backward`.
+The oldest item is first when using `direction=forward`.
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
@@ -387,8 +404,9 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
 
 ## `GET /loki/api/v1/labels`
 
-`/loki/api/v1/labels` retrieves the list of known labels within a given time span. It
-accepts the following query parameters in the URL:
+`/loki/api/v1/labels` retrieves the list of known labels within a given time span.
+Loki may use a larger time span than the one specified.
+It accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
@@ -424,8 +442,8 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/labels" | jq
 ## `GET /loki/api/v1/label/<name>/values`
 
 `/loki/api/v1/label/<name>/values` retrieves the list of known values for a given
-label within a given time span. It accepts the following query parameters in
-the URL:
+label within a given time span. Loki may use a larger time span than the one specified.
+It accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
@@ -797,10 +815,6 @@ In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the
 
 Displays a web page with the distributor hash ring status, including the state, healthy and last heartbeat time of each distributor.
 
-### `GET /compactor/ring`
-
-Displays a web page with the compactor hash ring status, including the state, healthy and last heartbeat time of each compactor.
-
 ## `GET /metrics`
 
 `/metrics` exposes Prometheus metrics. See
@@ -816,6 +830,19 @@ modify the output. If it has the value `diff` only the differences between the d
 and the current are returned. A value of `defaults` returns the default configuration.
 
 In microservices mode, the `/config` endpoint is exposed by all components.
+
+## `GET /services`
+
+`/services` returns a list of all running services and their current states.
+
+Services can have the following states:
+
+- **New**: Service is new, not running yet (initial state)
+- **Starting**: Service is starting; if starting succeeds, service enters **Running** state
+- **Running**: Service is fully running now; when service stops running, it enters **Stopping** state
+- **Stopping**: Service is shutting down
+- **Terminated**: Service has stopped successfully (terminal state)
+- **Failed**: Service has failed in **Starting**, **Running** or **Stopping** state (terminal state)
 
 ## `GET /loki/api/v1/status/buildinfo`
 
@@ -1094,3 +1121,21 @@ GET /prometheus/api/v1/alerts
 Prometheus-compatible rules endpoint to list all active alerts.
 
 For more information, please check out the Prometheus [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) documentation.
+
+## Compactor
+
+### `GET /compactor/ring`
+
+Displays a web page with the compactor hash ring status, including the state, health, and last heartbeat time of each compactor.
+
+### `POST /loki/api/v1/delete`
+
+Create a new delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-log-entry-deletion).
+
+### `GET /loki/api/v1/delete`
+
+List the existing delete requests for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#list-delete-requests).
+
+### `DELETE /loki/api/v1/delete`
+
+Remove a delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-cancellation-of-a-delete-request).

@@ -14,7 +14,8 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/status"
 
-	"github.com/ViaQ/logerr/log"
+	"github.com/ViaQ/logerr/v2/log"
+	"github.com/go-logr/logr"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,7 +33,7 @@ import (
 )
 
 var (
-	logger = log.NewLogger("testing")
+	logger logr.Logger
 
 	scheme = runtime.NewScheme()
 	flags  = manifests.FeatureFlags{
@@ -80,12 +81,10 @@ func TestMain(m *testing.M) {
 	testing.Init()
 	flag.Parse()
 
-	sink := log.MustGetSink(logger)
 	if testing.Verbose() {
-		// set to the highest for verbose testing
-		sink.SetVerbosity(5)
+		logger = log.NewLogger("testing", log.WithVerbosity(5))
 	} else {
-		sink.SetOutput(ioutil.Discard)
+		logger = log.NewLogger("testing", log.WithOutput(ioutil.Discard))
 	}
 
 	// Register the clientgo and CRD schemes
@@ -677,7 +676,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid object storage secret contents",
+		Message: "Invalid object storage secret contents: missing secret field",
 		Reason:  lokiv1beta1.ReasonInvalidObjectStorageSecret,
 		Requeue: false,
 	}

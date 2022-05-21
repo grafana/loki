@@ -313,7 +313,7 @@ The **json** parser operates in two modes:
    "request_size" => "55"
    "response_status" => "401"
    "response_size" => "228"
-   "response_size" => "228"
+   "response_latency_seconds" => "6.031"
    ```
 
 2. **with** parameters:
@@ -364,6 +364,18 @@ The **json** parser operates in two modes:
    "server_list" => `["129.0.1.1","10.2.1.3"]`
    "headers" => `{"Accept": "*/*", "User-Agent": "curl/7.68.0"}`
    ```
+ 
+   If the label to be extracted is same as the original JSON field, expression can be written as just `| json <label>`
+
+   For example, to extract `servers` fields as label, expression can be written as following
+    
+   `| json servers` will extract:
+
+    ```kv
+   "servers" => `["129.0.1.1","10.2.1.3"]`
+   ```
+
+   Note that `| json servers` is same as `| json servers="servers"`
 
 #### logfmt
 
@@ -464,7 +476,7 @@ those labels:
 
 #### unpack
 
-The `unpack` parser parses a JSON log line, unpacking all embedded labels in the [`pack`](../clients/promtail/stages/pack/) stage.
+The `unpack` parser parses a JSON log line, unpacking all embedded labels from Promtail's [`pack` stage]({{< relref "../clients/promtail/stages/pack.md" >}}).
 **A special property `_entry` will also be used to replace the original log line**.
 
 For example, using `| unpack` with the log line:
@@ -543,7 +555,7 @@ level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d
 You can use multiple parsers (logfmt and regexp) like this.
 
 ```logql
-{job="cortex-ops/query-frontend"} | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)"
+{job="loki-ops/query-frontend"} | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)"
 ```
 
 This is possible because the `| line_format` reformats the log line to become `POST /api/prom/api/v1/query_range (200) 1.5s` which can then be parsed with the `| regexp ...` parser.
@@ -566,13 +578,13 @@ Label formatting is used to sanitize the query while the line format reduce the 
 For these given log lines:
 
 ```log
-level=info ts=2020-10-23T20:32:18.094668233Z caller=metrics.go:81 org_id=29 traceID=1980d41501b57b68 latency=fast query="{cluster=\"ops-tools1\", job=\"cortex-ops/query-frontend\"} |= \"query_range\"" query_type=filter range_type=range length=15m0s step=7s duration=650.22401ms status=200 throughput_mb=1.529717 total_bytes_mb=0.994659
-level=info ts=2020-10-23T20:32:18.068866235Z caller=metrics.go:81 org_id=29 traceID=1980d41501b57b68 latency=fast query="{cluster=\"ops-tools1\", job=\"cortex-ops/query-frontend\"} |= \"query_range\"" query_type=filter range_type=range length=15m0s step=7s duration=624.008132ms status=200 throughput_mb=0.693449 total_bytes_mb=0.432718
+level=info ts=2020-10-23T20:32:18.094668233Z caller=metrics.go:81 org_id=29 traceID=1980d41501b57b68 latency=fast query="{cluster=\"ops-tools1\", job=\"loki-ops/query-frontend\"} |= \"query_range\"" query_type=filter range_type=range length=15m0s step=7s duration=650.22401ms status=200 throughput_mb=1.529717 total_bytes_mb=0.994659
+level=info ts=2020-10-23T20:32:18.068866235Z caller=metrics.go:81 org_id=29 traceID=1980d41501b57b68 latency=fast query="{cluster=\"ops-tools1\", job=\"loki-ops/query-frontend\"} |= \"query_range\"" query_type=filter range_type=range length=15m0s step=7s duration=624.008132ms status=200 throughput_mb=0.693449 total_bytes_mb=0.432718
 ```
 
 The result would be:
 
 ```log
-2020-10-23T20:32:18.094668233Z	650.22401ms	    traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
-2020-10-23T20:32:18.068866235Z	624.008132ms	traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
+2020-10-23T20:32:18.094668233Z	650.22401ms	    traceID = 1980d41501b57b68	{cluster="ops-tools1", job="loki-ops/query-frontend"} |= "query_range"
+2020-10-23T20:32:18.068866235Z	624.008132ms	traceID = 1980d41501b57b68	{cluster="ops-tools1", job="loki-ops/query-frontend"} |= "query_range"
 ```

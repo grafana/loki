@@ -5,7 +5,6 @@ import (
 
 	"github.com/grafana/loki/operator/internal/manifests"
 
-	"github.com/ViaQ/logerr/log"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
@@ -17,8 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 )
-
-var logger = log.DefaultLogger()
 
 func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 	got := &corev1.ConfigMap{
@@ -43,7 +40,7 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(logger, got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -55,7 +52,7 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 func TestGetMutateFunc_ReturnErrOnNotSupportedType(t *testing.T) {
 	got := &corev1.Endpoints{}
 	want := &corev1.Endpoints{}
-	f := manifests.MutateFuncFor(logger, got, want)
+	f := manifests.MutateFuncFor(got, want)
 
 	require.Error(t, f())
 }
@@ -71,7 +68,7 @@ func TestGetMutateFunc_MutateConfigMap(t *testing.T) {
 		BinaryData: map[string][]byte{"btest": []byte("btestss")},
 	}
 
-	f := manifests.MutateFuncFor(logger, got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -120,7 +117,7 @@ func TestGetMutateFunc_MutateServiceSpec(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(logger, got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -235,7 +232,7 @@ func TestGetMutateFunc_MutateServiceAccountObjectMeta(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(logger, tt.got, tt.want)
+			f := manifests.MutateFuncFor(tt.got, tt.want)
 			err := f()
 			require.NoError(t, err)
 
@@ -297,7 +294,7 @@ func TestGetMutateFunc_MutateClusterRole(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(logger, got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -362,7 +359,7 @@ func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(logger, got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -417,7 +414,7 @@ func TestGetMutateFunc_MutateRole(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(logger, got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -482,7 +479,7 @@ func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(logger, got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -601,7 +598,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(logger, tst.got, tst.want)
+			f := manifests.MutateFuncFor(tst.got, tst.want)
 			err := f()
 			require.NoError(t, err)
 
@@ -758,7 +755,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(logger, tst.got, tst.want)
+			f := manifests.MutateFuncFor(tst.got, tst.want)
 			err := f()
 			require.NoError(t, err)
 
@@ -931,7 +928,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(logger, tst.got, tst.want)
+			f := manifests.MutateFuncFor(tst.got, tst.want)
 			err := f()
 			require.NoError(t, err)
 
@@ -999,7 +996,7 @@ func TestGetMutateFunc_MutateIngress(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(logger, got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -1052,7 +1049,7 @@ func TestGetMutateFunc_MutateRoute(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(logger, got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 

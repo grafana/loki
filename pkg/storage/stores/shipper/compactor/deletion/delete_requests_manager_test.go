@@ -17,7 +17,7 @@ const testUserID = "test-user"
 func TestDeleteRequestsManager_Expired(t *testing.T) {
 	type resp struct {
 		isExpired           bool
-		nonDeletedIntervals []model.Interval
+		nonDeletedIntervals []retention.IntervalFilter
 	}
 
 	now := model.Now()
@@ -141,18 +141,24 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				nonDeletedIntervals: []model.Interval{
+				nonDeletedIntervals: []retention.IntervalFilter{
 					{
-						Start: now.Add(-11*time.Hour) + 1,
-						End:   now.Add(-10*time.Hour) - 1,
+						Interval: model.Interval{
+							Start: now.Add(-11*time.Hour) + 1,
+							End:   now.Add(-10*time.Hour) - 1,
+						},
 					},
 					{
-						Start: now.Add(-8*time.Hour) + 1,
-						End:   now.Add(-6*time.Hour) - 1,
+						Interval: model.Interval{
+							Start: now.Add(-8*time.Hour) + 1,
+							End:   now.Add(-6*time.Hour) - 1,
+						},
 					},
 					{
-						Start: now.Add(-5*time.Hour) + 1,
-						End:   now.Add(-2*time.Hour) - 1,
+						Interval: model.Interval{
+							Start: now.Add(-5*time.Hour) + 1,
+							End:   now.Add(-2*time.Hour) - 1,
+						},
 					},
 				},
 			},
@@ -207,12 +213,16 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, nil)
+			mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, nil, WholeStreamDeletion)
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			isExpired, nonDeletedIntervals := mgr.Expired(chunkEntry, model.Now())
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)
-			require.Equal(t, tc.expectedResp.nonDeletedIntervals, nonDeletedIntervals)
+			for idx, interval := range nonDeletedIntervals {
+				require.Equal(t, tc.expectedResp.nonDeletedIntervals[idx].Interval.Start, interval.Interval.Start)
+				require.Equal(t, tc.expectedResp.nonDeletedIntervals[idx].Interval.End, interval.Interval.End)
+				require.NotNil(t, interval.Filter)
+			}
 		})
 	}
 }

@@ -7,10 +7,10 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   _config+:: {
     loki+: if $._config.query_scheduler_enabled then {
       frontend+: {
-        scheduler_address: 'query-scheduler-discovery.%s.svc.cluster.local:9095' % $._config.namespace,
+        scheduler_address: 'query-scheduler-discovery.%s.svc.cluster.local.:9095' % $._config.namespace,
       },
       frontend_worker+: {
-        scheduler_address: 'query-scheduler-discovery.%s.svc.cluster.local:9095' % $._config.namespace,
+        scheduler_address: 'query-scheduler-discovery.%s.svc.cluster.local.:9095' % $._config.namespace,
       },
       query_scheduler+: {
         max_outstanding_requests_per_tenant: max_outstanding,
@@ -20,7 +20,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
         max_outstanding_per_tenant: max_outstanding,
       },
       frontend_worker+: {
-        frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
+        frontend_address: 'query-frontend.%s.svc.cluster.local.:9095' % $._config.namespace,
       },
     },
   },
@@ -39,7 +39,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.withArgsMixin(k.util.mapToFlags($.query_scheduler_args)) +
     $.jaeger_mixin +
     k.util.resourcesRequests('2', '600Mi') +
-    k.util.resourcesLimits(null, '1200Mi')
+    k.util.resourcesLimits(null, '1200Mi') +
+    container.withEnvMixin($._config.commonEnvs)
   else {},
 
   local deployment = k.apps.v1.deployment,
