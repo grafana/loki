@@ -481,6 +481,8 @@ func Test_Iterator(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	q := NewIngesterQuery(1, instance)
+
 	// assert the order is preserved.
 	var res *logproto.QueryResponse
 	require.NoError(t,
@@ -488,10 +490,12 @@ func Test_Iterator(t *testing.T) {
 			fakeQueryServer(
 				func(qr *logproto.QueryResponse) error {
 					res = qr
+					q.ReleaseAck()
 					return nil
 				},
 			),
-			uint32(2)),
+			q,
+			int32(2)),
 	)
 	require.Equal(t, 2, len(res.Streams))
 	// each entry translated into a unique stream

@@ -89,6 +89,9 @@ type instance struct {
 	metrics *ingesterMetrics
 
 	chunkFilter chunk.RequestChunkFilterer
+
+	queryMtx sync.Mutex
+	queries  map[uint32]*IngesterQuery
 }
 
 func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch, chunkFilter chunk.RequestChunkFilterer) *instance {
@@ -111,6 +114,7 @@ func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runt
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
 
 		chunkFilter: chunkFilter,
+		queries:     map[uint32]*IngesterQuery{},
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -695,17 +699,20 @@ type QuerierQueryServer interface {
 	Send(res *logproto.QueryResponse) error
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, q *IngesterQuery, limit int32) error {
 	stats := stats.FromContext(ctx)
 
 	// send until the limit is reached.
 	for limit != 0 && !isDone(ctx) {
+		q.BackpressureWait(ctx)
+
 		fetchSize := uint32(queryBatchSize)
 		if limit > 0 {
 			fetchSize = math.MinUint32(queryBatchSize, uint32(limit))
 		}
 		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
 		if err != nil {
+			q.End()
 			return err
 		}
 
@@ -714,17 +721,22 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		}
 
 		if len(batch.Streams) == 0 {
+			q.End()
 			return nil
 		}
 
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
+		batch.Id = q.Id
 
 		if err := queryServer.Send(batch); err != nil {
+			q.End()
 			return err
 		}
 		stats.Reset()
 	}
+
+	q.End()
 	return nil
 }
 

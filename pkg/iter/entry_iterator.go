@@ -510,15 +510,17 @@ func NewQueryResponseIterator(resp *logproto.QueryResponse, direction logproto.D
 
 type queryClientIterator struct {
 	client    logproto.Querier_QueryClient
+	ingester  logproto.QuerierClient
 	direction logproto.Direction
 	err       error
 	curr      EntryIterator
 }
 
 // NewQueryClientIterator returns an iterator over a QueryClient.
-func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
+func NewQueryClientIterator(client logproto.Querier_QueryClient, ingester logproto.QuerierClient, direction logproto.Direction) EntryIterator {
 	return &queryClientIterator{
 		client:    client,
+		ingester:  ingester,
 		direction: direction,
 	}
 }
@@ -535,6 +537,13 @@ func (i *queryClientIterator) Next() bool {
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
 		i.curr = NewQueryResponseIterator(batch, i.direction)
+		_, err = i.ingester.Ack(ctx, &logproto.AckRequest{
+			Id: batch.Id,
+		})
+		if err != nil {
+			i.err = err
+			return false
+		}
 	}
 
 	return true

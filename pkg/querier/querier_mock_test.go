@@ -77,6 +77,10 @@ func (c *querierClientMock) Context() context.Context {
 	return context.Background()
 }
 
+func (c *querierClientMock) Ack(ctx context.Context, in *logproto.AckRequest, opts ...grpc.CallOption) (*logproto.AckResponse, error) {
+	return nil, nil
+}
+
 func (c *querierClientMock) Close() error {
 	return nil
 }

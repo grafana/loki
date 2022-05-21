@@ -14,6 +14,7 @@ service Pusher {
 
 service Querier {
   rpc Query(QueryRequest) returns (stream QueryResponse) {}
+  rpc Ack(AckRequest) returns (AckResponse) {}
 
   rpc QuerySample(SampleQueryRequest) returns (stream SampleQueryResponse) {}
 
@@ -38,6 +39,11 @@ message PushRequest {
     (gogoproto.customtype) = "Stream"
   ];
 }
+message AckRequest {
+  uint32 id = 1;
+}
+
+message AckResponse {}
 
 message PushResponse {}
 
@@ -84,6 +90,7 @@ message QueryResponse {
     (gogoproto.nullable) = true
   ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  uint32 id = 3;
 }
 
 message SampleQueryResponse {
