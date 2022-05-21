@@ -697,36 +697,25 @@ type QuerierQueryServer interface {
 
 func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit uint32) error {
 	stats := stats.FromContext(ctx)
+	slimit := int64(limit)
 	if limit == 0 {
-		// send all batches.
-		for !isDone(ctx) {
-			batch, size, err := iter.ReadBatch(i, queryBatchSize)
-			if err != nil {
-				return err
-			}
-			if len(batch.Streams) == 0 {
-				return nil
-			}
-			stats.AddIngesterBatch(int64(size))
-			batch.Stats = stats.Ingester()
-
-			if err := queryServer.Send(batch); err != nil {
-				return err
-			}
-
-			stats.Reset()
-
-		}
-		return nil
+		slimit = -1
 	}
+
 	// send until the limit is reached.
-	sent := uint32(0)
-	for sent < limit && !isDone(queryServer.Context()) {
-		batch, batchSize, err := iter.ReadBatch(i, math.MinUint32(queryBatchSize, limit-sent))
+	for slimit != 0 && !isDone(ctx) {
+		fetchSize := uint32(queryBatchSize)
+		if slimit > 0 {
+			fetchSize = math.MinUint32(queryBatchSize, uint32(slimit))
+		}
+		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
 		if err != nil {
 			return err
 		}
-		sent += batchSize
+
+		if slimit > 0 {
+			slimit -= int64(batchSize)
+		}
 
 		if len(batch.Streams) == 0 {
 			return nil
