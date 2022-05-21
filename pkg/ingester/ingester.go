@@ -605,7 +605,13 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	return sendBatches(ctx, it, queryServer, req.Limit)
+	// sendBatches uses -1 to specify no limit.
+	batchLimit := int32(req.Limit)
+	if batchLimit == 0 {
+		batchLimit = -1
+	}
+
+	return sendBatches(ctx, it, queryServer, batchLimit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.

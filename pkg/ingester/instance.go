@@ -695,26 +695,22 @@ type QuerierQueryServer interface {
 	Send(res *logproto.QueryResponse) error
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit uint32) error {
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
 	stats := stats.FromContext(ctx)
-	slimit := int64(limit)
-	if limit == 0 {
-		slimit = -1
-	}
 
 	// send until the limit is reached.
-	for slimit != 0 && !isDone(ctx) {
+	for limit != 0 && !isDone(ctx) {
 		fetchSize := uint32(queryBatchSize)
-		if slimit > 0 {
-			fetchSize = math.MinUint32(queryBatchSize, uint32(slimit))
+		if limit > 0 {
+			fetchSize = math.MinUint32(queryBatchSize, uint32(limit))
 		}
 		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
 		if err != nil {
 			return err
 		}
 
-		if slimit > 0 {
-			slimit -= int64(batchSize)
+		if limit > 0 {
+			limit -= int32(batchSize)
 		}
 
 		if len(batch.Streams) == 0 {
