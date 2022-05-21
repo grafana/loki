@@ -99,6 +99,7 @@ message SampleQueryResponse {
     (gogoproto.nullable) = true
   ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  uint32 id = 3;
 }
 
 enum Direction {

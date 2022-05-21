@@ -986,7 +986,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 
 	store := newStoreMock()
 	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
-	store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(querySampleClient), nil)
+	store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(querySampleClient, ingesterClient), nil)
 	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
 	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
 	store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
@@ -1113,10 +1113,11 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 	queryClient := newQuerySampleClientMock()
 	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 2)}), nil)
 
-	store := newStoreMock()
-	store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(queryClient), nil)
-
 	ingesterClient := newQuerierClientMock()
+
+	store := newStoreMock()
+	store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(queryClient, ingesterClient), nil)
+
 	ingesterClient.On("QuerySample", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)

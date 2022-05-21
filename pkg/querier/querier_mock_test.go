@@ -428,8 +428,8 @@ func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 // mockSampleIterator returns an iterator with 1 stream and quantity entries,
 // where entries timestamp and line string are constructed as sequential numbers
 // starting at from
-func mockSampleIterator(client iter.QuerySampleClient) iter.SampleIterator {
-	return iter.NewSampleQueryClientIterator(client)
+func mockSampleIterator(client iter.QuerySampleClient, ingester logproto.QuerierClient) iter.SampleIterator {
+	return iter.NewSampleQueryClientIterator(client, ingester)
 }
 
 // mockStream return a stream with quantity entries, where entries timestamp and

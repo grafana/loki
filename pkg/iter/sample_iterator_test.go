@@ -204,7 +204,7 @@ func TestNewSampleQueryClientIterator(t *testing.T) {
 			{varSeries},
 			{carSeries},
 		},
-	})
+	}, nil)
 	for i := 1; i < 4; i++ {
 		require.True(t, it.Next(), i)
 		require.Equal(t, `{foo="var"}`, it.Labels(), i)

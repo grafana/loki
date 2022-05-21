@@ -460,9 +460,10 @@ func (i *sortSampleIterator) Close() error {
 }
 
 type sampleQueryClientIterator struct {
-	client QuerySampleClient
-	err    error
-	curr   SampleIterator
+	client   QuerySampleClient
+	ingester logproto.QuerierClient
+	err      error
+	curr     SampleIterator
 }
 
 // QuerySampleClient is GRPC stream client with only method used by the SampleQueryClientIterator
@@ -473,9 +474,10 @@ type QuerySampleClient interface {
 }
 
 // NewQueryClientIterator returns an iterator over a QueryClient.
-func NewSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
+func NewSampleQueryClientIterator(client QuerySampleClient, ingester logproto.QuerierClient) SampleIterator {
 	return &sampleQueryClientIterator{
-		client: client,
+		client:   client,
+		ingester: ingester,
 	}
 }
 
@@ -491,6 +493,15 @@ func (i *sampleQueryClientIterator) Next() bool {
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
 		i.curr = NewSampleQueryResponseIterator(batch)
+		if i.ingester != nil {
+			_, err = i.ingester.Ack(ctx, &logproto.AckRequest{
+				Id: batch.Id,
+			})
+			if err != nil {
+				i.err = err
+				return false
+			}
+		}
 	}
 	return true
 }

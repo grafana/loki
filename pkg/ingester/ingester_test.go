@@ -703,7 +703,7 @@ func Test_DedupeIngester(t *testing.T) {
 				End:      time.Unix(0, requests+1),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream, client))
 		}
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 		var expectedLabels []string
@@ -738,7 +738,7 @@ func Test_DedupeIngester(t *testing.T) {
 				End:      time.Unix(0, requests+1),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream, client))
 		}
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 		for i := int64(0); i < requests; i++ {
@@ -849,7 +849,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				End:      time.Unix(0, int64(requests+1)),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream, client))
 		}
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 
@@ -874,7 +874,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				End:      time.Unix(0, int64(requests+1)),
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream, client))
 		}
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 

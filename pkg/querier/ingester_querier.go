@@ -118,8 +118,10 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 }
 
 func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
+	var ingesters []logproto.QuerierClient
 	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		stats.FromContext(ctx).AddIngesterReached(1)
+		ingesters = append(ingesters, client)
 		return client.QuerySample(ctx, params.SampleQueryRequest)
 	})
 	if err != nil {
@@ -128,7 +130,7 @@ func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectS
 
 	iterators := make([]iter.SampleIterator, len(resps))
 	for i := range resps {
-		iterators[i] = iter.NewSampleQueryClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient))
+		iterators[i] = iter.NewSampleQueryClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient), ingesters[i])
 	}
 	return iterators, nil
 }

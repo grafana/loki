@@ -486,7 +486,7 @@ func Test_Iterator(t *testing.T) {
 	// assert the order is preserved.
 	var res *logproto.QueryResponse
 	require.NoError(t,
-		sendBatches(context.TODO(), it,
+		q.SendBatches(context.TODO(), it,
 			fakeQueryServer(
 				func(qr *logproto.QueryResponse) error {
 					res = qr
@@ -494,7 +494,6 @@ func Test_Iterator(t *testing.T) {
 					return nil
 				},
 			),
-			q,
 			int32(2)),
 	)
 	require.Equal(t, 2, len(res.Streams))

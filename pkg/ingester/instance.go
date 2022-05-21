@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -691,77 +690,6 @@ func isDone(ctx context.Context) bool {
 	default:
 		return false
 	}
-}
-
-// QuerierQueryServer is the GRPC server stream we use to send batch of entries.
-type QuerierQueryServer interface {
-	Context() context.Context
-	Send(res *logproto.QueryResponse) error
-}
-
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, q *IngesterQuery, limit int32) error {
-	stats := stats.FromContext(ctx)
-
-	// send until the limit is reached.
-	for limit != 0 && !isDone(ctx) {
-		q.BackpressureWait(ctx)
-
-		fetchSize := uint32(queryBatchSize)
-		if limit > 0 {
-			fetchSize = math.MinUint32(queryBatchSize, uint32(limit))
-		}
-		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
-		if err != nil {
-			q.End()
-			return err
-		}
-
-		if limit > 0 {
-			limit -= int32(batchSize)
-		}
-
-		if len(batch.Streams) == 0 {
-			q.End()
-			return nil
-		}
-
-		stats.AddIngesterBatch(int64(batchSize))
-		batch.Stats = stats.Ingester()
-		batch.Id = q.Id
-
-		if err := queryServer.Send(batch); err != nil {
-			q.End()
-			return err
-		}
-		stats.Reset()
-	}
-
-	q.End()
-	return nil
-}
-
-func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
-	stats := stats.FromContext(ctx)
-	for !isDone(ctx) {
-		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
-		if err != nil {
-			return err
-		}
-		if len(batch.Series) == 0 {
-			return nil
-		}
-
-		stats.AddIngesterBatch(int64(size))
-		batch.Stats = stats.Ingester()
-
-		if err := queryServer.Send(batch); err != nil {
-			return err
-		}
-
-		stats.Reset()
-
-	}
-	return nil
 }
 
 func shouldConsiderStream(stream *stream, req *logproto.SeriesRequest) bool {

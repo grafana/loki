@@ -569,6 +569,27 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) *instance { //nolint:r
 	return inst
 }
 
+func (i *Ingester) Ack(ctx context.Context, req *logproto.AckRequest) (*logproto.AckResponse, error) {
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return &logproto.AckResponse{}, err
+	}
+
+	instance := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return &logproto.AckResponse{}, err
+	}
+
+	instance.queryMtx.Lock()
+	queryIngester := instance.queries[req.Id]
+	instance.queryMtx.Unlock()
+	if queryIngester != nil {
+		queryIngester.ReleaseAck()
+	}
+
+	return &logproto.AckResponse{}, nil
+}
+
 // Query the ingests for log streams matching a set of matchers.
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	// initialize stats collection for ingester queries.
@@ -621,28 +642,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	instance.queries[queryID] = queryIngester
 	instance.queryMtx.Unlock()
 
-	return sendBatches(ctx, it, queryServer, queryIngester, batchLimit)
-}
-
-func (i *Ingester) Ack(ctx context.Context, req *logproto.AckRequest) (*logproto.AckResponse, error) {
-	instanceID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return &logproto.AckResponse{}, err
-	}
-
-	instance := i.GetOrCreateInstance(instanceID)
-	if err != nil {
-		return &logproto.AckResponse{}, err
-	}
-
-	instance.queryMtx.Lock()
-	queryIngester := instance.queries[req.Id]
-	instance.queryMtx.Unlock()
-	if queryIngester != nil {
-		queryIngester.ReleaseAck()
-	}
-
-	return &logproto.AckResponse{}, nil
+	return queryIngester.SendBatches(ctx, it, queryServer, batchLimit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
@@ -680,7 +680,17 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	return sendSampleBatches(ctx, it, queryServer)
+	instance.queryMtx.Lock()
+	queryID := uint32(0)
+	for instance.queries[queryID] != nil {
+		queryID++
+	}
+	queryIngester := NewIngesterQuery(queryID, instance)
+
+	instance.queries[queryID] = queryIngester
+	instance.queryMtx.Unlock()
+
+	return queryIngester.SendSampleBatches(ctx, it, queryServer)
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.
