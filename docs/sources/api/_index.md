@@ -155,6 +155,10 @@ And `<stream value>` is:
 }
 ```
 
+The items in the `values` array are sorted by timestamp.
+The most recent item is first when using `direction=backward`.
+The oldest item is first when using `direction=forward`.
+
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
@@ -277,11 +281,16 @@ Where `<matrix value>` is:
     <label key-value pairs>
   },
   "values": [
-    <number: second unix epoch>,
-    <string: value>
+    [
+      <number: second unix epoch>,
+      <string: value>
+    ],
+    ...
   ]
 }
 ```
+
+The items in the `values` array are sorted by timestamp, and the oldest item is first.
 
 And `<stream value>` is:
 
@@ -299,6 +308,10 @@ And `<stream value>` is:
   ]
 }
 ```
+
+The items in the `values` array are sorted by timestamp.
+The most recent item is first when using `direction=backward`.
+The oldest item is first when using `direction=forward`.
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
