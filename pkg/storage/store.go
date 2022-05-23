@@ -751,8 +751,8 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	}
 
 	var postFetcherChunkFilterer PostFetcherChunkFilterer
-	if s.requestPostFetcherChunkFilterer != nil {
-		postFetcherChunkFilterer = s.requestPostFetcherChunkFilterer.ForSampleRequest(req.SampleQueryRequest)
+	if s.requestPostFetcherChunkMetricsFilterer != nil {
+		postFetcherChunkFilterer = s.requestPostFetcherChunkMetricsFilterer.ForSampleRequest(req.SampleQueryRequest)
 	}
 
 	return newSampleBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer, postFetcherChunkFilterer)
