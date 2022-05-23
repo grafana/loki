@@ -135,6 +135,11 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 				ImagePullPolicy:          "IfNotPresent",
 			},
 		},
+		SecurityContext: &corev1.PodSecurityContext{
+			FSGroup:      pointer.Int64(0),
+			RunAsNonRoot: pointer.Bool(false),
+			RunAsUser:    pointer.Int64(0),
+		},
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ruler != nil {

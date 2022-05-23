@@ -1,0 +1,4 @@
+prometheus:
+  prometheusSpec:
+    remoteWrite:
+    - url:  "http://prometheus-kube-prometheus-prometheus.default.svc.cluster.local:9090"

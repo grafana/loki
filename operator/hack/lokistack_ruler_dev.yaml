@@ -13,4 +13,4 @@ spec:
   template:
     ruler:
       replicas: 2
-      prometheusEndpoint: "http://prometheus-kube-prometheus-prometheus.default.svc.cluster.local:9090"
+      prometheusEndpoint: "http://prometheus-kube-prometheus-prometheus.default.svc.cluster.local:9090/api/v1/write"

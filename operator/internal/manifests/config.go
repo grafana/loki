@@ -71,6 +71,9 @@ func ConfigOptions(opt Options) config.Options {
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
 		ObjectStorage: opt.ObjectStorage,
+		Prometheus: config.Prometheus{
+			Endpoint: opt.Stack.Template.Ruler.PrometheusEndpoint,
+		},
 	}
 }
 

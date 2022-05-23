@@ -44,7 +44,7 @@ common:
       region_name: {{ .Region }}
       container_name: {{ .Container }}
     {{ end }}
-{{ if ne .Prometheus.Endpoint "" }}ruler:
+ruler:
   storage:
     type: local
     local:
@@ -56,7 +56,7 @@ common:
   remote_write:
     enabled: true
     client:
-      url: {{ .Prometheus.Endpoint }} {{ end }}
+      url: {{ .Prometheus.Endpoint }}
 compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor
