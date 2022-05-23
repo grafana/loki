@@ -166,7 +166,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 			},
 		},
 		{
-			desc: "enabled certificate signing service for every http service",
+			desc: "enabled certificate signing service for every http and grpc service",
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
@@ -190,18 +190,24 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 			err := ApplyDefaultSettings(&tst.BuildOptions)
 			require.NoError(t, err)
 
-			httpServices := []*corev1.Service{
+			svcs := []*corev1.Service{
+				NewDistributorGRPCService(tst.BuildOptions),
 				NewDistributorHTTPService(tst.BuildOptions),
+				NewIngesterGRPCService(tst.BuildOptions),
 				NewIngesterHTTPService(tst.BuildOptions),
+				NewQuerierGRPCService(tst.BuildOptions),
 				NewQuerierHTTPService(tst.BuildOptions),
+				NewQueryFrontendGRPCService(tst.BuildOptions),
 				NewQueryFrontendHTTPService(tst.BuildOptions),
+				NewCompactorGRPCService(tst.BuildOptions),
 				NewCompactorHTTPService(tst.BuildOptions),
+				NewIndexGatewayGRPCService(tst.BuildOptions),
 				NewIndexGatewayHTTPService(tst.BuildOptions),
 				NewRulerHTTPService(tst.BuildOptions),
 				NewGatewayHTTPService(tst.BuildOptions),
 			}
 
-			for _, service := range httpServices {
+			for _, service := range svcs {
 				if !tst.BuildOptions.Flags.EnableCertificateSigningService {
 					require.Equal(t, service.ObjectMeta.Annotations, map[string]string{})
 				} else {

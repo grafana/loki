@@ -157,7 +157,9 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 
 // NewIndexGatewayGRPCService creates a k8s service for the index-gateway GRPC endpoint
 func NewIndexGatewayGRPCService(opts Options) *corev1.Service {
+	s := serviceNameIndexGatewayGRPC(opts.Name)
 	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
+	a := serviceAnnotations(s, opts.Flags.EnableCertificateSigningService)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -165,8 +167,9 @@ func NewIndexGatewayGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameIndexGatewayGRPC(opts.Name),
-			Labels: l,
+			Name:        serviceNameIndexGatewayGRPC(opts.Name),
+			Labels:      l,
+			Annotations: a,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",

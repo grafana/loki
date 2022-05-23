@@ -136,7 +136,9 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 
 // NewQuerierGRPCService creates a k8s service for the querier GRPC endpoint
 func NewQuerierGRPCService(opts Options) *corev1.Service {
+	s := serviceNameQuerierGRPC(opts.Name)
 	l := ComponentLabels(LabelQuerierComponent, opts.Name)
+	a := serviceAnnotations(s, opts.Flags.EnableCertificateSigningService)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -144,8 +146,9 @@ func NewQuerierGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameQuerierGRPC(opts.Name),
-			Labels: l,
+			Name:        serviceNameQuerierGRPC(opts.Name),
+			Labels:      l,
+			Annotations: a,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",

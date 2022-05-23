@@ -142,7 +142,9 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 
 // NewDistributorGRPCService creates a k8s service for the distributor GRPC endpoint
 func NewDistributorGRPCService(opts Options) *corev1.Service {
+	s := serviceNameDistributorGRPC(opts.Name)
 	l := ComponentLabels(LabelDistributorComponent, opts.Name)
+	a := serviceAnnotations(s, opts.Flags.EnableCertificateSigningService)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -150,8 +152,9 @@ func NewDistributorGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameDistributorGRPC(opts.Name),
-			Labels: l,
+			Name:        serviceNameDistributorGRPC(opts.Name),
+			Labels:      l,
+			Annotations: a,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",

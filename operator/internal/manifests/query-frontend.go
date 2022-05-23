@@ -154,7 +154,9 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 
 // NewQueryFrontendGRPCService creates a k8s service for the query-frontend GRPC endpoint
 func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
+	s := serviceNameQueryFrontendGRPC(opts.Name)
 	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
+	a := serviceAnnotations(s, opts.Flags.EnableCertificateSigningService)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -162,8 +164,9 @@ func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameQueryFrontendGRPC(opts.Name),
-			Labels: l,
+			Name:        serviceNameQueryFrontendGRPC(opts.Name),
+			Labels:      l,
+			Annotations: a,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",

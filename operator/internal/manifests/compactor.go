@@ -157,7 +157,9 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 
 // NewCompactorGRPCService creates a k8s service for the compactor GRPC endpoint
 func NewCompactorGRPCService(opts Options) *corev1.Service {
+	s := serviceNameCompactorGRPC(opts.Name)
 	l := ComponentLabels(LabelCompactorComponent, opts.Name)
+	a := serviceAnnotations(s, opts.Flags.EnableCertificateSigningService)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -165,8 +167,9 @@ func NewCompactorGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameCompactorGRPC(opts.Name),
-			Labels: l,
+			Name:        serviceNameCompactorGRPC(opts.Name),
+			Labels:      l,
+			Annotations: a,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
