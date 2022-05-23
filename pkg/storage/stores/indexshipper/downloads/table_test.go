@@ -32,8 +32,8 @@ func newStorageClientWithFakeObjectsInList(storageClient storage.Client) storage
 	return storageClientWithFakeObjectsInList{storageClient}
 }
 
-func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, []string, error) {
-	files, userIDs, err := o.Client.ListFiles(ctx, tableName)
+func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string, bypassCache bool) ([]storage.IndexFile, []string, error) {
+	files, userIDs, err := o.Client.ListFiles(ctx, tableName, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -46,6 +46,20 @@ func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, table
 	return files, userIDs, nil
 }
 
+func (o storageClientWithFakeObjectsInList) ListUserFiles(ctx context.Context, tableName, userID string, _ bool) ([]storage.IndexFile, error) {
+	files, err := o.Client.ListUserFiles(ctx, tableName, userID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	files = append(files, storage.IndexFile{
+		Name:       "fake-object",
+		ModifiedAt: time.Now(),
+	})
+
+	return files, nil
+}
+
 func buildTestTable(t *testing.T, path string) (*table, stopFunc) {
 	storageClient := buildTestStorageClient(t, path)
 	cachePath := filepath.Join(path, cacheDirName)
@@ -53,7 +67,7 @@ func buildTestTable(t *testing.T, path string) (*table, stopFunc) {
 	table := NewTable(tableName, cachePath, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
 	}).(*table)
-	_, usersWithIndex, err := table.storageClient.ListFiles(context.Background(), tableName)
+	_, usersWithIndex, err := table.storageClient.ListFiles(context.Background(), tableName, false)
 	require.NoError(t, err)
 	require.NoError(t, table.EnsureQueryReadiness(context.Background(), usersWithIndex))
 
@@ -187,6 +201,20 @@ func TestTable_DropUnusedIndex(t *testing.T) {
 	ensureIndexSetExistsInTable(t, &table, "")
 	ensureIndexSetExistsInTable(t, &table, notExpiredIndexUserID)
 
+	// change the lastUsedAt for common index set to expire it
+	indexSets[""].(*mockIndexSet).lastUsedAt = now.Add(-25 * time.Hour)
+
+	// common index set should not get dropped since we still have notExpiredIndexUserID which is not expired
+	require.Equal(t, []string(nil), table.findExpiredIndexSets(ttl, now))
+	allIndexSetsDropped, err = table.DropUnusedIndex(ttl, now)
+	require.NoError(t, err)
+	require.False(t, allIndexSetsDropped)
+
+	// none of the index set should be dropped
+	require.Len(t, table.indexSets, 2)
+	ensureIndexSetExistsInTable(t, &table, "")
+	ensureIndexSetExistsInTable(t, &table, notExpiredIndexUserID)
+
 	// change the lastUsedAt for all indexSets so that all of them get dropped
 	for _, indexSets := range table.indexSets {
 		indexSets.(*mockIndexSet).lastUsedAt = now.Add(-25 * time.Hour)
@@ -301,6 +329,7 @@ func TestTable_Sync(t *testing.T) {
 	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, newDB), []byte(newDB), 0755))
 
 	// sync the table
+	table.storageClient.RefreshIndexListCache(context.Background())
 	require.NoError(t, table.Sync(context.Background()))
 
 	// check that table got the new index and dropped the deleted index

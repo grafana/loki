@@ -566,7 +566,7 @@ func TestChunkStats(t *testing.T) {
 		t.Fatal(err)
 	}
 	// test on a chunk filling up
-	s := statsCtx.Result(time.Since(first), 0)
+	s := statsCtx.Result(time.Since(first), 0, 0)
 	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
 	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
 
@@ -593,7 +593,7 @@ func TestChunkStats(t *testing.T) {
 	if err := it.Close(); err != nil {
 		t.Fatal(err)
 	}
-	s = statsCtx.Result(time.Since(first), 0)
+	s = statsCtx.Result(time.Since(first), 0, 0)
 	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
 	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
 
@@ -1188,7 +1188,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			newChunk, err := originalChunk.Rebound(tc.sliceFrom, tc.sliceTo)
+			newChunk, err := originalChunk.Rebound(tc.sliceFrom, tc.sliceTo, nil)
 			if tc.err != nil {
 				require.Equal(t, tc.err, err)
 				return
@@ -1227,6 +1227,100 @@ func buildTestMemChunk(t *testing.T, from, through time.Time) *MemChunk {
 			Timestamp: from,
 		})
 		require.NoError(t, err)
+	}
+
+	return chk
+}
+
+func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
+	chkFrom := time.Unix(1, 0) // headBlock.Append treats Unix time 0 as not set so we have to use a later time
+	chkFromPlus5 := chkFrom.Add(5 * time.Second)
+	chkThrough := chkFrom.Add(10 * time.Second)
+	chkThroughPlus1 := chkThrough.Add(1 * time.Second)
+
+	filterFunc := func(in string) bool {
+		return strings.HasPrefix(in, "matching")
+	}
+
+	for _, tc := range []struct {
+		name                               string
+		matchingSliceFrom, matchingSliceTo *time.Time
+		err                                error
+		nrMatching                         int
+		nrNotMatching                      int
+	}{
+		{
+			name:          "no matches",
+			nrMatching:    0,
+			nrNotMatching: 10,
+		},
+		{
+			name:              "some lines removed",
+			matchingSliceFrom: &chkFrom,
+			matchingSliceTo:   &chkFromPlus5,
+			nrMatching:        5,
+			nrNotMatching:     5,
+		},
+		{
+			name:              "all lines match",
+			err:               chunk.ErrSliceNoDataInRange,
+			matchingSliceFrom: &chkFrom,
+			matchingSliceTo:   &chkThroughPlus1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			originalChunk := buildFilterableTestMemChunk(t, chkFrom, chkThrough, tc.matchingSliceFrom, tc.matchingSliceTo)
+			newChunk, err := originalChunk.Rebound(chkFrom, chkThrough, filterFunc)
+			if tc.err != nil {
+				require.Equal(t, tc.err, err)
+				return
+			}
+			require.NoError(t, err)
+
+			// iterate originalChunk from slice start to slice end + nanosecond. Adding a nanosecond here to be inclusive of sample at end time.
+			originalChunkItr, err := originalChunk.Iterator(context.Background(), chkFrom, chkThrough.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+			require.NoError(t, err)
+			originalChunkSamples := 0
+			for originalChunkItr.Next() {
+				originalChunkSamples++
+			}
+			require.Equal(t, tc.nrMatching+tc.nrNotMatching, originalChunkSamples)
+
+			// iterate newChunk for whole chunk interval which should include all the samples in the chunk and hence align it with expected values.
+			newChunkItr, err := newChunk.Iterator(context.Background(), chkFrom, chkThrough.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+			require.NoError(t, err)
+			newChunkSamples := 0
+			for newChunkItr.Next() {
+				newChunkSamples++
+			}
+			require.Equal(t, tc.nrNotMatching, newChunkSamples)
+		})
+	}
+}
+
+func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matchingFrom, matchingTo *time.Time) *MemChunk {
+	chk := NewMemChunk(EncGZIP, DefaultHeadBlockFmt, defaultBlockSize, 0)
+	t.Logf("from   : %v", from.String())
+	t.Logf("through: %v", through.String())
+	for from.Before(through) {
+		// If a line is between matchingFrom and matchingTo add the prefix "matching"
+		if matchingFrom != nil && matchingTo != nil &&
+			(from.Equal(*matchingFrom) || (from.After(*matchingFrom) && (from.Before(*matchingTo)))) {
+			t.Logf("%v matching line", from.String())
+			err := chk.Append(&logproto.Entry{
+				Line:      fmt.Sprintf("matching %v", from.String()),
+				Timestamp: from,
+			})
+			require.NoError(t, err)
+		} else {
+			t.Logf("%v non-match line", from.String())
+			err := chk.Append(&logproto.Entry{
+				Line:      from.String(),
+				Timestamp: from,
+			})
+			require.NoError(t, err)
+		}
+		from = from.Add(time.Second)
 	}
 
 	return chk

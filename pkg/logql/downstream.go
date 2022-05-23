@@ -46,17 +46,15 @@ type DownstreamEngine struct {
 	timeout        time.Duration
 	downstreamable Downstreamable
 	limits         Limits
-	metrics        *ShardingMetrics
 }
 
 // NewDownstreamEngine constructs a *DownstreamEngine
-func NewDownstreamEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics, limits Limits, logger log.Logger) *DownstreamEngine {
+func NewDownstreamEngine(opts EngineOpts, downstreamable Downstreamable, limits Limits, logger log.Logger) *DownstreamEngine {
 	opts.applyDefault()
 	return &DownstreamEngine{
 		logger:         logger,
 		timeout:        opts.Timeout,
 		downstreamable: downstreamable,
-		metrics:        metrics,
 		limits:         limits,
 	}
 }

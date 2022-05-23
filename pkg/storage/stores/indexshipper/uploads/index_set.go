@@ -31,7 +31,6 @@ type indexSet struct {
 	storageIndexSet   storage.IndexSet
 	tableName, userID string
 	logger            log.Logger
-	uploader          string
 
 	index    map[string]index.Index
 	indexMtx sync.RWMutex
@@ -238,14 +237,5 @@ func (t *indexSet) removeIndex(name string) error {
 }
 
 func (t *indexSet) buildFileName(indexName string) string {
-	// Files are stored with <uploader>-<index-name>
-	fileName := fmt.Sprintf("%s-%s", t.uploader, indexName)
-
-	// if the file is a migrated one then don't add its name to the object key otherwise we would re-upload them again here with a different name.
-	// This is kept for historic reasons of boltdb-shipper.
-	if t.tableName == indexName {
-		fileName = t.uploader
-	}
-
-	return fmt.Sprintf("%s.gz", fileName)
+	return fmt.Sprintf("%s.gz", indexName)
 }

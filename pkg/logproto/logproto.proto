@@ -2,42 +2,56 @@ syntax = "proto3";
 
 package logproto;
 
-option go_package = "github.com/grafana/loki/pkg/logproto";
-
-import "google/protobuf/timestamp.proto";
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 
+option go_package = "github.com/grafana/loki/pkg/logproto";
+
 service Pusher {
-  rpc Push(PushRequest) returns (PushResponse) {};
+  rpc Push(PushRequest) returns (PushResponse) {}
 }
 
 service Querier {
-  rpc Query(QueryRequest) returns (stream QueryResponse) {};
-  rpc QuerySample(SampleQueryRequest) returns (stream SampleQueryResponse) {};
-  rpc Label(LabelRequest) returns (LabelResponse) {};
-  rpc Tail(TailRequest) returns (stream TailResponse) {};
-  rpc Series(SeriesRequest) returns (SeriesResponse) {};
-  rpc TailersCount(TailersCountRequest) returns (TailersCountResponse) {};
-  rpc GetChunkIDs(GetChunkIDsRequest) returns (GetChunkIDsResponse) {}; // GetChunkIDs returns ChunkIDs from the index store holding logs for given selectors and time-range.
+  rpc Query(QueryRequest) returns (stream QueryResponse) {}
+
+  rpc QuerySample(SampleQueryRequest) returns (stream SampleQueryResponse) {}
+
+  rpc Label(LabelRequest) returns (LabelResponse) {}
+
+  rpc Tail(TailRequest) returns (stream TailResponse) {}
+
+  rpc Series(SeriesRequest) returns (SeriesResponse) {}
+
+  rpc TailersCount(TailersCountRequest) returns (TailersCountResponse) {}
+
+  rpc GetChunkIDs(GetChunkIDsRequest) returns (GetChunkIDsResponse) {}
 }
 
 service Ingester {
-  rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
+  rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {}
 }
 
 message PushRequest {
-  repeated StreamAdapter streams = 1 [(gogoproto.jsontag) = "streams", (gogoproto.customtype) = "Stream"];
+  repeated StreamAdapter streams = 1 [
+    (gogoproto.jsontag) = "streams",
+    (gogoproto.customtype) = "Stream"
+  ];
 }
 
-message PushResponse {
-}
+message PushResponse {}
 
 message QueryRequest {
   string selector = 1;
   uint32 limit = 2;
-  google.protobuf.Timestamp start = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  google.protobuf.Timestamp end = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp start = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
   Direction direction = 5;
   reserved 6;
   repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
@@ -46,8 +60,14 @@ message QueryRequest {
 
 message SampleQueryRequest {
   string selector = 1;
-  google.protobuf.Timestamp start = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  google.protobuf.Timestamp end = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp start = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
   repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
   repeated Delete deletes = 5;
 }
@@ -59,28 +79,37 @@ message Delete {
 }
 
 message QueryResponse {
-  repeated StreamAdapter streams = 1 [(gogoproto.customtype) = "Stream", (gogoproto.nullable) = true];
+  repeated StreamAdapter streams = 1 [
+    (gogoproto.customtype) = "Stream",
+    (gogoproto.nullable) = true
+  ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
 }
 
 message SampleQueryResponse {
-  repeated Series series = 1 [(gogoproto.customtype) = "Series", (gogoproto.nullable) = true];
+  repeated Series series = 1 [
+    (gogoproto.customtype) = "Series",
+    (gogoproto.nullable) = true
+  ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
 }
-
 
 enum Direction {
   FORWARD = 0;
   BACKWARD = 1;
 }
 
-
-
 message LabelRequest {
   string name = 1;
   bool values = 2; // True to fetch label values, false for fetch labels names.
-  google.protobuf.Timestamp start = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = true];
-  google.protobuf.Timestamp end = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = true];
+  google.protobuf.Timestamp start = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
+  google.protobuf.Timestamp end = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
 }
 
 message LabelResponse {
@@ -89,13 +118,20 @@ message LabelResponse {
 
 message StreamAdapter {
   string labels = 1 [(gogoproto.jsontag) = "labels"];
-  repeated EntryAdapter entries = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "entries"];
+  repeated EntryAdapter entries = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "entries"
+  ];
   // hash contains the original hash of the stream.
   uint64 hash = 3 [(gogoproto.jsontag) = "-"];
 }
 
 message EntryAdapter {
-  google.protobuf.Timestamp timestamp = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false, (gogoproto.jsontag) = "ts"];
+  google.protobuf.Timestamp timestamp = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "ts"
+  ];
   string line = 2 [(gogoproto.jsontag) = "line"];
 }
 
@@ -107,13 +143,16 @@ message Sample {
 
 // LegacySample exists for backwards compatibility reasons and is deprecated. Do not use.
 message LegacySample {
-  double value       = 1;
+  double value = 1;
   int64 timestamp_ms = 2;
 }
 
 message Series {
   string labels = 1 [(gogoproto.jsontag) = "labels"];
-  repeated Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "samples"];
+  repeated Sample samples = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "samples"
+  ];
   uint64 streamHash = 3 [(gogoproto.jsontag) = "streamHash"];
 }
 
@@ -122,7 +161,10 @@ message TailRequest {
   reserved 2;
   uint32 delayFor = 3;
   uint32 limit = 4;
-  google.protobuf.Timestamp start = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp start = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
 }
 
 message TailResponse {
@@ -131,8 +173,14 @@ message TailResponse {
 }
 
 message SeriesRequest {
-  google.protobuf.Timestamp start = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  google.protobuf.Timestamp end = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
   repeated string groups = 3;
   repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
 }
@@ -142,12 +190,18 @@ message SeriesResponse {
 }
 
 message SeriesIdentifier {
-  map<string,string> labels = 1;
+  map<string, string> labels = 1;
 }
 
 message DroppedStream {
-  google.protobuf.Timestamp from = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  google.protobuf.Timestamp to = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp from = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp to = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
   string labels = 3;
 }
 
@@ -173,13 +227,9 @@ message Chunk {
   bytes data = 1;
 }
 
-message TransferChunksResponse {
+message TransferChunksResponse {}
 
-}
-
-message TailersCountRequest {
-
-}
+message TailersCountRequest {}
 
 message TailersCountResponse {
   uint32 count = 1;
@@ -187,8 +237,14 @@ message TailersCountResponse {
 
 message GetChunkIDsRequest {
   string matchers = 1;
-  google.protobuf.Timestamp start = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  google.protobuf.Timestamp end = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp start = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
 }
 
 message GetChunkIDsResponse {
@@ -201,9 +257,20 @@ message GetChunkIDsResponse {
 // resulting Go struct.
 message ChunkRef {
   uint64 fingerprint = 1 [(gogoproto.jsontag) = "fingerprint"];
-  string user_id = 2 [(gogoproto.customname) = "UserID", (gogoproto.jsontag) = "userID"];
-  int64 from = 3 [(gogoproto.jsontag) = "from", (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
-  int64 through = 4 [(gogoproto.jsontag) = "through", (gogoproto.customtype) = "github.com/prometheus/common/model.Time", (gogoproto.nullable) = false];
+  string user_id = 2 [
+    (gogoproto.customname) = "UserID",
+    (gogoproto.jsontag) = "userID"
+  ];
+  int64 from = 3 [
+    (gogoproto.jsontag) = "from",
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 4 [
+    (gogoproto.jsontag) = "through",
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
 
   // The checksum is not written to the external storage. We use crc32,
   // Castagnoli table. See http://www.evanjones.ca/crc32c.html.

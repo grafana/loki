@@ -8,7 +8,7 @@ import (
 )
 
 func Test_SplitRangeInterval(t *testing.T) {
-	rvm, err := NewRangeMapper(2 * time.Second)
+	rvm, err := NewRangeMapper(2*time.Second, nilShardMetrics)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -50,7 +50,7 @@ func Test_SplitRangeInterval(t *testing.T) {
 }
 
 func Test_SplitRangeVectorMapping(t *testing.T) {
-	rvm, err := NewRangeMapper(time.Minute)
+	rvm, err := NewRangeMapper(time.Minute, nilShardMetrics)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -932,6 +932,26 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				)
 			)`,
 		},
+		{
+			`sum (count_over_time({app="foo"} | logfmt | duration > 10s [3m])) / sum (count_over_time({app="foo"} [3m]))`,
+			`(
+				sum (
+					sum without (
+						   downstream<sum (count_over_time({app="foo"} | logfmt | duration > 10s [1m] offset 2m0s)), shard=<nil>>
+						++ downstream<sum (count_over_time({app="foo"} | logfmt | duration > 10s [1m] offset 1m0s)), shard=<nil>>
+						++ downstream<sum (count_over_time({app="foo"} | logfmt | duration > 10s [1m])), shard=<nil>>
+					)
+				)
+				/
+				sum (
+					sum without (
+						   downstream<sum (count_over_time({app="foo"} [1m] offset 2m0s)), shard=<nil>>
+						++ downstream<sum (count_over_time({app="foo"} [1m] offset 1m0s)), shard=<nil>>
+						++ downstream<sum (count_over_time({app="foo"} [1m])), shard=<nil>>
+					)
+				)
+			)`,
+		},
 
 		// Multi vector aggregator layer queries
 		{
@@ -959,6 +979,98 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				)
 			)`,
 		},
+
+		// outer vector aggregation is pushed down
+		{
+			`sum(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`sum(
+				min without(
+					   downstream<sum(min_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 2m0s)), shard=<nil>>
+					++ downstream<sum(min_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 1m0s)), shard=<nil>>
+					++ downstream<sum(min_over_time({app="foo"} | logfmt | unwrap bar [1m])), shard=<nil>>
+				)
+			)`,
+		},
+		{
+			`sum(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`sum(
+				max without(
+					   downstream<sum(max_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 2m0s)), shard=<nil>>
+					++ downstream<sum(max_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 1m0s)), shard=<nil>>
+					++ downstream<sum(max_over_time({app="foo"} | logfmt | unwrap bar [1m])), shard=<nil>>
+				)
+			)`,
+		},
+		{
+			`sum(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`sum(
+				sum without(
+					   downstream<sum(sum_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 2m0s)), shard=<nil>>
+					++ downstream<sum(sum_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 1m0s)), shard=<nil>>
+					++ downstream<sum(sum_over_time({app="foo"} | logfmt | unwrap bar [1m])), shard=<nil>>
+				)
+			)`,
+		},
+		{
+			`min(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`min(
+				min without(
+					   downstream<min(min_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 2m0s)), shard=<nil>>
+					++ downstream<min(min_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 1m0s)), shard=<nil>>
+					++ downstream<min(min_over_time({app="foo"} | logfmt | unwrap bar [1m])), shard=<nil>>
+				)
+			)`,
+		},
+		{
+			`min(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`min(
+				max without(
+					   downstream<min(max_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 2m0s)), shard=<nil>>
+					++ downstream<min(max_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 1m0s)), shard=<nil>>
+					++ downstream<min(max_over_time({app="foo"} | logfmt | unwrap bar [1m])), shard=<nil>>
+				)
+			)`,
+		},
+		{
+			`min(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`min(
+				sum without(
+					   downstream<min(sum_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 2m0s)), shard=<nil>>
+					++ downstream<min(sum_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 1m0s)), shard=<nil>>
+					++ downstream<min(sum_over_time({app="foo"} | logfmt | unwrap bar [1m])), shard=<nil>>
+				)
+			)`,
+		},
+		{
+			`max(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`max(
+				min without(
+					   downstream<max(min_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 2m0s)), shard=<nil>>
+					++ downstream<max(min_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 1m0s)), shard=<nil>>
+					++ downstream<max(min_over_time({app="foo"} | logfmt | unwrap bar [1m])), shard=<nil>>
+				)
+			)`,
+		},
+		{
+			`max(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`max(
+				max without(
+					   downstream<max(max_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 2m0s)), shard=<nil>>
+					++ downstream<max(max_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 1m0s)), shard=<nil>>
+					++ downstream<max(max_over_time({app="foo"} | logfmt | unwrap bar [1m])), shard=<nil>>
+				)
+			)`,
+		},
+		{
+			`max(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
+			`max(
+				sum without(
+					   downstream<max(sum_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 2m0s)), shard=<nil>>
+					++ downstream<max(sum_over_time({app="foo"} | logfmt | unwrap bar [1m] offset 1m0s)), shard=<nil>>
+					++ downstream<max(sum_over_time({app="foo"} | logfmt | unwrap bar [1m])), shard=<nil>>
+				)
+			)`,
+		},
 	} {
 		tc := tc
 		t.Run(tc.expr, func(t *testing.T) {
@@ -972,7 +1084,7 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 }
 
 func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
-	rvm, err := NewRangeMapper(time.Minute)
+	rvm, err := NewRangeMapper(time.Minute, nilShardMetrics)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -998,44 +1110,14 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 		// should be noop if inner range aggregation includes a stage for label extraction such as `| json` or `| logfmt`
 		// because otherwise the downstream queries would result in too many series
 		{
-			`sum(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`sum(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-		},
-		{
-			`sum(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`sum(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-		},
-		{
-			`sum(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`sum(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-		},
-		{
-			`min(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`min(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-		},
-		{
-			`min(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`min(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-		},
-		{
-			`min(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`min(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-		},
-		{
-			`max(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`max(min_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-		},
-		{
-			`max(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`max(max_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-		},
-		{
-			`max(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-			`max(sum_over_time({app="foo"} | logfmt | unwrap bar [3m]))`,
-		},
-		{
 			`max_over_time({app="foo"} | json | unwrap bar [3m])`,
 			`max_over_time({app="foo"} | json | unwrap bar [3m])`,
+		},
+
+		// if one side of a binary expression is a noop, the full query is a noop as well
+		{
+			`sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m])`,
+			`(sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m]))`,
 		},
 	} {
 		tc := tc
@@ -1050,7 +1132,7 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 }
 
 func Test_FailQuery(t *testing.T) {
-	rvm, err := NewRangeMapper(2 * time.Minute)
+	rvm, err := NewRangeMapper(2*time.Minute, nilShardMetrics)
 	require.NoError(t, err)
 	_, _, err = rvm.Parse(`{app="foo"} |= "err"`)
 	require.Error(t, err)

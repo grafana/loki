@@ -15,7 +15,7 @@ To get the  statistic from the current context you can use:
 
 Finally to get a snapshot of the current query statistic use
 
-	statsCtx.Result(time.Since(start))
+	statsCtx.Result(time.Since(start), queueTime, totalEntriesReturned)
 
 */
 package stats
@@ -91,7 +91,7 @@ func (c *Context) Reset() {
 }
 
 // Result calculates the summary based on store and ingester data.
-func (c *Context) Result(execTime time.Duration, queueTime time.Duration) Result {
+func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) Result {
 	r := c.result
 
 	r.Merge(Result{
@@ -101,7 +101,7 @@ func (c *Context) Result(execTime time.Duration, queueTime time.Duration) Result
 		Ingester: c.ingester,
 	})
 
-	r.ComputeSummary(execTime, queueTime)
+	r.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 
 	return r
 }
@@ -125,7 +125,7 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 }
 
 // ComputeSummary compute the summary of the statistics.
-func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration) {
+func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) {
 	r.Summary.TotalBytesProcessed = r.Querier.Store.Chunk.DecompressedBytes + r.Querier.Store.Chunk.HeadChunkBytes +
 		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes
 	r.Summary.TotalLinesProcessed = r.Querier.Store.Chunk.DecompressedLines + r.Querier.Store.Chunk.HeadChunkLines +
@@ -140,6 +140,8 @@ func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration)
 	if queueTime != 0 {
 		r.Summary.QueueTime = queueTime.Seconds()
 	}
+
+	r.Summary.TotalEntriesReturned = int64(totalEntriesReturned)
 }
 
 func (s *Store) Merge(m Store) {
@@ -173,7 +175,7 @@ func (r *Result) Merge(m Result) {
 	r.Querier.Merge(m.Querier)
 	r.Ingester.Merge(m.Ingester)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
-		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime))
+		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
 }
 
 // ConvertSecondsToNanoseconds converts time.Duration representation of seconds (float64)

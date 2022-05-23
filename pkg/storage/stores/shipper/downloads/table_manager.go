@@ -31,6 +31,11 @@ type Limits interface {
 	DefaultLimits() *validation.Limits
 }
 
+// IndexGatewayOwnsTenant is invoked by an IndexGateway instance and answers whether if the given tenant is assigned to this instance or not.
+//
+// It is only relevant by an IndexGateway in the ring mode and if it returns false for a given tenant, that tenant will be ignored by this IndexGateway during query readiness.
+type IndexGatewayOwnsTenant func(tenant string) bool
+
 type Config struct {
 	CacheDir          string
 	SyncInterval      time.Duration
@@ -51,9 +56,11 @@ type TableManager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	ownsTenant IndexGatewayOwnsTenant
 }
 
-func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, indexStorageClient storage.Client, registerer prometheus.Registerer) (*TableManager, error) {
+func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, indexStorageClient storage.Client, ownsTenantFn IndexGatewayOwnsTenant, registerer prometheus.Registerer) (*TableManager, error) {
 	if err := chunk_util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
@@ -63,6 +70,7 @@ func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, indexStorage
 		cfg:                cfg,
 		boltIndexClient:    boltIndexClient,
 		indexStorageClient: indexStorageClient,
+		ownsTenant:         ownsTenantFn,
 		tables:             make(map[string]Table),
 		metrics:            newMetrics(registerer),
 		ctx:                ctx,
@@ -241,6 +249,11 @@ func (tm *TableManager) cleanupCache() error {
 
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
+	start := time.Now()
+	defer func() {
+		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start))
+	}()
+
 	activeTableNumber := getActiveTableNumber()
 
 	// find the largest query readiness number
@@ -291,7 +304,7 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 
 		// list the users that have dedicated index files for this table
-		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName)
+		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName, false)
 		if err != nil {
 			return err
 		}
@@ -309,9 +322,11 @@ func (tm *TableManager) ensureQueryReadiness(ctx context.Context) error {
 			return err
 		}
 
+		perTableStart := time.Now()
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
+		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users_len", len(usersToBeQueryReadyFor), "duration", time.Since(perTableStart), "table", tableName)
 	}
 
 	return nil
@@ -333,6 +348,10 @@ func (tm *TableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 		}
 
 		if queryReadyNumDays == 0 {
+			continue
+		}
+
+		if tm.ownsTenant != nil && !tm.ownsTenant(userID) {
 			continue
 		}
 

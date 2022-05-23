@@ -13,7 +13,6 @@ import (
 )
 
 type Config struct {
-	Uploader       string
 	UploadInterval time.Duration
 	DBRetainPeriod time.Duration
 }
@@ -90,27 +89,38 @@ func (tm *tableManager) AddIndex(tableName, userID string, index index.Index) er
 	return tm.getOrCreateTable(tableName).AddIndex(userID, index)
 }
 
-func (tm *tableManager) getOrCreateTable(tableName string) Table {
+func (tm *tableManager) getTable(tableName string) (Table, bool) {
 	tm.tablesMtx.RLock()
+	defer tm.tablesMtx.RUnlock()
+
 	table, ok := tm.tables[tableName]
-	tm.tablesMtx.RUnlock()
+	return table, ok
+}
 
+func (tm *tableManager) getOrCreateTable(tableName string) Table {
+	table, ok := tm.getTable(tableName)
+	if ok {
+		return table
+	}
+
+	tm.tablesMtx.Lock()
+	defer tm.tablesMtx.Unlock()
+
+	table, ok = tm.tables[tableName]
 	if !ok {
-		tm.tablesMtx.Lock()
-		defer tm.tablesMtx.Unlock()
-
-		table, ok = tm.tables[tableName]
-		if !ok {
-			table = NewTable(tableName, tm.cfg.Uploader, tm.storageClient)
-			tm.tables[tableName] = table
-		}
+		table = NewTable(tableName, tm.storageClient)
+		tm.tables[tableName] = table
 	}
 
 	return table
 }
 
 func (tm *tableManager) ForEach(tableName, userID string, callback index.ForEachIndexCallback) error {
-	table := tm.getOrCreateTable(tableName)
+	table, ok := tm.getTable(tableName)
+	if !ok {
+		return nil
+	}
+
 	return table.ForEach(userID, callback)
 }
 

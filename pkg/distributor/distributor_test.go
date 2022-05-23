@@ -100,6 +100,214 @@ func TestDistributor(t *testing.T) {
 	}
 }
 
+func Test_IncrementTimestamp(t *testing.T) {
+	incrementingDisabled := &validation.Limits{}
+	flagext.DefaultValues(incrementingDisabled)
+	incrementingDisabled.RejectOldSamples = false
+
+	incrementingEnabled := &validation.Limits{}
+	flagext.DefaultValues(incrementingEnabled)
+	incrementingEnabled.RejectOldSamples = false
+	incrementingEnabled.IncrementDuplicateTimestamp = true
+
+	tests := map[string]struct {
+		limits       *validation.Limits
+		push         *logproto.PushRequest
+		expectedPush *logproto.PushRequest
+	}{
+		"incrementing disabled, no dupes": {
+			limits: incrementingDisabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123457, 0), Line: "heyiiiiiii"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123457, 0), Line: "heyiiiiiii"},
+						},
+					},
+				},
+			},
+		},
+		"incrementing disabled, with dupe timestamp different entry": {
+			limits: incrementingDisabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyiiiiiii"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyiiiiiii"},
+						},
+					},
+				},
+			},
+		},
+		"incrementing disabled, with dupe timestamp same entry": {
+			limits: incrementingDisabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+						},
+					},
+				},
+			},
+		},
+		"incrementing enabled, no dupes": {
+			limits: incrementingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123457, 0), Line: "heyiiiiiii"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123457, 0), Line: "heyiiiiiii"},
+						},
+					},
+				},
+			},
+		},
+		"incrementing enabled, with dupe timestamp different entry": {
+			limits: incrementingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyiiiiiii"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 1), Line: "heyiiiiiii"},
+						},
+					},
+				},
+			},
+		},
+		"incrementing enabled, with dupe timestamp same entry": {
+			limits: incrementingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+						},
+					},
+				},
+			},
+		},
+		"incrementing enabled, multiple subsequent increments": {
+			limits: incrementingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 0), Line: "hi"},
+							{Timestamp: time.Unix(123456, 1), Line: "hey there"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
+							{Timestamp: time.Unix(123456, 1), Line: "hi"},
+							{Timestamp: time.Unix(123456, 2), Line: "hey there"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			ingester := &mockIngester{}
+			d := prepare(t, testData.limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+			_, err := d.Push(ctx, testData.push)
+			assert.NoError(t, err)
+			assert.Equal(t, testData.expectedPush, ingester.pushed[0])
+		})
+	}
+}
+
 func Test_SortLabelsOnPush(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)

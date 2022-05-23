@@ -5,7 +5,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -170,14 +169,4 @@ func FindSetMatches(pattern string) []string {
 		}
 	}
 	return matches
-}
-
-// Using this function avoids logging of nil matcher, which works, but indirectly via panic and recover.
-// That confuses attached debugger, which wants to breakpoint on each panic.
-// Using simple check is also faster.
-func formatMatcher(matcher *labels.Matcher) string {
-	if matcher == nil {
-		return "nil"
-	}
-	return matcher.String()
 }

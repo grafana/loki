@@ -103,6 +103,10 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			betterBoltdbShipperDefaults(r, &defaults)
 		}
 
+		if len(r.SchemaConfig.Configs) > 0 && config.UsingTSDB(r.SchemaConfig.Configs) {
+			betterTSDBShipperDefaults(r, &defaults)
+		}
+
 		applyFIFOCacheConfig(r)
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
@@ -449,6 +453,16 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
+	if !reflect.DeepEqual(cfg.Common.Storage.BOS, defaults.StorageConfig.BOSStorageConfig) {
+		configsFound++
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "bos"
+			r.Ruler.StoreConfig.BOS = r.Common.Storage.BOS
+			r.StorageConfig.BOSStorageConfig = r.Common.Storage.BOS
+			r.CompactorConfig.SharedStoreType = config.StorageTypeBOS
+		}
+	}
+
 	if !reflect.DeepEqual(cfg.Common.Storage.Swift, defaults.StorageConfig.Swift) {
 		configsFound++
 
@@ -493,6 +507,31 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
 
 		if cfg.StorageConfig.BoltDBShipperConfig.CacheLocation == "" {
 			cfg.StorageConfig.BoltDBShipperConfig.CacheLocation = fmt.Sprintf("%s/boltdb-shipper-cache", prefix)
+		}
+	}
+}
+
+func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper) {
+	currentSchemaIdx := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
+	currentSchema := cfg.SchemaConfig.Configs[currentSchemaIdx]
+
+	if cfg.StorageConfig.TSDBShipperConfig.SharedStoreType == defaults.StorageConfig.TSDBShipperConfig.SharedStoreType {
+		cfg.StorageConfig.TSDBShipperConfig.SharedStoreType = currentSchema.ObjectType
+	}
+
+	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
+		cfg.CompactorConfig.SharedStoreType = currentSchema.ObjectType
+	}
+
+	if cfg.Common.PathPrefix != "" {
+		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
+
+		if cfg.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory == "" {
+			cfg.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory = fmt.Sprintf("%s/tsdb-shipper-active", prefix)
+		}
+
+		if cfg.StorageConfig.TSDBShipperConfig.CacheLocation == "" {
+			cfg.StorageConfig.TSDBShipperConfig.CacheLocation = fmt.Sprintf("%s/tsdb-shipper-cache", prefix)
 		}
 	}
 }

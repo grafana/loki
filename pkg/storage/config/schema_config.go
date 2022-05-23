@@ -25,6 +25,7 @@ const (
 	StorageTypeAWS            = "aws"
 	StorageTypeAWSDynamo      = "aws-dynamo"
 	StorageTypeAzure          = "azure"
+	StorageTypeBOS            = "bos"
 	StorageTypeBoltDB         = "boltdb"
 	StorageTypeCassandra      = "cassandra"
 	StorageTypeInMemory       = "inmemory"
@@ -39,6 +40,7 @@ const (
 	StorageTypeSwift          = "swift"
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
 	BoltDBShipperType = "boltdb-shipper"
+	TSDBType          = "tsdb"
 )
 
 var (
@@ -184,15 +186,45 @@ func ActivePeriodConfig(configs []PeriodConfig) int {
 	return i
 }
 
-// UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
-func UsingBoltdbShipper(configs []PeriodConfig) bool {
+func usingForPeriodConfigs(configs []PeriodConfig, fn func(PeriodConfig) bool) bool {
 	activePCIndex := ActivePeriodConfig(configs)
-	if configs[activePCIndex].IndexType == BoltDBShipperType ||
-		(len(configs)-1 > activePCIndex && configs[activePCIndex+1].IndexType == BoltDBShipperType) {
+
+	if fn(configs[activePCIndex]) ||
+		(len(configs)-1 > activePCIndex && fn(configs[activePCIndex+1])) {
 		return true
 	}
 
 	return false
+}
+
+func UsingObjectStorageIndex(configs []PeriodConfig) bool {
+	fn := func(cfg PeriodConfig) bool {
+		switch cfg.IndexType {
+		case BoltDBShipperType, TSDBType:
+			return true
+		default:
+			return false
+		}
+	}
+
+	return usingForPeriodConfigs(configs, fn)
+}
+
+// UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
+func UsingBoltdbShipper(configs []PeriodConfig) bool {
+	fn := func(cfg PeriodConfig) bool {
+		return cfg.IndexType == BoltDBShipperType
+	}
+
+	return usingForPeriodConfigs(configs, fn)
+}
+
+func UsingTSDB(configs []PeriodConfig) bool {
+	fn := func(cfg PeriodConfig) bool {
+		return cfg.IndexType == TSDBType
+	}
+
+	return usingForPeriodConfigs(configs, fn)
 }
 
 func defaultRowShards(schema string) uint32 {

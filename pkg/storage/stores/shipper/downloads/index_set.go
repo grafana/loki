@@ -25,8 +25,10 @@ import (
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
+var errIndexListCacheTooStale = fmt.Errorf("index list cache too stale")
+
 type IndexSet interface {
-	Init() error
+	Init(forQuerying bool) error
 	Close()
 	MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 	DropAllDBs() error
@@ -43,7 +45,6 @@ type indexSet struct {
 	baseIndexSet      storage.IndexSet
 	tableName, userID string
 	cacheLocation     string
-	metrics           *metrics
 	boltDBIndexClient BoltDBIndexClient
 	logger            log.Logger
 
@@ -56,8 +57,7 @@ type indexSet struct {
 }
 
 func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet,
-	boltDBIndexClient BoltDBIndexClient, logger log.Logger, metrics *metrics,
-) (IndexSet, error) {
+	boltDBIndexClient BoltDBIndexClient, logger log.Logger) (IndexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -74,7 +74,6 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		tableName:         tableName,
 		userID:            userID,
 		cacheLocation:     cacheLocation,
-		metrics:           metrics,
 		boltDBIndexClient: boltDBIndexClient,
 		logger:            logger,
 		lastUsedAt:        time.Now(),
@@ -87,7 +86,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 }
 
 // Init downloads all the db files for the table from object storage.
-func (t *indexSet) Init() (err error) {
+func (t *indexSet) Init(forQuerying bool) (err error) {
 	// Using background context to avoid cancellation of download when request times out.
 	// We would anyways need the files for serving next requests.
 	ctx, cancelFunc := context.WithTimeout(context.Background(), downloadTimeout)
@@ -142,7 +141,7 @@ func (t *indexSet) Init() (err error) {
 	level.Debug(logger).Log("msg", fmt.Sprintf("opened %d local files, now starting sync operation", len(t.dbs)))
 
 	// sync the table to get new files and remove the deleted ones from storage.
-	err = t.sync(ctx, false)
+	err = t.sync(ctx, false, forQuerying)
 	if err != nil {
 		return
 	}
@@ -275,22 +274,14 @@ func (t *indexSet) cleanupDB(fileName string) error {
 }
 
 func (t *indexSet) Sync(ctx context.Context) (err error) {
-	return t.sync(ctx, true)
+	return t.sync(ctx, true, false)
 }
 
 // sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
-func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
+func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err error) {
 	level.Debug(t.logger).Log("msg", "syncing index files")
 
-	defer func() {
-		status := statusSuccess
-		if err != nil {
-			status = statusFailure
-		}
-		t.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
-	}()
-
-	toDownload, toDelete, err := t.checkStorageForUpdates(ctx, lock)
+	toDownload, toDelete, err := t.checkStorageForUpdates(ctx, lock, bypassListCache)
 	if err != nil {
 		return err
 	}
@@ -300,6 +291,14 @@ func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
 	downloadedFiles, err := t.doConcurrentDownload(ctx, toDownload)
 	if err != nil {
 		return err
+	}
+
+	// if we did not bypass list cache and skipped downloading all the new files due to them being removed by compaction,
+	// it means the cache is not valid anymore since compaction would have happened after last index list cache refresh.
+	// Let us return error to ask the caller to re-run the sync after the list cache refresh.
+	if !bypassListCache && len(downloadedFiles) == 0 && len(toDownload) > 0 {
+		level.Error(t.logger).Log("msg", "we skipped downloading all the new files, possibly removed by compaction", "files", toDownload)
+		return errIndexListCacheTooStale
 	}
 
 	if lock {
@@ -331,11 +330,11 @@ func (t *indexSet) sync(ctx context.Context, lock bool) (err error) {
 }
 
 // checkStorageForUpdates compares files from cache with storage and builds the list of files to be downloaded from storage and to be deleted from cache
-func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock bool) (toDownload []storage.IndexFile, toDelete []string, err error) {
+func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock, bypassListCache bool) (toDownload []storage.IndexFile, toDelete []string, err error) {
 	// listing tables from store
 	var files []storage.IndexFile
 
-	files, err = t.baseIndexSet.ListFiles(ctx, t.tableName, t.userID)
+	files, err = t.baseIndexSet.ListFiles(ctx, t.tableName, t.userID, bypassListCache)
 	if err != nil {
 		return
 	}

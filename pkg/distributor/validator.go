@@ -40,20 +40,23 @@ type validationContext struct {
 	maxLabelNameLength     int
 	maxLabelValueLength    int
 
+	incrementDuplicateTimestamps bool
+
 	userID string
 }
 
 func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {
 	return validationContext{
-		userID:                 userID,
-		rejectOldSample:        v.RejectOldSamples(userID),
-		rejectOldSampleMaxAge:  now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
-		creationGracePeriod:    now.Add(v.CreationGracePeriod(userID)).UnixNano(),
-		maxLineSize:            v.MaxLineSize(userID),
-		maxLineSizeTruncate:    v.MaxLineSizeTruncate(userID),
-		maxLabelNamesPerSeries: v.MaxLabelNamesPerSeries(userID),
-		maxLabelNameLength:     v.MaxLabelNameLength(userID),
-		maxLabelValueLength:    v.MaxLabelValueLength(userID),
+		userID:                       userID,
+		rejectOldSample:              v.RejectOldSamples(userID),
+		rejectOldSampleMaxAge:        now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
+		creationGracePeriod:          now.Add(v.CreationGracePeriod(userID)).UnixNano(),
+		maxLineSize:                  v.MaxLineSize(userID),
+		maxLineSizeTruncate:          v.MaxLineSizeTruncate(userID),
+		maxLabelNamesPerSeries:       v.MaxLabelNamesPerSeries(userID),
+		maxLabelNameLength:           v.MaxLabelNameLength(userID),
+		maxLabelValueLength:          v.MaxLabelValueLength(userID),
+		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
 	}
 }
 

@@ -2,13 +2,12 @@ syntax = "proto3";
 
 package queryrangebase;
 
-option go_package = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase";
-
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-import "google/protobuf/duration.proto";
 import "google/protobuf/any.proto";
+import "google/protobuf/duration.proto";
 import "pkg/logproto/logproto.proto";
 
+option go_package = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -21,7 +20,10 @@ message PrometheusRequest {
   int64 start = 2;
   int64 end = 3;
   int64 step = 4;
-  google.protobuf.Duration timeout = 5 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+  google.protobuf.Duration timeout = 5 [
+    (gogoproto.stdduration) = true,
+    (gogoproto.nullable) = false
+  ];
   string query = 6;
   CachingOptions cachingOptions = 7 [(gogoproto.nullable) = false];
   repeated PrometheusRequestHeader Headers = 8 [(gogoproto.jsontag) = "-"];
@@ -34,7 +36,10 @@ message PrometheusResponseHeader {
 
 message PrometheusResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
-  PrometheusData Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
+  PrometheusData Data = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "data,omitempty"
+  ];
   string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
   string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
   repeated PrometheusResponseHeader Headers = 5 [(gogoproto.jsontag) = "-"];
@@ -42,23 +47,36 @@ message PrometheusResponse {
 
 message PrometheusData {
   string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
-  repeated SampleStream Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result"];
+  repeated SampleStream Result = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "result"
+  ];
 }
 
 message SampleStream {
-  repeated logproto.LegacyLabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
-  repeated logproto.LegacySample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
+  repeated logproto.LegacyLabelPair labels = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "metric",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+  ];
+  repeated logproto.LegacySample samples = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "values"
+  ];
 }
 
-message CachedResponse  {
-	string key = 1 [(gogoproto.jsontag) = "key"];
+message CachedResponse {
+  string key = 1 [(gogoproto.jsontag) = "key"];
 
-	// List of cached responses; non-overlapping and in order.
-	repeated Extent extents = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "extents"];
+  // List of cached responses; non-overlapping and in order.
+  repeated Extent extents = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "extents"
+  ];
 }
 
-message Extent  {
-	int64 start = 1 [(gogoproto.jsontag) = "start"];
+message Extent {
+  int64 start = 1 [(gogoproto.jsontag) = "start"];
   int64 end = 2 [(gogoproto.jsontag) = "end"];
   // reserved the previous key to ensure cache transition
   reserved 3;

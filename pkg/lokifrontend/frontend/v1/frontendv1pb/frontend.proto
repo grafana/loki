@@ -4,19 +4,18 @@ syntax = "proto3";
 // in order to not break backward compatibility.
 package frontend;
 
-option go_package = "frontendv1pb";
-
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
 import "pkg/querier/stats/stats.proto";
 
+option go_package = "frontendv1pb";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 service Frontend {
   // After calling this method, client enters a loop, in which it waits for
   // a "FrontendToClient" message and replies with single "ClientToFrontend" message.
-  rpc Process(stream ClientToFrontend) returns (stream FrontendToClient) {};
+  rpc Process(stream ClientToFrontend) returns (stream FrontendToClient) {}
 
   // The client notifies the query-frontend that it started a graceful shutdown.
   rpc NotifyClientShutdown(NotifyClientShutdownRequest) returns (NotifyClientShutdownResponse);

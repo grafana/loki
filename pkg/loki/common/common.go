@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
@@ -54,12 +55,13 @@ func (c *Config) RegisterFlags(_ *flag.FlagSet) {
 }
 
 type Storage struct {
-	S3       aws.S3Config            `yaml:"s3"`
-	GCS      gcp.GCSConfig           `yaml:"gcs"`
-	Azure    azure.BlobStorageConfig `yaml:"azure"`
-	Swift    openstack.SwiftConfig   `yaml:"swift"`
-	FSConfig FilesystemConfig        `yaml:"filesystem"`
-	Hedging  hedging.Config          `yaml:"hedging"`
+	S3       aws.S3Config              `yaml:"s3"`
+	GCS      gcp.GCSConfig             `yaml:"gcs"`
+	Azure    azure.BlobStorageConfig   `yaml:"azure"`
+	BOS      baidubce.BOSStorageConfig `yaml:"bos"`
+	Swift    openstack.SwiftConfig     `yaml:"swift"`
+	FSConfig FilesystemConfig          `yaml:"filesystem"`
+	Hedging  hedging.Config            `yaml:"hedging"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -67,6 +69,7 @@ func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.GCS.RegisterFlagsWithPrefix(prefix+".gcs", f)
 	s.Azure.RegisterFlagsWithPrefix(prefix+".azure", f)
 	s.Swift.RegisterFlagsWithPrefix(prefix+".swift", f)
+	s.BOS.RegisterFlagsWithPrefix(prefix+".bos", f)
 	s.FSConfig.RegisterFlagsWithPrefix(prefix+".filesystem", f)
 	s.Hedging.RegisterFlagsWithPrefix(prefix, f)
 }

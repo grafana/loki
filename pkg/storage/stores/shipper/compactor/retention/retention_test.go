@@ -313,9 +313,9 @@ func TestChunkRewriter(t *testing.T) {
 	minListMarkDelay = 1 * time.Second
 	now := model.Now()
 	for _, tt := range []struct {
-		name             string
-		chunk            chunk.Chunk
-		rewriteIntervals []model.Interval
+		name                   string
+		chunk                  chunk.Chunk
+		rewriteIntervalFilters []IntervalFilter
 	}{
 		{
 			name:  "no rewrites",
@@ -328,56 +328,87 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "rewrite first half",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-2*time.Hour), now),
-			rewriteIntervals: []model.Interval{
+			rewriteIntervalFilters: []IntervalFilter{
 				{
-					Start: now.Add(-2 * time.Hour),
-					End:   now.Add(-1 * time.Hour),
+					Interval: model.Interval{
+						Start: now.Add(-2 * time.Hour),
+						End:   now.Add(-1 * time.Hour),
+					},
 				},
 			},
 		},
 		{
 			name:  "rewrite second half",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-2*time.Hour), now),
-			rewriteIntervals: []model.Interval{
+			rewriteIntervalFilters: []IntervalFilter{
 				{
-					Start: now.Add(-time.Hour),
-					End:   now,
+					Interval: model.Interval{
+						Start: now.Add(-time.Hour),
+						End:   now,
+					},
 				},
 			},
 		},
 		{
 			name:  "rewrite multiple intervals",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-12*time.Hour), now),
-			rewriteIntervals: []model.Interval{
+			rewriteIntervalFilters: []IntervalFilter{
 				{
-					Start: now.Add(-12 * time.Hour),
-					End:   now.Add(-10 * time.Hour),
+					Interval: model.Interval{
+						Start: now.Add(-12 * time.Hour),
+						End:   now.Add(-10 * time.Hour),
+					},
 				},
 				{
-					Start: now.Add(-9 * time.Hour),
-					End:   now.Add(-5 * time.Hour),
+					Interval: model.Interval{
+						Start: now.Add(-9 * time.Hour),
+						End:   now.Add(-5 * time.Hour),
+					},
 				},
 				{
-					Start: now.Add(-2 * time.Hour),
-					End:   now,
+					Interval: model.Interval{
+						Start: now.Add(-2 * time.Hour),
+						End:   now,
+					},
 				},
 			},
 		},
 		{
 			name:  "rewrite chunk spanning multiple days with multiple intervals",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-72*time.Hour), now),
-			rewriteIntervals: []model.Interval{
+			rewriteIntervalFilters: []IntervalFilter{
 				{
-					Start: now.Add(-71 * time.Hour),
-					End:   now.Add(-47 * time.Hour),
+					Interval: model.Interval{
+						Start: now.Add(-71 * time.Hour),
+						End:   now.Add(-47 * time.Hour),
+					},
 				},
 				{
-					Start: now.Add(-40 * time.Hour),
-					End:   now.Add(-30 * time.Hour),
+					Interval: model.Interval{
+						Start: now.Add(-40 * time.Hour),
+						End:   now.Add(-30 * time.Hour),
+					},
 				},
 				{
-					Start: now.Add(-2 * time.Hour),
-					End:   now,
+					Interval: model.Interval{
+						Start: now.Add(-2 * time.Hour),
+						End:   now,
+					},
+				},
+			},
+		},
+		{
+			name:  "remove no lines using a filter function",
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-2*time.Hour), now),
+			rewriteIntervalFilters: []IntervalFilter{
+				{
+					Interval: model.Interval{
+						Start: now.Add(-1 * time.Hour),
+						End:   now,
+					},
+					Filter: func(s string) bool {
+						return false
+					},
 				},
 			},
 		},
@@ -401,9 +432,9 @@ func TestChunkRewriter(t *testing.T) {
 					cr, err := newChunkRewriter(chunkClient, store.schemaCfg.Configs[0], indexTable.name, bucket)
 					require.NoError(t, err)
 
-					wroteChunks, err := cr.rewriteChunk(context.Background(), entryFromChunk(store.schemaCfg, tt.chunk), tt.rewriteIntervals)
+					wroteChunks, err := cr.rewriteChunk(context.Background(), entryFromChunk(store.schemaCfg, tt.chunk), tt.rewriteIntervalFilters)
 					require.NoError(t, err)
-					if len(tt.rewriteIntervals) == 0 {
+					if len(tt.rewriteIntervalFilters) == 0 {
 						require.False(t, wroteChunks)
 					}
 					return nil
@@ -416,9 +447,9 @@ func TestChunkRewriter(t *testing.T) {
 			chunks := store.GetChunks(tt.chunk.UserID, tt.chunk.From, tt.chunk.Through, tt.chunk.Metric)
 
 			// number of chunks should be the new re-written chunks + the source chunk
-			require.Len(t, chunks, len(tt.rewriteIntervals)+1)
-			for _, interval := range tt.rewriteIntervals {
-				expectedChk := createChunk(t, tt.chunk.UserID, labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, interval.Start, interval.End)
+			require.Len(t, chunks, len(tt.rewriteIntervalFilters)+1)
+			for _, ivf := range tt.rewriteIntervalFilters {
+				expectedChk := createChunk(t, tt.chunk.UserID, labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, ivf.Interval.Start, ivf.Interval.End)
 				for i, chk := range chunks {
 					if store.schemaCfg.ExternalKey(chk.ChunkRef) == store.schemaCfg.ExternalKey(expectedChk.ChunkRef) {
 						chunks = append(chunks[:i], chunks[i+1:]...)
@@ -450,8 +481,8 @@ func (s *seriesCleanedRecorder) Cleanup(userID []byte, lbls labels.Labels) error
 }
 
 type chunkExpiry struct {
-	isExpired           bool
-	nonDeletedIntervals []model.Interval
+	isExpired                 bool
+	nonDeletedIntervalFilters []IntervalFilter
 }
 
 type mockExpirationChecker struct {
@@ -463,9 +494,9 @@ func newMockExpirationChecker(chunksExpiry map[string]chunkExpiry) mockExpiratio
 	return mockExpirationChecker{chunksExpiry: chunksExpiry}
 }
 
-func (m mockExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval) {
+func (m mockExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter) {
 	ce := m.chunksExpiry[string(ref.ChunkID)]
-	return ce.isExpired, ce.nonDeletedIntervals
+	return ce.isExpired, ce.nonDeletedIntervalFilters
 }
 
 func (m mockExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
@@ -534,9 +565,11 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					nonDeletedIntervals: []model.Interval{{
-						Start: todaysTableInterval.Start,
-						End:   todaysTableInterval.Start.Add(15 * time.Minute),
+					nonDeletedIntervalFilters: []IntervalFilter{{
+						Interval: model.Interval{
+							Start: todaysTableInterval.Start,
+							End:   todaysTableInterval.Start.Add(15 * time.Minute),
+						},
 					}},
 				},
 			},
@@ -586,9 +619,11 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 				{
 					isExpired: true,
-					nonDeletedIntervals: []model.Interval{{
-						Start: todaysTableInterval.Start,
-						End:   todaysTableInterval.Start.Add(15 * time.Minute),
+					nonDeletedIntervalFilters: []IntervalFilter{{
+						Interval: model.Interval{
+							Start: todaysTableInterval.Start,
+							End:   todaysTableInterval.Start.Add(15 * time.Minute),
+						},
 					}},
 				},
 			},
@@ -610,9 +645,11 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					nonDeletedIntervals: []model.Interval{{
-						Start: todaysTableInterval.Start,
-						End:   now,
+					nonDeletedIntervalFilters: []IntervalFilter{{
+						Interval: model.Interval{
+							Start: todaysTableInterval.Start,
+							End:   now,
+						},
 					}},
 				},
 			},
@@ -634,9 +671,11 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					nonDeletedIntervals: []model.Interval{{
-						Start: todaysTableInterval.Start.Add(-30 * time.Minute),
-						End:   now,
+					nonDeletedIntervalFilters: []IntervalFilter{{
+						Interval: model.Interval{
+							Start: todaysTableInterval.Start.Add(-30 * time.Minute),
+							End:   now,
+						},
 					}},
 				},
 			},

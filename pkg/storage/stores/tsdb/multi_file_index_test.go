@@ -58,7 +58,7 @@ func TestMultiIndex(t *testing.T) {
 
 	// group 5 indices together, all with duplicate data
 	n := 5
-	var indices []*TSDBIndex
+	var indices []Index
 	dir := t.TempDir()
 	for i := 0; i < n; i++ {
 		indices = append(indices, BuildIndex(t, dir, "fake", cases))

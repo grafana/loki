@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -213,6 +214,11 @@ func (tm *tableManager) cleanupCache() error {
 
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
+	start := time.Now()
+	defer func() {
+		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start))
+	}()
+
 	activeTableNumber := getActiveTableNumber()
 
 	// find the largest query readiness number
@@ -241,18 +247,19 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		return err
 	}
 
-	// regex for finding daily tables which have a 5 digit number at the end.
-	re, err := regexp.Compile(`.+[0-9]{5}$`)
+	// regexp for finding the trailing index bucket number at the end
+	re, err := regexp.Compile(`[0-9]+$`)
 	if err != nil {
 		return err
 	}
 
 	for _, tableName := range tables {
-		if !re.MatchString(tableName) {
+		match := re.Find([]byte(tableName))
+		if match == nil {
 			continue
 		}
 
-		tableNumber, err := strconv.ParseInt(tableName[len(tableName)-5:], 10, 64)
+		tableNumber, err := strconv.ParseInt(string(match), 10, 64)
 		if err != nil {
 			return err
 		}
@@ -263,7 +270,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 
 		// list the users that have dedicated index files for this table
-		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName)
+		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName, false)
 		if err != nil {
 			return err
 		}
@@ -281,9 +288,12 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 			return err
 		}
 
+		perTableStart := time.Now()
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
+		joinedUsers := strings.Join(usersToBeQueryReadyFor, ",")
+		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users", joinedUsers, "duration", time.Since(perTableStart), "table", tableName)
 	}
 
 	return nil

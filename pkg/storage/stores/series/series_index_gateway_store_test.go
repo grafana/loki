@@ -27,29 +27,18 @@ func (fakeClient) GetChunkRef(ctx context.Context, in *indexgatewaypb.GetChunkRe
 	return &indexgatewaypb.GetChunkRefResponse{}, nil
 }
 
-func Test_IndexGatewayClient(t *testing.T) {
-	schemaCfg := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{From: config.DayTime{Time: model.Now().Add(-24 * time.Hour)}, Schema: "v12", RowShards: 16},
-		},
-	}
-	schema, err := index.CreateSchema(schemaCfg.Configs[0])
-	require.NoError(t, err)
-	testutils.ResetMockStorage()
-	tm, err := index.NewTableManager(index.TableManagerConfig{}, schemaCfg, 2*time.Hour, testutils.NewMockStorage(), nil, nil, nil)
-	require.NoError(t, err)
-	require.NoError(t, tm.SyncTables(context.Background()))
+func (fakeClient) GetSeries(ctx context.Context, in *indexgatewaypb.GetSeriesRequest, opts ...grpc.CallOption) (*indexgatewaypb.GetSeriesResponse, error) {
+	return &indexgatewaypb.GetSeriesResponse{}, nil
+}
 
+func Test_IndexGatewayClient(t *testing.T) {
 	idx := IndexGatewayClientStore{
 		client: fakeClient{},
-		IndexStore: &IndexStore{
+		IndexStore: &indexStore{
 			chunkBatchSize: 1,
-			schema:         schema,
-			schemaCfg:      schemaCfg,
-			index:          testutils.NewMockStorage(),
 		},
 	}
-	_, err = idx.GetSeries(context.Background(), "foo", model.Now(), model.Now().Add(1*time.Hour), labels.MustNewMatcher(labels.MatchEqual, "__name__", "logs"))
+	_, err := idx.GetSeries(context.Background(), "foo", model.Earliest, model.Latest)
 	require.NoError(t, err)
 }
 
@@ -106,7 +95,7 @@ func Test_IndexGatewayClient_Fallback(t *testing.T) {
 	require.NoError(t, tm.SyncTables(context.Background()))
 	idx := NewIndexGatewayClientStore(
 		indexgatewaypb.NewIndexGatewayClient(conn),
-		&IndexStore{
+		&indexStore{
 			chunkBatchSize: 1,
 			schema:         schema,
 			schemaCfg:      schemaCfg,

@@ -217,7 +217,7 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) err
 			return c.memcache.Set(&item)
 		})
 		if cacheErr != nil {
-			level.Error(c.logger).Log("msg", "failed to put to memcached", "name", c.name, "err", err)
+			level.Warn(c.logger).Log("msg", "failed to put to memcached", "name", c.name, "err", err)
 			err = cacheErr
 		}
 	}
