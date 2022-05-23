@@ -674,6 +674,10 @@ alertmanager_client:
 # CLI flag: -ruler.alertmanager-use-v2
 [enable_alertmanager_v2: <boolean> | default = false]
 
+# List of alert relabel configs
+alert_relabel_configs:
+  [- <relabel_config> ...]
+
 # Capacity of the queue for notifications to be sent to the Alertmanager.
 # CLI flag: -ruler.notification-queue-capacity
 [notification_queue_capacity: <int> | default = 10000]
