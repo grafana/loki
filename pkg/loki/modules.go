@@ -238,6 +238,9 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if t.Cfg.Querier.PostFilterChunk {
 		t.Store.SetPostFetcherChunkFilterer(storage.NewRequestPostFetcherChunkFiltererForRequest(t.Cfg.Querier.PostFilterMaxParallel))
 	}
+	if t.Cfg.Querier.PostMetricsFilterChunk {
+		t.Store.SetPostFetcherChunkMetricsFilterer(storage.NewRequestPostFetcherChunkFiltererForRequest(t.Cfg.Querier.PostFilterMaxParallel))
+	}
 	deleteStore, err := t.deleteRequestsStore()
 	if err != nil {
 		return nil, err

@@ -36,7 +36,6 @@ import (
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 	"github.com/grafana/loki/pkg/util/spanlogger"
-
 )
 
 var (
@@ -54,6 +53,7 @@ type Store interface {
 	GetSchemaConfigs() []config.PeriodConfig
 	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 	SetPostFetcherChunkFilterer(requestPostFetcherChunkFilterer RequestPostFetcherChunkFilterer)
+	SetPostFetcherChunkMetricsFilterer(requestPostFetcherChunkFilterer RequestPostFetcherChunkFilterer)
 }
 
 type store struct {
@@ -69,10 +69,11 @@ type store struct {
 	clientMetrics      ClientMetrics
 	registerer         prometheus.Registerer
 
-	indexReadCache                  cache.Cache
-	chunksCache                     cache.Cache
-	writeDedupeCache                cache.Cache
-	requestPostFetcherChunkFilterer RequestPostFetcherChunkFilterer
+	indexReadCache                         cache.Cache
+	chunksCache                            cache.Cache
+	writeDedupeCache                       cache.Cache
+	requestPostFetcherChunkFilterer        RequestPostFetcherChunkFilterer
+	requestPostFetcherChunkMetricsFilterer RequestPostFetcherChunkFilterer
 
 	limits StoreLimits
 	logger log.Logger
@@ -587,6 +588,10 @@ func (s *store) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
 
 func (s *store) SetPostFetcherChunkFilterer(requestPostFetcherChunkFilterer RequestPostFetcherChunkFilterer) {
 	s.requestPostFetcherChunkFilterer = requestPostFetcherChunkFilterer
+}
+
+func (s *store) SetPostFetcherChunkMetricsFilterer(requestPostFetcherChunkMetricsFilterer RequestPostFetcherChunkFilterer) {
+	s.requestPostFetcherChunkMetricsFilterer = requestPostFetcherChunkMetricsFilterer
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`

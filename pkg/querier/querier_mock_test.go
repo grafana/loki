@@ -261,6 +261,8 @@ func (s *storeMock) SetChunkFilterer(chunk.RequestChunkFilterer) {}
 
 func (s *storeMock) SetPostFetcherChunkFilterer(storage.RequestPostFetcherChunkFilterer) {}
 
+func (s *storeMock) SetPostFetcherChunkMetricsFilterer(storage.RequestPostFetcherChunkFilterer) {}
+
 func (s *storeMock) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	args := s.Called(ctx, req)
 	res := args.Get(0)
