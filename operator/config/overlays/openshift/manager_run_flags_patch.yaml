@@ -11,6 +11,7 @@ spec:
           - "--with-lokistack-gateway"
           - "--with-lokistack-gateway-route"
           - "--with-cert-signing-service"
+          - "--with-tls-grpc-services"
           - "--with-service-monitors"
           - "--with-tls-service-monitors"
           - "--with-prometheus-alerts"
