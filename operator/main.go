@@ -47,6 +47,7 @@ func main() {
 		enableCertSigning           bool
 		enableServiceMonitors       bool
 		enableTLSServiceMonitors    bool
+		enableTLSGRPCServices       bool
 		enableGateway               bool
 		enableGatewayRoute          bool
 		enablePrometheusAlerts      bool
@@ -66,6 +67,8 @@ func main() {
 	flag.BoolVar(&enableServiceMonitors, "with-service-monitors", false, "Enables service monitoring")
 	flag.BoolVar(&enableTLSServiceMonitors, "with-tls-service-monitors", false,
 		"Enables loading of a prometheus service monitor.")
+	flag.BoolVar(&enableTLSGRPCServices, "with-tls-grpc-services", false,
+		"Enables TLS for Loki GRPC services.")
 	flag.BoolVar(&enableGateway, "with-lokistack-gateway", false,
 		"Enables the manifest creation for the entire lokistack-gateway.")
 	flag.BoolVar(&enableGatewayRoute, "with-lokistack-gateway-route", false,
@@ -118,6 +121,7 @@ func main() {
 		EnableCertificateSigningService: enableCertSigning,
 		EnableServiceMonitors:           enableServiceMonitors,
 		EnableTLSServiceMonitorConfig:   enableTLSServiceMonitors,
+		EnableTLSGRPCServices:           enableTLSGRPCServices,
 		EnablePrometheusAlerts:          enablePrometheusAlerts,
 		EnableGateway:                   enableGateway,
 		EnableGatewayRoute:              enableGatewayRoute,
