@@ -67,6 +67,10 @@ type IndexGatewayClientConfig struct {
 	// Forcefully disable the use of the index gateway client for the storage.
 	// This is mainly useful for the index-gateway component which should always use the storage.
 	Disabled bool `yaml:"-"`
+
+	// LogGatewayRequests configures if requests sent to the gateway should be logged or not.
+	// The log messages are of type debug and contain the address of the gateway and the relevant tenant.
+	LogGatewayRequests bool `yaml:"log_gateway_requests"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
@@ -75,6 +79,7 @@ type IndexGatewayClientConfig struct {
 func (i *IndexGatewayClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
 	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode.")
+	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, "Whether requests sent to the gateway should be logged or not.")
 }
 
 func (i *IndexGatewayClientConfig) RegisterFlags(f *flag.FlagSet) {
@@ -312,6 +317,10 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client ind
 	})
 	var lastErr error
 	for _, addr := range addrs {
+		if s.cfg.LogGatewayRequests {
+			level.Debug(util_log.Logger).Log("msg", "sending request to gateway", "gateway", addr, "tenant", userID)
+		}
+
 		genericClient, err := s.pool.GetClientFor(addr)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", addr), "err", err)

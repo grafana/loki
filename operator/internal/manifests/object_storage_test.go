@@ -145,13 +145,13 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										{
 											Name:      "test",
 											ReadOnly:  false,
-											MountPath: secretDirectory,
+											MountPath: "/etc/storage/secrets",
 										},
 									},
 									Env: []corev1.EnvVar{
 										{
 											Name:  storage.EnvGoogleApplicationCredentials,
-											Value: "/etc/proxy/secrets/key.json",
+											Value: "/etc/storage/secrets/key.json",
 										},
 									},
 								},
@@ -329,13 +329,13 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 										{
 											Name:      "test",
 											ReadOnly:  false,
-											MountPath: secretDirectory,
+											MountPath: "/etc/storage/secrets",
 										},
 									},
 									Env: []corev1.EnvVar{
 										{
 											Name:  storage.EnvGoogleApplicationCredentials,
-											Value: "/etc/proxy/secrets/key.json",
+											Value: "/etc/storage/secrets/key.json",
 										},
 									},
 								},

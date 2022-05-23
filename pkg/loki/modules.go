@@ -13,7 +13,6 @@ import (
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/ring"
@@ -386,7 +385,9 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	// Always set these configs
 	// TODO(owen-d): Do the same for TSDB when we add IndexGatewayClientConfig
 	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
-	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRing
+	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
+		t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+	}
 
 	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
 	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
@@ -863,7 +864,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	indexClient, err := storage.NewIndexClient(config.BoltDBShipperType, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, prometheus.DefaultRegisterer)
+	indexClient, err := storage.NewIndexClient(config.BoltDBShipperType, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, t.indexGatewayRingManager.IndexGatewayOwnsTenant, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -871,8 +872,6 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(gateway)
 
 	indexgatewaypb.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
 	return gateway, nil
@@ -886,29 +885,21 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-	ringCfg := t.Cfg.IndexGateway.Ring.ToRingConfig(t.Cfg.IndexGateway.Ring.ReplicationFactor)
-	reg := prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer)
 
-	logger := util_log.Logger
-	ringStore, err := kv.NewClient(
-		ringCfg.KVStore,
-		ring.GetCodec(),
-		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", reg), "index-gateway"),
-		logger,
-	)
+	managerMode := indexgateway.ClientMode
+	if t.Cfg.isModuleEnabled(IndexGateway) {
+		managerMode = indexgateway.ServerMode
+	}
+	rm, err := indexgateway.NewRingManager(managerMode, t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer)
+
 	if err != nil {
-		return nil, gerrors.Wrap(err, "kv new client")
+		return nil, gerrors.Wrap(err, "new index gateway ring manager")
 	}
 
-	t.indexGatewayRing, err = ring.NewWithStoreClientAndStrategy(
-		ringCfg, indexgateway.RingIdentifier, indexgateway.RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", reg), logger,
-	)
-	if err != nil {
-		return nil, gerrors.Wrap(err, "new with store client and strategy")
-	}
+	t.indexGatewayRingManager = rm
 
-	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRing)
-	return t.indexGatewayRing, nil
+	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRingManager)
+	return t.indexGatewayRingManager, nil
 }
 
 func (t *Loki) initQueryScheduler() (services.Service, error) {

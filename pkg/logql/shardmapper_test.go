@@ -255,6 +255,14 @@ func TestMappingStrings(t *testing.T) {
 				)
 			)`,
 		},
+		{
+			in:  `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
+			out: `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
+		},
+		{
+			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
+			out: `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)

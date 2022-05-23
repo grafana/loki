@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -115,19 +114,16 @@ func createTestGrpcServer(t *testing.T) (func(), string) {
 	indexgatewaypb.RegisterIndexGatewayServer(s, &server)
 	go func() {
 		if err := s.Serve(lis); err != nil {
-			log.Fatalf("Failed to serve: %v", err)
+			t.Logf("Failed to serve: %v", err)
 		}
 	}()
-	cleanup := func() {
-		s.GracefulStop()
-	}
 
-	return cleanup, lis.Addr().String()
+	return s.GracefulStop, lis.Addr().String()
 }
 
 func TestGatewayClient(t *testing.T) {
 	cleanup, storeAddress := createTestGrpcServer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	var cfg IndexGatewayClientConfig
 	cfg.Mode = indexgateway.SimpleMode
@@ -233,7 +229,7 @@ func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
 		CacheTTL:          15 * time.Minute,
 		QueryReadyNumDays: 30,
 		Limits:            mockLimits{},
-	}, bclient, storage.NewIndexStorageClient(fs, "index/"), nil)
+	}, bclient, storage.NewIndexStorageClient(fs, "index/"), nil, nil)
 	require.NoError(b, err)
 
 	// initialize the index gateway server
@@ -313,7 +309,7 @@ func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
 func TestDoubleRegistration(t *testing.T) {
 	r := prometheus.NewRegistry()
 	cleanup, storeAddress := createTestGrpcServer(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	_, err := NewGatewayClient(IndexGatewayClientConfig{
 		Address: storeAddress,
