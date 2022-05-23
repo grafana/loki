@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/stores/series"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -44,7 +45,7 @@ func NewCompositeStore(limits StoreLimits) *CompositeStore {
 	return &CompositeStore{compositeStore{}, limits}
 }
 
-func (c *CompositeStore) AddStore(start model.Time, fetcher *fetcher.Fetcher, index Index, writer ChunkWriter, stop func()) {
+func (c *CompositeStore) AddStore(start model.Time, fetcher *fetcher.Fetcher, index series.IndexStore, writer ChunkWriter, stop func()) {
 	c.stores = append(c.stores, compositeStoreEntry{
 		start: start,
 		Store: &storeEntry{

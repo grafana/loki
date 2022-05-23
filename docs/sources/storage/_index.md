@@ -13,8 +13,8 @@ simplifies the operation and significantly lowers the cost of Loki.
 Until Loki 2.0, index data was stored in a separate index.
 
 Loki 2.0 brings an index mechanism named 'boltdb-shipper' and is what we now call Single Store Loki.
-This index type only requires one store, the object store, for both the index and chunks. 
-More detailed information can be found on the [operations page]({{< relref "../operations/storage/boltdb-shipper.md" >}}). 
+This index type only requires one store, the object store, for both the index and chunks.
+More detailed information can be found on the [operations page]({{< relref "../operations/storage/boltdb-shipper.md" >}}).
 
 Some more storage details can also be found in the [operations section]({{< relref "../operations/storage/_index.md" >}}).
 
@@ -197,20 +197,23 @@ schema_config:
         period: 24h
 ```
 
-### AWS deployment (S3+DynamoDB)
+### AWS deployment (S3 Single Store)
 
 ```yaml
 storage_config:
+  boltdb_shipper:
+    active_index_directory: /loki/boltdb-shipper-active
+    cache_location: /loki/boltdb-shipper-cache
+    cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
+    shared_store: s3
   aws:
     s3: s3://<access_key>:<uri-encoded-secret-access-key>@<region>
     bucketnames: <bucket1,bucket2>
-    dynamodb:
-      dynamodb_url: dynamodb://<access_key>:<uri-encoded-secret-access-key>@<region>
 
 schema_config:
   configs:
     - from: 2020-07-01
-      store: aws
+      store: boltdb-shipper
       object_store: aws
       schema: v11
       index:

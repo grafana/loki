@@ -27,9 +27,27 @@ import (
 	"github.com/grafana/loki/pkg/util/wal"
 )
 
+/*
+period is a duration which the ingesters use to group index writes into a (WAL,TenantHeads) pair.
+After each period elapses, a set of zero or more multitenant TSDB indices are built (one per
+index bucket, generally 24h).
+
+It's important to note that this cycle occurs in real time as opposed to the timestamps of
+chunk entries. Index writes during the `period` may span multiple index buckets. Periods
+also expose some helper functions to get the remainder-less offset integer for that period,
+which we use in file creation/etc.
+*/
 type period time.Duration
 
 const defaultRotationPeriod = period(15 * time.Minute)
+
+func (p period) PeriodFor(t time.Time) int {
+	return int(t.UnixNano() / int64(p))
+}
+
+func (p period) TimeForPeriod(n int) time.Time {
+	return time.Unix(0, int64(p)*int64(n))
+}
 
 // Do not specify without bit shifting. This allows us to
 // do shard index calcuations via bitwise & rather than modulos.
@@ -125,10 +143,12 @@ func (m *HeadManager) Stop() error {
 }
 
 func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
-	labelsBuilder := labels.NewBuilder(ls)
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
-	labelsBuilder.Del("__name__")
-	metric := labelsBuilder.Labels()
+	// We must create a copy of the labels here to avoid mutating the existing
+	// labels when writing across index buckets.
+	b := labels.NewBuilder(ls)
+	b.Del(labels.MetricName)
+	ls = b.Labels()
 
 	m.mtx.RLock()
 	now := time.Now()
@@ -140,16 +160,8 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMe
 		m.mtx.RLock()
 	}
 	defer m.mtx.RUnlock()
-	rec := m.activeHeads.Append(userID, metric, chks)
+	rec := m.activeHeads.Append(userID, ls, chks)
 	return m.active.Log(rec)
-}
-
-func (p period) PeriodFor(t time.Time) int {
-	return int(t.UnixNano() / int64(p))
-}
-
-func (p period) TimeForPeriod(n int) time.Time {
-	return time.Unix(0, int64(p)*int64(n))
 }
 
 func (m *HeadManager) Start() error {
@@ -163,56 +175,36 @@ func (m *HeadManager) Start() error {
 		}
 	}
 
-	now := time.Now()
-	curPeriod := m.period.PeriodFor(now)
-
-	toRemove, err := m.shippedTSDBsBeforePeriod(curPeriod)
-	if err != nil {
-		return err
-	}
-
-	for _, x := range toRemove {
-		if err := os.RemoveAll(x); err != nil {
-			return errors.Wrapf(err, "removing tsdb: %s", x)
-		}
-	}
-
 	walsByPeriod, err := walsByPeriod(m.dir, m.period)
 	if err != nil {
 		return err
 	}
+	level.Info(m.log).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
 
-	m.activeHeads = newTenantHeads(now, m.shards, m.metrics, m.log)
+	// Load the shipper with any previously built TSDBs
+	if err := m.tsdbManager.Start(); err != nil {
+		return errors.Wrap(err, "failed to start tsdb manager")
+	}
 
+	// Build any old WALs into a TSDB for the shipper
+	var allWALs []WALIdentifier
 	for _, group := range walsByPeriod {
-		if group.period < (curPeriod) {
-			if err := m.tsdbManager.BuildFromWALs(
-				m.period.TimeForPeriod(group.period),
-				group.wals,
-			); err != nil {
-				return errors.Wrap(err, "building tsdb")
-			}
-			// Now that we've built tsdbs of this data, we can safely remove the WALs
-			if err := m.removeWALGroup(group); err != nil {
-				return errors.Wrapf(err, "removing wals for period %d", group.period)
-			}
-		}
-
-		if group.period == curPeriod {
-			if err := recoverHead(m.dir, m.activeHeads, group.wals); err != nil {
-				return errors.Wrap(err, "recovering tsdb head from wal")
-			}
-		}
+		allWALs = append(allWALs, group.wals...)
 	}
 
-	nextWALPath := walPath(m.dir, now)
-	nextWAL, err := newHeadWAL(m.log, nextWALPath, now)
-	if err != nil {
-		return errors.Wrapf(err, "creating tsdb wal: %s", nextWALPath)
+	now := time.Now()
+	if err := m.tsdbManager.BuildFromWALs(
+		now,
+		allWALs,
+	); err != nil {
+		return errors.Wrap(err, "building tsdb")
 	}
-	m.active = nextWAL
 
-	return nil
+	if err := os.RemoveAll(managerWalDir(m.dir)); err != nil {
+		return errors.New("cleaning (removing) wal dir")
+	}
+
+	return m.Rotate(now)
 }
 
 func managerRequiredDirs(parent string) []string {
@@ -306,21 +298,6 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	m.prev = nil
 	m.mtx.Unlock()
 	return nil
-}
-
-func (m *HeadManager) shippedTSDBsBeforePeriod(period int) (res []string, err error) {
-	files, err := ioutil.ReadDir(managerPerTenantDir(m.dir))
-	if err != nil {
-		return nil, err
-	}
-	for _, f := range files {
-		if id, ok := parseMultitenantTSDBPath(f.Name()); ok {
-			if found := m.period.PeriodFor(id.ts); found < period {
-				res = append(res, f.Name())
-			}
-		}
-	}
-	return
 }
 
 type WalGroup struct {
@@ -429,6 +406,7 @@ func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier) error {
 					return err
 				}
 
+				// labels are always written to the WAL before corresponding chunks
 				if len(rec.Series.Labels) > 0 {
 					tenant, ok := seriesMap[rec.UserID]
 					if !ok {
@@ -571,12 +549,12 @@ func (t *tenantHeads) Bounds() (model.Time, model.Time) {
 	return model.Time(t.mint.Load()), model.Time(t.maxt.Load())
 }
 
-func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx Index, unlock func(), ok bool) {
+func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx Index, ok bool) {
 	i := t.shardForTenant(userID)
 	t.locks[i].RLock()
+	defer t.locks[i].RUnlock()
 	tenant, ok := t.tenants[i][userID]
 	if !ok {
-		t.locks[i].RUnlock()
 		return
 	}
 
@@ -584,47 +562,43 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	if t.chunkFilter != nil {
 		idx.SetChunkFilterer(t.chunkFilter)
 	}
-	return idx, t.locks[i].RUnlock, true
+	return idx, true
 
 }
 
 func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	defer unlock()
 	return idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
 
 }
 
 // Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
 func (t *tenantHeads) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
-	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	defer unlock()
 	return idx.Series(ctx, userID, from, through, nil, shard, matchers...)
 
 }
 
 func (t *tenantHeads) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	defer unlock()
 	return idx.LabelNames(ctx, userID, from, through, matchers...)
 
 }
 
 func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	idx, unlock, ok := t.tenantIndex(userID, from, through)
+	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	defer unlock()
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 
 }

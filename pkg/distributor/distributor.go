@@ -19,7 +19,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -274,13 +273,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			stream.Entries[n] = entry
 
-			// If configured for this tenant, fudge duplicate timestamps. Note, this is imperfect
+			// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
 			// since Loki will accept out of order writes it doesn't account for separate
 			// pushes with overlapping time ranges having entries with duplicate timestamps
-			if validationContext.fudgeDuplicateTimestamps && n != 0 && stream.Entries[n-1].Timestamp.Equal(entry.Timestamp) {
+			if validationContext.incrementDuplicateTimestamps && n != 0 && stream.Entries[n-1].Timestamp.Equal(entry.Timestamp) {
 				// Traditional logic for Loki is that 2 lines with the same timestamp and
 				// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
-				// To maintain this behavior, only fudge the timestamp if the log content is different
+				// To maintain this behavior, only increment the timestamp if the log content is different
 				if stream.Entries[n-1].Line != entry.Line {
 					stream.Entries[n].Timestamp = entry.Timestamp.Add(1 * time.Nanosecond)
 				}
@@ -426,15 +425,6 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
 	return err
-}
-
-// Check implements the grpc healthcheck
-func (d *Distributor) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
-	status := grpc_health_v1.HealthCheckResponse_SERVING
-	if (d.State() != services.Running) || (d.distributorsLifecycler.GetState() != ring.ACTIVE) {
-		status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
-	}
-	return &grpc_health_v1.HealthCheckResponse{Status: status}, nil
 }
 
 func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, error) {

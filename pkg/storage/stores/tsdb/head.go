@@ -103,20 +103,15 @@ type Head struct {
 	series *stripeSeries
 
 	postings *index.MemPostings // Postings lists for terms.
-
-	closedMtx sync.Mutex
-	closed    bool
 }
 
 func NewHead(tenant string, metrics *Metrics, logger log.Logger) *Head {
 	return &Head{
-		tenant:    tenant,
-		metrics:   metrics,
-		logger:    logger,
-		series:    newStripeSeries(),
-		postings:  index.NewMemPostings(),
-		closedMtx: sync.Mutex{},
-		closed:    false,
+		tenant:   tenant,
+		metrics:  metrics,
+		logger:   logger,
+		series:   newStripeSeries(),
+		postings: index.NewMemPostings(),
 	}
 }
 
