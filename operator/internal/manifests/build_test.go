@@ -2,6 +2,7 @@ package manifests
 
 import (
 	"fmt"
+	"path"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -291,6 +292,162 @@ func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
 		require.Contains(t, args, "-server.http-tls-key-path=/etc/proxy/secrets/tls.key")
 		require.Equal(t, corev1.URISchemeHTTPS, rps)
 		require.Equal(t, corev1.URISchemeHTTPS, lps)
+	}
+}
+
+func TestBuildAll_WithFeatureFlags_EnableGRPCService(t *testing.T) {
+	type test struct {
+		desc         string
+		BuildOptions Options
+	}
+
+	table := []test{
+		{
+			desc: "disabled grpc over tls services",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1beta1.LokiStackSpec{
+					Size: lokiv1beta1.SizeOneXSmall,
+					Template: &lokiv1beta1.LokiTemplateSpec{
+						Compactor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Distributor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ingester: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Querier: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Gateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+				},
+				Flags: FeatureFlags{
+					EnableTLSGRPCServices: false,
+				},
+			},
+		},
+		{
+			desc: "enabled grpc over tls services",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1beta1.LokiStackSpec{
+					Size: lokiv1beta1.SizeOneXSmall,
+					Template: &lokiv1beta1.LokiTemplateSpec{
+						Compactor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Distributor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ingester: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Querier: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Gateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+				},
+				Flags: FeatureFlags{
+					EnableTLSGRPCServices: true,
+				},
+			},
+		},
+	}
+
+	secretsMap := map[string]string{
+		// deployments
+		"test-distributor":    "test-distributor-grpc-metrics",
+		"test-querier":        "test-querier-grpc-metrics",
+		"test-query-frontend": "test-query-frontend-grpc-metrics",
+		// statefulsets
+		"test-ingester":      "test-ingester-grpc-metrics",
+		"test-compactor":     "test-compactor-grpc-metrics",
+		"test-index-gateway": "test-index-gateway-grpc-metrics",
+	}
+
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.desc, func(t *testing.T) {
+			t.Parallel()
+
+			err := ApplyDefaultSettings(&tst.BuildOptions)
+			require.NoError(t, err)
+
+			objs, err := BuildAll(tst.BuildOptions)
+			require.NoError(t, err)
+
+			for _, o := range objs {
+				var (
+					name string
+					spec *corev1.PodSpec
+				)
+				switch obj := o.(type) {
+				case *appsv1.Deployment:
+					name = obj.Name
+					spec = &obj.Spec.Template.Spec
+				case *appsv1.StatefulSet:
+					name = obj.Name
+					spec = &obj.Spec.Template.Spec
+				default:
+					continue
+				}
+
+				t.Run(name, func(t *testing.T) {
+					secretName := secretsMap[name]
+					args := []string{
+						fmt.Sprintf("-server.grpc-tls-cert-path=%s", path.Join(grpcSecretDirectory, "tls.crt")),
+						fmt.Sprintf("-server.grpc-tls-key-path=%s", path.Join(grpcSecretDirectory, "tls.key")),
+					}
+
+					vm := corev1.VolumeMount{
+						Name:      secretName,
+						ReadOnly:  false,
+						MountPath: grpcSecretDirectory,
+					}
+
+					v := corev1.Volume{
+						Name: secretName,
+						VolumeSource: corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{
+								SecretName: secretName,
+							},
+						},
+					}
+
+					if tst.BuildOptions.Flags.EnableTLSGRPCServices {
+						require.Subset(t, spec.Containers[0].Args, args)
+						require.Contains(t, spec.Containers[0].VolumeMounts, vm)
+						require.Contains(t, spec.Volumes, v)
+					} else {
+						require.NotSubset(t, spec.Containers[0].Args, args)
+						require.NotContains(t, spec.Containers[0].VolumeMounts, vm)
+						require.NotContains(t, spec.Volumes, v)
+					}
+				})
+			}
+		})
 	}
 }
 

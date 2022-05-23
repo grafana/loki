@@ -29,6 +29,12 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if opts.Flags.EnableTLSGRPCServices {
+		if err := configureIndexGatewayGRPCServicePKI(statefulSet, opts.Name); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIndexGatewayGRPCService(opts),
@@ -219,4 +225,9 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 func configureIndexGatewayServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameIndexGatewayHTTP(stackName)
 	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+}
+
+func configureIndexGatewayGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
+	serviceName := serviceNameIndexGatewayGRPC(stackName)
+	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }

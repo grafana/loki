@@ -23,6 +23,12 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Flags.EnableTLSGRPCServices {
+		if err := configureQueryFrontendGRPCServicePKI(deployment, opts.Name); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		deployment,
 		NewQueryFrontendGRPCService(opts),
@@ -43,12 +49,6 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 							Name: lokiConfigMapName(opts.Name),
 						},
 					},
-				},
-			},
-			{
-				Name: storageVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
 				},
 			},
 		},
@@ -101,11 +101,6 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 						Name:      configVolumeName,
 						ReadOnly:  false,
 						MountPath: config.LokiConfigMountDir,
-					},
-					{
-						Name:      storageVolumeName,
-						ReadOnly:  false,
-						MountPath: dataDirectory,
 					},
 				},
 				TerminationMessagePath:   "/dev/termination-log",
@@ -216,4 +211,9 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 func configureQueryFrontendServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQueryFrontendHTTP(stackName)
 	return configureServiceMonitorPKI(&deployment.Spec.Template.Spec, serviceName)
+}
+
+func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, stackName string) error {
+	serviceName := serviceNameQueryFrontendGRPC(stackName)
+	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }

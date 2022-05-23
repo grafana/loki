@@ -23,6 +23,12 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Flags.EnableTLSGRPCServices {
+		if err := configureDistributorGRPCServicePKI(deployment, opts.Name); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		deployment,
 		NewDistributorGRPCService(opts),
@@ -43,12 +49,6 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 							Name: lokiConfigMapName(opts.Name),
 						},
 					},
-				},
-			},
-			{
-				Name: storageVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
 				},
 			},
 		},
@@ -89,11 +89,6 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 						Name:      configVolumeName,
 						ReadOnly:  false,
 						MountPath: config.LokiConfigMountDir,
-					},
-					{
-						Name:      storageVolumeName,
-						ReadOnly:  false,
-						MountPath: dataDirectory,
 					},
 				},
 				TerminationMessagePath:   "/dev/termination-log",
@@ -204,4 +199,9 @@ func NewDistributorHTTPService(opts Options) *corev1.Service {
 func configureDistributorServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameDistributorHTTP(stackName)
 	return configureServiceMonitorPKI(&deployment.Spec.Template.Spec, serviceName)
+}
+
+func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, stackName string) error {
+	serviceName := serviceNameDistributorGRPC(stackName)
+	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }

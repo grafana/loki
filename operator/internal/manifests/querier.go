@@ -28,6 +28,12 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if opts.Flags.EnableTLSGRPCServices {
+		if err := configureQuerierGRPCServicePKI(deployment, opts.Name); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		deployment,
 		NewQuerierGRPCService(opts),
@@ -198,4 +204,9 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 func configureQuerierServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQuerierHTTP(stackName)
 	return configureServiceMonitorPKI(&deployment.Spec.Template.Spec, serviceName)
+}
+
+func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, stackName string) error {
+	serviceName := serviceNameQuerierGRPC(stackName)
+	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }

@@ -30,6 +30,12 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if opts.Flags.EnableTLSGRPCServices {
+		if err := configureCompactorGRPCServicePKI(statefulSet, opts.Name); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewCompactorGRPCService(opts),
@@ -219,4 +225,9 @@ func NewCompactorHTTPService(opts Options) *corev1.Service {
 func configureCompactorServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameCompactorHTTP(stackName)
 	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+}
+
+func configureCompactorGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
+	serviceName := serviceNameCompactorGRPC(stackName)
+	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }

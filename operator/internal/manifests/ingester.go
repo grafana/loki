@@ -29,6 +29,12 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if opts.Flags.EnableTLSGRPCServices {
+		if err := configureIngesterGRPCServicePKI(statefulSet, opts.Name); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIngesterGRPCService(opts),
@@ -247,4 +253,9 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 func configureIngesterServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameIngesterHTTP(stackName)
 	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+}
+
+func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
+	serviceName := serviceNameIngesterGRPC(stackName)
+	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }
