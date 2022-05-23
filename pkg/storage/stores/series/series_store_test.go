@@ -252,11 +252,11 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 	}{
 		{
 			`foo`,
-			[]string{labels.MetricName, "bar", "flip", "toms"},
+			[]string{"bar", "flip", "toms"},
 		},
 		{
 			`bar`,
-			[]string{labels.MetricName, "bar", "toms"},
+			[]string{"bar", "toms"},
 		},
 	} {
 		for _, schema := range schemas {
