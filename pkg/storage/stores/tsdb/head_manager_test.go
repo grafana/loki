@@ -2,7 +2,9 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,9 +19,22 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
-type noopTSDBManager struct{ NoopIndex }
+type noopTSDBManager struct {
+	dir string
+	*tenantHeads
+}
 
-func (noopTSDBManager) BuildFromWALs(_ time.Time, _ []WALIdentifier) error { return nil }
+func newNoopTSDBManager(dir string) noopTSDBManager {
+	return noopTSDBManager{
+		dir:         dir,
+		tenantHeads: newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger()),
+	}
+}
+
+func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier) error {
+	return recoverHead(m.dir, m.tenantHeads, wals)
+}
+func (m noopTSDBManager) Start() error { return nil }
 
 func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []ChunkRef) {
 	for _, x := range xs {
@@ -151,7 +166,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, noopTSDBManager{})
+	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, newNoopTSDBManager(dir))
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
 	for _, d := range managerRequiredDirs(dir) {
@@ -234,7 +249,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, noopTSDBManager{})
+	mgr := NewHeadManager(log.NewNopLogger(), dir, nil, newNoopTSDBManager(dir))
 	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.dir, curPeriod), curPeriod)
 	require.Nil(t, err)
 
@@ -306,5 +321,59 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		lbls := labels.NewBuilder(c.Labels)
 		lbls.Set(TenantLabel, c.User)
 		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
+	}
+}
+
+func BenchmarkTenantHeads(b *testing.B) {
+	for _, tc := range []struct {
+		readers, writers int
+	}{
+		{
+			readers: 10,
+		},
+		{
+			readers: 100,
+		},
+		{
+			readers: 1000,
+		},
+	} {
+		b.Run(fmt.Sprintf("%d", tc.readers), func(b *testing.B) {
+			heads := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
+			// 1000 series across 100 tenants
+			nTenants := 10
+			for i := 0; i < 1000; i++ {
+				tenant := i % nTenants
+				ls := mustParseLabels(fmt.Sprintf(`{foo="bar", i="%d"}`, i))
+				heads.Append(fmt.Sprint(tenant), ls, index.ChunkMetas{
+					{},
+				})
+			}
+
+			for n := 0; n < b.N; n++ {
+				var wg sync.WaitGroup
+				for r := 0; r < tc.readers; r++ {
+					wg.Add(1)
+					go func(r int) {
+						defer wg.Done()
+						var res []ChunkRef
+						tenant := r % nTenants
+
+						// nolint:ineffassign,staticcheck
+						res, _ = heads.GetChunkRefs(
+							context.Background(),
+							fmt.Sprint(tenant),
+							0, math.MaxInt64,
+							res,
+							nil,
+							labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+						)
+					}(r)
+				}
+
+				wg.Wait()
+			}
+
+		})
 	}
 }

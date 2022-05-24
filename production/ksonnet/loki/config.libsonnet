@@ -141,6 +141,8 @@
       'limits.per-user-override-config': '/etc/loki/overrides/overrides.yaml',
     },
 
+    commonEnvs: [],
+
     loki: {
       server: {
         graceful_shutdown_timeout: '5s',

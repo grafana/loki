@@ -156,6 +156,25 @@ schema_config:
       object_store: {{ .ObjectStorage.SharedStore }}
       schema: v11
       store: boltdb-shipper
+
+{{ if .Ruler.Enabled }}
+ruler:
+  enable_api: true
+  enable_sharding: true
+  wal:
+    dir: {{ .WriteAheadLog.Directory }}
+    truncate_frequency: 60m
+    min_age: 5m
+    max_age: 4h
+  rule_path: {{ .StorageDirectory }}
+  storage:
+    type: local
+    local:
+      directory: {{ .Ruler.RulesStorageDirectory }}
+  ring:
+    kvstore:
+      store: memberlist
+{{ end }}
 server:
   graceful_shutdown_timeout: 5s
   grpc_server_min_time_between_pings: '10s'

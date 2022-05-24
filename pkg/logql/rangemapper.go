@@ -128,9 +128,21 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		if err != nil {
 			return nil, err
 		}
+		// if left hand side is a noop, we need to return the original expression
+		// so the whole expression is a noop and thus not executed using the
+		// downstream engine
+		if e.SampleExpr.String() == lhsMapped.String() {
+			return e, nil
+		}
 		rhsMapped, err := m.Map(e.RHS, vectorAggrPushdown, recorder)
 		if err != nil {
 			return nil, err
+		}
+		// if right hand side is a noop, we need to return the original expression
+		// so the whole expression is a noop and thus not executed using the
+		// downstream engine
+		if e.RHS.String() == rhsMapped.String() {
+			return e, nil
 		}
 		e.SampleExpr = lhsMapped
 		e.RHS = rhsMapped
@@ -329,21 +341,42 @@ func (m RangeMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		return expr
 	}
 
-	// We cannot execute downstream queries that would potentially produce a huge amount of series
-	// and therefore would very likely fail.
-	if expr.Grouping == nil && hasLabelExtractionStage(expr) {
+	labelExtractor := hasLabelExtractionStage(expr)
+
+	// Downstream queries with label extractors can potentially produce a huge amount of series
+	// which can impact the queries and consequently fail.
+	// Note: vector aggregation expressions aggregate the result in a single empty label set,
+	// so these expressions can be pushed downstream
+	if expr.Grouping == nil && vectorAggrPushdown == nil && labelExtractor {
 		return expr
 	}
 	switch expr.Operation {
-	case syntax.OpRangeTypeBytes, syntax.OpRangeTypeCount, syntax.OpRangeTypeSum:
+	case syntax.OpRangeTypeSum:
+		return m.vectorAggrWithRangeDownstreams(expr, vectorAggrPushdown, syntax.OpTypeSum, rangeInterval, recorder)
+	case syntax.OpRangeTypeBytes, syntax.OpRangeTypeCount:
+		// Downstream queries with label extractors use concat as aggregation operator instead of sum
+		// in order to merge the resultant label sets
+		if labelExtractor {
+			var downstream syntax.SampleExpr = expr
+			if vectorAggrPushdown != nil {
+				downstream = vectorAggrPushdown
+			}
+			return m.mapConcatSampleExpr(downstream, rangeInterval, recorder)
+		}
 		return m.vectorAggrWithRangeDownstreams(expr, vectorAggrPushdown, syntax.OpTypeSum, rangeInterval, recorder)
 	case syntax.OpRangeTypeMax:
 		return m.vectorAggrWithRangeDownstreams(expr, vectorAggrPushdown, syntax.OpTypeMax, rangeInterval, recorder)
 	case syntax.OpRangeTypeMin:
 		return m.vectorAggrWithRangeDownstreams(expr, vectorAggrPushdown, syntax.OpTypeMin, rangeInterval, recorder)
 	case syntax.OpRangeTypeRate:
+		if labelExtractor && vectorAggrPushdown.Operation != syntax.OpTypeSum {
+			return expr
+		}
 		return m.sumOverFullRange(expr, vectorAggrPushdown, syntax.OpRangeTypeCount, rangeInterval, recorder)
 	case syntax.OpRangeTypeBytesRate:
+		if labelExtractor && vectorAggrPushdown.Operation != syntax.OpTypeSum {
+			return expr
+		}
 		return m.sumOverFullRange(expr, vectorAggrPushdown, syntax.OpRangeTypeBytes, rangeInterval, recorder)
 	default:
 		// this should not be reachable.

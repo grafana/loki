@@ -22,11 +22,14 @@ type Options struct {
 	Stack                lokiv1beta1.LokiStackSpec
 	ResourceRequirements internal.ComponentResources
 
+	AlertingRules  []lokiv1beta1.AlertingRule
+	RecordingRules []lokiv1beta1.RecordingRule
+
 	ObjectStorage storage.Options
 
 	OpenShiftOptions openshift.Options
-	TenantSecrets    []*TenantSecrets
-	TenantConfigMap  map[string]openshift.TenantData
+
+	Tenants Tenants
 }
 
 // FeatureFlags contains flags that activate various features
@@ -40,10 +43,37 @@ type FeatureFlags struct {
 	EnableGrafanaLabsStats          bool
 }
 
+// Tenants contains the configuration per tenant and secrets for authn/authz.
+// Secrets are required only for modes static and dynamic to reconcile the OIDC provider.
+// Configs are required only for all modes to reconcile rules and gateway configuration.
+type Tenants struct {
+	Secrets []*TenantSecrets
+	Configs map[string]TenantConfig
+}
+
 // TenantSecrets for clientID, clientSecret and issuerCAPath for tenant's authentication.
 type TenantSecrets struct {
 	TenantName   string
 	ClientID     string
 	ClientSecret string
 	IssuerCAPath string
+}
+
+// TenantConfig for tenant authorizationconfig
+type TenantConfig struct {
+	OIDC      *TenantOIDCSpec
+	OPA       *TenantOPASpec
+	OpenShift *TenantOpenShiftSpec
+	RuleFiles []string
+}
+
+// TenantOIDCSpec stub config for OIDC configuration options (e.g. used in static or dynamic mode)
+type TenantOIDCSpec struct{}
+
+// TenantOPASpec stub config for OPA configuration options (e.g. used in dynamic mode)
+type TenantOPASpec struct{}
+
+// TenantOpenShiftSpec config for OpenShift authentication options (e.g. used in openshift-logging mode)
+type TenantOpenShiftSpec struct {
+	CookieSecret string
 }

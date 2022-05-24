@@ -265,6 +265,14 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.Labels{{Name: "bar", Value: "2"}},
 			[]byte("1"),
 		},
+		{
+			"default",
+			newMustLineFormatter(`{{.foo | default "-" }}{{.bar | default "-"}}{{.unknown | default "-"}}`),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: ""}},
+			[]byte("blip--"),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: ""}},
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -274,7 +282,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			builder.Reset()
 			outLine, _ := tt.fmter.Process(tt.in, builder)
 			require.Equal(t, tt.want, outLine)
-			require.Equal(t, tt.wantLbs, builder.Labels())
+			require.Equal(t, tt.wantLbs, builder.LabelsResult().Labels())
 		})
 	}
 }
@@ -325,6 +333,14 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			labels.Labels{{Name: "status", Value: "200"}},
 			labels.Labels{{Name: "status", Value: "2"}},
 		},
+		{
+			"default",
+			mustNewLabelsFormatter([]LabelFmt{
+				NewTemplateLabelFmt("blip", `{{.foo | default "-" }} and {{.bar}}`),
+			}),
+			labels.Labels{{Name: "bar", Value: "blop"}},
+			labels.Labels{{Name: "blip", Value: "- and blop"}, {Name: "bar", Value: "blop"}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -333,7 +349,7 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			builder.Reset()
 			_, _ = tt.fmter.Process(nil, builder)
 			sort.Sort(tt.want)
-			require.Equal(t, tt.want, builder.Labels())
+			require.Equal(t, tt.want, builder.LabelsResult().Labels())
 		})
 	}
 }

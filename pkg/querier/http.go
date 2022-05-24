@@ -213,8 +213,12 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	resp, err := q.querier.Label(r.Context(), req)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
+	resLength := 0
+	if resp != nil {
+		resLength = len(resp.Values)
+	}
 	// record stats about the label query
-	statResult := statsCtx.Result(time.Since(start), queueTime, len(resp.Values))
+	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 	statResult.Log(level.Debug(log))
 
 	status := 200
@@ -381,8 +385,13 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	resp, err := q.querier.Series(r.Context(), req)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
+	resLength := 0
+	if resp != nil {
+		resLength = len(resp.Series)
+	}
+
 	// record stats about the label query
-	statResult := statsCtx.Result(time.Since(start), queueTime, len(resp.Series))
+	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 	statResult.Log(level.Debug(log))
 
 	status := 200

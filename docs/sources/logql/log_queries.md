@@ -313,7 +313,7 @@ The **json** parser operates in two modes:
    "request_size" => "55"
    "response_status" => "401"
    "response_size" => "228"
-   "response_size" => "228"
+   "response_latency_seconds" => "6.031"
    ```
 
 2. **with** parameters:
@@ -364,6 +364,18 @@ The **json** parser operates in two modes:
    "server_list" => `["129.0.1.1","10.2.1.3"]`
    "headers" => `{"Accept": "*/*", "User-Agent": "curl/7.68.0"}`
    ```
+ 
+   If the label to be extracted is same as the original JSON field, expression can be written as just `| json <label>`
+
+   For example, to extract `servers` fields as label, expression can be written as following
+    
+   `| json servers` will extract:
+
+    ```kv
+   "servers" => `["129.0.1.1","10.2.1.3"]`
+   ```
+
+   Note that `| json servers` is same as `| json servers="servers"`
 
 #### logfmt
 
@@ -464,7 +476,7 @@ those labels:
 
 #### unpack
 
-The `unpack` parser parses a JSON log line, unpacking all embedded labels in the [`pack`](../clients/promtail/stages/pack/) stage.
+The `unpack` parser parses a JSON log line, unpacking all embedded labels from Promtail's [`pack` stage]({{< relref "../clients/promtail/stages/pack.md" >}}).
 **A special property `_entry` will also be used to replace the original log line**.
 
 For example, using `| unpack` with the log line:

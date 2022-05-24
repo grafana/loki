@@ -15,6 +15,7 @@ require (
 	github.com/Workiva/go-datastructures v1.0.53
 	github.com/alicebob/miniredis/v2 v2.14.3
 	github.com/aws/aws-sdk-go v1.43.10
+	github.com/baidubce/bce-sdk-go v0.9.81
 	github.com/bmatcuk/doublestar v1.2.2
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/buger/jsonparser v1.1.1
@@ -181,7 +182,7 @@ require (
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/google/pprof v0.0.0-20220218203455-0368bd9e19a7 // indirect
 	github.com/googleapis/gax-go/v2 v2.1.1 // indirect
-	github.com/googleapis/gnostic v0.4.1 // indirect
+	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/gophercloud/gophercloud v0.24.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.0.0-rc.2.0.20201207153454-9f6bf00c00a7 // indirect
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
@@ -271,13 +272,15 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
-	k8s.io/api v0.22.7 // indirect
-	k8s.io/apimachinery v0.22.7 // indirect
-	k8s.io/client-go v12.0.0+incompatible // indirect
+	k8s.io/api v0.23.6 // indirect
+	k8s.io/apimachinery v0.23.6 // indirect
+	k8s.io/client-go v0.23.6 // indirect
 	k8s.io/klog/v2 v2.40.1 // indirect
-	k8s.io/utils v0.0.0-20201110183641-67b214c5f920 // indirect
+	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
+	k8s.io/utils v0.0.0-20211116205334-6203023598ed // indirect
 	rsc.io/binaryregexp v0.2.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.1.0 // indirect
+	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 	sigs.k8s.io/yaml v1.2.0 // indirect
 )
 
@@ -290,11 +293,11 @@ replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v
 
 replace github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20220216145902-b5e698eff68e
 
-replace k8s.io/client-go => k8s.io/client-go v0.21.0
+replace k8s.io/client-go => k8s.io/client-go v0.23.6
 
-replace k8s.io/api => k8s.io/api v0.21.0
+replace k8s.io/api => k8s.io/api v0.23.6
 
-replace k8s.io/apimachinery => k8s.io/apimachinery v0.21.0
+replace k8s.io/apimachinery => k8s.io/apimachinery v0.23.6
 
 replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 
@@ -312,3 +315,5 @@ replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-
 replace github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19.1-0.20211126105533-c5505f5eaa7d
 
 replace github.com/cloudflare/cloudflare-go => github.com/cyriltovena/cloudflare-go v0.27.1-0.20211118103540-ff77400bcb93
+
+exclude k8s.io/client-go v8.0.0+incompatible

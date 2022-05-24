@@ -57,6 +57,7 @@ func (c *IndexClient) shard(matchers ...*labels.Matcher) ([]*labels.Matcher, *in
 // They share almost the same fields, so we can add the missing `KB` field to the proto and then
 // use that within the tsdb package.
 func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+	matchers = withoutNameLabel(matchers)
 	matchers, shard, err := c.shard(matchers...)
 	if err != nil {
 		return nil, err
@@ -83,6 +84,7 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 }
 
 func (c *IndexClient) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	matchers = withoutNameLabel(matchers)
 	matchers, shard, err := c.shard(matchers...)
 	if err != nil {
 		return nil, err
@@ -101,12 +103,13 @@ func (c *IndexClient) GetSeries(ctx context.Context, userID string, from, throug
 }
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
-func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+	matchers = withoutNameLabel(matchers)
 	return c.idx.LabelValues(ctx, userID, from, through, labelName, matchers...)
 }
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
-func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string) ([]string, error) {
 	return c.idx.LabelNames(ctx, userID, from, through)
 }
 
@@ -115,4 +118,22 @@ func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string
 // Todo we might want to pass it as a parameter to GetSeries instead.
 func (c *IndexClient) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	c.idx.SetChunkFilterer(chunkFilter)
+}
+
+// TODO(owen-d): in the future, handle this by preventing passing the __name__="logs" label
+// to TSDB indices at all.
+func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
+	if len(matchers) == 0 {
+		return nil
+	}
+
+	dst := make([]*labels.Matcher, 0, len(matchers)-1)
+	for _, m := range matchers {
+		if m.Name == labels.MetricName {
+			continue
+		}
+		dst = append(dst, m)
+	}
+
+	return dst
 }

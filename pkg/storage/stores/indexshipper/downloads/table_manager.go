@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -213,6 +214,11 @@ func (tm *tableManager) cleanupCache() error {
 
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
+	start := time.Now()
+	defer func() {
+		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start))
+	}()
+
 	activeTableNumber := getActiveTableNumber()
 
 	// find the largest query readiness number
@@ -282,9 +288,12 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 			return err
 		}
 
+		perTableStart := time.Now()
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
+		joinedUsers := strings.Join(usersToBeQueryReadyFor, ",")
+		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users", joinedUsers, "duration", time.Since(perTableStart), "table", tableName)
 	}
 
 	return nil

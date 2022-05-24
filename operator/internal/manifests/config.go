@@ -42,6 +42,8 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 
 // ConfigOptions converts Options to config.Options
 func ConfigOptions(opt Options) config.Options {
+	rulerEnabled := opt.Stack.Rules != nil && opt.Stack.Rules.Enabled
+
 	return config.Options{
 		Stack:     opt.Stack,
 		Namespace: opt.Namespace,
@@ -72,6 +74,10 @@ func ConfigOptions(opt Options) config.Options {
 		},
 		ObjectStorage:         opt.ObjectStorage,
 		EnableRemoteReporting: opt.Flags.EnableGrafanaLabsStats,
+		Ruler: config.Ruler{
+			Enabled:               rulerEnabled,
+			RulesStorageDirectory: rulesStorageDirectory,
+		},
 	}
 }
 

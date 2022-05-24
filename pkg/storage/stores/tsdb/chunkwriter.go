@@ -50,7 +50,7 @@ func (w *ChunkWriter) Put(ctx context.Context, chunks []chunk.Chunk) error {
 }
 
 func (w *ChunkWriter) PutOne(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
+	log, ctx := spanlogger.New(ctx, "TSDBStore.PutOne")
 	defer log.Finish()
 
 	// with local TSDB indices, we _always_ write the index entry

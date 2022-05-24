@@ -27,6 +27,13 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 		return nil // continue using user input
 
 	case lokiv1beta1.OpenshiftLogging:
+		tenantData := make(map[string]openshift.TenantData)
+		for name, tenant := range opts.Tenants.Configs {
+			tenantData[name] = openshift.TenantData{
+				CookieSecret: tenant.OpenShift.CookieSecret,
+			}
+		}
+
 		defaults := openshift.NewOptions(
 			opts.Name,
 			opts.Namespace,
@@ -37,7 +44,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			ComponentLabels(LabelGatewayComponent, opts.Name),
 			opts.Flags.EnableServiceMonitors,
 			opts.Flags.EnableCertificateSigningService,
-			opts.TenantConfigMap,
+			tenantData,
 		)
 
 		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {

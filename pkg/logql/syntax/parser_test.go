@@ -2943,6 +2943,18 @@ func TestParse(t *testing.T) {
 				},
 			},
 		},
+		{
+			in: `{app="foo"} | json response_code, api_key="request.headers[\"X-API-KEY\"]"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newJSONExpressionParser([]log.JSONExpression{
+						log.NewJSONExpr("response_code", `response_code`),
+						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
+					}),
+				},
+			},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)

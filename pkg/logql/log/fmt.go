@@ -84,6 +84,7 @@ var (
 		"toDate",
 		"now",
 		"unixEpoch",
+		"default",
 	}
 )
 
@@ -127,7 +128,7 @@ func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	lf.buf.Reset()
 	lf.currentLine = line
 
-	if err := lf.Template.Execute(lf.buf, lbs.Labels().Map()); err != nil {
+	if err := lf.Template.Execute(lf.buf, lbs.Map()); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		return line, true
 	}
@@ -286,7 +287,7 @@ func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) 
 		}
 		lf.buf.Reset()
 		if data == nil {
-			data = lbs.Labels().Map()
+			data = lbs.Map()
 		}
 		if err := f.tmpl.Execute(lf.buf, data); err != nil {
 			lbs.SetErr(errTemplateFormat)

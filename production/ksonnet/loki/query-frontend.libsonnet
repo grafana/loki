@@ -17,6 +17,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
+    container.withEnvMixin($._config.commonEnvs) +
     $.jaeger_mixin +
     // sharded queries may need to do a nonzero amount of aggregation on the frontend.
     if $._config.queryFrontend.sharded_queries_enabled then

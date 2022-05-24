@@ -13,13 +13,14 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	configv1 "github.com/openshift/api/config/v1"
+	routev1 "github.com/openshift/api/route/v1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/controllers"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/metrics"
-	configv1 "github.com/openshift/api/config/v1"
-	routev1 "github.com/openshift/api/route/v1"
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -121,6 +122,30 @@ func main() {
 		Flags:  featureFlags,
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "LokiStack")
+		os.Exit(1)
+	}
+	if err = (&controllers.AlertingRuleReconciler{
+		Client: mgr.GetClient(),
+		Log:    logger.WithName("controllers").WithName("AlertingRule"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		logger.Error(err, "unable to create controller", "controller", "AlertingRule")
+		os.Exit(1)
+	}
+	if err = (&lokiv1beta1.AlertingRule{}).SetupWebhookWithManager(mgr); err != nil {
+		logger.Error(err, "unable to create webhook", "webhook", "AlertingRule")
+		os.Exit(1)
+	}
+	if err = (&controllers.RecordingRuleReconciler{
+		Client: mgr.GetClient(),
+		Log:    logger.WithName("controllers").WithName("RecordingRule"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		logger.Error(err, "unable to create controller", "controller", "RecordingRule")
+		os.Exit(1)
+	}
+	if err = (&lokiv1beta1.RecordingRule{}).SetupWebhookWithManager(mgr); err != nil {
+		logger.Error(err, "unable to create webhook", "webhook", "RecordingRule")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
