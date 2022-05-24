@@ -15,9 +15,7 @@ const (
 	maxConcurrency  = 10
 )
 
-type TableQuerier interface {
-	MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
-}
+type TableQuerier func(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 
 // QueriesByTable groups and returns queries by tables.
 func QueriesByTable(queries []index.Query) map[string][]index.Query {
@@ -38,7 +36,7 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 		return nil
 	}
 	if len(queries) <= maxQueriesBatch {
-		return tableQuerier.MultiQueries(ctx, queries, NewCallbackDeduper(callback, len(queries)))
+		return tableQuerier(ctx, queries, NewCallbackDeduper(callback, len(queries)))
 	}
 
 	jobsCount := len(queries) / maxQueriesBatch
@@ -47,7 +45,7 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 	}
 	callback = NewSyncCallbackDeduper(callback, len(queries))
 	return concurrency.ForEachJob(ctx, jobsCount, maxConcurrency, func(ctx context.Context, idx int) error {
-		return tableQuerier.MultiQueries(ctx, queries[idx*maxQueriesBatch:util_math.Min((idx+1)*maxQueriesBatch, len(queries))], callback)
+		return tableQuerier(ctx, queries[idx*maxQueriesBatch:util_math.Min((idx+1)*maxQueriesBatch, len(queries))], callback)
 	})
 }
 

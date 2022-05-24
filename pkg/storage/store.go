@@ -23,9 +23,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -186,7 +187,7 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 }
 
 func shouldUseBoltDBIndexGatewayClient(cfg Config) bool {
-	if cfg.BoltDBShipperConfig.Mode != shipper.ModeReadOnly || cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled {
+	if cfg.BoltDBShipperConfig.Mode != indexshipper.ModeReadOnly || cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled {
 		return false
 	}
 
@@ -217,7 +218,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		// ToDo(Sandeep): Refactor code to not use boltdb-shipper index gateway client config
 		if shouldUseBoltDBIndexGatewayClient(s.cfg) {
 			// inject the index-gateway client into the index store
-			gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
+			gw, err := gatewayclient.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 			if err != nil {
 				return nil, nil, nil, err
 			}

@@ -1,16 +1,18 @@
-package uploads
+package index
 
 import (
 	"context"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -23,11 +25,10 @@ func buildTestTableManager(t *testing.T, testDir string) (*TableManager, *local.
 	indexPath := filepath.Join(testDir, indexDirName)
 
 	cfg := Config{
-		Uploader:       "test-table-manager",
-		IndexDir:       indexPath,
-		UploadInterval: time.Hour,
+		Uploader: "test-table-manager",
+		IndexDir: indexPath,
 	}
-	tm, err := NewTableManager(cfg, boltDBIndexClient, storageClient, nil)
+	tm, err := NewTableManager(cfg, storageClient, nil)
 	require.NoError(t, err)
 
 	return tm, boltDBIndexClient, func() {
@@ -90,12 +91,11 @@ func TestLoadTables(t *testing.T) {
 	}
 
 	cfg := Config{
-		Uploader:       "test-table-manager",
-		IndexDir:       indexPath,
-		UploadInterval: time.Hour,
+		Uploader: "test-table-manager",
+		IndexDir: indexPath,
 	}
 
-	tm, err := NewTableManager(cfg, boltDBIndexClient, storageClient, nil)
+	tm, err := NewTableManager(cfg, storageClient, nil)
 	require.NoError(t, err)
 	defer tm.Stop()
 
@@ -106,7 +106,21 @@ func TestLoadTables(t *testing.T) {
 	require.True(t, !stat.IsDir())
 
 	for tableName, expectedIndex := range expectedTables {
-		testutil.TestSingleTableQuery(t, userID, []index.Query{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		// loaded tables should not have any index files, it should have handed them over to index shipper
+		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
+			func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error {
+				return tm.tables[tableName].ForEach(ctx, callback)
+			},
+			0, 0)
+
+		// see if index shipper has the index files
+		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
+			func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error {
+				return tm.indexShipper.ForEach(ctx, table, userID, func(index index_shipper.Index) error {
+					return callback(index.(*indexfile.IndexFile).GetBoltDB())
+				})
+			},
+			expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 
@@ -137,11 +151,15 @@ func TestTableManager_BatchWrite(t *testing.T) {
 
 	for tableName, expectedIndex := range tc {
 		require.NoError(t, tm.tables[tableName].Snapshot())
-		testutil.TestSingleTableQuery(t, userID, []index.Query{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
+			func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error {
+				return tm.tables[tableName].ForEach(context.Background(), callback)
+			},
+			expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 
-func TestTableManager_QueryPages(t *testing.T) {
+func TestTableManager_ForEach(t *testing.T) {
 	testDir := t.TempDir()
 
 	tm, boltIndexClient, stopFunc := buildTestTableManager(t, testDir)
@@ -172,5 +190,10 @@ func TestTableManager_QueryPages(t *testing.T) {
 		require.NoError(t, table.Snapshot())
 	}
 
-	testutil.TestMultiTableQuery(t, userID, queries, tm, 0, 30)
+	testutil.VerifyIndexes(t, userID, queries,
+		func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error {
+			return tm.ForEach(ctx, table, callback)
+		},
+		0, 30)
+
 }

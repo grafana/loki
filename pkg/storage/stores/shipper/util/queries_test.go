@@ -64,7 +64,7 @@ func TestDoParallelQueries(t *testing.T) {
 				queries: map[string]index.Query{},
 			}
 
-			err := DoParallelQueries(context.Background(), &tableQuerier, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+			err := DoParallelQueries(context.Background(), tableQuerier.MultiQueries, queries, func(query index.Query, batch index.ReadBatchResult) bool {
 				return false
 			})
 			require.NoError(t, err)
@@ -280,7 +280,7 @@ func benchmarkMultiQueries(b *testing.B, n int) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = DoParallelQueries(ctx, TableQuerierFunc(func(_ context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+			_ = DoParallelQueries(ctx, func(_ context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 				for _, query := range queries {
 					callback(query, batch{
 						hashValue:   query.HashValue,
@@ -300,7 +300,7 @@ func benchmarkMultiQueries(b *testing.B, n int) {
 					})
 				}
 				return nil
-			}), queries, callback)
+			}, queries, callback)
 		}
 	})
 }

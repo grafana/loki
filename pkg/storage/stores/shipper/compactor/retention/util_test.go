@@ -3,6 +3,7 @@ package retention
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"io/ioutil"
 	"path/filepath"
 	"sort"
@@ -259,12 +260,14 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 		MaxParallelGetChunk: 150,
 
 		BoltDBShipperConfig: shipper.Config{
-			ActiveIndexDirectory: indexDir,
-			SharedStoreType:      "filesystem",
-			SharedStoreKeyPrefix: "index",
-			ResyncInterval:       1 * time.Millisecond,
-			IngesterName:         "foo",
-			Mode:                 shipper.ModeReadWrite,
+			Config: indexshipper.Config{
+				ActiveIndexDirectory: indexDir,
+				SharedStoreType:      "filesystem",
+				SharedStoreKeyPrefix: "index",
+				ResyncInterval:       1 * time.Millisecond,
+				IngesterName:         "foo",
+				Mode:                 indexshipper.ModeReadWrite,
+			},
 		},
 	}
 
