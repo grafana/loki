@@ -23,9 +23,9 @@ json:
   # Name from extracted data to parse. If empty, uses the log message.
   [source: <string>]
 
-  # If true then any lines that cannot be successfully parsed as valid JSON objects
+  # When true, then any lines that cannot be successfully parsed as valid JSON objects
   # will be dropped instead of being sent to Loki.
-  drop_malformed: <bool>
+  [drop_malformed: <bool> | default = false]
 ```
 
 This stage uses the Go JSON unmarshaler, which means non-string types like
