@@ -399,7 +399,7 @@ type RulerConfigStatus struct {
 
 // RulerConfig is the Schema for the rulerconfigs API
 //
-// +operator-sdk:csv:customresourcedefinitions:displayName="AlertingRule",resources={{LokiStack,v1beta1}}
+// +operator-sdk:csv:customresourcedefinitions:displayName="RulerConfig",resources={{LokiStack,v1beta1}}
 type RulerConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
