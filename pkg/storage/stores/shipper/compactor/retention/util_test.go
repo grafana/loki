@@ -3,7 +3,6 @@ package retention
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"io/ioutil"
 	"path/filepath"
 	"sort"
@@ -25,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"

@@ -65,7 +65,8 @@ type indexClient struct {
 // NewShipper creates a shipper for syncing local objects with a store
 func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer) (series_index.Client, error) {
 	i := indexClient{
-		cfg: cfg,
+		cfg:     cfg,
+		metrics: newMetrics(registerer),
 	}
 
 	err := i.init(storageClient, limits, ownsTenantFn, registerer)
@@ -103,7 +104,7 @@ func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.L
 		}
 	}
 
-	i.querier = index.IndexQuerier(i.writer, i.indexShipper)
+	i.querier = index.NewQuerier(i.writer, i.indexShipper)
 
 	return nil
 }

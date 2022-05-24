@@ -3,8 +3,6 @@ package index
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"io/ioutil"
 	"path/filepath"
 	"strconv"
@@ -18,6 +16,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
 const (
@@ -29,7 +29,7 @@ type mockIndexShipper struct {
 	addedIndexes map[string][]shipper_index.Index
 }
 
-func newMockIndexShipper() IndexShipper {
+func newMockIndexShipper() Shipper {
 	return &mockIndexShipper{
 		addedIndexes: make(map[string][]shipper_index.Index),
 	}
@@ -60,7 +60,7 @@ func (m *mockIndexShipper) hasIndex(tableName, indexName string) bool {
 	return false
 }
 
-func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, IndexShipper) {
+func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, Shipper) {
 	indexPath := filepath.Join(path, indexDirName)
 
 	boltDBIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: indexPath})
@@ -392,7 +392,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 	require.Len(t, indexShipper.addedIndexes, 0)
 }
 
-func loadTablesWithoutHandover(t *testing.T, path, uploader string, indexShipper IndexShipper) *Table {
+func loadTablesWithoutHandover(t *testing.T, path, uploader string, indexShipper Shipper) *Table {
 	dbs, err := loadBoltDBsFromDir(path, nil)
 	require.NoError(t, err)
 

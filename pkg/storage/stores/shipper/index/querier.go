@@ -23,10 +23,10 @@ type Querier interface {
 
 type querier struct {
 	writer       Writer
-	indexShipper IndexShipper
+	indexShipper Shipper
 }
 
-func IndexQuerier(writer Writer, indexShipper IndexShipper) *querier {
+func NewQuerier(writer Writer, indexShipper Shipper) *querier {
 	return &querier{
 		writer:       writer,
 		indexShipper: indexShipper,

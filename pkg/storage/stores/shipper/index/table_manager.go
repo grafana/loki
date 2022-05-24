@@ -32,7 +32,7 @@ type Config struct {
 
 type TableManager struct {
 	cfg          Config
-	indexShipper IndexShipper
+	indexShipper Shipper
 
 	metrics   *metrics
 	tables    map[string]*Table
@@ -43,12 +43,12 @@ type TableManager struct {
 	wg     sync.WaitGroup
 }
 
-type IndexShipper interface {
+type Shipper interface {
 	AddIndex(tableName, userID string, index shipper_index.Index) error
 	ForEach(ctx context.Context, tableName, userID string, callback func(index shipper_index.Index) error) error
 }
 
-func NewTableManager(cfg Config, indexShipper IndexShipper, registerer prometheus.Registerer) (*TableManager, error) {
+func NewTableManager(cfg Config, indexShipper Shipper, registerer prometheus.Registerer) (*TableManager, error) {
 	err := chunk_util.EnsureDirectory(cfg.IndexDir)
 	if err != nil {
 		return nil, err

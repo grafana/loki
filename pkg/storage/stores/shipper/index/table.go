@@ -49,7 +49,7 @@ type Table struct {
 	name                 string
 	path                 string
 	uploader             string
-	indexShipper         IndexShipper
+	indexShipper         Shipper
 	makePerTenantBuckets bool
 
 	dbs    map[string]*bbolt.DB
@@ -62,7 +62,7 @@ type Table struct {
 }
 
 // NewTable create a new Table without looking for any existing local dbs belonging to the table.
-func NewTable(path, uploader string, indexShipper IndexShipper, makePerTenantBuckets bool) (*Table, error) {
+func NewTable(path, uploader string, indexShipper Shipper, makePerTenantBuckets bool) (*Table, error) {
 	err := chunk_util.EnsureDirectory(path)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func NewTable(path, uploader string, indexShipper IndexShipper, makePerTenantBuc
 }
 
 // LoadTable loads local dbs belonging to the table and creates a new Table with references to dbs if there are any otherwise it doesn't create a table
-func LoadTable(path, uploader string, indexShipper IndexShipper, makePerTenantBuckets bool, metrics *metrics) (*Table, error) {
+func LoadTable(path, uploader string, indexShipper Shipper, makePerTenantBuckets bool, metrics *metrics) (*Table, error) {
 	dbs, err := loadBoltDBsFromDir(path, metrics)
 	if err != nil {
 		return nil, err
@@ -95,7 +95,7 @@ func LoadTable(path, uploader string, indexShipper IndexShipper, makePerTenantBu
 	return table, nil
 }
 
-func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, indexShipper IndexShipper, makePerTenantBuckets bool) (*Table, error) {
+func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, indexShipper Shipper, makePerTenantBuckets bool) (*Table, error) {
 	return &Table{
 		name:                 filepath.Base(path),
 		path:                 path,
