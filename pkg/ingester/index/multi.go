@@ -27,6 +27,13 @@ func (m *Multi) Add(labels []logproto.LabelAdapter, fp model.Fingerprint) (resul
 	return
 }
 
+func (m *Multi) Delete(labels labels.Labels, fp model.Fingerprint) {
+	for _, i := range m.indices {
+		i.Delete(labels, fp)
+	}
+	return
+}
+
 func (m *Multi) Lookup(t time.Time, matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
 	return m.indexFor(t).Lookup(matchers, shard)
 }
@@ -53,6 +60,10 @@ func (m *Multi) indexFor(t time.Time) Interface {
 type noopInvertedIndex struct{}
 
 func (noopInvertedIndex) Add(labels []logproto.LabelAdapter, fp model.Fingerprint) labels.Labels {
+	return nil
+}
+
+func (noopInvertedIndex) Delete(labels labels.Labels, fp model.Fingerprint) {
 	return nil
 }
 
