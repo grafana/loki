@@ -60,10 +60,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Copy each defaults to a source and dest config
-	//sourceConfig := defaultsConfig
-	//destConfig := defaultsConfig
-
 	var sourceConfig loki.ConfigWrapper
 	srcArgs := []string{"-config.file=" + *sf}
 	if err := cfg.DynamicUnmarshal(&sourceConfig, srcArgs, flag.NewFlagSet("config-file-loader", flag.ContinueOnError)); err != nil {
@@ -160,39 +156,6 @@ func main() {
 
 	parsedFrom := mustParse(*from)
 	parsedTo := mustParse(*to)
-
-	// This code was helpful in scoping out the amount of data to be processed but it's slow to run over long time ranges.
-	// Leaving it here for now commented out
-	/*
-		userID, err := tenant.TenantID(ctx)
-		if err != nil {
-			panic(err)
-		}
-
-		f, t := util.RoundToMilliseconds(parsedFrom, parsedTo)
-
-		schemaGroups, fetchers, err := s.GetChunkRefs(ctx, userID, f, t, matchers...)
-		if err != nil {
-			log.Println("Error querying index for chunk refs:", err)
-			os.Exit(1)
-		}
-
-		var totalChunks int
-		for i := range schemaGroups {
-			totalChunks += len(schemaGroups[i])
-		}
-		rdr := bufio.NewReader(os.Stdin)
-		fmt.Printf("Timespan will sync %v chunks spanning %v schemas.\n", totalChunks, len(fetchers))
-		fmt.Print("Proceed? (Y/n):")
-		in, err := rdr.ReadString('\n')
-		if err != nil {
-			log.Fatalf("Error reading input: %v", err)
-		}
-		if strings.ToLower(strings.TrimSpace(in)) == "n" {
-			log.Println("Exiting")
-			os.Exit(0)
-		}
-	*/
 
 	start := time.Now()
 
