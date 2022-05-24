@@ -13,7 +13,6 @@ import (
 )
 
 func TestBinary_Filter(t *testing.T) {
-
 	tests := []struct {
 		f   LabelFilterer
 		lbs labels.Labels
@@ -158,7 +157,7 @@ func TestBinary_Filter(t *testing.T) {
 			_, got := tt.f.Process(nil, b)
 			require.Equal(t, tt.want, got)
 			sort.Sort(tt.wantLbs)
-			require.Equal(t, tt.wantLbs, b.Labels())
+			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
 		})
 	}
 }
@@ -192,7 +191,7 @@ func TestBytes_Filter(t *testing.T) {
 			_, got := f.Process(nil, b)
 			require.Equal(t, tt.want, got)
 			wantLbs := labels.Labels{{Name: "bar", Value: tt.wantLabel}}
-			require.Equal(t, wantLbs, b.Labels())
+			require.Equal(t, wantLbs, b.LabelsResult().Labels())
 		})
 	}
 }
@@ -221,7 +220,6 @@ func TestErrorFiltering(t *testing.T) {
 			},
 		},
 		{
-
 			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+")),
 			labels.Labels{
 				{Name: "status", Value: "200"},
@@ -236,7 +234,6 @@ func TestErrorFiltering(t *testing.T) {
 			},
 		},
 		{
-
 			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+")),
 			labels.Labels{
 				{Name: "status", Value: "200"},
@@ -250,7 +247,6 @@ func TestErrorFiltering(t *testing.T) {
 			},
 		},
 		{
-
 			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, errJSON)),
 			labels.Labels{
 				{Name: "status", Value: "200"},
@@ -273,7 +269,7 @@ func TestErrorFiltering(t *testing.T) {
 			_, got := tt.f.Process(nil, b)
 			require.Equal(t, tt.want, got)
 			sort.Sort(tt.wantLbs)
-			require.Equal(t, tt.wantLbs, b.Labels())
+			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
 		})
 	}
 }
@@ -286,14 +282,16 @@ func TestReduceAndLabelFilter(t *testing.T) {
 	}{
 		{"empty", nil, NoopLabelFilter},
 		{"1", []LabelFilterer{NewBytesLabelFilter(LabelFilterEqual, "foo", 5)}, NewBytesLabelFilter(LabelFilterEqual, "foo", 5)},
-		{"2",
+		{
+			"2",
 			[]LabelFilterer{
 				NewBytesLabelFilter(LabelFilterEqual, "foo", 5),
 				NewBytesLabelFilter(LabelFilterGreaterThanOrEqual, "bar", 6),
 			},
 			NewAndLabelFilter(NewBytesLabelFilter(LabelFilterEqual, "foo", 5), NewBytesLabelFilter(LabelFilterGreaterThanOrEqual, "bar", 6)),
 		},
-		{"3",
+		{
+			"3",
 			[]LabelFilterer{
 				NewBytesLabelFilter(LabelFilterEqual, "foo", 5),
 				NewBytesLabelFilter(LabelFilterGreaterThanOrEqual, "bar", 6),
