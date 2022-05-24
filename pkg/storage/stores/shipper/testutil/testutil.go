@@ -46,6 +46,7 @@ func AddRecordsToBatch(batch index.WriteBatch, tableName string, start, numRecor
 	}
 }
 
+// nolint
 func queryIndexes(t *testing.T, ctx context.Context, queries []index.Query, indexIteratorFunc IndexIteratorFunc, callback index.QueryPagesCallback) {
 	userID, err := tenant.TenantID(ctx)
 	require.NoError(t, err)

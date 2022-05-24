@@ -26,7 +26,7 @@ type querier struct {
 	indexShipper Shipper
 }
 
-func NewQuerier(writer Writer, indexShipper Shipper) *querier {
+func NewQuerier(writer Writer, indexShipper Shipper) Querier {
 	return &querier{
 		writer:       writer,
 		indexShipper: indexShipper,
