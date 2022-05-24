@@ -22,7 +22,11 @@ type BitPrefixInvertedIndex struct {
 	shards      []*indexShard
 }
 
-func NewBitPrefixWithShards(totalShards uint32) *BitPrefixInvertedIndex {
+func NewBitPrefixWithShards(totalShards uint32) (*BitPrefixInvertedIndex, error) {
+	if requiredBits := index.NewShard(0, totalShards).RequiredBits(); 1<<requiredBits != totalShards {
+		return nil, fmt.Errorf("Shard factor must be a power of two, got %d", totalShards)
+	}
+
 	shards := make([]*indexShard, totalShards)
 	for i := uint32(0); i < totalShards; i++ {
 		shards[i] = &indexShard{
@@ -33,7 +37,7 @@ func NewBitPrefixWithShards(totalShards uint32) *BitPrefixInvertedIndex {
 	return &BitPrefixInvertedIndex{
 		totalShards: totalShards,
 		shards:      shards,
-	}
+	}, nil
 }
 
 func (ii *BitPrefixInvertedIndex) getShards(shard *astmapper.ShardAnnotation) ([]*indexShard, bool) {
