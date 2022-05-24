@@ -355,7 +355,7 @@ type ObjectStorageSecretSpec struct {
 	// +optional
 	// +kubebuilder:validation:optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
-	CAName string `json:"caName"`
+	CAName string `json:"caName,omitempty"`
 }
 
 // ObjectStorageSpec defines the requirements to access the object
