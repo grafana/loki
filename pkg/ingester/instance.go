@@ -703,7 +703,7 @@ type QuerierQueryServer interface {
 	Send(res *logproto.QueryResponse) error
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit uint32) error {
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit uint32, queryBatchSize uint32) error {
 	stats := stats.FromContext(ctx)
 	if limit == 0 {
 		// send all batches.
@@ -751,9 +751,9 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	return nil
 }
 
-func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer, queryBatchSampleSize uint32) error {
 	log, ctx := spanlogger.New(ctx, "instance.sendSampleBatches")
-	log.Span.LogFields(otlog.Int("queryBatchSampleSize", queryBatchSampleSize))
+	log.Span.LogFields(otlog.Uint32("QueryBatchSampleSize", queryBatchSampleSize))
 	defer func() {
 		log.Span.Finish()
 	}()

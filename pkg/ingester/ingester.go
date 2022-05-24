@@ -104,6 +104,9 @@ type Config struct {
 	IndexShards int `yaml:"index_shards"`
 
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
+
+	QueryBatchSize       uint32 `yaml:"query_batch_size"`
+	QueryBatchSampleSize uint32 `yaml:"query_batch_sample_size"`
 }
 
 // RegisterFlags registers the flags.
@@ -607,7 +610,11 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	return sendBatches(ctx, it, queryServer, req.Limit)
+	batchSize := i.cfg.QueryBatchSize
+	if batchSize == 0 {
+		batchSize = queryBatchSize
+	}
+	return sendBatches(ctx, it, queryServer, req.Limit, batchSize)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
@@ -648,8 +655,11 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	}
 
 	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
-
-	return sendSampleBatches(ctx, it, queryServer)
+	batchSize := i.cfg.QueryBatchSampleSize
+	if batchSize == 0 {
+		batchSize = queryBatchSampleSize
+	}
+	return sendSampleBatches(ctx, it, queryServer, batchSize)
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.
