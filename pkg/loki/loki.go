@@ -195,19 +195,14 @@ func (c *Config) Validate() error {
 		c.LimitsConfig.MaxQueryLookback = c.ChunkStoreConfig.MaxLookBackPeriod
 	}
 
-	for i, sc := range c.SchemaConfig.Configs {
-		if sc.RowShards > 0 && c.Ingester.IndexShards%int(sc.RowShards) > 0 {
-			return fmt.Errorf(
-				"incompatible ingester index shards (%d) and period config row shard factor (%d) for period config at index (%d). The ingester factor must be evenly divisible by all period config factors",
-				c.Ingester.IndexShards,
-				sc.RowShards,
-				i,
-			)
-		}
-	}
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
+
+	if err := ValidateConfigCompatibility(*c); err != nil {
+		return err
+	}
+
 	return nil
 }
 
