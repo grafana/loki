@@ -968,7 +968,7 @@ func (t *Loki) deleteRequestsClient() (deletion.DeleteRequestsClient, error) {
 		return nil, err
 	}
 
-	if !filteringEnabled {
+	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) || !filteringEnabled {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 

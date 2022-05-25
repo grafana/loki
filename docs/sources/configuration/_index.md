@@ -2079,10 +2079,6 @@ compacts index shards to more performant forms.
 # CLI flag: -boltdb.shipper.compactor.deletion-mode
 [deletion_mode: <string> | default = "whole-stream-deletion"]
 
-# Address, including port, where the compactor api is served
-# CLI flag: -boltdb.shipper.compactor.deletion-mode
-[compactor_address: <string> | default = ""]
-
 # Maximum number of tables to compact in parallel.
 # While increasing this value, please make sure compactor has enough disk space
 # allocated to be able to store and compact as many tables.
@@ -2207,6 +2203,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # The limit to length of chunk store queries. 0 to disable.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 721h]
+
+# Address, including port, where the compactor api is served
+# CLI flag: -store.compactor-address
+[compactor_address: <string> | default = ""]
 
 # Maximum number of queries that will be scheduled in parallel by the frontend.
 # CLI flag: -querier.max-query-parallelism

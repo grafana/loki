@@ -26,7 +26,7 @@ type DeleteRequestsClient interface {
 
 type deleteRequestsClient struct {
 	url        string
-	httpClient doer
+	httpClient httpClient
 	mu         sync.RWMutex
 
 	cache         map[string][]DeleteRequest
@@ -35,7 +35,7 @@ type deleteRequestsClient struct {
 	stopChan chan struct{}
 }
 
-type doer interface {
+type httpClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
@@ -47,7 +47,7 @@ func WithRequestClientCacheDuration(d time.Duration) DeleteRequestsStoreOption {
 	}
 }
 
-func NewDeleteRequestsClient(addr string, c doer, opts ...DeleteRequestsStoreOption) (DeleteRequestsClient, error) {
+func NewDeleteRequestsClient(addr string, c httpClient, opts ...DeleteRequestsStoreOption) (DeleteRequestsClient, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error parsing url", "err", err)
