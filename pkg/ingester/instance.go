@@ -37,7 +37,7 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
-const (
+var (
 	QueryBatchSize       = 128
 	QueryBatchSampleSize = 512
 )
