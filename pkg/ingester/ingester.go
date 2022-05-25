@@ -612,7 +612,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	batchSize := i.cfg.QueryBatchSize
 	if batchSize == 0 {
-		batchSize = queryBatchSize
+		batchSize = QueryBatchSize
 	}
 	return sendBatches(ctx, it, queryServer, req.Limit, batchSize)
 }
@@ -657,7 +657,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
 	batchSize := i.cfg.QueryBatchSampleSize
 	if batchSize == 0 {
-		batchSize = queryBatchSampleSize
+		batchSize = QueryBatchSampleSize
 	}
 	return sendSampleBatches(ctx, it, queryServer, batchSize)
 }

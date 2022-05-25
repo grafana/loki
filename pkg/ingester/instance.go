@@ -38,8 +38,8 @@ import (
 )
 
 const (
-	queryBatchSize       = 128
-	queryBatchSampleSize = 512
+	QueryBatchSize       = 128
+	QueryBatchSampleSize = 512
 )
 
 var (
