@@ -76,6 +76,7 @@ func (m *Multi) Delete(labels labels.Labels, fp model.Fingerprint) {
 			i.Delete(labels, fp)
 		}
 	}
+
 }
 
 func (m *Multi) Lookup(t time.Time, matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
