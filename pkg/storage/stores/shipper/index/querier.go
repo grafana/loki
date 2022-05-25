@@ -33,6 +33,7 @@ func NewQuerier(writer Writer, indexShipper Shipper) Querier {
 	}
 }
 
+// QueryPages queries both the writer and indexShipper for the given queries.
 func (q *querier) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -43,6 +44,7 @@ func (q *querier) QueryPages(ctx context.Context, queries []index.Query, callbac
 	queriesByTable := util.QueriesByTable(queries)
 	for table, queries := range queriesByTable {
 		err := util.DoParallelQueries(ctx, func(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+			// writer could be nil when running in ReadOnly mode
 			if q.writer != nil {
 				err := q.writer.ForEach(ctx, table, func(boltdb *bbolt.DB) error {
 					return indexfile.QueryBoltDB(ctx, boltdb, userIDBytes, queries, callback)

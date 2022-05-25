@@ -82,17 +82,7 @@ func LoadTable(path, uploader string, indexShipper Shipper, makePerTenantBuckets
 		return nil, nil
 	}
 
-	table, err := newTableWithDBs(dbs, path, uploader, indexShipper, makePerTenantBuckets)
-	if err != nil {
-		return nil, err
-	}
-
-	err = table.HandoverIndexesToShipper(true)
-	if err != nil {
-		return nil, err
-	}
-
-	return table, nil
+	return newTableWithDBs(dbs, path, uploader, indexShipper, makePerTenantBuckets)
 }
 
 func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, indexShipper Shipper, makePerTenantBuckets bool) (*Table, error) {
@@ -271,7 +261,7 @@ func (lt *Table) Stop() {
 	lt.dbs = map[string]*bbolt.DB{}
 }
 
-func (lt *Table) RemoveSnapshotDB(name string) error {
+func (lt *Table) removeSnapshotDB(name string) error {
 	lt.dbSnapshotsMtx.Lock()
 	defer lt.dbSnapshotsMtx.Unlock()
 
@@ -302,7 +292,7 @@ func (lt *Table) HandoverIndexesToShipper(force bool) error {
 
 	for _, name := range indexesHandedOverToShipper {
 		delete(lt.dbs, name)
-		if err := lt.RemoveSnapshotDB(name); err != nil {
+		if err := lt.removeSnapshotDB(name); err != nil {
 			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove snapshot db %s", name))
 		}
 	}

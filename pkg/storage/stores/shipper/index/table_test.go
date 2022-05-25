@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"io/ioutil"
 	"path/filepath"
 	"strconv"
@@ -60,20 +61,13 @@ func (m *mockIndexShipper) hasIndex(tableName, indexName string) bool {
 	return false
 }
 
-func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, Shipper) {
-	indexPath := filepath.Join(path, indexDirName)
-
-	boltDBIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: indexPath})
-	require.NoError(t, err)
-
-	return boltDBIndexClient, newMockIndexShipper()
-}
-
 type stopFunc func()
 
 func buildTestTable(t *testing.T, path string, makePerTenantBuckets bool) (*Table, stopFunc) {
 	mockIndexShipper := newMockIndexShipper()
 	indexPath := filepath.Join(path, indexDirName)
+
+	require.NoError(t, util.EnsureDirectory(indexPath))
 
 	table, err := NewTable(indexPath, "test", mockIndexShipper, makePerTenantBuckets)
 	require.NoError(t, err)
@@ -131,14 +125,10 @@ func TestLoadTable(t *testing.T) {
 	require.Len(t, filesInfo, 3)
 
 	// query the loaded table to see if it has right data.
-	expectedDBsToHandedOver := []string{"db1", "db2"}
-	indexShipper := table.indexShipper.(*mockIndexShipper)
-
-	require.Len(t, indexShipper.addedIndexes, 1)
-	require.Len(t, indexShipper.addedIndexes[table.name], len(expectedDBsToHandedOver))
-	for _, expectedDB := range expectedDBsToHandedOver {
-		require.True(t, indexShipper.hasIndex(table.name, table.buildFileName(fmt.Sprint(expectedDB))))
-	}
+	require.NoError(t, table.Snapshot())
+	testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}}, func(ctx context.Context, _ string, callback func(boltdb *bbolt.DB) error) error {
+		return table.ForEach(ctx, callback)
+	}, 0, 20)
 }
 
 func TestTable_Write(t *testing.T) {
@@ -319,12 +309,8 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 func TestTable_ImmutableUploads(t *testing.T) {
 	tempDir := t.TempDir()
 
-	boltDBIndexClient, storageClient := buildTestClients(t, tempDir)
+	indexShipper := newMockIndexShipper()
 	indexPath := filepath.Join(tempDir, indexDirName)
-
-	defer func() {
-		boltDBIndexClient.Stop()
-	}()
 
 	// shardCutoff is calculated based on when shards are considered to not be active anymore and are safe to be
 	// handed over to shipper for uploading.
@@ -350,7 +336,9 @@ func TestTable_ImmutableUploads(t *testing.T) {
 	tableName := "test-table"
 	tablePath := testutil.SetupDBsAtPath(t, filepath.Join(indexPath, tableName), dbs, nil)
 
-	table := loadTablesWithoutHandover(t, tablePath, "test", storageClient)
+	table, err := LoadTable(tablePath, "test", indexShipper, false, newMetrics(nil))
+	require.NoError(t, err)
+	require.NotNil(t, table)
 
 	defer func() {
 		table.Stop()
@@ -362,13 +350,13 @@ func TestTable_ImmutableUploads(t *testing.T) {
 	// handover dbs without forcing it which should not handover active shard or shard which has been active upto a minute back.
 	require.NoError(t, table.HandoverIndexesToShipper(false))
 
-	indexShipper := table.indexShipper.(*mockIndexShipper)
+	mockIndexShipper := table.indexShipper.(*mockIndexShipper)
 
 	// verify that only expected dbs are handed over
-	require.Len(t, indexShipper.addedIndexes, 1)
-	require.Len(t, indexShipper.addedIndexes[table.name], len(expectedDBsToHandedOver))
+	require.Len(t, mockIndexShipper.addedIndexes, 1)
+	require.Len(t, mockIndexShipper.addedIndexes[table.name], len(expectedDBsToHandedOver))
 	for _, expectedDB := range expectedDBsToHandedOver {
-		require.True(t, indexShipper.hasIndex(tableName, table.buildFileName(fmt.Sprint(expectedDB))))
+		require.True(t, mockIndexShipper.hasIndex(tableName, table.buildFileName(fmt.Sprint(expectedDB))))
 	}
 
 	// force handover of dbs
@@ -376,30 +364,20 @@ func TestTable_ImmutableUploads(t *testing.T) {
 	expectedDBsToHandedOver = dbNames
 
 	// verify that all the dbs are handed over
-	require.Len(t, indexShipper.addedIndexes, 1)
-	require.Len(t, indexShipper.addedIndexes[table.name], len(expectedDBsToHandedOver))
+	require.Len(t, mockIndexShipper.addedIndexes, 1)
+	require.Len(t, mockIndexShipper.addedIndexes[table.name], len(expectedDBsToHandedOver))
 	for _, expectedDB := range expectedDBsToHandedOver {
-		require.True(t, indexShipper.hasIndex(tableName, table.buildFileName(fmt.Sprint(expectedDB))))
+		require.True(t, mockIndexShipper.hasIndex(tableName, table.buildFileName(fmt.Sprint(expectedDB))))
 	}
 
 	// clear dbs handed over to shipper
-	indexShipper.addedIndexes = map[string][]shipper_index.Index{}
+	mockIndexShipper.addedIndexes = map[string][]shipper_index.Index{}
 
 	// force handover of dbs
 	require.NoError(t, table.HandoverIndexesToShipper(true))
 
 	// make sure nothing was added to shipper again
-	require.Len(t, indexShipper.addedIndexes, 0)
-}
-
-func loadTablesWithoutHandover(t *testing.T, path, uploader string, indexShipper Shipper) *Table {
-	dbs, err := loadBoltDBsFromDir(path, nil)
-	require.NoError(t, err)
-
-	table, err := newTableWithDBs(dbs, path, uploader, indexShipper, true)
-	require.NoError(t, err)
-
-	return table
+	require.Len(t, mockIndexShipper.addedIndexes, 0)
 }
 
 func TestTable_MultiQueries(t *testing.T) {
@@ -445,7 +423,9 @@ func TestTable_MultiQueries(t *testing.T) {
 	}, []byte(user1))
 
 	// try loading the table.
-	table := loadTablesWithoutHandover(t, tablePath, "test", newMockIndexShipper())
+	table, err := LoadTable(tablePath, "test", newMockIndexShipper(), false, newMetrics(nil))
+	require.NoError(t, err)
+	require.NotNil(t, table)
 	defer func() {
 		table.Stop()
 	}()

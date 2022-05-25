@@ -238,6 +238,12 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 			continue
 		}
 
+		// handover indexes to shipper since we won't modify them anymore.
+		err = table.HandoverIndexesToShipper(true)
+		if err != nil {
+			return nil, err
+		}
+
 		// Queries are only done against table snapshots so it's important we snapshot as soon as the table is loaded.
 		err = table.Snapshot()
 		if err != nil {

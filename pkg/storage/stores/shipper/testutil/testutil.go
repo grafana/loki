@@ -21,12 +21,12 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
-func AddRecordsToDB(t testing.TB, path string, dbClient *local.BoltIndexClient, start, numRecords int, bucketName []byte) {
+func AddRecordsToDB(t testing.TB, path string, start, numRecords int, bucketName []byte) {
 	t.Helper()
 	db, err := local.OpenBoltdbFile(path)
 	require.NoError(t, err)
 
-	batch := dbClient.NewWriteBatch()
+	batch := local.NewWriteBatch()
 	AddRecordsToBatch(batch, "test", start, numRecords)
 
 	if len(bucketName) == 0 {
@@ -131,7 +131,7 @@ func SetupDBsAtPath(t *testing.T, path string, dbs map[string]DBConfig, bucketNa
 	require.NoError(t, chunk_util.EnsureDirectory(path))
 
 	for name, dbConfig := range dbs {
-		AddRecordsToDB(t, filepath.Join(path, name), boltIndexClient, dbConfig.Start, dbConfig.NumRecords, bucketName)
+		AddRecordsToDB(t, filepath.Join(path, name), dbConfig.Start, dbConfig.NumRecords, bucketName)
 		if dbConfig.CompressFile {
 			compressFile(t, filepath.Join(path, name))
 		}
