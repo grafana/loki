@@ -205,6 +205,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 				NewIndexGatewayGRPCService(tst.BuildOptions),
 				NewIndexGatewayHTTPService(tst.BuildOptions),
 				NewRulerHTTPService(tst.BuildOptions),
+				NewRulerGRPCService(tst.BuildOptions),
 				NewGatewayHTTPService(tst.BuildOptions),
 			}
 
@@ -309,6 +310,9 @@ func TestBuildAll_WithFeatureFlags_EnableGRPCService(t *testing.T) {
 				Namespace: "test",
 				Stack: lokiv1beta1.LokiStackSpec{
 					Size: lokiv1beta1.SizeOneXSmall,
+					Rules: &lokiv1beta1.RulesSpec{
+						Enabled: true,
+					},
 					Template: &lokiv1beta1.LokiTemplateSpec{
 						Compactor: &lokiv1beta1.LokiComponentSpec{
 							Replicas: 1,
@@ -329,6 +333,9 @@ func TestBuildAll_WithFeatureFlags_EnableGRPCService(t *testing.T) {
 							Replicas: 1,
 						},
 						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ruler: &lokiv1beta1.LokiComponentSpec{
 							Replicas: 1,
 						},
 					},
@@ -345,6 +352,9 @@ func TestBuildAll_WithFeatureFlags_EnableGRPCService(t *testing.T) {
 				Namespace: "test",
 				Stack: lokiv1beta1.LokiStackSpec{
 					Size: lokiv1beta1.SizeOneXSmall,
+					Rules: &lokiv1beta1.RulesSpec{
+						Enabled: true,
+					},
 					Template: &lokiv1beta1.LokiTemplateSpec{
 						Compactor: &lokiv1beta1.LokiComponentSpec{
 							Replicas: 1,
@@ -365,6 +375,9 @@ func TestBuildAll_WithFeatureFlags_EnableGRPCService(t *testing.T) {
 							Replicas: 1,
 						},
 						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ruler: &lokiv1beta1.LokiComponentSpec{
 							Replicas: 1,
 						},
 					},
@@ -385,6 +398,7 @@ func TestBuildAll_WithFeatureFlags_EnableGRPCService(t *testing.T) {
 		"test-ingester":      "test-ingester-grpc-metrics",
 		"test-compactor":     "test-compactor-grpc-metrics",
 		"test-index-gateway": "test-index-gateway-grpc-metrics",
+		"test-ruler":         "test-ruler-grpc-metrics",
 	}
 
 	for _, tst := range table {

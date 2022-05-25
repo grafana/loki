@@ -24,6 +24,12 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Flags.EnableTLSGRPCServices {
+		if err := configureRulerGRPCServicePKI(statefulSet, opts.Name); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewRulerGRPCService(opts),
@@ -201,7 +207,9 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 
 // NewRulerGRPCService creates a k8s service for the ruler GRPC endpoint
 func NewRulerGRPCService(opts Options) *corev1.Service {
+	s := serviceNameRulerGRPC(opts.Name)
 	l := ComponentLabels(LabelRulerComponent, opts.Name)
+	a := serviceAnnotations(s, opts.Flags.EnableCertificateSigningService)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -209,8 +217,9 @@ func NewRulerGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameRulerGRPC(opts.Name),
-			Labels: l,
+			Name:        serviceNameRulerGRPC(opts.Name),
+			Labels:      l,
+			Annotations: a,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -260,6 +269,11 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 func configureRulerServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameRulerHTTP(stackName)
 	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+}
+
+func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
+	serviceName := serviceNameRulerGRPC(stackName)
+	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }
 
 func ruleVolumeItems(tenants map[string]TenantConfig) []corev1.KeyToPath {
