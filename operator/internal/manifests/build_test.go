@@ -296,7 +296,7 @@ func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableGRPCService(t *testing.T) {
+func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
