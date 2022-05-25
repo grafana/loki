@@ -1,4 +1,4 @@
-package uploads
+package index
 
 import (
 	"context"
@@ -13,26 +13,26 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Config struct {
 	Uploader             string
 	IndexDir             string
-	UploadInterval       time.Duration
 	DBRetainPeriod       time.Duration
 	MakePerTenantBuckets bool
 }
 
 type TableManager struct {
-	cfg             Config
-	boltIndexClient BoltDBIndexClient
-	storageClient   StorageClient
+	cfg          Config
+	indexShipper Shipper
 
 	metrics   *metrics
 	tables    map[string]*Table
@@ -43,15 +43,24 @@ type TableManager struct {
 	wg     sync.WaitGroup
 }
 
-func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClient StorageClient, registerer prometheus.Registerer) (*TableManager, error) {
+type Shipper interface {
+	AddIndex(tableName, userID string, index shipper_index.Index) error
+	ForEach(ctx context.Context, tableName, userID string, callback func(index shipper_index.Index) error) error
+}
+
+func NewTableManager(cfg Config, indexShipper Shipper, registerer prometheus.Registerer) (*TableManager, error) {
+	err := chunk_util.EnsureDirectory(cfg.IndexDir)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := TableManager{
-		cfg:             cfg,
-		boltIndexClient: boltIndexClient,
-		storageClient:   storageClient,
-		metrics:         newMetrics(registerer),
-		ctx:             ctx,
-		cancel:          cancel,
+		cfg:          cfg,
+		indexShipper: indexShipper,
+		metrics:      newMetrics(registerer),
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 
 	tables, err := tm.loadTables()
@@ -68,15 +77,15 @@ func (tm *TableManager) loop() {
 	tm.wg.Add(1)
 	defer tm.wg.Done()
 
-	tm.uploadTables(context.Background(), false)
+	tm.handoverIndexesToShipper(false)
 
-	syncTicker := time.NewTicker(tm.cfg.UploadInterval)
+	syncTicker := time.NewTicker(indexshipper.UploadInterval)
 	defer syncTicker.Stop()
 
 	for {
 		select {
 		case <-syncTicker.C:
-			tm.uploadTables(context.Background(), false)
+			tm.handoverIndexesToShipper(false)
 		case <-tm.ctx.Done():
 			return
 		}
@@ -89,28 +98,16 @@ func (tm *TableManager) Stop() {
 	tm.cancel()
 	tm.wg.Wait()
 
-	tm.uploadTables(context.Background(), true)
+	tm.handoverIndexesToShipper(true)
 }
 
-func (tm *TableManager) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
-	queriesByTable := util.QueriesByTable(queries)
-	for tableName, queries := range queriesByTable {
-		err := tm.query(ctx, tableName, queries, callback)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (tm *TableManager) query(ctx context.Context, tableName string, queries []index.Query, callback index.QueryPagesCallback) error {
+func (tm *TableManager) ForEach(ctx context.Context, tableName string, callback func(boltdb *bbolt.DB) error) error {
 	table, ok := tm.getTable(tableName)
 	if !ok {
 		return nil
 	}
 
-	return util.DoParallelQueries(ctx, table, queries, callback)
+	return table.ForEach(ctx, callback)
 }
 
 func (tm *TableManager) getTable(tableName string) (*Table, bool) {
@@ -151,8 +148,7 @@ func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
 		table, ok = tm.tables[tableName]
 		if !ok {
 			var err error
-			table, err = NewTable(filepath.Join(tm.cfg.IndexDir, tableName), tm.cfg.Uploader, tm.storageClient,
-				tm.boltIndexClient, tm.cfg.MakePerTenantBuckets)
+			table, err = NewTable(filepath.Join(tm.cfg.IndexDir, tableName), tm.cfg.Uploader, tm.indexShipper, tm.cfg.MakePerTenantBuckets)
 			if err != nil {
 				return nil, err
 			}
@@ -164,37 +160,26 @@ func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
 	return table, nil
 }
 
-func (tm *TableManager) uploadTables(ctx context.Context, force bool) {
+func (tm *TableManager) handoverIndexesToShipper(force bool) {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
-	level.Info(util_log.Logger).Log("msg", "uploading tables")
+	level.Info(util_log.Logger).Log("msg", "handing over indexes to shipper")
 
-	status := statusSuccess
 	for _, table := range tm.tables {
-		err := table.Snapshot()
+		err := table.HandoverIndexesToShipper(force)
 		if err != nil {
-			// we do not want to stop uploading of dbs due to failures in snapshotting them so logging just the error here.
-			level.Error(util_log.Logger).Log("msg", "failed to snapshot table for reads", "table", table.name, "err", err)
-		}
-
-		err = table.Upload(ctx, force)
-		if err != nil {
-			// continue uploading other tables while skipping cleanup for a failed one.
-			status = statusFailure
-			level.Error(util_log.Logger).Log("msg", "failed to upload dbs", "table", table.name, "err", err)
+			// continue handing over other tables while skipping cleanup for a failed one.
+			level.Error(util_log.Logger).Log("msg", "failed to handover index", "table", table.name, "err", err)
 			continue
 		}
 
-		// cleanup unwanted dbs from the table
-		err = table.Cleanup(tm.cfg.DBRetainPeriod)
+		err = table.Snapshot()
 		if err != nil {
-			// we do not want to stop uploading of dbs due to failures in cleaning them up so logging just the error here.
-			level.Error(util_log.Logger).Log("msg", "failed to cleanup uploaded dbs past their retention period", "table", table.name, "err", err)
+			// we do not want to stop handing over of index due to failures in snapshotting them so logging just the error here.
+			level.Error(util_log.Logger).Log("msg", "failed to snapshot table for reads", "table", table.name, "err", err)
 		}
 	}
-
-	tm.metrics.tablesUploadOperationTotal.WithLabelValues(status).Inc()
 }
 
 func (tm *TableManager) loadTables() (map[string]*Table, error) {
@@ -239,8 +224,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 		}
 
 		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading table %s", fileInfo.Name()))
-		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()), tm.cfg.Uploader, tm.storageClient,
-			tm.boltIndexClient, tm.cfg.MakePerTenantBuckets, tm.metrics)
+		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()), tm.cfg.Uploader, tm.indexShipper, tm.cfg.MakePerTenantBuckets, tm.metrics)
 		if err != nil {
 			return nil, err
 		}
@@ -252,6 +236,12 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 				level.Error(util_log.Logger).Log("msg", "failed to remove empty table folder", "table", fileInfo.Name(), "err", err)
 			}
 			continue
+		}
+
+		// handover indexes to shipper since we won't modify them anymore.
+		err = table.HandoverIndexesToShipper(true)
+		if err != nil {
+			return nil, err
 		}
 
 		// Queries are only done against table snapshots so it's important we snapshot as soon as the table is loaded.

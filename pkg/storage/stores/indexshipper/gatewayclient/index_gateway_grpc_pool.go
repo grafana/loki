@@ -1,4 +1,4 @@
-package shipper
+package gatewayclient
 
 import (
 	"io"

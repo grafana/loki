@@ -1,27 +1,16 @@
-package uploads
+package index
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-const (
-	statusFailure = "failure"
-	statusSuccess = "success"
-)
-
 type metrics struct {
-	tablesUploadOperationTotal    *prometheus.CounterVec
 	openExistingFileFailuresTotal prometheus.Counter
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
 	return &metrics{
-		tablesUploadOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "tables_upload_operation_total",
-			Help:      "Total number of upload operations done by status",
-		}, []string{"status"}),
 		openExistingFileFailuresTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "open_existing_file_failures_total",

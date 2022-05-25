@@ -1,37 +1,23 @@
-package shipper
+package gatewayclient
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"net"
-	"os"
-	"path/filepath"
-	"strconv"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	util_math "github.com/grafana/loki/pkg/util/math"
-	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -47,8 +33,8 @@ const (
 	valuePrefix      = "value"
 
 	// the number of index entries for benchmarking will be divided amongst numTables
-	benchMarkNumEntries = 1000000
-	numTables           = 50
+	//benchMarkNumEntries = 1000000
+	//numTables           = 50
 )
 
 type mockIndexGatewayServer struct {
@@ -165,6 +151,8 @@ func TestGatewayClient(t *testing.T) {
 	require.Equal(t, len(queries), numCallbacks)
 }
 
+/*
+ToDo(Sandeep): Comment out benchmark code for now to fix circular dependency
 func buildTableName(i int) string {
 	return fmt.Sprintf("%s%d", tableNamePrefix, i)
 }
@@ -304,7 +292,7 @@ func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
 		})
 	}
 	benchmarkIndexQueries(b, queries)
-}
+}*/
 
 func TestDoubleRegistration(t *testing.T) {
 	r := prometheus.NewRegistry()

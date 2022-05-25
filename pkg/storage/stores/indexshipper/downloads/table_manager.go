@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +28,11 @@ type Limits interface {
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
 }
+
+// IndexGatewayOwnsTenant is invoked by an IndexGateway instance and answers whether if the given tenant is assigned to this instance or not.
+//
+// It is only relevant by an IndexGateway in the ring mode and if it returns false for a given tenant, that tenant will be ignored by this IndexGateway during query readiness.
+type IndexGatewayOwnsTenant func(tenant string) bool
 
 type TableManager interface {
 	Stop()
@@ -54,9 +58,11 @@ type tableManager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	ownsTenant IndexGatewayOwnsTenant
 }
 
-func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client) (TableManager, error) {
+func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client, ownsTenantFn IndexGatewayOwnsTenant) (TableManager, error) {
 	if err := util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
@@ -66,6 +72,7 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		cfg:                cfg,
 		openIndexFileFunc:  openIndexFileFunc,
 		indexStorageClient: indexStorageClient,
+		ownsTenant:         ownsTenantFn,
 		tables:             make(map[string]Table),
 		ctx:                ctx,
 		cancel:             cancel,
@@ -292,8 +299,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
-		joinedUsers := strings.Join(usersToBeQueryReadyFor, ",")
-		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users", joinedUsers, "duration", time.Since(perTableStart), "table", tableName)
+		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users_len", len(usersToBeQueryReadyFor), "duration", time.Since(perTableStart), "table", tableName)
 	}
 
 	return nil
@@ -314,6 +320,10 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 		}
 
 		if queryReadyNumDays == 0 {
+			continue
+		}
+
+		if tm.ownsTenant != nil && !tm.ownsTenant(userID) {
 			continue
 		}
 

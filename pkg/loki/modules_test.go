@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 )
 
@@ -170,10 +171,13 @@ func TestMultiKVSetup(t *testing.T) {
 			cfg.StorageConfig = storage.Config{
 				FSConfig: local.FSConfig{Directory: dir},
 				BoltDBShipperConfig: shipper.Config{
-					SharedStoreType:      config.StorageTypeFileSystem,
-					ActiveIndexDirectory: dir,
-					CacheLocation:        dir,
-					Mode:                 shipper.ModeWriteOnly},
+					Config: indexshipper.Config{
+						SharedStoreType:      config.StorageTypeFileSystem,
+						ActiveIndexDirectory: dir,
+						CacheLocation:        dir,
+						Mode:                 indexshipper.ModeWriteOnly,
+					},
+				},
 			}
 			cfg.Ruler.Config.StoreConfig.Type = config.StorageTypeLocal
 			cfg.Ruler.Config.StoreConfig.Local.Directory = dir
