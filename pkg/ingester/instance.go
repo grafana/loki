@@ -38,8 +38,8 @@ import (
 )
 
 var (
-	QueryBatchSize       = 128
-	QueryBatchSampleSize = 512
+	QueryBatchSize       = uint32(128)
+	QueryBatchSampleSize = uint32(512)
 )
 
 var (
