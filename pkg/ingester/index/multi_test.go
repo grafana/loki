@@ -20,7 +20,7 @@ func MustParseDayTime(s string) config.DayTime {
 	if err != nil {
 		panic(err)
 	}
-	return config.DayTime{model.TimeFromUnix(t.Unix())}
+	return config.DayTime{Time: model.TimeFromUnix(t.Unix())}
 }
 
 var testPeriodConfigs = []config.PeriodConfig{
@@ -40,6 +40,38 @@ var testPeriodConfigs = []config.PeriodConfig{
 		From:      MustParseDayTime("2023-01-01"),
 		IndexType: config.TSDBType,
 	},
+}
+
+// Only run the specific shard factor validation logic if a period config using
+// tsdb exists
+func TestIgnoresInvalidShardFactorWhenTSDBNotPresent(t *testing.T) {
+	factor := uint32(6)
+	_, err := NewMultiInvertedIndex(
+		[]config.PeriodConfig{
+			{
+				From:      MustParseDayTime("2020-01-01"),
+				IndexType: config.StorageTypeBigTable,
+			},
+		},
+		factor,
+	)
+	require.Nil(t, err)
+
+	_, err = NewMultiInvertedIndex(
+		[]config.PeriodConfig{
+			{
+				From:      MustParseDayTime("2020-01-01"),
+				IndexType: config.StorageTypeBigTable,
+			},
+			{
+				From:      MustParseDayTime("2021-01-01"),
+				IndexType: config.TSDBType,
+			},
+		},
+		factor,
+	)
+	require.Error(t, err)
+
 }
 
 func TestMultiIndexCreation(t *testing.T) {

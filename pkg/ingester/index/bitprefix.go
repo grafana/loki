@@ -25,7 +25,7 @@ type BitPrefixInvertedIndex struct {
 
 func NewBitPrefixWithShards(totalShards uint32) (*BitPrefixInvertedIndex, error) {
 	if requiredBits := index.NewShard(0, totalShards).RequiredBits(); 1<<requiredBits != totalShards {
-		return nil, fmt.Errorf("Shard factor must be a power of two, got %d", totalShards)
+		return nil, fmt.Errorf("Incompatible inverted index shard factor on ingester: It must be a power of two, got %d", totalShards)
 	}
 
 	shards := make([]*indexShard, totalShards)

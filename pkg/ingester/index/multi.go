@@ -63,14 +63,18 @@ func NewMultiInvertedIndex(periods []config.PeriodConfig, indexShards uint32) (*
 
 func (m *Multi) Add(labels []logproto.LabelAdapter, fp model.Fingerprint) (result labels.Labels) {
 	for _, i := range m.indices {
-		result = i.Add(labels, fp)
+		if i != nil {
+			result = i.Add(labels, fp)
+		}
 	}
 	return
 }
 
 func (m *Multi) Delete(labels labels.Labels, fp model.Fingerprint) {
 	for _, i := range m.indices {
-		i.Delete(labels, fp)
+		if i != nil {
+			i.Delete(labels, fp)
+		}
 	}
 }
 
