@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 type periodIndex struct {
@@ -18,6 +19,46 @@ type periodIndex struct {
 type Multi struct {
 	periods []periodIndex
 	indices []Interface
+}
+
+func NewMultiInvertedIndex(periods []config.PeriodConfig, indexShards uint32) (*Multi, error) {
+	var (
+		err error
+
+		ii          Interface // always stored in 0th index
+		bitPrefixed Interface // always stored in 1st index
+
+		periodIndices []periodIndex
+	)
+
+	for _, pd := range periods {
+		switch pd.IndexType {
+		case config.TSDBType:
+			if bitPrefixed == nil {
+				bitPrefixed, err = NewBitPrefixWithShards(indexShards)
+				if err != nil {
+					return nil, err
+				}
+			}
+			periodIndices = append(periodIndices, periodIndex{
+				Time: pd.From.Time.Time(),
+				idx:  1, // tsdb inverted index is always stored in position one
+			})
+		default:
+			if ii == nil {
+				ii = NewWithShards(indexShards)
+			}
+			periodIndices = append(periodIndices, periodIndex{
+				Time: pd.From.Time.Time(),
+				idx:  0, // regular inverted index is always stored in position zero
+			})
+		}
+	}
+
+	return &Multi{
+		periods: periodIndices,
+		indices: []Interface{ii, bitPrefixed},
+	}, nil
 }
 
 func (m *Multi) Add(labels []logproto.LabelAdapter, fp model.Fingerprint) (result labels.Labels) {
@@ -31,7 +72,6 @@ func (m *Multi) Delete(labels labels.Labels, fp model.Fingerprint) {
 	for _, i := range m.indices {
 		i.Delete(labels, fp)
 	}
-	return
 }
 
 func (m *Multi) Lookup(t time.Time, matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
@@ -63,9 +103,7 @@ func (noopInvertedIndex) Add(labels []logproto.LabelAdapter, fp model.Fingerprin
 	return nil
 }
 
-func (noopInvertedIndex) Delete(labels labels.Labels, fp model.Fingerprint) {
-	return nil
-}
+func (noopInvertedIndex) Delete(labels labels.Labels, fp model.Fingerprint) {}
 
 func (noopInvertedIndex) Lookup(matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
 	return nil, nil
