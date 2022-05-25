@@ -3,7 +3,6 @@ package index
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"io/ioutil"
 	"path/filepath"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
