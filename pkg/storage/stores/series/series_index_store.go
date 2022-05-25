@@ -54,8 +54,8 @@ var (
 		Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 	})
 
-	maxSeriesLen  = 1000
-	maxLabelNames = 1000
+	maxSeriesLen  = 250
+	maxLabelNames = 50
 )
 
 type chunkFetcher interface {
