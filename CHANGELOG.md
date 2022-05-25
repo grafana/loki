@@ -312,6 +312,7 @@ to include only the most relevant.
 * [5223](https://github.com/grafana/loki/pull/5223) **cyriltovena**: fluent-bit: Attempt to unmarshal nested json.
 
 #### FluentD
+* [6240](https://github.com/grafana/loki/pull/6240) **taharah**: Add the feature flag `include_thread_label` to allow the `fluentd_thread` label included when using multiple threads for flushing to be configurable
 * [5107](https://github.com/grafana/loki/pull/5107) **chaudum**: fluentd: Fix bug that caused lines to be dropped when containing non utf-8 characters
 * [5163](https://github.com/grafana/loki/pull/5163) **chaudum**: Fix encoding error in fluentd client
 
