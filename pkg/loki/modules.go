@@ -589,11 +589,11 @@ func (t *Loki) compactorAddress() (string, error) {
 		return fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort), nil
 	}
 
-	if t.Cfg.CompactorConfig.Address == "" {
+	if t.Cfg.StorageConfig.CompactorAddress == "" {
 		return "", errors.New("query filtering for deletes requires 'compactor_address' to be configured")
 	}
 
-	return t.Cfg.CompactorConfig.Address, nil
+	return t.Cfg.StorageConfig.CompactorAddress, nil
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {

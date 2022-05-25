@@ -26,11 +26,11 @@
           active_index_directory: '/data/index',
           cache_location: '/data/boltdb-cache',
         },
+        compactor_address: 'http://compactor.%s.svc.cluster.local:%d' % [$._config.namespace, $._config.http_listen_port],
       },
       compactor+: {
         working_directory: '/data/compactor',
         shared_store: $._config.boltdb_shipper_shared_store,
-        compactor_address: 'http://compactor.%s.svc.cluster.local:%d' % [$._config.namespace, $._config.http_listen_port],
       },
     } else {},
   },

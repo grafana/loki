@@ -72,7 +72,6 @@ type Config struct {
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
-	Address                   string          `yaml:"compactor_address,omitempty"`
 }
 
 // RegisterFlags registers flags.
@@ -88,7 +87,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
 	f.StringVar(&cfg.DeletionMode, "boltdb.shipper.compactor.deletion-mode", "whole-stream-deletion", fmt.Sprintf("(Experimental) Deletion mode. Can be one of %v", strings.Join(deletion.AllModes(), "|")))
-	f.StringVar(&cfg.Address, "boltdb.shipper.compactor.address", "", "host and port where the compactor API is listening")
 	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
 }
 
