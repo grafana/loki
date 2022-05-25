@@ -123,7 +123,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.Eventually(t, func() bool {
 			deleteRequests, err := cliCompactor.GetDeleteRequests()
 			require.NoError(t, err)
-			require.NotEmpty(t, deleteRequests)
 			require.Len(t, deleteRequests, 1)
 			return deleteRequests[0].Status == "processed"
 		}, 10*time.Second, 1*time.Second)
