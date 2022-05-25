@@ -193,8 +193,8 @@ func main() {
 		cancelFunc()
 	}()
 
-	var processedChunks uint64 = 0
-	var processedBytes uint64 = 0
+	var processedChunks uint64
+	var processedBytes uint64
 
 	// Launch a thread to track stats
 	go func() {
@@ -296,8 +296,8 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 			return
 		case sr := <-syncRangeCh:
 			start := time.Now()
-			var totalBytes uint64 = 0
-			var totalChunks uint64 = 0
+			var totalBytes uint64
+			var totalChunks uint64
 			//log.Printf("%d processing sync range %d - Start: %v, End: %v\n", threadID, sr.number, time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
 			schemaGroups, fetchers, err := m.source.GetChunkRefs(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
 			if err != nil {
