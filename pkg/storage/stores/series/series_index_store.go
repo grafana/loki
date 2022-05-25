@@ -54,8 +54,8 @@ var (
 		Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 	})
 
-	maxSeriesLen  = 250
-	maxLabelNames = 50
+	maxLabelNamesSeriesLen = 250
+	maxLabelValuesEntryLen = 250
 )
 
 type chunkFetcher interface {
@@ -233,8 +233,8 @@ func (c *indexStore) LabelNamesForMetricName(ctx context.Context, userID string,
 
 	log.Span.LogFields(otlog.Int("seriesIDs", len(seriesIDs)))
 	level.Debug(log).Log("series-ids", len(seriesIDs))
-	if len(seriesIDs) > maxSeriesLen {
-		seriesIDs = seriesIDs[:maxSeriesLen]
+	if len(seriesIDs) > maxLabelNamesSeriesLen {
+		seriesIDs = seriesIDs[:maxLabelNamesSeriesLen]
 	}
 	log.Span.LogFields(otlog.Int("newSeriesIDs", len(seriesIDs)))
 
@@ -251,11 +251,6 @@ func (c *indexStore) LabelNamesForMetricName(ctx context.Context, userID string,
 	}
 
 	level.Debug(log).Log("labelNames", len(labelNames))
-	log.Span.LogFields(otlog.Int("labelNames", len(labelNames)))
-	if len(labelNames) > maxLabelNames {
-		labelNames = labelNames[:maxLabelNames]
-	}
-	log.Span.LogFields(otlog.Int("newLabelNames", len(labelNames)))
 
 	return labelNames, nil
 }
@@ -283,13 +278,22 @@ func (c *indexStore) LabelValuesForMetricName(ctx context.Context, userID string
 	defer entriesPool.Put(entries)
 
 	var result util.UniqueStrings
-	for _, entry := range entries {
+
+	log.Span.LogFields(otlog.Int("labelValueEntries.len", len(entries)))
+	entrySize := 0
+	for idx, entry := range entries {
 		_, labelValue, err := index.ParseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
 		result.Add(string(labelValue))
+		entrySize = idx
+		if entrySize > maxLabelValuesEntryLen {
+			break
+		}
 	}
+	log.Span.LogFields(otlog.Int("newLabelValueEntries.len", entrySize))
+
 	return result.Strings(), nil
 }
 
