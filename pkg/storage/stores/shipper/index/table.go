@@ -346,7 +346,7 @@ func (lt *Table) buildFileName(dbName string) string {
 		fileName = lt.uploader
 	}
 
-	return fmt.Sprintf("%s.gz", fileName)
+	return fileName
 }
 
 func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, error) {
