@@ -38,6 +38,10 @@ func labelNamesFromChunks(chunks []chunk.Chunk) []string {
 	var result util.UniqueStrings
 	for _, c := range chunks {
 		for _, l := range c.Metric {
+			if l.Name == model.MetricNameLabel {
+				continue
+			}
+
 			result.Add(l.Name)
 		}
 	}

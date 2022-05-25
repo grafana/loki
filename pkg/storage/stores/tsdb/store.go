@@ -25,6 +25,7 @@ func NewStore(indexShipperCfg indexshipper.Config, p config.PeriodConfig, f *fet
 		indexShipperCfg,
 		objectClient,
 		limits,
+		nil,
 		OpenShippableTSDB,
 	)
 	if err != nil {

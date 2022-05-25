@@ -551,7 +551,6 @@ func (c *indexStore) lookupLabelNamesBySeries(ctx context.Context, from, through
 	level.Debug(log).Log("entries", len(entries))
 
 	var result util.UniqueStrings
-	result.Add(model.MetricNameLabel)
 	for _, entry := range entries {
 		lbs := []string{}
 		err := jsoniter.ConfigFastest.Unmarshal(entry.Value, &lbs)

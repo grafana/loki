@@ -18,6 +18,7 @@ type Options struct {
 	GossipRing            Address
 	Querier               Address
 	IndexGateway          Address
+	Ruler                 Ruler
 	StorageDirectory      string
 	MaxConcurrent         MaxConcurrent
 	WriteAheadLog         WriteAheadLog
@@ -32,6 +33,12 @@ type Address struct {
 	FQDN string
 	// Port is required
 	Port int
+}
+
+// Ruler configuration
+type Ruler struct {
+	Enabled               bool
+	RulesStorageDirectory string
 }
 
 // MaxConcurrent for concurrent query processing.

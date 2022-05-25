@@ -5,7 +5,6 @@ import (
 
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
@@ -38,7 +37,7 @@ type openShiftSpec struct {
 
 // GetTenantConfigMapData returns the tenantName, tenantId, cookieSecret
 // clusters to auto-create redirect URLs for OpenShift Auth or an error.
-func GetTenantConfigMapData(ctx context.Context, k k8s.Client, req ctrl.Request) (map[string]openshift.TenantData, error) {
+func GetTenantConfigMapData(ctx context.Context, k k8s.Client, req ctrl.Request) (map[string]manifests.TenantConfig, error) {
 	var tenantConfigMap corev1.ConfigMap
 	key := client.ObjectKey{Name: manifests.GatewayName(req.Name), Namespace: req.Namespace}
 	if err := k.Get(ctx, key, &tenantConfigMap); err != nil {
@@ -50,11 +49,16 @@ func GetTenantConfigMapData(ctx context.Context, k k8s.Client, req ctrl.Request)
 		return nil, kverrors.Wrap(err, "error occurred in extracting tenants.yaml configMap.")
 	}
 
-	tcmMap := make(map[string]openshift.TenantData)
+	tcmMap := make(map[string]manifests.TenantConfig)
 	for _, tenant := range tcm.Tenants {
-		tcmMap[tenant.Name] = openshift.TenantData{
-			CookieSecret: tenant.OpenShift.CookieSecret,
+		tc := manifests.TenantConfig{}
+		if tenant.OpenShift != nil {
+			tc.OpenShift = &manifests.TenantOpenShiftSpec{
+				CookieSecret: tenant.OpenShift.CookieSecret,
+			}
 		}
+
+		tcmMap[tenant.Name] = tc
 	}
 
 	return tcmMap, nil
