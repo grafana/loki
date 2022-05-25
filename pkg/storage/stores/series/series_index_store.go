@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	jsoniter "github.com/json-iterator/go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -52,6 +53,9 @@ var (
 		// For 100k series for 7 week, could be 1.2m - 10*(8^(7-1)) = 2.6m.
 		Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 	})
+
+	maxSeriesLen  = 1000
+	maxLabelNames = 1000
 )
 
 type chunkFetcher interface {
@@ -226,10 +230,17 @@ func (c *indexStore) LabelNamesForMetricName(ctx context.Context, userID string,
 	if err != nil {
 		return nil, err
 	}
+
+	log.Span.LogFields(otlog.Int("seriesIDs", len(seriesIDs)))
 	level.Debug(log).Log("series-ids", len(seriesIDs))
+	if len(seriesIDs) > maxSeriesLen {
+		seriesIDs = seriesIDs[:maxSeriesLen]
+	}
+	log.Span.LogFields(otlog.Int("newSeriesIDs", len(seriesIDs)))
 
 	// Lookup the series in the index to get label names.
 	labelNames, err := c.lookupLabelNamesBySeries(ctx, from, through, userID, seriesIDs)
+
 	if err != nil {
 		// looking up metrics by series is not supported falling back on chunks
 		if err == index.ErrNotSupported {
@@ -238,7 +249,13 @@ func (c *indexStore) LabelNamesForMetricName(ctx context.Context, userID string,
 		level.Error(log).Log("msg", "lookupLabelNamesBySeries", "err", err)
 		return nil, err
 	}
+
 	level.Debug(log).Log("labelNames", len(labelNames))
+	log.Span.LogFields(otlog.Int("labelNames", len(labelNames)))
+	if len(labelNames) > maxLabelNames {
+		labelNames = labelNames[:maxLabelNames]
+	}
+	log.Span.LogFields(otlog.Int("newLabelNames", len(labelNames)))
 
 	return labelNames, nil
 }
