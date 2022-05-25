@@ -38,6 +38,8 @@ const (
 
 var nowFunc = func() time.Time { return time.Now() }
 
+var maxLabelResponseLen = 250
+
 type interval struct {
 	start, end time.Time
 }
@@ -396,8 +398,12 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	}
 
 	results := append(ingesterValues, storeValues)
+	resultVal := listutil.MergeStringLists(results...)
+	if len(resultVal) > maxLabelResponseLen {
+		resultVal = resultVal[:maxLabelResponseLen]
+	}
 	return &logproto.LabelResponse{
-		Values: listutil.MergeStringLists(results...),
+		Values: resultVal,
 	}, nil
 }
 
