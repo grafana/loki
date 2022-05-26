@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"context"
 	"flag"
+	"fmt"
 	"sync"
 	"time"
 	"unsafe"
@@ -98,7 +99,7 @@ type cacheEntry struct {
 
 // NewFifoCache returns a new initialised FifoCache of size.
 func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, logger log.Logger) *FifoCache {
-	util_log.WarnExperimentalUse("In-memory (FIFO) cache", logger)
+	util_log.WarnExperimentalUse(fmt.Sprintf("In-memory (FIFO) cache - %s", name), logger)
 
 	if cfg.DeprecatedSize > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
