@@ -26,7 +26,7 @@ We use shuffle sharding only on **Query** path in Loki.
 
 In the default sharding strategy employed by Loki query path, the workload uses the entire pool of instances running a given service (eg. queriers). For example, on the query path, each tenant’s queries are sharded across all queriers, regardless of how many different tenants are in the cell.
 
-The default strategy allows to have a fair balance on the resources consumed by each instance (ie. CPU and memory) and to maximise these resources across the cluster.
+The default strategy allows to have a fair balance on the resources consumed by each instance (ie. CPU and memory) and to maximize these resources across the cluster.
 
 However, in a multi-tenant cluster this approach also introduces some downsides:
 - An outage of node(s) affects all tenants
