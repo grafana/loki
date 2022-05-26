@@ -2204,10 +2204,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 721h]
 
-# Address, including port, where the compactor api is served
-# CLI flag: -store.compactor-address
-[compactor_address: <string> | default = ""]
-
 # Maximum number of queries that will be scheduled in parallel by the frontend.
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 32]
@@ -2600,6 +2596,10 @@ This way, one doesn't have to replicate configuration in multiple places.
 # to be used by the distributor's ring, but only if the distributor's ring itself
 # doesn't have a `heartbeat_period` set.
 [ring: <ring>]
+
+# Address, including port, where the compactor api is served
+# CLI flag: -common.compactor-address
+[compactor_address: <string> | default = ""]
 ```
 
 ## analytics

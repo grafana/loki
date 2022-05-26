@@ -69,8 +69,6 @@ type Config struct {
 	BoltDBShipperConfig shipper.Config      `yaml:"boltdb_shipper"`
 	TSDBShipperConfig   indexshipper.Config `yaml:"tsdb_shipper"`
 
-	CompactorAddress string `yaml:"compactor_address"`
-
 	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
 	EnableAsyncStore bool          `yaml:"-"`
@@ -97,7 +95,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
 	cfg.BoltDBShipperConfig.RegisterFlags(f)
 	f.IntVar(&cfg.MaxChunkBatchSize, "store.max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
-	f.StringVar(&cfg.CompactorAddress, "store.compactor-address", "", "address of the compactor in the form 'http://host:port'")
 	cfg.TSDBShipperConfig.RegisterFlagsWithPrefix("tsdb.", f)
 }
 
