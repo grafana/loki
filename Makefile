@@ -27,7 +27,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.20.4
+BUILD_IMAGE_VERSION := publish-compiled-mixin-a795b93-WIP
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -209,6 +209,28 @@ clients/cmd/promtail/promtail:
 clients/cmd/promtail/promtail-debug:
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
+
+#########
+# Mixin #
+#########
+
+MIXIN_PATH := production/loki-mixin
+MIXIN_OUT_PATH := production/loki-mixin-compiled
+
+loki-mixin:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
+	@rm -rf $(MIXIN_OUT_PATH) && mkdir $(MIXIN_OUT_PATH)
+	@cd $(MIXIN_PATH) && jb install
+	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH)/alerts.yaml --output-rules $(MIXIN_OUT_PATH)/rules.yaml --directory $(MIXIN_OUT_PATH)/dashboards ${MIXIN_PATH}/mixin.libsonnet
+endif
+
+loki-mixin-check: loki-mixin
+	@echo "Checking diff:"
+	@git diff --exit-code -- $(MIXIN_OUT_PATH) || (echo "Please build mixin by running 'make loki-mixin'" && false)
 
 ###############
 # Migrate #
