@@ -27,7 +27,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := publish-compiled-mixin-a795b93-WIP
+BUILD_IMAGE_VERSION := 0.21.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
