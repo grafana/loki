@@ -413,6 +413,9 @@ local manifest(apps) = pipeline('manifest') {
         image: 'grafana/jsonnet-build:c8b75df',
         depends_on: ['clone'],
       },
+      make('loki-mixin-check', container=false) {
+        depends_on: ['clone'],
+      },
     ],
   },
 ] + [
