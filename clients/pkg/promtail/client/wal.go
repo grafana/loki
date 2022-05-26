@@ -41,12 +41,12 @@ type walWrapper struct {
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
-func newWAL(cfg WALConfig, registerer prometheus.Registerer, log log.Logger, batchID int64, tenantID string) (WAL, error) {
+func newWAL(cfg WALConfig, registerer prometheus.Registerer, log log.Logger, clientName string, batchID int64, tenantID string) (WAL, error) {
 	if !cfg.Enabled {
 		return NoopWAL, nil
 	}
 
-	dir := path.Join(cfg.Dir, tenantID, fmt.Sprintf("%d", batchID))
+	dir := path.Join(cfg.Dir, clientName, tenantID, fmt.Sprintf("%d", batchID))
 	tsdbWAL, err := wal.NewSize(log, registerer, dir, wal.DefaultSegmentSize, false)
 	if err != nil {
 		return nil, err

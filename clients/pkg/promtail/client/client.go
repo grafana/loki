@@ -312,7 +312,7 @@ func (c *client) run() {
 }
 
 func (c *client) newBatch(tenantID string) *batch {
-	wal, err := newWAL(c.cfg.WAL, c.metrics.registerer, c.logger, time.Now().UnixNano(), tenantID)
+	wal, err := newWAL(c.cfg.WAL, c.metrics.registerer, c.logger, c.name, time.Now().UnixNano(), tenantID)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "could not start WAL", "err", err)
 		// set the wall to noop
