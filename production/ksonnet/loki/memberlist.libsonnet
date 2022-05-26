@@ -64,7 +64,7 @@
 
       ruler+: if !$._config.ruler_enabled then {} else {
         ring+: {
-          kvstore: $._config.multi_kv_obj,
+          kvstore+: $._config.multi_kv_obj,
         },
       },
 
