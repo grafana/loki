@@ -71,26 +71,25 @@
       // other components pick this up from common
       common+: {
         ring+: {
-          kvstore+: $._config.multi_kv_obj
+          kvstore+: $._config.multi_kv_obj,
         },
       },
 
       memberlist: {
         abort_if_cluster_join_fails: false,
 
-        # Expose this port on all distributor, ingester
-        # and querier replicas.
+        // Expose this port on all distributor, ingester
+        // and querier replicas.
         bind_port: gossipRingPort,
 
-        # You can use a headless k8s service for all distributor,
-        # ingester and querier components.
-        join_members: ['gossip-ring.%s.svc.cluster.local:%d' % [$._config.namespace, gossipRingPort],],
+        // You can use a headless k8s service for all distributor,
+        // ingester and querier components.
+        join_members: ['gossip-ring.%s.svc.cluster.local:%d' % [$._config.namespace, gossipRingPort]],
 
         max_join_backoff: '1m',
         max_join_retries: '10',
         min_join_backoff: '1s',
       },
-        
     },
 
     // When doing migration via multi KV store, this section can be used
@@ -105,8 +104,6 @@
 
   local containerPort = $.core.v1.containerPort,
   local gossipPort = containerPort.newNamed(name='gossip-ring', containerPort=gossipRingPort),
-
-
 
   compactor_ports+:: if !$._config.memberlist_ring_enabled then [] else [gossipPort],
   distributor_ports+:: if !$._config.memberlist_ring_enabled then [] else [gossipPort],
