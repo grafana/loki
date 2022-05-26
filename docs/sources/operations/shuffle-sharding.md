@@ -21,7 +21,7 @@ Randomly picking two different tenants we have the:
 
 ![overlapping instances probability](./shuffle-sharding-probability.png)
 
-## Why we need it on Loki?
+## Why do we need it on Loki?
 We use shuffle sharding only on **Query** path in Loki.
 
 In the default sharding strategy employed by Loki query path the workload uses the entire pool of instances running a given service (eg. queriers). For example, on the query path each tenant’s queries are sharded across all queriers, regardless how many different tenants are in the cell.
