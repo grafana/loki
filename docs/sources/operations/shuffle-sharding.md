@@ -36,7 +36,7 @@ The goal of shuffle sharding is to provide an alternative sharding strategy to r
 
 By default all Loki queriers can execute received queries for any given tenant.
 
-When shuffle sharding is enabled by setting `-frontend.max-queriers-per-tenant` to a value higher than 0 and lower than the number of available queriers, only specified number of queriers will execute queries for single tenant.
+When shuffle sharding is enabled by setting `-frontend.max-queriers-per-tenant` to a value higher than 0 and lower than the number of available queriers, only a specified number of queriers will execute queries for a single tenant.
 
 NOTE: this option is only available when using the query-frontend (with or without scheduler).
 
