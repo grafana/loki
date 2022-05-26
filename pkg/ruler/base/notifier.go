@@ -134,6 +134,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 			ExternalLabels: rulerConfig.ExternalLabels,
 		},
 		AlertingConfig: config.AlertingConfig{
+			AlertRelabelConfigs: rulerConfig.AlertRelabelConfigs,
 			AlertmanagerConfigs: amConfigs,
 		},
 	}
