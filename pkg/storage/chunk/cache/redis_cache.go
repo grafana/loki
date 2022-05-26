@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -18,7 +19,7 @@ type RedisCache struct {
 
 // NewRedisCache creates a new RedisCache
 func NewRedisCache(name string, redisClient *RedisClient, logger log.Logger) *RedisCache {
-	util_log.WarnExperimentalUse("Redis cache", logger)
+	util_log.WarnExperimentalUse(fmt.Sprintf("Redis cache - %s", name), logger)
 	cache := &RedisCache{
 		name:   name,
 		redis:  redisClient,
