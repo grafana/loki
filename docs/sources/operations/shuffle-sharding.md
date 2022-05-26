@@ -64,7 +64,7 @@ To mitigate it, Loki allows configuring a delay between when a querier disconnec
 1. Query-scheduler Queue Duration per tenant - `max_over_time({cluster="$cluster",container="query-frontend", namespace="$namespace"} |= "metrics.go" |logfmt | unwrap duration(queue_time) | __error__="" [5m]) by (org_id)`
 
 
-Too much spikes in any of those metrics may mean any of the following
+Too many spikes in any of those metrics may mean any of the following
 1. Particular tenant is trying to use query resources more than he/she was allocated.
 2. We may have to increase the value of `max_queriers_per_tenant` for that particular tenant.
 3. Loki instances may be under provisioned
