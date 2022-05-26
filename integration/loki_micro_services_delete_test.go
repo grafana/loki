@@ -135,7 +135,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		// checkLabelValue(t, "loki_compactor_deleted_lines", metrics, tenantID, 1)
 	})
 
-	// Query lines, lineB should not be there
+	// Query lines
 	t.Run("query", func(t *testing.T) {
 		resp, err := cliQueryFrontend.RunRangeQuery(`{job="fake"}`)
 		require.NoError(t, err)
@@ -148,7 +148,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			}
 		}
 		// Remove lineB once flush works
-		assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
+		assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines, "lineB should not be there")
 	})
 }
 
