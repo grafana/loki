@@ -122,7 +122,7 @@ template {
 }
 ```
 
-## Supplying alerting rules to Loki ruler
+## Supplying alerting rules to Loki ruler with `local` ruler storage
 
 ### Using [`artifact` stanza](https://www.nomadproject.io/docs/job-specification/artifact)
 

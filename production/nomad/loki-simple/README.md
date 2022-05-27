@@ -1,7 +1,7 @@
-# Monolithic mode
+# Simple scalable deployment mode
 
 This Nomad job will deploy a Loki in
-[monolithic mode](https://grafana.com/docs/loki/latest/fundamentals/architecture/deployment-modes/#monolithic-mode)
+[simple scalable deployment mode](https://grafana.com/docs/loki/latest/fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode)
 with minimum dependencies, using boltdb-shipper and S3 backend and with the
 ability to scale.
 
@@ -29,5 +29,5 @@ nomad run job.nomad.hcl
 or use Nomad CLI
 
 ```shell
-nomad job scale loki loki <count>
+nomad job scale loki write <count>
 ```
