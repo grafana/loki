@@ -7,8 +7,8 @@ ability to scale.
 
 ## Usage
 
-Have a look at the job file and Loki configuration file and change it according
-to suite your environment.
+Have a look at the job file and Loki configuration file and change it to suite
+your environment.
 
 ### Run job
 

@@ -9,6 +9,13 @@ Make sure to go over the job file and adjust it to your needs.
 
 ## Secure endpoints
 
+Unfortenately Consul Connect cannot be used to secure GRPC communication between
+Loki components, since some components should be able to connect to all
+instances of other components. That is why internal Loki components
+communication happening over GRPC are secured with mTLS with certificates
+provisioned with Vault PKI. HTTP (user and external facing endpoints) are
+protected with Consul Connect.
+
 ### HTTP
 
 HTTP endpoints are hidden behind Consul Connect.
