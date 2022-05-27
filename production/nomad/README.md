@@ -43,7 +43,7 @@ shouldn't be an issue.
 
 ## Run Loki behind ingress
 
-When running multiple instances of Loki incoming request should be loadbalanced.
+When running multiple instances of Loki incoming requests should be loadbalanced.
 
 Register Loki in Traefik:
 
@@ -86,7 +86,7 @@ clients:
       password_file: password123
 ```
 
-## Use HashiCorp Vault to provider S3 credentials
+## Use HashiCorp Vault to provide S3 credentials
 
 To provide static credentials:
 
