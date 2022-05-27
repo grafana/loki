@@ -30,7 +30,7 @@ For use in production it is recommended to:
   achived with Vault's
   [PKI secret engine](https://www.vaultproject.io/docs/secrets/pki)
 
-Use the advanced Loki setup as an example.
+See [loki-distributed](./loki-distributed) setup for an inspiration.
 
 ## Service discovery when scaling
 
@@ -43,7 +43,8 @@ shouldn't be an issue.
 
 ## Run Loki behind ingress
 
-When running multiple instances of Loki incoming requests should be loadbalanced.
+When running multiple instances of Loki incoming requests should be
+loadbalanced.
 
 Register Loki in Traefik:
 
@@ -55,7 +56,7 @@ tags = [
 ]
 ```
 
-## Setip basicauth
+## Setup basicauth
 
 Generate basicauth credentials:
 
