@@ -76,9 +76,7 @@ func TestGetMutateFunc_MutateConfigMap(t *testing.T) {
 	require.Equal(t, got.Labels, want.Labels)
 	require.Equal(t, got.Annotations, want.Annotations)
 	require.Equal(t, got.BinaryData, got.BinaryData)
-
-	// Ensure not mutated
-	require.NotEqual(t, got.Data, want.Data)
+	require.Equal(t, got.Data, want.Data)
 }
 
 func TestGetMutateFunc_MutateServiceSpec(t *testing.T) {

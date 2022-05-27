@@ -95,12 +95,14 @@ func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 				},
 			},
 		},
-		TenantSecrets: []*TenantSecrets{
-			{
-				TenantName:   "test",
-				ClientID:     "test",
-				ClientSecret: "test",
-				IssuerCAPath: "/tmp/test",
+		Tenants: Tenants{
+			Secrets: []*TenantSecrets{
+				{
+					TenantName:   "test",
+					ClientID:     "test",
+					ClientSecret: "test",
+					IssuerCAPath: "/tmp/test",
+				},
 			},
 		},
 	}

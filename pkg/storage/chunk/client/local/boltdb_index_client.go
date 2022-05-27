@@ -128,6 +128,10 @@ func (b *BoltIndexClient) Stop() {
 }
 
 func (b *BoltIndexClient) NewWriteBatch() index.WriteBatch {
+	return NewWriteBatch()
+}
+
+func NewWriteBatch() index.WriteBatch {
 	return &BoltWriteBatch{
 		Writes: map[string]TableWrites{},
 	}
@@ -171,7 +175,7 @@ func (b *BoltIndexClient) GetDB(name string, operation int) (*bbolt.DB, error) {
 	return db, nil
 }
 
-func (b *BoltIndexClient) WriteToDB(_ context.Context, db *bbolt.DB, bucketName []byte, writes TableWrites) error {
+func WriteToDB(_ context.Context, db *bbolt.DB, bucketName []byte, writes TableWrites) error {
 	return db.Update(func(tx *bbolt.Tx) error {
 		var b *bbolt.Bucket
 		if len(bucketName) == 0 {
@@ -215,7 +219,7 @@ func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch index.WriteBatch
 			return err
 		}
 
-		err = b.WriteToDB(ctx, db, IndexBucketName, writes)
+		err = WriteToDB(ctx, db, IndexBucketName, writes)
 		if err != nil {
 			return err
 		}
@@ -238,10 +242,10 @@ func (b *BoltIndexClient) query(ctx context.Context, query index.Query, callback
 		return err
 	}
 
-	return b.QueryDB(ctx, db, IndexBucketName, query, callback)
+	return QueryDB(ctx, db, IndexBucketName, query, callback)
 }
 
-func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query index.Query,
+func QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query index.Query,
 	callback index.QueryPagesCallback,
 ) error {
 	return db.View(func(tx *bbolt.Tx) error {
@@ -253,11 +257,11 @@ func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, bucketName 
 			return nil
 		}
 
-		return b.QueryWithCursor(ctx, bucket.Cursor(), query, callback)
+		return QueryWithCursor(ctx, bucket.Cursor(), query, callback)
 	})
 }
 
-func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error {
+func QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error {
 	batch := batchPool.Get().(*cursorBatch)
 	defer batchPool.Put(batch)
 

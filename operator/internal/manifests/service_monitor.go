@@ -20,6 +20,7 @@ func BuildServiceMonitors(opts Options) []client.Object {
 		NewCompactorServiceMonitor(opts),
 		NewQueryFrontendServiceMonitor(opts),
 		NewIndexGatewayServiceMonitor(opts),
+		NewRulerServiceMonitor(opts),
 		NewGatewayServiceMonitor(opts),
 	}
 }
@@ -85,6 +86,17 @@ func NewIndexGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(IndexGatewayName(opts.Name))
 	serviceName := serviceNameIndexGatewayHTTP(opts.Name)
+	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
+
+	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
+}
+
+// NewRulerServiceMonitor creates a k8s service monitor for the ruler component
+func NewRulerServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
+	l := ComponentLabels(LabelRulerComponent, opts.Name)
+
+	serviceMonitorName := serviceMonitorName(RulerName(opts.Name))
+	serviceName := serviceNameRulerHTTP(opts.Name)
 	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
