@@ -60,7 +60,11 @@ type Query struct {
 // DoQuery executes the query and prints out the results
 func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) {
 	if q.LocalConfig != "" {
-		if err := q.DoLocalQuery(out, statistics, c.GetOrgID()); err != nil {
+		orgID := c.GetOrgID()
+		if orgID == "" {
+			orgID = "fake"
+		}
+		if err := q.DoLocalQuery(out, statistics, orgID); err != nil {
 			log.Fatalf("Query failed: %+v", err)
 		}
 		return
@@ -190,6 +194,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	}
 	cm := storage.NewClientMetrics()
 	conf.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	conf.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
 	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
