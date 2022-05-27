@@ -60,3 +60,16 @@ compactor:
   shared_store: s3
   compaction_interval: 5m
   retention_enabled: true
+
+ruler:
+  alertmanager_url: https://alertmanager.service.consul
+  enable_alertmanager_v2: true
+  enable_api: true
+  external_url: https://loki.service.consul
+  rule_path: {{ env "NOMAD_ALLOC_DIR" }}/tmp/rules
+  storage:
+    type: local
+    local:
+      directory: {{ env "NOMAD_TASK_DIR" }}/rules
+  wal:
+    dir: {{ env "NOMAD_ALLOC_DIR" }}/data/ruler

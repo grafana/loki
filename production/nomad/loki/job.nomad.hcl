@@ -51,6 +51,17 @@ job "loki" {
         env         = true
       }
 
+      dynamic "template" {
+        for_each = fileset(".", "rules/**")
+
+        content {
+          data            = file(template.value)
+          destination     = "local/${template.value}"
+          left_delimiter  = "[["
+          right_delimiter = "]]"
+        }
+      }
+
       service {
         name = "loki"
         port = "http"

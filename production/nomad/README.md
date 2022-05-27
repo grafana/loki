@@ -162,10 +162,10 @@ Example:
 ```shell
 > tree rules/
 rules/
-├── other-rule.yml
-└── some-rule.yml
+└── fake
+    └── some-alerts.yml
 
-0 directories, 2 files
+1 directory, 1 file
 ```
 
 ```hcl
@@ -188,10 +188,10 @@ Each file will end up in `/local/rules/` inside ruler container.
 ```shell
 > tree loki-rules/
 loki-rules/
-├── other-rule.yml
-└── some-rule.yml
+└── fake
+    └── some-alerts.yml
 
-0 directories, 2 files
+1 directory, 1 file
 ```
 
 Using Terraform
@@ -223,7 +223,7 @@ template {
   {{ end -}}
   EOF
 
-  destination   = "local/rules/rules.yml"
+  destination   = "local/rules/fake/rules.yml"
   change_mode   = "signal"
   change_signal = "SIGINT"
 }
