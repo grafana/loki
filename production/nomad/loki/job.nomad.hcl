@@ -5,7 +5,7 @@ job "loki" {
     count = 1
 
     ephemeral_disk {
-      # Used to store index, chache, WAL
+      # Used to store index, cache, WAL
       # Nomad will try to preserve the disk between job updates
       size   = 1000
       sticky = true
