@@ -39,7 +39,7 @@ examples are using Consul ring for service discovery.
 Is you are using Nomad then you are probably also using Consul, so this
 shouldn't be an issue.
 
-## Run Loki behind ingress
+## Run Loki behind loadbalancer
 
 When running multiple instances of Loki incoming requests should be
 loadbalanced.
