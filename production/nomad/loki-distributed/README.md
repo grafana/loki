@@ -1,6 +1,6 @@
 # Microservices mode
 
-This Nomad job will deploy a Loki in
+This Nomad job will deploy Loki in
 [microservices mode](https://grafana.com/docs/loki/latest/fundamentals/architecture/deployment-modes/#microservices-mode)
 using boltdb-shipper and S3 backend.
 

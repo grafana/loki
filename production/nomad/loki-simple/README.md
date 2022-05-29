@@ -1,6 +1,6 @@
 # Simple scalable deployment mode
 
-This Nomad job will deploy a Loki in
+This Nomad job will deploy Loki in
 [simple scalable deployment mode](https://grafana.com/docs/loki/latest/fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode)
 with minimum dependencies, using boltdb-shipper and S3 backend and with the
 ability to scale.

@@ -125,7 +125,8 @@ template {
 
 ### Using [`artifact` stanza](https://www.nomadproject.io/docs/job-specification/artifact)
 
-Alert rules can be download using artifact stanza. It supports:
+Alert rules can be downloaded from remote storage using artifact stanza. It
+supports:
 
 - Git
 - Mercurial
@@ -146,8 +147,8 @@ artifact {
 
 Alert rules can be stored locally (beside job definition) and provided to Loki
 ruler container with
-[`template`](https://www.nomadproject.io/docs/job-specification/template) and
-some HCL magic, namely:
+[`template`](https://www.nomadproject.io/docs/job-specification/template) stanza
+and some HCL magic, namely:
 
 - [fileset](https://www.nomadproject.io/docs/job-specification/hcl2/functions/file/fileset) -
   to generate a list of files
