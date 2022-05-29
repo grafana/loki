@@ -43,7 +43,7 @@ storage_config:
     shared_store: s3
 
   aws:
-    endpoint: https://s3.endpoint.com
+    endpoint: https://minio.service.consul
     bucketnames: loki
     region: us-west-1
     access_key_id: ${S3_ACCESS_KEY_ID}

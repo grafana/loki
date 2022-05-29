@@ -1,33 +1,20 @@
 locals {
   version = "2.5.0"
-  certs = {
-    "CA"   = "issuing_ca",
-    "cert" = "certificate",
-    "key"  = "private_key",
-  }
 }
 
 job "loki" {
   datacenters = ["dc1"]
-
-  vault {
-    policies = ["loki"]
-  }
 
   group "compactor" {
     count = 1
 
     ephemeral_disk {
       size    = 1000
-      migrate = true
       sticky  = true
     }
 
     network {
-      mode = "bridge"
-
       port "http" {}
-      port "health" {}
       port "grpc" {}
     }
 
@@ -42,7 +29,6 @@ job "loki" {
 
       tags = [
         "traefik.enable=true",
-        "traefik.consulcatalog.connect=true",
 
         "traefik.http.routers.loki-compactor-ring.entrypoints=https",
         "traefik.http.routers.loki-compactor-ring.rule=Host(`loki-compactor.service.consul`) && Path(`/compactor/ring`)",
@@ -50,35 +36,11 @@ job "loki" {
 
       check {
         name     = "Loki compactor"
-        port     = "health"
+        port     = "http"
         type     = "http"
         path     = "/ready"
         interval = "20s"
         timeout  = "1s"
-      }
-
-      connect {
-        sidecar_service {
-          proxy {
-            local_service_port = 80
-
-            expose {
-              path {
-                path            = "/metrics"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "http"
-              }
-
-              path {
-                path            = "/ready"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "health"
-              }
-            }
-          }
-        }
       }
     }
 
@@ -91,7 +53,6 @@ job "loki" {
         image = "grafana/loki:${local.version}"
         ports = [
           "http",
-          "health",
           "grpc",
         ]
 
@@ -109,29 +70,12 @@ job "loki" {
 
       template {
         data = <<-EOH
-        {{ with secret "secret/minio/loki" }}
-        S3_ACCESS_KEY_ID={{ .Data.data.access_key }}
-        S3_SECRET_ACCESS_KEY={{ .Data.data.secret_key }}
-        {{- end }}
+        S3_ACCESS_KEY_ID=<access_key>
+        S3_SECRET_ACCESS_KEY=<secret_access_key>
         EOH
 
         destination = "secrets/s3.env"
         env         = true
-      }
-
-      dynamic "template" {
-        for_each = local.certs
-        content {
-          data = <<-EOH
-          {{- with secret "pki/issue/internal" "ttl=10d" "common_name=loki-compactor.service.consul" (env "attr.unique.network.ip-address" | printf "ip_sans=%s") -}}
-          {{ .Data.${template.value} }}
-          {{- end -}}
-          EOH
-
-          destination = "secrets/certs/${template.key}.pem"
-          change_mode = "restart"
-          splay       = "1m"
-        }
       }
 
       resources {
@@ -147,15 +91,11 @@ job "loki" {
 
     ephemeral_disk {
       size    = 1000
-      migrate = true
       sticky  = true
     }
 
     network {
-      mode = "bridge"
-
       port "http" {}
-      port "health" {}
       port "grpc" {}
     }
 
@@ -170,7 +110,6 @@ job "loki" {
 
       tags = [
         "traefik.enable=true",
-        "traefik.consulcatalog.connect=true",
 
         "traefik.http.routers.loki-ruler.entrypoints=https",
         "traefik.http.routers.loki-ruler.rule=Host(`loki-query-frontend.service.consul`) && (PathPrefix(`/loki/api/v1/rules`) || PathPrefix(`/api/prom/rules`) || PathPrefix (`/prometheus/api/v1`))",
@@ -181,37 +120,12 @@ job "loki" {
 
       check {
         name     = "Loki ruler"
-        port     = "health"
+        port     = "http"
         type     = "http"
         path     = "/ready"
         interval = "20s"
         timeout  = "1s"
       }
-
-      connect {
-        sidecar_service {
-          proxy {
-            local_service_port = 80
-
-            expose {
-              path {
-                path            = "/metrics"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "http"
-              }
-
-              path {
-                path            = "/ready"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "health"
-              }
-            }
-          }
-        }
-      }
-    }
 
     task "ruler" {
       driver       = "docker"
@@ -222,7 +136,6 @@ job "loki" {
         image = "grafana/loki:${local.version}"
         ports = [
           "http",
-          "health",
           "grpc",
         ]
 
@@ -251,29 +164,12 @@ job "loki" {
 
       template {
         data = <<-EOH
-        {{ with secret "secret/minio/loki" }}
-        S3_ACCESS_KEY_ID={{ .Data.data.access_key }}
-        S3_SECRET_ACCESS_KEY={{ .Data.data.secret_key }}
-        {{- end }}
+        S3_ACCESS_KEY_ID=<access_key>
+        S3_SECRET_ACCESS_KEY=<secret_access_key>
         EOH
 
         destination = "secrets/s3.env"
         env         = true
-      }
-
-      dynamic "template" {
-        for_each = local.certs
-        content {
-          data = <<-EOH
-          {{- with secret "pki/issue/internal" "ttl=10d" "common_name=loki-ruler.service.consul" (env "attr.unique.network.ip-address" | printf "ip_sans=%s") -}}
-          {{ .Data.${template.value} }}
-          {{- end -}}
-          EOH
-
-          destination = "secrets/certs/${template.key}.pem"
-          change_mode = "restart"
-          splay       = "5m"
-        }
       }
 
       resources {
@@ -288,10 +184,7 @@ job "loki" {
     count = 2
 
     network {
-      mode = "bridge"
-
       port "http" {}
-      port "health" {}
       port "grpc" {}
     }
 
@@ -306,7 +199,6 @@ job "loki" {
 
       tags = [
         "traefik.enable=true",
-        "traefik.consulcatalog.connect=true",
 
         "traefik.http.routers.loki-distributor.entrypoints=https",
         "traefik.http.routers.loki-distributor.rule=Host(`loki-distributor.service.consul`)",
@@ -317,35 +209,11 @@ job "loki" {
 
       check {
         name     = "Loki distibutor"
-        port     = "health"
+        port     = "http"
         type     = "http"
         path     = "/ready"
         interval = "20s"
         timeout  = "1s"
-      }
-
-      connect {
-        sidecar_service {
-          proxy {
-            local_service_port = 80
-
-            expose {
-              path {
-                path            = "/metrics"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "http"
-              }
-
-              path {
-                path            = "/ready"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "health"
-              }
-            }
-          }
-        }
       }
     }
 
@@ -358,7 +226,6 @@ job "loki" {
         image = "grafana/loki:${local.version}"
         ports = [
           "http",
-          "health",
           "grpc",
         ]
 
@@ -372,21 +239,6 @@ job "loki" {
       template {
         data        = file("config.yml")
         destination = "local/config.yml"
-      }
-
-      dynamic "template" {
-        for_each = local.certs
-        content {
-          data = <<-EOH
-          {{- with secret "pki/issue/internal" "ttl=10d" "common_name=loki-distributer.service.consul" (env "attr.unique.network.ip-address" | printf "ip_sans=%s") -}}
-          {{ .Data.${template.value} }}
-          {{- end -}}
-          EOH
-
-          destination = "secrets/certs/${template.key}.pem"
-          change_mode = "restart"
-          splay       = "5m"
-        }
       }
 
       resources {
@@ -410,15 +262,11 @@ job "loki" {
 
     ephemeral_disk {
       size    = 4000
-      migrate = true
       sticky  = true
     }
 
     network {
-      mode = "bridge"
-
       port "http" {}
-      port "health" {}
       port "grpc" {}
     }
 
@@ -433,7 +281,6 @@ job "loki" {
 
       tags = [
         "traefik.enable=true",
-        "traefik.consulcatalog.connect=true",
 
         "traefik.http.routers.loki-ingester-ring.entrypoints=https",
         "traefik.http.routers.loki-ingester-ring.rule=Host(`loki-ingester.service.consul`) && Path(`/ring`)",
@@ -441,35 +288,11 @@ job "loki" {
 
       check {
         name     = "Loki ingester"
-        port     = "health"
+        port     = "http"
         type     = "http"
         path     = "/ready"
         interval = "20s"
         timeout  = "1s"
-      }
-
-      connect {
-        sidecar_service {
-          proxy {
-            local_service_port = 80
-
-            expose {
-              path {
-                path            = "/metrics"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "http"
-              }
-
-              path {
-                path            = "/ready"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "health"
-              }
-            }
-          }
-        }
       }
     }
 
@@ -482,7 +305,6 @@ job "loki" {
         image = "grafana/loki:${local.version}"
         ports = [
           "http",
-          "health",
           "grpc",
         ]
 
@@ -500,29 +322,12 @@ job "loki" {
 
       template {
         data = <<-EOH
-        {{ with secret "secret/minio/loki" }}
-        S3_ACCESS_KEY_ID={{ .Data.data.access_key }}
-        S3_SECRET_ACCESS_KEY={{ .Data.data.secret_key }}
-        {{- end }}
+        S3_ACCESS_KEY_ID=<access_key>
+        S3_SECRET_ACCESS_KEY=<secret_access_key>
         EOH
 
         destination = "secrets/s3.env"
         env         = true
-      }
-
-      dynamic "template" {
-        for_each = local.certs
-        content {
-          data = <<-EOH
-          {{- with secret "pki/issue/internal" "ttl=10d" "common_name=loki-ingestor.service.consul" (env "attr.unique.network.ip-address" | printf "ip_sans=%s") -}}
-          {{ .Data.${template.value} }}
-          {{- end -}}
-          EOH
-
-          destination = "secrets/certs/${template.key}.pem"
-          change_mode = "restart"
-          splay       = "5m"
-        }
       }
 
       resources {
@@ -537,10 +342,7 @@ job "loki" {
     count = 2
 
     network {
-      mode = "bridge"
-
       port "http" {}
-      port "health" {}
       port "grpc" {}
     }
 
@@ -555,35 +357,11 @@ job "loki" {
 
       check {
         name     = "Loki querier"
-        port     = "health"
+        port     = "http"
         type     = "http"
         path     = "/ready"
         interval = "50s"
         timeout  = "1s"
-      }
-
-      connect {
-        sidecar_service {
-          proxy {
-            local_service_port = 80
-
-            expose {
-              path {
-                path            = "/metrics"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "http"
-              }
-
-              path {
-                path            = "/ready"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "health"
-              }
-            }
-          }
-        }
       }
     }
 
@@ -596,7 +374,6 @@ job "loki" {
         image = "grafana/loki:${local.version}"
         ports = [
           "http",
-          "health",
           "grpc",
         ]
 
@@ -614,29 +391,12 @@ job "loki" {
 
       template {
         data = <<-EOH
-        {{ with secret "secret/minio/loki" }}
-        S3_ACCESS_KEY_ID={{ .Data.data.access_key }}
-        S3_SECRET_ACCESS_KEY={{ .Data.data.secret_key }}
-        {{- end }}
+        S3_ACCESS_KEY_ID=<access_key>
+        S3_SECRET_ACCESS_KEY=<secret_access_key>
         EOH
 
         destination = "secrets/s3.env"
         env         = true
-      }
-
-      dynamic "template" {
-        for_each = local.certs
-        content {
-          data = <<-EOH
-          {{- with secret "pki/issue/internal" "ttl=10d" "common_name=loki-querier.service.consul" (env "attr.unique.network.ip-address" | printf  "ip_sans=%s") -}}
-          {{ .Data.${template.value} }}
-          {{- end -}}
-          EOH
-
-          destination = "secrets/certs/${template.key}.pem"
-          change_mode = "restart"
-          splay       = "5m"
-        }
       }
 
       resources {
@@ -651,10 +411,7 @@ job "loki" {
     count = 2
 
     network {
-      mode = "bridge"
-
       port "http" {}
-      port "health" {}
       port "grpc" {
         to     = 9096
         static = 9096
@@ -672,35 +429,11 @@ job "loki" {
 
       check {
         name     = "Loki query-scheduler"
-        port     = "health"
+        port     = "http"
         type     = "http"
         path     = "/ready"
         interval = "20s"
         timeout  = "1s"
-      }
-
-      connect {
-        sidecar_service {
-          proxy {
-            local_service_port = 80
-
-            expose {
-              path {
-                path            = "/metrics"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "http"
-              }
-
-              path {
-                path            = "/ready"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "health"
-              }
-            }
-          }
-        }
       }
     }
 
@@ -713,7 +446,6 @@ job "loki" {
         image = "grafana/loki:${local.version}"
         ports = [
           "http",
-          "health",
           "grpc",
         ]
 
@@ -729,21 +461,6 @@ job "loki" {
         destination = "local/config.yml"
       }
 
-      dynamic "template" {
-        for_each = local.certs
-        content {
-          data = <<-EOH
-          {{- with secret "pki/issue/internal" "ttl=10d" "common_name=loki-query-scheduler.service.consul" (env "attr.unique.network.ip-address" | printf  "ip_sans=%s") -}}
-          {{ .Data.${template.value} }}
-          {{- end -}}
-          EOH
-
-          destination = "secrets/certs/${template.key}.pem"
-          change_mode = "restart"
-          splay       = "5m"
-        }
-      }
-
       resources {
         cpu        = 100
         memory     = 64
@@ -756,10 +473,7 @@ job "loki" {
     count = 2
 
     network {
-      mode = "bridge"
-
       port "http" {}
-      port "health" {}
       port "grpc" {}
     }
 
@@ -774,7 +488,6 @@ job "loki" {
 
       tags = [
         "traefik.enable=true",
-        "traefik.consulcatalog.connect=true",
 
         "traefik.http.routers.loki-query-frontend.entrypoints=https",
         "traefik.http.routers.loki-query-frontend.rule=Host(`loki-query-frontend.service.consul`)",
@@ -782,37 +495,12 @@ job "loki" {
 
       check {
         name     = "Loki query-frontend"
-        port     = "health"
+        port     = "http"
         type     = "http"
         path     = "/ready"
         interval = "20s"
         timeout  = "1s"
       }
-
-      connect {
-        sidecar_service {
-          proxy {
-            local_service_port = 80
-
-            expose {
-              path {
-                path            = "/metrics"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "http"
-              }
-
-              path {
-                path            = "/ready"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "health"
-              }
-            }
-          }
-        }
-      }
-    }
 
     task "query-frontend" {
       driver       = "docker"
@@ -823,7 +511,6 @@ job "loki" {
         image = "grafana/loki:${local.version}"
         ports = [
           "http",
-          "health",
           "grpc",
         ]
 
@@ -839,21 +526,6 @@ job "loki" {
         destination = "local/config.yml"
       }
 
-      dynamic "template" {
-        for_each = local.certs
-        content {
-          data = <<-EOH
-          {{- with secret "pki/issue/internal" "ttl=10d" "common_name=loki-query-frontend.service.consul" (env "attr.unique.network.ip-address" | printf  "ip_sans=%s") -}}
-          {{ .Data.${template.value} }}
-          {{- end -}}
-          EOH
-
-          destination = "secrets/certs/${template.key}.pem"
-          change_mode = "restart"
-          splay       = "5m"
-        }
-      }
-
       resources {
         cpu        = 100
         memory     = 64
@@ -867,15 +539,11 @@ job "loki" {
 
     ephemeral_disk {
       size    = 1000
-      migrate = true
       sticky  = true
     }
 
     network {
-      mode = "bridge"
-
       port "http" {}
-      port "health" {}
       port "grpc" {
         to     = 9097
         static = 9097
@@ -893,35 +561,11 @@ job "loki" {
 
       check {
         name     = "Loki index-gateway"
-        port     = "health"
+        port     = "http"
         type     = "http"
         path     = "/ready"
         interval = "20s"
         timeout  = "1s"
-      }
-
-      connect {
-        sidecar_service {
-          proxy {
-            local_service_port = 80
-
-            expose {
-              path {
-                path            = "/metrics"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "http"
-              }
-
-              path {
-                path            = "/ready"
-                protocol        = "http"
-                local_path_port = 80
-                listener_port   = "health"
-              }
-            }
-          }
-        }
       }
     }
 
@@ -934,7 +578,6 @@ job "loki" {
         image = "grafana/loki:${local.version}"
         ports = [
           "http",
-          "health",
           "grpc",
         ]
 
@@ -952,29 +595,12 @@ job "loki" {
 
       template {
         data = <<-EOH
-        {{ with secret "secret/minio/loki" }}
-        S3_ACCESS_KEY_ID={{ .Data.data.access_key }}
-        S3_SECRET_ACCESS_KEY={{ .Data.data.secret_key }}
-        {{- end }}
+        S3_ACCESS_KEY_ID=<access_key>
+        S3_SECRET_ACCESS_KEY=<secret_access_key>
         EOH
 
         destination = "secrets/s3.env"
         env         = true
-      }
-
-      dynamic "template" {
-        for_each = local.certs
-        content {
-          data = <<-EOH
-          {{- with secret "pki/issue/internal" "ttl=10d" "common_name=loki-index-gateway.service.consul" (env "attr.unique.network.ip-address" | printf "ip_sans=%s") -}}
-          {{ .Data.${template.value} }}
-          {{- end -}}
-          EOH
-
-          destination = "secrets/certs/${template.key}.pem"
-          change_mode = "restart"
-          splay       = "5m"
-        }
       }
 
       resources {

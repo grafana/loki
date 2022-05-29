@@ -67,11 +67,11 @@ job "loki" {
         port = "http"
 
         # use Traefik to loadbalance between Loki instances
-        # tags = [
-        #   "traefik.enable=true",
-        #   "traefik.http.routers.loki.entrypoints=https",
-        #   "traefik.http.routers.loki.rule=Host(`loki.service.consul`)",
-        # ]
+        tags = [
+          "traefik.enable=true",
+          "traefik.http.routers.loki.entrypoints=https",
+          "traefik.http.routers.loki.rule=Host(`loki.service.consul`)",
+        ]
 
         check {
           name     = "Loki"

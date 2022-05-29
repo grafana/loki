@@ -13,7 +13,6 @@
 
 - [Vault integration](https://www.nomadproject.io/docs/integrations/vault-integration)
   for providing S3 credentials securely
-- Consul connect to secure Loki HTTP endpoints
 - Traefik configured to use
   [Consul provider](https://doc.traefik.io/traefik/providers/consul-catalog/) to
   loadbalance between Loki instances
@@ -22,21 +21,20 @@
 
 For use in production it is recommended to:
 
-- use authentication - can be achieved with
-  [Traefik](https://doc.traefik.io/traefik/middlewares/http/basicauth/)
 - secure HTTP endpoints with
   [Consul Connect](https://www.nomadproject.io/docs/integrations/consul-connect)
-- secure GRPC communication with TLS when running multiple instances - can be
-  achived with Vault's
+- setup authentication - can be achieved with
+  [Traefik](https://doc.traefik.io/traefik/middlewares/http/basicauth/)
+- secure GRPC communication with mTLS - can be achived with Vault's
   [PKI secret engine](https://www.vaultproject.io/docs/secrets/pki)
 
-See [loki-distributed](./loki-distributed) setup for an inspiration.
+See [loki-distributed](./loki-distributed) README for more info.
 
 ## Service discovery when scaling
 
 When using multiple Loki instances memberlist advertises wrong address (see this
-[issue](https://github.com/grafana/loki/issues/5610)), that is why this example
-is using Consul ring for service discovery.
+[issue](https://github.com/grafana/loki/issues/5610)), that is why these
+examples are using Consul ring for service discovery.
 
 Is you are using Nomad then you are probably also using Consul, so this
 shouldn't be an issue.
@@ -123,7 +121,7 @@ template {
 }
 ```
 
-## Supplying alerting rules to Loki ruler with `local` ruler storage
+## Supply alerting rules to Loki ruler with `local` ruler storage
 
 ### Using [`artifact` stanza](https://www.nomadproject.io/docs/job-specification/artifact)
 

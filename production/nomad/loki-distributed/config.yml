@@ -2,15 +2,13 @@ auth_enabled: false
 
 server:
   log_level: info
-  # HTTP is listening on localhost to make it accessible only through Consul Connect
-  http_listen_port: 80
-  http_listen_address: 127.0.0.1
+  http_listen_port: {{ env "NOMAD_PORT_http" }}
   grpc_listen_port: {{ env "NOMAD_PORT_grpc" }}
-  grpc_tls_config:
-    client_auth_type: "RequireAndVerifyClientCert"
-    client_ca_file: "/secrets/certs/CA.pem"
-    cert_file: "/secrets/certs/cert.pem"
-    key_file: "/secrets/certs/key.pem"
+  # grpc_tls_config:
+  #   client_auth_type: "RequireAndVerifyClientCert"
+  #   client_ca_file: "/secrets/certs/CA.pem"
+  #   cert_file: "/secrets/certs/cert.pem"
+  #   key_file: "/secrets/certs/key.pem"
 
 common:
   replication_factor: 2
@@ -29,13 +27,13 @@ common:
       consul:
         host: {{ env "attr.unique.network.ip-address" }}:8500
 
-ingester_client:
-  grpc_client_config:
-    grpc_compression: snappy
-    tls_enabled: true
-    tls_ca_path: "/secrets/certs/CA.pem"
-    tls_cert_path: "/secrets/certs/cert.pem"
-    tls_key_path: "/secrets/certs/key.pem"
+# ingester_client:
+#   grpc_client_config:
+#     grpc_compression: snappy
+#     tls_enabled: true
+#     tls_ca_path: "/secrets/certs/CA.pem"
+#     tls_cert_path: "/secrets/certs/cert.pem"
+#     tls_key_path: "/secrets/certs/key.pem"
 
 ingester:
   wal:
@@ -43,33 +41,33 @@ ingester:
     flush_on_shutdown: true
     replay_memory_ceiling: "1G"
 
-query_scheduler:
-  grpc_client_config:
-    grpc_compression: snappy
-    tls_enabled: true
-    tls_ca_path: "/secrets/certs/CA.pem"
-    tls_cert_path: "/secrets/certs/cert.pem"
-    tls_key_path: "/secrets/certs/key.pem"
+# query_scheduler:
+#   grpc_client_config:
+#     grpc_compression: snappy
+#     tls_enabled: true
+#     tls_ca_path: "/secrets/certs/CA.pem"
+#     tls_cert_path: "/secrets/certs/cert.pem"
+#     tls_key_path: "/secrets/certs/key.pem"
 
 frontend:
   scheduler_address: loki-query-scheduler.service.consul:9096
   compress_responses: true
   log_queries_longer_than: 5s
-  grpc_client_config:
-    grpc_compression: snappy
-    tls_enabled: true
-    tls_ca_path: "/secrets/certs/CA.pem"
-    tls_cert_path: "/secrets/certs/cert.pem"
-    tls_key_path: "/secrets/certs/key.pem"
+  # grpc_client_config:
+  #   grpc_compression: snappy
+  #   tls_enabled: true
+  #   tls_ca_path: "/secrets/certs/CA.pem"
+  #   tls_cert_path: "/secrets/certs/cert.pem"
+  #   tls_key_path: "/secrets/certs/key.pem"
 
 frontend_worker:
   scheduler_address: loki-query-scheduler.service.consul:9096
-  grpc_client_config:
-    grpc_compression: snappy
-    tls_enabled: true
-    tls_ca_path: "/secrets/certs/CA.pem"
-    tls_cert_path: "/secrets/certs/cert.pem"
-    tls_key_path: "/secrets/certs/key.pem"
+  # grpc_client_config:
+  #   grpc_compression: snappy
+  #   tls_enabled: true
+  #   tls_ca_path: "/secrets/certs/CA.pem"
+  #   tls_cert_path: "/secrets/certs/cert.pem"
+  #   tls_key_path: "/secrets/certs/key.pem"
 
 schema_config:
   configs:
@@ -90,12 +88,12 @@ storage_config:
     shared_store: s3
     index_gateway_client:
       server_address: loki-index-gateway.service.consul:9097
-      grpc_client_config:
-        grpc_compression: snappy
-        tls_enabled: true
-        tls_ca_path: "/secrets/certs/CA.pem"
-        tls_cert_path: "/secrets/certs/cert.pem"
-        tls_key_path: "/secrets/certs/key.pem"
+      # grpc_client_config:
+      #   grpc_compression: snappy
+      #   tls_enabled: true
+      #   tls_ca_path: "/secrets/certs/CA.pem"
+      #   tls_cert_path: "/secrets/certs/cert.pem"
+      #   tls_key_path: "/secrets/certs/key.pem"
 
   aws:
     endpoint: https://minio.service.consul
