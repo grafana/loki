@@ -186,12 +186,12 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 	return chunks, nil
 }
 
-func shouldUseBoltDBIndexGatewayClient(cfg Config) bool {
-	if cfg.BoltDBShipperConfig.Mode != indexshipper.ModeReadOnly || cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled {
+func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
+	if cfg.Mode != indexshipper.ModeReadOnly || cfg.IndexGatewayClientConfig.Disabled {
 		return false
 	}
 
-	gatewayCfg := cfg.BoltDBShipperConfig.IndexGatewayClientConfig
+	gatewayCfg := cfg.IndexGatewayClientConfig
 	if gatewayCfg.Mode == indexgateway.SimpleMode && gatewayCfg.Address == "" {
 		return false
 	}
@@ -215,10 +215,9 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			return nil, nil, nil, err
 		}
 
-		// ToDo(Sandeep): Refactor code to not use boltdb-shipper index gateway client config
-		if shouldUseBoltDBIndexGatewayClient(s.cfg) {
+		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
 			// inject the index-gateway client into the index store
-			gw, err := gatewayclient.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
+			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -252,7 +251,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 	)
 
 	// (Sandeep): Disable IndexGatewayClientStore for stores other than tsdb until we are ready to enable it again
-	/*if shouldUseBoltDBIndexGatewayClient(s.cfg) {
+	/*if shouldUseIndexGatewayClient(s.cfg) {
 		// inject the index-gateway client into the index store
 		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 		if err != nil {
