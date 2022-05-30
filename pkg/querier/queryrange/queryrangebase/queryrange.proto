@@ -61,7 +61,11 @@ message SampleStream {
   ];
   repeated logproto.LegacySample samples = 2 [
     (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "values"
+    (gogoproto.jsontag) = "values,omitempty"
+  ];
+  repeated logproto.HistogramSample histogramsamples = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "histogramvalues,omitempty"
   ];
 }
 

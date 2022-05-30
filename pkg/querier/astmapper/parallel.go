@@ -22,6 +22,7 @@ var nonParallelFuncs = []string{
 	"histogram_quantile",
 	"quantile_over_time",
 	"absent",
+	"buckets_over_time",
 }
 
 // CanParallelize tests if a subtree is parallelizable.

@@ -147,6 +147,16 @@ message LegacySample {
   int64 timestamp_ms = 2;
 }
 
+message HistogramSample {
+  repeated HistogramValue value = 1;
+  int64 timestamp_ms = 2;
+}
+
+message HistogramValue {
+  double upperbound = 1;
+  int64 count = 2;
+}
+
 message Series {
   string labels = 1 [(gogoproto.jsontag) = "labels"];
   repeated Sample samples = 2 [

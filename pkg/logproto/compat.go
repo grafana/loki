@@ -159,6 +159,28 @@ func (s *LegacySample) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (s HistogramSample) MarshalJSON() ([]byte, error) {
+	t, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(model.Time(s.TimestampMs))
+	if err != nil {
+		return nil, err
+	}
+	v, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(s.Value)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(fmt.Sprintf("[%s,%s]", t, v)), nil
+}
+
+func (s *HistogramSample) UnmarshalJSON(b []byte) error {
+	var v HistogramSample
+	if err := jsoniter.ConfigCompatibleWithStandardLibrary.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	s.TimestampMs = v.TimestampMs
+	s.Value = v.Value
+	return nil
+}
+
 func SampleJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	legacySample := (*LegacySample)(ptr)
 

@@ -67,6 +67,7 @@ func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 		Body:       ioutil.NopCloser(bytes.NewBuffer(b)),
 		StatusCode: http.StatusOK,
 	}
+
 	return &resp, nil
 }
 

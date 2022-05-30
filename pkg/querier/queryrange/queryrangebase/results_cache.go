@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
+// todo: caching for histogram sample
 var (
 	// Value that cacheControlHeader has if the response indicates that the results should not be cached.
 	noStoreValue = "no-store"
