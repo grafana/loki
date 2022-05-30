@@ -6,53 +6,37 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 )
 
-func configureDeploymentForStorageType(
+func configureDeploymentForStorageSpec(
 	d *appsv1.Deployment,
-	t lokiv1beta1.ObjectStorageSecretType,
-	secretName string,
+	s *lokiv1beta1.ObjectStorageSpec,
 ) error {
-	switch t {
+	switch s.Secret.Type {
 	case lokiv1beta1.ObjectStorageSecretGCS:
-		return storage.ConfigureDeployment(d, secretName)
+		return storage.ConfigureDeployment(d, s.Secret.Name)
+	case lokiv1beta1.ObjectStorageSecretS3:
+		if s.TLS == nil {
+			return nil
+		}
+
+		return storage.ConfigureDeploymentCA(d, s.TLS.CA)
 	default:
 		return nil
 	}
 }
 
-func configureStatefulSetForStorageType(
+func configureStatefulSetForStorageSpec(
 	d *appsv1.StatefulSet,
-	t lokiv1beta1.ObjectStorageSecretType,
-	secretName string,
+	s *lokiv1beta1.ObjectStorageSpec,
 ) error {
-	switch t {
+	switch s.Secret.Type {
 	case lokiv1beta1.ObjectStorageSecretGCS:
-		return storage.ConfigureStatefulSet(d, secretName)
-	default:
-		return nil
-	}
-}
-
-func configureDeploymentForStorageCA(
-	d *appsv1.Deployment,
-	t lokiv1beta1.ObjectStorageSecretType,
-	cmName string,
-) error {
-	switch t {
+		return storage.ConfigureStatefulSet(d, s.Secret.Name)
 	case lokiv1beta1.ObjectStorageSecretS3:
-		return storage.ConfigureDeploymentCA(d, cmName)
-	default:
-		return nil
-	}
-}
+		if s.TLS == nil {
+			return nil
+		}
 
-func configureStatefulSetForStorageCA(
-	s *appsv1.StatefulSet,
-	t lokiv1beta1.ObjectStorageSecretType,
-	cmName string,
-) error {
-	switch t {
-	case lokiv1beta1.ObjectStorageSecretS3:
-		return storage.ConfigureStatefulSetCA(s, cmName)
+		return storage.ConfigureStatefulSetCA(d, s.TLS.CA)
 	default:
 		return nil
 	}

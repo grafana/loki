@@ -13,18 +13,21 @@ import (
 
 func TestConfigureDeploymentForStorageType(t *testing.T) {
 	type tt struct {
-		desc        string
-		storageType lokiv1beta1.ObjectStorageSecretType
-		secretName  string
-		dpl         *appsv1.Deployment
-		want        *appsv1.Deployment
+		desc    string
+		storage *lokiv1beta1.ObjectStorageSpec
+		dpl     *appsv1.Deployment
+		want    *appsv1.Deployment
 	}
 
 	tc := []tt{
 		{
-			desc:        "object storage other than GCS",
-			storageType: lokiv1beta1.ObjectStorageSecretS3,
-			secretName:  "test",
+			desc: "object storage other than GCS",
+			storage: &lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Type: lokiv1beta1.ObjectStorageSecretS3,
+					Name: "test",
+				},
+			},
 			dpl: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -93,9 +96,13 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 			},
 		},
 		{
-			desc:        "object storage GCS",
-			storageType: lokiv1beta1.ObjectStorageSecretGCS,
-			secretName:  "test",
+			desc: "object storage GCS",
+			storage: &lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Type: lokiv1beta1.ObjectStorageSecretGCS,
+					Name: "test",
+				},
+			},
 			dpl: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -188,7 +195,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureDeploymentForStorageType(tc.dpl, tc.storageType, tc.secretName)
+			err := configureDeploymentForStorageSpec(tc.dpl, tc.storage)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -197,18 +204,21 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 
 func TestConfigureStatefulSetForStorageType(t *testing.T) {
 	type tt struct {
-		desc        string
-		storageType lokiv1beta1.ObjectStorageSecretType
-		secretName  string
-		sts         *appsv1.StatefulSet
-		want        *appsv1.StatefulSet
+		desc    string
+		storage *lokiv1beta1.ObjectStorageSpec
+		sts     *appsv1.StatefulSet
+		want    *appsv1.StatefulSet
 	}
 
 	tc := []tt{
 		{
-			desc:        "object storage other than GCS",
-			storageType: lokiv1beta1.ObjectStorageSecretS3,
-			secretName:  "test",
+			desc: "object storage other than GCS",
+			storage: &lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Type: lokiv1beta1.ObjectStorageSecretS3,
+					Name: "test",
+				},
+			},
 			sts: &appsv1.StatefulSet{
 				Spec: appsv1.StatefulSetSpec{
 					Template: corev1.PodTemplateSpec{
@@ -277,9 +287,13 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 			},
 		},
 		{
-			desc:        "object storage GCS",
-			storageType: lokiv1beta1.ObjectStorageSecretGCS,
-			secretName:  "test",
+			desc: "object storage GCS",
+			storage: &lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Type: lokiv1beta1.ObjectStorageSecretGCS,
+					Name: "test",
+				},
+			},
 			sts: &appsv1.StatefulSet{
 				Spec: appsv1.StatefulSetSpec{
 					Template: corev1.PodTemplateSpec{
@@ -372,7 +386,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureStatefulSetForStorageType(tc.sts, tc.storageType, tc.secretName)
+			err := configureStatefulSetForStorageSpec(tc.sts, tc.storage)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sts)
 		})
@@ -381,18 +395,23 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 
 func TestConfigureDeploymentForStorageCA(t *testing.T) {
 	type tt struct {
-		desc        string
-		storageType lokiv1beta1.ObjectStorageSecretType
-		cmName      string
-		dpl         *appsv1.Deployment
-		want        *appsv1.Deployment
+		desc    string
+		storage *lokiv1beta1.ObjectStorageSpec
+		dpl     *appsv1.Deployment
+		want    *appsv1.Deployment
 	}
 
 	tc := []tt{
 		{
-			desc:        "object storage other than S3",
-			storageType: lokiv1beta1.ObjectStorageSecretAzure,
-			cmName:      "test",
+			desc: "object storage other than S3",
+			storage: &lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Type: lokiv1beta1.ObjectStorageSecretAzure,
+				},
+				TLS: &lokiv1beta1.ObjectStorageTLSSpec{
+					CA: "test",
+				},
+			},
 			dpl: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -461,9 +480,15 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 			},
 		},
 		{
-			desc:        "object storage S3",
-			storageType: lokiv1beta1.ObjectStorageSecretS3,
-			cmName:      "test",
+			desc: "object storage S3",
+			storage: &lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Type: lokiv1beta1.ObjectStorageSecretS3,
+				},
+				TLS: &lokiv1beta1.ObjectStorageTLSSpec{
+					CA: "test",
+				},
+			},
 			dpl: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -555,7 +580,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureDeploymentForStorageCA(tc.dpl, tc.storageType, tc.cmName)
+			err := configureDeploymentForStorageSpec(tc.dpl, tc.storage)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -564,18 +589,23 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 
 func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 	type tt struct {
-		desc        string
-		storageType lokiv1beta1.ObjectStorageSecretType
-		cmName      string
-		sts         *appsv1.StatefulSet
-		want        *appsv1.StatefulSet
+		desc    string
+		storage *lokiv1beta1.ObjectStorageSpec
+		sts     *appsv1.StatefulSet
+		want    *appsv1.StatefulSet
 	}
 
 	tc := []tt{
 		{
-			desc:        "object storage other than S3",
-			storageType: lokiv1beta1.ObjectStorageSecretAzure,
-			cmName:      "test",
+			desc: "object storage other than S3",
+			storage: &lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Type: lokiv1beta1.ObjectStorageSecretAzure,
+				},
+				TLS: &lokiv1beta1.ObjectStorageTLSSpec{
+					CA: "test",
+				},
+			},
 			sts: &appsv1.StatefulSet{
 				Spec: appsv1.StatefulSetSpec{
 					Template: corev1.PodTemplateSpec{
@@ -644,9 +674,15 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 			},
 		},
 		{
-			desc:        "object storage S3",
-			storageType: lokiv1beta1.ObjectStorageSecretS3,
-			cmName:      "test",
+			desc: "object storage S3",
+			storage: &lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Type: lokiv1beta1.ObjectStorageSecretS3,
+				},
+				TLS: &lokiv1beta1.ObjectStorageTLSSpec{
+					CA: "test",
+				},
+			},
 			sts: &appsv1.StatefulSet{
 				Spec: appsv1.StatefulSetSpec{
 					Template: corev1.PodTemplateSpec{
@@ -738,7 +774,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureStatefulSetForStorageCA(tc.sts, tc.storageType, tc.cmName)
+			err := configureStatefulSetForStorageSpec(tc.sts, tc.storage)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sts)
 		})

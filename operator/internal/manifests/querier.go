@@ -23,17 +23,8 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	storageType := opts.Stack.Storage.Secret.Type
-	secretName := opts.Stack.Storage.Secret.Name
-	if err := configureDeploymentForStorageType(deployment, storageType, secretName); err != nil {
+	if err := configureDeploymentForStorageSpec(deployment, &opts.Stack.Storage); err != nil {
 		return nil, err
-	}
-
-	if opts.ObjectStorage.TLS != nil {
-		err := configureDeploymentForStorageCA(deployment, storageType, opts.ObjectStorage.TLS.CA)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	return []client.Object{

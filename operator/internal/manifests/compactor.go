@@ -25,17 +25,8 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	storageType := opts.Stack.Storage.Secret.Type
-	secretName := opts.Stack.Storage.Secret.Name
-	if err := configureStatefulSetForStorageType(statefulSet, storageType, secretName); err != nil {
+	if err := configureStatefulSetForStorageSpec(statefulSet, &opts.Stack.Storage); err != nil {
 		return nil, err
-	}
-
-	if opts.ObjectStorage.TLS != nil {
-		err := configureStatefulSetForStorageCA(statefulSet, storageType, opts.ObjectStorage.TLS.CA)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	return []client.Object{
