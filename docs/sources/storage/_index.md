@@ -303,14 +303,16 @@ schema_config:
     store: boltdb-shipper
 storage_config:
   azure:
+    # Your Azure storage account name
+    account_name: <account-name>
     # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
     account_key: <account-key>
-    # Your azure account name
-    account_name: <account-name>
     # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
     container_name: <container-name>
-    request_timeout: 0
     use_managed_identity: <true|false>
+    # Providing a user assigned ID will override use_managed_identity
+    user_assigned_id: <user-assigned-identity-id>
+    request_timeout: 0    
   boltdb_shipper:
     active_index_directory: /data/loki/boltdb-shipper-active
     cache_location: /data/loki/boltdb-shipper-cache
