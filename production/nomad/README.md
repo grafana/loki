@@ -4,7 +4,7 @@
 
 ### Hard requirements
 
-- recent version of Nomad with healthy Docker driver
+- recent version of Nomad [installed](https://www.nomadproject.io/docs/install) with healthy Docker driver
 - [Consul integration](https://www.nomadproject.io/docs/integrations/consul-integration)
   is enabled in Nomad
 - access to S3 storage
@@ -138,7 +138,7 @@ Example with git:
 
 ```hcl
 artifact {
-  source      = "git::github.com/someorg/observability//loki-rules"
+  source      = "git::github.com/<someorg>/<repo>//<subdirectory_with_loki_rules>"
   destination = "local/rules/"
 }
 ```
