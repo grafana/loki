@@ -18,10 +18,11 @@ Inside directory with job run:
 nomad run job.nomad.hcl
 ```
 
-To run deploy a different version change `variable.version` default value or specify from command line:
+To deploy a different version change `variable.version` default value or specify
+from command line:
+
 ```shell
 nomad job run -var="version=2.5.0" job.nomad.hcl
-
 ```
 
 ### Scale Loki

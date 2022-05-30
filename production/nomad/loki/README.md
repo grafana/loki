@@ -18,7 +18,7 @@ Inside directory with job run:
 nomad run job.nomad.hcl
 ```
 
-To run deploy a different version change `variable.version` default value or
+To deploy a different version change `variable.version` default value or
 specify from command line:
 
 ```shell
