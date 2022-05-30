@@ -763,9 +763,9 @@ func TestCreateOrUpdateLokiStack_WhenMissingCAConfigMap_SetDegraded(t *testing.T
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
-					TLS: &lokiv1beta1.ObjectStorageTLSSpec{
-						CA: "not-existing",
-					},
+				},
+				TLS: &lokiv1beta1.ObjectStorageTLSSpec{
+					CA: "not-existing",
 				},
 			},
 		},
@@ -827,9 +827,9 @@ func TestCreateOrUpdateLokiStack_WhenInvalidCAConfigMap_SetDegraded(t *testing.T
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
-					TLS: &lokiv1beta1.ObjectStorageTLSSpec{
-						CA: invalidCAConfigMap.Name,
-					},
+				},
+				TLS: &lokiv1beta1.ObjectStorageTLSSpec{
+					CA: invalidCAConfigMap.Name,
 				},
 			},
 		},

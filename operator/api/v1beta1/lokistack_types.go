@@ -348,13 +348,6 @@ type ObjectStorageSecretSpec struct {
 	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:Secret",displayName="Object Storage Secret Name"
 	Name string `json:"name"`
-
-	// TLS configuration for reaching the object storage endpoint.
-	//
-	// +optional
-	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLS Config"
-	TLS *ObjectStorageTLSSpec `json:"tls,omitempty"`
 }
 
 // ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
@@ -377,6 +370,13 @@ type ObjectStorageSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	Secret ObjectStorageSecretSpec `json:"secret"`
+
+	// TLS configuration for reaching the object storage endpoint.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLS Config"
+	TLS *ObjectStorageTLSSpec `json:"tls,omitempty"`
 }
 
 // QueryLimitSpec defines the limits applies at the query path.

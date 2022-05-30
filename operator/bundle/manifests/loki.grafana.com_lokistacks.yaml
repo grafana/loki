@@ -322,16 +322,6 @@ spec:
                         description: Name of a secret in the namespace configured
                           for object storage secrets.
                         type: string
-                      tls:
-                        description: TLS configuration for reaching the object storage
-                          endpoint.
-                        properties:
-                          caName:
-                            description: ConfigMap for object storage ca file. Name
-                              of a ConfigMap in the same namespace as the lokistack
-                              custom resource.
-                            type: string
-                        type: object
                       type:
                         description: Type of object storage that should be used
                         enum:
@@ -343,6 +333,16 @@ spec:
                     required:
                     - name
                     - type
+                    type: object
+                  tls:
+                    description: TLS configuration for reaching the object storage
+                      endpoint.
+                    properties:
+                      caName:
+                        description: ConfigMap for object storage ca file. Name of
+                          a ConfigMap in the same namespace as the lokistack custom
+                          resource.
+                        type: string
                     type: object
                 required:
                 - secret

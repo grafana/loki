@@ -386,15 +386,6 @@ spec:
         path: storage.secret.name
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:Secret
-      - description: TLS configuration for reaching the object storage endpoint.
-        displayName: TLS Config
-        path: storage.secret.tls
-      - description: ConfigMap for object storage ca file. Name of a ConfigMap in
-          the same namespace as the lokistack custom resource.
-        displayName: CA ConfigMap Name
-        path: storage.secret.tls.caName
-        x-descriptors:
-        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: Type of object storage that should be used
         displayName: Object Storage Secret Type
         path: storage.secret.type
@@ -403,6 +394,15 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:gcs
         - urn:alm:descriptor:com.tectonic.ui:select:s3
         - urn:alm:descriptor:com.tectonic.ui:select:swift
+      - description: TLS configuration for reaching the object storage endpoint.
+        displayName: TLS Config
+        path: storage.tls
+      - description: ConfigMap for object storage ca file. Name of a ConfigMap in
+          the same namespace as the lokistack custom resource.
+        displayName: CA ConfigMap Name
+        path: storage.tls.caName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: Storage class name defines the storage class for ingester/querier
           PVCs.
         displayName: Storage Class Name
