@@ -22,7 +22,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -206,7 +206,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -224,7 +224,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -242,7 +242,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -260,7 +260,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -278,7 +278,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -296,7 +296,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -334,7 +334,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -352,7 +352,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -370,7 +370,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -388,7 +388,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -406,7 +406,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -424,7 +424,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -462,7 +462,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -480,7 +480,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -498,7 +498,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -516,7 +516,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -534,7 +534,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -552,7 +552,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -590,7 +590,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -608,7 +608,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -646,7 +646,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -664,7 +664,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -702,7 +702,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -720,7 +720,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -759,7 +759,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -777,7 +777,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -816,7 +816,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -834,7 +834,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -873,7 +873,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -891,7 +891,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -930,7 +930,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -948,7 +948,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -1011,7 +1011,7 @@ trigger:
   ref:
     include:
     - refs/heads/main
-    - refs/heads/k??
+    - refs/heads/k???
     - refs/tags/v*
 ---
 depends_on:
@@ -1047,7 +1047,7 @@ trigger:
   ref:
     include:
     - refs/heads/main
-    - refs/heads/k??
+    - refs/heads/k???
     - refs/tags/v*
 ---
 kind: pipeline
@@ -1102,7 +1102,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -1123,7 +1123,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
