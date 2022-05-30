@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"fmt"
 	"strings"
 	"text/scanner"
 	"time"
@@ -87,6 +88,7 @@ var functionTokens = map[string]int{
 	OpRangeTypeStdvar:    STDVAR_OVER_TIME,
 	OpRangeTypeStddev:    STDDEV_OVER_TIME,
 	OpRangeTypeQuantile:  QUANTILE_OVER_TIME,
+	OpRangeTypeHistogram: BUCKETS_OVER_TIME,
 	OpRangeTypeFirst:     FIRST_OVER_TIME,
 	OpRangeTypeLast:      LAST_OVER_TIME,
 	OpRangeTypeAbsent:    ABSENT_OVER_TIME,
@@ -110,6 +112,9 @@ var functionTokens = map[string]int{
 
 	// filterOp
 	OpFilterIP: IP,
+
+	OpHistogramLinearBuckets:      LINEAR_BUCKETS,
+	OpHistogramExponentialBuckets: EXPONENTIAL_BUCKETS,
 }
 
 type lexer struct {
@@ -170,6 +175,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		l.builder.Reset()
 		for r := l.Next(); r != scanner.EOF; r = l.Next() {
 			if r == ']' {
+				fmt.Printf("Duration string is %v\n", l.builder.String())
 				i, err := model.ParseDuration(l.builder.String())
 				if err != nil {
 					l.Error(err.Error())

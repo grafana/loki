@@ -77,6 +77,8 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 		return m.mapLabelReplaceExpr(e, r)
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r), nil
+	case *syntax.HistogramExpr:
+		return m.mapHistogramExpr(e, r), nil
 	case *syntax.BinOpExpr:
 		lhsMapped, err := m.Map(e.SampleExpr, r)
 		if err != nil {
@@ -245,6 +247,10 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 	default:
 		return expr
 	}
+}
+
+func (m ShardMapper) mapHistogramExpr(expr *syntax.HistogramExpr, r *downstreamRecorder) syntax.SampleExpr {
+	return expr
 }
 
 // hasLabelModifier tells if an expression contains pipelines that can modify stream labels

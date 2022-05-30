@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/histogram"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -259,6 +260,10 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return q.evalLiteral(ctx, lit)
 	}
 
+	if histogramExpr, ok := expr.(*syntax.HistogramExpr); ok {
+		return q.evalHistogram(ctx, histogramExpr)
+	}
+
 	expr, err := optimizeSampleExpr(expr)
 	if err != nil {
 		return nil, err
@@ -335,6 +340,80 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	result := promql.Matrix(series)
 	sort.Sort(result)
 
+	return result, stepEvaluator.Error()
+}
+
+func (q *query) evalHistogram(ctx context.Context, expr *syntax.HistogramExpr) (promql_parser.Value, error) {
+	stepEvaluator, err := q.evaluator.StepEvaluator(ctx, q.evaluator, expr, q.params)
+	if err != nil {
+		return nil, err
+	}
+	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
+
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
+	seriesIndex := map[uint64]*histogram.Series{}
+
+	next, ts, vec := stepEvaluator.(*histogramEvaluator).NextVal()
+	if stepEvaluator.Error() != nil {
+		return nil, stepEvaluator.Error()
+	}
+
+	// fail fast for the first step or instant query
+	if len(vec) > maxSeries {
+		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+	}
+
+	if GetRangeType(q.params) == InstantType {
+		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
+		return vec, nil
+	}
+
+	stepCount := int(math.Ceil(float64(q.params.End().Sub(q.params.Start()).Nanoseconds()) / float64(q.params.Step().Nanoseconds())))
+	if stepCount <= 0 {
+		stepCount = 1
+	}
+
+	for next {
+		for _, p := range vec {
+			var (
+				series *histogram.Series
+				hash   = p.Metric.Hash()
+				ok     bool
+			)
+
+			series, ok = seriesIndex[hash]
+			if !ok {
+				series = &histogram.Series{
+					Metric: p.Metric,
+					Points: make([]histogram.Point, 0, stepCount),
+				}
+				seriesIndex[hash] = series
+			}
+			series.Points = append(series.Points, histogram.Point{
+				T: ts,
+				V: p.V,
+			})
+		}
+		// as we slowly build the full query for each steps, make sure we don't go over the limit of unique series.
+		if len(seriesIndex) > maxSeries {
+			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+		}
+		next, ts, vec = stepEvaluator.(*histogramEvaluator).NextVal()
+		if stepEvaluator.Error() != nil {
+			return nil, stepEvaluator.Error()
+		}
+	}
+
+	series := make([]histogram.Series, 0, len(seriesIndex))
+	for _, s := range seriesIndex {
+		series = append(series, *s)
+	}
+	result := histogram.Matrix(series)
+	sort.Sort(result)
 	return result, stepEvaluator.Error()
 }
 

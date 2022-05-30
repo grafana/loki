@@ -12,6 +12,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logql/histogram"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logql/vector"
 )
@@ -20,12 +21,14 @@ import (
 // It receives the current milliseconds timestamp and the list of point within
 // the range.
 type RangeVectorAggregator func([]promql.Point) float64
+type HistogramVectorAggregator func([]promql.Point) []histogram.SampleValue
 
 // RangeVectorIterator iterates through a range of samples.
 // To fetch the current vector use `At` with a `RangeVectorAggregator`.
 type RangeVectorIterator interface {
 	Next() bool
 	At(aggregator RangeVectorAggregator) (int64, promql.Vector)
+	AtHistogram(aggregator HistogramVectorAggregator) (int64, histogram.Vector)
 	Close() error
 	Error() error
 }
@@ -36,6 +39,7 @@ type rangeVectorIterator struct {
 	window                               map[string]*promql.Series
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
+	atHist                               []histogram.Sample
 }
 
 func newRangeVectorIterator(
@@ -166,6 +170,25 @@ func (r *rangeVectorIterator) At(aggregator RangeVectorAggregator) (int64, promq
 		})
 	}
 	return ts, r.at
+}
+
+func (r *rangeVectorIterator) AtHistogram(aggregator HistogramVectorAggregator) (int64, histogram.Vector) {
+	if r.atHist == nil {
+		r.atHist = make([]histogram.Sample, 0, len(r.window))
+	}
+	r.atHist = r.atHist[:0]
+	// convert ts from nano to milli seconds as the iterator work with nanoseconds
+	ts := r.current/1e+6 + r.offset/1e+6
+	for _, series := range r.window {
+		r.atHist = append(r.atHist, histogram.Sample{
+			Point: histogram.Point{
+				V: aggregator(series.Points),
+				T: ts,
+			},
+			Metric: series.Metric,
+		})
+	}
+	return ts, r.atHist
 }
 
 var seriesPool sync.Pool
@@ -401,6 +424,30 @@ func quantileOverTime(q float64) func(samples []promql.Point) float64 {
 			values = append(values, promql.Sample{Point: promql.Point{V: v.V}})
 		}
 		return quantile(q, values)
+	}
+}
+
+func bucketsOverTime(buckets []float64) func(samples []promql.Point) []histogram.SampleValue {
+	return func(samples []promql.Point) []histogram.SampleValue {
+		bucketMap := make(map[float64]int64)
+		for _, sample := range samples {
+			i := sort.SearchFloat64s(buckets, sample.V)
+			if i <= len(buckets)-1 {
+				bucketMap[buckets[i]] += 1
+			}
+		}
+
+		histvalues := make([]histogram.SampleValue, len(buckets))
+		for i, val := range buckets {
+			if v, ok := bucketMap[val]; ok {
+				histvalues[i].UpperBound = val
+				histvalues[i].Count = v
+			} else {
+				histvalues[i].UpperBound = val
+				histvalues[i].Count = 0
+			}
+		}
+		return histvalues
 	}
 }
 

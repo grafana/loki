@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/histogram"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/util"
@@ -207,6 +208,19 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		return binOpStepEvaluator(ctx, nextEv, e, q)
 	case *syntax.LabelReplaceExpr:
 		return labelReplaceEvaluator(ctx, nextEv, e, q)
+	case *syntax.HistogramExpr:
+		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
+			&logproto.SampleQueryRequest{
+				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
+				End:      q.End().Add(-e.Left.Offset),
+				Selector: expr.String(),
+				Shards:   q.Shards(),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return histogramAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
@@ -462,6 +476,60 @@ func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 func (r rangeVectorEvaluator) Close() error { return r.iter.Close() }
 
 func (r rangeVectorEvaluator) Error() error {
+	if r.err != nil {
+		return r.err
+	}
+	return r.iter.Error()
+}
+
+type histogramEvaluator struct {
+	StepEvaluator
+	agg  HistogramVectorAggregator
+	iter RangeVectorIterator
+
+	err error
+}
+
+func histogramAggEvaluator(
+	it iter.PeekingSampleIterator,
+	expr *syntax.HistogramExpr,
+	q Params,
+	o time.Duration,
+) (StepEvaluator, error) {
+	agg := bucketsOverTime(expr.Buckets.Buckets)
+	iter := newRangeVectorIterator(
+		it,
+		expr.Left.Interval.Nanoseconds(),
+		q.Step().Nanoseconds(),
+		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+	)
+
+	return &histogramEvaluator{
+		iter: iter,
+		agg:  agg,
+	}, nil
+}
+
+func (r *histogramEvaluator) NextVal() (bool, int64, histogram.Vector) {
+	next := r.iter.Next()
+	if !next {
+		return false, 0, histogram.Vector{}
+	}
+
+	ts, vec := r.iter.AtHistogram(r.agg)
+	for _, s := range vec {
+		// Errors are not allowed in metrics.
+		if s.Metric.Has(logqlmodel.ErrorLabel) {
+			r.err = logqlmodel.NewPipelineErr(s.Metric)
+			return false, 0, histogram.Vector{}
+		}
+	}
+	return true, ts, vec
+}
+
+func (r histogramEvaluator) Close() error { return r.iter.Close() }
+
+func (r histogramEvaluator) Error() error {
 	if r.err != nil {
 		return r.err
 	}

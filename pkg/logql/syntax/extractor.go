@@ -8,6 +8,7 @@ import (
 )
 
 const UnsupportedErr = "unsupported range vector aggregation operation: %s"
+const UnsupportedHistExprErr = "unsupported histogram operation"
 
 func (r RangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	return r.extractor(nil)
@@ -83,4 +84,69 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 	default:
 		return nil, fmt.Errorf(UnsupportedErr, r.Operation)
 	}
+}
+
+func (r HistogramExpr) Extractor() (log.SampleExtractor, error) {
+	return r.extractor(nil)
+}
+
+// extractor creates a SampleExtractor but allows for the grouping to be overridden.
+func (r HistogramExpr) extractor(override *Grouping) (log.SampleExtractor, error) {
+	// if err := r.validate(); err != nil {
+	// 	return nil, err
+	// }
+	var groups []string
+	var without bool
+	var noLabels bool
+
+	if r.Grouping != nil {
+		groups = r.Grouping.Groups
+		without = r.Grouping.Without
+		if len(groups) == 0 {
+			noLabels = true
+		}
+	}
+
+	// uses override if it exists
+	if override != nil {
+		groups = override.Groups
+		without = override.Without
+		if len(groups) == 0 {
+			noLabels = true
+		}
+	}
+
+	sort.Strings(groups)
+
+	var stages []log.Stage
+	if p, ok := r.Left.Left.(*PipelineExpr); ok {
+		// if the expression is a pipeline then take all stages into account first.
+		st, err := p.MultiStages.stages()
+		if err != nil {
+			return nil, err
+		}
+		stages = st
+	}
+
+	// todo: correct error handling
+	if r.Left.Unwrap == nil {
+		return nil, fmt.Errorf(UnsupportedHistExprErr)
+	}
+
+	var convOp string
+	switch r.Left.Unwrap.Operation {
+	case OpConvBytes:
+		convOp = log.ConvertBytes
+	case OpConvDuration, OpConvDurationSeconds:
+		convOp = log.ConvertDuration
+	default:
+		convOp = log.ConvertFloat
+	}
+
+	return log.LabelExtractorWithStages(
+		r.Left.Unwrap.Identifier,
+		convOp, groups, without, noLabels, stages,
+		log.ReduceAndLabelFilter(r.Left.Unwrap.PostFilters),
+	)
+
 }

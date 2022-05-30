@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -510,6 +511,14 @@ func mustNewFloat(s string) float64 {
 	return n
 }
 
+func mustNewInt(s string) int64 {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		panic(logqlmodel.NewParseError(fmt.Sprintf("unable to parse int: %s", err.Error()), 0, 0))
+	}
+	return n
+}
+
 type UnwrapExpr struct {
 	Identifier string
 	Operation  string
@@ -627,6 +636,7 @@ const (
 	OpRangeTypeStdvar    = "stdvar_over_time"
 	OpRangeTypeStddev    = "stddev_over_time"
 	OpRangeTypeQuantile  = "quantile_over_time"
+	OpRangeTypeHistogram = "buckets_over_time"
 	OpRangeTypeFirst     = "first_over_time"
 	OpRangeTypeLast      = "last_over_time"
 	OpRangeTypeAbsent    = "absent_over_time"
@@ -681,6 +691,9 @@ const (
 
 	// function filters
 	OpFilterIP = "ip"
+
+	OpHistogramLinearBuckets      = "linear_buckets"
+	OpHistogramExponentialBuckets = "exponential_buckets"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -710,6 +723,121 @@ type SampleExpr interface {
 	Expr
 }
 
+type HistogramExpr struct {
+	Left      *LogRange
+	Buckets   *BucketExpr
+	Grouping  *Grouping
+	Operation string
+	implicit
+}
+
+func newHistogramExpr(left *LogRange, bucketExpr *BucketExpr, gr *Grouping) SampleExpr {
+	e := &HistogramExpr{
+		Left:     left,
+		Grouping: gr,
+		Buckets:  bucketExpr,
+	}
+	// if err := e.validate(); err != nil {
+	// 	panic(logqlmodel.NewParseError(err.Error(), 0, 0))
+	// }
+	return e
+}
+
+func (e *HistogramExpr) Selector() LogSelectorExpr {
+	return e.Left.Left
+}
+
+// impls Stringer
+func (e *HistogramExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpRangeTypeHistogram)
+	sb.WriteString("(")
+	sb.WriteString(e.Buckets.String())
+	sb.WriteString(",")
+	sb.WriteString(e.Left.String())
+
+	sb.WriteString(")")
+	if e.Grouping != nil {
+		sb.WriteString(e.Grouping.String())
+	}
+
+	return sb.String()
+}
+
+// impl SampleExpr
+// todo: check if shardable
+func (e *HistogramExpr) Shardable() bool {
+	return true
+}
+
+func (e *HistogramExpr) Walk(f WalkFn) {
+	f(e)
+	if e.Left == nil {
+		return
+	}
+	e.Left.Walk(f)
+}
+
+func newBuckets(start, scale float64, count int64, operation string) []float64 {
+	switch operation {
+	case OpHistogramLinearBuckets:
+		return linearBuckets(start, scale, int(count))
+	case OpHistogramExponentialBuckets:
+		return exponentialBuckets(start, scale, int(count))
+	default:
+		panic(logqlmodel.NewParseError(fmt.Sprintf("invalid bucket operation %s", operation), 0, 0))
+	}
+}
+
+func linearBuckets(start, width float64, count int) []float64 {
+	return prometheus.LinearBuckets(start, width, count)
+}
+
+func exponentialBuckets(start, factor float64, count int) []float64 {
+	return prometheus.ExponentialBuckets(start, factor, count)
+}
+
+type BucketExpr struct {
+	Operation    string
+	Start, Scale float64
+	Count        int64
+	Buckets      []float64
+}
+
+func (b *BucketExpr) String() string {
+	var sb strings.Builder
+	if b.Operation != "" {
+		sb.WriteString(b.Operation)
+		sb.WriteString("(")
+		sb.WriteString(fmt.Sprintf("%f,%f,%d", b.Start, b.Scale, b.Count))
+		sb.WriteString(")")
+	} else {
+		sb.WriteString("(")
+		bucketStr := make([]string, 0, len(b.Buckets))
+		for _, bucket := range b.Buckets {
+			bucketStr = append(bucketStr, strconv.FormatFloat(bucket, 'f', -1, 64))
+		}
+		sb.WriteString(strings.Join(bucketStr, ","))
+		sb.WriteString(")")
+	}
+
+	return sb.String()
+}
+
+func newBucketExpr(operation string, start, scale float64, count int64, buckets []float64) *BucketExpr {
+	bkts := buckets
+	if operation != "" {
+		bkts = newBuckets(start, scale, count, operation)
+	}
+	return &BucketExpr{
+		Operation: operation,
+		Start:     start,
+		Scale:     scale,
+		Count:     count,
+		Buckets:   bkts,
+	}
+}
+
 type RangeAggregationExpr struct {
 	Left      *LogRange
 	Operation string
@@ -719,7 +847,7 @@ type RangeAggregationExpr struct {
 	implicit
 }
 
-func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, stringParams *string) SampleExpr {
+func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, stringParams *string, bucketStringParams []string) SampleExpr {
 	var params *float64
 	if stringParams != nil {
 		if operation != OpRangeTypeQuantile {
@@ -737,6 +865,7 @@ func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, str
 			panic(logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0))
 		}
 	}
+
 	e := &RangeAggregationExpr{
 		Left:      left,
 		Operation: operation,
@@ -756,14 +885,14 @@ func (e *RangeAggregationExpr) Selector() LogSelectorExpr {
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeHistogram, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.Operation)
 		}
 	}
 	if e.Left.Unwrap != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeHistogram, OpRangeTypeRate, OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)

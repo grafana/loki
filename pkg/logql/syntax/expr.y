@@ -19,6 +19,11 @@ import (
   Matcher                 *labels.Matcher
   Matchers                []*labels.Matcher
   RangeAggregationExpr    SampleExpr
+  HistogramExpr           SampleExpr
+  BucketExpr              *BucketExpr
+  Buckets                 []float64
+  HistogramOp             string
+  BucketOp                string 
   RangeOp                 string
   ConvOp                  string
   Selector                []*labels.Matcher
@@ -69,7 +74,12 @@ import (
 %type <LogRangeExpr>          logRangeExpr
 %type <Matcher>               matcher
 %type <Matchers>              matchers
+%type <Buckets>               buckets
+%type <HistogramExpr>         histogramExpr
+%type <BucketExpr>            bucketExpr
 %type <RangeAggregationExpr>  rangeAggregationExpr
+%type <HistogramOp>           histogramOp
+%type <BucketOp>              bucketOp
 %type <RangeOp>               rangeOp
 %type <ConvOp>                convOp
 %type <Selector>              selector
@@ -109,7 +119,7 @@ import (
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
-                  MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
+                  MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BUCKETS_OVER_TIME LINEAR_BUCKETS EXPONENTIAL_BUCKETS BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
 
 // Operators are listed with increasing precedence.
@@ -136,6 +146,31 @@ metricExpr:
     | literalExpr                                   { $$ = $1 }
     | labelReplaceExpr                              { $$ = $1 }
     | OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS { $$ = $2 }
+    | histogramExpr                                 { $$ = $1 }
+    ;
+
+histogramExpr:
+      histogramOp OPEN_PARENTHESIS bucketExpr COMMA logRangeExpr CLOSE_PARENTHESIS { $$ = newHistogramExpr($5, $3, nil) }
+    | histogramOp OPEN_PARENTHESIS bucketExpr COMMA logRangeExpr CLOSE_PARENTHESIS grouping { $$ = newHistogramExpr($5, $3, $7) }
+    ;
+
+histogramOp:
+      BUCKETS_OVER_TIME  { $$ = OpRangeTypeHistogram }
+    ;
+
+bucketOp:
+      LINEAR_BUCKETS { $$ = OpHistogramLinearBuckets }
+    | EXPONENTIAL_BUCKETS { $$ = OpHistogramExponentialBuckets }
+    ;
+
+bucketExpr:
+      OPEN_PARENTHESIS buckets CLOSE_PARENTHESIS { $$ = newBucketExpr("", 0, 0, 0, $2) }
+    | bucketOp OPEN_PARENTHESIS NUMBER COMMA NUMBER COMMA NUMBER CLOSE_PARENTHESIS { $$ = newBucketExpr($1, mustNewFloat($3), mustNewFloat($5), mustNewInt($7), nil) }
+    ;
+
+buckets:
+     NUMBER { $$ = []float64{ mustNewFloat($1) } }
+    | buckets COMMA NUMBER { $$ = append($1, mustNewFloat($3)) }
     ;
 
 logExpr:
@@ -186,10 +221,10 @@ convOp:
   ;
 
 rangeAggregationExpr:
-      rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                        { $$ = newRangeAggregationExpr($3, $1, nil, nil) }
-    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS           { $$ = newRangeAggregationExpr($5, $1, nil, &$3) }
-    | rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS grouping               { $$ = newRangeAggregationExpr($3, $1, $5, nil) }
-    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS grouping  { $$ = newRangeAggregationExpr($5, $1, $7, &$3) }
+      rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                        { $$ = newRangeAggregationExpr($3, $1, nil, nil, nil) }
+    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS           { $$ = newRangeAggregationExpr($5, $1, nil, &$3, nil) }
+    | rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS grouping               { $$ = newRangeAggregationExpr($3, $1, $5, nil, nil) }
+    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS grouping  { $$ = newRangeAggregationExpr($5, $1, $7, &$3, nil) }
     ;
 
 vectorAggregationExpr:
