@@ -365,7 +365,7 @@ type ObjectStorageTLSSpec struct {
 // storage bucket to persist logs by the ingester component.
 type ObjectStorageSpec struct {
 	// Secret for object storage authentication.
-	// Name of a secret in the same namespace as the lokistack custom resource.
+	// Name of a secret in the same namespace as the LokiStack custom resource.
 	//
 	// +required
 	// +kubebuilder:validation:Required

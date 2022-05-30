@@ -311,7 +311,7 @@ spec:
                 properties:
                   secret:
                     description: Secret for object storage authentication. Name of
-                      a secret in the same namespace as the lokistack custom resource.
+                      a secret in the same namespace as the LokiStack custom resource.
                     properties:
                       name:
                         description: Name of a secret in the namespace configured
