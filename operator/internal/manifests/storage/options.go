@@ -12,7 +12,7 @@ type Options struct {
 	GCS         *GCSStorageConfig
 	S3          *S3StorageConfig
 	Swift       *SwiftStorageConfig
-	CAName      string
+	TLS         *TLSConfig
 }
 
 // AzureStorageConfig for Azure storage config
@@ -53,4 +53,10 @@ type SwiftStorageConfig struct {
 	ProjectDomainName string
 	Region            string
 	Container         string
+}
+
+// TLSConfig for object storage endpoints. Currently supported only by:
+// - S3
+type TLSConfig struct {
+	CA string
 }

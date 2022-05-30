@@ -31,8 +31,8 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if opts.ObjectStorage.CAName != "" {
-		err := configureStatefulSetForStorageCA(statefulSet, storageType, opts.ObjectStorage.CAName)
+	if opts.ObjectStorage.TLS != nil {
+		err := configureStatefulSetForStorageCA(statefulSet, storageType, opts.ObjectStorage.TLS.CA)
 		if err != nil {
 			return nil, err
 		}

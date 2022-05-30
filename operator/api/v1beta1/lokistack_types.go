@@ -349,13 +349,23 @@ type ObjectStorageSecretSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:Secret",displayName="Object Storage Secret Name"
 	Name string `json:"name"`
 
+	// TLS configuration for reaching the object storage endpoint.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLS Config"
+	TLS *ObjectStorageTLSSpec `json:"tls,omitempty"`
+}
+
+// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
+type ObjectStorageTLSSpec struct {
 	// ConfigMap for object storage ca file.
 	// Name of a ConfigMap in the same namespace as the lokistack custom resource.
 	//
 	// +optional
 	// +kubebuilder:validation:optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
-	CAName string `json:"caName,omitempty"`
+	CA string `json:"caName,omitempty"`
 }
 
 // ObjectStorageSpec defines the requirements to access the object

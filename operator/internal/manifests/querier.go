@@ -29,8 +29,8 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if opts.ObjectStorage.CAName != "" {
-		err := configureDeploymentForStorageCA(deployment, storageType, opts.ObjectStorage.CAName)
+	if opts.ObjectStorage.TLS != nil {
+		err := configureDeploymentForStorageCA(deployment, storageType, opts.ObjectStorage.TLS.CA)
 		if err != nil {
 			return nil, err
 		}

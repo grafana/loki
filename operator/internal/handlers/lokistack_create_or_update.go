@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/grafana/loki/operator/internal/manifests"
+	storageoptions "github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
 
@@ -77,9 +78,9 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	if stack.Spec.Storage.Secret.CAName != "" {
+	if stack.Spec.Storage.Secret.TLS != nil {
 		var cm corev1.ConfigMap
-		key := client.ObjectKey{Name: stack.Spec.Storage.Secret.CAName, Namespace: stack.Namespace}
+		key := client.ObjectKey{Name: stack.Spec.Storage.Secret.TLS.CA, Namespace: stack.Namespace}
 		if err = k.Get(ctx, key, &cm); err != nil {
 			if apierrors.IsNotFound(err) {
 				return &status.DegradedError{
@@ -99,7 +100,7 @@ func CreateOrUpdateLokiStack(
 			}
 		}
 
-		objstorage.CAName = cm.Name
+		objstorage.TLS = &storageoptions.TLSConfig{CA: cm.Name}
 	}
 
 	var (
