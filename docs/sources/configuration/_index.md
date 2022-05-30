@@ -379,10 +379,6 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
 
-# Address, including port, where the compactor api is served
-# CLI flag: -frontend.compactor-address
-[compactor_address: <string> | default = ""]
-
 # Log queries that are slower than the specified duration. Set to 0 to disable.
 # Set to < 0 to enable on all queries.
 # CLI flag: -frontend.log-queries-longer-than
@@ -2604,6 +2600,10 @@ This way, one doesn't have to replicate configuration in multiple places.
 # to be used by the distributor's ring, but only if the distributor's ring itself
 # doesn't have a `heartbeat_period` set.
 [ring: <ring>]
+
+# Address, including port, where the compactor api is served
+# CLI flag: -common.compactor-address
+[compactor_address: <string> | default = ""]
 ```
 
 ## analytics
