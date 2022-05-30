@@ -15,9 +15,11 @@ local k = import 'ksonnet-util/kausal.libsonnet';
         'ingester.max-transfer-retries': 0,
       } else {},
 
+  ingester_ports: $.util.defaultPorts,
+
   ingester_container::
     container.new('ingester', $._images.ingester) +
-    container.withPorts($.util.defaultPorts) +
+    container.withPorts($.ingester_ports) +
     container.withArgsMixin(k.util.mapToFlags($.ingester_args)) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
