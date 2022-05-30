@@ -9,7 +9,7 @@ local condition(verb) = {
       [verb]:
         [
           'refs/heads/main',
-          'refs/heads/k??',
+          'refs/heads/k???',
           'refs/tags/v*',
         ],
     },
