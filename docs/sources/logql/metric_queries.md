@@ -79,6 +79,7 @@ Supported function for operating over unwrapped ranges are:
 - `stddev_over_time(unwrapped-range)`: the population standard deviation of the values in the specified interval.
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.
 - `absent_over_time(unwrapped-range)`: returns an empty vector if the range vector passed to it has any elements and a 1-element vector with the value 1 if the range vector passed to it has no elements. (`absent_over_time` is useful for alerting on when no time series and logs stream exist for label combination for a certain amount of time.)
+- `buckets_over_time(unwrapped-range)`: return histogram over time for the specified buckets/bins. Refer [buckets_over_time](#buckets-over-time) for syntax.
 
 Except for `sum_over_time`,`absent_over_time` and `rate`, unwrapped range aggregations support grouping.
 
@@ -113,6 +114,58 @@ sum by (org_id) (
 ```
 
 This calculates the amount of bytes processed per organization ID.
+
+```logql
+buckets_over_time((.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10),
+  {cluster="ops-tools1",container="ingress-nginx"}
+    | json
+    | __error__ = ""
+    | unwrap request_time [1m]) by (path)
+```
+
+This query returns the count for specified buckets over time by path
+
+### Buckets Over Time
+
+Histogram aggregation supports 3 different syntaxes. 
+
+#### Specifying the buckets
+
+```logql
+buckets_over_time((.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10),
+  {cluster="ops-tools1",container="ingress-nginx"}
+    | json
+    | __error__ = ""
+    | unwrap request_time [1m]) by (path)
+```
+
+#### Linear Buckets
+
+signature: linear_buckets(start, width, count)
+
+```logql
+buckets_over_time(linear_buckets(5, 5, 3),
+  {cluster="ops-tools1",container="ingress-nginx"}
+    | json
+    | __error__ = ""
+    | unwrap request_time [1m]) by (path)
+```
+
+The above query would create 3 buckets with values `5, 10, 15`
+
+#### Exponential Buckets
+
+signature: exponential_buckets(start, factor, count)
+
+```logql
+buckets_over_time(exponential_buckets(0.05, 2, 3),
+  {cluster="ops-tools1",container="ingress-nginx"}
+    | json
+    | __error__ = ""
+    | unwrap request_time [1m]) by (path)
+```
+
+The above query would create 3 buckets with values `0.05, 0.1, 0.2`
 
 ## Built-in aggregation operators
 
