@@ -1,5 +1,7 @@
-locals {
-  version = "2.5.0"
+variable "version" {
+  type        = string
+  description = "Loki version"
+  default     = "2.5.0"
 }
 
 job "loki" {
@@ -23,7 +25,7 @@ job "loki" {
       user   = "nobody"
 
       config {
-        image = "grafana/loki:${local.version}"
+        image = "grafana/loki:${var.version}"
 
         ports = [
           "http",
@@ -99,7 +101,7 @@ job "loki" {
       user   = "nobody"
 
       config {
-        image = "grafana/loki:${local.version}"
+        image = "grafana/loki:${var.version}"
 
         ports = [
           "http",

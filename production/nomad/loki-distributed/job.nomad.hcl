@@ -1,5 +1,7 @@
-locals {
-  version = "2.5.0"
+variable "version" {
+  type        = string
+  description = "Loki version"
+  default     = "2.5.0"
 }
 
 job "loki" {
@@ -50,7 +52,7 @@ job "loki" {
       kill_timeout = "90s"
 
       config {
-        image = "grafana/loki:${local.version}"
+        image = "grafana/loki:${var.version}"
         ports = [
           "http",
           "grpc",
@@ -133,7 +135,7 @@ job "loki" {
       kill_timeout = "90s"
 
       config {
-        image = "grafana/loki:${local.version}"
+        image = "grafana/loki:${var.version}"
         ports = [
           "http",
           "grpc",
@@ -223,7 +225,7 @@ job "loki" {
       kill_timeout = "90s"
 
       config {
-        image = "grafana/loki:${local.version}"
+        image = "grafana/loki:${var.version}"
         ports = [
           "http",
           "grpc",
@@ -302,7 +304,7 @@ job "loki" {
       kill_timeout = "90s"
 
       config {
-        image = "grafana/loki:${local.version}"
+        image = "grafana/loki:${var.version}"
         ports = [
           "http",
           "grpc",
@@ -371,7 +373,7 @@ job "loki" {
       kill_timeout = "90s"
 
       config {
-        image = "grafana/loki:${local.version}"
+        image = "grafana/loki:${var.version}"
         ports = [
           "http",
           "grpc",
@@ -443,7 +445,7 @@ job "loki" {
       kill_timeout = "90s"
 
       config {
-        image = "grafana/loki:${local.version}"
+        image = "grafana/loki:${var.version}"
         ports = [
           "http",
           "grpc",
@@ -508,7 +510,7 @@ job "loki" {
       kill_timeout = "90s"
 
       config {
-        image = "grafana/loki:${local.version}"
+        image = "grafana/loki:${var.version}"
         ports = [
           "http",
           "grpc",
@@ -575,7 +577,7 @@ job "loki" {
       kill_timeout = "90s"
 
       config {
-        image = "grafana/loki:${local.version}"
+        image = "grafana/loki:${var.version}"
         ports = [
           "http",
           "grpc",

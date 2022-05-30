@@ -4,7 +4,39 @@ This Nomad job will deploy Loki in
 [microservices mode](https://grafana.com/docs/loki/latest/fundamentals/architecture/deployment-modes/#microservices-mode)
 using boltdb-shipper and S3 backend.
 
-Make sure to go over the job file and adjust it to your needs.
+## Usage
+
+Have a look at the job file and Loki configuration file and change it to suite
+your environment.
+
+### Run job
+
+Inside directory with job run:
+
+```shell
+nomad run job.nomad.hcl
+```
+
+To run deploy a different version change `variable.version` default value or
+specify from command line:
+
+```shell
+nomad job run -var="version=2.5.0" job.nomad.hcl
+```
+
+### Scale Loki
+
+Change `count` in job file in `group "loki"` and run:
+
+```shell
+nomad run job.nomad.hcl
+```
+
+or use Nomad CLI
+
+```shell
+nomad job scale loki distributor <count>
+```
 
 ## Recommendations for running in production
 
@@ -138,8 +170,8 @@ integration:
 
 Unfortenately Consul Connect cannot be used to secure GRPC communication between
 Loki components, since some components should be able to connect to all
-instances of other components. We can secure components GRPC communication
-with Vault [PKI engine](https://www.vaultproject.io/docs/secrets/pki).
+instances of other components. We can secure components GRPC communication with
+Vault [PKI engine](https://www.vaultproject.io/docs/secrets/pki).
 
 Certificate generation can be made less verbose with the following HCL trick:
 

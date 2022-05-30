@@ -1,3 +1,9 @@
+variable "version" {
+  type        = string
+  description = "Loki version"
+  default     = "2.5.0"
+}
+
 job "loki" {
   datacenters = ["dc1"]
 
@@ -24,7 +30,7 @@ job "loki" {
       user   = "nobody"
 
       config {
-        image = "grafana/loki:2.5.0"
+        image = "grafana/loki:${var.version}"
         ports = [
           "http",
           "grpc",
