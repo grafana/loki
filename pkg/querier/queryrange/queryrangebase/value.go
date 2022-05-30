@@ -19,7 +19,6 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 		// correctly parse the error in parent callers (eg. gRPC response status code extraction).
 		return nil, errors.Cause(res.Err)
 	}
-
 	switch v := res.Value.(type) {
 	case promql.Scalar:
 		return []SampleStream{

@@ -737,9 +737,6 @@ func newHistogramExpr(left *LogRange, bucketExpr *BucketExpr, gr *Grouping) Samp
 		Grouping: gr,
 		Buckets:  bucketExpr,
 	}
-	// if err := e.validate(); err != nil {
-	// 	panic(logqlmodel.NewParseError(err.Error(), 0, 0))
-	// }
 	return e
 }
 

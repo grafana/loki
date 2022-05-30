@@ -448,7 +448,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 					Status: resp.Status,
 					Data: queryrangebase.PrometheusData{
 						ResultType: loghttp.ResultTypeHistogramMatrix,
-						Result:     toProtoHistMatrix(resp.Data.Result.(loghttp.HistogramMatrix)),
+						Result:     toProtoHistogramMatrix(resp.Data.Result.(loghttp.HistogramMatrix)),
 					},
 					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
 				},
@@ -496,7 +496,6 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 				Statistics: resp.Data.Statistics,
 			}, nil
 		default:
-			fmt.Println("Unsupported respnse type in codec")
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%s)", string(resp.Data.ResultType))
 		}
 	}
@@ -758,7 +757,7 @@ func toProtoMatrix(m loghttp.Matrix) []queryrangebase.SampleStream {
 	return res
 }
 
-func toProtoHistMatrix(m loghttp.HistogramMatrix) []queryrangebase.SampleStream {
+func toProtoHistogramMatrix(m loghttp.HistogramMatrix) []queryrangebase.SampleStream {
 	res := make([]queryrangebase.SampleStream, 0, len(m))
 	if len(m) == 0 {
 		return res

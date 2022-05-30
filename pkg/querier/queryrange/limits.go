@@ -304,7 +304,6 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	if err != nil {
 		return nil, err
 	}
-
 	return rt.codec.EncodeResponse(ctx, response)
 }
 

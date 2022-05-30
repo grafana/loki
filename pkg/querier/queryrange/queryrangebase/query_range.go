@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -168,11 +169,14 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 
 	// Merge the responses.
 	sort.Sort(byFirstTime(promResponses))
-	// todo: remove hardcoding
+	resultType := model.ValMatrix.String()
+	if promResponses[0].Data.ResultType == loghttp.ResultTypeHistogramMatrix {
+		resultType = loghttp.ResultTypeHistogramMatrix
+	}
 	response := PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
-			ResultType: "histogrammatrix",
+			ResultType: resultType,
 			Result:     matrixMerge(promResponses),
 		},
 	}
@@ -394,34 +398,52 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 					Labels: stream.Labels,
 				}
 			}
-			// // We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
-			// // The prometheus API is inclusive of start and end timestamps.
-			// if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
-			// 	existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
-			// 	if existingEndTs == stream.Samples[0].TimestampMs {
-			// 		// Typically this the cases where only 1 sample point overlap,
-			// 		// so optimize with simple code.
-			// 		stream.Samples = stream.Samples[1:]
-			// 	} else if existingEndTs > stream.Samples[0].TimestampMs {
-			// 		// Overlap might be big, use heavier algorithm to remove overlap.
-			// 		stream.Samples = sliceSamples(stream.Samples, existingEndTs)
-			// 	} // else there is no overlap, yay!
-			// }
-			// We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
-			// The prometheus API is inclusive of start and end timestamps.
-			if len(existing.Histogramsamples) > 0 && len(stream.Histogramsamples) > 0 {
-				existingEndTs := existing.Histogramsamples[len(existing.Histogramsamples)-1].TimestampMs
-				if existingEndTs == stream.Histogramsamples[0].TimestampMs {
-					// Typically this the cases where only 1 sample point overlap,
-					// so optimize with simple code.
-					stream.Histogramsamples = stream.Histogramsamples[1:]
-				} else if existingEndTs > stream.Histogramsamples[0].TimestampMs {
-					// Overlap might be big, use heavier algorithm to remove overlap.
-					stream.Histogramsamples = sliceHistogramSamples(stream.Histogramsamples, existingEndTs)
-				} // else there is no overlap, yay!
+			switch resp.Data.ResultType {
+			case loghttp.ResultTypeHistogramMatrix:
+				if len(existing.Histogramsamples) > 0 && len(stream.Histogramsamples) > 0 {
+					existingEndTs := existing.Histogramsamples[len(existing.Histogramsamples)-1].TimestampMs
+					if existingEndTs == stream.Histogramsamples[0].TimestampMs {
+						// Typically this the cases where only 1 sample point overlap,
+						// so optimize with simple code.
+						stream.Histogramsamples = stream.Histogramsamples[1:]
+					} else if existingEndTs > stream.Histogramsamples[0].TimestampMs {
+						// Overlap might be big, use heavier algorithm to remove overlap.
+						stream.Histogramsamples = sliceHistogramSamples(stream.Histogramsamples, existingEndTs)
+					} // else there is no overlap, yay!
+				}
+				existing.Histogramsamples = append(existing.Histogramsamples, stream.Histogramsamples...)
+				output[metric] = existing
+			default:
+				// // We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
+				// // The prometheus API is inclusive of start and end timestamps.
+				// if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
+				// 	existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
+				// 	if existingEndTs == stream.Samples[0].TimestampMs {
+				// 		// Typically this the cases where only 1 sample point overlap,
+				// 		// so optimize with simple code.
+				// 		stream.Samples = stream.Samples[1:]
+				// 	} else if existingEndTs > stream.Samples[0].TimestampMs {
+				// 		// Overlap might be big, use heavier algorithm to remove overlap.
+				// 		stream.Samples = sliceSamples(stream.Samples, existingEndTs)
+				// 	} // else there is no overlap, yay!
+				// }
+				// We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
+				// The prometheus API is inclusive of start and end timestamps.
+				if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
+					existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
+					if existingEndTs == stream.Samples[0].TimestampMs {
+						// Typically this the cases where only 1 sample point overlap,
+						// so optimize with simple code.
+						stream.Samples = stream.Samples[1:]
+					} else if existingEndTs > stream.Histogramsamples[0].TimestampMs {
+						// Overlap might be big, use heavier algorithm to remove overlap.
+						stream.Samples = sliceSamples(stream.Samples, existingEndTs)
+					} // else there is no overlap, yay!
+				}
+				existing.Samples = append(existing.Samples, stream.Samples...)
+				output[metric] = existing
 			}
-			existing.Histogramsamples = append(existing.Histogramsamples, stream.Histogramsamples...)
-			output[metric] = existing
+
 		}
 	}
 

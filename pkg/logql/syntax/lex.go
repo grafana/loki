@@ -1,7 +1,6 @@
 package syntax
 
 import (
-	"fmt"
 	"strings"
 	"text/scanner"
 	"time"
@@ -175,7 +174,6 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		l.builder.Reset()
 		for r := l.Next(); r != scanner.EOF; r = l.Next() {
 			if r == ']' {
-				fmt.Printf("Duration string is %v\n", l.builder.String())
 				i, err := model.ParseDuration(l.builder.String())
 				if err != nil {
 					l.Error(err.Error())
