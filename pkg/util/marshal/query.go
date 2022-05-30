@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/histogram"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -58,6 +59,14 @@ func NewResultValue(v parser.Value) (loghttp.ResultValue, error) {
 		}
 
 		value = NewMatrix(m)
+	case loghttp.ResultTypeHistogramMatrix:
+		m, ok := v.(histogram.Matrix)
+
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %T for matrix", m)
+		}
+
+		value = NewHistogramMatrix(m)
 	default:
 		return nil, fmt.Errorf("v1 endpoints do not support type %s", v.Type())
 	}
@@ -122,6 +131,32 @@ func NewVector(v promql.Vector) loghttp.Vector {
 
 	for i, s := range v {
 		ret[i] = NewSample(s)
+	}
+
+	return ret
+}
+
+// NewHistogramVector constructs a Vector from a histogram.HistogramVector
+func NewHistogramMatrix(m histogram.Matrix) loghttp.HistogramMatrix {
+	ret := make([]histogram.Stream, len(m))
+
+	for i, s := range m {
+		ret[i] = NewHistogramSampleStream(s)
+	}
+
+	return ret
+}
+
+// NewSampleStream constructs a model.SampleStream from a promql.Series
+func NewHistogramSampleStream(s histogram.Series) histogram.Stream {
+	ret := histogram.Stream{
+		Metric: NewMetric(s.Metric),
+		Values: make([]histogram.SamplePair, len(s.Points)),
+	}
+
+	for i, p := range s.Points {
+		ret.Values[i].Timestamp = model.Time(p.T)
+		ret.Values[i].Value = p.V
 	}
 
 	return ret
