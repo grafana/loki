@@ -398,7 +398,7 @@ spec:
         displayName: TLS Config
         path: storage.tls
       - description: ConfigMap for object storage ca file. Name of a ConfigMap in
-          the same namespace as the lokistack custom resource.
+          the same namespace as the LokiStack custom resource.
         displayName: CA ConfigMap Name
         path: storage.tls.caName
         x-descriptors:

@@ -353,7 +353,7 @@ type ObjectStorageSecretSpec struct {
 // ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
 type ObjectStorageTLSSpec struct {
 	// ConfigMap for object storage ca file.
-	// Name of a ConfigMap in the same namespace as the lokistack custom resource.
+	// Name of a ConfigMap in the same namespace as the LokiStack custom resource.
 	//
 	// +optional
 	// +kubebuilder:validation:optional

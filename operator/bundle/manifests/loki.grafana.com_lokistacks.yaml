@@ -340,7 +340,7 @@ spec:
                     properties:
                       caName:
                         description: ConfigMap for object storage ca file. Name of
-                          a ConfigMap in the same namespace as the lokistack custom
+                          a ConfigMap in the same namespace as the LokiStack custom
                           resource.
                         type: string
                     type: object
