@@ -11,7 +11,10 @@ import (
 // ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
 func ExtractSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretType) (*storage.Options, error) {
 	var err error
-	storageOpts := storage.Options{SharedStore: secretType}
+	storageOpts := storage.Options{
+		SecretName:  s.Name,
+		SharedStore: secretType,
+	}
 
 	switch secretType {
 	case lokiv1beta1.ObjectStorageSecretAzure:

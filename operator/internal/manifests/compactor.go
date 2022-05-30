@@ -5,6 +5,7 @@ import (
 	"path"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -25,7 +26,7 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	if err := configureStatefulSetForStorageSpec(statefulSet, &opts.Stack.Storage); err != nil {
+	if err := storage.ConfigureStatefulSet(statefulSet, opts.ObjectStorage); err != nil {
 		return nil, err
 	}
 

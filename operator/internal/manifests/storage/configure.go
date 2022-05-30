@@ -5,6 +5,7 @@ import (
 	"path"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/imdario/mergo"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -21,9 +22,53 @@ const (
 	caDirectory     = "/etc/storage/ca"
 )
 
+// ConfigureDeployment appends additional pod volumes and container env vars, args, volume mounts
+// based on the object storage type. Currently supported amendments:
+// - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
+// - S3: Ensure mounting custom CA configmap if any TLSConfig given
+func ConfigureDeployment(
+	d *appsv1.Deployment,
+	opts Options,
+) error {
+	switch opts.SharedStore {
+	case lokiv1beta1.ObjectStorageSecretGCS:
+		return configureDeployment(d, opts.SecretName)
+	case lokiv1beta1.ObjectStorageSecretS3:
+		if opts.TLS == nil {
+			return nil
+		}
+
+		return configureDeploymentCA(d, opts.TLS.CA)
+	default:
+		return nil
+	}
+}
+
+// ConfigureStatefulSet appends additional pod volumes and container env vars, args, volume mounts
+// based on the object storage type. Currently supported amendments:
+// - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
+// - S3: Ensure mounting custom CA configmap if any TLSConfig given
+func ConfigureStatefulSet(
+	d *appsv1.StatefulSet,
+	opts Options,
+) error {
+	switch opts.SharedStore {
+	case lokiv1beta1.ObjectStorageSecretGCS:
+		return configureStatefulSet(d, opts.SecretName)
+	case lokiv1beta1.ObjectStorageSecretS3:
+		if opts.TLS == nil {
+			return nil
+		}
+
+		return configureStatefulSetCA(d, opts.TLS.CA)
+	default:
+		return nil
+	}
+}
+
 // ConfigureDeployment merges a GCS Object Storage volume into the deployment spec.
 // With this, the deployment will expose an environment variable for Google authentication.
-func ConfigureDeployment(d *appsv1.Deployment, secretName string) error {
+func configureDeployment(d *appsv1.Deployment, secretName string) error {
 	p := ensureCredentialsForGCS(&d.Spec.Template.Spec, secretName)
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
@@ -34,7 +79,7 @@ func ConfigureDeployment(d *appsv1.Deployment, secretName string) error {
 }
 
 // ConfigureDeploymentCA merges a S3 CA ConfigMap volume into the deployment spec.
-func ConfigureDeploymentCA(d *appsv1.Deployment, cmName string) error {
+func configureDeploymentCA(d *appsv1.Deployment, cmName string) error {
 	p := ensureCAForS3(&d.Spec.Template.Spec, cmName)
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
@@ -46,7 +91,7 @@ func ConfigureDeploymentCA(d *appsv1.Deployment, cmName string) error {
 
 // ConfigureStatefulSet merges a GCS Object Storage volume into the statefulset spec.
 // With this, the statefulset will expose an environment variable for Google authentication.
-func ConfigureStatefulSet(s *appsv1.StatefulSet, secretName string) error {
+func configureStatefulSet(s *appsv1.StatefulSet, secretName string) error {
 	p := ensureCredentialsForGCS(&s.Spec.Template.Spec, secretName)
 
 	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
@@ -57,7 +102,7 @@ func ConfigureStatefulSet(s *appsv1.StatefulSet, secretName string) error {
 }
 
 // ConfigureStatefulSetCA merges a S3 CA ConfigMap volume into the statefulset spec.
-func ConfigureStatefulSetCA(s *appsv1.StatefulSet, cmName string) error {
+func configureStatefulSetCA(s *appsv1.StatefulSet, cmName string) error {
 	p := ensureCAForS3(&s.Spec.Template.Spec, cmName)
 
 	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {

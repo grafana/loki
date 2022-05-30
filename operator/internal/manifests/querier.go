@@ -5,6 +5,7 @@ import (
 	"path"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,7 +24,7 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	if err := configureDeploymentForStorageSpec(deployment, &opts.Stack.Storage); err != nil {
+	if err := storage.ConfigureDeployment(deployment, opts.ObjectStorage); err != nil {
 		return nil, err
 	}
 
