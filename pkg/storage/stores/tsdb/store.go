@@ -23,7 +23,6 @@ import (
 var storeInstance *store
 
 type store struct {
-	shipper     indexshipper.IndexShipper
 	indexWriter IndexWriter
 	indexStore  series.IndexStore
 }

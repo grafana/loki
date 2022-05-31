@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
@@ -49,8 +48,7 @@ type tsdbManager struct {
 
 	sync.RWMutex
 
-	chunkFilter chunk.RequestChunkFilterer
-	shipper     indexshipper.IndexShipper
+	shipper indexshipper.IndexShipper
 }
 
 func NewTSDBManager(
