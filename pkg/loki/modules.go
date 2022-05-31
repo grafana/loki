@@ -389,10 +389,11 @@ func (t *Loki) initTableManager() (services.Service, error) {
 
 func (t *Loki) initStore() (_ services.Service, err error) {
 	// Always set these configs
-	// TODO(owen-d): Do the same for TSDB when we add IndexGatewayClientConfig
 	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
 	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
 		t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
 	}
 
 	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
@@ -894,6 +895,7 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	}
 
 	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	managerMode := indexgateway.ClientMode
