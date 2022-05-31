@@ -1,7 +1,10 @@
 package tsdb
 
 import (
+	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
@@ -10,16 +13,42 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/series"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+// we do not need to build store for each schema config since we do not do any schema specific handling yet.
+// If we do need to do schema specific handling, it would be a good idea to abstract away the handling since
+// running multiple head managers would be complicated and wasteful.
+var storeInstance *store
+
+type store struct {
+	shipper     indexshipper.IndexShipper
+	indexWriter IndexWriter
+	indexStore  series.IndexStore
+}
+
+// NewStore creates a new store if not initialized already.
+// Each call to NewStore will always build a new stores.ChunkWriter even if the store was already initialized since
+// fetcher.Fetcher instances could be different due to periodic configs having different types of object storage configured
+// for storing chunks.
 func NewStore(indexShipperCfg indexshipper.Config, p config.PeriodConfig, f *fetcher.Fetcher,
 	objectClient client.ObjectClient, limits downloads.Limits, reg prometheus.Registerer) (stores.ChunkWriter, series.IndexStore, error) {
-	var (
-		nodeName = indexShipperCfg.IngesterName
-		dir      = indexShipperCfg.ActiveIndexDirectory
-	)
-	tsdbMetrics := NewMetrics(reg)
+	if storeInstance != nil {
+		return NewChunkWriter(f, p, storeInstance.indexWriter), storeInstance.indexStore, nil
+	}
+
+	storeInstance := &store{}
+	err := storeInstance.init(indexShipperCfg, p, objectClient, limits, reg)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return NewChunkWriter(f, p, storeInstance.indexWriter), storeInstance.indexStore, nil
+}
+
+func (s *store) init(indexShipperCfg indexshipper.Config, p config.PeriodConfig,
+	objectClient client.ObjectClient, limits downloads.Limits, reg prometheus.Registerer) error {
 
 	shpr, err := indexshipper.NewIndexShipper(
 		indexShipperCfg,
@@ -29,31 +58,56 @@ func NewStore(indexShipperCfg indexshipper.Config, p config.PeriodConfig, f *fet
 		OpenShippableTSDB,
 	)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
-	tsdbManager := NewTSDBManager(
-		nodeName,
-		dir,
-		shpr,
-		p.IndexTables.Period,
-		util_log.Logger,
-		tsdbMetrics,
-	)
-	// TODO(owen-d): Only need HeadManager
-	// on the ingester. Otherwise, the TSDBManager is sufficient
-	headManager := NewHeadManager(
-		util_log.Logger,
-		dir,
-		tsdbMetrics,
-		tsdbManager,
-	)
-	if err := headManager.Start(); err != nil {
-		return nil, nil, err
+
+	var indices []Index
+
+	if indexShipperCfg.Mode != indexshipper.ModeReadOnly {
+		var (
+			nodeName = indexShipperCfg.IngesterName
+			dir      = indexShipperCfg.ActiveIndexDirectory
+		)
+
+		tsdbMetrics := NewMetrics(reg)
+		tsdbManager := NewTSDBManager(
+			nodeName,
+			dir,
+			shpr,
+			p.IndexTables.Period,
+			util_log.Logger,
+			tsdbMetrics,
+		)
+
+		headManager := NewHeadManager(
+			util_log.Logger,
+			dir,
+			tsdbMetrics,
+			tsdbManager,
+		)
+		if err := headManager.Start(); err != nil {
+			return err
+		}
+
+		s.indexWriter = headManager
+		indices = append(indices, headManager)
+	} else {
+		s.indexWriter = failingIndexWriter{}
 	}
-	idx := NewIndexClient(headManager, p)
-	writer := NewChunkWriter(f, p, headManager)
 
-	// TODO(owen-d): add TSDB index-gateway support
+	indices = append(indices, newIndexShipperQuerier(shpr))
+	multiIndex, err := NewMultiIndex(indices...)
+	if err != nil {
+		return err
+	}
 
-	return writer, idx, nil
+	s.indexStore = NewIndexClient(multiIndex)
+
+	return nil
+}
+
+type failingIndexWriter struct{}
+
+func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ index.ChunkMetas) error {
+	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
 }

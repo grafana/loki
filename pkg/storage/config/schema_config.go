@@ -53,6 +53,7 @@ var (
 
 	errCurrentBoltdbShipperNon24Hours  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
 	errUpcomingBoltdbShipperNon24Hours = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
+	errTSDBNon24HoursIndexPeriod       = errors.New("tsdb must always have periodic config for index set to 24h")
 	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
 )
 
@@ -280,6 +281,10 @@ func (cfg PeriodConfig) validate() error {
 	validateError := validateChunks(cfg)
 	if validateError != nil {
 		return validateError
+	}
+
+	if cfg.IndexType == TSDBType && cfg.IndexTables.Period != 24*time.Hour {
+		return errTSDBNon24HoursIndexPeriod
 	}
 
 	// Ensure the tables period is a multiple of the bucket period
