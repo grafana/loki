@@ -130,7 +130,7 @@ func (r RemoteWriteRelabelConfig) SourceLabelsString() string {
 // SeparatorString returns the user-defined separator or per default semicolon.
 func (r RemoteWriteRelabelConfig) SeparatorString() string {
 	if r.Separator == "" {
-		return ";"
+		return `""`
 	}
 
 	return r.Separator

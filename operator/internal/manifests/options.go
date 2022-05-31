@@ -87,10 +87,10 @@ type Ruler struct {
 
 // RulerSecret defines the ruler secret for remote write client auth
 type RulerSecret struct {
-	// Username, password for BasicAuth only
+	// Username for basic authentication only.
 	Username string
+	// Password for basic authentication only.
 	Password string
-
-	// Credentials for Bearer Token
+	// BearerToken contains the token used for bearer authentication.
 	BearerToken string
 }

@@ -1359,7 +1359,7 @@ ruler:
       - source_labels: ["labelc","labeld"]
         regex: "ALERTS.*"
         action: "drop"
-        separator: ";"
+        separator: ""
         replacement: "$1"
         target_label: "labeld"
         modulus: 123
