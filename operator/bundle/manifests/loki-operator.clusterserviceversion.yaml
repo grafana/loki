@@ -397,8 +397,8 @@ spec:
       - description: TLS configuration for reaching the object storage endpoint.
         displayName: TLS Config
         path: storage.tls
-      - description: ConfigMap for object storage ca file. Name of a ConfigMap in
-          the same namespace as the LokiStack custom resource.
+      - description: CA is the name of a ConfigMap containing a CA certificate. It
+          needs to be in the same namespace as the LokiStack custom resource.
         displayName: CA ConfigMap Name
         path: storage.tls.caName
         x-descriptors:
