@@ -150,6 +150,16 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `{ foo = "bar" }|logfmt|length>5d`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewDurationLabelFilter(log.LabelFilterGreaterThan, "length", 5*24*time.Hour)),
+				},
+			),
+		},
+		{
 			in: `rate({ foo = "bar" }[5d])`,
 			exp: &RangeAggregationExpr{
 				Left: &LogRange{
