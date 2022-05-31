@@ -14,11 +14,11 @@ spec:
     endpoints:
       - "http://alertmanager-host1.mycompany.org"
       - "http://alertmanager-host2.mycompany.org"
-    discoverySpec:
+    discovery:
       enabled: true
       refreshInterval: 1m
-    notificationSpec:
-      queueCapacity: 1000
+    notificationQueue:
+      capacity: 1000
       timeout: 30s
       forOutageTolerance: 1h
       forGracePeriod: 10m
@@ -40,4 +40,4 @@ spec:
         action: "replace"
         separator: ";"
         replacement: "$1"
-        target_label: "labelnew"
+        targetLabel: "labelnew"

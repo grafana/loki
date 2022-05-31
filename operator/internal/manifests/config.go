@@ -125,12 +125,12 @@ func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerCon
 	}
 
 	if d := s.DiscoverySpec; d != nil {
-		c.EnableDiscovery = d.Enabled
+		c.EnableDiscovery = d.EnableSRV
 		c.RefreshInterval = string(d.RefreshInterval)
 	}
 
-	if n := s.NotificationSpec; n != nil {
-		c.QueueCapacity = n.QueueCapacity
+	if n := s.NotificationQueueSpec; n != nil {
+		c.QueueCapacity = n.Capacity
 		c.Timeout = string(n.Timeout)
 		c.ForOutageTolerance = string(n.ForOutageTolerance)
 		c.ForGracePeriod = string(n.ForGracePeriod)

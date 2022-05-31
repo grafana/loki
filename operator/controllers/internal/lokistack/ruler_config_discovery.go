@@ -32,7 +32,7 @@ func AnnotateForRulerConfig(ctx context.Context, k k8s.Client, name, namespace s
 		ss.Annotations = make(map[string]string)
 	}
 
-	ss.Annotations["loki.grafana.com/rulerConfigDiscoveredAt"] = time.Now().Format(time.RFC3339)
+	ss.Annotations["loki.grafana.com/rulerConfigDiscoveredAt"] = time.Now().UTC().Format(time.RFC3339)
 
 	if err := k.Update(ctx, ss); err != nil {
 		return kverrors.Wrap(err, "failed to update lokistack `rulerConfigDiscoveredAt` annotation", "key", key)

@@ -39,11 +39,11 @@ spec:
                 description: Defines alert manager configuration to notify on firing
                   alerts.
                 properties:
-                  discoverySpec:
+                  discovery:
                     description: Defines the configuration for DNS-based discovery
                       of AlertManager hosts.
                     properties:
-                      enabled:
+                      enableSRV:
                         description: Use DNS SRV records to discover Alertmanager
                           hosts.
                         type: boolean
@@ -74,10 +74,16 @@ spec:
                   externalUrl:
                     description: URL for alerts return path.
                     type: string
-                  notificationSpec:
+                  notificationQueue:
                     description: Defines the configuration for the notification queue
                       to AlertManager hosts.
                     properties:
+                      capacity:
+                        default: 10000
+                        description: Capacity of the queue for notifications to be
+                          sent to the Alertmanager.
+                        format: int32
+                        type: integer
                       forGracePeriod:
                         default: 10m
                         description: Minimum duration between alert and restored "for"
@@ -91,12 +97,6 @@ spec:
                           state of alert.
                         pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
                         type: string
-                      queueCapacity:
-                        default: 10000
-                        description: Capacity of the queue for notifications to be
-                          sent to the Alertmanager.
-                        format: int32
-                        type: integer
                       resendDelay:
                         default: 1m
                         description: Minimum amount of time to wait before resending
@@ -127,7 +127,7 @@ spec:
                 description: Defines a remote write endpoint to write recording rule
                   metrics.
                 properties:
-                  clientSpec:
+                  client:
                     description: Defines the configuration for remote write client.
                     properties:
                       additionalHeaders:
@@ -137,7 +137,7 @@ spec:
                           each remote write request.
                         type: object
                       authorization:
-                        description: Type of Authorzation to use to access the remote
+                        description: Type of authorzation to use to access the remote
                           write endpoint
                         enum:
                         - basic
@@ -214,6 +214,8 @@ spec:
                                 in a replace action. It is mandatory for replace actions.
                                 Regex capture groups are available.
                               type: string
+                          required:
+                          - sourceLabels
                           type: object
                         type: array
                       timeout:
@@ -233,7 +235,7 @@ spec:
                   enabled:
                     description: Enable remote-write functionality.
                     type: boolean
-                  queueSpec:
+                  queue:
                     description: Defines the configuration for remote write client
                       queue.
                     properties:

@@ -10,8 +10,8 @@ type AlertManagerDiscoverySpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Enabled"
-	Enabled bool `json:"enabled"`
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Enable SRV"
+	EnableSRV bool `json:"enableSRV"`
 
 	// How long to wait between refreshing DNS resolutions of Alertmanager hosts.
 	//
@@ -19,18 +19,18 @@ type AlertManagerDiscoverySpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="1m"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Refresh Interval"
-	RefreshInterval PrometheusDuration `json:"refreshInterval"`
+	RefreshInterval PrometheusDuration `json:"refreshInterval,omitempty"`
 }
 
-// AlertManagerNotificationSpec defines the configuration for AlertManager notification settings.
-type AlertManagerNotificationSpec struct {
+// AlertManagerNotificationQueueSpec defines the configuration for AlertManager notification settings.
+type AlertManagerNotificationQueueSpec struct {
 	// Capacity of the queue for notifications to be sent to the Alertmanager.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=10000
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Notification Queue Capacity"
-	QueueCapacity int32 `json:"queueCapacity"`
+	Capacity int32 `json:"capacity,omitempty"`
 
 	// HTTP timeout duration when sending notifications to the Alertmanager.
 	//
@@ -38,7 +38,7 @@ type AlertManagerNotificationSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="10s"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Timeout"
-	Timeout PrometheusDuration `json:"timeout"`
+	Timeout PrometheusDuration `json:"timeout,omitempty"`
 
 	// Max time to tolerate outage for restoring "for" state of alert.
 	//
@@ -46,7 +46,7 @@ type AlertManagerNotificationSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="1h"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Outage Tolerance"
-	ForOutageTolerance PrometheusDuration `json:"forOutageTolerance"`
+	ForOutageTolerance PrometheusDuration `json:"forOutageTolerance,omitempty"`
 
 	// Minimum duration between alert and restored "for" state. This is maintained
 	// only for alerts with configured "for" time greater than the grace period.
@@ -55,7 +55,7 @@ type AlertManagerNotificationSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="10m"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Firing Grace Period"
-	ForGracePeriod PrometheusDuration `json:"forGracePeriod"`
+	ForGracePeriod PrometheusDuration `json:"forGracePeriod,omitempty"`
 
 	// Minimum amount of time to wait before resending an alert to Alertmanager.
 	//
@@ -63,7 +63,7 @@ type AlertManagerNotificationSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="1m"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Resend Delay"
-	ResendDelay PrometheusDuration `json:"resendDelay"`
+	ResendDelay PrometheusDuration `json:"resendDelay,omitempty"`
 }
 
 // AlertManagerSpec defines the configuration for ruler's alertmanager connectivity.
@@ -103,14 +103,14 @@ type AlertManagerSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="DNS Discovery"
-	DiscoverySpec *AlertManagerDiscoverySpec `json:"discoverySpec"`
+	DiscoverySpec *AlertManagerDiscoverySpec `json:"discovery,omitempty"`
 
 	// Defines the configuration for the notification queue to AlertManager hosts.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Notification Queue"
-	NotificationSpec *AlertManagerNotificationSpec `json:"notificationSpec"`
+	NotificationQueueSpec *AlertManagerNotificationQueueSpec `json:"notificationQueue,omitempty"`
 }
 
 // RemoteWriteAuthType defines the type of authorization to use to access the remote write endpoint.
@@ -147,9 +147,9 @@ type RemoteWriteClientSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="30s"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Remote Write Timeout"
-	Timeout PrometheusDuration `json:"timeout"`
+	Timeout PrometheusDuration `json:"timeout,omitempty"`
 
-	// Type of Authorzation to use to access the remote write endpoint
+	// Type of authorzation to use to access the remote write endpoint
 	//
 	// +required
 	// +kubebuilder:validation:Required
@@ -181,7 +181,7 @@ type RemoteWriteClientSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="HTTP Proxy URL"
-	ProxyURL string `json:"proxyUrl"`
+	ProxyURL string `json:"proxyUrl,omitempty"`
 
 	// Configure whether HTTP requests follow HTTP 3xx redirects.
 	//
@@ -192,7 +192,7 @@ type RemoteWriteClientSpec struct {
 	FollowRedirects bool `json:"followRedirects"`
 }
 
-// RelabelActionType defines the enumeration type for RebaleConfig actions.
+// RelabelActionType defines the enumeration type for RelabelConfig actions.
 //
 // +kubebuilder:validation:Enum=drop;hashmod;keep;labeldrop;labelkeep;labelmap;replace
 type RelabelActionType string
@@ -205,10 +205,10 @@ type RelabelConfig struct {
 	// using the configured separator and matched against the configured regular expression
 	// for the replace, keep, and drop actions.
 	//
-	// +optional
-	// +kubebuilder:validation:Optional
+	// +required
+	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Source Labels"
-	SourceLabels []string `json:"sourceLabels,omitempty"`
+	SourceLabels []string `json:"sourceLabels"`
 
 	// Separator placed between concatenated source label values. default is ';'.
 	//
@@ -268,7 +268,7 @@ type RemoteWriteClientQueueSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=2500
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Queue Capacity"
-	Capacity int32 `json:"capacity"`
+	Capacity int32 `json:"capacity,omitempty"`
 
 	// Maximum number of shards, i.e. amount of concurrency.
 	//
@@ -276,7 +276,7 @@ type RemoteWriteClientQueueSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=200
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Maximum Shards"
-	MaxShards int32 `json:"maxShards"`
+	MaxShards int32 `json:"maxShards,omitempty"`
 
 	// Minimum number of shards, i.e. amount of concurrency.
 	//
@@ -284,7 +284,7 @@ type RemoteWriteClientQueueSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=200
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Minimum Shards"
-	MinShards int32 `json:"minShards"`
+	MinShards int32 `json:"minShards,omitempty"`
 
 	// Maximum number of samples per send.
 	//
@@ -292,7 +292,7 @@ type RemoteWriteClientQueueSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=500
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Maximum Shards per Send"
-	MaxSamplesPerSend int32 `json:"maxSamplesPerSend"`
+	MaxSamplesPerSend int32 `json:"maxSamplesPerSend,omitempty"`
 
 	// Maximum time a sample will wait in buffer.
 	//
@@ -300,7 +300,7 @@ type RemoteWriteClientQueueSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="5s"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Batch Send Deadline"
-	BatchSendDeadline PrometheusDuration `json:"batchSendDeadline"`
+	BatchSendDeadline PrometheusDuration `json:"batchSendDeadline,omitempty"`
 
 	// Initial retry delay. Gets doubled for every retry.
 	//
@@ -308,7 +308,7 @@ type RemoteWriteClientQueueSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="30ms"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Min BackOff Period"
-	MinBackOffPeriod PrometheusDuration `json:"minBackOffPeriod"`
+	MinBackOffPeriod PrometheusDuration `json:"minBackOffPeriod,omitempty"`
 
 	// Maximum retry delay.
 	//
@@ -316,7 +316,7 @@ type RemoteWriteClientQueueSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="100ms"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Max BackOff Period"
-	MaxBackOffPeriod PrometheusDuration `json:"maxBackOffPeriod"`
+	MaxBackOffPeriod PrometheusDuration `json:"maxBackOffPeriod,omitempty"`
 }
 
 // RemoteWriteSpec defines the configuration for ruler's remote_write connectivity.
@@ -326,7 +326,7 @@ type RemoteWriteSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Enabled"
-	Enabled bool `json:"enabled"`
+	Enabled bool `json:"enabled,omitempty"`
 
 	// Minimum period to wait between refreshing remote-write reconfigurations.
 	//
@@ -334,21 +334,21 @@ type RemoteWriteSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="10s"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Min Refresh Period"
-	RefreshPeriod PrometheusDuration `json:"refreshPeriod"`
+	RefreshPeriod PrometheusDuration `json:"refreshPeriod,omitempty"`
 
 	// Defines the configuration for remote write client.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Client"
-	ClientSpec *RemoteWriteClientSpec `json:"clientSpec"`
+	ClientSpec *RemoteWriteClientSpec `json:"client,omitempty"`
 
 	// Defines the configuration for remote write client queue.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Client Queue"
-	QueueSpec *RemoteWriteClientQueueSpec `json:"queueSpec"`
+	QueueSpec *RemoteWriteClientQueueSpec `json:"queue,omitempty"`
 }
 
 // RulerConfigSpec defines the desired state of Ruler
@@ -359,7 +359,7 @@ type RulerConfigSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="1m"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Evaluation Interval"
-	EvalutionInterval PrometheusDuration `json:"evaluationInterval"`
+	EvalutionInterval PrometheusDuration `json:"evaluationInterval,omitempty"`
 
 	// Interval on how frequently to poll for new rule definitions.
 	//
@@ -367,7 +367,7 @@ type RulerConfigSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:="1m"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Poll Interval"
-	PollInterval PrometheusDuration `json:"pollInterval"`
+	PollInterval PrometheusDuration `json:"pollInterval,omitempty"`
 
 	// Defines alert manager configuration to notify on firing alerts.
 	//
