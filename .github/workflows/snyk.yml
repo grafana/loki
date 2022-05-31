@@ -34,6 +34,7 @@ jobs:
 
       - name: install snyk-to-html
         run: |
+          env
           npm install snyk-to-html snyk2spdx snyk -g
           snyk auth ${{ secrets.SNYK_TOKEN }}
           snyk-to-html -i ${{ github.event.repository.name }}.json -o ${{ github.event.repository.name }}.html
