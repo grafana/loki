@@ -64,16 +64,16 @@ func GetTenantSecrets(
 // ExtractGatewaySecret reads a k8s secret into a manifest tenant secret struct if valid.
 func extractSecret(s *corev1.Secret, tenantName string) (*manifests.TenantSecrets, error) {
 	// Extract and validate mandatory fields
-	clientID, ok := s.Data["clientID"]
-	if !ok {
+	clientID := s.Data["clientID"]
+	if clientID == nil {
 		return nil, kverrors.New("missing clientID field", "field", "clientID")
 	}
-	clientSecret, ok := s.Data["clientSecret"]
-	if !ok {
+	clientSecret := s.Data["clientSecret"]
+	if clientSecret == nil {
 		return nil, kverrors.New("missing clientSecret field", "field", "clientSecret")
 	}
-	issuerCAPath, ok := s.Data["issuerCAPath"]
-	if !ok {
+	issuerCAPath := s.Data["issuerCAPath"]
+	if issuerCAPath == nil {
 		return nil, kverrors.New("missing issuerCAPath field", "field", "issuerCAPath")
 	}
 
