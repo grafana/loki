@@ -38,6 +38,16 @@ But these are not:
 - `expression: '\\w*'` (only escape backslashes when using double quotes)
 - `expression: "\w*"` (backslash must be escaped)
 
+
+If you run Promtail with the `--config.expand-env=true` flag the configuration
+will run through [envsubst](https://pkg.go.dev/github.com/drone/envsubst)  which will
+replace double slashes with single slashes. Because of this when using
+`expand-env=true` you need to use double slashes for each single slash. For
+example:
+
+- `expression: '\w*'` must be `expression: '\\w*'`
+- `expression: "\\w*"` must be `expression: "\\\\w*"`
+
 ## Example
 
 ### Without `source`
