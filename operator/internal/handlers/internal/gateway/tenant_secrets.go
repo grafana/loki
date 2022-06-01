@@ -61,7 +61,7 @@ func GetTenantSecrets(
 	return tenantSecrets, nil
 }
 
-// ExtractGatewaySecret reads a k8s secret into a manifest tenant secret struct if valid.
+// extractSecret reads a k8s secret into a manifest tenant secret struct if valid.
 func extractSecret(s *corev1.Secret, tenantName string) (*manifests.TenantSecrets, error) {
 	// Extract and validate mandatory fields
 	clientID := s.Data["clientID"]
