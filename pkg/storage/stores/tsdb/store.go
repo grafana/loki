@@ -27,6 +27,7 @@ func NewStore(indexShipperCfg indexshipper.Config, p config.PeriodConfig, f *fet
 		limits,
 		nil,
 		OpenShippableTSDB,
+		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
 	)
 	if err != nil {
 		return nil, nil, err
