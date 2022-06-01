@@ -1,42 +1,20 @@
-package secrets
+package storage
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 
 	corev1 "k8s.io/api/core/v1"
 )
 
-// ExtractGatewaySecret reads a k8s secret into a manifest tenant secret struct if valid.
-func ExtractGatewaySecret(s *corev1.Secret, tenantName string) (*manifests.TenantSecrets, error) {
-	// Extract and validate mandatory fields
-	clientID, ok := s.Data["clientID"]
-	if !ok {
-		return nil, kverrors.New("missing clientID field", "field", "clientID")
-	}
-	clientSecret, ok := s.Data["clientSecret"]
-	if !ok {
-		return nil, kverrors.New("missing clientSecret field", "field", "clientSecret")
-	}
-	issuerCAPath, ok := s.Data["issuerCAPath"]
-	if !ok {
-		return nil, kverrors.New("missing issuerCAPath field", "field", "issuerCAPath")
-	}
-
-	return &manifests.TenantSecrets{
-		TenantName:   tenantName,
-		ClientID:     string(clientID),
-		ClientSecret: string(clientSecret),
-		IssuerCAPath: string(issuerCAPath),
-	}, nil
-}
-
-// ExtractStorageSecret reads a k8s secret into a manifest object storage struct if valid.
-func ExtractStorageSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretType) (*storage.Options, error) {
+// ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
+func ExtractSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretType) (*storage.Options, error) {
 	var err error
-	storageOpts := storage.Options{SharedStore: secretType}
+	storageOpts := storage.Options{
+		SecretName:  s.Name,
+		SharedStore: secretType,
+	}
 
 	switch secretType {
 	case lokiv1beta1.ObjectStorageSecretAzure:
@@ -59,20 +37,20 @@ func ExtractStorageSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorage
 
 func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, error) {
 	// Extract and validate mandatory fields
-	env, ok := s.Data["environment"]
-	if !ok {
+	env := s.Data["environment"]
+	if len(env) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "environment")
 	}
-	container, ok := s.Data["container"]
-	if !ok {
+	container := s.Data["container"]
+	if len(container) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "container")
 	}
-	name, ok := s.Data["account_name"]
-	if !ok {
+	name := s.Data["account_name"]
+	if len(name) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "account_name")
 	}
-	key, ok := s.Data["account_key"]
-	if !ok {
+	key := s.Data["account_key"]
+	if len(key) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "account_key")
 	}
 
@@ -86,14 +64,14 @@ func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, er
 
 func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error) {
 	// Extract and validate mandatory fields
-	bucket, ok := s.Data["bucketname"]
-	if !ok {
+	bucket := s.Data["bucketname"]
+	if len(bucket) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "bucketname")
 	}
 
 	// Check if google authentication credentials is provided
-	_, ok = s.Data["key.json"]
-	if !ok {
+	keyJSON := s.Data["key.json"]
+	if len(keyJSON) == 0 {
 		return nil, kverrors.New("missing google authentication credentials", "field", "key.json")
 	}
 
@@ -104,21 +82,21 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 
 func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
-	endpoint, ok := s.Data["endpoint"]
-	if !ok {
+	endpoint := s.Data["endpoint"]
+	if len(endpoint) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "endpoint")
 	}
-	buckets, ok := s.Data["bucketnames"]
-	if !ok {
+	buckets := s.Data["bucketnames"]
+	if len(buckets) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "bucketnames")
 	}
 	// TODO buckets are comma-separated list
-	id, ok := s.Data["access_key_id"]
-	if !ok {
+	id := s.Data["access_key_id"]
+	if len(id) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "access_key_id")
 	}
-	secret, ok := s.Data["access_key_secret"]
-	if !ok {
+	secret := s.Data["access_key_secret"]
+	if len(secret) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "access_key_secret")
 	}
 
@@ -136,40 +114,40 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 
 func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, error) {
 	// Extract and validate mandatory fields
-	url, ok := s.Data["auth_url"]
-	if !ok {
+	url := s.Data["auth_url"]
+	if len(url) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "auth_url")
 	}
-	username, ok := s.Data["username"]
-	if !ok {
+	username := s.Data["username"]
+	if len(username) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "username")
 	}
-	userDomainName, ok := s.Data["user_domain_name"]
-	if !ok {
+	userDomainName := s.Data["user_domain_name"]
+	if len(userDomainName) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "user_domain_name")
 	}
-	userDomainID, ok := s.Data["user_domain_id"]
-	if !ok {
+	userDomainID := s.Data["user_domain_id"]
+	if len(userDomainID) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "user_domain_id")
 	}
-	userID, ok := s.Data["user_id"]
-	if !ok {
+	userID := s.Data["user_id"]
+	if len(userID) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "user_id")
 	}
-	password, ok := s.Data["password"]
-	if !ok {
+	password := s.Data["password"]
+	if len(password) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "password")
 	}
-	domainID, ok := s.Data["domain_id"]
-	if !ok {
+	domainID := s.Data["domain_id"]
+	if len(domainID) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "domain_id")
 	}
-	domainName, ok := s.Data["domain_name"]
-	if !ok {
+	domainName := s.Data["domain_name"]
+	if len(domainName) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "domain_name")
 	}
-	containerName, ok := s.Data["container_name"]
-	if !ok {
+	containerName := s.Data["container_name"]
+	if len(containerName) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "container_name")
 	}
 
