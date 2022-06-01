@@ -164,8 +164,8 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 		case lokiv1beta1.BasicAuthorization:
 			c.Client.BasicAuthUsername = rs.Username
 			c.Client.BasicAuthPassword = rs.Password
-		case lokiv1beta1.HeaderAuthorization:
-			c.Client.HeaderBearerToken = rs.BearerToken
+		case lokiv1beta1.BearerAuthorization:
+			c.Client.BearerToken = rs.BearerToken
 		}
 
 		for _, cfg := range cls.RelabelConfigs {

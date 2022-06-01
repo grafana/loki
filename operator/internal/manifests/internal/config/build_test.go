@@ -822,9 +822,9 @@ overrides:
 						"more": "foryou",
 						"less": "forme",
 					},
-					ProxyURL:          "http://proxy.through.me",
-					FollowRedirects:   true,
-					HeaderBearerToken: "supersecret",
+					ProxyURL:        "http://proxy.through.me",
+					FollowRedirects: true,
+					BearerToken:     "supersecret",
 				},
 				Queue: &RemoteWriteQueueConfig{
 					Capacity:          1000,

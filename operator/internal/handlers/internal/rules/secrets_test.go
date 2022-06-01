@@ -37,7 +37,7 @@ func TestExtractRulerSecret(t *testing.T) {
 		},
 		{
 			name:     "missing bearer token",
-			authType: lokiv1beta1.HeaderAuthorization,
+			authType: lokiv1beta1.BearerAuthorization,
 			secret:   &corev1.Secret{},
 			wantErr:  true,
 		},
@@ -57,7 +57,7 @@ func TestExtractRulerSecret(t *testing.T) {
 		},
 		{
 			name:     "valid header auth",
-			authType: lokiv1beta1.HeaderAuthorization,
+			authType: lokiv1beta1.BearerAuthorization,
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"bearer_token": []byte("hello world"),

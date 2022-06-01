@@ -220,10 +220,10 @@ ruler:
         username: {{ .BasicAuthUsername }}
         password: {{ .BasicAuthPassword }}
       {{ end }}
-      {{ if .HeaderBearerToken }}
+      {{ if .BearerToken }}
       authorization:
         type: bearer
-        credentials: {{ .HeaderBearerToken }}
+        credentials: {{ .BearerToken }}
       {{ end }}
       {{ end}}
       {{ with .RelabelConfigs }}

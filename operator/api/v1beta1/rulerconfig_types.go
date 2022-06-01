@@ -121,8 +121,8 @@ type RemoteWriteAuthType string
 const (
 	// BasicAuthorization defines the remote write client to use HTTP basic authorization.
 	BasicAuthorization RemoteWriteAuthType = "basic"
-	// HeaderAuthorization defines the remote write client to use HTTP header authorization.
-	HeaderAuthorization RemoteWriteAuthType = "header"
+	// BearerAuthorization defines the remote write client to use HTTP bearer authorization.
+	BearerAuthorization RemoteWriteAuthType = "bearer"
 )
 
 // RemoteWriteClientSpec defines the configuration of the remote write client.

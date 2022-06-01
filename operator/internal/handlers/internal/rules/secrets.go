@@ -24,7 +24,7 @@ func ExtractRulerSecret(s *corev1.Secret, t lokiv1beta1.RemoteWriteAuthType) (*m
 		}
 
 		return &manifests.RulerSecret{Username: string(username), Password: string(password)}, nil
-	case lokiv1beta1.HeaderAuthorization:
+	case lokiv1beta1.BearerAuthorization:
 		token, ok := s.Data["bearer_token"]
 		if !ok {
 			return nil, kverrors.New("missing bearer token", "field", "bearer_token")

@@ -86,7 +86,7 @@ type RemoteWriteClientConfig struct {
 	// Authentication
 	BasicAuthUsername string
 	BasicAuthPassword string
-	HeaderBearerToken string
+	BearerToken       string
 }
 
 // RemoteWriteQueueConfig for ruler remote write queue config
