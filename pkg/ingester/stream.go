@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
@@ -20,45 +19,12 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
-var (
-	chunksCreatedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "ingester_chunks_created_total",
-		Help:      "The total number of chunks created in the ingester.",
-	})
-	samplesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
-		Subsystem: "ingester",
-		Name:      "samples_per_chunk",
-		Help:      "The number of samples in a chunk.",
-
-		Buckets: prometheus.LinearBuckets(4096, 2048, 6),
-	})
-	blocksPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
-		Subsystem: "ingester",
-		Name:      "blocks_per_chunk",
-		Help:      "The number of blocks in a chunk.",
-
-		Buckets: prometheus.ExponentialBuckets(5, 2, 6),
-	})
-
-	chunkCreatedStats = usagestats.NewCounter("ingester_chunk_created")
-)
-
 var ErrEntriesExist = errors.New("duplicate push - entries already exist")
-
-func init() {
-	prometheus.MustRegister(chunksCreatedTotal)
-	prometheus.MustRegister(samplesPerChunk)
-	prometheus.MustRegister(blocksPerChunk)
-}
 
 type line struct {
 	ts      time.Time
@@ -144,7 +110,7 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	s.chunks = append(s.chunks, chunkDesc{
 		chunk: c,
 	})
-	chunksCreatedTotal.Inc()
+	s.metrics.chunksCreatedTotal.Inc()
 	return nil
 }
 
@@ -206,8 +172,8 @@ func (s *stream) Push(
 		s.chunks = append(s.chunks, chunkDesc{
 			chunk: s.NewChunk(),
 		})
-		chunksCreatedTotal.Inc()
-		chunkCreatedStats.Inc(1)
+		s.metrics.chunksCreatedTotal.Inc()
+		s.metrics.chunkCreatedStats.Inc(1)
 	}
 
 	var storedEntries []logproto.Entry
@@ -330,7 +296,7 @@ func (s *stream) Push(
 	}
 
 	if len(s.chunks) != prevNumChunks {
-		memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
+		s.metrics.memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
 	}
 
 	if len(failedEntriesWithError) > 0 {
@@ -381,10 +347,10 @@ func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
 	}
 	chunk.closed = true
 
-	samplesPerChunk.Observe(float64(chunk.chunk.Size()))
-	blocksPerChunk.Observe(float64(chunk.chunk.BlockCount()))
-	chunksCreatedTotal.Inc()
-	chunkCreatedStats.Inc(1)
+	s.metrics.samplesPerChunk.Observe(float64(chunk.chunk.Size()))
+	s.metrics.blocksPerChunk.Observe(float64(chunk.chunk.BlockCount()))
+	s.metrics.chunksCreatedTotal.Inc()
+	s.metrics.chunkCreatedStats.Inc(1)
 
 	s.chunks = append(s.chunks, chunkDesc{
 		chunk: s.NewChunk(),
