@@ -1174,6 +1174,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: cd2881f8ac64b8f4152e9170d02a526b2fb21d10e7ef1a036cd7ecb8d7ea8951
+hmac: 81be9fce60976703815abf1fd2f1c9255a142d615b90d4b5278ff4a64fa25e92
 
 ...
