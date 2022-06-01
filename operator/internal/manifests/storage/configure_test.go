@@ -1,10 +1,9 @@
-package manifests
+package storage_test
 
 import (
 	"testing"
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -33,26 +32,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-ingester",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -66,26 +45,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-ingester",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -106,26 +65,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-ingester",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -140,11 +79,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 								{
 									Name: "loki-ingester",
 									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
+
 										{
 											Name:      "test",
 											ReadOnly:  false,
@@ -160,17 +95,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 								},
 							},
 							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
-								},
 								{
 									Name: "test",
 									VolumeSource: corev1.VolumeSource{
@@ -220,26 +144,6 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-ingester",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -253,26 +157,6 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-ingester",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -293,26 +177,6 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-ingester",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -328,11 +192,6 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 									Name: "loki-ingester",
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-										{
 											Name:      "test",
 											ReadOnly:  false,
 											MountPath: "/etc/storage/secrets",
@@ -347,17 +206,6 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 								},
 							},
 							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
-								},
 								{
 									Name: "test",
 									VolumeSource: corev1.VolumeSource{
@@ -407,26 +255,6 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-querier",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -440,26 +268,6 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-querier",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -483,26 +291,6 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-querier",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -518,11 +306,6 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 									Name: "loki-querier",
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-										{
 											Name:      "test",
 											ReadOnly:  false,
 											MountPath: "/etc/storage/ca",
@@ -534,17 +317,6 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 								},
 							},
 							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
-								},
 								{
 									Name: "test",
 									VolumeSource: corev1.VolumeSource{
@@ -599,26 +371,6 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-ingester",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -632,26 +384,6 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-ingester",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -675,26 +407,6 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-ingester",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
 								},
 							},
 						},
@@ -710,11 +422,6 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 									Name: "loki-ingester",
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      configVolumeName,
-											ReadOnly:  false,
-											MountPath: config.LokiConfigMountDir,
-										},
-										{
 											Name:      "test",
 											ReadOnly:  false,
 											MountPath: "/etc/storage/ca",
@@ -726,17 +433,6 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 								},
 							},
 							Volumes: []corev1.Volume{
-								{
-									Name: configVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: lokiConfigMapName("stack-name"),
-											},
-										},
-									},
-								},
 								{
 									Name: "test",
 									VolumeSource: corev1.VolumeSource{
