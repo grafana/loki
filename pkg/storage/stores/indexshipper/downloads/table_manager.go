@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
@@ -54,6 +55,7 @@ type tableManager struct {
 
 	tables    map[string]Table
 	tablesMtx sync.RWMutex
+	metrics   *metrics
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -62,7 +64,8 @@ type tableManager struct {
 	ownsTenant IndexGatewayOwnsTenant
 }
 
-func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client, ownsTenantFn IndexGatewayOwnsTenant) (TableManager, error) {
+func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client,
+	ownsTenantFn IndexGatewayOwnsTenant, reg prometheus.Registerer) (TableManager, error) {
 	if err := util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
@@ -74,6 +77,7 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		indexStorageClient: indexStorageClient,
 		ownsTenant:         ownsTenantFn,
 		tables:             make(map[string]Table),
+		metrics:            newMetrics(reg),
 		ctx:                ctx,
 		cancel:             cancel,
 	}
@@ -174,7 +178,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 				return nil, err
 			}
 
-			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc)
+			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
 			tm.tables[tableName] = table
 		}
 	}
@@ -185,6 +189,19 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 func (tm *tableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
+
+	start := time.Now()
+	var err error
+
+	defer func() {
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
+		}
+
+		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
+		tm.metrics.tablesDownloadOperationDurationSeconds.Set(time.Since(start).Seconds())
+	}()
 
 	level.Info(util_log.Logger).Log("msg", "syncing tables")
 
@@ -349,7 +366,8 @@ func (tm *tableManager) loadLocalTables() error {
 
 		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", fileInfo.Name()))
 
-		table, err := LoadTable(fileInfo.Name(), filepath.Join(tm.cfg.CacheDir, fileInfo.Name()), tm.indexStorageClient, tm.openIndexFileFunc)
+		table, err := LoadTable(fileInfo.Name(), filepath.Join(tm.cfg.CacheDir, fileInfo.Name()),
+			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
 		if err != nil {
 			return err
 		}

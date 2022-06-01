@@ -81,7 +81,8 @@ func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.
 
 func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.Limits, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer) error {
 	var err error
-	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, ownsTenantFn, indexfile.OpenIndexFile)
+	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, ownsTenantFn,
+		indexfile.OpenIndexFile, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer))
 	if err != nil {
 		return err
 	}
