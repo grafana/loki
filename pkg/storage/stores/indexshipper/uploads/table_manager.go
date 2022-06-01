@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
@@ -29,18 +30,20 @@ type tableManager struct {
 
 	tables    map[string]Table
 	tablesMtx sync.RWMutex
+	metrics   *metrics
 
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
-func NewTableManager(cfg Config, storageClient storage.Client) (TableManager, error) {
+func NewTableManager(cfg Config, storageClient storage.Client, reg prometheus.Registerer) (TableManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := tableManager{
 		cfg:           cfg,
 		storageClient: storageClient,
 		tables:        map[string]Table{},
+		metrics:       newMetrics(reg),
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -130,9 +133,11 @@ func (tm *tableManager) uploadTables(ctx context.Context) {
 
 	level.Info(util_log.Logger).Log("msg", "uploading tables")
 
+	status := statusSuccess
 	for _, table := range tm.tables {
 		err := table.Upload(ctx)
 		if err != nil {
+			status = statusFailure
 			level.Error(util_log.Logger).Log("msg", "failed to upload table", "table", table.Name(), "err", err)
 			continue
 		}
@@ -144,4 +149,6 @@ func (tm *tableManager) uploadTables(ctx context.Context) {
 			level.Error(util_log.Logger).Log("msg", "failed to cleanup uploaded index past their retention period", "table", table.Name(), "err", err)
 		}
 	}
+
+	tm.metrics.tablesUploadOperationTotal.WithLabelValues(status).Inc()
 }
