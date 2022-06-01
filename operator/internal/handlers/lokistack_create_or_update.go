@@ -89,7 +89,7 @@ func CreateOrUpdateLokiStack(
 					Requeue: false,
 				}
 			}
-			return kverrors.Wrap(err, "failed to lookup lokistack storage CA config map", "name", key)
+			return kverrors.Wrap(err, "failed to lookup lokistack object storage CA config map", "name", key)
 		}
 
 		if !storage.IsValidCAConfigMap(&cm) {
