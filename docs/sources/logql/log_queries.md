@@ -364,6 +364,18 @@ The **json** parser operates in two modes:
    "server_list" => `["129.0.1.1","10.2.1.3"]`
    "headers" => `{"Accept": "*/*", "User-Agent": "curl/7.68.0"}`
    ```
+ 
+   If the label to be extracted is same as the original JSON field, expression can be written as just `| json <label>`
+
+   For example, to extract `servers` fields as label, expression can be written as following
+    
+   `| json servers` will extract:
+
+    ```kv
+   "servers" => `["129.0.1.1","10.2.1.3"]`
+   ```
+
+   Note that `| json servers` is same as `| json servers="servers"`
 
 #### logfmt
 
@@ -422,7 +434,7 @@ If a capture is not matched, the pattern parser will stop.
 
 Literals can be any sequence of UTF-8 characters, including whitespace characters.
 
-By default, a pattern expression is anchored at the start of the log line. If the expression start with literals, then the log line must also start with the same set of literals. Use `<_>` at the beginning of the expression to anchor the expression at the start.
+By default, a pattern expression is anchored at the start of the log line. If the expression starts with literals, then the log line must also start with the same set of literals. Use `<_>` at the beginning of the expression if you don't want to anchor the expression at the start.
 
 Consider the log line
 
@@ -464,7 +476,7 @@ those labels:
 
 #### unpack
 
-The `unpack` parser parses a JSON log line, unpacking all embedded labels in the [`pack`](../clients/promtail/stages/pack/) stage.
+The `unpack` parser parses a JSON log line, unpacking all embedded labels from Promtail's [`pack` stage]({{< relref "../clients/promtail/stages/pack.md" >}}).
 **A special property `_entry` will also be used to replace the original log line**.
 
 For example, using `| unpack` with the log line:

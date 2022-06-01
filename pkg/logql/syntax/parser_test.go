@@ -150,6 +150,16 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `{ foo = "bar" }|logfmt|length>5d`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewDurationLabelFilter(log.LabelFilterGreaterThan, "length", 5*24*time.Hour)),
+				},
+			),
+		},
+		{
 			in: `rate({ foo = "bar" }[5d])`,
 			exp: &RangeAggregationExpr{
 				Left: &LogRange{
@@ -2938,6 +2948,18 @@ func TestParse(t *testing.T) {
 				MultiStages: MultiStageExpr{
 					newJSONExpressionParser([]log.JSONExpression{
 						log.NewJSONExpr("response_code", `response.code`),
+						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | json response_code, api_key="request.headers[\"X-API-KEY\"]"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newJSONExpressionParser([]log.JSONExpression{
+						log.NewJSONExpr("response_code", `response_code`),
 						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
 					}),
 				},

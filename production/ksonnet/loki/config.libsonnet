@@ -141,7 +141,12 @@
       'limits.per-user-override-config': '/etc/loki/overrides/overrides.yaml',
     },
 
+    commonEnvs: [],
+
     loki: {
+      common: {
+        compactor_address: 'http://compactor.%s.svc.cluster.local.:%d' % [$._config.namespace, $._config.http_listen_port],
+      },
       server: {
         graceful_shutdown_timeout: '5s',
         http_server_idle_timeout: '120s',
@@ -156,7 +161,6 @@
       frontend: {
         compress_responses: true,
         log_queries_longer_than: '5s',
-        compactor_address: 'http://compactor.%s.svc.cluster.local:%d' % [$._config.namespace, $._config.http_listen_port],
       },
       frontend_worker: {
         match_max_concurrent: true,

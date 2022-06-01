@@ -8,9 +8,9 @@ import (
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
+	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/grafana/loki/operator/internal/handlers/internal/secrets"
 	"github.com/grafana/loki/operator/internal/manifests"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
 
@@ -78,9 +78,9 @@ func CreateOrUpdateLokiStack(
 	}
 
 	var (
-		baseDomain      string
-		tenantSecrets   []*manifests.TenantSecrets
-		tenantConfigMap map[string]openshift.TenantData
+		baseDomain    string
+		tenantSecrets []*manifests.TenantSecrets
+		tenantConfigs map[string]manifests.TenantConfig
 	)
 	if flags.EnableGateway && stack.Spec.Tenants == nil {
 		return &status.DegradedError{
@@ -109,12 +109,23 @@ func CreateOrUpdateLokiStack(
 			if err != nil {
 				return err
 			}
+		}
 
-			// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
-			tenantConfigMap, err = gateway.GetTenantConfigMapData(ctx, k, req)
-			if err != nil {
-				ll.Error(err, "error in getting tenant config map data")
-			}
+		// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
+		tenantConfigs, err = gateway.GetTenantConfigMapData(ctx, k, req)
+		if err != nil {
+			ll.Error(err, "error in getting tenant config map data")
+		}
+	}
+
+	var (
+		alertingRules  []lokiv1beta1.AlertingRule
+		recordingRules []lokiv1beta1.RecordingRule
+	)
+	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
+		alertingRules, recordingRules, err = rules.List(ctx, k, req.Namespace, stack.Spec.Rules)
+		if err != nil {
+			log.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
 		}
 	}
 
@@ -128,8 +139,12 @@ func CreateOrUpdateLokiStack(
 		Stack:             stack.Spec,
 		Flags:             flags,
 		ObjectStorage:     *storage,
-		TenantSecrets:     tenantSecrets,
-		TenantConfigMap:   tenantConfigMap,
+		AlertingRules:     alertingRules,
+		RecordingRules:    recordingRules,
+		Tenants: manifests.Tenants{
+			Secrets: tenantSecrets,
+			Configs: tenantConfigs,
+		},
 	}
 
 	ll.Info("begin building manifests")

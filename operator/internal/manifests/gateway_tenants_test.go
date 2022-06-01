@@ -69,6 +69,25 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1beta1.OpenshiftLogging,
 					},
 				},
+				Tenants: Tenants{
+					Configs: map[string]TenantConfig{
+						"application": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "D31SJpSmPe6aUDTtU2zqAoW1gqEKoH5T",
+							},
+						},
+						"infrastructure": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "i3N1paUy9JwNZIktni4kqXPuMvIHtHNe",
+							},
+						},
+						"audit": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "6UssDXle7OHElqSW4M0DNRZ6JbaTjDM3",
+							},
+						},
+					},
+				},
 			},
 			want: &Options{
 				Name:              "lokistack-ocp",
@@ -77,6 +96,25 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Stack: lokiv1beta1.LokiStackSpec{
 					Tenants: &lokiv1beta1.TenantsSpec{
 						Mode: lokiv1beta1.OpenshiftLogging,
+					},
+				},
+				Tenants: Tenants{
+					Configs: map[string]TenantConfig{
+						"application": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "D31SJpSmPe6aUDTtU2zqAoW1gqEKoH5T",
+							},
+						},
+						"infrastructure": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "i3N1paUy9JwNZIktni4kqXPuMvIHtHNe",
+							},
+						},
+						"audit": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "6UssDXle7OHElqSW4M0DNRZ6JbaTjDM3",
+							},
+						},
 					},
 				},
 				OpenShiftOptions: openshift.Options{

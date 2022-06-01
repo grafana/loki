@@ -355,6 +355,8 @@ All options:
   -streamvalue string
         The unique stream value for this instance of Loki Canary to use in the log selector
         (default "stdout")
+  -tenant-id string
+        Tenant ID to be set in X-Scope-OrgID header.
   -tls
         Does the Loki connection use TLS?
   -user string

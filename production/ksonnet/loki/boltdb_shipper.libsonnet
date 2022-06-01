@@ -49,20 +49,20 @@
     target: 'compactor',
   } else {},
 
-  local compactor_ports =
-    [
-      containerPort.new(name='http-metrics', port=$._config.http_listen_port),
-    ],
+  compactor_ports: [
+    containerPort.new(name='http-metrics', port=$._config.http_listen_port),
+  ],
 
   compactor_container:: if $._config.using_boltdb_shipper then
     container.new('compactor', $._images.compactor) +
-    container.withPorts(compactor_ports) +
+    container.withPorts($.compactor_ports) +
     container.withArgsMixin(k.util.mapToFlags($.compactor_args)) +
     container.withVolumeMountsMixin([volumeMount.new('compactor-data', '/data')]) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    k.util.resourcesRequests('4', '2Gi')
+    k.util.resourcesRequests('4', '2Gi') +
+    container.withEnvMixin($._config.commonEnvs)
   else {},
 
   compactor_statefulset: if $._config.using_boltdb_shipper then

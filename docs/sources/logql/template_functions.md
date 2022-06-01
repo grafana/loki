@@ -220,7 +220,7 @@ Get a substring from a string.
 
 Signature:
 
-`trunc(start int,end int,value string) string`
+`substr(start int,end int,value string) string`
 
 If start is < 0, this calls value[:end].
 If start is >= 0 and end < 0 or end bigger than s length, this calls value[start:]

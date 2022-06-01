@@ -10,6 +10,7 @@ import (
 	"github.com/baidubce/bce-sdk-go/bce"
 	"github.com/baidubce/bce-sdk-go/services/bos"
 	"github.com/baidubce/bce-sdk-go/services/bos/api"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
@@ -36,10 +37,10 @@ func init() {
 }
 
 type BOSStorageConfig struct {
-	BucketName      string `yaml:"bucket_name"`
-	Endpoint        string `yaml:"endpoint"`
-	AccessKeyID     string `yaml:"access_key_id"`
-	SecretAccessKey string `yaml:"secret_access_key"`
+	BucketName      string         `yaml:"bucket_name"`
+	Endpoint        string         `yaml:"endpoint"`
+	AccessKeyID     string         `yaml:"access_key_id"`
+	SecretAccessKey flagext.Secret `yaml:"secret_access_key"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -52,7 +53,7 @@ func (cfg *BOSStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.StringVar(&cfg.BucketName, prefix+"baidubce.bucket-name", "", "Name of BOS bucket.")
 	f.StringVar(&cfg.Endpoint, prefix+"baidubce.endpoint", DefaultEndpoint, "BOS endpoint to connect to.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"baidubce.access-key-id", "", "Baidu Cloud Engine (BCE) Access Key ID.")
-	f.StringVar(&cfg.SecretAccessKey, prefix+"baidubce.secret-access-key", "", "Baidu Cloud Engine (BCE) Secret Access Key.")
+	f.Var(&cfg.SecretAccessKey, prefix+"baidubce.secret-access-key", "Baidu Cloud Engine (BCE) Secret Access Key.")
 }
 
 type BOSObjectStorage struct {
@@ -63,7 +64,7 @@ type BOSObjectStorage struct {
 func NewBOSObjectStorage(cfg *BOSStorageConfig) (*BOSObjectStorage, error) {
 	clientConfig := bos.BosClientConfiguration{
 		Ak:               cfg.AccessKeyID,
-		Sk:               cfg.SecretAccessKey,
+		Sk:               cfg.SecretAccessKey.String(),
 		Endpoint:         cfg.Endpoint,
 		RedirectDisabled: false,
 	}
