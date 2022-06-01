@@ -23,8 +23,8 @@ func BuildGatewayObjects(opts Options) []client.Object {
 	return objs
 }
 
-// BuildGatewayObjects returns a list of auxiliary openshift/k8s objects
-// for loki deployments on OpenShift.
+// BuildLokiStackObjects returns a list of auxiliary openshift/k8s objects
+// for lokistack deployments on OpenShift.
 func BuildLokiStackObjects(opts Options) []client.Object {
 	objs := []client.Object{}
 	if opts.BuildOpts.EnableCertificateSigningService {

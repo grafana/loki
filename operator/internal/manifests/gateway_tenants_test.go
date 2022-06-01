@@ -621,7 +621,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 											MountPath: "/var/run/tls",
 										},
 										{
-											Name:      "gateway-ca-bundle",
+											Name:      "my-stack-ca-bundle",
 											ReadOnly:  true,
 											MountPath: "/var/run/ca",
 										},
@@ -707,12 +707,12 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Name: "tls-secret-volume",
 								},
 								{
-									Name: "gateway-ca-bundle",
+									Name: "my-stack-ca-bundle",
 									VolumeSource: corev1.VolumeSource{
 										ConfigMap: &corev1.ConfigMapVolumeSource{
 											DefaultMode: &defaultConfigMapMode,
 											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "gateway-ca-bundle",
+												Name: "my-stack-ca-bundle",
 											},
 										},
 									},
