@@ -321,11 +321,11 @@ func (c *Compactor) loop(ctx context.Context) error {
 		}
 		level.Info(util_log.Logger).Log("msg", "single compaction finished")
 		level.Info(util_log.Logger).Log("msg", "interrupt or terminate the process to finish")
-		select {
-		case <-ctx.Done():
-			level.Info(util_log.Logger).Log("msg", "compactor exiting")
-			return nil
-		}
+
+		// Wait for Loki to shutdown.
+		<-ctx.Done()
+		level.Info(util_log.Logger).Log("msg", "compactor exiting")
+		return nil
 	}
 
 	if c.cfg.RetentionEnabled {
