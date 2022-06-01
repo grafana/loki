@@ -26,7 +26,8 @@ type Cache interface {
 
 // Config for building Caches.
 type Config struct {
-	EnableFifoCache bool `yaml:"enable_fifocache"`
+	EnableFifoCache  bool `yaml:"enable_fifocache"`
+	PerTenantMetrics bool `yaml:"per_tenant_metrics"`
 
 	DefaultValidity time.Duration `yaml:"default_validity"`
 
@@ -59,6 +60,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
 	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
+	f.BoolVar(&cfg.PerTenantMetrics, prefix+"cache.per-tenant-metrics", false, "Add tenant labels to cache-related metrics.")
 
 	cfg.Prefix = prefix
 }
@@ -96,7 +98,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 		}
 
 		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger); cache != nil {
-			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache, reg))
+			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache, reg, cfg.PerTenantMetrics))
 		}
 	}
 
@@ -113,7 +115,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger)
 
 		cacheName := cfg.Prefix + "memcache"
-		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
+		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg, cfg.PerTenantMetrics), reg))
 	}
 
 	if IsRedisSet(cfg) {
@@ -126,12 +128,12 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 			return nil, fmt.Errorf("redis client setup failed: %w", err)
 		}
 		cache := NewRedisCache(cacheName, client, logger)
-		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
+		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg, cfg.PerTenantMetrics), reg))
 	}
 
 	cache := NewTiered(caches)
 	if len(caches) > 1 {
-		cache = Instrument(cfg.Prefix+"tiered", cache, reg)
+		cache = Instrument(cfg.Prefix+"tiered", cache, reg, cfg.PerTenantMetrics)
 	}
 	return cache, nil
 }

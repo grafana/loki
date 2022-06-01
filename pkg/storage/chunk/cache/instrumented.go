@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 
+	"github.com/grafana/dskit/tenant"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -12,7 +13,7 @@ import (
 )
 
 // Instrument returns an instrumented cache.
-func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
+func Instrument(name string, cache Cache, reg prometheus.Registerer, perTenant bool) Cache {
 	valueSize := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "cache_value_size_bytes",
@@ -22,11 +23,13 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 		// 1024 * 4^(7-1) = 4MB
 		Buckets:     prometheus.ExponentialBuckets(1024, 4, 7),
 		ConstLabels: prometheus.Labels{"name": name},
-	}, []string{"method"})
+	}, []string{"method", "tenant"})
 
 	return &instrumentedCache{
-		name:  name,
 		Cache: cache,
+
+		name:      name,
+		perTenant: perTenant,
 
 		requestDuration: instr.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "loki",
@@ -35,39 +38,42 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 			// Cache requests are very quick: smallest bucket is 16us, biggest is 1s.
 			Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
 			ConstLabels: prometheus.Labels{"name": name},
+			// NOTE: we don't need to track the per-tenant request duration, so this metric is global
 		}, []string{"method", "status_code"})),
 
-		fetchedKeys: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		fetchedKeys: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace:   "loki",
 			Name:        "cache_fetched_keys",
 			Help:        "Total count of keys requested from cache.",
 			ConstLabels: prometheus.Labels{"name": name},
-		}),
+		}, []string{"tenant"}),
 
-		hits: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		hits: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace:   "loki",
 			Name:        "cache_hits",
 			Help:        "Total count of keys found in cache.",
 			ConstLabels: prometheus.Labels{"name": name},
-		}),
+		}, []string{"tenant"}),
 
-		storedValueSize:  valueSize.WithLabelValues("store"),
-		fetchedValueSize: valueSize.WithLabelValues("fetch"),
+		storedValueSize:  valueSize,
+		fetchedValueSize: valueSize,
 	}
 }
 
 type instrumentedCache struct {
-	name string
 	Cache
 
-	fetchedKeys, hits                 prometheus.Counter
-	storedValueSize, fetchedValueSize prometheus.Observer
+	name      string
+	perTenant bool
+
+	fetchedKeys, hits                 *prometheus.CounterVec
+	storedValueSize, fetchedValueSize prometheus.ObserverVec
 	requestDuration                   *instr.HistogramCollector
 }
 
 func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
 	for j := range bufs {
-		i.storedValueSize.Observe(float64(len(bufs[j])))
+		i.storedValueSize.WithLabelValues("store", i.getTenantID(ctx)).Observe(float64(len(bufs[j])))
 	}
 
 	method := i.name + ".store"
@@ -104,10 +110,10 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		return fetchErr
 	})
 
-	i.fetchedKeys.Add(float64(len(keys)))
-	i.hits.Add(float64(len(found)))
+	i.fetchedKeys.WithLabelValues(i.getTenantID(ctx)).Add(float64(len(keys)))
+	i.hits.WithLabelValues(i.getTenantID(ctx)).Add(float64(len(found)))
 	for j := range bufs {
-		i.fetchedValueSize.Observe(float64(len(bufs[j])))
+		i.fetchedValueSize.WithLabelValues("fetch", i.getTenantID(ctx)).Observe(float64(len(bufs[j])))
 	}
 
 	return found, bufs, missing, err
@@ -115,4 +121,15 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 
 func (i *instrumentedCache) Stop() {
 	i.Cache.Stop()
+}
+
+func (i *instrumentedCache) getTenantID(ctx context.Context) string {
+	// if per-tenant metrics are disabled, set an empty label which will be ignored
+	if !i.perTenant {
+		return ""
+	}
+
+	// best effort: if tenant ID cannot be retrieved, set an empty label which will be ignored
+	userID, _ := tenant.TenantID(ctx)
+	return userID
 }

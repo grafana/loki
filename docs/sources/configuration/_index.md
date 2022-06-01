@@ -1839,6 +1839,10 @@ the index to a backing cache store.
 # CLI flag: -<prefix>.cache.enable-fifocache
 [enable_fifocache: <boolean>]
 
+# Add tenant labels to cache-related metrics.
+# CLI flag: -<prefix>.cache.per-tenant-metrics
+[per_tenant_metrics: <boolean> | default = false]
+
 # The default validity of entries for caches unless overridden.
 # NOTE In Loki versions older than 1.4.0 this was "defaul_validity".
 # CLI flag: -<prefix>.default-validity
