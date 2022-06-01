@@ -22,7 +22,7 @@ var (
 	_ Stage = &LabelsFormatter{}
 
 	// Available map of functions for the text template engine.
-	functionMap = template.FuncMap{
+	FunctionMap = template.FuncMap{
 		// olds functions deprecated.
 		"ToLower":    strings.ToLower,
 		"ToUpper":    strings.ToUpper,
@@ -92,7 +92,7 @@ func init() {
 	sprigFuncMap := sprig.GenericFuncMap()
 	for _, v := range templateFunctions {
 		if function, ok := sprigFuncMap[v]; ok {
-			functionMap[v] = function
+			FunctionMap[v] = function
 		}
 	}
 }
@@ -109,8 +109,8 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	lf := &LineFormatter{
 		buf: bytes.NewBuffer(make([]byte, 4096)),
 	}
-	functions := make(map[string]interface{}, len(functionMap)+1)
-	for k, v := range functionMap {
+	functions := make(map[string]interface{}, len(FunctionMap)+1)
+	for k, v := range FunctionMap {
 		functions[k] = v
 	}
 	functions[functionLineName] = func() string {
@@ -244,7 +244,7 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 	for _, fm := range fmts {
 		toAdd := labelFormatter{LabelFmt: fm}
 		if !fm.Rename {
-			t, err := template.New("label").Option("missingkey=zero").Funcs(functionMap).Parse(fm.Value)
+			t, err := template.New("label").Option("missingkey=zero").Funcs(FunctionMap).Parse(fm.Value)
 			if err != nil {
 				return nil, fmt.Errorf("invalid template for label '%s': %s", fm.Name, err)
 			}
