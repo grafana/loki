@@ -33,14 +33,12 @@ type store struct {
 // for storing chunks.
 func NewStore(indexShipperCfg indexshipper.Config, p config.PeriodConfig, f *fetcher.Fetcher,
 	objectClient client.ObjectClient, limits downloads.Limits, reg prometheus.Registerer) (stores.ChunkWriter, series.IndexStore, error) {
-	if storeInstance != nil {
-		return NewChunkWriter(f, p, storeInstance.indexWriter), storeInstance.indexStore, nil
-	}
-
-	storeInstance := &store{}
-	err := storeInstance.init(indexShipperCfg, p, objectClient, limits, reg)
-	if err != nil {
-		return nil, nil, err
+	if storeInstance == nil {
+		storeInstance = &store{}
+		err := storeInstance.init(indexShipperCfg, p, objectClient, limits, reg)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	return NewChunkWriter(f, p, storeInstance.indexWriter), storeInstance.indexStore, nil
