@@ -169,16 +169,15 @@ type StageAnalysisRecorder struct {
 
 func (s StageAnalysisRecorder) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lineBefore := unsafeGetString(line)
-	labelsBefore, _ := lbs.LabelsUnsorted()
+	labelsBefore := lbs.unsortedLabels(nil)
 
 	lineResult, ok := s.origin.Process(line, lbs)
 
-	labelsAfter, _ := lbs.LabelsUnsorted()
 	s.records[s.stageIndex] = StageAnalysisRecord{
 		Processed:    true,
 		LabelsBefore: labelsBefore,
 		LineBefore:   lineBefore,
-		LabelsAfter:  labelsAfter,
+		LabelsAfter:  lbs.unsortedLabels(nil),
 		LineAfter:    unsafeGetString(lineResult),
 		FilteredOut:  !ok,
 	}

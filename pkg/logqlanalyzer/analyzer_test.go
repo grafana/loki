@@ -47,8 +47,8 @@ func Test_logQLAnalyzer_analyze_expected_1_stage_record_for_each_log_line(t *tes
 
 	require.NoError(t, err)
 	require.Equal(t, 2, len(result.Results))
-	require.Equal(t, 1, len(result.Results[0]))
-	require.Equal(t, 1, len(result.Results[1]))
+	require.Equal(t, 1, len(result.Results[0].StageRecords))
+	require.Equal(t, 1, len(result.Results[1].StageRecords))
 }
 
 func Test_logQLAnalyzer_analyze_expected_all_stage_records_to_be_correct(t *testing.T) {
@@ -57,7 +57,7 @@ func Test_logQLAnalyzer_analyze_expected_all_stage_records_to_be_correct(t *test
 	result, err := logQLAnalyzer{}.analyze("{job=\"analyze\"} | logfmt | line_format \"level={{.lvl}} message={{.msg | ToUpper}}\" |= \"info\"", []string{line})
 	require.NoError(t, err)
 	require.Equal(t, 1, len(result.Results))
-	require.Equal(t, 3, len(result.Results[0]), "expected records for two stages")
+	require.Equal(t, 3, len(result.Results[0].StageRecords), "expected records for two stages")
 	streamLabels := []Label{{"job", "analyze"}}
 	parsedLabels := append(streamLabels, []Label{{"lvl", "error"}, {"msg", "a"}}...)
 	require.Equal(t, StageRecord{
@@ -66,19 +66,19 @@ func Test_logQLAnalyzer_analyze_expected_all_stage_records_to_be_correct(t *test
 		LineAfter:    line,
 		LabelsAfter:  parsedLabels,
 		FilteredOut:  false,
-	}, result.Results[0][0])
+	}, result.Results[0].StageRecords[0])
 	require.Equal(t, StageRecord{
 		LineBefore:   line,
 		LabelsBefore: parsedLabels,
 		LineAfter:    reformattedLine,
 		LabelsAfter:  parsedLabels,
 		FilteredOut:  false,
-	}, result.Results[0][1], "line is expected to be reformatted on this stage")
+	}, result.Results[0].StageRecords[1], "line is expected to be reformatted on this stage")
 	require.Equal(t, StageRecord{
 		LineBefore:   reformattedLine,
 		LabelsBefore: parsedLabels,
 		LineAfter:    reformattedLine,
 		LabelsAfter:  parsedLabels,
 		FilteredOut:  true,
-	}, result.Results[0][2], "line is expected to be filtered out on this stage")
+	}, result.Results[0].StageRecords[2], "line is expected to be filtered out on this stage")
 }
