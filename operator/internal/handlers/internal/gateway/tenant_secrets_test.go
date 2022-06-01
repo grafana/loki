@@ -143,7 +143,7 @@ func TestGetTenantSecrets_DynamicMode(t *testing.T) {
 	require.ElementsMatch(t, ts, expected)
 }
 
-func TestExtractGatewaySecret(t *testing.T) {
+func TestExtractSecret(t *testing.T) {
 	type test struct {
 		name       string
 		tenantName string
