@@ -95,12 +95,24 @@ func configureServiceForMode(s *corev1.ServiceSpec, mode lokiv1beta1.ModeType) e
 	return nil
 }
 
+func configureLokiStackObjsForMode(objs []client.Object, opts Options) []client.Object {
+	switch opts.Stack.Tenants.Mode {
+	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
+		// nothing to configure
+	case lokiv1beta1.OpenshiftLogging:
+		openShiftObjs := openshift.BuildLokiStackObjects(opts.OpenShiftOptions)
+		objs = append(objs, openShiftObjs...)
+	}
+
+	return objs
+}
+
 func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Object {
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
 		// nothing to configure
 	case lokiv1beta1.OpenshiftLogging:
-		openShiftObjs := openshift.Build(opts.OpenShiftOptions)
+		openShiftObjs := openshift.BuildGatewayObjects(opts.OpenShiftOptions)
 
 		var cObjs []client.Object
 		for _, o := range objs {

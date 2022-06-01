@@ -4,8 +4,12 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+
+	"github.com/imdario/mergo"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -30,7 +34,7 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Flags.EnableTLSGRPCServices {
-		if err := configureIngesterGRPCServicePKI(statefulSet, opts.Name); err != nil {
+		if err := configureIngesterGRPCServicePKI(statefulSet, opts.Name, opts.Namespace); err != nil {
 			return nil, err
 		}
 	}
@@ -255,7 +259,51 @@ func configureIngesterServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackNa
 	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
-func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
+func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNS string) error {
+	caBundleName := signingServiceCAName(stackName)
+	secretVolumeSpec := corev1.PodSpec{
+		Volumes: []corev1.Volume{
+			{
+				Name: caBundleName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: caBundleName,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	secretContainerSpec := corev1.Container{
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      caBundleName,
+				ReadOnly:  false,
+				MountPath: grpcCADirectory,
+			},
+		},
+		Args: []string{
+			// Enable GRPC over TLS for ingester client
+			"-ingester.client.tls-enabled=true",
+			fmt.Sprintf("-ingester.client.tls-ca-path=%s", path.Join(grpcCADirectory, "service-ca.crt")),
+			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNS)),
+			// Enable GRPC over TLS for boltb-shipper index-gateway client
+			"-boltdb.shipper.index-gateway-client.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-ca-path=%s", path.Join(grpcCADirectory, "service-ca.crt")),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
+		},
+	}
+
+	if err := mergo.Merge(&sts.Spec.Template.Spec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge volumes")
+	}
+
+	if err := mergo.Merge(&sts.Spec.Template.Spec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
 	serviceName := serviceNameIngesterGRPC(stackName)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }

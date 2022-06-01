@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -272,6 +274,45 @@ func configureRulerServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName 
 }
 
 func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
+	caBundleName := signingServiceCAName(stackName)
+	secretVolumeSpec := corev1.PodSpec{
+		Volumes: []corev1.Volume{
+			{
+				Name: caBundleName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: caBundleName,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	secretContainerSpec := corev1.Container{
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      caBundleName,
+				ReadOnly:  false,
+				MountPath: grpcCADirectory,
+			},
+		},
+		Args: []string{
+			// Enable GRPC over TLS for ruler client
+			"-ruler.client.tls-enabled=true",
+			fmt.Sprintf("-ruler.client.tls-ca-path=%s", path.Join(grpcCADirectory, "service-ca.crt")),
+		},
+	}
+
+	if err := mergo.Merge(&sts.Spec.Template.Spec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge volumes")
+	}
+
+	if err := mergo.Merge(&sts.Spec.Template.Spec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
 	serviceName := serviceNameRulerGRPC(stackName)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }

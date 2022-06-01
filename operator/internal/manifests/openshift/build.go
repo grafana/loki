@@ -2,9 +2,9 @@ package openshift
 
 import "sigs.k8s.io/controller-runtime/pkg/client"
 
-// Build returns a list of auxiliary openshift/k8s objects
+// BuildGatewayObjects returns a list of auxiliary openshift/k8s objects
 // for lokistack gateway deployments on OpenShift.
-func Build(opts Options) []client.Object {
+func BuildGatewayObjects(opts Options) []client.Object {
 	objs := []client.Object{
 		BuildRoute(opts),
 		BuildServiceAccount(opts),
@@ -20,6 +20,13 @@ func Build(opts Options) []client.Object {
 		)
 	}
 
+	return objs
+}
+
+// BuildGatewayObjects returns a list of auxiliary openshift/k8s objects
+// for loki deployments on OpenShift.
+func BuildLokiStackObjects(opts Options) []client.Object {
+	objs := []client.Object{}
 	if opts.BuildOpts.EnableCertificateSigningService {
 		objs = append(objs, BuildServiceCAConfigMap(opts))
 	}

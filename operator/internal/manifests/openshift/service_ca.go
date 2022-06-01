@@ -6,8 +6,8 @@ import (
 )
 
 // BuildServiceCAConfigMap returns a k8s configmap for the LokiStack
-// gateway serviceCA configmap. This configmap is used to configure
-// the gateway to proxy server-side TLS encrypted requests to Loki.
+// serviceCA configmap. This configmap is used to configure
+// the gateway and components to verify TLS certificates.
 func BuildServiceCAConfigMap(opts Options) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{

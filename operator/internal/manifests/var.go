@@ -38,6 +38,8 @@ const (
 	dataDirectory         = "/tmp/loki"
 	secretDirectory       = "/etc/proxy/secrets"
 	rulesStorageDirectory = "/tmp/rules"
+	grpcSecretDirectory   = "/etc/grpc/secrets"
+	grpcCADirectory       = "/etc/grpc/ca"
 
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
@@ -238,6 +240,10 @@ func serviceMonitorName(componentName string) string {
 
 func signingServiceSecretName(serviceName string) string {
 	return fmt.Sprintf("%s-tls", serviceName)
+}
+
+func signingServiceCAName(stackName string) string {
+	return fmt.Sprintf("%s-ca-bundle", stackName)
 }
 
 func fqdn(serviceName, namespace string) string {
