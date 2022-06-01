@@ -274,7 +274,7 @@ func configureRulerServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName 
 }
 
 func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
-	caBundleName := signingServiceCAName(stackName)
+	caBundleName := signingCABundleName(stackName)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -295,13 +295,13 @@ func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) err
 			{
 				Name:      caBundleName,
 				ReadOnly:  false,
-				MountPath: grpcCADirectory,
+				MountPath: caBundleDir,
 			},
 		},
 		Args: []string{
 			// Enable GRPC over TLS for ruler client
 			"-ruler.client.tls-enabled=true",
-			fmt.Sprintf("-ruler.client.tls-ca-path=%s", path.Join(grpcCADirectory, "service-ca.crt")),
+			fmt.Sprintf("-ruler.client.tls-ca-path=%s", signingCAPath()),
 		},
 	}
 

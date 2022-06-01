@@ -28,12 +28,12 @@ func configureGRPCServicePKI(podSpec *corev1.PodSpec, serviceName string) error 
 			{
 				Name:      secretName,
 				ReadOnly:  false,
-				MountPath: grpcSecretDirectory,
+				MountPath: grpcTLSDir,
 			},
 		},
 		Args: []string{
-			fmt.Sprintf("-server.grpc-tls-cert-path=%s", path.Join(grpcSecretDirectory, "tls.crt")),
-			fmt.Sprintf("-server.grpc-tls-key-path=%s", path.Join(grpcSecretDirectory, "tls.key")),
+			fmt.Sprintf("-server.grpc-tls-cert-path=%s", path.Join(grpcTLSDir, tlsCertFile)),
+			fmt.Sprintf("-server.grpc-tls-key-path=%s", path.Join(grpcTLSDir, tlsKeyFile)),
 		},
 	}
 

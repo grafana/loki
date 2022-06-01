@@ -3,7 +3,6 @@ package manifests
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/imdario/mergo"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -68,12 +67,12 @@ func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType,
 			d,
 			gatewayContainerName,
 			tlsSecretVolume,
-			gateway.LokiGatewayTLSDir,
-			gateway.LokiGatewayCertFile,
-			gateway.LokiGatewayKeyFile,
-			signingServiceCAName(stackName),
-			gateway.LokiGatewayCABundleDir,
-			gateway.LokiGatewayCAFile,
+			httpTLSDir,
+			tlsCertFile,
+			tlsKeyFile,
+			signingCABundleName(stackName),
+			caBundleDir,
+			caFile,
 			flags.EnableTLSServiceMonitorConfig,
 			flags.EnableCertificateSigningService,
 			secretName,

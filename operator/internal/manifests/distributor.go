@@ -204,7 +204,7 @@ func configureDistributorServiceMonitorPKI(deployment *appsv1.Deployment, stackN
 }
 
 func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, stackName, stackNS string) error {
-	caBundleName := signingServiceCAName(stackName)
+	caBundleName := signingCABundleName(stackName)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -225,13 +225,13 @@ func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, stackName
 			{
 				Name:      caBundleName,
 				ReadOnly:  false,
-				MountPath: grpcCADirectory,
+				MountPath: caBundleDir,
 			},
 		},
 		Args: []string{
 			// Enable GRPC over TLS for ingester client
 			"-ingester.client.tls-enabled=true",
-			fmt.Sprintf("-ingester.client.tls-ca-path=%s", path.Join(grpcCADirectory, "service-ca.crt")),
+			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNS)),
 		},
 	}

@@ -260,7 +260,7 @@ func configureIngesterServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackNa
 }
 
 func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNS string) error {
-	caBundleName := signingServiceCAName(stackName)
+	caBundleName := signingCABundleName(stackName)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -281,17 +281,17 @@ func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNS
 			{
 				Name:      caBundleName,
 				ReadOnly:  false,
-				MountPath: grpcCADirectory,
+				MountPath: caBundleDir,
 			},
 		},
 		Args: []string{
 			// Enable GRPC over TLS for ingester client
 			"-ingester.client.tls-enabled=true",
-			fmt.Sprintf("-ingester.client.tls-ca-path=%s", path.Join(grpcCADirectory, "service-ca.crt")),
+			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNS)),
 			// Enable GRPC over TLS for boltb-shipper index-gateway client
 			"-boltdb.shipper.index-gateway-client.tls-enabled=true",
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-ca-path=%s", path.Join(grpcCADirectory, "service-ca.crt")),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
 		},
 	}

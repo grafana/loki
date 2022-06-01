@@ -211,7 +211,7 @@ func configureQuerierServiceMonitorPKI(deployment *appsv1.Deployment, stackName 
 }
 
 func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, stackName, stackNS string) error {
-	caBundleName := signingServiceCAName(stackName)
+	caBundleName := signingCABundleName(stackName)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -232,21 +232,21 @@ func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, stackName, st
 			{
 				Name:      caBundleName,
 				ReadOnly:  false,
-				MountPath: grpcCADirectory,
+				MountPath: caBundleDir,
 			},
 		},
 		Args: []string{
 			// Enable GRPC over TLS for ingester client
 			"-ingester.client.tls-enabled=true",
-			fmt.Sprintf("-ingester.client.tls-ca-path=%s", path.Join(grpcCADirectory, "service-ca.crt")),
+			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNS)),
 			// Enable GRPC over TLS for query frontend client
 			"-querier.frontend-client.tls-enabled=true",
-			fmt.Sprintf("-querier.frontend-client.tls-ca-path=%s", path.Join(grpcCADirectory, "service-ca.crt")),
+			fmt.Sprintf("-querier.frontend-client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-querier.frontend-client.tls-server-name=%s", fqdn(serviceNameQueryFrontendGRPC(stackName), stackNS)),
 			// Enable GRPC over TLS for boltb-shipper index-gateway client
 			"-boltdb.shipper.index-gateway-client.tls-enabled=true",
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-ca-path=%s", path.Join(grpcCADirectory, "service-ca.crt")),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-ca-path=%s", signingCAPath()),
 			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
 		},
 	}

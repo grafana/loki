@@ -350,8 +350,8 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 	}
 
 	secretName := signingServiceSecretName(serviceName)
-	certFile := path.Join(gateway.LokiGatewayTLSDir, gateway.LokiGatewayCertFile)
-	keyFile := path.Join(gateway.LokiGatewayTLSDir, gateway.LokiGatewayKeyFile)
+	certFile := path.Join(httpTLSDir, tlsCertFile)
+	keyFile := path.Join(httpTLSDir, tlsKeyFile)
 
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
@@ -370,7 +370,7 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 			{
 				Name:      tlsSecretVolume,
 				ReadOnly:  true,
-				MountPath: gateway.LokiGatewayTLSDir,
+				MountPath: httpTLSDir,
 			},
 		},
 		Args: []string{

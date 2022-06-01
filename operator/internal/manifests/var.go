@@ -2,6 +2,7 @@ package manifests
 
 import (
 	"fmt"
+	"path"
 
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -31,15 +32,12 @@ const (
 
 	walVolumeName          = "wal"
 	configVolumeName       = "config"
-	storageVolumeName      = "storage"
 	rulesStorageVolumeName = "rules"
+	storageVolumeName      = "storage"
 
 	walDirectory          = "/tmp/wal"
 	dataDirectory         = "/tmp/loki"
-	secretDirectory       = "/etc/proxy/secrets"
 	rulesStorageDirectory = "/tmp/rules"
-	grpcSecretDirectory   = "/etc/grpc/secrets"
-	grpcCADirectory       = "/etc/grpc/ca"
 
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
@@ -76,6 +74,19 @@ const (
 	LabelRulerComponent string = "ruler"
 	// LabelGatewayComponent is the label value for the lokiStack-gateway component
 	LabelGatewayComponent string = "lokistack-gateway"
+
+	// httpTLSDir is the path that is mounted from the secret for TLS
+	httpTLSDir = "/var/run/tls/http"
+	// grpcTLSDir is the path that is mounted from the secret for TLS
+	grpcTLSDir = "/var/run/tls/grpc"
+	// tlsCertFile is the file of the X509 server certificate file
+	tlsCertFile = "tls.crt"
+	// tlsKeyFile is the file name of the server private key
+	tlsKeyFile = "tls.key"
+	// LokiStackCABundleDir is the path that is mounted from the configmap for TLS
+	caBundleDir = "/var/run/ca"
+	// caFile is the file name of the certificate authority file
+	caFile = "service-ca.crt"
 )
 
 var (
@@ -242,8 +253,12 @@ func signingServiceSecretName(serviceName string) string {
 	return fmt.Sprintf("%s-tls", serviceName)
 }
 
-func signingServiceCAName(stackName string) string {
+func signingCABundleName(stackName string) string {
 	return fmt.Sprintf("%s-ca-bundle", stackName)
+}
+
+func signingCAPath() string {
+	return path.Join(caBundleDir, caFile)
 }
 
 func fqdn(serviceName, namespace string) string {

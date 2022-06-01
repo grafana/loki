@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -465,8 +464,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
-										"--tls.internal.server.cert-file=/var/run/tls/tls.crt",
-										"--tls.internal.server.key-file=/var/run/tls/tls.key",
+										"--tls.internal.server.cert-file=/var/run/tls/http/tls.crt",
+										"--tls.internal.server.key-file=/var/run/tls/http/tls.key",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -511,7 +510,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										{
 											Name:      tlsSecretVolume,
 											ReadOnly:  true,
-											MountPath: gateway.LokiGatewayTLSDir,
+											MountPath: httpTLSDir,
 										},
 									},
 								},
@@ -562,7 +561,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										{
 											Name:      "tls-secret",
 											ReadOnly:  true,
-											MountPath: "/var/run/tls",
+											MountPath: "/var/run/tls/http",
 										},
 									},
 									ReadinessProbe: &corev1.Probe{
@@ -618,7 +617,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										{
 											Name:      "tls-secret",
 											ReadOnly:  true,
-											MountPath: "/var/run/tls",
+											MountPath: "/var/run/tls/http",
 										},
 										{
 											Name:      "my-stack-ca-bundle",
@@ -651,8 +650,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
-										"--tls.internal.server.cert-file=/var/run/tls/tls.crt",
-										"--tls.internal.server.key-file=/var/run/tls/tls.key",
+										"--tls.internal.server.cert-file=/var/run/tls/http/tls.crt",
+										"--tls.internal.server.key-file=/var/run/tls/http/tls.key",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -697,7 +696,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										{
 											Name:      tlsSecretVolume,
 											ReadOnly:  true,
-											MountPath: gateway.LokiGatewayTLSDir,
+											MountPath: httpTLSDir,
 										},
 									},
 								},

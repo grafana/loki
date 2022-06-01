@@ -2,7 +2,6 @@ package manifests
 
 import (
 	"fmt"
-	"path"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -285,12 +284,12 @@ func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
 		expVolumeMount := corev1.VolumeMount{
 			Name:      secretName,
 			ReadOnly:  false,
-			MountPath: "/etc/proxy/secrets",
+			MountPath: "/var/run/tls/http",
 		}
 		require.Contains(t, vms, expVolumeMount)
 
-		require.Contains(t, args, "-server.http-tls-cert-path=/etc/proxy/secrets/tls.crt")
-		require.Contains(t, args, "-server.http-tls-key-path=/etc/proxy/secrets/tls.key")
+		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/tls.crt")
+		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/tls.key")
 		require.Equal(t, corev1.URISchemeHTTPS, rps)
 		require.Equal(t, corev1.URISchemeHTTPS, lps)
 	}
@@ -431,14 +430,14 @@ func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					secretName := secretsMap[name]
 					args := []string{
-						fmt.Sprintf("-server.grpc-tls-cert-path=%s", path.Join(grpcSecretDirectory, "tls.crt")),
-						fmt.Sprintf("-server.grpc-tls-key-path=%s", path.Join(grpcSecretDirectory, "tls.key")),
+						"-server.grpc-tls-cert-path=/var/run/tls/grpc/tls.crt",
+						"-server.grpc-tls-key-path=/var/run/tls/grpc/tls.key",
 					}
 
 					vm := corev1.VolumeMount{
 						Name:      secretName,
 						ReadOnly:  false,
-						MountPath: grpcSecretDirectory,
+						MountPath: "/var/run/tls/grpc",
 					}
 
 					v := corev1.Volume{

@@ -1,6 +1,9 @@
 package manifests
 
 import (
+	"fmt"
+	"path"
+
 	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -164,12 +167,12 @@ func configureServiceMonitorPKI(podSpec *corev1.PodSpec, serviceName string) err
 			{
 				Name:      secretName,
 				ReadOnly:  false,
-				MountPath: secretDirectory,
+				MountPath: httpTLSDir,
 			},
 		},
 		Args: []string{
-			"-server.http-tls-cert-path=/etc/proxy/secrets/tls.crt",
-			"-server.http-tls-key-path=/etc/proxy/secrets/tls.key",
+			fmt.Sprintf("-server.http-tls-cert-path=%s", path.Join(httpTLSDir, tlsCertFile)),
+			fmt.Sprintf("-server.http-tls-key-path=%s", path.Join(httpTLSDir, tlsKeyFile)),
 		},
 	}
 	uriSchemeContainerSpec := corev1.Container{
