@@ -6,16 +6,16 @@ spec:
   evaluationInterval: 1m
   pollInterval: 1m
   alertmanager:
-    externalUrl: "http://www.mycompany.org/alerts"
+    externalUrl: http://www.mycompany.org/alerts
     externalLabels:
       environment: production
       region: us-east-2
     enableV2: true
     endpoints:
-      - "http://alertmanager-host1.mycompany.org"
-      - "http://alertmanager-host2.mycompany.org"
+      - http://alertmanager-host1.mycompany.org
+      - http://alertmanager-host2.mycompany.org
     discovery:
-      enabled: true
+      enableSRV: true
       refreshInterval: 1m
     notificationQueue:
       capacity: 1000
@@ -27,17 +27,16 @@ spec:
     enabled: true
     refreshPeriod: 10s
     client:
-      name: "remote-write-log-metrics"
-      url: "http://remote-write-host.mycompany.org"
+      name: remote-write-log-metrics
+      url: http://remote-write-host.mycompany.org
       timeout: 30s
       authorization: basic
       authorizationSecretName: my-secret-resource
-      proxyURL: "http://proxy-host.mycompany.org"
-      followRedirects: true
+      proxyUrl: http://proxy-host.mycompany.org
       relabelConfigs:
-      - source_labels: ["labelc","labeld"]
-        regex: "ALERTS.*"
-        action: "replace"
-        separator: ";"
-        replacement: "$1"
-        targetLabel: "labelnew"
+      - sourceLabels: ["labelc","labeld"]
+        regex: ALERTS.*
+        action: replace
+        separator: ""
+        replacement: $1
+        targetLabel: labelnew
