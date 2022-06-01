@@ -13,8 +13,8 @@ import (
 func ExtractRulerSecret(s *corev1.Secret, t lokiv1beta1.RemoteWriteAuthType) (*manifests.RulerSecret, error) {
 	switch t {
 	case lokiv1beta1.BasicAuthorization:
-		username, ok := s.Data["username"]
-		if !ok {
+		username := s.Data["username"]
+		if len(username) == 0 {
 			return nil, kverrors.New("missing basic auth username", "field", "username")
 		}
 
