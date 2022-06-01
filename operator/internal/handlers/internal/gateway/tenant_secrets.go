@@ -65,15 +65,15 @@ func GetTenantSecrets(
 func extractSecret(s *corev1.Secret, tenantName string) (*manifests.TenantSecrets, error) {
 	// Extract and validate mandatory fields
 	clientID := s.Data["clientID"]
-	if clientID == nil {
+	if len(clientID) == 0 {
 		return nil, kverrors.New("missing clientID field", "field", "clientID")
 	}
 	clientSecret := s.Data["clientSecret"]
-	if clientSecret == nil {
+	if len(clientSecret) == 0 {
 		return nil, kverrors.New("missing clientSecret field", "field", "clientSecret")
 	}
 	issuerCAPath := s.Data["issuerCAPath"]
-	if issuerCAPath == nil {
+	if len(issuerCAPath) == 0 {
 		return nil, kverrors.New("missing issuerCAPath field", "field", "issuerCAPath")
 	}
 

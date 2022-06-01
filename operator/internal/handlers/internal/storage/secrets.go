@@ -38,19 +38,19 @@ func ExtractSecret(s *corev1.Secret, secretType lokiv1beta1.ObjectStorageSecretT
 func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, error) {
 	// Extract and validate mandatory fields
 	env := s.Data["environment"]
-	if env == nil {
+	if len(env) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "environment")
 	}
 	container := s.Data["container"]
-	if container == nil {
+	if len(container) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "container")
 	}
 	name := s.Data["account_name"]
-	if name == nil {
+	if len(name) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "account_name")
 	}
 	key := s.Data["account_key"]
-	if key == nil {
+	if len(key) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "account_key")
 	}
 
@@ -65,13 +65,13 @@ func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, er
 func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error) {
 	// Extract and validate mandatory fields
 	bucket := s.Data["bucketname"]
-	if bucket == nil {
+	if len(bucket) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "bucketname")
 	}
 
 	// Check if google authentication credentials is provided
 	keyJSON := s.Data["key.json"]
-	if keyJSON == nil {
+	if len(keyJSON) == 0 {
 		return nil, kverrors.New("missing google authentication credentials", "field", "key.json")
 	}
 
@@ -83,20 +83,20 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
 	endpoint := s.Data["endpoint"]
-	if endpoint == nil {
+	if len(endpoint) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "endpoint")
 	}
 	buckets := s.Data["bucketnames"]
-	if buckets == nil {
+	if len(buckets) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "bucketnames")
 	}
 	// TODO buckets are comma-separated list
 	id := s.Data["access_key_id"]
-	if id == nil {
+	if len(id) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "access_key_id")
 	}
 	secret := s.Data["access_key_secret"]
-	if secret == nil {
+	if len(secret) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "access_key_secret")
 	}
 
@@ -115,39 +115,39 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, error) {
 	// Extract and validate mandatory fields
 	url := s.Data["auth_url"]
-	if url == nil {
+	if len(url) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "auth_url")
 	}
 	username := s.Data["username"]
-	if username == nil {
+	if len(username) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "username")
 	}
 	userDomainName := s.Data["user_domain_name"]
-	if userDomainName == nil {
+	if len(userDomainName) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "user_domain_name")
 	}
 	userDomainID := s.Data["user_domain_id"]
-	if userDomainID == nil {
+	if len(userDomainID) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "user_domain_id")
 	}
 	userID := s.Data["user_id"]
-	if userID == nil {
+	if len(userID) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "user_id")
 	}
 	password := s.Data["password"]
-	if password == nil {
+	if len(password) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "password")
 	}
 	domainID := s.Data["domain_id"]
-	if domainID == nil {
+	if len(domainID) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "domain_id")
 	}
 	domainName := s.Data["domain_name"]
-	if domainName == nil {
+	if len(domainName) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "domain_name")
 	}
 	containerName := s.Data["container_name"]
-	if containerName == nil {
+	if len(containerName) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "container_name")
 	}
 
