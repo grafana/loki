@@ -213,7 +213,7 @@ ruler:
       follow_redirects: {{ .FollowRedirects }}
       headers:
       {{ range $key, $val := .Headers }}
-        {{ $key }}: {{ $val }}
+        "{{ $key }}": "{{ $val }}"
       {{ end }}
       {{ if and .BasicAuthUsername .BasicAuthPassword }}
       basic_auth:
