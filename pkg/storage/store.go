@@ -395,7 +395,15 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 		headChunkBytes += int64(len(entry.Line))
 		headChunkLine += int64(1)
 		decompressedLines += int64(1)
+	}
 
+	// at least one entry
+	if postFilterChunkData.Size() == 0 {
+		nilEntry := logproto.Entry{Timestamp: time.Unix(0, 1), Line: ""}
+		err := postFilterChunkData.Append(&nilEntry)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := postFilterChunkData.Close(); err != nil {
 		return nil, err
