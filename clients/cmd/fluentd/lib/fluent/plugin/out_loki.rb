@@ -73,6 +73,9 @@ module Fluent
       desc 'if a record only has 1 key, then just set the log line to the value and discard the key.'
       config_param :drop_single_key, :bool, default: false
 
+      desc 'whether or not to include the fluentd_thread label when multiple threads are used for flushing'
+      config_param :include_thread_label, :bool, default: true
+
       config_section :buffer do
         config_set_default :@type, DEFAULT_BUFFER_TYPE
         config_set_default :chunk_keys, []
@@ -332,7 +335,7 @@ module Fluent
         # unique per flush thread
         # note that flush thread != fluentd worker. if you use multiple workers you still need to
         # add the worker id as a label
-        if @buffer_config.flush_thread_count > 1
+        if @include_thread_label && @buffer_config.flush_thread_count > 1
           chunk_labels['fluentd_thread'] = Thread.current[:_fluentd_plugin_helper_thread_title].to_s
         end
 
