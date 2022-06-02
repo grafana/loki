@@ -377,6 +377,12 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	newCtr, statCtx := stats.NewContext(ctx)
 	lokiChunk := chunkData.(*chunkenc.Facade).LokiChunk()
 	startTime, endTime := lokiChunk.Bounds()
+	if c.from.Before(startTime) {
+		startTime = c.from
+	}
+	if c.through.After(startTime) {
+		endTime = c.through
+	}
 
 	iterator, err := lazyChunk.Iterator(statCtx, startTime, endTime, c.direction, streamPipeline, c.nextChunk)
 	if err != nil {
