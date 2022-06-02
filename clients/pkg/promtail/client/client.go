@@ -9,7 +9,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,8 +27,11 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
+	"github.com/grafana/loki/pkg/ingester"
+	"github.com/grafana/loki/pkg/util"
 	lokiutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/pkg/util/wal"
 )
 
 const (
@@ -150,6 +157,7 @@ type client struct {
 	cfg             Config
 	client          *http.Client
 	entries         chan api.Entry
+	wal             clientWAL
 
 	once sync.Once
 	wg   sync.WaitGroup
@@ -194,6 +202,7 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, logger lo
 	if cfg.Name != "" {
 		c.name = cfg.Name
 	}
+	c.wal = newClientWAL(c)
 
 	err := cfg.Client.Validate()
 	if err != nil {
@@ -230,6 +239,66 @@ func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, 
 	}
 
 	return c, nil
+}
+
+// TODO: can this be turned into an implementation of the pkg/ingester/recovery.go Recoverer interface
+// with the current file structure would I need to build a list of all the timestamp/segment files first?
+func (c *client) replayWAL() error {
+	var recordPool = newRecordPool()
+
+	clientBaseWALDir := path.Join(c.cfg.WAL.Dir, c.name)
+	// look for the WAL dir
+	_, err := os.Stat(clientBaseWALDir)
+	if os.IsNotExist(err) {
+		return err
+	}
+	// get tenant directories for the client, since we could have multiple as a result of the tenant pipeline stage
+	// Note: Ignoring errors.
+	matches, _ := filepath.Glob(clientBaseWALDir + "/*")
+	var tenantDirs []string
+	for _, match := range matches {
+		f, _ := os.Stat(match)
+		if f.IsDir() {
+			tenantDirs = append(tenantDirs, match)
+		}
+	}
+	if len(matches) < 1 {
+		return nil
+	}
+	for _, tenantDir := range tenantDirs {
+		tenantID := tenantDir[strings.LastIndex(tenantDir, "/")+1:]
+		r, closer, err := wal.NewWalReader(tenantDir, -1)
+		if err != nil {
+			return err
+		}
+		defer closer.Close()
+
+		// todo, reduce allocations
+		b := newBatch(NoopWAL)
+		seriesRecs := make(map[uint64]model.LabelSet)
+		for r.Next() {
+			rec := recordPool.GetRecord()
+			entry := api.Entry{}
+			if err := ingester.DecodeWALRecord(r.Record(), rec); err != nil {
+				// this error doesn't need to be fatal, we should maybe just throw out this batch?
+			}
+			for _, series := range rec.Series {
+				seriesRecs[uint64(series.Ref)] = util.MapToModelLabelSet(series.Labels.Map())
+			}
+			for _, samples := range rec.RefEntries {
+				if l, ok := seriesRecs[uint64(samples.Ref)]; ok {
+					entry.Labels = l
+					for _, e := range samples.Entries {
+						entry.Entry = e
+						b.replay(entry)
+					}
+
+				}
+			}
+		}
+		c.sendBatch(tenantID, b)
+	}
+	return nil
 }
 
 func (c *client) run() {
@@ -312,12 +381,9 @@ func (c *client) run() {
 }
 
 func (c *client) newBatch(tenantID string) *batch {
-	wal, err := newWAL(c.cfg.WAL, c.metrics.registerer, c.logger, c.name, time.Now().UnixNano(), tenantID)
-	if err != nil {
-		level.Error(c.logger).Log("msg", "could not start WAL", "err", err)
-		// set the wall to noop
-	}
-	return newBatch(wal)
+	// todo: callum, how to handle this error
+	w, _ := c.wal.getWAL(tenantID)
+	return newBatch(w)
 }
 
 func (c *client) Chan() chan<- api.Entry {
@@ -484,4 +550,30 @@ func (c *client) UnregisterLatencyMetric(labels prometheus.Labels) {
 
 func (c *client) Name() string {
 	return c.name
+}
+
+type clientWAL struct {
+	client     *client
+	tenantWALs map[string]WAL
+}
+
+func newClientWAL(c *client) clientWAL {
+	return clientWAL{
+		client:     c,
+		tenantWALs: make(map[string]WAL),
+	}
+}
+
+func (c *clientWAL) getWAL(tenant string) (WAL, error) {
+	if w, ok := c.tenantWALs[tenant]; ok {
+		return w, nil
+	}
+	wal, err := newWAL(c.client.logger, c.client.metrics.registerer, c.client.cfg.WAL, c.client.name, tenant, time.Now().UnixNano())
+	if err != nil {
+		level.Error(c.client.logger).Log("msg", "could not start WAL", "err", err)
+		// set the wall to noop
+		return nil, err
+	}
+	c.tenantWALs[tenant] = wal
+	return wal, nil
 }

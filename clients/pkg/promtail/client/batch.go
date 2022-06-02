@@ -49,6 +49,8 @@ func newBatch(wal WAL) *batch {
 	return b
 }
 
+// replay adds an entry without writing it to the log, to be used
+// when replaying WAL segments at startup
 func (b *batch) replay(entry api.Entry) {
 	labelsString := labelsMapToString(entry.Labels, ReservedLabelTenantID)
 	if stream, ok := b.streams[labelsString]; ok {
@@ -70,7 +72,12 @@ func (b *batch) add(entry api.Entry) {
 	hashBuffer = hashBuffer[:0]
 
 	// todo: log the error
-	defer b.wal.Log(walRecord)
+	defer func() {
+		err := b.wal.Log(walRecord)
+		if err != nil {
+			fmt.Println("err: ", err)
+		}
+	}()
 
 	var fp uint64
 	lbs := labels.FromMap(util.ModelLabelSetToMap(entry.Labels))
