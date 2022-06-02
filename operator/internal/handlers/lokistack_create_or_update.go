@@ -79,11 +79,15 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	storageSchemas := storage.UpdateSchemas(
+	storageSchemas, err = storage.BuildSchemaConfigList(
 		time.Now().UTC(),
-		stack.Spec.Storage.SchemaVersion,
+		stack.Spec.Storage.Schemas,
 		stack.Status.Storage.Schemas,
 	)
+
+	if err != nil {
+		ll.Error(err, "failed to create storage schema configurations")
+	}
 
 	err = status.SetStorageSchemaStatus(ctx, k, req, storageSchemas)
 	if err != nil {

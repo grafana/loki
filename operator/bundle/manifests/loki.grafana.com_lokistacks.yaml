@@ -314,13 +314,32 @@ spec:
                 description: Storage defines the spec for the object storage endpoint
                   to store logs.
                 properties:
-                  schemaVersion:
-                    default: v11
-                    description: Type of schema which should be used for
-                    enum:
-                    - v11
-                    - v12
-                    type: string
+                  schemas:
+                    default:
+                    - effectiveDate: "2020-10-11"
+                      version: v11
+                    description: Schemas that have been applied to the cluster.
+                    items:
+                      description: ObjectStorageSchemaSpec defines the requirements
+                        needed to configure a new storage schema.
+                      properties:
+                        effectiveDate:
+                          description: EffectiveDate is the date that the schema will
+                            be applied on.
+                          pattern: ^([0-9]{4,})([-]([0-9]{2})){2}$
+                          type: string
+                        version:
+                          description: Version for writing and reading logs.
+                          enum:
+                          - v11
+                          - v12
+                          type: string
+                      required:
+                      - effectiveDate
+                      - version
+                      type: object
+                    minItems: 1
+                    type: array
                   secret:
                     description: Secret for object storage authentication. Name of
                       a secret in the same namespace as the LokiStack custom resource.
@@ -352,7 +371,7 @@ spec:
                         type: string
                     type: object
                 required:
-                - schemaVersion
+                - schemas
                 - secret
                 type: object
               storageClassName:
@@ -1140,18 +1159,18 @@ spec:
                       description: StorageSchemaStatus defines the observed state
                         of a single change to the Loki Storage Schema.
                       properties:
-                        dateApplied:
-                          description: DateApplied is the date the schema was applied
-                            on.
+                        effectiveDate:
+                          description: EffectiveDate is the date that the schema will
+                            be applied on.
                           type: string
                         version:
-                          description: Version describes which schema was applied.
+                          description: Version for writing and reading logs.
                           enum:
                           - v11
                           - v12
                           type: string
                       required:
-                      - dateApplied
+                      - effectiveDate
                       - version
                       type: object
                     type: array

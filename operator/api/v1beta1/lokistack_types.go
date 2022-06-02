@@ -369,7 +369,8 @@ type ObjectStorageTLSSpec struct {
 	CA string `json:"caName,omitempty"`
 }
 
-// ObjectStorageSchemaVersion defines the storage schema version which will be used with the Loki cluster.
+// ObjectStorageSchemaVersion defines the storage schema version which will be
+// used with the Loki cluster.
 //
 // +kubebuilder:validation:Enum=v11;v12
 type ObjectStorageSchemaVersion string
@@ -382,16 +383,35 @@ const (
 	ObjectStorageSchemaV12 ObjectStorageSchemaVersion = "v12"
 )
 
-// ObjectStorageSpec defines the requirements to access the object
-// storage bucket to persist logs by the ingester component.
-type ObjectStorageSpec struct {
-	// Type of schema which should be used for
+// ObjectStorageSchemaSpec defines the requirements needed to configure a new
+// storage schema.
+type ObjectStorageSchemaSpec struct {
+
+	// Version for writing and reading logs.
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +kubebuilder:default:=v11
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:v11","urn:alm:descriptor:com.tectonic.ui:select:v12"},displayName="Schema Version"
-	SchemaVersion ObjectStorageSchemaVersion `json:"schemaVersion"`
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:v11","urn:alm:descriptor:com.tectonic.ui:select:v12"},displayName="Version"
+	Version ObjectStorageSchemaVersion `json:"version"`
+
+	// EffectiveDate is the date that the schema will be applied on.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	EffectiveDate StorageSchemaEffectiveDate `json:"effectiveDate"`
+}
+
+// ObjectStorageSpec defines the requirements to access the object
+// storage bucket to persist logs by the ingester component.
+type ObjectStorageSpec struct {
+
+	// Schemas that have been applied to the cluster.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems:=1
+	// +kubebuilder:default:={{version:v11,effectiveDate:"2020-10-11"}}
+	Schemas []ObjectStorageSchemaSpec `json:"schemas"`
 
 	// Secret for object storage authentication.
 	// Name of a secret in the same namespace as the LokiStack custom resource.
@@ -749,22 +769,24 @@ type LokiStackComponentStatus struct {
 // StorageSchemaStatus defines the observed state of a single
 // change to the Loki Storage Schema.
 type StorageSchemaStatus struct {
-	// DateApplied is the date the schema was applied on.
-	//
-	// +required
-	// +kubebuilder:validation:Required
-	DateApplied string `json:"dateApplied"`
 
-	// Version describes which schema was applied.
+	// Version for writing and reading logs.
 	//
 	// +required
 	// +kubebuilder:validation:Required
 	Version ObjectStorageSchemaVersion `json:"version"`
+
+	// EffectiveDate is the date that the schema will be applied on.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	EffectiveDate string `json:"effectiveDate"`
 }
 
 // LokiStackStorageStatus defines the observed state of
 // the Loki storage configuration.
 type LokiStackStorageStatus struct {
+
 	// Schemas is a list of schemas which have been applied
 	// to the LokiStack.
 	//

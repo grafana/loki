@@ -151,7 +151,7 @@ schema_config:
   configs:
     {{- $store := .ObjectStorage.SharedStore }}
     {{- range $index, $schema := .ObjectStorage.Schemas }}
-    - from: "{{ $schema.From }}"
+    - from: "{{ $schema.EffectiveDate }}"
       index:
         period: 24h
         prefix: index_

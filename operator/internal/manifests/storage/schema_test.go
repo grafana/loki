@@ -9,149 +9,158 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUpdateSchema_AddNewSchema(t *testing.T) {
+func BuildSchemaConfigList_AddSchema_NoPriorSchemas(t *testing.T) {
 	current := time.Now().UTC()
-
-	expected := []Schema{
+	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
-			From:    "2020-10-01",
-			Version: lokiv1beta1.ObjectStorageSchemaV12,
-		},
-	}
-
-	test := []lokiv1beta1.StorageSchemaStatus{}
-
-	actual := UpdateSchemas(current, lokiv1beta1.ObjectStorageSchemaV12, test)
-
-	require.Len(t, actual, len(expected))
-	for i := range expected {
-		require.Equal(t, expected[i].From, actual[i].From)
-		require.Equal(t, expected[i].Version, actual[i].Version)
-	}
-}
-
-func TestUpdateSchema_AppendNewSchema(t *testing.T) {
-	current := time.Now().UTC()
-
-	expected := []Schema{
-		{
-			From:    current.Format(DateTimeFormat),
-			Version: lokiv1beta1.ObjectStorageSchemaV12,
-		},
-		{
-			From:    current.Add(UpdateDelay).Format(DateTimeFormat),
 			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-01",
 		},
 	}
+	statuses := []lokiv1beta1.StorageSchemaStatus{}
 
-	test := []lokiv1beta1.StorageSchemaStatus{
+	expected := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
-			DateApplied: current.Format(DateTimeFormat),
-			Version:     lokiv1beta1.ObjectStorageSchemaV12,
-		},
-	}
-
-	actual := UpdateSchemas(current, lokiv1beta1.ObjectStorageSchemaV11, test)
-
-	require.Len(t, actual, len(expected))
-	for i := range expected {
-		require.Equal(t, expected[i].From, actual[i].From)
-		require.Equal(t, expected[i].Version, actual[i].Version)
-	}
-}
-
-func TestUpdateSchema_IgnoreSameSchema(t *testing.T) {
-	current := time.Now().UTC()
-
-	expected := []Schema{
-		{
-			From:    current.Format(DateTimeFormat),
-			Version: lokiv1beta1.ObjectStorageSchemaV12,
-		},
-	}
-
-	test := []lokiv1beta1.StorageSchemaStatus{
-		{
-			DateApplied: current.Format(DateTimeFormat),
-			Version:     lokiv1beta1.ObjectStorageSchemaV12,
-		},
-	}
-
-	actual := UpdateSchemas(current, lokiv1beta1.ObjectStorageSchemaV12, test)
-
-	require.Len(t, actual, len(expected))
-	for i := range expected {
-		require.Equal(t, expected[i].From, actual[i].From)
-		require.Equal(t, expected[i].Version, actual[i].Version)
-	}
-}
-
-func TestUpdateSchema_ModifyUnappliedSchema(t *testing.T) {
-	// This scenario can only be tested with 3+ version in play.
-	// Otherwise, this test will just reduce the list. So, this
-	// "v10" is used as a placeholder for an eventual supported
-	// third version.
-	var testVersion lokiv1beta1.ObjectStorageSchemaVersion = "v10"
-
-	current := time.Now().UTC()
-
-	expected := []Schema{
-		{
-			From:    current.Format(DateTimeFormat),
 			Version: lokiv1beta1.ObjectStorageSchemaV11,
-		},
-		{
-			From:    current.Add(UpdateDelay).Format(DateTimeFormat),
-			Version: lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2020-10-01",
 		},
 	}
+	actual := BuildSchemaConfigList(current, specs, statuses)
 
-	test := []lokiv1beta1.StorageSchemaStatus{
-		{
-			DateApplied: current.Format(DateTimeFormat),
-			Version:     lokiv1beta1.ObjectStorageSchemaV11,
-		},
-		{
-			DateApplied: current.Add(UpdateDelay).Format(DateTimeFormat),
-			Version:     testVersion,
-		},
-	}
-
-	actual := UpdateSchemas(current, lokiv1beta1.ObjectStorageSchemaV12, test)
-
-	require.Len(t, actual, len(expected))
-	for i := range expected {
-		require.Equal(t, expected[i].From, actual[i].From)
-		require.Equal(t, expected[i].Version, actual[i].Version)
-	}
+	require.Equal(t, expected, actual)
 }
 
-func TestUpdateSchema_ModifyUnappliedSchema_ReduceSameVersion(t *testing.T) {
+func BuildSchemaConfigList_AddSchema_WithPriorSchemas(t *testing.T) {
 	current := time.Now().UTC()
-
-	expected := []Schema{
+	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
-			From:    current.Format(DateTimeFormat),
 			Version: lokiv1beta1.ObjectStorageSchemaV12,
-		},
-	}
-
-	test := []lokiv1beta1.StorageSchemaStatus{
-		{
-			DateApplied: current.Format(DateTimeFormat),
-			Version:     lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: current.Add(time.Hour * 24).Format(DateTimeFormat),
 		},
 		{
-			DateApplied: current.Add(UpdateDelay).Format(DateTimeFormat),
-			Version:     lokiv1beta1.ObjectStorageSchemaV11,
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-01",
+		},
+	}
+	statuses := []lokiv1beta1.StorageSchemaStatus{
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-01",
 		},
 	}
 
-	actual := UpdateSchemas(current, lokiv1beta1.ObjectStorageSchemaV12, test)
-
-	require.Len(t, actual, len(expected))
-	for i := range expected {
-		require.Equal(t, expected[i].From, actual[i].From)
-		require.Equal(t, expected[i].Version, actual[i].Version)
+	expected := []lokiv1beta1.ObjectStorageSchemaSpec{
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-01",
+		},
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: current.Add(time.Hour * 24).Format(DateTimeFormat),
+		},
 	}
+	actual := BuildSchemaConfigList(current, specs, statuses)
+
+	require.Equal(t, expected, actual)
+}
+
+func BuildSchemaConfigList_AddSchema_RemoveRedundantSchemas(t *testing.T) {
+	current := time.Now().UTC()
+	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: current.Add(time.Hour * 24 * 7).Format(DateTimeFormat),
+		},
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: current.Add(time.Hour * 24).Format(DateTimeFormat),
+		},
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-01",
+		},
+	}
+	statuses := []lokiv1beta1.StorageSchemaStatus{
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-01",
+		},
+	}
+
+	expected := []lokiv1beta1.ObjectStorageSchemaSpec{
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-01",
+		},
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: current.Add(time.Hour * 24).Format(DateTimeFormat),
+		},
+	}
+	actual := BuildSchemaConfigList(current, specs, statuses)
+
+	require.Equal(t, expected, actual)
+}
+
+func BuildSchemaConfigList_NoSchemas(t *testing.T) {
+	specs := []lokiv1beta1.ObjectStorageSchemaSpec{}
+	statuses := []lokiv1beta1.StorageSchemaStatus{}
+
+	_, err := BuildSchemaConfigList(time.Now().UTC(), specs, statuses)
+
+	require.Error(t, err)
+}
+
+func BuildSchemaConfigList_AddSchema_MissingAppliedSchema(t *testing.T) {
+	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-01",
+		},
+	}
+	statuses := []lokiv1beta1.StorageSchemaStatus{
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-01",
+		},
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-10-01",
+		},
+	}
+
+	_, err := BuildSchemaConfigList(time.Now().UTC(), specs, statuses)
+
+	require.Error(t, err)
+}
+
+func BuildSchemaConfigList_AddSchema_RetroactiveSchemaAddition(t *testing.T) {
+	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-10-01",
+		},
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2021-05-01",
+		},
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-01",
+		},
+	}
+	statuses := []lokiv1beta1.StorageSchemaStatus{
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-01",
+		},
+		{
+			Version: lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-10-01",
+		},
+	}
+
+	_, err := BuildSchemaConfigList(time.Now().UTC(), specs, statuses)
+
+	require.Error(t, err)
 }

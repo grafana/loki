@@ -84,25 +84,27 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 		},
 	}
 
-	schemas := []storage.Schema{
+	schemas := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
-			From:    "2020-10-11",
-			Version: lokiv1beta1.ObjectStorageSchemaV11,
+			Version:       lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2021-10-11",
 		},
 		{
-			From:    "2021-10-11",
-			Version: lokiv1beta1.ObjectStorageSchemaV12,
+			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-10-11",
 		},
 	}
 
 	expected := []lokiv1beta1.StorageSchemaStatus{
 		{
-			DateApplied: "2020-10-11",
-			Version:     lokiv1beta1.ObjectStorageSchemaV11,
+
+			Version:       lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-11",
 		},
 		{
-			DateApplied: "2021-10-11",
-			Version:     lokiv1beta1.ObjectStorageSchemaV12,
+
+			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-10-11",
 		},
 	}
 

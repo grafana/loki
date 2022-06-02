@@ -1,8 +1,10 @@
 package storage
 
 import (
+	"sort"
 	"time"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 )
 
@@ -17,86 +19,124 @@ const (
 	UpdateDelay = time.Hour * 24 * 2
 )
 
-// UpdateSchemas returns a list of schemas that can be used by Loki. It will
-// append a new schema if there are no existing, the last schema is not the
-// latest, or the last schema is not using the right object storage.
-func UpdateSchemas(
+// BuildSchemaConfigList creates a list of schemas to be used to configure
+// the storage schemas for the cluster. This method assumes that the following
+// validation has been done to the statuses and specs:
+//
+// 1. All EffectiveDate fields are able to be parsed with a YYYY-MM-DD format
+// 2. All EffectiveDate fields are unique in their respective list
+func BuildSchemaConfigList(
 	utcTime time.Time,
-	version lokiv1beta1.ObjectStorageSchemaVersion,
+	specs []lokiv1beta1.ObjectStorageSchemaSpec,
 	statuses []lokiv1beta1.StorageSchemaStatus,
-) []Schema {
-	count := len(statuses)
+) ([]lokiv1beta1.ObjectStorageSchemaSpec, error) {
 
-	if count == 0 {
-		// Loki Operator was first released with this schema (v11, 2020-10-01).
-		// Since the default is v11, old clusters will configure this fine. New
-		// clusters will either install with v11 or v12 based on the crd.
-		return []Schema{
-			{
-				From:    "2020-10-01",
-				Version: version,
-			},
-		}
+	if len(specs) == 0 {
+		return nil, kverrors.New("Empty schema list.")
 	}
 
-	mutableSchemas := make([]Schema, 1)
-	staticSchemas := make([]Schema, count-1)
-
-	for i, status := range statuses {
-		schema := Schema{
-			From:    status.DateApplied,
-			Version: status.Version,
-		}
-
-		if i != count-1 {
-			staticSchemas[i] = schema
-		} else {
-			// The most recent addition to the list is not
-			// guaranteed to be usable (in the case of multiple
-			// same day changes). Generally outside of this, the
-			// last change made will be added back to the list.
-			mutableSchemas[0] = schema
-		}
-	}
-
-	// No changes required. Return the converted list exactly as is.
-	if mutableSchemas[0].Version == version {
-		return append(staticSchemas, mutableSchemas...)
-	}
-
-	// Apply the changes to the index for logs starting two days later.
-	// Since the timestamps work by UTC, the goal is to avoid the scenario
-	// in which logs might be inaccessible because they were created with the
-	// wrong schema.
-	newSchema := Schema{
-		From:    utcTime.Add(UpdateDelay).Format(DateTimeFormat),
-		Version: version,
-	}
-
-	// There is a pending update that has not been applied yet.
-	// In order to avoid possible timing scenarios, updates are only
-	// changed if they occur on the same day. If an update is a day
-	// beforehand, the update in progress is unchanged.
+	// Schemas applied in the future can be ignored cause they have not
+	// taken effect yet. The delay is added to avoid edge cases where UTC
+	// and local time zones may cause interference.
 	//
-	// Example:
-	//
-	// 2022-05-05: Accept and set update to v12 (2022-05-07)
-	// 2022-05-06: Accept and set update to v11 (2022-05-08)
-	// 2022-05-07: v12 Update will be applied
-	// 2022-05-08: v11 Update will be applied
-	//
-	// Ideally, the v12 update could be modified as long the change
-	// occurred before 2022-05-07. However making the change within a day
-	// of the update, might cause trouble. Therefore, the changes are
-	// avoided.
-	if mutableSchemas[0].From == newSchema.From {
-		i := count - 2
-		if i >= 0 && staticSchemas[i].Version == version {
-			return staticSchemas
-		}
-		return append(staticSchemas, newSchema)
+	// For example, say there is a future change which will occur on 6/02/22.
+	// If change occurs close to midnight on 6/01/22, there might be timing
+	// issues between the local and UTC. Thus, there is a chance of corruption.
+	// To avoid this, the change on 6/02/22 should be considered as already
+	// applied and an error should be sent back to change the date of the
+	// in-flight change.
+	cutoff := utcTime.Add(UpdateDelay)
+	applied := filterUnappliedSchemas(statuses, cutoff)
+
+	if !containsAppliedSchemas(specs, applied) {
+		return nil, kverrors.New("Spec is missing schemas which have already been applied.")
 	}
 
-	mutableSchemas = append(mutableSchemas, newSchema)
-	return append(staticSchemas, mutableSchemas...)
+	// Schemas cannot be retroactively added in the past. Only new changes can
+	// be applied to configurations safely.
+	unapplied := filterAppliedSchemas(specs, cutoff)
+	if len(specs)-len(unapplied) != len(applied) {
+		return nil, kverrors.New("Spec contains schemas which cannot be retroactively applied.")
+	}
+
+	sort.SliceStable(specs, func(i, j int) bool {
+		iDate, _ := time.Parse(DateTimeFormat, specs[i].EffectiveDate)
+		jDate, _ := time.Parse(DateTimeFormat, specs[j].EffectiveDate)
+
+		return iDate.Before(jDate)
+	})
+
+	return reduceSortedSchemas(specs), nil
+}
+
+// filterUnappliedSchemas returns a slice of statuses that have a date which
+// occurs before the cutoff time.
+func filterUnappliedSchemas(statuses []lokiv1beta1.StorageSchemaStatus, cutoff time.Time) []lokiv1beta1.StorageSchemaStatus {
+	applied := []lokiv1beta1.StorageSchemaStatus{}
+
+	for _, status := range statuses {
+		date, _ := time.Parse(DateTimeFormat, status.EffectiveDate)
+
+		if date.Before(cutoff) {
+			applied = append(applied, status)
+		}
+	}
+
+	return applied
+}
+
+// filterAppliedSchemas returns a slice of specs that have a date which
+// occurs after the cutoff time.
+func filterAppliedSchemas(specs []lokiv1beta1.ObjectStorageSchemaSpec, cutoff time.Time) []lokiv1beta1.ObjectStorageSchemaSpec {
+	unapplied := []lokiv1beta1.StorageSchemaStatus{}
+
+	for _, spec := range specs {
+		date, _ := time.Parse(DateTimeFormat, string(spec.EffectiveDate))
+
+		if date.After(cutoff) {
+			unapplied = append(unapplied, spec)
+		}
+	}
+
+	return unapplied
+}
+
+// containsAppliedSchemas returns a boolean indicating if a list of given specs
+// has all the elements in a list of statuses.
+//
+// This method assumes that all elements in specs and statuses given have unique
+// effective dates.
+func containsAppliedSchemas(specs []lokiv1beta1.ObjectStorageSchemaSpec, applied []lokiv1beta1.StorageSchemaStatus) bool {
+	schemaMap := map[string]lokiv1beta1.ObjectStorageSchemaSpec{}
+
+	for _, spec := range specs {
+		schemaMap[string(spec.EffectiveDate)] = spec
+	}
+
+	contains := true
+
+	for _, status := range applied {
+		spec, ok := schemaMap[status.EffectiveDate]
+
+		if !ok || (ok && spec.Version != status.Version) {
+			contains = false
+		}
+	}
+
+	return contains
+}
+
+// reduceSortedSchemas returns a list of specs that have removed redundant entries.
+func reduceSortedSchemas(specs []lokiv1beta1.ObjectStorageSchemaSpec) []lokiv1beta1.ObjectStorageSchemaSpec {
+	lastIndex := 0
+	reduced := []lokiv1beta1.StorageSchemaStatus{specs[0]}
+
+	for _, spec := range specs {
+		if reduced[lastIndex].Version != spec.Version {
+			lastIndex++
+			reduced = append(reduced, spec)
+		}
+	}
+
+	return reduced
 }

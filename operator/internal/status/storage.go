@@ -14,7 +14,7 @@ import (
 )
 
 // SetStorageSchemaStatus updates the storage status component
-func SetStorageSchemaStatus(ctx context.Context, k k8s.Client, req ctrl.Request, schemas []storage.Schema) error {
+func SetStorageSchemaStatus(ctx context.Context, k k8s.Client, req ctrl.Request, schemas []lokiv1beta1.ObjectStorageSchemaSpec) error {
 	var s lokiv1beta1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -27,8 +27,8 @@ func SetStorageSchemaStatus(ctx context.Context, k k8s.Client, req ctrl.Request,
 
 	for i, schema := range schemas {
 		statuses[i] = lokiv1beta1.StorageSchemaStatus{
-			DateApplied: schema.From,
-			Version:     schema.Version,
+			Version:       schema.Version,
+			EffectiveDate: string(schema.EffectiveDate),
 		}
 	}
 
