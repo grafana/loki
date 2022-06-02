@@ -43,6 +43,8 @@ NOTE: this option is only available when using the query-frontend (with or witho
 The maximum number of queriers can be overridden on a per-tenant basis in the limits overrides configuration (`max_queriers_per_tenant`).
 
 ### The impact of “query of death”
+"query of death" is the scenario where a single tenant or a group of tenants sending expensive queries that is causing continous OOMing of queriers, those tenant(s) would then get assigned to other running queries to match the `max_queriers_per_tenant` and might eventually affect other tenant shards which beats the purpose of this feature.
+
 In the event a tenant is repeatedly sending a “query of death” which leads the querier to crash or get killed because of out-of-memory, the crashed querier will get disconnected from the query-frontend and a new querier will be immediately assigned to the tenant’s shard. This practically invalidates the assumption that shuffle-sharding can be used to contain the blast radius in case of a query of death.
 
 To mitigate it, Loki allows configuring a delay between when a querier disconnects because of a crash and when the crashed querier is actually removed from the tenant’s shard (and another healthy querier is added as a replacement). A delay of 1 minute may be a reasonable trade-off:
