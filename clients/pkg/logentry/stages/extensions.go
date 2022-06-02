@@ -8,7 +8,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const RFC3339Nano = "RFC3339Nano"
+const (
+	RFC3339Nano         = "RFC3339Nano"
+	MaxPartialLinesSize = 100 // Max buffer size to hold partial lines.
+)
 
 // NewDocker creates a Docker json log format specific pipeline stage.
 func NewDocker(logger log.Logger, registerer prometheus.Registerer) (Stage, error) {
@@ -56,7 +59,9 @@ func (c *cri) Run(entry chan Entry) chan Entry {
 	in := RunWithSkip(entry, func(e Entry) (Entry, bool) {
 		fmt.Println(e.Extracted)
 		if e.Extracted["flags"] == "P" {
-			// TODO(kavi): Make `c.partialLines` bounded to some upper length. Flush it any partialLines more than that.
+			if len(c.partialLines) >= MaxPartialLinesSize {
+				c.partialLines = c.partialLines[:0]
+			}
 			c.partialLines = append(c.partialLines, e.Line)
 			return Entry{}, true
 		}
