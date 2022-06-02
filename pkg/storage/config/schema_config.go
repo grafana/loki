@@ -60,6 +60,26 @@ var (
 	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
 )
 
+// TableRange represents a range of table numbers built based on the configured schema start/end date and the table period.
+// Both Start and End are inclusive.
+type TableRange struct {
+	Start, End int64
+}
+
+// TableRanges represents a list of table ranges for multiple schemas.
+type TableRanges []TableRange
+
+// TableNumberInRange tells whether given table number falls in any of the ranges.
+func (t TableRanges) TableNumberInRange(tableNumber int64) bool {
+	for _, r := range t {
+		if r.Start <= tableNumber && tableNumber <= r.End {
+			return true
+		}
+	}
+
+	return false
+}
+
 // PeriodConfig defines the schema and tables to use for a period of time
 type PeriodConfig struct {
 	From        DayTime             `yaml:"from"`         // used when working with config
@@ -85,6 +105,15 @@ func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	// call VersionAsInt after unmarshaling to errcheck schema version and populate PeriodConfig.schemaInt
 	_, err = cfg.VersionAsInt()
 	return err
+}
+
+// GetIndexTableNumberRange returns the table number range calculated based on
+// the configured schema start date, index table period and the given schemaEndDate
+func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRange {
+	return TableRange{
+		Start: cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		End:   schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),
+	}
 }
 
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from

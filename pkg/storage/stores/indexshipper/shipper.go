@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
@@ -99,8 +100,12 @@ type indexShipper struct {
 
 // NewIndexShipper creates a shipper for providing index store functionality using index files and object storage.
 // It manages the whole life cycle of uploading the index and downloading the index at query time.
+//
+// Since IndexShipper is generic, which means it can be used to manage various index types under the same object storage and/or local disk path,
+// it accepts ranges of table numbers(config.TableRanges) to be managed by the shipper.
+// This is mostly useful on the read path to sync and manage specific index tables within the given table number ranges.
 func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc, reg prometheus.Registerer) (IndexShipper, error) {
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc, tableRangesToHandle config.TableRanges, reg prometheus.Registerer) (IndexShipper, error) {
 	switch cfg.Mode {
 	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
 	default:
@@ -111,7 +116,7 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 		openIndexFileFunc: open,
 	}
 
-	err := shipper.init(storageClient, limits, ownsTenantFn, reg)
+	err := shipper.init(storageClient, limits, ownsTenantFn, tableRangesToHandle, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +127,7 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 }
 
 func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, reg prometheus.Registerer) error {
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRangesToHandle config.TableRanges, reg prometheus.Registerer) error {
 	indexStorageClient := storage.NewIndexStorageClient(storageClient, s.cfg.SharedStoreKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
@@ -146,7 +151,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 			Limits:            limits,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn, reg)
+		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn, tableRangesToHandle, reg)
 		if err != nil {
 			return err
 		}

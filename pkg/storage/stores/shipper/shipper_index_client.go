@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -63,13 +64,14 @@ type indexClient struct {
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer) (series_index.Client, error) {
+func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRanges config.TableRanges, registerer prometheus.Registerer) (series_index.Client, error) {
 	i := indexClient{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
 	}
 
-	err := i.init(storageClient, limits, ownsTenantFn, registerer)
+	err := i.init(storageClient, limits, ownsTenantFn, tableRanges, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -79,10 +81,11 @@ func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.
 	return &i, nil
 }
 
-func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.Limits, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer) error {
+func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.Limits,
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRanges config.TableRanges, registerer prometheus.Registerer) error {
 	var err error
 	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, ownsTenantFn,
-		indexfile.OpenIndexFile, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer))
+		indexfile.OpenIndexFile, tableRanges, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer))
 	if err != nil {
 		return err
 	}
