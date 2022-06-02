@@ -403,7 +403,8 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 		return nil, err
 	}
 
-	firstTime, lastTime := util.RoundToMilliseconds(startTime, endTime)
+	ft, et := postFilterChunkData.Bounds()
+	firstTime, lastTime := util.RoundToMilliseconds(ft, et)
 	postFilterCh := chunk.NewChunk(
 		cnk.UserID, cnk.FingerprintModel(), cnk.Metric,
 		chunkenc.NewFacade(postFilterChunkData, 0, 0),
