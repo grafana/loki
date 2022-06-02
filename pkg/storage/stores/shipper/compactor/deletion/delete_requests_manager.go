@@ -133,6 +133,11 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		return false, nil
 	}
 
+	if d.deletionMode == Disabled || d.deletionMode == FilterOnly {
+		// Don't process deletes
+		return false, nil
+	}
+
 	d.chunkIntervalsToRetain = d.chunkIntervalsToRetain[:0]
 	d.chunkIntervalsToRetain = append(d.chunkIntervalsToRetain, retention.IntervalFilter{
 		Interval: model.Interval{
