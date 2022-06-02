@@ -375,7 +375,7 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	chunkData := cnk.Data
 	lazyChunk := LazyChunk{Chunk: cnk}
 	newCtr, statCtx := stats.NewContext(ctx)
-	iterator, err := lazyChunk.Iterator(statCtx, c.from, c.through, c.direction, streamPipeline, c.nextChunk)
+	iterator, err := lazyChunk.Iterator(statCtx, c.from, c.through, c.direction, streamPipeline, nil)
 	if err != nil {
 		return nil, err
 	}
