@@ -375,11 +375,14 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	chunkData := cnk.Data
 	lazyChunk := LazyChunk{Chunk: cnk}
 	newCtr, statCtx := stats.NewContext(ctx)
-	iterator, err := lazyChunk.Iterator(statCtx, c.from, c.through, c.direction, streamPipeline, nil)
+	lokiChunk := chunkData.(*chunkenc.Facade).LokiChunk()
+	startTime, endTime := lokiChunk.Bounds()
+
+	iterator, err := lazyChunk.Iterator(statCtx, startTime, endTime, c.direction, streamPipeline, nil)
 	if err != nil {
 		return nil, err
 	}
-	lokiChunk := chunkData.(*chunkenc.Facade).LokiChunk()
+
 	postFilterChunkData := chunkenc.NewMemChunk(lokiChunk.Encoding(), chunkenc.UnorderedHeadBlockFmt, cnk.Data.Size(), cnk.Data.Size())
 	headChunkBytes := int64(0)
 	headChunkLine := int64(0)
@@ -399,7 +402,8 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	if err := postFilterChunkData.Close(); err != nil {
 		return nil, err
 	}
-	firstTime, lastTime := util.RoundToMilliseconds(c.from, c.through)
+	
+	firstTime, lastTime := util.RoundToMilliseconds(startTime, endTime)
 	postFilterCh := chunk.NewChunk(
 		cnk.UserID, cnk.FingerprintModel(), cnk.Metric,
 		chunkenc.NewFacade(postFilterChunkData, 0, 0),
