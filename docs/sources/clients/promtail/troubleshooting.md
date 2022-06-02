@@ -16,7 +16,7 @@ In dry run mode, Promtail still support reading from a [positions](../configurat
 To start Promtail in dry run mode use the flag `--dry-run` as shown in the example below:
 
 ```bash
-cat my.log | promtail --stdin --dry-run --client.url http://127.0.0.1:3100/loki/api/v1/push
+cat my.log | promtail --stdin --dry-run --config.file test-me.yaml --client.url http://127.0.0.1:3100/loki/api/v1/push
 ```
 
 ## Inspecting pipeline stages
@@ -29,9 +29,10 @@ Each log entry contains four fields:
 - extracted fields
 
 Enable the inspection output using the `--inspect` command-line option. The `--inspect` option can be used in combination with `--stdin` and `--dry-run`.
+Use the `--config.file` flag to specify the configuration file to inspect.
 
 ```bash
-cat my.log | promtail --stdin --dry-run --inspect --client.url http://127.0.0.1:3100/loki/api/v1/push
+cat my.log | promtail --stdin --dry-run --inspect --config.file test-me.yaml --client.url http://127.0.0.1:3100/loki/api/v1/push
 ```
 
 ![screenshot](../inspect.png)
@@ -42,6 +43,9 @@ If no changes are applied during a stage, that is usually an indication of a mis
 
 The `--inspect` flag should not be used in production, as the calculation of changes between pipeline stages negatively
 impacts Promtail's performance.
+
+Please note that only **the first configuration entry** under the `scrape_config` item will be applied while using the `--stdin` mode.
+Ensure this is the job configuration you need to test.
 
 ## Pipe data to Promtail
 
