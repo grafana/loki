@@ -378,7 +378,7 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	lokiChunk := chunkData.(*chunkenc.Facade).LokiChunk()
 	startTime, endTime := lokiChunk.Bounds()
 
-	iterator, err := lazyChunk.Iterator(statCtx, startTime, endTime, c.direction, streamPipeline, nil)
+	iterator, err := lazyChunk.Iterator(statCtx, startTime, endTime, c.direction, streamPipeline, c.nextChunk)
 	if err != nil {
 		return nil, err
 	}
@@ -402,7 +402,7 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	if err := postFilterChunkData.Close(); err != nil {
 		return nil, err
 	}
-	
+
 	firstTime, lastTime := util.RoundToMilliseconds(startTime, endTime)
 	postFilterCh := chunk.NewChunk(
 		cnk.UserID, cnk.FingerprintModel(), cnk.Metric,
