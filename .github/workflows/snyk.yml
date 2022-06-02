@@ -34,10 +34,12 @@ jobs:
           args: --json --all-projects --json-file-output=${{ github.event.repository.name }}.json  --strict-out-of-sync=false
 
       - name: install snyk-to-html
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
         run: |
           npm install snyk-to-html snyk2spdx snyk -g
-          snyk auth ${{ secrets.SNYK_TOKEN }}
+          snyk auth
           snyk-to-html -i ${{ github.event.repository.name }}.json -o ${{ github.event.repository.name }}.html
           snyk test --json --strict-out-of-sync=false | snyk2spdx --output ${{ github.event.repository.name }}.spdx
 
