@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-var att = []struct {
+var ltt = []struct {
 	desc string
 	spec v1beta1.LokiStack
 	err  *apierrors.StatusError
@@ -24,12 +24,12 @@ var att = []struct {
 				Storage: v1beta1.ObjectStorageSpec{
 					Schemas: []v1beta1.ObjectStorageSchemaSpec{
 						{
-							Version:    v1beta1.ObjectStorageSchemaV11,
-							EffectDate: "2020-10-11",
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:    v1beta1.ObjectStorageSchemaV12,
-							EffectDate: "2020-10-13",
+							Version:       v1beta1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-13",
 						},
 					},
 				},
@@ -43,12 +43,12 @@ var att = []struct {
 				Storage: v1beta1.ObjectStorageSpec{
 					Schemas: []v1beta1.ObjectStorageSchemaSpec{
 						{
-							Version:    v1beta1.ObjectStorageSchemaV11,
-							EffectDate: "2020-10-11",
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:    v1beta1.ObjectStorageSchemaV12,
-							EffectDate: "2020-10-11",
+							Version:       v1beta1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
 						},
 					},
 				},
@@ -73,8 +73,8 @@ var att = []struct {
 				Storage: v1beta1.ObjectStorageSpec{
 					Schemas: []v1beta1.ObjectStorageSchemaSpec{
 						{
-							Version:    v1beta1.ObjectStorageSchemaV11,
-							EffectDate: "2020/10/11",
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020/10/11",
 						},
 					},
 				},
@@ -95,7 +95,7 @@ var att = []struct {
 }
 
 func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
-	for _, tc := range att {
+	for _, tc := range ltt {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
@@ -103,7 +103,7 @@ func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-stack",
 				},
-				Spec: tc.spec,
+				Spec: tc.spec.Spec,
 			}
 
 			err := l.ValidateCreate()
@@ -117,7 +117,7 @@ func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
 }
 
 func TestLokiStackValidationWebhook_ValidateUpdate(t *testing.T) {
-	for _, tc := range att {
+	for _, tc := range ltt {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
@@ -125,7 +125,7 @@ func TestLokiStackValidationWebhook_ValidateUpdate(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-stack",
 				},
-				Spec: tc.spec,
+				Spec: tc.spec.Spec,
 			}
 
 			err := l.ValidateUpdate(&v1beta1.LokiStack{})

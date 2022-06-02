@@ -60,8 +60,8 @@ func BuildSchemaConfigList(
 	}
 
 	sort.SliceStable(specs, func(i, j int) bool {
-		iDate, _ := time.Parse(DateTimeFormat, specs[i].EffectiveDate)
-		jDate, _ := time.Parse(DateTimeFormat, specs[j].EffectiveDate)
+		iDate, _ := time.Parse(DateTimeFormat, string(specs[i].EffectiveDate))
+		jDate, _ := time.Parse(DateTimeFormat, string(specs[j].EffectiveDate))
 
 		return iDate.Before(jDate)
 	})
@@ -88,7 +88,7 @@ func filterUnappliedSchemas(statuses []lokiv1beta1.StorageSchemaStatus, cutoff t
 // filterAppliedSchemas returns a slice of specs that have a date which
 // occurs after the cutoff time.
 func filterAppliedSchemas(specs []lokiv1beta1.ObjectStorageSchemaSpec, cutoff time.Time) []lokiv1beta1.ObjectStorageSchemaSpec {
-	unapplied := []lokiv1beta1.StorageSchemaStatus{}
+	unapplied := []lokiv1beta1.ObjectStorageSchemaSpec{}
 
 	for _, spec := range specs {
 		date, _ := time.Parse(DateTimeFormat, string(spec.EffectiveDate))
@@ -129,7 +129,7 @@ func containsAppliedSchemas(specs []lokiv1beta1.ObjectStorageSchemaSpec, applied
 // reduceSortedSchemas returns a list of specs that have removed redundant entries.
 func reduceSortedSchemas(specs []lokiv1beta1.ObjectStorageSchemaSpec) []lokiv1beta1.ObjectStorageSchemaSpec {
 	lastIndex := 0
-	reduced := []lokiv1beta1.StorageSchemaStatus{specs[0]}
+	reduced := []lokiv1beta1.ObjectStorageSchemaSpec{specs[0]}
 
 	for _, spec := range specs {
 		if reduced[lastIndex].Version != spec.Version {

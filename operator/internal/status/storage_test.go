@@ -6,7 +6,6 @@ import (
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/status"
 	"github.com/stretchr/testify/require"
 
@@ -32,7 +31,7 @@ func TestSetStorageSchemaStatus_WhenGetLokiStackReturnsError_ReturnError(t *test
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
-	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []storage.Schema{})
+	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []lokiv1beta1.ObjectStorageSchemaSpec{})
 	require.Error(t, err)
 }
 
@@ -50,7 +49,7 @@ func TestSetStorageSchemaStatus_WhenGetLokiStackReturnsNotFound_DoNothing(t *tes
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []storage.Schema{})
+	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []lokiv1beta1.ObjectStorageSchemaSpec{})
 	require.NoError(t, err)
 }
 
@@ -69,8 +68,8 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 			Storage: lokiv1beta1.LokiStackStorageStatus{
 				Schemas: []lokiv1beta1.StorageSchemaStatus{
 					{
-						DateApplied: "2020-10-11",
 						Version:     lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
 					},
 				},
 			},

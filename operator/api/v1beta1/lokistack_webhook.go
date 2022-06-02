@@ -55,7 +55,7 @@ func (s *LokiStack) validate() error {
 
 		found[sc.EffectiveDate] = true
 
-		if _, err := time.Parse("1990-01-01", sc.EffectiveDate); err != nil {
+		if _, err := time.Parse("1990-01-01", string(sc.EffectiveDate)); err != nil {
 			allErrs = append(allErrs, field.Invalid(
 				field.NewPath("Spec").Child("Storage").Child("Schemas").Index(i).Child("EffectiveDate"),
 				sc.EffectiveDate,

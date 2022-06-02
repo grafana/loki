@@ -79,7 +79,7 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	storageSchemas, err = storage.BuildSchemaConfigList(
+	storageSchemas, err := storage.BuildSchemaConfigList(
 		time.Now().UTC(),
 		stack.Spec.Storage.Schemas,
 		stack.Status.Storage.Schemas,

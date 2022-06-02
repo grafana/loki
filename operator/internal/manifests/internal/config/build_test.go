@@ -224,10 +224,10 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
-			Schemas: []storage.Schema{
+			Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 				{
-					From:    "2020-10-01",
-					Version: "v11",
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
@@ -472,10 +472,10 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
-			Schemas: []storage.Schema{
+			Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 				{
-					From:    "2020-10-01",
-					Version: "v11",
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
@@ -541,10 +541,10 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
-			Schemas: []storage.Schema{
+			Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 				{
-					From:    "2020-10-01",
-					Version: "v11",
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
@@ -1556,10 +1556,10 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
-			Schemas: []storage.Schema{
+			Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 				{
-					From:    "2020-10-01",
-					Version: "v11",
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
