@@ -42,6 +42,7 @@ jobs:
           snyk test --json --strict-out-of-sync=false | snyk2spdx --output ${{ github.event.repository.name }}.spdx
 
       - name: Create results dir
+        continue-on-error: true
         run: mkdir -p snyk_scans && cp -v ${{ github.event.repository.name }}.{html,json,sarif,spdx} snyk_scans/
 
       - name: Use the Upload Artifact GitHub Action
