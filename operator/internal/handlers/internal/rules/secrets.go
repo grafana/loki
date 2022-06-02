@@ -18,15 +18,15 @@ func ExtractRulerSecret(s *corev1.Secret, t lokiv1beta1.RemoteWriteAuthType) (*m
 			return nil, kverrors.New("missing basic auth username", "field", "username")
 		}
 
-		password, ok := s.Data["password"]
-		if !ok {
+		password := s.Data["password"]
+		if len(password) == 0 {
 			return nil, kverrors.New("missing basic auth password", "field", "username")
 		}
 
 		return &manifests.RulerSecret{Username: string(username), Password: string(password)}, nil
 	case lokiv1beta1.BearerAuthorization:
-		token, ok := s.Data["bearer_token"]
-		if !ok {
+		token := s.Data["bearer_token"]
+		if len(token) == 0 {
 			return nil, kverrors.New("missing bearer token", "field", "bearer_token")
 		}
 
