@@ -232,7 +232,7 @@ func (r *ingesterRecoverer) Done() <-chan struct{} {
 func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput) error {
 		rec := recordPool.GetRecord()
-		if err := decodeWALRecord(b, rec); err != nil {
+		if err := DecodeWALRecord(b, rec); err != nil {
 			return err
 		}
 

@@ -184,7 +184,7 @@ func decodeEntries(b []byte, version RecordType, rec *WALRecord) error {
 	return nil
 }
 
-func decodeWALRecord(b []byte, walRec *WALRecord) (err error) {
+func DecodeWALRecord(b []byte, walRec *WALRecord) (err error) {
 	var (
 		userID  string
 		dec     record.Decoder
