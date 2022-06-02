@@ -1,5 +1,6 @@
 ## Main
 
+- [6195](https://github.com/grafana/loki/pull/6195) **periklis**: Add ruler config support
 - [6198](https://github.com/grafana/loki/pull/6198) **periklis**: Add support for custom S3 CA
 - [6199](https://github.com/grafana/loki/pull/6199) **Red-GV**: Update GCP secret volume path
 - [6125](https://github.com/grafana/loki/pull/6125) **sasagarw**: Add method to get authenticated from GCP
