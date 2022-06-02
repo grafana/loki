@@ -276,9 +276,10 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 	log.Span.LogFields(otlog.String("postFilterPreFilterLogql", preFilterLogql))
 	removeLineFmtAbel := false
 	if strings.Contains(preFilterLogql, "line_format") {
-		removeLineFmt(postFilterLogSelector)
+		//removeLineFmt(postFilterLogSelector)
 		removeLineFmtAbel = true
 		log.Span.LogFields(otlog.String("resultPostFilterPreFilterLogql", postFilterLogSelector.String()))
+		return chunks, nil, nil
 	}
 	log.Span.SetTag("remove_line_format", removeLineFmtAbel)
 	result := make([]chunk.Chunk, 0)
@@ -386,7 +387,7 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	for iterator.Next() {
 		entry := iterator.Entry()
 		//reset line after post filter.
-		entry.Line = iterator.ProcessLine()
+		//entry.Line = iterator.ProcessLine()
 		err := postFilterChunkData.Append(&entry)
 		if err != nil {
 			return nil, err
