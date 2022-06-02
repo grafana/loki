@@ -147,11 +147,42 @@ func CreateOrUpdateLokiStack(
 	var (
 		alertingRules  []lokiv1beta1.AlertingRule
 		recordingRules []lokiv1beta1.RecordingRule
+		rulerConfig    *lokiv1beta1.RulerConfigSpec
+		rulerSecret    *manifests.RulerSecret
 	)
 	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
 		alertingRules, recordingRules, err = rules.List(ctx, k, req.Namespace, stack.Spec.Rules)
 		if err != nil {
 			log.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
+		}
+
+		rulerConfig, err = rules.GetRulerConfig(ctx, k, req)
+		if err != nil {
+			log.Error(err, "failed to lookup ruler config", "key", req.NamespacedName)
+		}
+
+		if rulerConfig != nil && rulerConfig.RemoteWriteSpec != nil && rulerConfig.RemoteWriteSpec.ClientSpec != nil {
+			var rs corev1.Secret
+			key := client.ObjectKey{Name: rulerConfig.RemoteWriteSpec.ClientSpec.AuthorizationSecretName, Namespace: stack.Namespace}
+			if err = k.Get(ctx, key, &rs); err != nil {
+				if apierrors.IsNotFound(err) {
+					return &status.DegradedError{
+						Message: "Missing ruler remote write authorization secret",
+						Reason:  lokiv1beta1.ReasonMissingRulerSecret,
+						Requeue: false,
+					}
+				}
+				return kverrors.Wrap(err, "failed to lookup lokistack ruler secret", "name", key)
+			}
+
+			rulerSecret, err = rules.ExtractRulerSecret(&rs, rulerConfig.RemoteWriteSpec.ClientSpec.AuthorizationType)
+			if err != nil {
+				return &status.DegradedError{
+					Message: "Invalid ruler remote write authorization secret contents",
+					Reason:  lokiv1beta1.ReasonInvalidRulerSecret,
+					Requeue: false,
+				}
+			}
 		}
 	}
 
@@ -167,6 +198,10 @@ func CreateOrUpdateLokiStack(
 		ObjectStorage:     *objstorage,
 		AlertingRules:     alertingRules,
 		RecordingRules:    recordingRules,
+		Ruler: manifests.Ruler{
+			Spec:   rulerConfig,
+			Secret: rulerSecret,
+		},
 		Tenants: manifests.Tenants{
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,

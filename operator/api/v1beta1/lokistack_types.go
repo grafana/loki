@@ -635,6 +635,11 @@ const (
 	ReasonMissingObjectStorageCAConfigMap LokiStackConditionReason = "MissingObjectStorageCAConfigMap"
 	// ReasonInvalidObjectStorageCAConfigMap when the format of the CA configmap is invalid.
 	ReasonInvalidObjectStorageCAConfigMap LokiStackConditionReason = "InvalidObjectStorageCAConfigMap"
+	// ReasonMissingRulerSecret when the required secret to authorization remote write connections
+	// for the ruler is missing.
+	ReasonMissingRulerSecret LokiStackConditionReason = "MissingRulerSecret"
+	// ReasonInvalidRulerSecret when the format of the ruler remote write authorization secret is invalid.
+	ReasonInvalidRulerSecret LokiStackConditionReason = "InvalidRulerSecret"
 	// ReasonInvalidReplicationConfiguration when the configurated replication factor is not valid
 	// with the select cluster size.
 	ReasonInvalidReplicationConfiguration LokiStackConditionReason = "InvalidReplicationConfiguration"
