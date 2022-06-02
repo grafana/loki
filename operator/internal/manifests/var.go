@@ -112,7 +112,7 @@ func commonLabels(stackName string) map[string]string {
 func serviceAnnotations(serviceName string, enableSigningService bool) map[string]string {
 	annotations := map[string]string{}
 	if enableSigningService {
-		annotations[openshift.ServingCertKey] = signingServiceSecretName(serviceName)
+		annotations[openshift.ServingCertKey] = serviceName
 	}
 	return annotations
 }

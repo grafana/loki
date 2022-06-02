@@ -257,8 +257,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
 										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
-										"--tls.server.cert-file=/var/run/tls/tls.crt",
-										"--tls.server.key-file=/var/run/tls/tls.key",
+										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
+										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
 										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
 									},
@@ -266,7 +266,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										{
 											Name:      tlsSecretVolume,
 											ReadOnly:  true,
-											MountPath: gateway.LokiGatewayTLSDir,
+											MountPath: httpTLSDir,
 										},
 									},
 									ReadinessProbe: &corev1.Probe{
@@ -379,7 +379,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										{
 											Name:      tlsSecretVolume,
 											ReadOnly:  true,
-											MountPath: gateway.LokiGatewayTLSDir,
+											MountPath: httpTLSDir,
 										},
 									},
 									ReadinessProbe: &corev1.Probe{
@@ -427,8 +427,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
 										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
-										"--tls.server.cert-file=/var/run/tls/tls.crt",
-										"--tls.server.key-file=/var/run/tls/tls.key",
+										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
+										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
 										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
 									},
@@ -436,7 +436,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										{
 											Name:      tlsSecretVolume,
 											ReadOnly:  true,
-											MountPath: gateway.LokiGatewayTLSDir,
+											MountPath: httpTLSDir,
 										},
 									},
 									ReadinessProbe: &corev1.Probe{
@@ -608,8 +608,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.write.endpoint=https://example.com",
 										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 										"--logs.tls.ca-file=/var/run/ca/service-ca.crt",
-										"--tls.server.cert-file=/var/run/tls/tls.crt",
-										"--tls.server.key-file=/var/run/tls/tls.key",
+										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
+										"--tls.server.key-file=/var/run/tls/http/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
 										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
 									},
@@ -620,7 +620,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 											MountPath: "/var/run/tls/http",
 										},
 										{
-											Name:      "my-stack-ca-bundle",
+											Name:      "test-ca-bundle",
 											ReadOnly:  true,
 											MountPath: "/var/run/ca",
 										},
@@ -706,12 +706,12 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Name: "tls-secret-volume",
 								},
 								{
-									Name: "my-stack-ca-bundle",
+									Name: "test-ca-bundle",
 									VolumeSource: corev1.VolumeSource{
 										ConfigMap: &corev1.ConfigMapVolumeSource{
 											DefaultMode: &defaultConfigMapMode,
 											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "my-stack-ca-bundle",
+												Name: "test-ca-bundle",
 											},
 										},
 									},

@@ -10,14 +10,13 @@ import (
 )
 
 func configureGRPCServicePKI(podSpec *corev1.PodSpec, serviceName string) error {
-	secretName := signingServiceSecretName(serviceName)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
-				Name: secretName,
+				Name: serviceName,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
-						SecretName: secretName,
+						SecretName: serviceName,
 					},
 				},
 			},
@@ -26,7 +25,7 @@ func configureGRPCServicePKI(podSpec *corev1.PodSpec, serviceName string) error 
 	secretContainerSpec := corev1.Container{
 		VolumeMounts: []corev1.VolumeMount{
 			{
-				Name:      secretName,
+				Name:      serviceName,
 				ReadOnly:  false,
 				MountPath: grpcTLSDir,
 			},

@@ -349,7 +349,6 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 		}
 	}
 
-	secretName := signingServiceSecretName(serviceName)
 	certFile := path.Join(httpTLSDir, tlsCertFile)
 	keyFile := path.Join(httpTLSDir, tlsKeyFile)
 
@@ -359,7 +358,7 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 				Name: tlsSecretVolume,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
-						SecretName: secretName,
+						SecretName: serviceName,
 					},
 				},
 			},

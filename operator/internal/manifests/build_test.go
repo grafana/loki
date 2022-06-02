@@ -270,7 +270,7 @@ func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
 			continue
 		}
 
-		secretName := fmt.Sprintf("%s-http-tls", name)
+		secretName := fmt.Sprintf("%s-http", name)
 		expVolume := corev1.Volume{
 			Name: secretName,
 			VolumeSource: corev1.VolumeSource{
@@ -390,14 +390,14 @@ func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
 
 	secretsMap := map[string]string{
 		// deployments
-		"test-distributor":    "test-distributor-grpc-metrics",
-		"test-querier":        "test-querier-grpc-metrics",
-		"test-query-frontend": "test-query-frontend-grpc-metrics",
+		"test-distributor":    "test-distributor-grpc",
+		"test-querier":        "test-querier-grpc",
+		"test-query-frontend": "test-query-frontend-grpc",
 		// statefulsets
-		"test-ingester":      "test-ingester-grpc-metrics",
-		"test-compactor":     "test-compactor-grpc-metrics",
-		"test-index-gateway": "test-index-gateway-grpc-metrics",
-		"test-ruler":         "test-ruler-grpc-metrics",
+		"test-ingester":      "test-ingester-grpc",
+		"test-compactor":     "test-compactor-grpc",
+		"test-index-gateway": "test-index-gateway-grpc",
+		"test-ruler":         "test-ruler-grpc",
 	}
 
 	for _, tst := range table {
