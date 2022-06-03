@@ -38,6 +38,8 @@ var (
 	indexTypeStats  = usagestats.NewString("store_index_type")
 	objectTypeStats = usagestats.NewString("store_object_type")
 	schemaStats     = usagestats.NewString("store_schema")
+
+	errWritingChunkUnsupported = errors.New("writing chunks is not supported while running store in read-only mode")
 )
 
 // Store is the Loki chunk store to retrieve and save chunks.
@@ -204,25 +206,30 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		prometheus.Labels{"component": "index-store-" + p.From.String()}, s.registerer)
 
 	if p.IndexType == config.TSDBType {
-		objectClient, err := NewObjectClient(s.cfg.TSDBShipperConfig.SharedStoreType, s.cfg, s.clientMetrics)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		// ToDo(Sandeep): Avoid initializing writer when in read only mode
-		writer, idx, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits, indexClientReg)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
 		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
 			// inject the index-gateway client into the index store
 			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			idx = series.NewIndexGatewayClientStore(gw, idx)
+			idx := series.NewIndexGatewayClientStore(gw, nil)
+
+			return failingChunkWriter{}, idx, func() {
+				f.Stop()
+				gw.Stop()
+			}, nil
 		}
+
+		objectClient, err := NewObjectClient(s.cfg.TSDBShipperConfig.SharedStoreType, s.cfg, s.clientMetrics)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		writer, idx, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits, indexClientReg)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
 
 		return writer, idx,
 			func() {
@@ -491,4 +498,14 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 		filtered = append(filtered, chunk)
 	}
 	return filtered
+}
+
+type failingChunkWriter struct{}
+
+func (f failingChunkWriter) Put(_ context.Context, _ []chunk.Chunk) error {
+	return errWritingChunkUnsupported
+}
+
+func (f failingChunkWriter) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
+	return errWritingChunkUnsupported
 }
