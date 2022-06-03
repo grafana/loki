@@ -41,6 +41,7 @@ type table struct {
 	cacheLocation     string
 	storageClient     storage.Client
 	openIndexFileFunc index.OpenIndexFileFunc
+	metrics           *metrics
 
 	baseUserIndexSet, baseCommonIndexSet storage.IndexSet
 
@@ -51,7 +52,7 @@ type table struct {
 
 // NewTable just creates an instance of table without trying to load files from local storage or object store.
 // It is used for initializing table at query time.
-func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc) Table {
+func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) Table {
 	table := table{
 		name:               name,
 		cacheLocation:      cacheLocation,
@@ -60,6 +61,7 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 		baseCommonIndexSet: storage.NewIndexSet(storageClient, false),
 		logger:             log.With(util_log.Logger, "table-name", name),
 		openIndexFileFunc:  openIndexFileFunc,
+		metrics:            metrics,
 		indexSets:          map[string]IndexSet{},
 	}
 
@@ -68,7 +70,7 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 
 // LoadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
 // It is used for loading and initializing table at startup. It would initialize index sets which already had files locally.
-func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc) (Table, error) {
+func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) (Table, error) {
 	err := util.EnsureDirectory(cacheLocation)
 	if err != nil {
 		return nil, err
@@ -88,6 +90,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		logger:             log.With(util_log.Logger, "table-name", name),
 		indexSets:          map[string]IndexSet{},
 		openIndexFileFunc:  openIndexFileFunc,
+		metrics:            metrics,
 	}
 
 	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(filesInfo))
@@ -288,6 +291,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 			start := time.Now()
 			defer func() {
 				duration := time.Since(start)
+				t.metrics.queryTimeTableDownloadDurationSeconds.WithLabelValues(t.name).Add(duration.Seconds())
 				logger := spanlogger.FromContextWithFallback(ctx, loggerWithUserID(t.logger, id))
 				level.Info(logger).Log("msg", "downloaded index set at query time", "duration", duration)
 			}()

@@ -138,6 +138,32 @@ rules:
   - patch
   - update
 - apiGroups:
+  - loki.grafana.com
+  resources:
+  - rulerconfigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - loki.grafana.com
+  resources:
+  - rulerconfigs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - loki.grafana.com
+  resources:
+  - rulerconfigs/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - monitoring.coreos.com
   resources:
   - prometheusrules

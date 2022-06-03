@@ -32,9 +32,15 @@ that the order of configs reads correctly top to bottom when viewed in Grafana's
 ## Configuration File Reference
 
 To specify which configuration file to load, pass the `-config.file` flag at the
-command line. The file is written in [YAML format](https://en.wikipedia.org/wiki/YAML),
-defined by the scheme below. Brackets indicate that a parameter is optional. For
-non-list parameters the value is set to the specified default.
+command line. The value can be a list of comma separated paths, then the first
+file that exists will be used.
+If no `-config.file` argument is specified, Loki will look up the `config.yaml` in the
+current working directory and the `config/` sub-directory and try to use that.
+
+The file is written in [YAML
+format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below.
+Brackets indicate that a parameter is optional. For non-list parameters the
+value is set to the specified default.
 
 ### Use environment variables in the configuration
 
@@ -379,10 +385,6 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
 
-# Address, including port, where the compactor api is served
-# CLI flag: -frontend.compactor-address
-[compactor_address: <string> | default = ""]
-
 # Log queries that are slower than the specified duration. Set to 0 to disable.
 # Set to < 0 to enable on all queries.
 # CLI flag: -frontend.log-queries-longer-than
@@ -677,6 +679,10 @@ alertmanager_client:
 # CLI flag: -ruler.alertmanager-use-v2
 [enable_alertmanager_v2: <boolean> | default = false]
 
+# List of alert relabel configs
+alert_relabel_configs:
+  [- <relabel_config> ...]
+
 # Capacity of the queue for notifications to be sent to the Alertmanager.
 # CLI flag: -ruler.notification-queue-capacity
 [notification_queue_capacity: <int> | default = 10000]
@@ -790,18 +796,31 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # CLI flag: -<prefix>.azure.environment
 [environment: <string> | default = "AzureGlobal"]
 
-# Name of the blob container used to store chunks. This container must be
-# created before running cortex.
-# CLI flag: -<prefix>.azure.container-name
-[container_name: <string> | default = "loki"]
-
-# The Microsoft Azure account name to be used
+# Azure storage account name.
 # CLI flag: -<prefix>.azure.account-name
 [account_name: <string> | default = ""]
 
-# The Microsoft Azure account key to use.
+# Azure storage account key.
 # CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
+
+# Name of the storage account blob container used to store chunks.
+# This container must be created before running Loki.
+# CLI flag: -<prefix>.azure.container-name
+[container_name: <string> | default = "loki"]
+
+# Azure storage endpoint suffix without schema. The storage account name will
+# be prefixed to this value to create the FQDN.
+# CLI flag: -<prefix>.azure.endpoint-suffix
+[endpoint_suffix: <string> | default = ""]
+
+# Use Managed Identity to authenticate to the Azure storage account.
+# CLI flag: -<prefix>.azure.use-managed-identity
+[use_managed_identity: <boolean> | default = false]
+
+# User assigned identity ID to authenticate to the Azure storage account.
+# CLI flag: -<prefix>.azure.user-assigned-id
+[user_assigned_id: <string> | default = ""]
 
 # Chunk delimiter to build the blobID
 # CLI flag: -<prefix>.azure.chunk-delimiter
@@ -834,10 +853,6 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # Maximum time to wait before retrying a request.
 # CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
-
-# Use Managed Identity or not.
-# CLI flag: -ruler.storage.azure.use-managed-identity
-[use_managed_identity: <boolean> | default = false]
 ```
 
 ## gcs_storage_config
@@ -2600,6 +2615,10 @@ This way, one doesn't have to replicate configuration in multiple places.
 # to be used by the distributor's ring, but only if the distributor's ring itself
 # doesn't have a `heartbeat_period` set.
 [ring: <ring>]
+
+# Address, including port, where the compactor api is served
+# CLI flag: -common.compactor-address
+[compactor_address: <string> | default = ""]
 ```
 
 ## analytics

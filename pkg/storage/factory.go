@@ -25,9 +25,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -120,6 +121,9 @@ func (cfg *Config) Validate() error {
 	if err := cfg.BoltDBShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid boltdb-shipper config")
 	}
+	if err := cfg.TSDBShipperConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid tsdb config")
+	}
 	return nil
 }
 
@@ -156,8 +160,8 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 			return boltDBIndexClientWithShipper, nil
 		}
 
-		if shouldUseBoltDBIndexGatewayClient(cfg) {
-			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
+		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
+			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
 			if err != nil {
 				return nil, err
 			}

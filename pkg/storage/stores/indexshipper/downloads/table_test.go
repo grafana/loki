@@ -66,7 +66,7 @@ func buildTestTable(t *testing.T, path string) (*table, stopFunc) {
 
 	table := NewTable(tableName, cachePath, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	}).(*table)
+	}, newMetrics(nil)).(*table)
 	_, usersWithIndex, err := table.storageClient.ListFiles(context.Background(), tableName, false)
 	require.NoError(t, err)
 	require.NoError(t, table.EnsureQueryReadiness(context.Background(), usersWithIndex))
@@ -258,7 +258,7 @@ func TestTable_EnsureQueryReadiness(t *testing.T) {
 			cachePath := t.TempDir()
 			table := NewTable(tableName, cachePath, storageClient, func(path string) (index.Index, error) {
 				return openMockIndexFile(t, path), nil
-			}).(*table)
+			}, newMetrics(nil)).(*table)
 			defer func() {
 				table.Close()
 			}()
@@ -376,7 +376,7 @@ func TestLoadTable(t *testing.T) {
 	// try loading the table.
 	table, err := LoadTable(tableName, tablePathInCache, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	})
+	}, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -396,7 +396,7 @@ func TestLoadTable(t *testing.T) {
 	// try loading the table, it should skip loading corrupt file and reload it from storage.
 	table, err = LoadTable(tableName, tablePathInCache, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	})
+	}, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 

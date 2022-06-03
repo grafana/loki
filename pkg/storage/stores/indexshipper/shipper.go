@@ -8,12 +8,15 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/uploads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -26,6 +29,9 @@ const (
 	ModeReadOnly = Mode("RO")
 	// ModeWriteOnly is to allow only write operations
 	ModeWriteOnly = Mode("WO")
+
+	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
+	FilesystemObjectStoreType = "filesystem"
 
 	// UploadInterval defines interval for when we check if there are new index files to upload.
 	// It's also used to snapshot the currently written index tables so the snapshots can be used for reads.
@@ -47,13 +53,14 @@ type IndexShipper interface {
 }
 
 type Config struct {
-	ActiveIndexDirectory string        `yaml:"active_index_directory"`
-	SharedStoreType      string        `yaml:"shared_store"`
-	SharedStoreKeyPrefix string        `yaml:"shared_store_key_prefix"`
-	CacheLocation        string        `yaml:"cache_location"`
-	CacheTTL             time.Duration `yaml:"cache_ttl"`
-	ResyncInterval       time.Duration `yaml:"resync_interval"`
-	QueryReadyNumDays    int           `yaml:"query_ready_num_days"`
+	ActiveIndexDirectory     string                                 `yaml:"active_index_directory"`
+	SharedStoreType          string                                 `yaml:"shared_store"`
+	SharedStoreKeyPrefix     string                                 `yaml:"shared_store_key_prefix"`
+	CacheLocation            string                                 `yaml:"cache_location"`
+	CacheTTL                 time.Duration                          `yaml:"cache_ttl"`
+	ResyncInterval           time.Duration                          `yaml:"resync_interval"`
+	QueryReadyNumDays        int                                    `yaml:"query_ready_num_days"`
+	IndexGatewayClientConfig gatewayclient.IndexGatewayClientConfig `yaml:"index_gateway_client"`
 
 	IngesterName           string
 	Mode                   Mode
@@ -62,6 +69,8 @@ type Config struct {
 
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+".shipper.index-gateway-client", f)
+
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+".shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.SharedStoreType, prefix+".shipper.shared-store", "", "Shared store for keeping index files. Supported types: gcs, s3, azure, filesystem")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, prefix+".shipper.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it")
@@ -69,6 +78,14 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.CacheTTL, prefix+".shipper.cache-ttl", 24*time.Hour, "TTL for index files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, prefix+".shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 	f.IntVar(&cfg.QueryReadyNumDays, prefix+".shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
+}
+
+func (cfg *Config) Validate() error {
+	// set the default value for mode
+	if cfg.Mode == "" {
+		cfg.Mode = ModeReadWrite
+	}
+	return shipper_util.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
 }
 
 type indexShipper struct {
@@ -82,13 +99,19 @@ type indexShipper struct {
 
 // NewIndexShipper creates a shipper for providing index store functionality using index files and object storage.
 // It manages the whole life cycle of uploading the index and downloading the index at query time.
-func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, open index.OpenIndexFileFunc) (IndexShipper, error) {
+func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc, reg prometheus.Registerer) (IndexShipper, error) {
+	switch cfg.Mode {
+	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
+	default:
+		return nil, fmt.Errorf("invalid mode: %v", cfg.Mode)
+	}
 	shipper := indexShipper{
 		cfg:               cfg,
 		openIndexFileFunc: open,
 	}
 
-	err := shipper.init(storageClient, limits)
+	err := shipper.init(storageClient, limits, ownsTenantFn, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +121,8 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 	return &shipper, nil
 }
 
-func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.Limits) error {
+func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.Limits,
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, reg prometheus.Registerer) error {
 	indexStorageClient := storage.NewIndexStorageClient(storageClient, s.cfg.SharedStoreKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
@@ -106,7 +130,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			UploadInterval: UploadInterval,
 			DBRetainPeriod: s.cfg.IngesterDBRetainPeriod,
 		}
-		uploadsManager, err := uploads.NewTableManager(cfg, indexStorageClient)
+		uploadsManager, err := uploads.NewTableManager(cfg, indexStorageClient, reg)
 		if err != nil {
 			return err
 		}
@@ -122,7 +146,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 			Limits:            limits,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient)
+		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn, reg)
 		if err != nil {
 			return err
 		}

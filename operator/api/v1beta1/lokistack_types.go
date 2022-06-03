@@ -350,15 +350,33 @@ type ObjectStorageSecretSpec struct {
 	Name string `json:"name"`
 }
 
+// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
+type ObjectStorageTLSSpec struct {
+	// CA is the name of a ConfigMap containing a CA certificate.
+	// It needs to be in the same namespace as the LokiStack custom resource.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
+	CA string `json:"caName,omitempty"`
+}
+
 // ObjectStorageSpec defines the requirements to access the object
 // storage bucket to persist logs by the ingester component.
 type ObjectStorageSpec struct {
 	// Secret for object storage authentication.
-	// Name of a secret in the same namespace as the cluster logging operator.
+	// Name of a secret in the same namespace as the LokiStack custom resource.
 	//
 	// +required
 	// +kubebuilder:validation:Required
 	Secret ObjectStorageSecretSpec `json:"secret"`
+
+	// TLS configuration for reaching the object storage endpoint.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLS Config"
+	TLS *ObjectStorageTLSSpec `json:"tls,omitempty"`
 }
 
 // QueryLimitSpec defines the limits applies at the query path.
@@ -612,6 +630,16 @@ const (
 	ReasonMissingObjectStorageSecret LokiStackConditionReason = "MissingObjectStorageSecret"
 	// ReasonInvalidObjectStorageSecret when the format of the secret is invalid.
 	ReasonInvalidObjectStorageSecret LokiStackConditionReason = "InvalidObjectStorageSecret"
+	// ReasonMissingObjectStorageCAConfigMap when the required configmap to verify object storage
+	// certificates is missing.
+	ReasonMissingObjectStorageCAConfigMap LokiStackConditionReason = "MissingObjectStorageCAConfigMap"
+	// ReasonInvalidObjectStorageCAConfigMap when the format of the CA configmap is invalid.
+	ReasonInvalidObjectStorageCAConfigMap LokiStackConditionReason = "InvalidObjectStorageCAConfigMap"
+	// ReasonMissingRulerSecret when the required secret to authorization remote write connections
+	// for the ruler is missing.
+	ReasonMissingRulerSecret LokiStackConditionReason = "MissingRulerSecret"
+	// ReasonInvalidRulerSecret when the format of the ruler remote write authorization secret is invalid.
+	ReasonInvalidRulerSecret LokiStackConditionReason = "InvalidRulerSecret"
 	// ReasonInvalidReplicationConfiguration when the configurated replication factor is not valid
 	// with the select cluster size.
 	ReasonInvalidReplicationConfiguration LokiStackConditionReason = "InvalidReplicationConfiguration"

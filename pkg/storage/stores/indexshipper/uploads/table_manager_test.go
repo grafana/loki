@@ -32,7 +32,7 @@ func buildTestTableManager(t *testing.T, testDir string) (TableManager, stopFunc
 	cfg := Config{
 		UploadInterval: time.Hour,
 	}
-	tm, err := NewTableManager(cfg, storageClient)
+	tm, err := NewTableManager(cfg, storageClient, nil)
 	require.NoError(t, err)
 
 	return tm, func() {

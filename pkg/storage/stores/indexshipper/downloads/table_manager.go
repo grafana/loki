@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
@@ -29,6 +29,11 @@ type Limits interface {
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
 }
+
+// IndexGatewayOwnsTenant is invoked by an IndexGateway instance and answers whether if the given tenant is assigned to this instance or not.
+//
+// It is only relevant by an IndexGateway in the ring mode and if it returns false for a given tenant, that tenant will be ignored by this IndexGateway during query readiness.
+type IndexGatewayOwnsTenant func(tenant string) bool
 
 type TableManager interface {
 	Stop()
@@ -50,13 +55,17 @@ type tableManager struct {
 
 	tables    map[string]Table
 	tablesMtx sync.RWMutex
+	metrics   *metrics
 
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	ownsTenant IndexGatewayOwnsTenant
 }
 
-func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client) (TableManager, error) {
+func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client,
+	ownsTenantFn IndexGatewayOwnsTenant, reg prometheus.Registerer) (TableManager, error) {
 	if err := util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
@@ -66,7 +75,9 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		cfg:                cfg,
 		openIndexFileFunc:  openIndexFileFunc,
 		indexStorageClient: indexStorageClient,
+		ownsTenant:         ownsTenantFn,
 		tables:             make(map[string]Table),
+		metrics:            newMetrics(reg),
 		ctx:                ctx,
 		cancel:             cancel,
 	}
@@ -167,7 +178,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 				return nil, err
 			}
 
-			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc)
+			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
 			tm.tables[tableName] = table
 		}
 	}
@@ -178,6 +189,19 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 func (tm *tableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
+
+	start := time.Now()
+	var err error
+
+	defer func() {
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
+		}
+
+		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
+		tm.metrics.tablesDownloadOperationDurationSeconds.Set(time.Since(start).Seconds())
+	}()
 
 	level.Info(util_log.Logger).Log("msg", "syncing tables")
 
@@ -292,8 +316,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
-		joinedUsers := strings.Join(usersToBeQueryReadyFor, ",")
-		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users", joinedUsers, "duration", time.Since(perTableStart), "table", tableName)
+		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users_len", len(usersToBeQueryReadyFor), "duration", time.Since(perTableStart), "table", tableName)
 	}
 
 	return nil
@@ -314,6 +337,10 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 		}
 
 		if queryReadyNumDays == 0 {
+			continue
+		}
+
+		if tm.ownsTenant != nil && !tm.ownsTenant(userID) {
 			continue
 		}
 
@@ -339,7 +366,8 @@ func (tm *tableManager) loadLocalTables() error {
 
 		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", fileInfo.Name()))
 
-		table, err := LoadTable(fileInfo.Name(), filepath.Join(tm.cfg.CacheDir, fileInfo.Name()), tm.indexStorageClient, tm.openIndexFileFunc)
+		table, err := LoadTable(fileInfo.Name(), filepath.Join(tm.cfg.CacheDir, fileInfo.Name()),
+			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
 		if err != nil {
 			return err
 		}
