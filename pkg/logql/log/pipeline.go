@@ -19,6 +19,8 @@ type Pipeline interface {
 // A StreamPipeline never mutate the received line.
 type StreamPipeline interface {
 	BaseLabels() LabelsResult
+	// Process processes a log line and returns the transformed line and the labels.
+	// The buffer returned for the log line can be reused on subsequent calls to Process and therefore must be copied.
 	Process(ts int64, line []byte) (resultLine []byte, resultLabels LabelsResult, matches bool)
 	ProcessString(ts int64, line string) (resultLine string, resultLabels LabelsResult, matches bool)
 }
@@ -149,11 +151,9 @@ func (p *streamPipeline) Process(_ int64, line []byte) ([]byte, LabelsResult, bo
 
 func (p *streamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
 	// Stages only read from the line.
-	lb := unsafeGetBytes(line)
-	lb, lr, ok := p.Process(ts, lb)
-	// either the line is unchanged and we can just send back the same string.
-	// or we created a new buffer for it in which case it is still safe to avoid the string(byte) copy.
-	return unsafeGetString(lb), lr, ok
+	lb, lr, ok := p.Process(ts, unsafeGetBytes(line))
+	// but the returned line needs to be copied.
+	return string(lb), lr, ok
 }
 
 func (p *streamPipeline) BaseLabels() LabelsResult { return p.builder.currentResult }

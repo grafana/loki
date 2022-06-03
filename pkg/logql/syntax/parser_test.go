@@ -3072,6 +3072,65 @@ func Test_PipelineCombined(t *testing.T) {
 	require.Equal(t, string([]byte(`1.5s|POST|200`)), string(line))
 }
 
+func Benchmark_PipelineCombined(b *testing.B) {
+	query := `{job="cortex-ops/query-frontend"} |= "logging.go" | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)" | (duration > 1s or status==200) and method="POST" | line_format "{{.duration}}|{{.method}}|{{.status}}"`
+
+	expr, err := ParseLogSelector(query, true)
+	require.Nil(b, err)
+
+	p, err := expr.Pipeline()
+	require.Nil(b, err)
+	sp := p.ForStream(labels.Labels{})
+	var (
+		line    []byte
+		lbs     log.LabelsResult
+		matches bool
+	)
+	in := []byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		line, lbs, matches = sp.Process(0, in)
+	}
+	require.True(b, matches)
+	require.Equal(
+		b,
+		labels.Labels{labels.Label{Name: "caller", Value: "logging.go:66"}, labels.Label{Name: "duration", Value: "1.5s"}, labels.Label{Name: "level", Value: "debug"}, labels.Label{Name: "method", Value: "POST"}, labels.Label{Name: "msg", Value: "POST /api/prom/api/v1/query_range (200) 1.5s"}, labels.Label{Name: "path", Value: "/api/prom/api/v1/query_range"}, labels.Label{Name: "status", Value: "200"}, labels.Label{Name: "traceID", Value: "a9d4d8a928d8db1"}, labels.Label{Name: "ts", Value: "2020-10-02T10:10:42.092268913Z"}},
+		lbs.Labels(),
+	)
+	require.Equal(b, string([]byte(`1.5s|POST|200`)), string(line))
+}
+
+func Benchmark_MetricPipelineCombined(b *testing.B) {
+	query := `count_over_time({job="cortex-ops/query-frontend"} |= "logging.go" | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)" | (duration > 1s or status==200) and method="POST" | line_format "{{.duration}}|{{.method}}|{{.status}}"[1m])`
+
+	expr, err := ParseSampleExpr(query)
+	require.Nil(b, err)
+
+	p, err := expr.Extractor()
+	require.Nil(b, err)
+	sp := p.ForStream(labels.Labels{})
+	var (
+		v       float64
+		lbs     log.LabelsResult
+		matches bool
+	)
+	in := []byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v, lbs, matches = sp.Process(0, in)
+	}
+	require.True(b, matches)
+	require.Equal(
+		b,
+		labels.Labels{labels.Label{Name: "caller", Value: "logging.go:66"}, labels.Label{Name: "duration", Value: "1.5s"}, labels.Label{Name: "level", Value: "debug"}, labels.Label{Name: "method", Value: "POST"}, labels.Label{Name: "msg", Value: "POST /api/prom/api/v1/query_range (200) 1.5s"}, labels.Label{Name: "path", Value: "/api/prom/api/v1/query_range"}, labels.Label{Name: "status", Value: "200"}, labels.Label{Name: "traceID", Value: "a9d4d8a928d8db1"}, labels.Label{Name: "ts", Value: "2020-10-02T10:10:42.092268913Z"}},
+		lbs.Labels(),
+	)
+	require.Equal(b, 1.0, v)
+}
+
 var c []*labels.Matcher
 
 func Benchmark_ParseMatchers(b *testing.B) {
