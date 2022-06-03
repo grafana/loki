@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -27,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
@@ -66,7 +68,7 @@ type instance struct {
 	buf     []byte // buffer used to compute fps.
 	streams *streamsMap
 
-	index  *index.InvertedIndex
+	index  *index.Multi
 	mapper *fpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 
 	instanceID string
@@ -91,12 +93,26 @@ type instance struct {
 	chunkFilter chunk.RequestChunkFilterer
 }
 
-func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch, chunkFilter chunk.RequestChunkFilterer) *instance {
+func newInstance(
+	cfg *Config,
+	periodConfigs []config.PeriodConfig,
+	instanceID string,
+	limiter *Limiter,
+	configs *runtime.TenantConfigs,
+	wal WAL,
+	metrics *ingesterMetrics,
+	flushOnShutdownSwitch *OnceSwitch,
+	chunkFilter chunk.RequestChunkFilterer,
+) (*instance, error) {
+	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
+	if err != nil {
+		return nil, err
+	}
 	i := &instance{
 		cfg:        cfg,
 		streams:    newStreamsMap(),
 		buf:        make([]byte, 0, 1024),
-		index:      index.NewWithShards(uint32(cfg.IndexShards)),
+		index:      invertedIndex,
 		instanceID: instanceID,
 
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
@@ -113,7 +129,7 @@ func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runt
 		chunkFilter: chunkFilter,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
-	return i
+	return i, err
 }
 
 // consumeChunk manually adds a chunk that was received during ingester chunk
@@ -339,6 +355,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 
 	err = i.forMatchingStreams(
 		ctx,
+		req.Start,
 		expr.Matchers(),
 		shard,
 		func(stream *stream) error {
@@ -390,6 +407,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 
 	err = i.forMatchingStreams(
 		ctx,
+		req.Start,
 		expr.Selector().Matchers(),
 		shard,
 		func(stream *stream) error {
@@ -416,7 +434,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	if len(matchers) == 0 {
 		var labels []string
 		if req.Values {
-			values, err := i.index.LabelValues(req.Name, nil)
+			values, err := i.index.LabelValues(*req.Start, req.Name, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -428,7 +446,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 				Values: labels,
 			}, nil
 		}
-		names, err := i.index.LabelNames(nil)
+		names, err := i.index.LabelNames(*req.Start, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -442,7 +460,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	labels := make([]string, 0)
-	err := i.forMatchingStreams(ctx, matchers, nil, func(s *stream) error {
+	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
 			if req.Values && label.Name == req.Name {
 				labels = append(labels, label.Value)
@@ -478,7 +496,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	// If no matchers were supplied we include all streams.
 	if len(groups) == 0 {
 		series = make([]logproto.SeriesIdentifier, 0, i.streams.Len())
-		err = i.forMatchingStreams(ctx, nil, shard, func(stream *stream) error {
+		err = i.forMatchingStreams(ctx, req.Start, nil, shard, func(stream *stream) error {
 			// consider the stream only if it overlaps the request time range
 			if shouldConsiderStream(stream, req) {
 				series = append(series, logproto.SeriesIdentifier{
@@ -493,7 +511,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	} else {
 		dedupedSeries := make(map[uint64]logproto.SeriesIdentifier)
 		for _, matchers := range groups {
-			err = i.forMatchingStreams(ctx, matchers, shard, func(stream *stream) error {
+			err = i.forMatchingStreams(ctx, req.Start, matchers, shard, func(stream *stream) error {
 				// consider the stream only if it overlaps the request time range
 				if shouldConsiderStream(stream, req) {
 					// exit early when this stream was added by an earlier group
@@ -553,12 +571,15 @@ func (i *instance) forAllStreams(ctx context.Context, fn func(*stream) error) er
 // It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forMatchingStreams(
 	ctx context.Context,
+	// ts denotes the beginning of the request
+	// and is used to select the correct inverted index
+	ts time.Time,
 	matchers []*labels.Matcher,
 	shards *astmapper.ShardAnnotation,
 	fn func(*stream) error,
 ) error {
 	filters, matchers := util.SplitFiltersAndMatchers(matchers)
-	ids, err := i.index.Lookup(matchers, shards)
+	ids, err := i.index.Lookup(ts, matchers, shards)
 	if err != nil {
 		return err
 	}
@@ -591,7 +612,7 @@ outer:
 }
 
 func (i *instance) addNewTailer(ctx context.Context, t *tailer) error {
-	if err := i.forMatchingStreams(ctx, t.matchers, nil, func(s *stream) error {
+	if err := i.forMatchingStreams(ctx, time.Now(), t.matchers, nil, func(s *stream) error {
 		s.addTailer(t)
 		return nil
 	}); err != nil {

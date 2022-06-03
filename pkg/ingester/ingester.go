@@ -173,7 +173,7 @@ type Interface interface {
 	CheckReady(ctx context.Context) error
 	FlushHandler(w http.ResponseWriter, _ *http.Request)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
-	GetOrCreateInstance(instanceID string) *instance
+	GetOrCreateInstance(instanceID string) (*instance, error)
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -547,26 +547,33 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
-	instance := i.GetOrCreateInstance(instanceID)
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return &logproto.PushResponse{}, err
+	}
 	err = instance.Push(ctx, req)
 	return &logproto.PushResponse{}, err
 }
 
-func (i *Ingester) GetOrCreateInstance(instanceID string) *instance { //nolint:revive
+func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { //nolint:revive
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
-		return inst
+		return inst, nil
 	}
 
 	i.instancesMtx.Lock()
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
+		var err error
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
+		if err != nil {
+			return nil, err
+		}
 		i.instances[instanceID] = inst
 		activeTenantsStats.Set(int64(len(i.instances)))
 	}
-	return inst
+	return inst, nil
 }
 
 // Query the ingests for log streams matching a set of matchers.
@@ -579,7 +586,10 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	instance := i.GetOrCreateInstance(instanceID)
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return err
+	}
 	it, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 	if err != nil {
 		return err
@@ -618,7 +628,10 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		return err
 	}
 
-	instance := i.GetOrCreateInstance(instanceID)
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return err
+	}
 	it, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
@@ -718,7 +731,10 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
-	instance := i.GetOrCreateInstance(userID)
+	instance, err := i.GetOrCreateInstance(userID)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := instance.Label(ctx, req)
 	if err != nil {
 		return nil, err
@@ -776,7 +792,10 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		return nil, err
 	}
 
-	instance := i.GetOrCreateInstance(instanceID)
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return nil, err
+	}
 	return instance.Series(ctx, req)
 }
 
@@ -827,7 +846,10 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 		return err
 	}
 
-	instance := i.GetOrCreateInstance(instanceID)
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return err
+	}
 	tailer, err := newTailer(instanceID, req.Query, queryServer, i.cfg.MaxDroppedStreams)
 	if err != nil {
 		return err

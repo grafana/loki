@@ -31,6 +31,7 @@ type Interface interface {
 	Lookup(matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error)
 	LabelNames(shard *astmapper.ShardAnnotation) ([]string, error)
 	LabelValues(name string, shard *astmapper.ShardAnnotation) ([]string, error)
+	Delete(labels labels.Labels, fp model.Fingerprint)
 }
 
 // InvertedIndex implements a in-memory inverted index from label pairs to fingerprints.
