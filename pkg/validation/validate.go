@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/util/flagext"
 )
@@ -66,7 +67,7 @@ func (e *ErrStreamRateLimit) Error() string {
 }
 
 // MutatedSamples is a metric of the total number of lines mutated, by reason.
-var MutatedSamples = prometheus.NewCounterVec(
+var MutatedSamples = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "mutated_samples_total",
@@ -76,7 +77,7 @@ var MutatedSamples = prometheus.NewCounterVec(
 )
 
 // MutatedBytes is a metric of the total mutated bytes, by reason.
-var MutatedBytes = prometheus.NewCounterVec(
+var MutatedBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "mutated_bytes_total",
@@ -86,7 +87,7 @@ var MutatedBytes = prometheus.NewCounterVec(
 )
 
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
-var DiscardedBytes = prometheus.NewCounterVec(
+var DiscardedBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "discarded_bytes_total",
@@ -96,7 +97,7 @@ var DiscardedBytes = prometheus.NewCounterVec(
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
-var DiscardedSamples = prometheus.NewCounterVec(
+var DiscardedSamples = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "discarded_samples_total",
@@ -105,6 +106,9 @@ var DiscardedSamples = prometheus.NewCounterVec(
 	[]string{ReasonLabel, "tenant"},
 )
 
-func init() {
-	prometheus.MustRegister(DiscardedSamples, DiscardedBytes)
-}
+var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{
+	Namespace: "loki",
+	Name:      "bytes_per_line",
+	Help:      "The total number of bytes per line.",
+	Buckets:   prometheus.ExponentialBuckets(1, 16, 8), // 1B -> 4GB
+})
