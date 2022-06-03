@@ -148,6 +148,13 @@ func main() {
 		logger.Error(err, "unable to create webhook", "webhook", "RecordingRule")
 		os.Exit(1)
 	}
+	if err = (&controllers.RulerConfigReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		logger.Error(err, "unable to create controller", "controller", "RulerConfig")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err = mgr.AddHealthzCheck("health", healthz.Ping); err != nil {

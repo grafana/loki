@@ -160,7 +160,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 			return boltDBIndexClientWithShipper, nil
 		}
 
-		if shouldUseBoltDBIndexGatewayClient(cfg) {
+		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
 			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
 			if err != nil {
 				return nil, err

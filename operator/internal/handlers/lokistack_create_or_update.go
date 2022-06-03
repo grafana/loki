@@ -9,8 +9,9 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
-	"github.com/grafana/loki/operator/internal/handlers/internal/secrets"
+	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/grafana/loki/operator/internal/manifests"
+	storageoptions "github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
 
@@ -68,13 +69,38 @@ func CreateOrUpdateLokiStack(
 		return kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	storage, err := secrets.ExtractStorageSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
+	objstorage, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
 			Reason:  lokiv1beta1.ReasonInvalidObjectStorageSecret,
 			Requeue: false,
 		}
+	}
+
+	if stack.Spec.Storage.TLS != nil {
+		var cm corev1.ConfigMap
+		key := client.ObjectKey{Name: stack.Spec.Storage.TLS.CA, Namespace: stack.Namespace}
+		if err = k.Get(ctx, key, &cm); err != nil {
+			if apierrors.IsNotFound(err) {
+				return &status.DegradedError{
+					Message: "Missing object storage CA config map",
+					Reason:  lokiv1beta1.ReasonMissingObjectStorageCAConfigMap,
+					Requeue: false,
+				}
+			}
+			return kverrors.Wrap(err, "failed to lookup lokistack object storage CA config map", "name", key)
+		}
+
+		if !storage.IsValidCAConfigMap(&cm) {
+			return &status.DegradedError{
+				Message: "Invalid object storage CA configmap contents: missing key `service-ca.crt` or no contents",
+				Reason:  lokiv1beta1.ReasonInvalidObjectStorageCAConfigMap,
+				Requeue: false,
+			}
+		}
+
+		objstorage.TLS = &storageoptions.TLSConfig{CA: cm.Name}
 	}
 
 	var (
@@ -121,11 +147,42 @@ func CreateOrUpdateLokiStack(
 	var (
 		alertingRules  []lokiv1beta1.AlertingRule
 		recordingRules []lokiv1beta1.RecordingRule
+		rulerConfig    *lokiv1beta1.RulerConfigSpec
+		rulerSecret    *manifests.RulerSecret
 	)
 	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
 		alertingRules, recordingRules, err = rules.List(ctx, k, req.Namespace, stack.Spec.Rules)
 		if err != nil {
 			log.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
+		}
+
+		rulerConfig, err = rules.GetRulerConfig(ctx, k, req)
+		if err != nil {
+			log.Error(err, "failed to lookup ruler config", "key", req.NamespacedName)
+		}
+
+		if rulerConfig != nil && rulerConfig.RemoteWriteSpec != nil && rulerConfig.RemoteWriteSpec.ClientSpec != nil {
+			var rs corev1.Secret
+			key := client.ObjectKey{Name: rulerConfig.RemoteWriteSpec.ClientSpec.AuthorizationSecretName, Namespace: stack.Namespace}
+			if err = k.Get(ctx, key, &rs); err != nil {
+				if apierrors.IsNotFound(err) {
+					return &status.DegradedError{
+						Message: "Missing ruler remote write authorization secret",
+						Reason:  lokiv1beta1.ReasonMissingRulerSecret,
+						Requeue: false,
+					}
+				}
+				return kverrors.Wrap(err, "failed to lookup lokistack ruler secret", "name", key)
+			}
+
+			rulerSecret, err = rules.ExtractRulerSecret(&rs, rulerConfig.RemoteWriteSpec.ClientSpec.AuthorizationType)
+			if err != nil {
+				return &status.DegradedError{
+					Message: "Invalid ruler remote write authorization secret contents",
+					Reason:  lokiv1beta1.ReasonInvalidRulerSecret,
+					Requeue: false,
+				}
+			}
 		}
 	}
 
@@ -138,9 +195,13 @@ func CreateOrUpdateLokiStack(
 		GatewayBaseDomain: baseDomain,
 		Stack:             stack.Spec,
 		Flags:             flags,
-		ObjectStorage:     *storage,
+		ObjectStorage:     *objstorage,
 		AlertingRules:     alertingRules,
 		RecordingRules:    recordingRules,
+		Ruler: manifests.Ruler{
+			Spec:   rulerConfig,
+			Secret: rulerSecret,
+		},
 		Tenants: manifests.Tenants{
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
