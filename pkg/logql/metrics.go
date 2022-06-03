@@ -126,6 +126,13 @@ func RecordRangeAndInstantQueryMetrics(
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"subqueries", stats.Summary.Subqueries,
+		"cached_chunks_req", stats.Caches.Chunk.EntriesRequested,
+		"cached_chunks_hit", stats.Caches.Chunk.EntriesFound,
+		"cached_chunks_bytes", stats.Caches.Chunk.BytesTransferred,
+		"cached_indexes_req", stats.Caches.Index.EntriesRequested,
+		"cached_indexes_hit", stats.Caches.Index.EntriesFound,
+		"cached_results_req", stats.Caches.Result.EntriesRequested,
+		"cached_results_hit", stats.Caches.Result.EntriesFound,
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
