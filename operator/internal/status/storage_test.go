@@ -68,7 +68,7 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 			Storage: lokiv1beta1.LokiStackStorageStatus{
 				Schemas: []lokiv1beta1.StorageSchemaStatus{
 					{
-						Version:     lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -86,7 +86,7 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 	schemas := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV11,
-			EffectiveDate: "2021-10-11",
+			EffectiveDate: "2020-10-11",
 		},
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV12,

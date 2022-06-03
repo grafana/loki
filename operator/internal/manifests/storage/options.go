@@ -7,14 +7,16 @@ import (
 // Options is used to configure Loki to integrate with
 // supported object storages.
 type Options struct {
-	SecretName  string
-	SharedStore lokiv1beta1.ObjectStorageSecretType
 	Schemas     []lokiv1beta1.ObjectStorageSchemaSpec
-	Azure       *AzureStorageConfig
-	GCS         *GCSStorageConfig
-	S3          *S3StorageConfig
-	Swift       *SwiftStorageConfig
-	TLS         *TLSConfig
+	SharedStore lokiv1beta1.ObjectStorageSecretType
+
+	Azure *AzureStorageConfig
+	GCS   *GCSStorageConfig
+	S3    *S3StorageConfig
+	Swift *SwiftStorageConfig
+
+	SecretName string
+	TLS        *TLSConfig
 }
 
 // AzureStorageConfig for Azure storage config

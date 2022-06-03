@@ -47,15 +47,15 @@ func BuildSchemaConfigList(
 	// in-flight change.
 	cutoff := utcTime.Add(UpdateDelay)
 	applied := filterUnappliedSchemas(statuses, cutoff)
-
 	if !containsAppliedSchemas(specs, applied) {
 		return nil, kverrors.New("Spec is missing schemas which have already been applied.")
 	}
 
 	// Schemas cannot be retroactively added in the past. Only new changes can
 	// be applied to configurations safely.
+	appliedCount := len(applied)
 	unapplied := filterAppliedSchemas(specs, cutoff)
-	if len(specs)-len(unapplied) != len(applied) {
+	if appliedCount != 0 && len(specs)-len(unapplied) != appliedCount {
 		return nil, kverrors.New("Spec contains schemas which cannot be retroactively applied.")
 	}
 

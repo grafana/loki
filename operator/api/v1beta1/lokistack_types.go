@@ -322,6 +322,17 @@ type LokiTemplateSpec struct {
 	Ruler *LokiComponentSpec `json:"ruler,omitempty"`
 }
 
+// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
+type ObjectStorageTLSSpec struct {
+	// CA is the name of a ConfigMap containing a CA certificate.
+	// It needs to be in the same namespace as the LokiStack custom resource.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
+	CA string `json:"caName,omitempty"`
+}
+
 // ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
 //
 // +kubebuilder:validation:Enum=azure;gcs;s3;swift
@@ -356,17 +367,6 @@ type ObjectStorageSecretSpec struct {
 	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:Secret",displayName="Object Storage Secret Name"
 	Name string `json:"name"`
-}
-
-// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
-type ObjectStorageTLSSpec struct {
-	// CA is the name of a ConfigMap containing a CA certificate.
-	// It needs to be in the same namespace as the LokiStack custom resource.
-	//
-	// +optional
-	// +kubebuilder:validation:optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
-	CA string `json:"caName,omitempty"`
 }
 
 // ObjectStorageSchemaVersion defines the storage schema version which will be

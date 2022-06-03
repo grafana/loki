@@ -52,7 +52,7 @@ func ConfigOptions(opt Options) config.Options {
 		amConfig                   *config.AlertManagerConfig
 		rwConfig                   *config.RemoteWriteConfig
 	)
-	
+
 	if rulerEnabled {
 		rulerEnabled = true
 

@@ -872,6 +872,12 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
+			Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
+			},
 		},
 		EnableRemoteReporting: true,
 	}
@@ -1198,6 +1204,12 @@ overrides:
 				Buckets:         "loki",
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
+			},
+			Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
 			},
 		},
 		EnableRemoteReporting: true,

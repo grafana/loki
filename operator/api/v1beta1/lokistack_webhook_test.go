@@ -85,7 +85,7 @@ var ltt = []struct {
 			"testing-stack",
 			field.ErrorList{
 				field.Invalid(
-					field.NewPath("Spec").Child("Storage").Child("Schemas").Index(1).Child("EffectiveDate"),
+					field.NewPath("Spec").Child("Storage").Child("Schemas").Index(0).Child("EffectiveDate"),
 					"2020/10/11",
 					v1beta1.ErrParseEffectiveDates.Error(),
 				),

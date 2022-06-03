@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
-	"github.com/grafana/loki/operator/internal/handlers/internal/secrets"
+	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/grafana/loki/operator/internal/manifests"
 	storageoptions "github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/metrics"
@@ -70,7 +70,7 @@ func CreateOrUpdateLokiStack(
 		return kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	objStore, err := secrets.ExtractStorageSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
+	objStore, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
@@ -79,23 +79,25 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	storageSchemas, err := storage.BuildSchemaConfigList(
+	storageSchemas, err := storageoptions.BuildSchemaConfigList(
 		time.Now().UTC(),
 		stack.Spec.Storage.Schemas,
 		stack.Status.Storage.Schemas,
 	)
-
 	if err != nil {
 		ll.Error(err, "failed to create storage schema configurations")
+		return err
 	}
 
 	err = status.SetStorageSchemaStatus(ctx, k, req, storageSchemas)
+
 	if err != nil {
 		ll.Error(err, "failed to set storage schema status")
 		return err
 	}
 
 	objStore.Schemas = storageSchemas
+
 	if stack.Spec.Storage.TLS != nil {
 		var cm corev1.ConfigMap
 		key := client.ObjectKey{Name: stack.Spec.Storage.TLS.CA, Namespace: stack.Namespace}
@@ -118,14 +120,8 @@ func CreateOrUpdateLokiStack(
 			}
 		}
 
-		objstorage.TLS = &storageoptions.TLSConfig{CA: cm.Name}
+		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name}
 	}
-	schemas, err := storageschema.GetLokiStorageSchemaData(ctx, k, req)
-	if err != nil {
-		log.Error(err, "Failed to retrieve config map for storage schemas.")
-		return err
-	}
-	objStore.Schemas = storage.UpdateSchemas(stack.Spec.Storage.AutoUpdateStorageSchema, schemas, stack.Spec.Storage.Secret.Type)
 
 	var (
 		baseDomain    string

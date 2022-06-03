@@ -175,7 +175,7 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -260,7 +260,7 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -370,7 +370,7 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -425,7 +425,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -531,7 +531,7 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -594,7 +594,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -708,7 +708,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -769,7 +769,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -832,6 +832,12 @@ func TestCreateOrUpdateLokiStack_WhenMissingCAConfigMap_SetDegraded(t *testing.T
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -896,6 +902,12 @@ func TestCreateOrUpdateLokiStack_WhenInvalidCAConfigMap_SetDegraded(t *testing.T
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -969,7 +981,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -1053,7 +1065,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -1142,7 +1154,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -1235,7 +1247,7 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
 					{
-						Version: lokiv1beta1.ObjectStorageSchemaV11,
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
 					},
 				},
