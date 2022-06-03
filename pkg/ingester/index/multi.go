@@ -3,6 +3,7 @@ package index
 import (
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -37,7 +38,7 @@ func NewMultiInvertedIndex(periods []config.PeriodConfig, indexShards uint32) (*
 			if bitPrefixed == nil {
 				bitPrefixed, err = NewBitPrefixWithShards(indexShards)
 				if err != nil {
-					return nil, err
+					return nil, errors.Wrapf(err, "creating tsdb inverted index for period starting %v", pd.From)
 				}
 			}
 			periodIndices = append(periodIndices, periodIndex{
