@@ -22,6 +22,25 @@ message Result {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "ingester"
   ];
+  Caches caches = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "cache"
+  ];
+}
+
+message Caches {
+  Cache chunk = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "chunk"
+  ];
+  Cache index = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "index"
+  ];
+  Cache result = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "result"
+  ];
 }
 
 // Summary is the summary of a query statistics.
@@ -98,4 +117,12 @@ message Chunk {
   int64 compressedBytes = 8 [(gogoproto.jsontag) = "compressedBytes"];
   // Total duplicates found while processing.
   int64 totalDuplicates = 9 [(gogoproto.jsontag) = "totalDuplicates"];
+}
+
+message Cache {
+  int32 entriesFound = 1 [(gogoproto.jsontag) = "entriesFound"];
+  int32 entriesRequested = 2 [(gogoproto.jsontag) = "entriesRequested"];
+  int32 entriesStored = 3 [(gogoproto.jsontag) = "entriesStored"];
+  int64 bytesTransferred = 4 [(gogoproto.jsontag) = "bytesTransferred"];
+  int32 requests = 5 [(gogoproto.jsontag) = "requests"];
 }

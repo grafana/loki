@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -52,7 +53,7 @@ func NewTripperware(
 		err error
 	)
 	if cfg.CacheResults {
-		c, err = cache.New(cfg.CacheConfig, registerer, log)
+		c, err = cache.New(cfg.CacheConfig, registerer, log, stats.ResultCache)
 		if err != nil {
 			return nil, nil, err
 		}

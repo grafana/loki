@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
+
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 // Instrument returns an instrumented cache.
@@ -70,6 +72,8 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 		i.storedValueSize.Observe(float64(len(bufs[j])))
 	}
 
+	stats.FromContext(ctx).AddCacheEntriesStored(i.Cache.GetCacheType(), len(keys))
+
 	method := i.name + ".store"
 	return instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
@@ -92,6 +96,9 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		method   = i.name + ".fetch"
 	)
 
+	st := stats.FromContext(ctx)
+	st.AddCacheRequest(i.Cache.GetCacheType(), 1)
+
 	err := instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
@@ -106,8 +113,14 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 
 	i.fetchedKeys.Add(float64(len(keys)))
 	i.hits.Add(float64(len(found)))
+
+	st.AddCacheEntriesFound(i.Cache.GetCacheType(), len(found))
+	st.AddCacheEntriesRequested(i.Cache.GetCacheType(), len(keys))
+
 	for j := range bufs {
-		i.fetchedValueSize.Observe(float64(len(bufs[j])))
+		size := len(bufs[j])
+		i.fetchedValueSize.Observe(float64(size))
+		st.AddCacheBytesTransferred(i.Cache.GetCacheType(), size)
 	}
 
 	return found, bufs, missing, err

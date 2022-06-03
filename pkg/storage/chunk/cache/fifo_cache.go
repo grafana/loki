@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -71,6 +72,8 @@ func parsebytes(s string) (uint64, error) {
 // FifoCache is a simple string -> interface{} cache which uses a fifo slide to
 // manage evictions.  O(1) inserts and updates, O(1) gets.
 type FifoCache struct {
+	cacheType stats.CacheType
+
 	lock          sync.RWMutex
 	maxSizeItems  int
 	maxSizeBytes  uint64
@@ -98,7 +101,7 @@ type cacheEntry struct {
 }
 
 // NewFifoCache returns a new initialised FifoCache of size.
-func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, logger log.Logger) *FifoCache {
+func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) *FifoCache {
 	util_log.WarnExperimentalUse(fmt.Sprintf("In-memory (FIFO) cache - %s", name), logger)
 
 	if cfg.DeprecatedSize > 0 {
@@ -127,6 +130,8 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 	}
 
 	cache := &FifoCache{
+		cacheType: cacheType,
+
 		maxSizeItems: cfg.MaxSizeItems,
 		maxSizeBytes: maxSizeBytes,
 		entries:      make(map[string]*list.Element),
@@ -281,6 +286,10 @@ func (c *FifoCache) Stop() {
 
 	c.entriesCurrent.Set(float64(0))
 	c.memoryBytes.Set(float64(0))
+}
+
+func (c *FifoCache) GetCacheType() stats.CacheType {
+	return c.cacheType
 }
 
 func (c *FifoCache) put(key string, value []byte) {
