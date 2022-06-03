@@ -110,5 +110,5 @@ var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{
 	Namespace: "loki",
 	Name:      "bytes_per_line",
 	Help:      "The total number of bytes per line.",
-	Buckets:   prometheus.ExponentialBuckets(1, 16, 8), // 1B -> 4GB
+	Buckets:   prometheus.ExponentialBuckets(1, 8, 8), // 1B -> 16MB
 })
