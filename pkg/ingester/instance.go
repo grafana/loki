@@ -716,38 +716,23 @@ type QuerierQueryServer interface {
 	Send(res *logproto.QueryResponse) error
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit uint32) error {
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
 	stats := stats.FromContext(ctx)
-	if limit == 0 {
-		// send all batches.
-		for !isDone(ctx) {
-			batch, size, err := iter.ReadBatch(i, queryBatchSize)
-			if err != nil {
-				return err
-			}
-			if len(batch.Streams) == 0 {
-				return nil
-			}
-			stats.AddIngesterBatch(int64(size))
-			batch.Stats = stats.Ingester()
 
-			if err := queryServer.Send(batch); err != nil {
-				return err
-			}
-
-			stats.Reset()
-
-		}
-		return nil
-	}
 	// send until the limit is reached.
-	sent := uint32(0)
-	for sent < limit && !isDone(queryServer.Context()) {
-		batch, batchSize, err := iter.ReadBatch(i, math.MinUint32(queryBatchSize, limit-sent))
+	for limit != 0 && !isDone(ctx) {
+		fetchSize := uint32(queryBatchSize)
+		if limit > 0 {
+			fetchSize = math.MinUint32(queryBatchSize, uint32(limit))
+		}
+		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
 		if err != nil {
 			return err
 		}
-		sent += batchSize
+
+		if limit > 0 {
+			limit -= int32(batchSize)
+		}
 
 		if len(batch.Streams) == 0 {
 			return nil
