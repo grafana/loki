@@ -42,6 +42,9 @@ const (
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
 	BoltDBShipperType = "boltdb-shipper"
 	TSDBType          = "tsdb"
+
+	// ObjectStorageIndexRequiredPeriod defines the required index period for object storage based index stores like boltdb-shipper and tsdb
+	ObjectStorageIndexRequiredPeriod = 24 * time.Hour
 )
 
 var (
@@ -150,12 +153,14 @@ func (cfg *SchemaConfig) Validate() error {
 	activePCIndex := ActivePeriodConfig((*cfg).Configs)
 
 	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
-	if cfg.Configs[activePCIndex].IndexType == BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
+	if cfg.Configs[activePCIndex].IndexType == BoltDBShipperType &&
+		cfg.Configs[activePCIndex].IndexTables.Period != ObjectStorageIndexRequiredPeriod && len(cfg.Configs)-1 == activePCIndex {
 		return errCurrentBoltdbShipperNon24Hours
 	}
 
 	// if upcoming index type is boltdb-shipper, it should always be set to 24 hours.
-	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == BoltDBShipperType && cfg.Configs[activePCIndex+1].IndexTables.Period != 24*time.Hour) {
+	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == BoltDBShipperType &&
+		cfg.Configs[activePCIndex+1].IndexTables.Period != ObjectStorageIndexRequiredPeriod) {
 		return errUpcomingBoltdbShipperNon24Hours
 	}
 
@@ -283,7 +288,7 @@ func (cfg PeriodConfig) validate() error {
 		return validateError
 	}
 
-	if cfg.IndexType == TSDBType && cfg.IndexTables.Period != 24*time.Hour {
+	if cfg.IndexType == TSDBType && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
 		return errTSDBNon24HoursIndexPeriod
 	}
 

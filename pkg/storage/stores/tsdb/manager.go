@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
@@ -27,9 +28,6 @@ type TSDBManager interface {
 	// Builds a new TSDB file from a set of WALs
 	BuildFromWALs(time.Time, []WALIdentifier) error
 }
-
-// it is mandatory to have 24h index period for tsdb index store
-const indexPeriod = 24 * time.Hour
 
 /*
 tsdbManager is used for managing active index and is responsible for:
@@ -248,8 +246,8 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 }
 
 func indexBuckets(from, through model.Time) (res []int) {
-	start := from.Time().UnixNano() / int64(indexPeriod)
-	end := through.Time().UnixNano() / int64(indexPeriod)
+	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
+	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
 		res = append(res, int(cur))
 	}
