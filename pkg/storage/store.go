@@ -230,7 +230,6 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			return nil, nil, nil, err
 		}
 
-
 		return writer, idx,
 			func() {
 				f.Stop()
