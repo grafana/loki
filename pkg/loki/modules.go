@@ -241,7 +241,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// Querier worker's max concurrent requests must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 
-	deleteStore, err := t.deleteRequestsStore()
+	deleteStore, err := t.deleteRequestsClient()
 	if err != nil {
 		return nil, err
 	}
@@ -389,10 +389,11 @@ func (t *Loki) initTableManager() (services.Service, error) {
 
 func (t *Loki) initStore() (_ services.Service, err error) {
 	// Always set these configs
-	// TODO(owen-d): Do the same for TSDB when we add IndexGatewayClientConfig
 	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
 	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
 		t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
 	}
 
 	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
@@ -484,8 +485,8 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			asyncStore = true
 		case t.Cfg.isModuleEnabled(IndexGateway):
 			// we want to use the actual storage when running the index-gateway, so we remove the Addr from the config
-			// TODO(owen-d): Do the same for TSDB when we add IndexGatewayClientConfig
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+			t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 		case t.Cfg.isModuleEnabled(All):
 			// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
 			// We do not want to use AsyncStore otherwise it would start spiraling around doing queries over and over again to the ingesters and store.
@@ -575,17 +576,25 @@ func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
-	compactorAddress := t.Cfg.Frontend.CompactorAddress
-	if t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read) {
-		// In single binary or read modes, this module depends on Server
-		compactorAddress = fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort)
-	}
-
-	if compactorAddress == "" {
-		return nil, errors.New("query filtering for deletes requires 'compactor_address' to be configured")
+	compactorAddress, err := t.compactorAddress()
+	if err != nil {
+		return nil, err
 	}
 
 	return generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+}
+
+func (t *Loki) compactorAddress() (string, error) {
+	if t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read) {
+		// In single binary or read modes, this module depends on Server
+		return fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort), nil
+	}
+
+	if t.Cfg.Common.CompactorAddress == "" {
+		return "", errors.New("query filtering for deletes requires 'compactor_address' to be configured")
+	}
+
+	return t.Cfg.Common.CompactorAddress, nil
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
@@ -742,7 +751,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	deleteStore, err := t.deleteRequestsStore()
+	deleteStore, err := t.deleteRequestsClient()
 	if err != nil {
 		return nil, err
 	}
@@ -886,6 +895,7 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	}
 
 	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	managerMode := indexgateway.ClientMode
@@ -949,7 +959,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 	return ur, nil
 }
 
-func (t *Loki) deleteRequestsStore() (deletion.DeleteRequestsStore, error) {
+func (t *Loki) deleteRequestsClient() (deletion.DeleteRequestsClient, error) {
 	// TODO(owen-d): enable delete request storage in tsdb
 	if config.UsingTSDB(t.Cfg.SchemaConfig.Configs) {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
@@ -960,16 +970,16 @@ func (t *Loki) deleteRequestsStore() (deletion.DeleteRequestsStore, error) {
 		return nil, err
 	}
 
-	deleteStore := deletion.NewNoOpDeleteRequestsStore()
-	if config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) && filteringEnabled {
-		indexClient, err := storage.NewIndexClient(config.BoltDBShipperType, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.overrides, t.clientMetrics, nil, prometheus.DefaultRegisterer)
-		if err != nil {
-			return nil, err
-		}
-
-		deleteStore = deletion.NewDeleteStoreFromIndexClient(indexClient)
+	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) || !filteringEnabled {
+		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
-	return deleteStore, nil
+
+	compactorAddress, err := t.compactorAddress()
+	if err != nil {
+		return nil, err
+	}
+
+	return deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
 }
 
 func calculateMaxLookBack(pc config.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {

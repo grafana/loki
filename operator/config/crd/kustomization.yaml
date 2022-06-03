@@ -5,6 +5,7 @@ resources:
 - bases/loki.grafana.com_lokistacks.yaml
 - bases/loki.grafana.com_alertingrules.yaml
 - bases/loki.grafana.com_recordingrules.yaml
+- bases/loki.grafana.com_rulerconfigs.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:
@@ -13,6 +14,7 @@ patchesStrategicMerge:
 #- patches/webhook_in_lokistacks.yaml
 #- patches/webhook_in_alertingrules.yaml
 #- patches/webhook_in_recordingrules.yaml
+#- patches/webhook_in_rulerconfigs.yaml
 # +kubebuilder:scaffold:crdkustomizewebhookpatch
 
 # [CERTMANAGER] To enable webhook, uncomment all the sections with [CERTMANAGER] prefix.
@@ -20,6 +22,7 @@ patchesStrategicMerge:
 #- patches/cainjection_in_lokistacks.yaml
 #- patches/cainjection_in_alertingrules.yaml
 #- patches/cainjection_in_recordingrules.yaml
+#- patches/cainjection_in_rulerconfigs.yaml
 # +kubebuilder:scaffold:crdkustomizecainjectionpatch
 
 # the following config is for teaching kustomize how to do kustomization for CRDs.

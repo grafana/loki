@@ -127,8 +127,6 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 			indices = append(indices, m.activeHeads)
 		}
 
-		indices = append(indices, m.tsdbManager)
-
 		return NewMultiIndex(indices...)
 
 	})

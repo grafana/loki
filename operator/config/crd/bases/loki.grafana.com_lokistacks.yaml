@@ -311,7 +311,7 @@ spec:
                 properties:
                   secret:
                     description: Secret for object storage authentication. Name of
-                      a secret in the same namespace as the cluster logging operator.
+                      a secret in the same namespace as the LokiStack custom resource.
                     properties:
                       name:
                         description: Name of a secret in the namespace configured
@@ -328,6 +328,16 @@ spec:
                     required:
                     - name
                     - type
+                    type: object
+                  tls:
+                    description: TLS configuration for reaching the object storage
+                      endpoint.
+                    properties:
+                      caName:
+                        description: CA is the name of a ConfigMap containing a CA
+                          certificate. It needs to be in the same namespace as the
+                          LokiStack custom resource.
+                        type: string
                     type: object
                 required:
                 - secret

@@ -40,4 +40,13 @@ resources:
   webhooks:
     validation: true
     webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: grafana.com
+  group: loki
+  kind: RulerConfig
+  path: github.com/grafana/loki/operator/api/v1beta1
+  version: v1beta1
 version: "3"

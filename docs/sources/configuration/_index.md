@@ -32,9 +32,15 @@ that the order of configs reads correctly top to bottom when viewed in Grafana's
 ## Configuration File Reference
 
 To specify which configuration file to load, pass the `-config.file` flag at the
-command line. The file is written in [YAML format](https://en.wikipedia.org/wiki/YAML),
-defined by the scheme below. Brackets indicate that a parameter is optional. For
-non-list parameters the value is set to the specified default.
+command line. The value can be a list of comma separated paths, then the first
+file that exists will be used.
+If no `-config.file` argument is specified, Loki will look up the `config.yaml` in the
+current working directory and the `config/` sub-directory and try to use that.
+
+The file is written in [YAML
+format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below.
+Brackets indicate that a parameter is optional. For non-list parameters the
+value is set to the specified default.
 
 ### Use environment variables in the configuration
 
@@ -378,10 +384,6 @@ The `frontend` block configures the Loki query-frontend.
 # URL of downstream Loki.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
-
-# Address, including port, where the compactor api is served
-# CLI flag: -frontend.compactor-address
-[compactor_address: <string> | default = ""]
 
 # Log queries that are slower than the specified duration. Set to 0 to disable.
 # Set to < 0 to enable on all queries.
@@ -2613,6 +2615,10 @@ This way, one doesn't have to replicate configuration in multiple places.
 # to be used by the distributor's ring, but only if the distributor's ring itself
 # doesn't have a `heartbeat_period` set.
 [ring: <ring>]
+
+# Address, including port, where the compactor api is served
+# CLI flag: -common.compactor-address
+[compactor_address: <string> | default = ""]
 ```
 
 ## analytics

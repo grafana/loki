@@ -9,21 +9,16 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 // implements stores.Index
 type IndexClient struct {
-	schema config.SchemaConfig
-	idx    Index
+	idx Index
 }
 
-func NewIndexClient(idx Index, pd config.PeriodConfig) *IndexClient {
+func NewIndexClient(idx Index) *IndexClient {
 	return &IndexClient{
-		schema: config.SchemaConfig{
-			Configs: []config.PeriodConfig{pd},
-		},
 		idx: idx,
 	}
 }

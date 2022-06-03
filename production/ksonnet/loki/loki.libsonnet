@@ -28,4 +28,7 @@
 (import 'index-gateway.libsonnet') +
 
 // BoltDB Shipper support. This should be the last one to get imported.
-(import 'boltdb_shipper.libsonnet')
+(import 'boltdb_shipper.libsonnet') +
+
+// Memberlist related deployment configuration, mostly migration related
+(import 'memberlist.libsonnet')

@@ -148,14 +148,38 @@ func extractTs(line string) (time.Time, string, error) {
 	return ts, pair[1], nil
 }
 
+// https://devmarkpro.com/working-big-files-golang
+func readLine(r *bufio.Reader) (string, error) {
+	var (
+		isPrefix = true
+		err      error
+		line, ln []byte
+	)
+
+	for isPrefix && err == nil {
+		line, isPrefix, err = r.ReadLine()
+		ln = append(ln, line...)
+	}
+
+	return string(ln), err
+}
+
 func (t *Target) process(r io.Reader, logStream string) {
 	defer func() {
 		t.wg.Done()
 	}()
 
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := scanner.Text()
+	reader := bufio.NewReader(r)
+	for {
+		line, err := readLine(reader)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			level.Error(t.logger).Log("msg", "error reading docker log line, skipping line", "err", err)
+			t.metrics.dockerErrors.Inc()
+		}
+
 		ts, line, err := extractTs(line)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "could not extract timestamp, skipping line", "err", err)
@@ -189,12 +213,6 @@ func (t *Target) process(r io.Reader, logStream string) {
 		t.metrics.dockerEntries.Inc()
 		t.positions.Put(positions.CursorKey(t.containerName), ts.Unix())
 	}
-
-	err := scanner.Err()
-	if err != nil {
-		level.Warn(t.logger).Log("msg", "finished scanning logs lines with an error", "err", err)
-	}
-
 }
 
 // startIfNotRunning starts processing container logs. The operation is idempotent , i.e. the processing cannot be started twice.

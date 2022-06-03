@@ -132,10 +132,7 @@ func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 		lbs.SetErr(errTemplateFormat)
 		return line, true
 	}
-	// todo(cyriltovena): we might want to reuse the input line or a bytes buffer.
-	res := make([]byte, len(lf.buf.Bytes()))
-	copy(res, lf.buf.Bytes())
-	return res, true
+	return lf.buf.Bytes(), true
 }
 
 func (lf *LineFormatter) RequiredLabelNames() []string {

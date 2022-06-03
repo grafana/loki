@@ -72,6 +72,7 @@ type Config struct {
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
+	RunOnce                   bool            `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -88,6 +89,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
 	f.StringVar(&cfg.DeletionMode, "boltdb.shipper.compactor.deletion-mode", "whole-stream-deletion", fmt.Sprintf("(Experimental) Deletion mode. Can be one of %v", strings.Join(deletion.AllModes(), "|")))
 	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
+	f.BoolVar(&cfg.RunOnce, "boltdb.shipper.compactor.run-once", false, "Run the compactor one time to cleanup and compact index files only (no retention applied)")
 }
 
 // Validate verifies the config does not contain inappropriate values
@@ -231,20 +233,9 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.Schem
 
 		switch c.deleteMode {
 		case deletion.WholeStreamDeletion, deletion.FilterOnly, deletion.FilterAndDelete:
-			deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
-
-			c.deleteRequestsStore, err = deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
-			if err != nil {
+			if err := c.initDeletes(r, limits); err != nil {
 				return err
 			}
-			c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
-			c.deleteRequestsManager = deletion.NewDeleteRequestsManager(
-				c.deleteRequestsStore,
-				c.cfg.DeleteRequestCancelPeriod,
-				r,
-				c.deleteMode,
-			)
-			c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 		default:
 			c.expirationChecker = newExpirationChecker(
 				retention.NewExpirationChecker(limits),
@@ -259,6 +250,32 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.Schem
 		}
 	}
 
+	return nil
+}
+
+func (c *Compactor) initDeletes(r prometheus.Registerer, limits retention.Limits) error {
+	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
+
+	store, err := deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
+	if err != nil {
+		return err
+	}
+	c.deleteRequestsStore = store
+
+	c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(
+		c.deleteRequestsStore,
+		c.cfg.DeleteRequestCancelPeriod,
+		r,
+	)
+
+	c.deleteRequestsManager = deletion.NewDeleteRequestsManager(
+		c.deleteRequestsStore,
+		c.cfg.DeleteRequestCancelPeriod,
+		r,
+		c.deleteMode,
+	)
+
+	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 	return nil
 }
 
@@ -311,6 +328,21 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 }
 
 func (c *Compactor) loop(ctx context.Context) error {
+	if c.cfg.RunOnce {
+		level.Info(util_log.Logger).Log("msg", "running single compaction")
+		err := c.RunCompaction(ctx, false)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "compaction encountered an error", "err", err)
+		}
+		level.Info(util_log.Logger).Log("msg", "single compaction finished")
+		level.Info(util_log.Logger).Log("msg", "interrupt or terminate the process to finish")
+
+		// Wait for Loki to shutdown.
+		<-ctx.Done()
+		level.Info(util_log.Logger).Log("msg", "compactor exiting")
+		return nil
+	}
+
 	if c.cfg.RetentionEnabled {
 		if c.deleteRequestsStore != nil {
 			defer c.deleteRequestsStore.Stop()

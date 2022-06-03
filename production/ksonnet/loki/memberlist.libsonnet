@@ -47,7 +47,7 @@
       },
     },
 
-    loki+: {
+    loki+: if $._config.memberlist_ring_enabled then {
       ingester+: {
         lifecycler+: {
           ring+: {
@@ -87,10 +87,10 @@
         join_members: ['gossip-ring.%s.svc.cluster.local:%d' % [$._config.namespace, gossipRingPort]],
 
         max_join_backoff: '1m',
-        max_join_retries: '10',
+        max_join_retries: 10,
         min_join_backoff: '1s',
       },
-    },
+    } else {},
 
     // When doing migration via multi KV store, this section can be used
     // to configure runtime parameters of multi KV store

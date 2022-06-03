@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
@@ -98,7 +99,8 @@ type indexShipper struct {
 
 // NewIndexShipper creates a shipper for providing index store functionality using index files and object storage.
 // It manages the whole life cycle of uploading the index and downloading the index at query time.
-func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits, ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc) (IndexShipper, error) {
+func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc, reg prometheus.Registerer) (IndexShipper, error) {
 	switch cfg.Mode {
 	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
 	default:
@@ -109,7 +111,7 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 		openIndexFileFunc: open,
 	}
 
-	err := shipper.init(storageClient, limits, ownsTenantFn)
+	err := shipper.init(storageClient, limits, ownsTenantFn, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +121,8 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 	return &shipper, nil
 }
 
-func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.Limits, ownsTenantFn downloads.IndexGatewayOwnsTenant) error {
+func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.Limits,
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, reg prometheus.Registerer) error {
 	indexStorageClient := storage.NewIndexStorageClient(storageClient, s.cfg.SharedStoreKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
@@ -127,7 +130,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			UploadInterval: UploadInterval,
 			DBRetainPeriod: s.cfg.IngesterDBRetainPeriod,
 		}
-		uploadsManager, err := uploads.NewTableManager(cfg, indexStorageClient)
+		uploadsManager, err := uploads.NewTableManager(cfg, indexStorageClient, reg)
 		if err != nil {
 			return err
 		}
@@ -143,7 +146,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 			Limits:            limits,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn)
+		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn, reg)
 		if err != nil {
 			return err
 		}
