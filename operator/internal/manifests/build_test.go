@@ -263,7 +263,7 @@ func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
 			continue
 		}
 
-		secretName := fmt.Sprintf("%s-http-metrics", name)
+		secretName := fmt.Sprintf("%s-http-tls", name)
 		expVolume := corev1.Volume{
 			Name: secretName,
 			VolumeSource: corev1.VolumeSource{

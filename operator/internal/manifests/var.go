@@ -223,7 +223,7 @@ func serviceMonitorName(componentName string) string {
 }
 
 func signingServiceSecretName(serviceName string) string {
-	return fmt.Sprintf("%s-metrics", serviceName)
+	return fmt.Sprintf("%s-tls", serviceName)
 }
 
 func fqdn(serviceName, namespace string) string {

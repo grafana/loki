@@ -2,6 +2,7 @@ package openshift
 
 import (
 	"fmt"
+	"path"
 	"regexp"
 	"strings"
 
@@ -36,12 +37,15 @@ var (
 // ConfigureGatewayDeployment merges an OpenPolicyAgent sidecar into the deployment spec.
 // With this, the deployment will route authorization request to the OpenShift
 // apiserver through the sidecar.
+// This function also forces the use of a TLS connection for the gateway.
 func ConfigureGatewayDeployment(
 	d *appsv1.Deployment,
 	gwContainerName string,
 	sercretVolumeName, tlsDir, certFile, keyFile string,
 	caDir, caFile string,
 	withTLS, withCertSigningService bool,
+	secretName, serviceName, serverName string,
+	gatewayHTTPPort int,
 ) error {
 	var gwIndex int
 	for i, c := range d.Spec.Template.Spec.Containers {
@@ -102,6 +106,89 @@ func ConfigureGatewayDeployment(
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge sidecar container spec ")
+	}
+
+	// Remove --web.healthchecks.url previous value.
+	argI := -1
+	args := d.Spec.Template.Spec.Containers[gwIndex].Args
+
+	for i, arg := range args {
+		if strings.HasPrefix(arg, "--web.healthchecks.url=") {
+			argI = i
+			break
+		}
+	}
+
+	if argI != -1 {
+		args[argI] = args[len(args)-1]
+		d.Spec.Template.Spec.Containers[gwIndex].Args = args[:len(args)-1]
+	}
+
+	// Configure TLS connection for OpenShift.
+	certFilePath := path.Join(tlsDir, certFile)
+	keyFilePath := path.Join(tlsDir, keyFile)
+	caFilePath := path.Join(caDir, caFile)
+	secretContainerSpec := corev1.Container{
+		Args: []string{
+			fmt.Sprintf("--tls.server.cert-file=%s", certFilePath),
+			fmt.Sprintf("--tls.server.key-file=%s", keyFilePath),
+			fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", caFilePath),
+			fmt.Sprintf("--tls.healthchecks.server-name=%s", serverName),
+			fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
+		},
+	}
+
+	uriSchemeContainerSpec := corev1.Container{
+		ReadinessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Scheme: corev1.URISchemeHTTPS,
+				},
+			},
+		},
+		LivenessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Scheme: corev1.URISchemeHTTPS,
+				},
+			},
+		},
+	}
+
+	// Create and mount TLS secrets volumes if it's not already done by the service monitor config.
+	if !withTLS {
+		secretVolumeSpec := corev1.PodSpec{
+			Volumes: []corev1.Volume{
+				{
+					Name: sercretVolumeName,
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: secretName,
+						},
+					},
+				},
+			},
+		}
+
+		secretContainerSpec.VolumeMounts = []corev1.VolumeMount{
+			{
+				Name:      sercretVolumeName,
+				ReadOnly:  true,
+				MountPath: tlsDir,
+			},
+		}
+
+		if err := mergo.Merge(&d.Spec.Template.Spec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
+			return kverrors.Wrap(err, "failed to merge volumes")
+		}
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[gwIndex], secretContainerSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[gwIndex], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
 	}
 
 	return nil

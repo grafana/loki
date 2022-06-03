@@ -29,6 +29,9 @@ func BuildRoute(opts Options) client.Object {
 			Port: &routev1.RoutePort{
 				TargetPort: intstr.FromString(opts.BuildOpts.GatewaySvcTargetPort),
 			},
+			TLS: &routev1.TLSConfig{
+				Termination: routev1.TLSTerminationReencrypt,
+			},
 			WildcardPolicy: routev1.WildcardPolicyNone,
 		},
 	}

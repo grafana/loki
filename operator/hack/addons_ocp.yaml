@@ -37,12 +37,12 @@ spec:
             - name: LOKI_ORG_ID
               value: application
             - name: LOKI_ADDR
-              value: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application
+              value: https://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application
             - name: LOKI_BEARER_TOKEN_FILE
               value: /var/run/secrets/kubernetes.io/serviceaccount/token
           args:
             - -c
-            - while true; do logcli query '{job="systemd-journal"}'; sleep 30; done
+            - while true; do logcli --ca-cert="/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt" query '{job="systemd-journal"}'; sleep 30; done
       serviceAccountName: lokistack-dev-addons-logcli
 ---
 apiVersion: apps/v1
@@ -118,7 +118,9 @@ metadata:
 data:
   promtail.yaml: |
     clients:
-      - url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application/loki/api/v1/push
+      - url: https://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application/loki/api/v1/push
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
         tenant_id: application
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
         backoff_config:
