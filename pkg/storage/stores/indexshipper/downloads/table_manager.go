@@ -26,6 +26,7 @@ const (
 	cacheCleanupInterval = time.Hour
 	daySeconds           = int64(24 * time.Hour / time.Second)
 )
+
 // regexp for finding the trailing index bucket number at the end of table name
 var extractTableNumberRegex = regexp.MustCompile(`[0-9]+$`)
 
@@ -276,7 +277,6 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
 
 	for _, tableName := range tables {
 		tableNumber, err := extractTableNumberFromName(tableName)

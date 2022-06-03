@@ -135,7 +135,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 		indexStorageClient: mockIndexStorageClient,
 		tables:             make(map[string]Table),
 		tableRangesToHandle: config.TableRanges{{
-			0, math.MaxInt64,
+			Start: 0, End: math.MaxInt64,
 		}},
 		ctx:    context.Background(),
 		cancel: func() {},
@@ -319,7 +319,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			tableManager.cfg.Limits = &tc.queryReadinessLimits
 			if tc.tableRangesToHandle == nil {
 				tableManager.tableRangesToHandle = config.TableRanges{{
-					0, math.MaxInt64,
+					Start: 0, End: math.MaxInt64,
 				}}
 			} else {
 				tableManager.tableRangesToHandle = tc.tableRangesToHandle
@@ -393,6 +393,7 @@ func TestTableManager_loadTables(t *testing.T) {
 	}
 	verifyTables(tableManager, tables)
 }
+
 type mockLimits struct {
 	queryReadyIndexNumDaysDefault int
 	queryReadyIndexNumDaysByUser  map[string]int
