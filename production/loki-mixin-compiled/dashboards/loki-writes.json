@@ -254,7 +254,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{cluster=~\"$cluster\",job=~\"($namespace)/distributor\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                        "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{cluster=~\"$cluster\",job=~\"($namespace)/distributor\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "{{status}}",
@@ -330,7 +330,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum by (le) (job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/distributor\", cluster=~\"$cluster\"})) * 1e3",
+                        "expr": "histogram_quantile(0.99, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/distributor\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\", cluster=~\"$cluster\"})) * 1e3",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "99th Percentile",
@@ -338,7 +338,7 @@
                         "step": 10
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum by (le) (job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/distributor\", cluster=~\"$cluster\"})) * 1e3",
+                        "expr": "histogram_quantile(0.50, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/distributor\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\", cluster=~\"$cluster\"})) * 1e3",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "50th Percentile",
@@ -346,7 +346,7 @@
                         "step": 10
                      },
                      {
-                        "expr": "1e3 * sum(job:loki_request_duration_seconds_sum:sum_rate{job=~\"($namespace)/distributor\", cluster=~\"$cluster\"}) / sum(job:loki_request_duration_seconds_count:sum_rate{job=~\"($namespace)/distributor\", cluster=~\"$cluster\"})",
+                        "expr": "1e3 * sum(job_route:loki_request_duration_seconds_sum:sum_rate{job=~\"($namespace)/distributor\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\", cluster=~\"$cluster\"}) / sum(job_route:loki_request_duration_seconds_count:sum_rate{job=~\"($namespace)/distributor\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\", cluster=~\"$cluster\"})",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "Average",
