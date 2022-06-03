@@ -1,5 +1,6 @@
 ## Main
 
+* [6310](https://github.com/grafana/loki/pull/6310) **chodges15**: Add support for client-side TLS certs in loki-canary for Loki connection
 * [6099](https://github.com/grafana/loki/pull/6099/files) **cstyan**: Drop lines with malformed JSON in Promtail JSON pipeline stage
 * [6136](https://github.com/grafana/loki/pull/6136) **periklis**: Add support for alertmanager header authorization
 * [6102](https://github.com/grafana/loki/pull/6102) **timchenko-a**: Add multi-tenancy support to lambda-promtail
