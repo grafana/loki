@@ -34,9 +34,9 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       'overrides.yaml': k.util.manifestYaml(
         {
           overrides: $._config.overrides,
-          configs: $._config.runtimeConfigs
-                   + (if std.length($._config.multi_kv_config) > 0 then { multi_kv_config: $._config.multi_kv_config } else {}),
+          configs: $._config.runtimeConfigs,
         }
+        + (if std.length($._config.multi_kv_config) > 0 then { multi_kv_config: $._config.multi_kv_config } else {}),
       ),
     }),
 }
