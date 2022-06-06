@@ -1839,7 +1839,8 @@ the index to a backing cache store.
 # CLI flag: -<prefix>.cache.enable-fifocache
 [enable_fifocache: <boolean>]
 
-# Add tenant labels to cache-related metrics.
+# Add tenant labels to cache-related metrics. Be mindful that this may create many more metric streams if a large
+# number of active tenants are using the cache.
 # CLI flag: -<prefix>.cache.per-tenant-metrics
 [per_tenant_metrics: <boolean> | default = false]
 
