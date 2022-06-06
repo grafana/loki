@@ -1,9 +1,12 @@
 package tsdb
 
 import (
+	"encoding/binary"
 	"sync"
+	"sync/atomic"
 
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/prometheus/common/model"
 	"github.com/willf/bloom"
 )
 
@@ -64,6 +67,7 @@ func (p *PoolBloom) Get() *StatsBlooms {
 func (p *PoolBloom) Put(x *StatsBlooms) {
 	x.Streams.ClearAll()
 	x.Chunks.ClearAll()
+	x.Stats = Stats{}
 	p.pool.Put(x)
 }
 
@@ -85,5 +89,46 @@ func newStatsBlooms() *StatsBlooms {
 // and chunks within TSDB indices. These are used to calculate data topology
 // statistics prior to running queries.
 type StatsBlooms struct {
+	sync.RWMutex
 	Streams, Chunks *bloom.BloomFilter
+	Stats           Stats
+}
+
+func (b *StatsBlooms) AddStream(fp model.Fingerprint) {
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint64(key, uint64(fp))
+	b.add(b.Streams, key, func() {
+		atomic.AddUint64(&b.Stats.Streams, 1)
+	})
+}
+
+func (b *StatsBlooms) AddChunk(fp model.Fingerprint, chk index.ChunkMeta) {
+	// fingerprint + mintime + maxtime + checksum
+	ln := 8 + 8 + 8 + 4
+	key := make([]byte, ln)
+	binary.BigEndian.PutUint64(key, uint64(fp))
+	binary.BigEndian.PutUint64(key[8:], uint64(chk.MinTime))
+	binary.BigEndian.PutUint64(key[16:], uint64(chk.MaxTime))
+	binary.BigEndian.PutUint32(key[24:], chk.Checksum)
+	b.add(b.Chunks, key, func() {
+		atomic.AddUint64(&b.Stats.Chunks, 1)
+		atomic.AddUint64(&b.Stats.Bytes, uint64(chk.KB<<10))
+		atomic.AddUint64(&b.Stats.Entries, uint64(chk.Entries))
+	})
+}
+
+func (b *StatsBlooms) add(filter *bloom.BloomFilter, key []byte, update func()) {
+	b.RLock()
+	ok := b.Streams.Test(key)
+	b.RUnlock()
+
+	if ok {
+		return
+	}
+
+	b.Lock()
+	defer b.Unlock()
+	if ok = b.Streams.TestAndAdd(key); !ok {
+		update()
+	}
 }

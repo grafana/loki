@@ -50,13 +50,22 @@ type Index interface {
 	Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error)
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
-	Stats(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (Stats, error)
+	// Stats(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (Stats, *StatsBlooms, error)
 }
 
 type Stats struct {
 	Streams uint64
+	Chunks  uint64
 	Bytes   uint64
 	Entries uint64
+}
+
+func (s *Stats) Merge(x *Stats) *Stats {
+	s.Streams += x.Streams
+	s.Chunks += x.Chunks
+	s.Bytes += x.Bytes
+	s.Entries += x.Entries
+	return s
 }
 
 type NoopIndex struct{}
