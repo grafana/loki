@@ -233,20 +233,9 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.Schem
 
 		switch c.deleteMode {
 		case deletion.WholeStreamDeletion, deletion.FilterOnly, deletion.FilterAndDelete:
-			deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
-
-			c.deleteRequestsStore, err = deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
-			if err != nil {
+			if err := c.initDeletes(r, limits); err != nil {
 				return err
 			}
-			c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
-			c.deleteRequestsManager = deletion.NewDeleteRequestsManager(
-				c.deleteRequestsStore,
-				c.cfg.DeleteRequestCancelPeriod,
-				r,
-				c.deleteMode,
-			)
-			c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 		default:
 			c.expirationChecker = newExpirationChecker(
 				retention.NewExpirationChecker(limits),
@@ -261,6 +250,32 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.Schem
 		}
 	}
 
+	return nil
+}
+
+func (c *Compactor) initDeletes(r prometheus.Registerer, limits retention.Limits) error {
+	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
+
+	store, err := deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
+	if err != nil {
+		return err
+	}
+	c.deleteRequestsStore = store
+
+	c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(
+		c.deleteRequestsStore,
+		c.cfg.DeleteRequestCancelPeriod,
+		r,
+	)
+
+	c.deleteRequestsManager = deletion.NewDeleteRequestsManager(
+		c.deleteRequestsStore,
+		c.cfg.DeleteRequestCancelPeriod,
+		r,
+		c.deleteMode,
+	)
+
+	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 	return nil
 }
 

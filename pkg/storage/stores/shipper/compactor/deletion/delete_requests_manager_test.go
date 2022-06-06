@@ -304,6 +304,31 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 	}
 }
 
+func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
+	tt := []struct {
+		deleteRequestsFromStore []DeleteRequest
+		hasChunks               bool
+		user                    string
+	}{
+		{[]DeleteRequest{{Query: `0`, UserID: "test-user", StartTime: 0, EndTime: 100}}, false, "test-user"},
+		{[]DeleteRequest{{Query: `1`, UserID: "test-user", StartTime: 200, EndTime: 400}}, true, "test-user"},
+		{[]DeleteRequest{{Query: `2`, UserID: "test-user", StartTime: 400, EndTime: 500}}, true, "test-user"},
+		{[]DeleteRequest{{Query: `3`, UserID: "test-user", StartTime: 500, EndTime: 700}}, true, "test-user"},
+		{[]DeleteRequest{{Query: `3`, UserID: "other-user", StartTime: 500, EndTime: 700}}, false, "test-user"},
+		{[]DeleteRequest{{Query: `4`, UserID: "test-user", StartTime: 700, EndTime: 900}}, false, "test-user"},
+		{[]DeleteRequest{{Query: `4`, UserID: "", StartTime: 700, EndTime: 900}}, true, ""},
+		{[]DeleteRequest{}, false, ""},
+	}
+
+	for _, tc := range tt {
+		mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, nil, FilterAndDelete)
+		require.NoError(t, mgr.loadDeleteRequestsToProcess())
+
+		interval := model.Interval{Start: 300, End: 600}
+		require.Equal(t, tc.hasChunks, mgr.IntervalMayHaveExpiredChunks(interval, tc.user))
+	}
+}
+
 type mockDeleteRequestsStore struct {
 	DeleteRequestsStore
 	deleteRequests []DeleteRequest

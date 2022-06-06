@@ -25,7 +25,7 @@ func buildTestIndexSet(t *testing.T, userID, path string) (*indexSet, stopFunc) 
 		}, util_log.Logger)
 	require.NoError(t, err)
 
-	require.NoError(t, idxSet.Init())
+	require.NoError(t, idxSet.Init(false))
 
 	return idxSet.(*indexSet), idxSet.Close
 }

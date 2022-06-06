@@ -108,7 +108,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 			return nil, err
 		}
 
-		err = userIndexSet.Init()
+		err = userIndexSet.Init(false)
 		if err != nil {
 			return nil, err
 		}
@@ -122,7 +122,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		return nil, err
 	}
 
-	err = commonIndexSet.Init()
+	err = commonIndexSet.Init(false)
 	if err != nil {
 		return nil, err
 	}
@@ -153,15 +153,7 @@ func (t *table) ForEach(ctx context.Context, userID string, callback index.ForEa
 		}
 
 		if indexSet.Err() != nil {
-			level.Error(util_log.WithContext(ctx, t.logger)).Log("msg", fmt.Sprintf("index set %s has some problem, cleaning it up", uid), "err", indexSet.Err())
-			if err := indexSet.DropAllDBs(); err != nil {
-				level.Error(t.logger).Log("msg", fmt.Sprintf("failed to cleanup broken index set %s", uid), "err", err)
-			}
-
-			t.indexSetsMtx.Lock()
-			delete(t.indexSets, userID)
-			t.indexSetsMtx.Unlock()
-
+			t.cleanupBrokenIndexSet(ctx, uid)
 			return indexSet.Err()
 		}
 
@@ -243,6 +235,15 @@ func (t *table) Sync(ctx context.Context) error {
 
 	for userID, indexSet := range t.indexSets {
 		if err := indexSet.Sync(ctx); err != nil {
+			if errors.Is(err, errIndexListCacheTooStale) {
+				level.Info(t.logger).Log("msg", "we have hit stale list cache, refreshing it and running sync again")
+				t.storageClient.RefreshIndexListCache(ctx)
+
+				err = indexSet.Sync(ctx)
+				if err == nil {
+					continue
+				}
+			}
 			return errors.Wrap(err, fmt.Sprintf("failed to sync index set %s for table %s", userID, t.name))
 		}
 	}
@@ -297,13 +298,32 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 			}()
 		}
 
-		err := indexSet.Init()
+		err := indexSet.Init(forQuerying)
 		if err != nil {
 			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
+			t.cleanupBrokenIndexSet(ctx, id)
 		}
 	}()
 
 	return indexSet, nil
+}
+
+// cleanupBrokenIndexSet if an indexSet with given id exists and is really broken i.e Err() returns a non-nil error
+func (t *table) cleanupBrokenIndexSet(ctx context.Context, id string) {
+	t.indexSetsMtx.Lock()
+	defer t.indexSetsMtx.Unlock()
+
+	indexSet, ok := t.indexSets[id]
+	if !ok || indexSet.Err() == nil {
+		return
+	}
+
+	level.Error(util_log.WithContext(ctx, t.logger)).Log("msg", fmt.Sprintf("index set %s has some problem, cleaning it up", id), "err", indexSet.Err())
+	if err := indexSet.DropAllDBs(); err != nil {
+		level.Error(t.logger).Log("msg", fmt.Sprintf("failed to cleanup broken index set %s", id), "err", err)
+	}
+
+	delete(t.indexSets, id)
 }
 
 // EnsureQueryReadiness ensures that we have downloaded the common index as well as user index for the provided userIDs.
