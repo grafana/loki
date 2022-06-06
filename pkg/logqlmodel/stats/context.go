@@ -400,17 +400,14 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.Chunk.Requests", c.Chunk.Requests,
 		"Cache.Chunk.EntriesRequested", c.Chunk.EntriesRequested,
 		"Cache.Chunk.EntriesFound", c.Chunk.EntriesFound,
-		"Cache.Chunk.EntriesStored", c.Chunk.EntriesStored,
 		"Cache.Chunk.BytesTransferred", humanize.Bytes(uint64(c.Chunk.BytesTransferred)),
 		"Cache.Index.Requests", c.Index.Requests,
 		"Cache.Index.EntriesRequested", c.Index.EntriesRequested,
 		"Cache.Index.EntriesFound", c.Index.EntriesFound,
-		"Cache.Index.EntriesStored", c.Index.EntriesStored,
 		"Cache.Index.BytesTransferred", humanize.Bytes(uint64(c.Index.BytesTransferred)),
 		"Cache.Result.Requests", c.Result.Requests,
 		"Cache.Result.EntriesRequested", c.Result.EntriesRequested,
 		"Cache.Result.EntriesFound", c.Result.EntriesFound,
-		"Cache.Result.EntriesStored", c.Result.EntriesStored,
 		"Cache.Result.BytesTransferred", humanize.Bytes(uint64(c.Result.BytesTransferred)),
 	)
 }
