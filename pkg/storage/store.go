@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/go-kit/log"
@@ -225,7 +226,8 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			return nil, nil, nil, err
 		}
 
-		writer, idx, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits, indexClientReg)
+		writer, idx, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
+			getIndexStoreTableRanges(config.TSDBType, s.schemaCfg.Configs), indexClientReg)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -507,4 +509,22 @@ func (f failingChunkWriter) Put(_ context.Context, _ []chunk.Chunk) error {
 
 func (f failingChunkWriter) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return errWritingChunkUnsupported
+}
+
+func getIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodConfig) config.TableRanges {
+	var ranges config.TableRanges
+	for i, periodicConfig := range periodicConfigs {
+		if periodicConfig.IndexType != indexType {
+			continue
+		}
+
+		periodEndTime := config.DayTime{Time: math.MaxInt64}
+		if i < len(periodicConfigs)-1 {
+			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
+		}
+
+		ranges = append(ranges, periodicConfig.GetIndexTableNumberRange(periodEndTime))
+	}
+
+	return ranges
 }

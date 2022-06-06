@@ -32,10 +32,10 @@ type store struct {
 // fetcher.Fetcher instances could be different due to periodic configs having different types of object storage configured
 // for storing chunks.
 func NewStore(indexShipperCfg indexshipper.Config, p config.PeriodConfig, f *fetcher.Fetcher,
-	objectClient client.ObjectClient, limits downloads.Limits, reg prometheus.Registerer) (stores.ChunkWriter, series.IndexStore, error) {
+	objectClient client.ObjectClient, limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) (stores.ChunkWriter, series.IndexStore, error) {
 	if storeInstance == nil {
 		storeInstance = &store{}
-		err := storeInstance.init(indexShipperCfg, p, objectClient, limits, reg)
+		err := storeInstance.init(indexShipperCfg, p, objectClient, limits, tableRanges, reg)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -45,7 +45,7 @@ func NewStore(indexShipperCfg indexshipper.Config, p config.PeriodConfig, f *fet
 }
 
 func (s *store) init(indexShipperCfg indexshipper.Config, p config.PeriodConfig,
-	objectClient client.ObjectClient, limits downloads.Limits, reg prometheus.Registerer) error {
+	objectClient client.ObjectClient, limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) error {
 
 	shpr, err := indexshipper.NewIndexShipper(
 		indexShipperCfg,
@@ -53,6 +53,7 @@ func (s *store) init(indexShipperCfg indexshipper.Config, p config.PeriodConfig,
 		limits,
 		nil,
 		OpenShippableTSDB,
+		tableRanges,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
 	)
 	if err != nil {
