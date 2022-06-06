@@ -356,6 +356,33 @@ func TestTable_Sync(t *testing.T) {
 		_, ok := expectedFilesInDir[fileInfo.Name()]
 		require.True(t, ok)
 	}
+
+	// let us simulate a compaction to test stale index list cache handling
+
+	// first, let us add a new file and refresh the index list cache
+	oneMoreDB := "one-more-db"
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, oneMoreDB), []byte(oneMoreDB), 0755))
+	table.storageClient.RefreshIndexListCache(context.Background())
+
+	// now, without syncing the table, let us compact the index in storage
+	compactedDBName := "compacted-db"
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, compactedDBName), []byte(compactedDBName), 0755))
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, noUpdatesDB)))
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, newDB)))
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, oneMoreDB)))
+
+	// let us run a sync which should detect the stale index list cache and sync the table after refreshing the cache
+	require.NoError(t, table.Sync(context.Background()))
+
+	// verify that table has got only compacted db
+	indexesFound = []string{}
+	err = table.ForEach(context.Background(), userID, func(idx index.Index) error {
+		indexesFound = append(indexesFound, idx.Name())
+		return nil
+	})
+	require.NoError(t, err)
+	sort.Strings(indexesFound)
+	require.Equal(t, []string{compactedDBName}, indexesFound)
 }
 
 func TestLoadTable(t *testing.T) {
