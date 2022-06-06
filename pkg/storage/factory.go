@@ -175,7 +175,10 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 			return nil, err
 		}
 
-		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, ownsTenantFn, registerer)
+		tableRanges := getIndexStoreTableRanges(config.BoltDBShipperType, schemaCfg.Configs)
+
+		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits,
+			ownsTenantFn, tableRanges, registerer)
 
 		return boltDBIndexClientWithShipper, err
 	default:
