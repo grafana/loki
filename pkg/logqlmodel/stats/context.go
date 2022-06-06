@@ -56,7 +56,7 @@ type Context struct {
 type CacheType string
 
 const (
-	ChunkCache       CacheType = "chunk"
+	ChunkCache       CacheType = "chunk" //nolint:staticcheck
 	IndexCache                 = "index"
 	ResultCache                = "result"
 	WriteDedupeCache           = "write-dedupe"

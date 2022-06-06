@@ -83,6 +83,6 @@ func (t tiered) Stop() {
 	}
 }
 
-func (c tiered) GetCacheType() stats.CacheType {
+func (t tiered) GetCacheType() stats.CacheType {
 	return "tiered"
 }
