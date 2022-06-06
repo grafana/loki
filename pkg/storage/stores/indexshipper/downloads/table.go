@@ -300,8 +300,8 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 
 		err := indexSet.Init(forQuerying)
 		if err != nil {
-			t.cleanupBrokenIndexSet(ctx, id)
 			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
+			t.cleanupBrokenIndexSet(ctx, id)
 		}
 	}()
 
