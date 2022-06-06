@@ -22,6 +22,9 @@ func TestResult(t *testing.T) {
 	stats.AddChunksRef(50)
 	stats.AddChunksDownloaded(60)
 	stats.AddChunksDownloadTime(time.Second)
+	stats.AddCacheRequest(ChunkCache, 3)
+	stats.AddCacheRequest(IndexCache, 4)
+	stats.AddCacheRequest(ResultCache, 1)
 
 	fakeIngesterQuery(ctx)
 	fakeIngesterQuery(ctx)
@@ -58,6 +61,17 @@ func TestResult(t *testing.T) {
 					CompressedBytes:   30,
 					TotalDuplicates:   10,
 				},
+			},
+		},
+		Caches: Caches{
+			Chunk: Cache{
+				Requests: 3,
+			},
+			Index: Cache{
+				Requests: 4,
+			},
+			Result: Cache{
+				Requests: 1,
 			},
 		},
 		Summary: Summary{
@@ -182,6 +196,19 @@ func TestResult_Merge(t *testing.T) {
 				},
 			},
 		},
+		Caches: Caches{
+			Chunk: Cache{
+				Requests:         5,
+				BytesTransferred: 1024,
+			},
+			Index: Cache{
+				EntriesRequested: 22,
+				EntriesFound:     2,
+			},
+			Result: Cache{
+				EntriesStored: 3,
+			},
+		},
 		Summary: Summary{
 			ExecTime:                2 * time.Second.Seconds(),
 			QueueTime:               2 * time.Nanosecond.Seconds(),
@@ -230,6 +257,19 @@ func TestResult_Merge(t *testing.T) {
 				},
 			},
 		},
+		Caches: Caches{
+			Chunk: Cache{
+				Requests:         2 * 5,
+				BytesTransferred: 2 * 1024,
+			},
+			Index: Cache{
+				EntriesRequested: 2 * 22,
+				EntriesFound:     2 * 2,
+			},
+			Result: Cache{
+				EntriesStored: 2 * 3,
+			},
+		},
 		Summary: Summary{
 			ExecTime:                2 * 2 * time.Second.Seconds(),
 			QueueTime:               2 * 2 * time.Nanosecond.Seconds(),
@@ -272,4 +312,28 @@ func TestIngester(t *testing.T) {
 			},
 		},
 	}, statsCtx.Ingester())
+}
+
+func TestCaches(t *testing.T) {
+	statsCtx, _ := NewContext(context.Background())
+
+	statsCtx.AddCacheRequest(ChunkCache, 5)
+	statsCtx.AddCacheEntriesStored(ResultCache, 3)
+	statsCtx.AddCacheEntriesRequested(IndexCache, 22)
+	statsCtx.AddCacheBytesTransferred(ChunkCache, 1024)
+	statsCtx.AddCacheEntriesFound(IndexCache, 2)
+
+	require.Equal(t, Caches{
+		Chunk: Cache{
+			Requests:         5,
+			BytesTransferred: 1024,
+		},
+		Index: Cache{
+			EntriesRequested: 22,
+			EntriesFound:     2,
+		},
+		Result: Cache{
+			EntriesStored: 3,
+		},
+	}, statsCtx.Caches())
 }
