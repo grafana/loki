@@ -37,7 +37,7 @@ var ltt = []struct {
 		},
 	},
 	{
-		desc: "not unique schema effect dates",
+		desc: "not unique schema effective dates",
 		spec: v1beta1.LokiStack{
 			Spec: v1beta1.LokiStackSpec{
 				Storage: v1beta1.ObjectStorageSpec{
@@ -67,7 +67,7 @@ var ltt = []struct {
 		),
 	},
 	{
-		desc: "not unique schema effect dates",
+		desc: "schema effective dates bad format",
 		spec: v1beta1.LokiStack{
 			Spec: v1beta1.LokiStackSpec{
 				Storage: v1beta1.ObjectStorageSpec{
