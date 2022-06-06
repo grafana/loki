@@ -39,7 +39,7 @@ func main() {
 	sValue := flag.String("streamvalue", "stdout", "The unique stream value for this instance of loki-canary to use in the log selector")
 	port := flag.Int("port", 3500, "Port which loki-canary should expose metrics")
 	addr := flag.String("addr", "", "The Loki server URL:Port, e.g. loki:3100")
-	useTls := flag.Bool("tls", false, "Does the loki connection use TLS?")
+	useTLS := flag.Bool("tls", false, "Does the loki connection use TLS?")
 	certFile := flag.String("cert-file", "", "Client PEM encoded X.509 certificate for optional use with TLS connection to Loki")
 	keyFile := flag.String("key-file", "", "Client PEM encoded X.509 key for optional use with TLS connection to Loki")
 	caFile := flag.String("ca-file", "", "Client certificate authority for optional use with TLS connection to Loki")
@@ -92,6 +92,10 @@ func main() {
 	var tlsConfig *tls.Config
 	tc := config.TLSConfig{}
 	if *certFile != "" || *keyFile != "" || *caFile != "" {
+		if !*useTLS {
+			_, _ = fmt.Fprintf(os.Stderr, "Must set --tls when specifying client certs\n")
+			os.Exit(1)
+		}
 		tc.CAFile = *caFile
 		tc.CertFile = *certFile
 		tc.KeyFile = *keyFile
@@ -116,7 +120,7 @@ func main() {
 		defer c.lock.Unlock()
 
 		c.writer = writer.NewWriter(os.Stdout, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size)
-		c.reader = reader.NewReader(os.Stderr, receivedChan, *useTls, tlsConfig, *caFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
+		c.reader = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
 		c.comparator = comparator.NewComparator(os.Stderr, *wait, *maxWait, *pruneInterval, *spotCheckInterval, *spotCheckMax, *spotCheckQueryRate, *spotCheckWait, *metricTestInterval, *metricTestQueryRange, *interval, *buckets, sentChan, receivedChan, c.reader, true)
 	}
 

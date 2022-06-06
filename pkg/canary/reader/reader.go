@@ -50,29 +50,29 @@ type LokiReader interface {
 }
 
 type Reader struct {
-	header       http.Header
-	tls          bool
-	tlsConfig    *tls.Config
-	caFile       string
-	addr         string
-	user         string
-	pass         string
-	tenantID     string
-	queryTimeout time.Duration
-	sName        string
-	sValue       string
-	lName        string
-	lVal         string
-	backoff      *backoff.Backoff
-	nextQuery    time.Time
-	backoffMtx   sync.RWMutex
-	interval     time.Duration
-	conn         *websocket.Conn
-	w            io.Writer
-	recv         chan time.Time
-	quit         chan struct{}
-	shuttingDown bool
-	done         chan struct{}
+	header          http.Header
+	tls             bool
+	clientTLSConfig *tls.Config
+	caFile          string
+	addr            string
+	user            string
+	pass            string
+	tenantID        string
+	queryTimeout    time.Duration
+	sName           string
+	sValue          string
+	lName           string
+	lVal            string
+	backoff         *backoff.Backoff
+	nextQuery       time.Time
+	backoffMtx      sync.RWMutex
+	interval        time.Duration
+	conn            *websocket.Conn
+	w               io.Writer
+	recv            chan time.Time
+	quit            chan struct{}
+	shuttingDown    bool
+	done            chan struct{}
 }
 
 func NewReader(writer io.Writer,
@@ -108,27 +108,27 @@ func NewReader(writer io.Writer,
 	bkoff := backoff.New(context.Background(), bkcfg)
 
 	rd := Reader{
-		header:       h,
-		tls:          tls,
-		tlsConfig:    tlsConfig,
-		caFile:       caFile,
-		addr:         address,
-		user:         user,
-		pass:         pass,
-		tenantID:     tenantID,
-		queryTimeout: queryTimeout,
-		sName:        streamName,
-		sValue:       streamValue,
-		lName:        labelName,
-		lVal:         labelVal,
-		nextQuery:    next,
-		backoff:      bkoff,
-		interval:     interval,
-		w:            writer,
-		recv:         receivedChan,
-		quit:         make(chan struct{}),
-		done:         make(chan struct{}),
-		shuttingDown: false,
+		header:          h,
+		tls:             tls,
+		clientTLSConfig: tlsConfig,
+		caFile:          caFile,
+		addr:            address,
+		user:            user,
+		pass:            pass,
+		tenantID:        tenantID,
+		queryTimeout:    queryTimeout,
+		sName:           streamName,
+		sValue:          streamValue,
+		lName:           labelName,
+		lVal:            labelVal,
+		nextQuery:       next,
+		backoff:         bkoff,
+		interval:        interval,
+		w:               writer,
+		recv:            receivedChan,
+		quit:            make(chan struct{}),
+		done:            make(chan struct{}),
+		shuttingDown:    false,
 	}
 
 	go rd.run()
@@ -463,10 +463,10 @@ func (r *Reader) closeAndReconnect() {
 // http.DefaultClient will be returned in the case that the connection to Loki is http or TLS without client certs.
 // For the mTLS case, return a http.Client configured to use the client side certificates.
 func (r *Reader) httpClient() (*http.Client, error) {
-	if r.tlsConfig == nil || r.tls == false {
+	if r.clientTLSConfig == nil {
 		return http.DefaultClient, nil
 	}
-	rt, err := config.NewTLSRoundTripper(r.tlsConfig, r.caFile, func(tls *tls.Config) (http.RoundTripper, error) {
+	rt, err := config.NewTLSRoundTripper(r.clientTLSConfig, r.caFile, func(tls *tls.Config) (http.RoundTripper, error) {
 		return &http.Transport{TLSClientConfig: tls}, nil
 	})
 	if err != nil {
@@ -482,8 +482,8 @@ func (r *Reader) httpClient() (*http.Client, error) {
 // For the mTLS case, return a websocket.Dialer configured to use client side certificates.
 func (r *Reader) webSocketDialer() *websocket.Dialer {
 	dialer := websocket.DefaultDialer
-	if r.tlsConfig != nil {
-		dialer.TLSClientConfig = r.tlsConfig
+	if r.clientTLSConfig != nil {
+		dialer.TLSClientConfig = r.clientTLSConfig
 	}
 	return dialer
 }
