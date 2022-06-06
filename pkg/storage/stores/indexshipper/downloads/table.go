@@ -300,20 +300,19 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 
 		err := indexSet.Init(forQuerying)
 		if err != nil {
+			t.cleanupBrokenIndexSet(ctx, id)
 			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
 		}
-
-		t.cleanupBrokenIndexSet(ctx, id)
 	}()
 
 	return indexSet, nil
 }
 
+// cleanupBrokenIndexSet if an indexSet with given id exists and is really broken i.e Err() returns a non-nil error
 func (t *table) cleanupBrokenIndexSet(ctx context.Context, id string) {
 	t.indexSetsMtx.Lock()
 	defer t.indexSetsMtx.Unlock()
 
-	// cleanup indexset only if it exists and is really broken i.e Err() returns a non-nil error
 	indexSet, ok := t.indexSets[id]
 	if !ok || indexSet.Err() == nil {
 		return
