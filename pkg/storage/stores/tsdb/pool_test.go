@@ -4,9 +4,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 func TestStatsBloom_Stream(t *testing.T) {

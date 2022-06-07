@@ -4,9 +4,10 @@ import (
 	"encoding/binary"
 	"sync"
 
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/willf/bloom"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 var (
