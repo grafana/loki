@@ -105,8 +105,59 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    std.rstripChars(matcherStr('querier'), ',')
                                  ),
 
+                               local replaceReMatchers(expr) =
+                                 std.strReplace(
+                                   std.strReplace(
+                                     std.strReplace(
+                                       std.strReplace(
+                                         std.strReplace(
+                                           std.strReplace(
+                                             std.strReplace(
+                                               std.strReplace(
+                                                 std.strReplace(
+                                                   std.strReplace(
+                                                     std.strReplace(
+                                                       std.strReplace(
+                                                         expr,
+                                                         'job=~"$namespace/cortex-gw",',
+                                                         matcherStr('cortexgateway')
+                                                       ),
+                                                       'job=~"$namespace/cortex-gw"',
+                                                       std.rstripChars(matcherStr('cortexgateway'), ',')
+                                                     ),
+                                                     'job=~"($namespace)/cortex-gw",',
+                                                     matcherStr('cortexgateway')
+                                                   ),
+                                                   'job=~"$namespace/distributor",',
+                                                   matcherStr('distributor')
+                                                 ),
+                                                 'job=~"$namespace/distributor"',
+                                                 std.rstripChars(matcherStr('distributor'), ',')
+                                               ),
+                                               'job=~"($namespace)/distributor",',
+                                               matcherStr('distributor')
+                                             ),
+                                             'job=~"($namespace)/distributor"',
+                                             std.rstripChars(matcherStr('distributor'), ',')
+                                           ),
+                                           'job=~"$namespace/ingester",',
+                                           matcherStr('ingester')
+                                         ),
+                                         'job=~"$namespace/ingester"',
+                                         std.rstripChars(matcherStr('ingester'), ',')
+                                       ),
+                                       'job=~"($namespace)/ingester",',
+                                       matcherStr('ingester'),
+                                     ),
+                                     'job=~"$namespace/querier",',
+                                     matcherStr('querier')
+                                   ),
+                                   'job=~"$namespace/querier"',
+                                   std.rstripChars(matcherStr('querier'), ',')
+                                 ),
+
                                local replaceAllMatchers(expr) =
-                                 replaceMatchers(replaceClusterMatchers(expr)),
+                                 replaceReMatchers(replaceMatchers(replaceClusterMatchers(expr))),
 
                                local selectDatasource(ds) =
                                  if ds == null || ds == '' then ds
