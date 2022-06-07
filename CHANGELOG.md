@@ -74,6 +74,7 @@
 #### Loki
 
 ##### Enhancements
+* [6317](https://github.com/grafana/loki/pull/6317/files) **dannykoping**: General: add cache usage statistics
 
 ##### Fixes
 * [6152](https://github.com/grafana/loki/pull/6152) **slim-bean**: Fixes unbounded ingester memory growth when live tailing under specific circumstances.

@@ -43,6 +43,7 @@ const (
 type Context struct {
 	querier  Querier
 	ingester Ingester
+	caches   Caches
 
 	// store is the store statistics collected across the query path
 	store Store
@@ -51,6 +52,15 @@ type Context struct {
 
 	mtx sync.Mutex
 }
+
+type CacheType string
+
+const (
+	ChunkCache       CacheType = "chunk" //nolint:staticcheck
+	IndexCache                 = "index"
+	ResultCache                = "result"
+	WriteDedupeCache           = "write-dedupe"
+)
 
 // NewContext creates a new statistics context
 func NewContext(ctx context.Context) (*Context, context.Context) {
@@ -79,6 +89,15 @@ func (c *Context) Ingester() Ingester {
 	}
 }
 
+// Caches returns the cache statistics accumulated so far.
+func (c *Context) Caches() Caches {
+	return Caches{
+		Chunk:  c.caches.Chunk,
+		Index:  c.caches.Index,
+		Result: c.caches.Result,
+	}
+}
+
 // Reset clears the statistics.
 func (c *Context) Reset() {
 	c.mtx.Lock()
@@ -88,6 +107,7 @@ func (c *Context) Reset() {
 	c.querier.Reset()
 	c.ingester.Reset()
 	c.result.Reset()
+	c.caches.Reset()
 }
 
 // Result calculates the summary based on store and ingester data.
@@ -99,6 +119,7 @@ func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalE
 			Store: c.store,
 		},
 		Ingester: c.ingester,
+		Caches:   c.caches,
 	})
 
 	r.ComputeSummary(execTime, queueTime, totalEntriesReturned)
@@ -168,12 +189,28 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalReached += m.TotalReached
 }
 
+func (c *Caches) Merge(m Caches) {
+	c.Chunk.Merge(m.Chunk)
+	c.Index.Merge(m.Index)
+	c.Result.Merge(m.Result)
+}
+
+func (c *Cache) Merge(m Cache) {
+	c.EntriesFound += m.EntriesFound
+	c.EntriesRequested += m.EntriesRequested
+	c.EntriesStored += m.EntriesStored
+	c.Requests += m.Requests
+	c.BytesSent += m.BytesSent
+	c.BytesReceived += m.BytesReceived
+}
+
 // Merge merges two results of statistics.
 // This will increase the total number of Subqueries.
 func (r *Result) Merge(m Result) {
 	r.Summary.Subqueries++
 	r.Querier.Merge(m.Querier)
 	r.Ingester.Merge(m.Ingester)
+	r.Caches.Merge(m.Caches)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
 }
@@ -257,6 +294,85 @@ func (c *Context) AddChunksRef(i int64) {
 	atomic.AddInt64(&c.store.TotalChunksRef, i)
 }
 
+// AddCacheEntriesFound counts the number of cache entries requested and found
+func (c *Context) AddCacheEntriesFound(t CacheType, i int) {
+	stats := c.getCacheStatsByType(t)
+	if stats == nil {
+		return
+	}
+
+	atomic.AddInt32(&stats.EntriesFound, int32(i))
+}
+
+// AddCacheEntriesRequested counts the number of keys requested from the cache
+func (c *Context) AddCacheEntriesRequested(t CacheType, i int) {
+	stats := c.getCacheStatsByType(t)
+	if stats == nil {
+		return
+	}
+
+	atomic.AddInt32(&stats.EntriesRequested, int32(i))
+}
+
+// AddCacheEntriesStored counts the number of keys *attempted* to be stored in the cache
+// It should be noted that if a background writeback (https://grafana.com/docs/loki/latest/configuration/#cache_config)
+// is configured we cannot know if these store attempts succeeded or not as this happens asynchronously
+func (c *Context) AddCacheEntriesStored(t CacheType, i int) {
+	stats := c.getCacheStatsByType(t)
+	if stats == nil {
+		return
+	}
+
+	atomic.AddInt32(&stats.EntriesStored, int32(i))
+}
+
+// AddCacheBytesRetrieved counts the amount of bytes retrieved from the cache
+func (c *Context) AddCacheBytesRetrieved(t CacheType, i int) {
+	stats := c.getCacheStatsByType(t)
+	if stats == nil {
+		return
+	}
+
+	atomic.AddInt64(&stats.BytesReceived, int64(i))
+}
+
+// AddCacheBytesSent counts the amount of bytes sent to the cache
+// It should be noted that if a background writeback (https://grafana.com/docs/loki/latest/configuration/#cache_config)
+// is configured we cannot know if these bytes actually got stored or not as this happens asynchronously
+func (c *Context) AddCacheBytesSent(t CacheType, i int) {
+	stats := c.getCacheStatsByType(t)
+	if stats == nil {
+		return
+	}
+
+	atomic.AddInt64(&stats.BytesSent, int64(i))
+}
+
+// AddCacheRequest counts the number of fetch/store requests to the cache
+func (c *Context) AddCacheRequest(t CacheType, i int) {
+	stats := c.getCacheStatsByType(t)
+	if stats == nil {
+		return
+	}
+
+	atomic.AddInt32(&stats.Requests, int32(i))
+}
+
+func (c *Context) getCacheStatsByType(t CacheType) *Cache {
+	var stats *Cache
+	switch t {
+	case ChunkCache:
+		stats = &c.caches.Chunk
+	case IndexCache:
+		stats = &c.caches.Index
+	case ResultCache:
+		stats = &c.caches.Result
+	default:
+		return nil
+	}
+	return stats
+}
+
 // Log logs a query statistics result.
 func (r Result) Log(log log.Logger) {
 	_ = log.Log(
@@ -284,6 +400,7 @@ func (r Result) Log(log log.Logger) {
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 	)
+	r.Caches.Log(log)
 	r.Summary.Log(log)
 }
 
@@ -295,5 +412,28 @@ func (s Summary) Log(log log.Logger) {
 		"Summary.TotalLinesProcessed", s.TotalLinesProcessed,
 		"Summary.ExecTime", ConvertSecondsToNanoseconds(s.ExecTime),
 		"Summary.QueueTime", ConvertSecondsToNanoseconds(s.QueueTime),
+	)
+}
+
+func (c Caches) Log(log log.Logger) {
+	_ = log.Log(
+		"Cache.Chunk.Requests", c.Chunk.Requests,
+		"Cache.Chunk.EntriesRequested", c.Chunk.EntriesRequested,
+		"Cache.Chunk.EntriesFound", c.Chunk.EntriesFound,
+		"Cache.Chunk.EntriesStored", c.Chunk.EntriesStored,
+		"Cache.Chunk.BytesSent", humanize.Bytes(uint64(c.Chunk.BytesSent)),
+		"Cache.Chunk.BytesReceived", humanize.Bytes(uint64(c.Chunk.BytesReceived)),
+		"Cache.Index.Requests", c.Index.Requests,
+		"Cache.Index.EntriesRequested", c.Index.EntriesRequested,
+		"Cache.Index.EntriesFound", c.Index.EntriesFound,
+		"Cache.Index.EntriesStored", c.Index.EntriesStored,
+		"Cache.Index.BytesSent", humanize.Bytes(uint64(c.Index.BytesSent)),
+		"Cache.Index.BytesReceived", humanize.Bytes(uint64(c.Index.BytesReceived)),
+		"Cache.Result.Requests", c.Result.Requests,
+		"Cache.Result.EntriesRequested", c.Result.EntriesRequested,
+		"Cache.Result.EntriesFound", c.Result.EntriesFound,
+		"Cache.Result.EntriesStored", c.Result.EntriesStored,
+		"Cache.Result.BytesSent", humanize.Bytes(uint64(c.Result.BytesSent)),
+		"Cache.Result.BytesReceived", humanize.Bytes(uint64(c.Result.BytesReceived)),
 	)
 }
