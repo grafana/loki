@@ -601,6 +601,14 @@ func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, thro
 
 }
 
+func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, blooms *StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*StatsBlooms, error) {
+	idx, ok := t.tenantIndex(userID, from, through)
+	if !ok {
+		return blooms, nil
+	}
+	return idx.Stats(ctx, userID, from, through, blooms, shard, matchers...)
+}
+
 // helper only used in building TSDBs
 func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.ChunkMetas)) error {
 	for i, shard := range t.tenants {

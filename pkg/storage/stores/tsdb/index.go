@@ -50,7 +50,7 @@ type Index interface {
 	Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error)
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
-	// Stats(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (Stats, *StatsBlooms, error)
+	Stats(ctx context.Context, userID string, from, through model.Time, blooms *StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*StatsBlooms, error)
 }
 
 type Stats struct {
@@ -60,7 +60,7 @@ type Stats struct {
 	Entries uint64
 }
 
-func (s *Stats) Merge(x *Stats) *Stats {
+func (s Stats) Merge(x Stats) Stats {
 	s.Streams += x.Streams
 	s.Chunks += x.Chunks
 	s.Bytes += x.Bytes
@@ -84,6 +84,10 @@ func (NoopIndex) LabelNames(ctx context.Context, userID string, from, through mo
 	return nil, nil
 }
 func (NoopIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
+	return nil, nil
+}
+
+func (NoopIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*StatsBlooms, error) {
 	return nil, nil
 }
 

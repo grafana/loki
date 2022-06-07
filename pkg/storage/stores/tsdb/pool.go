@@ -66,7 +66,7 @@ func (p *PoolBloom) Get() *StatsBlooms {
 func (p *PoolBloom) Put(x *StatsBlooms) {
 	x.Streams.ClearAll()
 	x.Chunks.ClearAll()
-	x.Stats = Stats{}
+	x.stats = Stats{}
 	p.pool.Put(x)
 }
 
@@ -92,14 +92,16 @@ func newStatsBlooms() *StatsBlooms {
 type StatsBlooms struct {
 	sync.RWMutex
 	Streams, Chunks *bloom.BloomFilter
-	Stats           Stats
+	stats           Stats
 }
+
+func (b *StatsBlooms) Stats() Stats { return b.stats }
 
 func (b *StatsBlooms) AddStream(fp model.Fingerprint) {
 	key := make([]byte, 8)
 	binary.BigEndian.PutUint64(key, uint64(fp))
 	b.add(b.Streams, key, func() {
-		b.Stats.Streams++
+		b.stats.Streams++
 	})
 }
 
@@ -112,9 +114,9 @@ func (b *StatsBlooms) AddChunk(fp model.Fingerprint, chk index.ChunkMeta) {
 	binary.BigEndian.PutUint64(key[16:], uint64(chk.MaxTime))
 	binary.BigEndian.PutUint32(key[24:], chk.Checksum)
 	b.add(b.Chunks, key, func() {
-		b.Stats.Chunks++
-		b.Stats.Bytes += uint64(chk.KB << 10)
-		b.Stats.Entries += uint64(chk.Entries)
+		b.stats.Chunks++
+		b.stats.Bytes += uint64(chk.KB << 10)
+		b.stats.Entries += uint64(chk.Entries)
 	})
 }
 

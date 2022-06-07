@@ -21,7 +21,7 @@ func TestStatsBloom_Stream(t *testing.T) {
 	}
 	wg.Wait()
 
-	require.Equal(t, uint64(2), sb.Stats.Streams)
+	require.Equal(t, uint64(2), sb.stats.Streams)
 }
 
 func TestStatsBloom_Chunks(t *testing.T) {
@@ -40,7 +40,7 @@ func TestStatsBloom_Chunks(t *testing.T) {
 	}
 	wg.Wait()
 
-	require.Equal(t, 4, int(sb.Stats.Chunks))
-	require.Equal(t, 4<<10, int(sb.Stats.Bytes))
-	require.Equal(t, 4, int(sb.Stats.Entries))
+	require.Equal(t, 4, int(sb.stats.Chunks))
+	require.Equal(t, 4<<10, int(sb.stats.Bytes))
+	require.Equal(t, 4, int(sb.stats.Entries))
 }

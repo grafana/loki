@@ -262,22 +262,29 @@ func (i *TSDBIndex) Identifier(tenant string) SingleTenantTSDBIdentifier {
 	}
 }
 
-func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (Stats, *StatsBlooms, error) {
-	var stats Stats
-	blooms := BloomPool.Get()
+func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*StatsBlooms, error) {
+	if blooms == nil {
+		blooms = BloomPool.Get()
+	}
 	queryBounds := newBounds(from, through)
 
 	if err := i.forSeries(ctx, shard,
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			// TODO(owen-d): use logarithmic approach
+			var addedStream bool
 			for _, chk := range chks {
 				if Overlap(queryBounds, chk) {
+					if !addedStream {
+						blooms.AddStream(fp)
+						addedStream = true
+					}
+					blooms.AddChunk(fp, chk)
 				}
 			}
 		},
 		matchers...); err != nil {
-		return stats, nil, err
+		return blooms, err
 	}
 
-	return stats, blooms, nil
+	return blooms, nil
 }
