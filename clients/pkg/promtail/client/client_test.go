@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -493,4 +495,89 @@ func Test_Tripperware(t *testing.T) {
 	}
 	c.Stop()
 	require.True(t, called)
+}
+
+func TestReplayWAL(t *testing.T) {
+	dir := t.TempDir()
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
+
+	// Convert to UTC to avoid incorrect timestamp comparisons later in the test
+	ts := time.Now().UTC()
+
+	reg := prometheus.NewRegistry()
+
+	// Create a buffer channel where we do enqueue received requests
+	receivedReqsChan := make(chan receivedReq, 10)
+
+	// Start a local HTTP server
+	server := httptest.NewServer(createServerHandler(receivedReqsChan, 200))
+	require.NotNil(t, server)
+	defer server.Close()
+
+	// Get the URL at which the local test server is listening to
+	serverURL := flagext.URLValue{}
+	err := serverURL.Set(server.URL)
+	require.NoError(t, err)
+
+	cfg := Config{
+		URL:            serverURL,
+		BatchWait:      100 * time.Millisecond,
+		BatchSize:      10,
+		Client:         config.HTTPClientConfig{},
+		BackoffConfig:  backoff.Config{MinBackoff: 1 * time.Millisecond, MaxBackoff: 2 * time.Millisecond, MaxRetries: 3},
+		ExternalLabels: lokiflag.LabelSet{},
+		Timeout:        1 * time.Second,
+		TenantID:       "tenant1",
+		WAL: WALConfig{
+			Enabled: true,
+			Dir:     dir,
+		},
+	}
+
+	m := NewMetrics(reg, nil)
+	c, err := New(m, cfg, nil, log.NewNopLogger())
+	require.NoError(t, err)
+
+	tenant := "tenant1"
+	numEntries := 10
+	for i := 0; i < numEntries; i++ {
+		batch := c.(*client).newBatch(tenant)
+		batch.add(api.Entry{
+			Labels: model.LabelSet{"foo": "bar", "i": model.LabelValue(strconv.Itoa(i))},
+			Entry: logproto.Entry{
+				Timestamp: ts,
+				Line:      "hello",
+			},
+		})
+	}
+
+	// Wait until the expected push requests are received (with a timeout)
+	deadline := time.Now().Add(2 * time.Second)
+	for len(receivedReqsChan) < 1 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	c.(*client).replayWAL()
+
+	// Stop the client: it waits until the current batch is sent
+	c.Stop()
+	close(receivedReqsChan)
+
+	// Get all push requests received on the server side
+	receivedReqs := make([]receivedReq, 0, 10)
+	for req := range receivedReqsChan {
+		receivedReqs = append(receivedReqs, req)
+	}
+	assert.Equal(t, numEntries, len(receivedReqs[0].pushReq.Streams))
+
+	// Due to implementation details (maps iteration ordering is random) we just check
+	// that the expected requests are equal to the received requests, without checking
+	// the exact order which is not guaranteed in case of multi-tenant
+	// TODO: callum, I think we cannot even do this now just because of nesting and the way the elements match works
+	// require.ElementsMatch(t, expectedReqs, receivedReqs, "received did not match expected\n\treceived: %+v\n\texpected: %+v\n", receivedReqs, expectedReqs)
+
+	// for some reason this doesn't work as just testutil.ToFloat64(metrics.sentEntries)
+	require.Equal(t, testutil.ToFloat64(c.(*client).metrics.sentEntries), float64(numEntries))
 }
