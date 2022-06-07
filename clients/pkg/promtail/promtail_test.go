@@ -45,7 +45,7 @@ import (
 
 const httpTestPort = 9080
 
-var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, nil)
+var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer)
 
 func TestPromtail(t *testing.T) {
 	// Setup.

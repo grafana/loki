@@ -7,9 +7,9 @@ import (
 )
 
 // NewClient creates a new client based on the fluentbit configuration.
-func NewClient(cfg *config, logger log.Logger, metrics *client.Metrics, streamLagLabels []string) (client.Client, error) {
+func NewClient(cfg *config, logger log.Logger, metrics *client.Metrics) (client.Client, error) {
 	if cfg.bufferConfig.buffer {
-		return NewBuffer(cfg, logger, metrics, streamLagLabels)
+		return NewBuffer(cfg, logger, metrics)
 	}
-	return client.New(metrics, cfg.clientConfig, streamLagLabels, logger)
+	return client.New(metrics, cfg.clientConfig, logger)
 }
