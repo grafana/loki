@@ -19,6 +19,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -54,7 +55,7 @@ var (
 				flagext.DefaultValues(&storeCfg)
 				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
 					MaxSizeItems: 500,
-				}, prometheus.NewRegistry(), log.NewNopLogger())
+				}, prometheus.NewRegistry(), log.NewNopLogger(), stats.ChunkCache)
 				return storeCfg
 			},
 		},
