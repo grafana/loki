@@ -73,5 +73,6 @@ when using or writing a third-party client.
 - [NLog-Targets-Loki](https://github.com/corentinaltepe/nlog.loki) (C#)
 - [loki-logback-appender](https://github.com/loki4j/loki-logback-appender) (Java)
 - [Log4j2 appender for Loki](https://github.com/tkowalcz/tjahzi) (Java)
+- [mjaron-tinyloki-java](https://github.com/mjfryc/mjaron-tinyloki-java) (Java)
 - [LokiLogger.jl](https://github.com/JuliaLogging/LokiLogger.jl) (Julia)
 - [winston-loki](https://github.com/JaniAnttonen/winston-loki) (JS)
