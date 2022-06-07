@@ -13,10 +13,10 @@ const (
 	DateTimeFormat = "2006-01-02"
 
 	// UpdateDelay is the time before a change to the storage schema
-	// is applied to a cluster. This should be a minimum of two days.
-	// This will avoid scenarios in which the difference between UTC and
-	// local time zones will cause logs to be unavailable.
-	UpdateDelay = time.Hour * 24 * 2
+	// is applied to a cluster. This will avoid scenarios in which
+	// the difference between UTC and local time zones will cause
+	// logs to be unavailable.
+	UpdateDelay = time.Hour * 24
 )
 
 type schemaConfig struct {

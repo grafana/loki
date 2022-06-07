@@ -76,7 +76,7 @@ func BuildSchemaConfigList_AddSchema_WithPriorSchemas_OutsideUpdateWindow(t *tes
 
 func BuildSchemaConfigList_AddSchema_WithPriorSchemas_InsideUpdateWindow(t *testing.T) {
 	utcTime := time.Date(2021, 10, 1, 0, 0, 0, 0, time.UTC)
-	updateWindow := utcTime.Add(UpdateDelay).Add(time.Hour * -1).Format(DateTimeFormat)
+	updateWindow := utcTime.Add(UpdateDelay).Format(DateTimeFormat)
 	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV11,
@@ -212,6 +212,135 @@ func BuildSchemaConfigList_SortSchema_ChronologicalOrder(t *testing.T) {
 	}
 
 	require.NoError(t, err)
+	require.Equal(t, expected, actual)
+}
+
+func TestStatusSchemaConfigList(t *testing.T) {
+	statuses := []lokiv1beta1.StorageSchemaStatus{
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-06-01",
+		},
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2021-10-01",
+		},
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-11-01",
+		},
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-12-01",
+		},
+	}
+
+	actual := statusSchemaConfigList(statuses)
+	expected := []schemaConfig{
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV12,
+			effectiveDate: time.Date(2021, 6, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV11,
+			effectiveDate: time.Date(2021, 10, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV12,
+			effectiveDate: time.Date(2021, 11, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV12,
+			effectiveDate: time.Date(2021, 12, 1, 0, 0, 0, 0, time.UTC),
+		},
+	}
+
+	require.Equal(t, expected, actual)
+}
+
+func TestSpecSchemaConfigList(t *testing.T) {
+	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-06-01",
+		},
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2021-10-01",
+		},
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-11-01",
+		},
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-12-01",
+		},
+	}
+
+	actual := specSchemaConfigList(specs)
+	expected := []schemaConfig{
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV12,
+			effectiveDate: time.Date(2021, 6, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV11,
+			effectiveDate: time.Date(2021, 10, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV12,
+			effectiveDate: time.Date(2021, 11, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV12,
+			effectiveDate: time.Date(2021, 12, 1, 0, 0, 0, 0, time.UTC),
+		},
+	}
+
+	require.Equal(t, expected, actual)
+}
+
+func TestSpecList(t *testing.T) {
+	configs := []schemaConfig{
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV12,
+			effectiveDate: time.Date(2021, 6, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV11,
+			effectiveDate: time.Date(2021, 10, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV12,
+			effectiveDate: time.Date(2021, 11, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			version:       lokiv1beta1.ObjectStorageSchemaV12,
+			effectiveDate: time.Date(2021, 12, 1, 0, 0, 0, 0, time.UTC),
+		},
+	}
+
+	actual := specList(configs)
+	expected := []lokiv1beta1.ObjectStorageSchemaSpec{
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-06-01",
+		},
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV11,
+			EffectiveDate: "2021-10-01",
+		},
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-11-01",
+		},
+		{
+			Version:       lokiv1beta1.ObjectStorageSchemaV12,
+			EffectiveDate: "2021-12-01",
+		},
+	}
+
 	require.Equal(t, expected, actual)
 }
 
