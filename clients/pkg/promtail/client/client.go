@@ -568,7 +568,7 @@ func (c *clientWAL) getWAL(tenant string) (WAL, error) {
 	if w, ok := c.tenantWALs[tenant]; ok {
 		return w, nil
 	}
-	wal, err := newWAL(c.client.logger, c.client.metrics.registerer, c.client.cfg.WAL, c.client.name, tenant, time.Now().UnixNano())
+	wal, err := newWAL(c.client.logger, c.client.metrics.registerer, c.client.cfg.WAL, c.client.name, tenant)
 	if err != nil {
 		level.Error(c.client.logger).Log("msg", "could not start WAL", "err", err)
 		// set the wall to noop
