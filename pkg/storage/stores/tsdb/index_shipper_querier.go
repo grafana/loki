@@ -110,3 +110,12 @@ func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, fr
 	}
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 }
+
+func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, blooms *StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*StatsBlooms, error) {
+	idx, err := i.indices(ctx, from, through, userID)
+	if err != nil {
+		return blooms, err
+	}
+
+	return idx.Stats(ctx, userID, from, through, blooms, shard, matchers...)
+}

@@ -88,3 +88,7 @@ func (m *MultiTenantIndex) LabelValues(ctx context.Context, userID string, from,
 	}
 	return m.idx.LabelValues(ctx, userID, from, through, name, withTenantLabelMatcher(userID, matchers)...)
 }
+
+func (m *MultiTenantIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*StatsBlooms, error) {
+	return m.idx.Stats(ctx, userID, from, through, blooms, shard, withTenantLabelMatcher(userID, matchers)...)
+}

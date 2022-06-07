@@ -235,3 +235,14 @@ func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, throu
 
 	return results, nil
 }
+
+func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*StatsBlooms, error) {
+	if blooms == nil {
+		blooms = BloomPool.Get()
+	}
+
+	_, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {
+		return idx.Stats(ctx, userID, from, through, blooms, shard, matchers...)
+	})
+	return blooms, err
+}
