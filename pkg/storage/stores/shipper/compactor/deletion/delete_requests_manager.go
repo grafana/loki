@@ -119,6 +119,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
 			continue
 		}
+		deleteRequest.deletedLinesTotal = d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID)
 		d.deleteRequestsToProcess = append(d.deleteRequestsToProcess, deleteRequest)
 	}
 
