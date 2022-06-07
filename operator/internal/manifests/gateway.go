@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	tlsSercetVolume = "tls-secret"
+	tlsSecretVolume = "tls-secret"
 )
 
 // BuildGateway returns a list of k8s objects for Loki Stack Gateway
