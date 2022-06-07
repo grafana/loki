@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -27,7 +28,7 @@ func NewMultiTenantIndex(idx Index) *MultiTenantIndex {
 }
 
 func withTenantLabelMatcher(userID string, matchers []*labels.Matcher) []*labels.Matcher {
-	cpy := make([]*labels.Matcher, len(matchers))
+	cpy := make([]*labels.Matcher, len(matchers)+1)
 	copy(cpy, matchers)
 	cpy = append(cpy, labels.MustNewMatcher(labels.MatchEqual, TenantLabel, userID))
 	return cpy
@@ -89,6 +90,6 @@ func (m *MultiTenantIndex) LabelValues(ctx context.Context, userID string, from,
 	return m.idx.LabelValues(ctx, userID, from, through, name, withTenantLabelMatcher(userID, matchers)...)
 }
 
-func (m *MultiTenantIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*StatsBlooms, error) {
+func (m *MultiTenantIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.StatsBlooms, error) {
 	return m.idx.Stats(ctx, userID, from, through, blooms, shard, withTenantLabelMatcher(userID, matchers)...)
 }

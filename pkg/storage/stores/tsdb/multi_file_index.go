@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -236,9 +237,9 @@ func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, throu
 	return results, nil
 }
 
-func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*StatsBlooms, error) {
+func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.StatsBlooms, error) {
 	if blooms == nil {
-		blooms = BloomPool.Get()
+		blooms = stats.BloomPool.Get()
 	}
 
 	_, err := i.forIndices(ctx, from, through, func(ctx context.Context, idx Index) (interface{}, error) {

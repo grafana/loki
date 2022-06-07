@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -106,6 +107,25 @@ func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID strin
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
 func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string) ([]string, error) {
 	return c.idx.LabelNames(ctx, userID, from, through)
+}
+
+func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	matchers = withoutNameLabel(matchers)
+	matchers, shard, err := c.shard(matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	blooms := stats.BloomPool.Get()
+	defer stats.BloomPool.Put(blooms)
+	blooms, err = c.idx.Stats(ctx, userID, from, through, blooms, shard, matchers...)
+
+	if err != nil {
+		return nil, err
+	}
+	res := blooms.Stats()
+
+	return &res, nil
 }
 
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
