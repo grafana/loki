@@ -198,8 +198,9 @@ func TestResult_Merge(t *testing.T) {
 		},
 		Caches: Caches{
 			Chunk: Cache{
-				Requests:         5,
-				BytesTransferred: 1024,
+				Requests:      5,
+				BytesReceived: 1024,
+				BytesSent:     512,
 			},
 			Index: Cache{
 				EntriesRequested: 22,
@@ -259,8 +260,9 @@ func TestResult_Merge(t *testing.T) {
 		},
 		Caches: Caches{
 			Chunk: Cache{
-				Requests:         2 * 5,
-				BytesTransferred: 2 * 1024,
+				Requests:      2 * 5,
+				BytesReceived: 2 * 1024,
+				BytesSent:     2 * 512,
 			},
 			Index: Cache{
 				EntriesRequested: 2 * 22,
@@ -321,12 +323,14 @@ func TestCaches(t *testing.T) {
 	statsCtx.AddCacheEntriesStored(ResultCache, 3)
 	statsCtx.AddCacheEntriesRequested(IndexCache, 22)
 	statsCtx.AddCacheBytesRetrieved(ChunkCache, 1024)
+	statsCtx.AddCacheBytesSent(ChunkCache, 512)
 	statsCtx.AddCacheEntriesFound(IndexCache, 2)
 
 	require.Equal(t, Caches{
 		Chunk: Cache{
-			Requests:         5,
-			BytesTransferred: 1024,
+			Requests:      5,
+			BytesReceived: 1024,
+			BytesSent:     512,
 		},
 		Index: Cache{
 			EntriesRequested: 22,

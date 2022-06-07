@@ -83,21 +83,24 @@ var queryTests = []struct {
 						"entriesFound": 0,
 						"entriesRequested": 0,
 						"entriesStored": 0,
-						"bytesTransferred": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
 						"requests": 0
 					},
 					"index": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
 						"entriesStored": 0,
-						"bytesTransferred": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
 						"requests": 0
 					},
 					"result": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
 						"entriesStored": 0,
-						"bytesTransferred": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
 						"requests": 0
 					}
 				},
