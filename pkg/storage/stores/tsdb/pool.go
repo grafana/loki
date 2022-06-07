@@ -122,7 +122,7 @@ func (b *StatsBlooms) AddChunk(fp model.Fingerprint, chk index.ChunkMeta) {
 
 func (b *StatsBlooms) add(filter *bloom.BloomFilter, key []byte, update func()) {
 	b.RLock()
-	ok := b.Streams.Test(key)
+	ok := filter.Test(key)
 	b.RUnlock()
 
 	if ok {
@@ -131,7 +131,7 @@ func (b *StatsBlooms) add(filter *bloom.BloomFilter, key []byte, update func()) 
 
 	b.Lock()
 	defer b.Unlock()
-	if ok = b.Streams.TestAndAdd(key); !ok {
+	if ok = filter.TestAndAdd(key); !ok {
 		update()
 	}
 }
