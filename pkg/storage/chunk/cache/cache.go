@@ -9,6 +9,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 // Cache byte arrays by key.
@@ -22,6 +24,8 @@ type Cache interface {
 	Store(ctx context.Context, key []string, buf [][]byte) error
 	Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error)
 	Stop()
+	// GetCacheType returns a string indicating the cache "type" for the purpose of grouping cache usage statistics
+	GetCacheType() stats.CacheType
 }
 
 // Config for building Caches.
@@ -83,7 +87,7 @@ func IsRedisSet(cfg Config) bool {
 }
 
 // New creates a new Cache using Config.
-func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error) {
+func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) (Cache, error) {
 	if cfg.Cache != nil {
 		return cfg.Cache, nil
 	}
@@ -95,8 +99,8 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 			cfg.Fifocache.TTL = cfg.DefaultValidity
 		}
 
-		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger); cache != nil {
-			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache, reg))
+		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger, cacheType); cache != nil {
+			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"fifocache", cache, reg)))
 		}
 	}
 
@@ -110,10 +114,10 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 		}
 
 		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, reg, logger)
-		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger)
+		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger, cacheType)
 
 		cacheName := cfg.Prefix + "memcache"
-		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
+		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
 	}
 
 	if IsRedisSet(cfg) {
@@ -125,8 +129,8 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 		if err != nil {
 			return nil, fmt.Errorf("redis client setup failed: %w", err)
 		}
-		cache := NewRedisCache(cacheName, client, logger)
-		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
+		cache := NewRedisCache(cacheName, client, logger, cacheType)
+		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
 	}
 
 	cache := NewTiered(caches)
