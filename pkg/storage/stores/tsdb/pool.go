@@ -3,7 +3,6 @@ package tsdb
 import (
 	"encoding/binary"
 	"sync"
-	"sync/atomic"
 
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
@@ -85,6 +84,8 @@ func newStatsBlooms() *StatsBlooms {
 	}
 }
 
+// TODO(owen-d): shard this across a slice of smaller bloom filters to reduce
+// lock contention
 // Bloom filters for estimating duplicate statistics across both series
 // and chunks within TSDB indices. These are used to calculate data topology
 // statistics prior to running queries.
@@ -98,7 +99,7 @@ func (b *StatsBlooms) AddStream(fp model.Fingerprint) {
 	key := make([]byte, 8)
 	binary.BigEndian.PutUint64(key, uint64(fp))
 	b.add(b.Streams, key, func() {
-		atomic.AddUint64(&b.Stats.Streams, 1)
+		b.Stats.Streams++
 	})
 }
 
@@ -111,9 +112,9 @@ func (b *StatsBlooms) AddChunk(fp model.Fingerprint, chk index.ChunkMeta) {
 	binary.BigEndian.PutUint64(key[16:], uint64(chk.MaxTime))
 	binary.BigEndian.PutUint32(key[24:], chk.Checksum)
 	b.add(b.Chunks, key, func() {
-		atomic.AddUint64(&b.Stats.Chunks, 1)
-		atomic.AddUint64(&b.Stats.Bytes, uint64(chk.KB<<10))
-		atomic.AddUint64(&b.Stats.Entries, uint64(chk.Entries))
+		b.Stats.Chunks++
+		b.Stats.Bytes += uint64(chk.KB << 10)
+		b.Stats.Entries += uint64(chk.Entries)
 	})
 }
 
