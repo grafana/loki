@@ -811,6 +811,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 func (t *Loki) initMemberlistKV() (services.Service, error) {
 	reg := prometheus.DefaultRegisterer
 
+	t.Cfg.MemberlistKV.MetricsNamespace = "loki"
 	t.Cfg.MemberlistKV.MetricsRegisterer = reg
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
