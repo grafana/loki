@@ -100,7 +100,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		}
 
 		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger, cacheType); cache != nil {
-			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache, reg))
+			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"fifocache", cache, reg)))
 		}
 	}
 
@@ -117,7 +117,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger, cacheType)
 
 		cacheName := cfg.Prefix + "memcache"
-		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
+		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
 	}
 
 	if IsRedisSet(cfg) {
@@ -130,7 +130,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 			return nil, fmt.Errorf("redis client setup failed: %w", err)
 		}
 		cache := NewRedisCache(cacheName, client, logger, cacheType)
-		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
+		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
 	}
 
 	cache := NewTiered(caches)

@@ -123,6 +123,7 @@ message Cache {
   int32 entriesFound = 1 [(gogoproto.jsontag) = "entriesFound"];
   int32 entriesRequested = 2 [(gogoproto.jsontag) = "entriesRequested"];
   int32 entriesStored = 3 [(gogoproto.jsontag) = "entriesStored"];
-  int64 bytesTransferred = 4 [(gogoproto.jsontag) = "bytesTransferred"];
-  int32 requests = 5 [(gogoproto.jsontag) = "requests"];
+  int64 bytesReceived = 4 [(gogoproto.jsontag) = "bytesReceived"];
+  int64 bytesSent = 5 [(gogoproto.jsontag) = "bytesSent"];
+  int32 requests = 6 [(gogoproto.jsontag) = "requests"];
 }

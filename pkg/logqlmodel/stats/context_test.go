@@ -320,7 +320,7 @@ func TestCaches(t *testing.T) {
 	statsCtx.AddCacheRequest(ChunkCache, 5)
 	statsCtx.AddCacheEntriesStored(ResultCache, 3)
 	statsCtx.AddCacheEntriesRequested(IndexCache, 22)
-	statsCtx.AddCacheBytesTransferred(ChunkCache, 1024)
+	statsCtx.AddCacheBytesRetrieved(ChunkCache, 1024)
 	statsCtx.AddCacheEntriesFound(IndexCache, 2)
 
 	require.Equal(t, Caches{

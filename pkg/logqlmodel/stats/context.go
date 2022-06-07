@@ -200,7 +200,8 @@ func (c *Cache) Merge(m Cache) {
 	c.EntriesRequested += m.EntriesRequested
 	c.EntriesStored += m.EntriesStored
 	c.Requests += m.Requests
-	c.BytesTransferred += m.BytesTransferred
+	c.BytesSent += m.BytesSent
+	c.BytesReceived += m.BytesReceived
 }
 
 // Merge merges two results of statistics.
@@ -293,6 +294,7 @@ func (c *Context) AddChunksRef(i int64) {
 	atomic.AddInt64(&c.store.TotalChunksRef, i)
 }
 
+// AddCacheEntriesFound counts the number of cache entries requested and found
 func (c *Context) AddCacheEntriesFound(t CacheType, i int) {
 	stats := c.getCacheStatsByType(t)
 	if stats == nil {
@@ -302,6 +304,7 @@ func (c *Context) AddCacheEntriesFound(t CacheType, i int) {
 	atomic.AddInt32(&stats.EntriesFound, int32(i))
 }
 
+// AddCacheEntriesRequested counts the number of keys requested from the cache
 func (c *Context) AddCacheEntriesRequested(t CacheType, i int) {
 	stats := c.getCacheStatsByType(t)
 	if stats == nil {
@@ -311,6 +314,9 @@ func (c *Context) AddCacheEntriesRequested(t CacheType, i int) {
 	atomic.AddInt32(&stats.EntriesRequested, int32(i))
 }
 
+// AddCacheEntriesStored counts the number of keys *attempted* to be stored in the cache
+// It should be noted that if a background writeback (https://grafana.com/docs/loki/latest/configuration/#cache_config)
+// is configured we cannot know if these store attempts succeeded or not as this happens asynchronously
 func (c *Context) AddCacheEntriesStored(t CacheType, i int) {
 	stats := c.getCacheStatsByType(t)
 	if stats == nil {
@@ -320,15 +326,29 @@ func (c *Context) AddCacheEntriesStored(t CacheType, i int) {
 	atomic.AddInt32(&stats.EntriesStored, int32(i))
 }
 
-func (c *Context) AddCacheBytesTransferred(t CacheType, i int) {
+// AddCacheBytesRetrieved counts the amount of bytes retrieved from the cache
+func (c *Context) AddCacheBytesRetrieved(t CacheType, i int) {
 	stats := c.getCacheStatsByType(t)
 	if stats == nil {
 		return
 	}
 
-	atomic.AddInt64(&stats.BytesTransferred, int64(i))
+	atomic.AddInt64(&stats.BytesReceived, int64(i))
 }
 
+// AddCacheBytesSent counts the amount of bytes sent to the cache
+// It should be noted that if a background writeback (https://grafana.com/docs/loki/latest/configuration/#cache_config)
+// is configured we cannot know if these bytes actually got stored or not as this happens asynchronously
+func (c *Context) AddCacheBytesSent(t CacheType, i int) {
+	stats := c.getCacheStatsByType(t)
+	if stats == nil {
+		return
+	}
+
+	atomic.AddInt64(&stats.BytesSent, int64(i))
+}
+
+// AddCacheRequest counts the number of fetch/store requests to the cache
 func (c *Context) AddCacheRequest(t CacheType, i int) {
 	stats := c.getCacheStatsByType(t)
 	if stats == nil {
@@ -400,14 +420,20 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.Chunk.Requests", c.Chunk.Requests,
 		"Cache.Chunk.EntriesRequested", c.Chunk.EntriesRequested,
 		"Cache.Chunk.EntriesFound", c.Chunk.EntriesFound,
-		"Cache.Chunk.BytesTransferred", humanize.Bytes(uint64(c.Chunk.BytesTransferred)),
+		"Cache.Chunk.EntriesStored", c.Chunk.EntriesStored,
+		"Cache.Chunk.BytesSent", humanize.Bytes(uint64(c.Chunk.BytesSent)),
+		"Cache.Chunk.BytesReceived", humanize.Bytes(uint64(c.Chunk.BytesReceived)),
 		"Cache.Index.Requests", c.Index.Requests,
 		"Cache.Index.EntriesRequested", c.Index.EntriesRequested,
 		"Cache.Index.EntriesFound", c.Index.EntriesFound,
-		"Cache.Index.BytesTransferred", humanize.Bytes(uint64(c.Index.BytesTransferred)),
+		"Cache.Index.EntriesStored", c.Index.EntriesStored,
+		"Cache.Index.BytesSent", humanize.Bytes(uint64(c.Index.BytesSent)),
+		"Cache.Index.BytesReceived", humanize.Bytes(uint64(c.Index.BytesReceived)),
 		"Cache.Result.Requests", c.Result.Requests,
 		"Cache.Result.EntriesRequested", c.Result.EntriesRequested,
 		"Cache.Result.EntriesFound", c.Result.EntriesFound,
-		"Cache.Result.BytesTransferred", humanize.Bytes(uint64(c.Result.BytesTransferred)),
+		"Cache.Result.EntriesStored", c.Result.EntriesStored,
+		"Cache.Result.BytesSent", humanize.Bytes(uint64(c.Result.BytesSent)),
+		"Cache.Result.BytesReceived", humanize.Bytes(uint64(c.Result.BytesReceived)),
 	)
 }
