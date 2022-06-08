@@ -2030,7 +2030,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identityHistogram), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `buckets_over_time((50, 100, 200), {app="foo"}|~".+bar"[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `buckets_over_time((50, 100, 200), {app="foo"}|~".+bar"|unwrap foo [1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
