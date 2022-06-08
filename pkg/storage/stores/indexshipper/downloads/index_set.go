@@ -2,6 +2,7 @@ package downloads
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -25,7 +26,8 @@ import (
 )
 
 const (
-	gzipExtension = ".gz"
+	gzipExtension  = ".gz"
+	maxSyncRetries = 1
 )
 
 var errIndexListCacheTooStale = fmt.Errorf("index list cache too stale")
@@ -144,7 +146,7 @@ func (t *indexSet) Init(forQuerying bool) (err error) {
 	level.Debug(logger).Log("msg", fmt.Sprintf("opened %d local files, now starting sync operation", len(t.index)))
 
 	// sync the table to get new files and remove the deleted ones from storage.
-	err = t.sync(ctx, false, forQuerying)
+	err = t.syncWithRetry(ctx, false, forQuerying)
 	if err != nil {
 		return
 	}
@@ -243,11 +245,31 @@ func (t *indexSet) cleanupDB(fileName string) error {
 }
 
 func (t *indexSet) Sync(ctx context.Context) (err error) {
-	return t.sync(ctx, true, false)
+	return t.syncWithRetry(ctx, true, false)
+}
+
+// syncWithRetry runs a sync with upto maxSyncRetries on failure
+func (t *indexSet) syncWithRetry(ctx context.Context, lock, bypassListCache bool) error {
+	var err error
+	for i := 0; i <= maxSyncRetries; i++ {
+		err = t.sync(ctx, lock, bypassListCache)
+		if err == nil {
+			return nil
+		}
+
+		if errors.Is(err, errIndexListCacheTooStale) && i < maxSyncRetries {
+			level.Info(t.logger).Log("msg", "we have hit stale list cache, refreshing it before retrying")
+			t.baseIndexSet.RefreshIndexListCache(ctx)
+		}
+
+		level.Error(t.logger).Log("msg", "sync failed, retrying it", "err", err)
+	}
+
+	return err
 }
 
 // sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
-func (t *indexSet) sync(ctx context.Context, lock bool, bypassListCache bool) (err error) {
+func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err error) {
 	level.Debug(t.logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.tableName))
 
 	toDownload, toDelete, err := t.checkStorageForUpdates(ctx, lock, bypassListCache)

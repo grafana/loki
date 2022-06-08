@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -19,9 +20,10 @@ type DeleteRequest struct {
 	Status    DeleteRequestStatus `json:"status"`
 	CreatedAt model.Time          `json:"created_at"`
 
-	UserID          string                 `json:"-"`
-	matchers        []*labels.Matcher      `json:"-"`
-	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
+	UserID            string                 `json:"-"`
+	matchers          []*labels.Matcher      `json:"-"`
+	logSelectorExpr   syntax.LogSelectorExpr `json:"-"`
+	deletedLinesTotal prometheus.Counter     `json:"-"`
 }
 
 func (d *DeleteRequest) SetQuery(logQL string) error {
@@ -57,7 +59,11 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 	f := p.ForStream(labels).ProcessString
 	return func(s string) bool {
 		result, _, skip := f(0, s)
-		return len(result) != 0 || skip
+		if len(result) != 0 || skip {
+			d.deletedLinesTotal.Inc()
+			return true
+		}
+		return false
 	}, nil
 }
 

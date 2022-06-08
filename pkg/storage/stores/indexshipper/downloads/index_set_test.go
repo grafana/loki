@@ -3,12 +3,14 @@ package downloads
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -88,4 +90,67 @@ func TestIndexSet_doConcurrentDownload(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestIndexSet_Sync(t *testing.T) {
+	tempDir := t.TempDir()
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
+
+	var indexesSetup []string
+
+	indexSet, stopFunc := buildTestIndexSet(t, "", tempDir)
+	defer stopFunc()
+
+	checkIndexSet := func() {
+		require.Len(t, indexSet.index, len(indexesSetup))
+		verifyIndexForEach(t, indexesSetup, func(callbackFunc func(index.Index) error) error {
+			return indexSet.ForEach(context.Background(), callbackFunc)
+		})
+	}
+
+	// setup some indexes in object storage
+	setupIndexesAtPath(t, "", tablePathInStorage, 0, 10)
+	indexesSetup = buildListOfExpectedIndexes("", 0, 10)
+
+	// sync and verify the indexSet
+	indexSet.baseIndexSet.RefreshIndexListCache(context.Background())
+	require.NoError(t, indexSet.Sync(context.Background()))
+
+	// check index set twice; first run to have new files to download, second run to test with no changes in storage.
+	for i := 0; i < 2; i++ {
+		checkIndexSet()
+	}
+
+	// delete a file from storage which should get removed from local as well
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, indexesSetup[0])))
+	indexesSetup = indexesSetup[1:]
+
+	// sync and verify the indexSet
+	indexSet.baseIndexSet.RefreshIndexListCache(context.Background())
+	require.NoError(t, indexSet.Sync(context.Background()))
+	checkIndexSet()
+
+	// let us simulate a compaction to test stale index list cache handling
+
+	// first, let us add a new file and refresh the index list cache
+	oneMoreDB := "one-more-db"
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, oneMoreDB), []byte(oneMoreDB), 0755))
+	indexSet.baseIndexSet.RefreshIndexListCache(context.Background())
+
+	// now, without syncing the indexset, let us compact the index in storage
+	compactedDBName := "compacted-db"
+	require.NoError(t, os.RemoveAll(tablePathInStorage))
+	require.NoError(t, util.EnsureDirectory(tablePathInStorage))
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, compactedDBName), []byte(compactedDBName), 0755))
+	indexesSetup = []string{compactedDBName}
+
+	// verify that we are getting errIndexListCacheTooStale without refreshing the list cache
+	require.ErrorIs(t, errIndexListCacheTooStale, indexSet.sync(context.Background(), true, false))
+
+	// let us run a sync which should detect the stale index list cache and sync the table after refreshing the cache
+	require.NoError(t, indexSet.Sync(context.Background()))
+
+	// verify that table has got only compacted db
+	checkIndexSet()
 }
