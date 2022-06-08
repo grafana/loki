@@ -168,17 +168,6 @@ func TestExtractSecret(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:       "missing issuerCAPath",
-			tenantName: "tenant-a",
-			secret: &corev1.Secret{
-				Data: map[string][]byte{
-					"clientID":     []byte("test"),
-					"clientSecret": []byte("test"),
-				},
-			},
-			wantErr: true,
-		},
-		{
 			name:       "all set",
 			tenantName: "tenant-a",
 			secret: &corev1.Secret{

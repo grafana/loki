@@ -73,9 +73,6 @@ func extractSecret(s *corev1.Secret, tenantName string) (*manifests.TenantSecret
 		return nil, kverrors.New("missing clientSecret field", "field", "clientSecret")
 	}
 	issuerCAPath := s.Data["issuerCAPath"]
-	if len(issuerCAPath) == 0 {
-		return nil, kverrors.New("missing issuerCAPath field", "field", "issuerCAPath")
-	}
 
 	return &manifests.TenantSecrets{
 		TenantName:   tenantName,
