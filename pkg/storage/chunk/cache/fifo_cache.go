@@ -86,13 +86,20 @@ type FifoCache struct {
 
 	entriesAdded    prometheus.Counter
 	entriesAddedNew prometheus.Counter
-	entriesEvicted  prometheus.Counter
+	entriesEvicted  *prometheus.CounterVec
 	entriesCurrent  prometheus.Gauge
 	totalGets       prometheus.Counter
 	totalMisses     prometheus.Counter
 	staleGets       prometheus.Counter
 	memoryBytes     prometheus.Gauge
 }
+
+const (
+	expiredReason string = "expired"
+	fullReason           = "full"
+	tooBigReason         = "too big"
+	stoppedReason        = "stopped"
+)
 
 type cacheEntry struct {
 	updated time.Time
@@ -155,13 +162,13 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 			ConstLabels: prometheus.Labels{"cache": name},
 		}),
 
-		entriesEvicted: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		entriesEvicted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace:   "querier",
 			Subsystem:   "cache",
 			Name:        "evicted_total",
 			Help:        "The total number of evicted entries",
 			ConstLabels: prometheus.Labels{"cache": name},
-		}),
+		}, []string{"reason"}),
 
 		entriesCurrent: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace:   "querier",
@@ -237,7 +244,7 @@ func (c *FifoCache) pruneExpiredItems(ttl time.Duration) {
 			delete(c.entries, k)
 			c.currSizeBytes -= sizeOf(entry)
 			c.entriesCurrent.Dec()
-			c.entriesEvicted.Inc()
+			c.entriesEvicted.WithLabelValues(expiredReason).Inc()
 		}
 	}
 }
@@ -278,7 +285,7 @@ func (c *FifoCache) Stop() {
 
 	close(c.done)
 
-	c.entriesEvicted.Add(float64(c.lru.Len()))
+	c.entriesEvicted.WithLabelValues(stoppedReason).Add(float64(c.lru.Len()))
 
 	c.entries = make(map[string]*list.Element)
 	c.lru.Init()
@@ -314,7 +321,7 @@ func (c *FifoCache) put(key string, value []byte) {
 		// Cannot keep this item in the cache.
 		if ok {
 			// We do not replace this item.
-			c.entriesEvicted.Inc()
+			c.entriesEvicted.WithLabelValues(tooBigReason).Inc()
 		}
 		c.memoryBytes.Set(float64(c.currSizeBytes))
 		return
@@ -330,7 +337,7 @@ func (c *FifoCache) put(key string, value []byte) {
 		delete(c.entries, evicted.key)
 		c.currSizeBytes -= sizeOf(evicted)
 		c.entriesCurrent.Dec()
-		c.entriesEvicted.Inc()
+		c.entriesEvicted.WithLabelValues(fullReason).Inc()
 	}
 
 	// Finally, we have space to add the item.
