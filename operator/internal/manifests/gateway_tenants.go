@@ -67,7 +67,7 @@ func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType,
 		return openshift.ConfigureGatewayDeployment(
 			d,
 			gatewayContainerName,
-			tlsSercetVolume,
+			tlsSecretVolume,
 			gateway.LokiGatewayTLSDir,
 			gateway.LokiGatewayCertFile,
 			gateway.LokiGatewayKeyFile,

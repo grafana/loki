@@ -250,7 +250,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      tlsSercetVolume,
+											Name:      tlsSecretVolume,
 											ReadOnly:  true,
 											MountPath: gateway.LokiGatewayTLSDir,
 										},
@@ -324,7 +324,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							},
 							Volumes: []corev1.Volume{
 								{
-									Name: tlsSercetVolume,
+									Name: tlsSecretVolume,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "test-gateway-http-metrics",
@@ -362,7 +362,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      tlsSercetVolume,
+											Name:      tlsSecretVolume,
 											ReadOnly:  true,
 											MountPath: gateway.LokiGatewayTLSDir,
 										},
@@ -371,7 +371,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							},
 							Volumes: []corev1.Volume{
 								{
-									Name: tlsSercetVolume,
+									Name: tlsSecretVolume,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "test-gateway-http-metrics",
@@ -405,7 +405,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      tlsSercetVolume,
+											Name:      tlsSecretVolume,
 											ReadOnly:  true,
 											MountPath: gateway.LokiGatewayTLSDir,
 										},
@@ -479,7 +479,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      tlsSercetVolume,
+											Name:      tlsSecretVolume,
 											ReadOnly:  true,
 											MountPath: gateway.LokiGatewayTLSDir,
 										},
@@ -488,7 +488,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							},
 							Volumes: []corev1.Volume{
 								{
-									Name: tlsSercetVolume,
+									Name: tlsSecretVolume,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "test-gateway-http-metrics",
@@ -650,7 +650,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      tlsSercetVolume,
+											Name:      tlsSecretVolume,
 											ReadOnly:  true,
 											MountPath: gateway.LokiGatewayTLSDir,
 										},

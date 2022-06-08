@@ -356,7 +356,7 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
-				Name: tlsSercetVolume,
+				Name: tlsSecretVolume,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName: secretName,
@@ -368,7 +368,7 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 	secretContainerSpec := corev1.Container{
 		VolumeMounts: []corev1.VolumeMount{
 			{
-				Name:      tlsSercetVolume,
+				Name:      tlsSecretVolume,
 				ReadOnly:  true,
 				MountPath: gateway.LokiGatewayTLSDir,
 			},
