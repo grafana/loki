@@ -113,11 +113,7 @@ func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
 // is pushed down to the downstream expression.
 func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.VectorAggregationExpr, recorder *downstreamRecorder) (syntax.SampleExpr, error) {
 	// immediately clone the passed expr to avoid mutating the original
-	expr, err := clone(expr)
-	if err != nil {
-		return nil, err
-	}
-
+	expr = clone(expr)
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e, recorder)
@@ -247,7 +243,7 @@ func (m RangeMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregatio
 // appendDownstream adds expression expr with a range interval 'interval' and offset 'offset' to the downstreams list.
 // Returns the updated downstream ConcatSampleExpr.
 func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
-	sampleExpr, _ := clone(expr)
+	sampleExpr := clone(expr)
 	sampleExpr.Walk(func(e interface{}) {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
@@ -418,6 +414,10 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 // This is needed whenever we want to modify the existing query tree.
 // clone is identical to syntax.Expr.Clone() but with the additional type
 // casting for syntax.SampleExpr.
-func clone(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
-	return syntax.ParseSampleExpr(expr.String())
+func clone(expr syntax.SampleExpr) syntax.SampleExpr {
+	e, err := syntax.ParseSampleExpr(expr.String())
+	if err != nil {
+		panic(err)
+	}
+	return e
 }
