@@ -58,9 +58,6 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		}
 
 		objs = configureGatewayObjsForMode(objs, opts)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	return objs, nil

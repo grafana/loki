@@ -179,14 +179,14 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 
 func TestConfigureDeploymentForMode(t *testing.T) {
 	type tt struct {
-		desc  string
-		mode  lokiv1beta1.ModeType
-		flags FeatureFlags
-		dpl   *appsv1.Deployment
-		want  *appsv1.Deployment
+		desc      string
+		mode      lokiv1beta1.ModeType
+		stackName string
+		stackNs   string
+		flags     FeatureFlags
+		dpl       *appsv1.Deployment
+		want      *appsv1.Deployment
 	}
-	name := "test"
-	ns := "test-ns"
 
 	tc := []tt{
 		{
@@ -203,11 +203,13 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		},
 		{
 
-			desc: "openshift-logging mode",
-			mode: lokiv1beta1.OpenshiftLogging,
+			desc:      "openshift-logging mode",
+			mode:      lokiv1beta1.OpenshiftLogging,
+			stackName: "test",
+			stackNs:   "test-ns",
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: ns,
+					Namespace: "test-ns",
 				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -228,7 +230,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 			want: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: ns,
+					Namespace: "test-ns",
 				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -325,7 +327,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Name: tlsSercetVolume,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-tls",
+											SecretName: "test-gateway-http-metrics",
 										},
 									},
 								},
@@ -336,14 +338,16 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 		},
 		{
-			desc: "openshift-logging mode with-tls-service-monitor-config",
-			mode: lokiv1beta1.OpenshiftLogging,
+			desc:      "openshift-logging mode with-tls-service-monitor-config",
+			mode:      lokiv1beta1.OpenshiftLogging,
+			stackName: "test",
+			stackNs:   "test-ns",
 			flags: FeatureFlags{
 				EnableTLSServiceMonitorConfig: true,
 			},
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: ns,
+					Namespace: "test-ns",
 				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -370,7 +374,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Name: tlsSercetVolume,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-tls",
+											SecretName: "test-gateway-http-metrics",
 										},
 									},
 								},
@@ -381,7 +385,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 			want: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: ns,
+					Namespace: "test-ns",
 				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -487,7 +491,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Name: tlsSercetVolume,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-tls",
+											SecretName: "test-gateway-http-metrics",
 										},
 									},
 								},
@@ -498,8 +502,10 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 		},
 		{
-			desc: "openshift-logging mode with-cert-signing-service",
-			mode: lokiv1beta1.OpenshiftLogging,
+			desc:      "openshift-logging mode with-cert-signing-service",
+			mode:      lokiv1beta1.OpenshiftLogging,
+			stackName: "test",
+			stackNs:   "test-ns",
 			flags: FeatureFlags{
 				EnableTLSServiceMonitorConfig:   true,
 				EnableCertificateSigningService: true,
@@ -507,7 +513,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "gateway",
-					Namespace: ns,
+					Namespace: "test-ns",
 				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -542,7 +548,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			want: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "gateway",
-					Namespace: ns,
+					Namespace: "test-ns",
 				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -677,7 +683,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureDeploymentForMode(tc.dpl, tc.mode, tc.flags, name, ns)
+			err := configureDeploymentForMode(tc.dpl, tc.mode, tc.flags, "test", "test-ns")
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
