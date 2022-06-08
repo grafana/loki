@@ -120,7 +120,6 @@ func (r *rangeVectorIterator) load(start, end int64) {
 		}
 		// the lower bound of the range is not inclusive
 		if sample.Timestamp <= start {
-			fmt.Printf("Skipping sample %v\n", sample)
 			_ = r.iter.Next()
 			continue
 		}
@@ -186,7 +185,6 @@ func (r *rangeVectorIterator) At(aggregator interface{}) (int64, promql.Vector) 
 					Metric: metric,
 				})
 			}
-
 		}
 	}
 	return ts, r.at
@@ -434,7 +432,7 @@ func bucketsOverTime(buckets []float64) HistogramVectorAggregator {
 		for _, sample := range samples {
 			i := sort.SearchFloat64s(buckets, sample.V)
 			if i <= len(buckets)-1 {
-				bucketMap[buckets[i]] += 1
+				bucketMap[buckets[i]]++
 			}
 		}
 		return bucketMap

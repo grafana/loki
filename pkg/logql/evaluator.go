@@ -440,6 +440,7 @@ func rangeAggEvaluator(
 	if expr.Operation == syntax.OpRangeTypeAbsent {
 		return &absentRangeVectorEvaluator{
 			iter: iter,
+			agg:  agg,
 			lbs:  absentLabels(expr),
 		}, nil
 	}
@@ -535,6 +536,7 @@ func (r histogramEvaluator) Error() error {
 }
 
 type absentRangeVectorEvaluator struct {
+	agg  RangeVectorAggregator
 	iter RangeVectorIterator
 	lbs  labels.Labels
 
@@ -546,7 +548,7 @@ func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	if !next {
 		return false, 0, promql.Vector{}
 	}
-	ts, vec := r.iter.At(one)
+	ts, vec := r.iter.At(r.agg)
 	for _, s := range vec {
 		// Errors are not allowed in metrics.
 		if s.Metric.Has(logqlmodel.ErrorLabel) {
