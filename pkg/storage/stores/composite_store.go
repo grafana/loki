@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -25,6 +26,7 @@ type Store interface {
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
 	GetChunkFetcher(tm model.Time) *fetcher.Fetcher
 	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
+	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
 	Stop()
 }
 
@@ -159,6 +161,22 @@ func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, t
 		return nil
 	})
 	return chunkIDs, fetchers, err
+}
+
+func (c compositeStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	xs := make([]*stats.Stats, 0, len(c.stores))
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+		x, err := store.Stats(innerCtx, userID, from, through, matchers...)
+		xs = append(xs, x)
+		return err
+	})
+
+	if err != nil {
+		return nil, err
+
+	}
+	res := stats.MergeStats(xs...)
+	return &res, err
 }
 
 func (c compositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {

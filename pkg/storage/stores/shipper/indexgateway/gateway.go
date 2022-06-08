@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -29,6 +30,7 @@ type IndexQuerier interface {
 	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
 	Stop()
 }
 
@@ -229,4 +231,17 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *indexgatewa
 	return &indexgatewaypb.LabelResponse{
 		Values: names,
 	}, nil
+}
+
+func (g *Gateway) GetStats(ctx context.Context, req *indexgatewaypb.IndexStatsRequest) (*indexgatewaypb.IndexStatsResponse, error) {
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
