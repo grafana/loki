@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -318,6 +319,10 @@ func (s *storeMock) Series(ctx context.Context, req logql.SelectLogParams) ([]lo
 
 func (s *storeMock) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	panic("don't call me please")
+}
+
+func (s *storeMock) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	return nil, nil
 }
 
 func (s *storeMock) Stop() {
