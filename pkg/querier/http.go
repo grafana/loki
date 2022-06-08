@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
@@ -207,6 +208,9 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 
 	log, ctx := spanlogger.New(r.Context(), "query.Label")
 
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("labels"))
+	defer timer.ObserveDuration()
+
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
 
@@ -378,6 +382,9 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log, ctx := spanlogger.New(r.Context(), "query.Series")
+
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("series"))
+	defer timer.ObserveDuration()
 
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
