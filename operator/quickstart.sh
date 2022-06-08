@@ -53,6 +53,20 @@ logger() {
     kubectl apply -f ./hack/addons_logger.yaml
 }
 
+certificates() {
+    echo "-------------------------------------------"
+    echo "- Deploy TLS Certificates...              -"
+    echo "-------------------------------------------"
+    kubectl apply -f ./hack/addons_cert_manager.yaml
+    kubectl -n cert-manager rollout status deployment cert-manager
+    kubectl -n cert-manager rollout status deployment cert-manager-cainjector
+    kubectl -n cert-manager rollout status deployment cert-manager-webhook
+    kubectl apply -f ./hack/addons_kind_certs.yaml
+
+    kubectl wait --timeout=180s --for=condition=ready certificate/lokistack-dev-ca-bundle
+    kubectl create configmap lokistack-dev-ca-bundle --from-literal service-ca.crt="$(kubectl get secret lokistack-dev-ca-bundle -o json | jq -r '.data."ca.crt"' | base64 -d -)"
+}
+
 check() {
     logcli --addr "http://localhost/token-refresher/api/logs/v1/test-oidc" labels
 }
@@ -78,18 +92,23 @@ logger)
     logger
     ;;
 
+certificates)
+    certificates
+    ;;
+
 check)
     check
     ;;
 
 help)
-    echo "usage: $(basename "$0") { setup | deps | operator | lokistack | logger | check }"
+    echo "usage: $(basename "$0") { setup | deps | operator | lokistack | logger | certificates | check }"
     ;;
 
 *)
     setup
     deps
     operator
+    certificates
     lokistack
     logger
     ;;
