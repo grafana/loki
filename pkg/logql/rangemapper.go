@@ -199,7 +199,12 @@ func (m RangeMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrid
 			Grouping:  overrideDownstream.Grouping,
 			Operation: overrideDownstream.Operation,
 		}
+		// Ensure our modified expression is still valid.
+		if downstreamExpr.(*syntax.VectorAggregationExpr).Left.(*syntax.RangeAggregationExpr).Validate() != nil {
+			return expr
+		}
 	}
+
 	return &syntax.BinOpExpr{
 		SampleExpr: &syntax.VectorAggregationExpr{
 			Left: m.mapConcatSampleExpr(downstreamExpr, rangeInterval, recorder),

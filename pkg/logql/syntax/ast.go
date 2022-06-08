@@ -777,6 +777,10 @@ func (e RangeAggregationExpr) validate() error {
 	}
 }
 
+func (e RangeAggregationExpr) Validate() error {
+	return e.validate()
+}
+
 // impls Stringer
 func (e *RangeAggregationExpr) String() string {
 	var sb strings.Builder
