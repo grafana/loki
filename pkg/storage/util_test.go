@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
+	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	loki_util "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -252,6 +253,10 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		panic(err)
 	}
 	return [][]chunk.Chunk{refs}, []*fetcher.Fetcher{f}, nil
+}
+
+func (m *mockChunkStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
+	return nil, nil
 }
 
 type mockChunkStoreClient struct {
