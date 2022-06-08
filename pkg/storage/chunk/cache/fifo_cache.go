@@ -97,7 +97,7 @@ type FifoCache struct {
 const (
 	expiredReason string = "expired" //nolint:staticcheck
 	fullReason           = "full"
-	tooBigReason         = "too big"
+	tooBigReason         = "object too big"
 	stoppedReason        = "stopped"
 )
 
