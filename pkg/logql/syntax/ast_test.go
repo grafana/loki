@@ -166,6 +166,10 @@ func Test_SampleExpr_String(t *testing.T) {
 			"(.*):.*"
 		)
 		`,
+		`buckets_over_time((0.005, 0.025, 0.05), {namespace="tns"} | pattern "<_> - <request_time>" | unwrap request_time[5m]) by (path)`,
+		`buckets_over_time((0.005, 0.025, 0.05), {namespace="tns"} | pattern "<_> - <request_time>" | unwrap request_time[5m])`,
+		`buckets_over_time(linear_buckets(0.005, 2, 5), {namespace="tns"} | pattern "<_> - <request_time>" | unwrap request_time[5m])`,
+		`buckets_over_time(exponential_buckets(0.005, 2, 5), {namespace="tns"} | pattern "<_> - <request_time>" | unwrap request_time[5m])`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)
