@@ -518,6 +518,7 @@ func (t *Loki) setupModuleManager() error {
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},
 		Write:                    {Ingester, Distributor},
+		MemberlistKV:             {Server},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, or read.

@@ -836,6 +836,8 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
+	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
+
 	return t.MemberlistKV, nil
 }
 
