@@ -168,11 +168,10 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 
 	// Merge the responses.
 	sort.Sort(byFirstTime(promResponses))
-	resultType := model.ValMatrix.String()
 	response := PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
-			ResultType: resultType,
+			ResultType: model.ValMatrix.String(),
 			Result:     matrixMerge(promResponses),
 		},
 	}

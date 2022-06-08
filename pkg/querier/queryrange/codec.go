@@ -740,7 +740,6 @@ func toProtoMatrix(m loghttp.Matrix) []queryrangebase.SampleStream {
 			Samples: samples,
 		})
 	}
-
 	return res
 }
 

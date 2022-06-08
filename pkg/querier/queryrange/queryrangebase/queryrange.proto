@@ -61,7 +61,7 @@ message SampleStream {
   ];
   repeated logproto.LegacySample samples = 2 [
     (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "values,omitempty"
+    (gogoproto.jsontag) = "values"
   ];
 }
 
