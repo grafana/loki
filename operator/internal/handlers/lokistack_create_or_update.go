@@ -79,20 +79,13 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	storageSchemas, err := storageoptions.BuildSchemaConfigList(
+	storageSchemas, err := storageoptions.BuildSchemaConfig(
 		time.Now().UTC(),
 		stack.Spec.Storage.Schemas,
 		stack.Status.Storage.Schemas,
 	)
 	if err != nil {
 		ll.Error(err, "failed to create storage schema configurations")
-		return err
-	}
-
-	err = status.SetStorageSchemaStatus(ctx, k, req, storageSchemas)
-
-	if err != nil {
-		ll.Error(err, "failed to set storage schema status")
 		return err
 	}
 
@@ -249,6 +242,18 @@ func CreateOrUpdateLokiStack(
 	}
 
 	ll.Info("manifests built", "count", len(objects))
+
+	// The status is updated before the objects are actually created to
+	// avoid the scenario in which the configmap is successfully created or
+	// updated and another resource is not. This would cause the status to
+	// be possibly misaligned with the configmap, which could lead to
+	// a user possibly being unable to read logs.
+	err = status.SetStorageSchemaStatus(ctx, k, req, storageSchemas)
+
+	if err != nil {
+		ll.Error(err, "failed to set storage schema status")
+		return err
+	}
 
 	var errCount int32
 

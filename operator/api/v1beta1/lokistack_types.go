@@ -395,6 +395,8 @@ type ObjectStorageSchemaSpec struct {
 	Version ObjectStorageSchemaVersion `json:"version"`
 
 	// EffectiveDate is the date that the schema will be applied on.
+	// To ensure readibility of logs, this date should be at least two days
+	// ahead of the current date.
 	//
 	// +required
 	// +kubebuilder:validation:Required

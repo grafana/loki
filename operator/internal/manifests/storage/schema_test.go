@@ -9,16 +9,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func BuildSchemaConfigList_NoSchemas(t *testing.T) {
+func BuildSchemaConfig_NoSchemas(t *testing.T) {
 	specs := []lokiv1beta1.ObjectStorageSchemaSpec{}
 	statuses := []lokiv1beta1.StorageSchemaStatus{}
 
-	_, err := BuildSchemaConfigList(time.Now().UTC(), specs, statuses)
+	expected, err := BuildSchemaConfig(time.Now().UTC(), specs, statuses)
 
 	require.Error(t, err)
+	require.Nil(t, expected)
 }
 
-func BuildSchemaConfigList_AddSchema_NoStatuses(t *testing.T) {
+func BuildSchemaConfig_AddSchema_NoStatuses(t *testing.T) {
 	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV11,
@@ -27,7 +28,7 @@ func BuildSchemaConfigList_AddSchema_NoStatuses(t *testing.T) {
 	}
 	statuses := []lokiv1beta1.StorageSchemaStatus{}
 
-	actual, err := BuildSchemaConfigList(time.Now().UTC(), specs, statuses)
+	actual, err := BuildSchemaConfig(time.Now().UTC(), specs, statuses)
 	expected := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV11,
@@ -39,7 +40,7 @@ func BuildSchemaConfigList_AddSchema_NoStatuses(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-func BuildSchemaConfigList_AddSchema_WithPriorSchemas_OutsideUpdateWindow(t *testing.T) {
+func BuildSchemaConfig_AddSchema_WithStatuses_WithValidDate(t *testing.T) {
 	utcTime := time.Date(2021, 9, 1, 0, 0, 0, 0, time.UTC)
 	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
@@ -58,7 +59,7 @@ func BuildSchemaConfigList_AddSchema_WithPriorSchemas_OutsideUpdateWindow(t *tes
 		},
 	}
 
-	actual, err := BuildSchemaConfigList(utcTime, specs, statuses)
+	actual, err := BuildSchemaConfig(utcTime, specs, statuses)
 	expected := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV11,
@@ -74,7 +75,7 @@ func BuildSchemaConfigList_AddSchema_WithPriorSchemas_OutsideUpdateWindow(t *tes
 	require.Equal(t, expected, actual)
 }
 
-func BuildSchemaConfigList_AddSchema_WithPriorSchemas_InsideUpdateWindow(t *testing.T) {
+func BuildSchemaConfig_AddSchema_WithStatuses_WithInvalidDate(t *testing.T) {
 	utcTime := time.Date(2021, 10, 1, 0, 0, 0, 0, time.UTC)
 	updateWindow := utcTime.Add(UpdateDelay).Format(DateTimeFormat)
 	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
@@ -94,12 +95,13 @@ func BuildSchemaConfigList_AddSchema_WithPriorSchemas_InsideUpdateWindow(t *test
 		},
 	}
 
-	_, err := BuildSchemaConfigList(utcTime, specs, statuses)
+	expected, err := BuildSchemaConfig(utcTime, specs, statuses)
 
 	require.Error(t, err)
+	require.Nil(t, expected)
 }
 
-func BuildSchemaConfigList_AddSchema_MissingAppliedSchema(t *testing.T) {
+func BuildSchemaConfig_ConflictingChange_RetroactivelyRemoveSchema(t *testing.T) {
 	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV11,
@@ -117,12 +119,13 @@ func BuildSchemaConfigList_AddSchema_MissingAppliedSchema(t *testing.T) {
 		},
 	}
 
-	_, err := BuildSchemaConfigList(time.Now().UTC(), specs, statuses)
+	expected, err := BuildSchemaConfig(time.Now().UTC(), specs, statuses)
 
 	require.Error(t, err)
+	require.Nil(t, expected)
 }
 
-func BuildSchemaConfigList_AddSchema_RetroactiveSchemaAddition(t *testing.T) {
+func BuildSchemaConfig_ConflictingChange_RetroactivelyAddSchema(t *testing.T) {
 	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV12,
@@ -148,12 +151,13 @@ func BuildSchemaConfigList_AddSchema_RetroactiveSchemaAddition(t *testing.T) {
 		},
 	}
 
-	_, err := BuildSchemaConfigList(time.Now().UTC(), specs, statuses)
+	expected, err := BuildSchemaConfig(time.Now().UTC(), specs, statuses)
 
 	require.Error(t, err)
+	require.Nil(t, expected)
 }
 
-func BuildSchemaConfigList_SortSchema_ChronologicalOrder(t *testing.T) {
+func BuildSchemaConfig_SortSchema_ChronologicalOrder(t *testing.T) {
 	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV12,
@@ -191,7 +195,7 @@ func BuildSchemaConfigList_SortSchema_ChronologicalOrder(t *testing.T) {
 		},
 	}
 
-	actual, err := BuildSchemaConfigList(time.Now().UTC(), specs, statuses)
+	actual, err := BuildSchemaConfig(time.Now().UTC(), specs, statuses)
 	expected := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV11,
@@ -215,7 +219,7 @@ func BuildSchemaConfigList_SortSchema_ChronologicalOrder(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-func TestStatusSchemaConfigList(t *testing.T) {
+func TestSchemaConfigFromStatus(t *testing.T) {
 	statuses := []lokiv1beta1.StorageSchemaStatus{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV12,
@@ -235,7 +239,7 @@ func TestStatusSchemaConfigList(t *testing.T) {
 		},
 	}
 
-	actual := statusSchemaConfigList(statuses)
+	actual := schemaConfigFromStatus(statuses)
 	expected := []schemaConfig{
 		{
 			version:       lokiv1beta1.ObjectStorageSchemaV12,
@@ -258,7 +262,7 @@ func TestStatusSchemaConfigList(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-func TestSpecSchemaConfigList(t *testing.T) {
+func TestSchemaConfigFromSpec(t *testing.T) {
 	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV12,
@@ -278,7 +282,7 @@ func TestSpecSchemaConfigList(t *testing.T) {
 		},
 	}
 
-	actual := specSchemaConfigList(specs)
+	actual := schemaConfigFromSpec(specs)
 	expected := []schemaConfig{
 		{
 			version:       lokiv1beta1.ObjectStorageSchemaV12,
@@ -301,7 +305,7 @@ func TestSpecSchemaConfigList(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-func TestSpecList(t *testing.T) {
+func TestBuildSpecs(t *testing.T) {
 	configs := []schemaConfig{
 		{
 			version:       lokiv1beta1.ObjectStorageSchemaV12,
@@ -321,7 +325,7 @@ func TestSpecList(t *testing.T) {
 		},
 	}
 
-	actual := specList(configs)
+	actual := buildSpecs(configs)
 	expected := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV12,

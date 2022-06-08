@@ -24,14 +24,14 @@ type schemaConfig struct {
 	effectiveDate time.Time
 }
 
-// BuildSchemaConfigList creates a list of schemas to be used to configure
+// BuildSchemaConfig creates a list of schemas to be used to configure
 // the storage schemas for the cluster. This method assumes that the following
 // validation has been done to the statuses and specs:
 //
 // 1. All EffectiveDate fields are able to be parsed
 // 2. All EffectiveDate fields are unique in their respective list
 //
-func BuildSchemaConfigList(
+func BuildSchemaConfig(
 	utcTime time.Time,
 	specs []lokiv1beta1.ObjectStorageSchemaSpec,
 	statuses []lokiv1beta1.StorageSchemaStatus,
@@ -40,30 +40,30 @@ func BuildSchemaConfigList(
 		return nil, kverrors.New("Spec does not contain any schemas.")
 	}
 
-	specSchemas := specSchemaConfigList(specs)
+	specSchemas := schemaConfigFromSpec(specs)
 
 	if len(statuses) != 0 {
-		statusSchemas := statusSchemaConfigList(statuses)
+		statusSchemas := schemaConfigFromStatus(statuses)
 
 		// Schemas applied in the future can be ignored cause they have not
 		// taken effect yet. The delay is added to avoid edge cases where UTC
 		// and local time zones may cause interference.
 		//
-		// For example, say there is a future change which will occur on 6/02/22.
-		// If change occurs close to midnight on 6/01/22, there might be timing
+		// For example, say there is a future change which will occur on 2022-06-02.
+		// If change occurs close to midnight on 2022-06-01, there might be timing
 		// issues between the local and UTC. Thus, there is a chance of corruption.
-		// To avoid this, the change on 6/02/22 should be considered as already
+		// To avoid this, the change on 2022-06-02 should be considered as already
 		// applied and an error should be sent back to change the date of the
 		// in-flight change.
 		cutoff := utcTime.Add(UpdateDelay)
 		applied := filterAppliedSchemas(statusSchemas, cutoff)
 		if !containsSchemas(specSchemas, applied) {
-			return nil, kverrors.New("Spec is missing schemas which have already been applied.")
+			return nil, kverrors.New("Cannot retroactively remove previously applied schemas")
 		}
 
 		unapplied := filterUnappliedSchemas(specSchemas, cutoff)
 		if len(specSchemas)-len(unapplied) != len(applied) {
-			return nil, kverrors.New("Spec contains schemas which cannot be retroactively applied.")
+			return nil, kverrors.New("Cannot retroactively add schemas.")
 		}
 	}
 
@@ -72,11 +72,11 @@ func BuildSchemaConfigList(
 	})
 
 	reducedSpecSchemas := reduceSortedSchemas(specSchemas)
-	return specList(reducedSpecSchemas), nil
+	return buildSpecs(reducedSpecSchemas), nil
 }
 
-// statusSchemaConfigList creates a list of schemaConfigs based on the given statuses
-func statusSchemaConfigList(statuses []lokiv1beta1.StorageSchemaStatus) []schemaConfig {
+// schemaConfigFromStatus creates a list of schemaConfigs based on the given statuses
+func schemaConfigFromStatus(statuses []lokiv1beta1.StorageSchemaStatus) []schemaConfig {
 	configs := make([]schemaConfig, len(statuses))
 
 	for i, status := range statuses {
@@ -91,8 +91,8 @@ func statusSchemaConfigList(statuses []lokiv1beta1.StorageSchemaStatus) []schema
 	return configs
 }
 
-// specSchemaConfigList creates a list of schemaConfigs based on the given specs
-func specSchemaConfigList(specs []lokiv1beta1.ObjectStorageSchemaSpec) []schemaConfig {
+// schemaConfigFromSpec creates a list of schemaConfigs based on the given specs
+func schemaConfigFromSpec(specs []lokiv1beta1.ObjectStorageSchemaSpec) []schemaConfig {
 	configs := make([]schemaConfig, len(specs))
 
 	for i, spec := range specs {
@@ -107,8 +107,8 @@ func specSchemaConfigList(specs []lokiv1beta1.ObjectStorageSchemaSpec) []schemaC
 	return configs
 }
 
-// specList creates a list of ObjectStorageSchemaSpecs based on the given configs
-func specList(configs []schemaConfig) []lokiv1beta1.ObjectStorageSchemaSpec {
+// buildSpecs creates a list of ObjectStorageSchemaSpecs based on the given configs
+func buildSpecs(configs []schemaConfig) []lokiv1beta1.ObjectStorageSchemaSpec {
 	specs := make([]lokiv1beta1.ObjectStorageSchemaSpec, len(configs))
 
 	for i, config := range configs {
@@ -183,7 +183,7 @@ func containsSchemas(configs []schemaConfig, subset []schemaConfig) bool {
 // reduceSortedSchemas returns a list of configs that have removed redundant entries.
 func reduceSortedSchemas(configs []schemaConfig) []schemaConfig {
 	if len(configs) == 0 {
-		return []schemaConfig{}
+		return nil
 	}
 
 	lastIndex := 0
