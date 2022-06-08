@@ -442,19 +442,6 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 				},
 				Statistics: resp.Data.Statistics,
 			}, nil
-		case loghttp.ResultTypeHistogramMatrix:
-			resp := &LokiPromResponse{
-				Response: &queryrangebase.PrometheusResponse{
-					Status: resp.Status,
-					Data: queryrangebase.PrometheusData{
-						ResultType: loghttp.ResultTypeHistogramMatrix,
-						Result:     toProtoHistogramMatrix(resp.Data.Result.(loghttp.HistogramMatrix)),
-					},
-					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
-				},
-				Statistics: resp.Data.Statistics,
-			}
-			return resp, nil
 		case loghttp.ResultTypeStream:
 			// This is the same as in querysharding.go
 			params, err := paramsFromRequest(req)
@@ -754,35 +741,6 @@ func toProtoMatrix(m loghttp.Matrix) []queryrangebase.SampleStream {
 		})
 	}
 
-	return res
-}
-
-func toProtoHistogramMatrix(m loghttp.HistogramMatrix) []queryrangebase.SampleStream {
-	res := make([]queryrangebase.SampleStream, 0, len(m))
-	if len(m) == 0 {
-		return res
-	}
-
-	for _, stream := range m {
-		histogramSamples := make([]logproto.HistogramSample, 0, len(stream.Values))
-		for _, s := range stream.Values {
-			histogramValues := make([]*logproto.HistogramValue, 0, len(s.Value))
-			for _, histVal := range s.Value {
-				histogramValues = append(histogramValues, &logproto.HistogramValue{
-					Upperbound: float64(histVal.UpperBound),
-					Count:      histVal.Count,
-				})
-			}
-			histogramSamples = append(histogramSamples, logproto.HistogramSample{
-				Value:       histogramValues,
-				TimestampMs: int64(s.Timestamp),
-			})
-		}
-		res = append(res, queryrangebase.SampleStream{
-			Labels:           logproto.FromMetricsToLabelAdapters(stream.Metric),
-			Histogramsamples: histogramSamples,
-		})
-	}
 	return res
 }
 

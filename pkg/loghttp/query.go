@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/histogram"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
@@ -64,11 +63,10 @@ type ResultType string
 
 // ResultType values
 const (
-	ResultTypeStream          = "streams"
-	ResultTypeScalar          = "scalar"
-	ResultTypeVector          = "vector"
-	ResultTypeMatrix          = "matrix"
-	ResultTypeHistogramMatrix = "histogrammatrix"
+	ResultTypeStream = "streams"
+	ResultTypeScalar = "scalar"
+	ResultTypeVector = "vector"
+	ResultTypeMatrix = "matrix"
 )
 
 // ResultValue interface mimics the promql.Value interface
@@ -94,11 +92,6 @@ func (Vector) Type() ResultType { return ResultTypeVector }
 
 // Type implements the promql.Value interface
 func (Matrix) Type() ResultType { return ResultTypeMatrix }
-
-// Type implements the promql.Value interface
-func (HistogramMatrix) Type() ResultType { return ResultTypeHistogramMatrix }
-
-type HistogramMatrix []histogram.Stream
 
 // Streams is a slice of Stream
 type Streams []Stream
@@ -207,12 +200,6 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 				q.Result = v
 			case ResultTypeScalar:
 				var v Scalar
-				if err = json.Unmarshal(value, &v); err != nil {
-					return err
-				}
-				q.Result = v
-			case ResultTypeHistogramMatrix:
-				var v HistogramMatrix
 				if err = json.Unmarshal(value, &v); err != nil {
 					return err
 				}

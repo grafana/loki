@@ -104,6 +104,10 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 	}
 }
 
+func (m ShardMapper) mapHistogramExpr(expr *syntax.HistogramExpr, r *downstreamRecorder) syntax.SampleExpr {
+	return expr
+}
+
 func (m ShardMapper) mapLogSelectorExpr(expr syntax.LogSelectorExpr, r *downstreamRecorder) syntax.LogSelectorExpr {
 	var head *ConcatLogSelectorExpr
 	for i := m.shards - 1; i >= 0; i-- {
@@ -247,10 +251,6 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 	default:
 		return expr
 	}
-}
-
-func (m ShardMapper) mapHistogramExpr(expr *syntax.HistogramExpr, r *downstreamRecorder) syntax.SampleExpr {
-	return expr
 }
 
 // hasLabelModifier tells if an expression contains pipelines that can modify stream labels

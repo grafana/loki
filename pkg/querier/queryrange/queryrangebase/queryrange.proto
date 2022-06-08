@@ -63,10 +63,6 @@ message SampleStream {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "values,omitempty"
   ];
-  repeated logproto.HistogramSample histogramsamples = 3 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "histogramvalues,omitempty"
-  ];
 }
 
 message CachedResponse {

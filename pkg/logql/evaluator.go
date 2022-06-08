@@ -15,7 +15,6 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/histogram"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/util"
@@ -510,18 +509,17 @@ func histogramAggEvaluator(
 	}, nil
 }
 
-func (r *histogramEvaluator) NextVal() (bool, int64, histogram.Vector) {
+func (r *histogramEvaluator) Next() (bool, int64, promql.Vector) {
 	next := r.iter.Next()
 	if !next {
-		return false, 0, histogram.Vector{}
+		return false, 0, promql.Vector{}
 	}
-
-	ts, vec := r.iter.AtHistogram(r.agg)
+	ts, vec := r.iter.At(r.agg)
 	for _, s := range vec {
 		// Errors are not allowed in metrics.
 		if s.Metric.Has(logqlmodel.ErrorLabel) {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, histogram.Vector{}
+			return false, 0, promql.Vector{}
 		}
 	}
 	return true, ts, vec

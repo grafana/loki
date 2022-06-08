@@ -169,7 +169,7 @@ bucketExpr:
     ;
 
 buckets:
-     NUMBER { $$ = []float64{ mustNewFloat($1) } }
+      NUMBER { $$ = []float64{ mustNewFloat($1) } }
     | buckets COMMA NUMBER { $$ = append($1, mustNewFloat($3)) }
     ;
 

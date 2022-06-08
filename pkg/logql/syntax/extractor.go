@@ -8,7 +8,7 @@ import (
 )
 
 const UnsupportedErr = "unsupported range vector aggregation operation: %s"
-const UnsupportedHistExprErr = "unsupported histogram operation"
+const UnsupportedHistogramExprErr = "unsupported histogram operation"
 
 func (r RangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	return r.extractor(nil)
@@ -128,9 +128,8 @@ func (r HistogramExpr) extractor(override *Grouping) (log.SampleExtractor, error
 		stages = st
 	}
 
-	// todo: correct error handling
 	if r.Left.Unwrap == nil {
-		return nil, fmt.Errorf(UnsupportedHistExprErr)
+		return nil, fmt.Errorf(UnsupportedHistogramExprErr)
 	}
 
 	var convOp string
@@ -148,5 +147,4 @@ func (r HistogramExpr) extractor(override *Grouping) (log.SampleExtractor, error
 		convOp, groups, without, noLabels, stages,
 		log.ReduceAndLabelFilter(r.Left.Unwrap.PostFilters),
 	)
-
 }
