@@ -112,7 +112,7 @@ func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, fr
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 }
 
-func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.StatsBlooms, error) {
+func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return blooms, err

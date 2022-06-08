@@ -237,7 +237,7 @@ func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, throu
 	return results, nil
 }
 
-func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.StatsBlooms, error) {
+func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
 	if blooms == nil {
 		blooms = stats.BloomPool.Get()
 	}

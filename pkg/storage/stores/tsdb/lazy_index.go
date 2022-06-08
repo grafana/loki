@@ -66,7 +66,7 @@ func (f LazyIndex) LabelValues(ctx context.Context, userID string, from, through
 	return i.LabelValues(ctx, userID, from, through, name, matchers...)
 }
 
-func (f LazyIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.StatsBlooms, error) {
+func (f LazyIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
 	i, err := f()
 	if err != nil {
 		return nil, err

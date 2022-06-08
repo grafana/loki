@@ -602,7 +602,7 @@ func (t *tenantHeads) LabelValues(ctx context.Context, userID string, from, thro
 
 }
 
-func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.StatsBlooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.StatsBlooms, error) {
+func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return blooms, nil

@@ -33,16 +33,16 @@ type PoolBloom struct {
 	pool sync.Pool
 }
 
-func (p *PoolBloom) Get() *StatsBlooms {
+func (p *PoolBloom) Get() *Blooms {
 	if x := p.pool.Get(); x != nil {
-		return x.(*StatsBlooms)
+		return x.(*Blooms)
 	}
 
-	return newStatsBlooms()
+	return newBlooms()
 
 }
 
-func (p *PoolBloom) Put(x *StatsBlooms) {
+func (p *PoolBloom) Put(x *Blooms) {
 	x.Streams.ClearAll()
 	x.Chunks.ClearAll()
 	x.stats = Stats{}
@@ -67,12 +67,12 @@ func (p *PoolBloom) Put(x *StatsBlooms) {
 // Another option is to ship the bloom filter bitmaps sequentially to each
 // store, but this is too inefficient (~12.5MB payloads).
 // signed, @owen-d
-func newStatsBlooms() *StatsBlooms {
+func newBlooms() *Blooms {
 	// 1 million streams @ 1% error =~ 1.14MB
 	streams := bloom.NewWithEstimates(1e6, 0.01)
 	// 10 million chunks @ 1% error =~ 11.43MB
 	chunks := bloom.NewWithEstimates(10e6, 0.01)
-	return &StatsBlooms{
+	return &Blooms{
 		Streams: streams,
 		Chunks:  chunks,
 	}
@@ -83,15 +83,15 @@ func newStatsBlooms() *StatsBlooms {
 // Bloom filters for estimating duplicate statistics across both series
 // and chunks within TSDB indices. These are used to calculate data topology
 // statistics prior to running queries.
-type StatsBlooms struct {
+type Blooms struct {
 	sync.RWMutex
 	Streams, Chunks *bloom.BloomFilter
 	stats           Stats
 }
 
-func (b *StatsBlooms) Stats() Stats { return b.stats }
+func (b *Blooms) Stats() Stats { return b.stats }
 
-func (b *StatsBlooms) AddStream(fp model.Fingerprint) {
+func (b *Blooms) AddStream(fp model.Fingerprint) {
 	key := make([]byte, 8)
 	binary.BigEndian.PutUint64(key, uint64(fp))
 	b.add(b.Streams, key, func() {
@@ -99,7 +99,7 @@ func (b *StatsBlooms) AddStream(fp model.Fingerprint) {
 	})
 }
 
-func (b *StatsBlooms) AddChunk(fp model.Fingerprint, chk index.ChunkMeta) {
+func (b *Blooms) AddChunk(fp model.Fingerprint, chk index.ChunkMeta) {
 	// fingerprint + mintime + maxtime + checksum
 	ln := 8 + 8 + 8 + 4
 	key := make([]byte, ln)
@@ -114,7 +114,7 @@ func (b *StatsBlooms) AddChunk(fp model.Fingerprint, chk index.ChunkMeta) {
 	})
 }
 
-func (b *StatsBlooms) add(filter *bloom.BloomFilter, key []byte, update func()) {
+func (b *Blooms) add(filter *bloom.BloomFilter, key []byte, update func()) {
 	b.RLock()
 	ok := filter.Test(key)
 	b.RUnlock()
