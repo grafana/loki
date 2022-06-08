@@ -448,6 +448,17 @@ func (cfg *PeriodicTableConfig) PeriodicTables(from, through model.Time, pCfg Pr
 		nowWeek        = now / periodSecs
 		result         = []TableDesc{}
 	)
+	// If interval already ends, recalculate tablesToKeep for old config
+	if now > through.Unix() {
+		outRangePeriod := time.Duration(now-through.Unix()) * time.Second
+		actualRetention := retention - outRangePeriod
+		if actualRetention > 0 {
+			//Rounded up, in case only one table left
+			tablesToKeep = int64(actualRetention/time.Second) + periodSecs - 1/periodSecs
+		} else {
+			tablesToKeep = 0
+		}
+	}
 	// If interval ends exactly on a period boundary, don’t include the upcoming period
 	if through.Unix()%periodSecs == 0 {
 		lastTable--
@@ -456,7 +467,8 @@ func (cfg *PeriodicTableConfig) PeriodicTables(from, through model.Time, pCfg Pr
 	if retention > 0 && lastTable > tablesToKeep && lastTable-firstTable >= tablesToKeep {
 		firstTable = lastTable - tablesToKeep
 	}
-	for i := firstTable; i <= lastTable; i++ {
+	//Don't make tables if `through` is earlier than the configured retention
+	for i := firstTable; tablesToKeep > 0 && i <= lastTable; i++ {
 		tableName := cfg.tableForPeriod(i)
 		table := TableDesc{}
 
