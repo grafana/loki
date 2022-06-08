@@ -98,7 +98,6 @@ const (
 	expiredReason string = "expired" //nolint:staticcheck
 	fullReason           = "full"
 	tooBigReason         = "object too big"
-	stoppedReason        = "stopped"
 )
 
 type cacheEntry struct {
@@ -284,8 +283,6 @@ func (c *FifoCache) Stop() {
 	defer c.lock.Unlock()
 
 	close(c.done)
-
-	c.entriesEvicted.WithLabelValues(stoppedReason).Add(float64(c.lru.Len()))
 
 	c.entries = make(map[string]*list.Element)
 	c.lru.Init()
