@@ -1,6 +1,6 @@
 {
   local this = self,
-  
+
   serviceMonitor: if $._config.create_service_monitor then {
     apiVersion: 'monitoring.coreos.com/v1',
     kind: 'ServiceMonitor',
