@@ -687,6 +687,9 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	}
 
 	start, end, err := validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End)
+	if err != nil {
+		return nil, err
+	}
 
 	matchers, err := syntax.ParseMatchers(req.Query)
 	if err != nil {
