@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -485,4 +486,8 @@ func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (
 
 func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
 	return nil, errors.New("querierMock.Tail() has not been mocked")
+}
+
+func (q *querierMock) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+	return nil, nil
 }

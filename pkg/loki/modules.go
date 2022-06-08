@@ -282,6 +282,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/loki/api/v1/labels":              http.HandlerFunc(t.querierAPI.LabelHandler),
 		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.querierAPI.LabelHandler),
 		"/loki/api/v1/series":              http.HandlerFunc(t.querierAPI.SeriesHandler),
+		"/loki/api/v1/index/stats":         http.HandlerFunc(t.querierAPI.IndexStatsHandler),
 
 		"/api/prom/query":               httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LogQueryHandler)),
 		"/api/prom/label":               http.HandlerFunc(t.querierAPI.LabelHandler),
@@ -675,6 +676,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/loki/api/v1/labels").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/query").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/label").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)

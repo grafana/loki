@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -406,6 +407,38 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = marshal.WriteSeriesResponseJSON(*resp, w)
+	if err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+}
+
+// SeriesHandler returns the list of time series that match a certain label set.
+// See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
+func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
+	// TODO(owen-d): usea specific type/validation instead
+	// of using range query parameters (superset)
+	req, err := loghttp.ParseRangeQuery(r)
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+
+	_, ctx := spanlogger.New(r.Context(), "query.IndexStats")
+
+	// TODO(owen-d): log metadata, record stats?
+	resp, err := q.querier.IndexStats(ctx, req)
+	if resp == nil {
+		// Some stores don't implement this
+		resp = &index_stats.Stats{}
+	}
+
+	if err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+
+	err = marshal.WriteIndexStatsResponseJSON(resp, w)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
