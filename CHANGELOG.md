@@ -99,6 +99,7 @@
 * [5711](https://github.com/grafana/loki/pull/5711) **MichelHollands**: Update fluent-bit output name
 
 #### Loki Canary
+* [6310](https://github.com/grafana/loki/pull/6310) **chodges15**: Add support for client-side TLS certs in loki-canary for Loki connection
 * [5568](https://github.com/grafana/loki/pull/5568) **afayngelerindbx**: canary: Adds locking to prevent multiple concurrent invocations of `confirmMissing` from clobbering each other
 ### Notes
 
