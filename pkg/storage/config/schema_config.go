@@ -454,7 +454,7 @@ func (cfg *PeriodicTableConfig) PeriodicTables(from, through model.Time, pCfg Pr
 		actualRetention := retention - outRangePeriod
 		if actualRetention > 0 {
 			//Rounded up, in case only one table left
-			tablesToKeep = int64(actualRetention/time.Second) + periodSecs - 1/periodSecs
+			tablesToKeep = (int64(actualRetention/time.Second) + periodSecs - 1) / periodSecs
 		} else {
 			tablesToKeep = 0
 		}
