@@ -146,6 +146,17 @@
     loki: {
       common: {
         compactor_address: 'http://compactor.%s.svc.cluster.local.:%d' % [$._config.namespace, $._config.http_listen_port],
+        ring: {
+          heartbeat_period: '1m',
+          heartbeat_timeout: '10m',
+          kvstore: {
+            store: 'consul',
+            consul: {
+              host: 'consul.%s.svc.cluster.local.:8500' % $._config.namespace,
+              http_client_timeout: '20s',
+            },
+          },
+        },
       },
       server: {
         graceful_shutdown_timeout: '5s',
