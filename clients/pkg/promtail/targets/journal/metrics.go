@@ -10,6 +10,11 @@ type Metrics struct {
 	journalLines  prometheus.Counter
 }
 
+const (
+	noMessageError   = "no_message"
+	emptyLabelsError = "empty_labels"
+)
+
 // NewMetrics creates a new set of journal target metrics. If reg is non-nil, the
 // metrics will be registered.
 func NewMetrics(reg prometheus.Registerer) *Metrics {
@@ -20,7 +25,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		Namespace: "promtail",
 		Name:      "journal_target_parsing_errors_total",
 		Help:      "Total number of parsing errors while reading journal messages",
-	}, []string{"path"})
+	}, []string{"error"})
 	m.journalLines = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "journal_target_lines_total",

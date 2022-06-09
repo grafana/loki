@@ -268,8 +268,7 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 
 		bb, err := json.Marshal(entry.Fields)
 		if err != nil {
-			level.Error(t.logger).Log("msg", "could not marshal journal fields to JSON", "err", err)
-			t.metrics.journalErrors.WithLabelValues("cannot_marshal").Inc()
+			level.Error(t.logger).Log("msg", "could not marshal journal fields to JSON", "err", err, "unit", entry.Fields["_SYSTEMD_UNIT"])
 			return journalEmptyStr, nil
 		}
 		msg = string(bb)
@@ -277,8 +276,8 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 		var ok bool
 		msg, ok = entry.Fields["MESSAGE"]
 		if !ok {
-			level.Debug(t.logger).Log("msg", "received journal entry with no MESSAGE field")
-			t.metrics.journalErrors.WithLabelValues("no_message").Inc()
+			level.Debug(t.logger).Log("msg", "received journal entry with no MESSAGE field", "unit", entry.Fields["_SYSTEMD_UNIT"])
+			t.metrics.journalErrors.WithLabelValues(noMessageError).Inc()
 			return journalEmptyStr, nil
 		}
 	}
@@ -303,7 +302,8 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 	}
 	if len(labels) == 0 {
 		// No labels, drop journal entry
-		t.metrics.journalErrors.WithLabelValues("empty_labels").Inc()
+		level.Debug(t.logger).Log("msg", "received journal entry with no labels", "unit", entry.Fields["_SYSTEMD_UNIT"])
+		t.metrics.journalErrors.WithLabelValues(emptyLabelsError).Inc()
 		return journalEmptyStr, nil
 	}
 
