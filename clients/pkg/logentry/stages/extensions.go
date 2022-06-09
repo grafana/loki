@@ -1,7 +1,6 @@
 package stages
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -57,7 +56,6 @@ func (c *cri) Run(entry chan Entry) chan Entry {
 	entry = c.base.Run(entry)
 
 	in := RunWithSkip(entry, func(e Entry) (Entry, bool) {
-		fmt.Println(e.Extracted)
 		if e.Extracted["flags"] == "P" {
 			if len(c.partialLines) >= MaxPartialLinesSize {
 				c.partialLines = c.partialLines[:0]
@@ -66,10 +64,8 @@ func (c *cri) Run(entry chan Entry) chan Entry {
 			return Entry{}, true
 		}
 		if len(c.partialLines) > 0 {
-			cpy := e.copy()
 			c.partialLines = append(c.partialLines, e.Line)
-			cpy.Line = strings.Join(c.partialLines, "\n")
-			e = *cpy
+			e.Line = strings.Join(c.partialLines, "\n")
 			c.partialLines = c.partialLines[:0]
 		}
 		return e, false
