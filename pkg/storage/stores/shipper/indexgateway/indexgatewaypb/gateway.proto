@@ -125,8 +125,8 @@ message IndexStatsRequest {
 }
 
 message IndexStatsResponse {
-  uint64 streams = 1;
-  uint64 chunks = 2;
-  uint64 bytes = 3;
-  uint64 entries = 4;
+  uint64 streams = 1 [(gogoproto.jsontag) = "streams"];
+  uint64 chunks = 2 [(gogoproto.jsontag) = "chunks"];
+  uint64 bytes = 3 [(gogoproto.jsontag) = "bytes"];
+  uint64 entries = 4 [(gogoproto.jsontag) = "entries"];
 }

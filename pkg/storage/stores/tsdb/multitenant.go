@@ -29,8 +29,8 @@ func NewMultiTenantIndex(idx Index) *MultiTenantIndex {
 
 func withTenantLabelMatcher(userID string, matchers []*labels.Matcher) []*labels.Matcher {
 	cpy := make([]*labels.Matcher, len(matchers)+1)
-	copy(cpy, matchers)
-	cpy = append(cpy, labels.MustNewMatcher(labels.MatchEqual, TenantLabel, userID))
+	cpy[0] = labels.MustNewMatcher(labels.MatchEqual, TenantLabel, userID)
+	copy(cpy[1:], matchers)
 	return cpy
 }
 
