@@ -218,13 +218,18 @@ func aggregator(r *syntax.RangeAggregationExpr) (RangeVectorAggregator, error) {
 	}
 }
 
-// rateLogs calculates the per-second rate of log lines.
+// rateLogs calculates the per-second rate of log lines or values extracted
+// from log lines
 func rateLogs(selRange time.Duration, computeValues bool) func(samples []promql.Point) float64 {
 	return func(samples []promql.Point) float64 {
 		if !computeValues {
 			return float64(len(samples)) / selRange.Seconds()
 		}
-		return extrapolatedRate(samples, selRange, true, true)
+		var result float64
+		for _, sample := range samples {
+			result += sample.V
+		}
+		return result / selRange.Seconds()
 	}
 }
 
