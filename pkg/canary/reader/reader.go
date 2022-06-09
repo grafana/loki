@@ -199,7 +199,7 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 
 	httpClient, err := r.httpClient()
 	if err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "failed to create httpClient when querying Loki for count of logs over time")
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -298,7 +298,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create httpClient when issuing Loki query")
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -481,11 +481,11 @@ func (r *Reader) httpClient() (*http.Client, error) {
 // websocket.DefaultDialer will be returned in the case that the connection to Loki is http or TLS without client certs.
 // For the mTLS case, return a websocket.Dialer configured to use client side certificates.
 func (r *Reader) webSocketDialer() *websocket.Dialer {
-	dialer := websocket.DefaultDialer
-	if r.clientTLSConfig != nil {
-		dialer.TLSClientConfig = r.clientTLSConfig
+	return &websocket.Dialer{
+		Proxy:            http.ProxyFromEnvironment,
+		TLSClientConfig:  r.clientTLSConfig,
+		HandshakeTimeout: 45 * time.Second,
 	}
-	return dialer
 }
 
 func parseResponse(entry *loghttp.Entry) (*time.Time, error) {
