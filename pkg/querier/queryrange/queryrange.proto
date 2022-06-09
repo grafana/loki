@@ -7,6 +7,7 @@ import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
+import "pkg/storage/stores/shipper/indexgateway/indexgatewaypb/gateway.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
@@ -132,4 +133,14 @@ message LokiData {
 message LokiPromResponse {
   queryrangebase.PrometheusResponse response = 1 [(gogoproto.nullable) = true];
   stats.Result statistics = 2 [(gogoproto.nullable) = false];
+}
+
+message IndexStatsResponse {
+  indexgatewaypb.IndexStatsResponse response = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb.IndexStatsResponse"
+  ];
+  repeated queryrangebase.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase.PrometheusResponseHeader"
+  ];
 }
