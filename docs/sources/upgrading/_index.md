@@ -31,8 +31,14 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-
 ### Loki
+
+#### Implementation of unwrapped `rate` aggregation changed
+
+The implementation of the `rate()` aggregation function changed back to the previous implemention prior to [#5013](https://github.com/grafana/loki/pulls/5013).
+This means that the rate per second is calculated based on the sum of the extracted values, instead of the average increase over time.
+
+If you want the extracted values to be treated as [Counter](https://prometheus.io/docs/concepts/metric_types/#counter) metric, you should use the new `rate_counter()` aggregation function, which calculates the per-second average rate of increase of the vector.
 
 #### Default value for `azure.container-name` changed
 
