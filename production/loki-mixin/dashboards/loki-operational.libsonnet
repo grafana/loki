@@ -11,7 +11,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                showAnnotations:: true,
                                showLinks:: true,
                                showMultiCluster:: true,
-                               clusterLabel:: 'cluster',
+                               clusterLabel:: $._config.per_cluster_label,
 
                                matchers:: {
                                  cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
@@ -44,13 +44,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                      std.strReplace(
                                        std.strReplace(
                                          expr,
-                                         ', cluster="$cluster"',
+                                         ', '+$._config.per_cluster_label+'="$cluster"',
                                          ''
                                        ),
-                                       ', cluster=~"$cluster"',
+                                       ', '+$._config.per_cluster_label+'=~"$cluster"',
                                        ''
                                      ),
-                                     'cluster="$cluster",',
+                                     $._config.per_cluster_label+'="$cluster",',
                                      ''
                                    ),
 
