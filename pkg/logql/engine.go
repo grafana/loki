@@ -32,7 +32,7 @@ import (
 )
 
 var (
-	queryTime = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	QueryTime = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "logql",
 		Name:      "query_duration_seconds",
 		Help:      "LogQL query timings",
@@ -190,7 +190,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	defer log.Finish()
 
 	rangeType := GetRangeType(q.params)
-	timer := prometheus.NewTimer(queryTime.WithLabelValues(string(rangeType)))
+	timer := prometheus.NewTimer(QueryTime.WithLabelValues(string(rangeType)))
 	defer timer.ObserveDuration()
 
 	// records query statistics
