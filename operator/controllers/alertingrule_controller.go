@@ -27,6 +27,7 @@ type AlertingRuleReconciler struct {
 //+kubebuilder:rbac:groups=loki.grafana.com,resources=alertingrules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=loki.grafana.com,resources=alertingrules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=loki.grafana.com,resources=alertingrules/finalizers,verbs=update
+//+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

@@ -95,7 +95,7 @@ metadata:
           "spec": {
             "alertmanager": {
               "discovery": {
-                "enabled": true,
+                "enableSRV": true,
                 "refreshInterval": "1m"
               },
               "enableV2": true,
@@ -122,16 +122,15 @@ metadata:
               "client": {
                 "authorization": "basic",
                 "authorizationSecretName": "my-secret-resource",
-                "followRedirects": true,
                 "name": "remote-write-log-metrics",
-                "proxyURL": "http://proxy-host.mycompany.org",
+                "proxyUrl": "http://proxy-host.mycompany.org",
                 "relabelConfigs": [
                   {
                     "action": "replace",
                     "regex": "ALERTS.*",
                     "replacement": "$1",
-                    "separator": ";",
-                    "source_labels": [
+                    "separator": "",
+                    "sourceLabels": [
                       "labelc",
                       "labeld"
                     ],
@@ -932,6 +931,14 @@ spec:
           - list
           - patch
           - update
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - namespaces
+          verbs:
+          - get
+          - list
           - watch
         - apiGroups:
           - ""
