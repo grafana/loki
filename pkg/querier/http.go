@@ -413,10 +413,9 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// SeriesHandler returns the list of time series that match a certain label set.
-// See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
+// IndexStatsHandler queries the index for the data statistics related to a query
 func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO(owen-d): usea specific type/validation instead
+	// TODO(owen-d): use a specific type/validation instead
 	// of using range query parameters (superset)
 	req, err := loghttp.ParseRangeQuery(r)
 	if err != nil {
