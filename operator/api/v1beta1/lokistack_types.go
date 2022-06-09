@@ -394,7 +394,7 @@ type ObjectStorageSchemaSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:v11","urn:alm:descriptor:com.tectonic.ui:select:v12"},displayName="Version"
 	Version ObjectStorageSchemaVersion `json:"version"`
 
-	// EffectiveDate is the date that the schema will be applied on.
+	// EffectiveDate is the date in UTC that the schema will be applied on.
 	// To ensure readibility of logs, this date should be at least two days
 	// ahead of the current date.
 	//

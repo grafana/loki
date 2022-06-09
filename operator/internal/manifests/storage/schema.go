@@ -9,14 +9,11 @@ import (
 )
 
 const (
-	// DateTimeFormat is the datetime string need to format the time.
-	DateTimeFormat = "2006-01-02"
-
-	// UpdateDelay is the time before a change to the storage schema
+	// updateDelay is the time before a change to the storage schema
 	// is applied to a cluster. This will avoid scenarios in which
 	// the difference between UTC and local time zones will cause
 	// logs to be unavailable.
-	UpdateDelay = time.Hour * 24
+	updateDelay = time.Hour * 24
 )
 
 type schemaConfig struct {
@@ -55,7 +52,7 @@ func BuildSchemaConfig(
 		// To avoid this, the change on 2022-06-02 should be considered as already
 		// applied and an error should be sent back to change the date of the
 		// in-flight change.
-		cutoff := utcTime.Add(UpdateDelay)
+		cutoff := utcTime.Add(updateDelay)
 		applied := filterAppliedSchemas(statusSchemas, cutoff)
 		if !containsSchemas(specSchemas, applied) {
 			return nil, kverrors.New("Cannot retroactively remove previously applied schemas")
@@ -80,7 +77,7 @@ func schemaConfigFromStatus(statuses []lokiv1beta1.StorageSchemaStatus) []schema
 	configs := make([]schemaConfig, len(statuses))
 
 	for i, status := range statuses {
-		date, _ := time.Parse(DateTimeFormat, status.EffectiveDate)
+		date, _ := time.Parse(lokiv1beta1.DateTimeFormat, status.EffectiveDate)
 
 		configs[i] = schemaConfig{
 			version:       status.Version,
@@ -96,7 +93,7 @@ func schemaConfigFromSpec(specs []lokiv1beta1.ObjectStorageSchemaSpec) []schemaC
 	configs := make([]schemaConfig, len(specs))
 
 	for i, spec := range specs {
-		date, _ := time.Parse(DateTimeFormat, string(spec.EffectiveDate))
+		date, _ := time.Parse(lokiv1beta1.DateTimeFormat, string(spec.EffectiveDate))
 
 		configs[i] = schemaConfig{
 			version:       spec.Version,
@@ -112,7 +109,7 @@ func buildSpecs(configs []schemaConfig) []lokiv1beta1.ObjectStorageSchemaSpec {
 	specs := make([]lokiv1beta1.ObjectStorageSchemaSpec, len(configs))
 
 	for i, config := range configs {
-		date := config.effectiveDate.Format(DateTimeFormat)
+		date := config.effectiveDate.Format(lokiv1beta1.DateTimeFormat)
 
 		specs[i] = lokiv1beta1.ObjectStorageSchemaSpec{
 			Version:       config.version,

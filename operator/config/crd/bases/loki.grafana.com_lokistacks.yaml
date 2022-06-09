@@ -319,9 +319,10 @@ spec:
                         needed to configure a new storage schema.
                       properties:
                         effectiveDate:
-                          description: EffectiveDate is the date that the schema will
-                            be applied on. To ensure readibility of logs, this date
-                            should be at least two days ahead of the current date.
+                          description: EffectiveDate is the date in UTC that the schema
+                            will be applied on. To ensure readibility of logs, this
+                            date should be at least two days ahead of the current
+                            date.
                           pattern: ^([0-9]{4,})([-]([0-9]{2})){2}$
                           type: string
                         version:

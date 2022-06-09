@@ -77,7 +77,7 @@ func BuildSchemaConfig_AddSchema_WithStatuses_WithValidDate(t *testing.T) {
 
 func BuildSchemaConfig_AddSchema_WithStatuses_WithInvalidDate(t *testing.T) {
 	utcTime := time.Date(2021, 10, 1, 0, 0, 0, 0, time.UTC)
-	updateWindow := utcTime.Add(UpdateDelay).Format(DateTimeFormat)
+	updateWindow := utcTime.Add(updateDelay).Format(lokiv1beta1.DateTimeFormat)
 	specs := []lokiv1beta1.ObjectStorageSchemaSpec{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV11,
