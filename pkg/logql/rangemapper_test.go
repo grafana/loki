@@ -131,6 +131,14 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			) / 180)`,
 		},
 		{
+			`rate({app="foo"} | unwrap bar[3m])`,
+			`(sum without(
+				   downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 2m0s), shard=<nil>>
+				++ downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 1m0s), shard=<nil>>
+				++ downstream<sum_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
+			) / 180)`,
+		},
+		{
 			`bytes_rate({app="foo"}[3m])`,
 			`(sum without(
 				downstream<bytes_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
@@ -1471,6 +1479,23 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				)
 			)`,
 		},
+
+		// regression test queries
+		{
+			`topk(10,sum by (org_id) (rate({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__="" [3m])))`,
+			`topk(10,
+			  sum by (org_id) (
+					(
+						sum without(
+							   downstream<sumby(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrapbytes(total_bytes) | __error__="" [1m] offset 2m0s)),shard=<nil>>
+              ++ downstream<sumby(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrapbytes(total_bytes) | __error__="" [1m] offset 1m0s)),shard=<nil>>
+							++ downstream<sumby(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrapbytes(total_bytes) | __error__="" [1m])),shard=<nil>>
+				    )
+					/ 180
+				  )
+				)
+			)`,
+		},
 	} {
 		tc := tc
 		t.Run(tc.expr, func(t *testing.T) {
@@ -1499,10 +1524,6 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 		{
 			`sum(avg_over_time({app="foo"} | unwrap bar[3m]))`,
 			`sum(avg_over_time({app="foo"} | unwrap bar[3m]))`,
-		},
-		{ // this query caused a panic in ops
-			`topk(10,sum by (cluster,org_id) (rate({container="query-frontend",namespace="loki-prod",cluster="prod-us-central-0"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__=""[1h])))`,
-			`topk(10,sum by (cluster,org_id) (rate({container="query-frontend",namespace="loki-prod",cluster="prod-us-central-0"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__=""[1h])))`,
 		},
 
 		// should be noop if range interval is lower or equal to split interval (1m)
