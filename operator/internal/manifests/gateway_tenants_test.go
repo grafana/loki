@@ -221,6 +221,21 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=http://example.com",
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
+										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
 									},
 								},
 							},
@@ -242,11 +257,11 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=http://example.com",
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
+										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 										"--tls.server.cert-file=/var/run/tls/tls.crt",
 										"--tls.server.key-file=/var/run/tls/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
 										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
-										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
@@ -327,7 +342,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Name: tlsSecretVolume,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-metrics",
+											SecretName: "test-gateway-http-tls",
 										},
 									},
 								},
@@ -359,12 +374,27 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=http://example.com",
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
+										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
 											Name:      tlsSecretVolume,
 											ReadOnly:  true,
 											MountPath: gateway.LokiGatewayTLSDir,
+										},
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
 										},
 									},
 								},
@@ -374,7 +404,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Name: tlsSecretVolume,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-metrics",
+											SecretName: "test-gateway-http-tls",
 										},
 									},
 								},
@@ -397,11 +427,11 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=http://example.com",
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
+										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 										"--tls.server.cert-file=/var/run/tls/tls.crt",
 										"--tls.server.key-file=/var/run/tls/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
 										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
-										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
@@ -491,7 +521,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Name: tlsSecretVolume,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-metrics",
+											SecretName: "test-gateway-http-tls",
 										},
 									},
 								},
@@ -526,12 +556,27 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=http://example.com",
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
+										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
 											Name:      "tls-secret",
 											ReadOnly:  true,
 											MountPath: "/var/run/tls",
+										},
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
 										},
 									},
 								},
@@ -562,12 +607,12 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=https://example.com",
 										"--logs.tail.endpoint=https://example.com",
 										"--logs.write.endpoint=https://example.com",
+										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 										"--logs.tls.ca-file=/var/run/ca/service-ca.crt",
 										"--tls.server.cert-file=/var/run/tls/tls.crt",
 										"--tls.server.key-file=/var/run/tls/tls.key",
 										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
 										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
-										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{

@@ -41,10 +41,10 @@ var (
 func ConfigureGatewayDeployment(
 	d *appsv1.Deployment,
 	gwContainerName string,
-	sercretVolumeName, tlsDir, certFile, keyFile string,
+	secretVolumeName, tlsDir, certFile, keyFile string,
 	caDir, caFile string,
 	withTLS, withCertSigningService bool,
-	secretName, serviceName, serverName string,
+	secretName, serverName string,
 	gatewayHTTPPort int,
 ) error {
 	var gwIndex int
@@ -93,102 +93,55 @@ func ConfigureGatewayDeployment(
 		})
 	}
 
+	for i, a := range gwArgs {
+		if strings.HasPrefix(a, "--web.healthchecks.url=") {
+			gwArgs[i] = fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort)
+			break
+		}
+	}
+
+	certFilePath := path.Join(tlsDir, certFile)
+	keyFilePath := path.Join(tlsDir, keyFile)
+	caFilePath := path.Join(caDir, caFile)
+	gwArgs = append(gwArgs,
+		fmt.Sprintf("--tls.server.cert-file=%s", certFilePath),
+		fmt.Sprintf("--tls.server.key-file=%s", keyFilePath),
+		fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", caFilePath),
+		fmt.Sprintf("--tls.healthchecks.server-name=%s", serverName))
+
+	gwContainer.ReadinessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.LivenessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
 	gwContainer.Args = gwArgs
+
+	// Create and mount TLS secrets volumes if it's not already done by the service monitor config.
+	if !withTLS {
+		gwVolumes = append(gwVolumes, corev1.Volume{
+			Name: secretVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: secretName,
+				},
+			},
+		})
+
+		gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
+			Name:      secretVolumeName,
+			ReadOnly:  true,
+			MountPath: tlsDir,
+		})
+	}
 
 	p := corev1.PodSpec{
 		ServiceAccountName: d.GetName(),
 		Containers: []corev1.Container{
 			*gwContainer,
-			newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile, withTLS),
+			newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile, withTLS),
 		},
 		Volumes: gwVolumes,
 	}
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge sidecar container spec ")
-	}
-
-	// Remove --web.healthchecks.url previous value.
-	argI := -1
-	args := d.Spec.Template.Spec.Containers[gwIndex].Args
-
-	for i, arg := range args {
-		if strings.HasPrefix(arg, "--web.healthchecks.url=") {
-			argI = i
-			break
-		}
-	}
-
-	if argI != -1 {
-		args[argI] = args[len(args)-1]
-		d.Spec.Template.Spec.Containers[gwIndex].Args = args[:len(args)-1]
-	}
-
-	// Configure TLS connection for OpenShift.
-	certFilePath := path.Join(tlsDir, certFile)
-	keyFilePath := path.Join(tlsDir, keyFile)
-	caFilePath := path.Join(caDir, caFile)
-	secretContainerSpec := corev1.Container{
-		Args: []string{
-			fmt.Sprintf("--tls.server.cert-file=%s", certFilePath),
-			fmt.Sprintf("--tls.server.key-file=%s", keyFilePath),
-			fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", caFilePath),
-			fmt.Sprintf("--tls.healthchecks.server-name=%s", serverName),
-			fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
-		},
-	}
-
-	uriSchemeContainerSpec := corev1.Container{
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Scheme: corev1.URISchemeHTTPS,
-				},
-			},
-		},
-		LivenessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Scheme: corev1.URISchemeHTTPS,
-				},
-			},
-		},
-	}
-
-	// Create and mount TLS secrets volumes if it's not already done by the service monitor config.
-	if !withTLS {
-		secretVolumeSpec := corev1.PodSpec{
-			Volumes: []corev1.Volume{
-				{
-					Name: sercretVolumeName,
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName: secretName,
-						},
-					},
-				},
-			},
-		}
-
-		secretContainerSpec.VolumeMounts = []corev1.VolumeMount{
-			{
-				Name:      sercretVolumeName,
-				ReadOnly:  true,
-				MountPath: tlsDir,
-			},
-		}
-
-		if err := mergo.Merge(&d.Spec.Template.Spec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
-			return kverrors.Wrap(err, "failed to merge volumes")
-		}
-	}
-
-	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[gwIndex], secretContainerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
-	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[gwIndex], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
 	}
 
 	return nil

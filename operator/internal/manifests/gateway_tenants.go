@@ -76,7 +76,6 @@ func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType,
 			flags.EnableTLSServiceMonitorConfig,
 			flags.EnableCertificateSigningService,
 			secretName,
-			serviceName,
 			serverName,
 			gatewayHTTPPort,
 		)
