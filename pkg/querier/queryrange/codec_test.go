@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
+	"github.com/grafana/loki/pkg/util"
 )
 
 func init() {
@@ -351,16 +352,17 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
 }
 
-func Test_codec_index_stats_EncodeReQuest(t *testing.T) {
+func Test_codec_index_stats_EncodeRequest(t *testing.T) {
+	from, through := util.RoundToMilliseconds(start, end)
 	toEncode := &indexgatewaypb.IndexStatsRequest{
-		From:     model.TimeFromUnixNano(start.UnixNano()),
-		Through:  model.TimeFromUnixNano(end.UnixNano()),
+		From:     from,
+		Through:  through,
 		Matchers: `{job="foo"}`,
 	}
 	got, err := LokiCodec.EncodeRequest(context.Background(), toEncode)
 	require.Nil(t, err)
-	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
-	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+	require.Equal(t, fmt.Sprintf("%d", from.UnixNano()), got.URL.Query().Get("start"))
+	require.Equal(t, fmt.Sprintf("%d", through.UnixNano()), got.URL.Query().Get("end"))
 	require.Equal(t, `{job="foo"}`, got.URL.Query().Get("query"))
 }
 

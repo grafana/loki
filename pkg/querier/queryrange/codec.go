@@ -16,7 +16,6 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -28,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
@@ -266,9 +266,10 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &indexgatewaypb.IndexStatsRequest{
-			From:     model.TimeFromUnixNano(req.Start.UnixNano()),
-			Through:  model.TimeFromUnixNano(req.End.UnixNano()),
+			From:     from,
+			Through:  through,
 			Matchers: req.Query,
 		}, err
 	default:
