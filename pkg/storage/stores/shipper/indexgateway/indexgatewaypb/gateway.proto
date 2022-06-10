@@ -5,6 +5,8 @@ package indexgatewaypb;
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "pkg/logproto/logproto.proto";
 
+option go_package = "github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb";
+
 service IndexGateway {
   /// QueryIndex reads the indexes required for given query & sends back the batch of rows
   /// in rpc streams
