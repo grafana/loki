@@ -562,21 +562,7 @@ remote_write:
     # Optionally configures AWS's Signature Verification 4 signing process to
     # sign requests. Cannot be set at the same time as basic_auth, authorization, or oauth2.
     # To use the default credentials from the AWS SDK, use `sigv4: {}`.
-    sigv4:
-      # The AWS region. If blank, the region from the default credentials chain
-      # is used.
-      [region: <string>]
-
-      # The AWS API keys. If blank, the environment variables `AWS_ACCESS_KEY_ID`
-      # and `AWS_SECRET_ACCESS_KEY` are used.
-      [access_key: <string>]
-      [secret_key: <secret>]
-
-      # Named AWS profile used to authenticate.
-      [profile: <string>]
-
-      # AWS Role ARN, an alternative to using AWS API keys.
-      [role_arn: <string>]
+    [sigv4: <sigv4_config>]
 
     # Configures the remote write request's TLS settings.
     tls_config:
@@ -2362,6 +2348,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # This is experimental and might change in the future.
 [ruler_remote_write_queue_retry_on_ratelimit: <boolean>]
 
+# Configures AWS's Signature Verification 4 signing process to
+# sign every remote write request.
+[ruler_remote_write_sigv4_config:  <sigv4_config>]
+
 # Limit queries that can be sharded.
 # Queries within the time range of now and now minus this sharding lookback
 # are not sharded. The default value of 0s disables the lookback, causing
@@ -2373,6 +2363,28 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # This also determines how cache keys are chosen when result caching is enabled
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
+```
+
+## sigv4_config
+
+The `sigv4_config` block configures AWS's Signature Verification 4 signing process to
+sign every remote write request.
+
+```yaml
+# The AWS region. If blank, the region from the default credentials chain
+# is used.
+[region: <string>]
+
+# The AWS API keys. If blank, the environment variables `AWS_ACCESS_KEY_ID`
+# and `AWS_SECRET_ACCESS_KEY` are used.
+[access_key: <string>]
+[secret_key: <secret>]
+
+# Named AWS profile used to authenticate.
+[profile: <string>]
+
+# AWS Role ARN, an alternative to using AWS API keys.
+[role_arn: <string>]
 ```
 
 ### grpc_client_config
