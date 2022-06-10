@@ -159,12 +159,20 @@ type OIDCSpec struct {
 	IssuerURL string `json:"issuerURL"`
 	// RedirectURL defines the URL for redirect.
 	//
-	// +required
-	// +kubebuilder:validation:Required
+	// +optional
+	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Redirect URL"
-	RedirectURL   string `json:"redirectURL"`
-	GroupClaim    string `json:"groupClaim"`
-	UsernameClaim string `json:"usernameClaim"`
+	RedirectURL string `json:"redirectURL,omitempty"`
+	// Group claim field from ID Token
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	GroupClaim string `json:"groupClaim,omitempty"`
+	// User claim field from ID Token
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	UsernameClaim string `json:"usernameClaim,omitempty"`
 }
 
 // AuthenticationSpec defines the oidc configuration per tenant for lokiStack Gateway component.
