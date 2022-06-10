@@ -75,7 +75,7 @@ func main() {
 	flag.BoolVar(&enableAlertingRuleWebhooks, "with-alerting-rule-webhooks", true,
 		"Enables AlertingRule validation webhooks.")
 	flag.BoolVar(&enableRecordingRuleWebhooks, "with-recording-rule-webhooks", true,
-		"Enables RecordingRule Validation Webhooks.")
+		"Enables RecordingRule validation webhooks.")
 	flag.Parse()
 
 	logger := log.NewLogger("loki-operator")
