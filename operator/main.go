@@ -73,7 +73,7 @@ func main() {
 	flag.BoolVar(&enableGrafanaLabsAnalytics, "with-grafana-labs-analytics", true,
 		"Enables Grafana Labs analytics.\nMore info: https://grafana.com/docs/loki/latest/configuration/#analytics")
 	flag.BoolVar(&enableAlertingRuleWebhooks, "with-alerting-rule-webhooks", true,
-		"Enables AlertigRule Validation Webhooks.")
+		"Enables AlertingRule validation webhooks.")
 	flag.BoolVar(&enableRecordingRuleWebhooks, "with-recording-rule-webhooks", true,
 		"Enables RecordingRule Validation Webhooks.")
 	flag.Parse()
