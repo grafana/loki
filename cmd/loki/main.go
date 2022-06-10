@@ -93,7 +93,7 @@ func main() {
 
 	// Start Loki
 	t, err := loki.New(config.Config)
-	util_log.CheckFatal("initialising loki", err, util_log.Logger)
+	util_log.CheckFatal("initializing loki", err, util_log.Logger)
 
 	if config.ListTargets {
 		t.ListTargets()
