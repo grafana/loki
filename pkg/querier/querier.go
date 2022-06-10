@@ -177,7 +177,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 
 	params.SampleQueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
 	if err != nil {
-		return nil, err
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
