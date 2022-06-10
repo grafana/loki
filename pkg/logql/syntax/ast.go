@@ -1520,3 +1520,17 @@ var shardableOps = map[string]bool{
 	OpTypeAdd: true,
 	OpTypeMul: true,
 }
+
+func MatcherGroups(expr Expr) [][]*labels.Matcher {
+	switch e := expr.(type) {
+	case SampleExpr:
+		return e.MatcherGroups()
+	case LogSelectorExpr:
+		if xs := e.Matchers(); len(xs) > 0 {
+			return [][]*labels.Matcher{xs}
+		}
+		return nil
+	default:
+		return nil
+	}
+}
