@@ -8,5 +8,6 @@ spec:
       containers:
         - name: manager
           args:
+          - "--with-lokistack-webhooks=false"
           - "--with-alerting-rule-webhooks=false"
           - "--with-recording-rule-webhooks=false"

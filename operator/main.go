@@ -51,6 +51,7 @@ func main() {
 		enableGatewayRoute          bool
 		enablePrometheusAlerts      bool
 		enableGrafanaLabsAnalytics  bool
+		enableLokiStackWebhooks     bool
 		enableAlertingRuleWebhooks  bool
 		enableRecordingRuleWebhooks bool
 	)
@@ -72,6 +73,8 @@ func main() {
 	flag.BoolVar(&enablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts.")
 	flag.BoolVar(&enableGrafanaLabsAnalytics, "with-grafana-labs-analytics", true,
 		"Enables Grafana Labs analytics.\nMore info: https://grafana.com/docs/loki/latest/configuration/#analytics")
+	flag.BoolVar(&enableLokiStackWebhooks, "with-lokistack-webhooks", true,
+		"Enables LokiStack validation webhooks.")
 	flag.BoolVar(&enableAlertingRuleWebhooks, "with-alerting-rule-webhooks", true,
 		"Enables AlertingRule validation webhooks.")
 	flag.BoolVar(&enableRecordingRuleWebhooks, "with-recording-rule-webhooks", true,
@@ -129,6 +132,12 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "LokiStack")
 		os.Exit(1)
+	}
+	if enableLokiStackWebhooks {
+		if err = (&lokiv1beta1.LokiStack{}).SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "LokiStack")
+			os.Exit(1)
+		}
 	}
 	if err = (&controllers.AlertingRuleReconciler{
 		Client: mgr.GetClient(),
