@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	google_http "google.golang.org/api/transport/http"
 
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
