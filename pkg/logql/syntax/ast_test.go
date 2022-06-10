@@ -178,6 +178,18 @@ func Test_SampleExpr_String(t *testing.T) {
 	}
 }
 
+func TestBinOpMatcherGroups(t *testing.T) {
+	s := `count_over_time({job="foo"}[5m]) / count_over_time({job="bar"}[5m])`
+	expr, err := ParseExpr(s)
+	require.Nil(t, err)
+	exp := [][]*labels.Matcher{
+		{labels.MustNewMatcher(labels.MatchEqual, "job", "foo")},
+		{labels.MustNewMatcher(labels.MatchEqual, "job", "bar")},
+	}
+	got := expr.(SampleExpr).MatcherGroups()
+	require.Equal(t, exp, got)
+}
+
 func Test_NilFilterDoesntPanic(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []string{
