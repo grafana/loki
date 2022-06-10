@@ -225,6 +225,7 @@ const (
 	QueryRangeOp   = "query_range"
 	SeriesOp       = "series"
 	LabelNamesOp   = "labels"
+	IndexStatsOp   = "index_stats"
 )
 
 func getOperation(path string) string {
@@ -237,6 +238,8 @@ func getOperation(path string) string {
 		return LabelNamesOp
 	case strings.HasSuffix(path, "/v1/query"):
 		return InstantQueryOp
+	case path == "/loki/api/v1/index/stats":
+		return IndexStatsOp
 	default:
 		return ""
 	}

@@ -145,6 +145,10 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 	return matcherExpr.Mts, nil
 }
 
+func MatchersString(xs []*labels.Matcher) string {
+	return newMatcherExpr(xs).String()
+}
+
 // ParseSampleExpr parses a string and returns the sampleExpr
 func ParseSampleExpr(input string) (SampleExpr, error) {
 	expr, err := ParseExpr(input)

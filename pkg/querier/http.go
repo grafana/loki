@@ -422,9 +422,8 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 
 // IndexStatsHandler queries the index for the data statistics related to a query
 func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO(owen-d): use a specific type/validation instead
-	// of using range query parameters (superset)
-	req, err := loghttp.ParseRangeQuery(r)
+
+	req, err := loghttp.ParseIndexStatsQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return

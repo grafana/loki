@@ -12,12 +12,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 )
 
 func init() {
@@ -78,6 +80,17 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			Path:    "/label",
 			StartTs: start,
 			EndTs:   end,
+		}, false},
+		{"index_stats", func() (*http.Request, error) {
+			return LokiCodec.EncodeRequest(context.Background(), &indexgatewaypb.IndexStatsRequest{
+				From:     model.TimeFromUnixNano(start.UnixNano()),
+				Through:  model.TimeFromUnixNano(end.UnixNano()),
+				Matchers: `{job="foo"}`,
+			})
+		}, &indexgatewaypb.IndexStatsRequest{
+			From:     model.TimeFromUnixNano(start.UnixNano()),
+			Through:  model.TimeFromUnixNano(end.UnixNano()),
+			Matchers: `{job="foo"}`,
 		}, false},
 	}
 	for _, tt := range tests {
@@ -198,6 +211,18 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				Status:  "success",
 				Version: uint32(loghttp.VersionLegacy),
 				Data:    labelsData,
+			}, false,
+		},
+		{
+			"index stats", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(indexStatsString))},
+			&indexgatewaypb.IndexStatsRequest{},
+			&IndexStatsResponse{
+				Response: &indexgatewaypb.IndexStatsResponse{
+					Streams: 1,
+					Chunks:  2,
+					Bytes:   3,
+					Entries: 4,
+				},
 			}, false,
 		},
 	}
@@ -326,6 +351,19 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
 }
 
+func Test_codec_index_stats_EncodeReQuest(t *testing.T) {
+	toEncode := &indexgatewaypb.IndexStatsRequest{
+		From:     model.TimeFromUnixNano(start.UnixNano()),
+		Through:  model.TimeFromUnixNano(end.UnixNano()),
+		Matchers: `{job="foo"}`,
+	}
+	got, err := LokiCodec.EncodeRequest(context.Background(), toEncode)
+	require.Nil(t, err)
+	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
+	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+	require.Equal(t, `{job="foo"}`, got.URL.Query().Get("query"))
+}
+
 func Test_codec_EncodeResponse(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -395,6 +433,17 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				Version: uint32(loghttp.VersionLegacy),
 				Data:    labelsData,
 			}, labelsLegacyString, false,
+		},
+		{
+			"index stats",
+			&IndexStatsResponse{
+				Response: &indexgatewaypb.IndexStatsResponse{
+					Streams: 1,
+					Chunks:  2,
+					Bytes:   3,
+					Entries: 4,
+				},
+			}, indexStatsString, false,
 		},
 	}
 	for _, tt := range tests {
@@ -1103,6 +1152,12 @@ var (
 			"bar"
 		]
 	}`
+	indexStatsString = `{
+		"streams": 1,
+		"chunks": 2,
+		"bytes": 3,
+		"entries": 4
+		}`
 	labelsData  = []string{"foo", "bar"}
 	statsResult = stats.Result{
 		Summary: stats.Summary{
