@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -25,14 +26,15 @@ const (
 
 var (
 	defaultDropReason = "drop_stage"
+	defaultSeparator  = ";"
 )
 
 // DropConfig contains the configuration for a dropStage
 type DropConfig struct {
-	DropReason *string `mapstructure:"drop_counter_reason"`
-	Source     *string `mapstructure:"source"`
-	Value      *string `mapstructure:"value"`
-	Expression *string `mapstructure:"expression"`
+	DropReason *string   `mapstructure:"drop_counter_reason"`
+	Sources    *[]string `mapstructure:"sources"`
+	Separator  *string   `mapstructure:"separator"`
+	Expression *string   `mapstructure:"expression"`
 	regex      *regexp.Regexp
 	OlderThan  *string `mapstructure:"older_than"`
 	olderThan  time.Duration
@@ -43,11 +45,14 @@ type DropConfig struct {
 // validateDropConfig validates the DropConfig for the dropStage
 func validateDropConfig(cfg *DropConfig) error {
 	if cfg == nil ||
-		(cfg.Source == nil && cfg.Expression == nil && cfg.OlderThan == nil && cfg.LongerThan == nil) {
+		(cfg.Sources == nil && cfg.Expression == nil && cfg.OlderThan == nil && cfg.LongerThan == nil) {
 		return errors.New(ErrDropStageEmptyConfig)
 	}
 	if cfg.DropReason == nil || *cfg.DropReason == "" {
 		cfg.DropReason = &defaultDropReason
+	}
+	if cfg.Separator == nil {
+		cfg.Separator = &defaultSeparator
 	}
 	if cfg.OlderThan != nil {
 		dur, err := time.ParseDuration(*cfg.OlderThan)
@@ -55,9 +60,6 @@ func validateDropConfig(cfg *DropConfig) error {
 			return errors.Errorf(ErrDropStageInvalidDuration, *cfg.OlderThan, err)
 		}
 		cfg.olderThan = dur
-	}
-	if cfg.Value != nil && cfg.Expression != nil {
-		return errors.New(ErrDropStageInvalidConfig)
 	}
 	if cfg.Expression != nil {
 		expr, err := regexp.Compile(*cfg.Expression)
@@ -150,34 +152,17 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 			return false
 		}
 	}
-
-	if m.cfg.Source != nil && m.cfg.Expression == nil {
-		if v, ok := e.Extracted[*m.cfg.Source]; ok {
-			if m.cfg.Value == nil {
-				// Found in map, no value set meaning drop if found in map
-				if Debug {
-					level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map")
-				}
-			} else {
-				s, err := getString(v)
-				if err != nil {
-					if Debug {
-						level.Debug(m.logger).Log("msg", "line will not be dropped, failed to convert extracted map value to string", "err", err, "type", reflect.TypeOf(v))
-					}
-					return false
-				}
-				if *m.cfg.Value == s {
-					// Found in map with value set for drop
-					if Debug {
-						level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map with value matching desired drop value")
-					}
-				} else {
-					// Value doesn't match, don't drop
-					if Debug {
-						level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, source key was found in extracted map but value '%v' did not match desired value '%v'", s, *m.cfg.Value))
-					}
-					return false
-				}
+	if m.cfg.Sources != nil && m.cfg.Expression == nil {
+		var match bool
+		match = true
+		for _, src := range *m.cfg.Sources {
+			if _, ok := e.Extracted[src]; !ok {
+				match = false
+			}
+		}
+		if match {
+			if Debug {
+				level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map")
 			}
 		} else {
 			// Not found in extact map, don't drop
@@ -188,48 +173,42 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 		}
 	}
 
-	if m.cfg.Expression != nil {
-		if m.cfg.Source != nil {
-			if v, ok := e.Extracted[*m.cfg.Source]; ok {
-				s, err := getString(v)
+	if m.cfg.Sources == nil && m.cfg.Expression != nil {
+		if !m.cfg.regex.MatchString(e.Line) {
+			// Not a match to the regex, don't drop
+			if Debug {
+				level.Debug(m.logger).Log("msg", "line will not be dropped, the provided regular expression did not match the log line")
+			}
+			return false
+		}
+		if Debug {
+			level.Debug(m.logger).Log("msg", "line met drop criteria, the provided regular expression matched the log line")
+		}
+	}
+
+	if m.cfg.Sources != nil && m.cfg.Expression != nil {
+		var extractedData []string
+		for _, src := range *m.cfg.Sources {
+			if e, ok := e.Extracted[src]; ok {
+				s, err := getString(e)
 				if err != nil {
 					if Debug {
-						level.Debug(m.logger).Log("msg", "Failed to convert extracted map value to string, cannot test regex line will not be dropped.", "err", err, "type", reflect.TypeOf(v))
+						level.Debug(m.logger).Log("msg", "Failed to convert extracted map value to string, cannot test regex line will not be dropped.", "err", err, "type", reflect.TypeOf(e))
 					}
 					return false
 				}
-				match := m.cfg.regex.FindStringSubmatch(s)
-				if match == nil {
-					// Not a match to the regex, don't drop
-					if Debug {
-						level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, the provided regular expression did not match the value found in the extracted map for source key: %v", *m.cfg.Source))
-					}
-					return false
-				}
-				// regex match, will be dropped
-				if Debug {
-					level.Debug(m.logger).Log("msg", "line met drop criteria, regex matched the value in the extracted map source key")
-				}
-
-			} else {
-				// Not found in extact map, don't drop
-				if Debug {
-					level.Debug(m.logger).Log("msg", "line will not be dropped, the provided source was not found in the extracted map")
-				}
-				return false
+				extractedData = append(extractedData, s)
 			}
-		} else {
-			match := m.cfg.regex.FindStringSubmatch(e.Line)
-			if match == nil {
-				// Not a match to the regex, don't drop
-				if Debug {
-					level.Debug(m.logger).Log("msg", "line will not be dropped, the provided regular expression did not match the log line")
-				}
-				return false
-			}
+		}
+		if !m.cfg.regex.MatchString(strings.Join(extractedData, *m.cfg.Separator)) {
+			// Not a match to the regex, don't drop
 			if Debug {
-				level.Debug(m.logger).Log("msg", "line met drop criteria, the provided regular expression matched the log line")
+				level.Debug(m.logger).Log("msg", "line will not be dropped, the provided regular expression did not match the log line")
 			}
+			return false
+		}
+		if Debug {
+			level.Debug(m.logger).Log("msg", "line met drop criteria, the provided regular expression matched the log line")
 		}
 	}
 

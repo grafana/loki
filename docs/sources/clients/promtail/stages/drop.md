@@ -17,17 +17,16 @@ There are examples below to help explain.
 
 ```yaml
 drop:
-  # Name from extracted data to parse. If empty, uses the log message.
-  [source: <string>]
-  
-  # RE2 regular expression, if source is provided the regex will attempt to match the source
-  # If no source is provided, then the regex attempts to match the log line
-  # If the provided regex matches the log line or a provided source, the line will be dropped. 
-  [expression: <string>]
+  # Names list of extracted data. If empty, uses the log message.
+  [sources: [<string>]]
 
-  # value can only be specified when source is specified. It is an error to specify value and regex.
-  # If the value provided is an exact match for the `source` the line will be dropped.
-  [value: <string>]
+  # Separator placed between concatenated extracted data names. Default separator `;`.
+  [separator: <string>]
+  
+  # RE2 regular expression, if sources are provided the regex will attempt to match the concatenated sources
+  # If no sources is provided, then the regex attempts to match the log line
+  # If the provided regex matches the log line or the concatenated sources, the line will be dropped.
+  [expression: <string>]
 
   # older_than will be parsed as a Go duration: https://golang.org/pkg/time/#ParseDuration
   # If the log line timestamp is older than the current time minus the provided duration it will be dropped.
@@ -51,8 +50,16 @@ The following are examples showing the use of the `drop` stage.
 
 ### Simple drops
 
-Simple `drop` stage configurations only specify one of the options, or two options when using the `source` option.
+Simple `drop` stage configurations only specify one of the options, or two options when using the `sources` option.
 
+Given the pipeline:
+
+```yaml
+- drop:
+    sources: ["level","msg"]
+```
+
+Would drop any log line if it has extracted data field at least `level` or `msg`.
 #### Regex match a line
 
 Given the pipeline:
@@ -64,7 +71,7 @@ Given the pipeline:
 
 Would drop any log line with the word `debug` in it.
 
-#### Regex match a source
+#### Regex match a concatenated sources
 
 Given the pipeline:
 
@@ -74,8 +81,9 @@ Given the pipeline:
      level:
      msg:
 - drop:
-    source:     "level"
-    expression: "(error|ERROR)"
+    sources:     ["level","msg"]
+    separator:   "#"
+    expression:  "(error|ERROR)#.*\/loki\/api\/push.*"
 ```
 
 Would drop both of these log lines:
@@ -83,26 +91,6 @@ Would drop both of these log lines:
 ```
 {"time":"2019-01-01T01:00:00.000000001Z", "level": "error", "msg":"11.11.11.11 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"}
 {"time":"2019-01-01T01:00:00.000000001Z", "level": "ERROR", "msg":"11.11.11.11 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"}
-```
-
-#### Value match a source
-
-Given the pipeline:
-
-```yaml
-- json:
-    expressions:
-     level:
-     msg:
-- drop:
-    source: "level"
-    value:  "error"
-```
-
-Would drop this log line:
-
-```
-{"time":"2019-01-01T01:00:00.000000001Z", "level": "error", "msg":"11.11.11.11 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"}
 ```
 
 #### Drop old log lines
@@ -187,8 +175,8 @@ Given the pipeline:
 - drop:
     longer_than: 8kb
 - drop:
-    source: msg
-    regex: ".*trace.*"
+    sources: ["msg"]
+    expression: ".*trace.*"
 ```
 
 Would drop all logs older than 24h OR longer than 8kb bytes OR have a json `msg` field containing the word _trace_

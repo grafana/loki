@@ -208,6 +208,13 @@ If you want the extracted values to be treated as [Counter](https://prometheus.i
 
 This value now defaults to `loki`, it was previously set to `cortex`. If you are relying on this container name for your chunks or ruler storage, you will have to manually specify `-azure.container-name=cortex` or `-ruler.storage.azure.container-name=cortex` respectively.
 
+### Promtail
+
+#### Drop stages config changed
+
+Config option `source` was renamed to `sources` and now acts as a list of strings. Option `value` was removed and use 
+option `expression` as regexp instead of. 
+
 ## 2.5.0
 
 ### Loki
