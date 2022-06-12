@@ -2956,6 +2956,23 @@ func TestParse(t *testing.T) {
 				},
 			},
 		},
+		{
+			in: `count_over_time({ foo ="bar" } | json layer7_something_specific="layer7_something_specific" [12m])`,
+			exp: &RangeAggregationExpr{
+				Left: &LogRange{
+					Left: &PipelineExpr{
+						MultiStages: MultiStageExpr{
+							newJSONExpressionParser([]log.JSONExpression{
+								log.NewJSONExpr("layer7_something_specific", `layer7_something_specific`),
+							}),
+						},
+						Left: &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					},
+					Interval: 12 * time.Minute,
+				},
+				Operation: "count_over_time",
+			},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
