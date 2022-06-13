@@ -233,9 +233,9 @@ func (c *indexStore) LabelNamesForMetricName(ctx context.Context, userID string,
 
 	log.Span.LogFields(otlog.Int("seriesIDs", len(seriesIDs)))
 	level.Debug(log).Log("series-ids", len(seriesIDs))
-	//if len(seriesIDs) > maxLabelNamesSeriesLen {
-	//	seriesIDs = seriesIDs[:maxLabelNamesSeriesLen]
-	//}
+	if len(seriesIDs) > maxLabelNamesSeriesLen {
+		seriesIDs = seriesIDs[:maxLabelNamesSeriesLen]
+	}
 	log.Span.LogFields(otlog.Int("newSeriesIDs", len(seriesIDs)))
 
 	// Lookup the series in the index to get label names.
