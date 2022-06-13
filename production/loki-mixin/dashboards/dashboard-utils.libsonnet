@@ -29,9 +29,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
       addCluster(multi=false)::
         if multi then
-          self.addMultiTemplate('cluster', 'loki_build_info', 'cluster')
+          self.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
         else
-          self.addTemplate('cluster', 'loki_build_info', 'cluster'),
+          self.addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label),
 
       addNamespace(multi=false)::
         if multi then
