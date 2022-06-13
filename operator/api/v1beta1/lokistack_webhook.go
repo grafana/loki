@@ -11,11 +11,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
-const (
-	// DateTimeFormat is the datetime string need to format the time.
-	DateTimeFormat = "2006-01-02"
-)
-
 // SetupWebhookWithManager registers the Lokistack to the controller-runtime manager
 // or returns an error.
 func (s *LokiStack) SetupWebhookWithManager(mgr ctrl.Manager) error {
@@ -60,7 +55,7 @@ func (s *LokiStack) validate() error {
 
 		found[sc.EffectiveDate] = true
 
-		if _, err := time.Parse(DateTimeFormat, string(sc.EffectiveDate)); err != nil {
+		if _, err := time.Parse(StorageSchemaEffectiveDateFormat, string(sc.EffectiveDate)); err != nil {
 			allErrs = append(allErrs, field.Invalid(
 				field.NewPath("Spec").Child("Storage").Child("Schemas").Index(i).Child("EffectiveDate"),
 				sc.EffectiveDate,

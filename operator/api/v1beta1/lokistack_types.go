@@ -407,10 +407,10 @@ type ObjectStorageSchemaSpec struct {
 // storage bucket to persist logs by the ingester component.
 type ObjectStorageSpec struct {
 
-	// Schemas that have been applied to the cluster.
+	// Schemas for reading and writing logs.
 	//
-	// +required
-	// +kubebuilder:validation:Required
+	// +optional
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinItems:=1
 	// +kubebuilder:default:={{version:v11,effectiveDate:"2020-10-11"}}
 	Schemas []ObjectStorageSchemaSpec `json:"schemas"`

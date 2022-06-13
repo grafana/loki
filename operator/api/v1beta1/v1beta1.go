@@ -12,6 +12,11 @@ type PrometheusDuration string
 // +kubebuilder:validation:Pattern:="^([0-9]{4,})([-]([0-9]{2})){2}$"
 type StorageSchemaEffectiveDate string
 
+const (
+	// StorageSchemaEffectiveDateFormat is the datetime string need to format the time.
+	StorageSchemaEffectiveDateFormat = "2006-01-02"
+)
+
 var (
 	// ErrGroupNamesNotUnique is the error type when loki groups have not unique names.
 	ErrGroupNamesNotUnique = errors.New("Group names are not unique")

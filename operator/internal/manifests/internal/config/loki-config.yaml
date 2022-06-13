@@ -150,13 +150,13 @@ query_range:
 schema_config:
   configs:
     {{- $store := .ObjectStorage.SharedStore }}
-    {{- range $index, $schema := .ObjectStorage.Schemas }}
-    - from: "{{ $schema.EffectiveDate }}"
+    {{- range .ObjectStorage.Schemas }}
+    - from: "{{ .EffectiveDate }}"
       index:
         period: 24h
         prefix: index_
       object_store: {{ $store }}
-      schema: {{ $schema.Version }}
+      schema: {{.Version }}
       store: boltdb-shipper
     {{- end }}
 {{ if .Ruler.Enabled }}

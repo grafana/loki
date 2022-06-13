@@ -77,7 +77,7 @@ func schemaConfigFromStatus(statuses []lokiv1beta1.StorageSchemaStatus) []schema
 	configs := make([]schemaConfig, len(statuses))
 
 	for i, status := range statuses {
-		date, _ := time.Parse(lokiv1beta1.DateTimeFormat, status.EffectiveDate)
+		date, _ := time.Parse(lokiv1beta1.StorageSchemaEffectiveDateFormat, status.EffectiveDate)
 
 		configs[i] = schemaConfig{
 			version:       status.Version,
@@ -93,7 +93,7 @@ func schemaConfigFromSpec(specs []lokiv1beta1.ObjectStorageSchemaSpec) []schemaC
 	configs := make([]schemaConfig, len(specs))
 
 	for i, spec := range specs {
-		date, _ := time.Parse(lokiv1beta1.DateTimeFormat, string(spec.EffectiveDate))
+		date, _ := time.Parse(lokiv1beta1.StorageSchemaEffectiveDateFormat, string(spec.EffectiveDate))
 
 		configs[i] = schemaConfig{
 			version:       spec.Version,
@@ -109,7 +109,7 @@ func buildSpecs(configs []schemaConfig) []lokiv1beta1.ObjectStorageSchemaSpec {
 	specs := make([]lokiv1beta1.ObjectStorageSchemaSpec, len(configs))
 
 	for i, config := range configs {
-		date := config.effectiveDate.Format(lokiv1beta1.DateTimeFormat)
+		date := config.effectiveDate.Format(lokiv1beta1.StorageSchemaEffectiveDateFormat)
 
 		specs[i] = lokiv1beta1.ObjectStorageSchemaSpec{
 			Version:       config.version,

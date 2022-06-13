@@ -231,7 +231,7 @@ func CreateOrUpdateLokiStack(
 	if flags.EnableGateway {
 		if optErr := manifests.ApplyGatewayDefaultOptions(&opts); optErr != nil {
 			ll.Error(optErr, "failed to apply defaults options to gateway settings ")
-			return err
+			return optErr
 		}
 	}
 
@@ -248,11 +248,9 @@ func CreateOrUpdateLokiStack(
 	// updated and another resource is not. This would cause the status to
 	// be possibly misaligned with the configmap, which could lead to
 	// a user possibly being unable to read logs.
-	err = status.SetStorageSchemaStatus(ctx, k, req, storageSchemas)
-
-	if err != nil {
-		ll.Error(err, "failed to set storage schema status")
-		return err
+	if stsErr := status.SetStorageSchemaStatus(ctx, k, req, storageSchemas); stsErr != nil {
+		ll.Error(stsErr, "failed to set storage schema status")
+		return stsErr
 	}
 
 	var errCount int32

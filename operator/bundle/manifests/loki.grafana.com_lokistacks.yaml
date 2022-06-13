@@ -318,7 +318,7 @@ spec:
                     default:
                     - effectiveDate: "2020-10-11"
                       version: v11
-                    description: Schemas that have been applied to the cluster.
+                    description: Schemas for reading and writing logs.
                     items:
                       description: ObjectStorageSchemaSpec defines the requirements
                         needed to configure a new storage schema.
@@ -373,7 +373,6 @@ spec:
                         type: string
                     type: object
                 required:
-                - schemas
                 - secret
                 type: object
               storageClassName:
