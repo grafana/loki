@@ -8,6 +8,5 @@
 
     // The label used to differentiate between different nodes (i.e. servers).
     per_node_label: 'instance',
-    per_cluster_label: 'cluster',
   },
 }

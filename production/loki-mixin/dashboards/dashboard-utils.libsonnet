@@ -29,15 +29,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
       addCluster(multi=false)::
         if multi then
-          self.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
+          self.addMultiTemplate('cluster', 'loki_build_info', 'cluster')
         else
-          self.addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label),
+          self.addTemplate('cluster', 'loki_build_info', 'cluster'),
 
       addNamespace(multi=false)::
         if multi then
-          self.addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
+          self.addMultiTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace')
         else
-          self.addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
+          self.addTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace'),
 
       addTag()::
         self + {
@@ -74,18 +74,18 @@ local utils = import 'mixin-utils/utils.libsonnet';
         };
 
         if multi then
-          d.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
-          .addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
+          d.addMultiTemplate('cluster', 'loki_build_info', 'cluster')
+          .addMultiTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace')
         else
-          d.addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
-          .addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
+          d.addTemplate('cluster', 'loki_build_info', 'cluster')
+          .addTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace'),
     },
 
   jobMatcher(job)::
-    $._config.per_cluster_label + '=~"$cluster", job=~"($namespace)/%s"' % job,
+    'cluster=~"$cluster", job=~"($namespace)/%s"' % job,
 
   namespaceMatcher()::
-    $._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
+    'cluster=~"$cluster", namespace=~"$namespace"',
 
   containerLabelMatcher(containerName)::
     'label_name=~"%s.*"' % containerName,
