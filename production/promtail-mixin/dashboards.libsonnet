@@ -7,9 +7,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
   grafanaDashboards+: {
     local dashboard = (
       loki_mixin_utils {
-        _config+:: {
-          tags: ['loki'],
-        } + configfile._config,
+        _config+:: configfile._config,
       }
     ),
     local dashboards = self,
