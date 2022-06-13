@@ -35,9 +35,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
       addNamespace(multi=false)::
         if multi then
-          self.addMultiTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace')
+          self.addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
         else
-          self.addTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace'),
+          self.addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
 
       addTag()::
         self + {
@@ -74,18 +74,18 @@ local utils = import 'mixin-utils/utils.libsonnet';
         };
 
         if multi then
-          d.addMultiTemplate('cluster', 'loki_build_info', 'cluster')
-          .addMultiTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace')
+          d.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
+          .addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
         else
-          d.addTemplate('cluster', 'loki_build_info', 'cluster')
-          .addTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace'),
+          d.addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
+          .addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
     },
 
   jobMatcher(job)::
-    'cluster=~"$cluster", job=~"($namespace)/%s"' % job,
+    $._config.per_cluster_label + '=~"$cluster", job=~"($namespace)/%s"' % job,
 
   namespaceMatcher()::
-    'cluster=~"$cluster", namespace=~"$namespace"',
+    $._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
 
   containerLabelMatcher(containerName)::
     'label_name=~"%s.*"' % containerName,
