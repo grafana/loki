@@ -864,6 +864,10 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 # CLI flag: -<prefix>.gcs.bucketname
 [bucket_name: <string> | default = ""]
 
+# Service account key content in JSON format.
+# CLI flag: -<prefix>.gcs.service-account
+[service_account: <string> | default = ""]
+
 # The size of the buffer that GCS client for each PUT request. 0 to disable
 # buffering.
 # CLI flag: -<prefix>.gcs.chunk-buffer-size
