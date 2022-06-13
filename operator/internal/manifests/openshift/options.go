@@ -62,23 +62,18 @@ func NewOptions(
 
 	var authn []AuthenticationSpec
 	for _, name := range defaultTenants {
-		if tenantConfigMap != nil {
-			authn = append(authn, AuthenticationSpec{
-				TenantName:     name,
-				TenantID:       name,
-				ServiceAccount: gwName,
-				RedirectURL:    fmt.Sprintf("http://%s/openshift/%s/callback", host, name),
-				CookieSecret:   tenantConfigMap[name].CookieSecret,
-			})
-		} else {
-			authn = append(authn, AuthenticationSpec{
-				TenantName:     name,
-				TenantID:       name,
-				ServiceAccount: gwName,
-				RedirectURL:    fmt.Sprintf("http://%s/openshift/%s/callback", host, name),
-				CookieSecret:   newCookieSecret(),
-			})
+		cookieSecret := tenantConfigMap[name].CookieSecret
+		if cookieSecret == "" {
+			cookieSecret = newCookieSecret()
 		}
+
+		authn = append(authn, AuthenticationSpec{
+			TenantName:     name,
+			TenantID:       name,
+			ServiceAccount: gwName,
+			RedirectURL:    fmt.Sprintf("http://%s/openshift/%s/callback", host, name),
+			CookieSecret:   cookieSecret,
+		})
 	}
 
 	return Options{

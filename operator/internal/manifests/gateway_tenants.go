@@ -27,6 +27,13 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 		return nil // continue using user input
 
 	case lokiv1beta1.OpenshiftLogging:
+		tenantData := make(map[string]openshift.TenantData)
+		for name, tenant := range opts.Tenants.Configs {
+			tenantData[name] = openshift.TenantData{
+				CookieSecret: tenant.OpenShift.CookieSecret,
+			}
+		}
+
 		defaults := openshift.NewOptions(
 			opts.Name,
 			opts.Namespace,
@@ -37,7 +44,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			ComponentLabels(LabelGatewayComponent, opts.Name),
 			opts.Flags.EnableServiceMonitors,
 			opts.Flags.EnableCertificateSigningService,
-			opts.TenantConfigMap,
+			tenantData,
 		)
 
 		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {
@@ -49,15 +56,18 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	return nil
 }
 
-func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType, flags FeatureFlags) error {
+func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType, flags FeatureFlags, stackName, stackNs string) error {
 	switch mode {
 	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
 		return nil // nothing to configure
 	case lokiv1beta1.OpenshiftLogging:
+		serviceName := serviceNameGatewayHTTP(stackName)
+		secretName := signingServiceSecretName(serviceName)
+		serverName := fqdn(serviceName, stackNs)
 		return openshift.ConfigureGatewayDeployment(
 			d,
 			gatewayContainerName,
-			tlsMetricsSercetVolume,
+			tlsSecretVolume,
 			gateway.LokiGatewayTLSDir,
 			gateway.LokiGatewayCertFile,
 			gateway.LokiGatewayKeyFile,
@@ -65,6 +75,9 @@ func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType,
 			gateway.LokiGatewayCAFile,
 			flags.EnableTLSServiceMonitorConfig,
 			flags.EnableCertificateSigningService,
+			secretName,
+			serverName,
+			gatewayHTTPPort,
 		)
 	}
 

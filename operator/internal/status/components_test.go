@@ -160,3 +160,157 @@ func TestSetComponentsStatus_WhenPodListExisting_SetPodStatusMap(t *testing.T) {
 	require.NotZero(t, k.StatusCallCount())
 	require.NotZero(t, sw.UpdateCallCount())
 }
+
+func TestSetComponentsStatus_WhenRulerEnabled_SetPodStatusMap(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	s := lokiv1beta1.LokiStack{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Rules: &lokiv1beta1.RulesSpec{
+				Enabled: true,
+			},
+		},
+	}
+
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, &s)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+
+	k.ListStub = func(_ context.Context, l client.ObjectList, _ ...client.ListOption) error {
+		pods := v1.PodList{
+			Items: []v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pod-a",
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodPending,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pod-b",
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodRunning,
+					},
+				},
+			},
+		}
+		k.SetClientObjectList(l, &pods)
+		return nil
+	}
+
+	expected := lokiv1beta1.PodStatusMap{
+		"Pending": []string{"pod-a"},
+		"Running": []string{"pod-b"},
+	}
+
+	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
+		stack := obj.(*lokiv1beta1.LokiStack)
+		require.Equal(t, expected, stack.Status.Components.Ruler)
+		return nil
+	}
+
+	err := status.SetComponentsStatus(context.TODO(), k, r)
+	require.NoError(t, err)
+	require.NotZero(t, k.ListCallCount())
+	require.NotZero(t, k.StatusCallCount())
+	require.NotZero(t, sw.UpdateCallCount())
+}
+
+func TestSetComponentsStatus_WhenRulerNotEnabled_DoNothing(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	s := lokiv1beta1.LokiStack{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Rules: &lokiv1beta1.RulesSpec{
+				Enabled: false,
+			},
+		},
+	}
+
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, &s)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+
+	k.ListStub = func(_ context.Context, l client.ObjectList, o ...client.ListOption) error {
+		s := o[0].(client.MatchingLabels)
+
+		c, ok := s["app.kubernetes.io/component"]
+		if !ok || c == "ruler" {
+			return nil
+		}
+
+		pods := v1.PodList{
+			Items: []v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pod-a",
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodPending,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "pod-b",
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodRunning,
+					},
+				},
+			},
+		}
+		k.SetClientObjectList(l, &pods)
+		return nil
+	}
+
+	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
+		stack := obj.(*lokiv1beta1.LokiStack)
+		require.Equal(t, stack.Status.Components.Ruler, lokiv1beta1.PodStatusMap{})
+		return nil
+	}
+
+	err := status.SetComponentsStatus(context.TODO(), k, r)
+	require.NoError(t, err)
+	require.NotZero(t, k.ListCallCount())
+	require.NotZero(t, k.StatusCallCount())
+	require.NotZero(t, sw.UpdateCallCount())
+}

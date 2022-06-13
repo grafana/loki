@@ -43,6 +43,10 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
+				Ruler: &lokiv1beta1.LokiComponentSpec{
+					Tolerations: tolerations,
+					Replicas:    1,
+				},
 			},
 		},
 		ObjectStorage: storage.Options{},
@@ -67,6 +71,9 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 					Replicas: 1,
 				},
 				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ruler: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -103,6 +110,11 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 		assert.Equal(t, tolerations, NewIndexGatewayStatefulSet(optsWithTolerations).Spec.Template.Spec.Tolerations)
 		assert.Empty(t, NewIndexGatewayStatefulSet(optsWithoutTolerations).Spec.Template.Spec.Tolerations)
 	})
+
+	t.Run("ruler", func(t *testing.T) {
+		assert.Equal(t, tolerations, NewRulerStatefulSet(optsWithTolerations).Spec.Template.Spec.Tolerations)
+		assert.Empty(t, NewRulerStatefulSet(optsWithoutTolerations).Spec.Template.Spec.Tolerations)
+	})
 }
 
 func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
@@ -134,6 +146,10 @@ func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
+				Ruler: &lokiv1beta1.LokiComponentSpec{
+					NodeSelector: nodeSelectors,
+					Replicas:     1,
+				},
 			},
 		},
 		ObjectStorage: storage.Options{},
@@ -158,6 +174,9 @@ func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 					Replicas: 1,
 				},
 				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ruler: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -193,5 +212,10 @@ func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 	t.Run("index_gateway", func(t *testing.T) {
 		assert.Equal(t, nodeSelectors, NewIndexGatewayStatefulSet(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
 		assert.Empty(t, NewIndexGatewayStatefulSet(optsWithoutNodeSelectors).Spec.Template.Spec.NodeSelector)
+	})
+
+	t.Run("ruler", func(t *testing.T) {
+		assert.Equal(t, nodeSelectors, NewRulerStatefulSet(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
+		assert.Empty(t, NewRulerStatefulSet(optsWithoutNodeSelectors).Spec.Template.Spec.NodeSelector)
 	})
 }

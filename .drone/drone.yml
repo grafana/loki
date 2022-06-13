@@ -12,7 +12,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.20.4
+    - 0.21.0
     username:
       from_secret: docker_username
   when:
@@ -22,7 +22,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -41,14 +41,14 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: check-generated-files
 - commands:
   - cd ..
@@ -57,7 +57,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: clone-main
 - commands:
   - make BUILD_IN_CONTAINER=false test
@@ -65,7 +65,7 @@ steps:
   - clone
   - clone-main
   environment: {}
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: test
 - commands:
   - cd ../loki-main
@@ -73,7 +73,7 @@ steps:
   depends_on:
   - clone-main
   environment: {}
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: test-main
 - commands:
   - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
@@ -83,7 +83,7 @@ steps:
   - test
   - test-main
   environment: {}
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: compare-coverage
 - commands:
   - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
@@ -96,7 +96,7 @@ steps:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: report-coverage
 - commands:
   - make BUILD_IN_CONTAINER=false lint
@@ -104,7 +104,7 @@ steps:
   - clone
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -113,7 +113,7 @@ steps:
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -125,21 +125,21 @@ steps:
   - clone
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.20.4
+  image: grafana/loki-build-image:0.21.0
   name: check-example-config-doc
 trigger:
   event:
@@ -160,6 +160,13 @@ steps:
   environment: {}
   image: grafana/jsonnet-build:c8b75df
   name: lint-jsonnet
+- commands:
+  - make BUILD_IN_CONTAINER=false loki-mixin-check
+  depends_on:
+  - clone
+  environment: {}
+  image: grafana/loki-build-image:0.21.0
+  name: loki-mixin-check
 trigger:
   event:
   - push
@@ -199,7 +206,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -217,7 +224,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -235,7 +242,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -253,7 +260,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -271,7 +278,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -289,7 +296,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -327,7 +334,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -345,7 +352,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -363,7 +370,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -381,7 +388,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -399,7 +406,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -417,7 +424,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -455,7 +462,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -473,7 +480,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -491,7 +498,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -509,7 +516,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -527,7 +534,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -545,7 +552,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -583,7 +590,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -601,7 +608,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -639,7 +646,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -657,7 +664,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -695,7 +702,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -713,7 +720,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -752,7 +759,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -770,7 +777,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -809,7 +816,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -827,7 +834,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -866,7 +873,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -884,7 +891,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -923,7 +930,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -941,7 +948,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -1004,7 +1011,7 @@ trigger:
   ref:
     include:
     - refs/heads/main
-    - refs/heads/k??
+    - refs/heads/k???
     - refs/tags/v*
 ---
 depends_on:
@@ -1040,7 +1047,7 @@ trigger:
   ref:
     include:
     - refs/heads/main
-    - refs/heads/k??
+    - refs/heads/k???
     - refs/tags/v*
 ---
 kind: pipeline
@@ -1095,7 +1102,7 @@ steps:
     ref:
       exclude:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 - depends_on:
   - image-tag
@@ -1116,7 +1123,7 @@ steps:
     ref:
       include:
       - refs/heads/main
-      - refs/heads/k??
+      - refs/heads/k???
       - refs/tags/v*
 trigger:
   event:
@@ -1167,6 +1174,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: e3f0cead040a655e51244d5d71377a4ba506d7f63fae440593f6e7d14018a1e3
+hmac: 81be9fce60976703815abf1fd2f1c9255a142d615b90d4b5278ff4a64fa25e92
 
 ...

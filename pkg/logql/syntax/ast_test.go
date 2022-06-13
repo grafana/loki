@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -174,6 +175,34 @@ func Test_SampleExpr_String(t *testing.T) {
 			expr2, err := ParseExpr(expr.String())
 			require.Nil(t, err)
 			require.Equal(t, expr, expr2)
+		})
+	}
+}
+
+func TestMatcherGroups(t *testing.T) {
+	for i, tc := range []struct {
+		query string
+		exp   [][]*labels.Matcher
+	}{
+		{
+			query: `{job="foo"}`,
+			exp: [][]*labels.Matcher{
+				{labels.MustNewMatcher(labels.MatchEqual, "job", "foo")},
+			},
+		},
+		{
+			query: `count_over_time({job="foo"}[5m]) / count_over_time({job="bar"}[5m])`,
+			exp: [][]*labels.Matcher{
+				{labels.MustNewMatcher(labels.MatchEqual, "job", "foo")},
+				{labels.MustNewMatcher(labels.MatchEqual, "job", "bar")},
+			},
+		},
+	} {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			expr, err := ParseExpr(tc.query)
+			require.Nil(t, err)
+			out := MatcherGroups(expr)
+			require.Equal(t, tc.exp, out)
 		})
 	}
 }

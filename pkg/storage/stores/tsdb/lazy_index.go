@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -63,4 +64,12 @@ func (f LazyIndex) LabelValues(ctx context.Context, userID string, from, through
 		return nil, err
 	}
 	return i.LabelValues(ctx, userID, from, through, name, matchers...)
+}
+
+func (f LazyIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
+	i, err := f()
+	if err != nil {
+		return nil, err
+	}
+	return i.Stats(ctx, userID, from, through, blooms, shard, matchers...)
 }

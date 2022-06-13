@@ -60,6 +60,8 @@ const (
 	LabelQueryFrontendComponent string = "query-frontend"
 	// LabelIndexGatewayComponent is the label value for the lokiStack-index-gateway component
 	LabelIndexGatewayComponent string = "index-gateway"
+	// LabelRulerComponent is the label value for the lokiStack-ruler component
+	LabelRulerComponent string = "ruler"
 	// LabelGatewayComponent is the label value for the lokiStack-gateway component
 	LabelGatewayComponent string = "lokistack-gateway"
 )
@@ -136,6 +138,16 @@ func IndexGatewayName(stackName string) string {
 	return fmt.Sprintf("%s-index-gateway", stackName)
 }
 
+// RulerName is the name of the ruler statefulset
+func RulerName(stackName string) string {
+	return fmt.Sprintf("%s-ruler", stackName)
+}
+
+// RulesConfigMapName is the name of the alerting rules configmap
+func RulesConfigMapName(stackName string) string {
+	return fmt.Sprintf("%s-rules", stackName)
+}
+
 // GatewayName is the name of the lokiStack-gateway statefulset
 func GatewayName(stackName string) string {
 	return fmt.Sprintf("%s-gateway", stackName)
@@ -194,6 +206,14 @@ func serviceNameIndexGatewayGRPC(stackName string) string {
 	return fmt.Sprintf("%s-index-gateway-grpc", stackName)
 }
 
+func serviceNameRulerHTTP(stackName string) string {
+	return fmt.Sprintf("%s-ruler-http", stackName)
+}
+
+func serviceNameRulerGRPC(stackName string) string {
+	return fmt.Sprintf("%s-ruler-grpc", stackName)
+}
+
 func serviceNameGatewayHTTP(stackName string) string {
 	return fmt.Sprintf("%s-gateway-http", stackName)
 }
@@ -203,7 +223,7 @@ func serviceMonitorName(componentName string) string {
 }
 
 func signingServiceSecretName(serviceName string) string {
-	return fmt.Sprintf("%s-metrics", serviceName)
+	return fmt.Sprintf("%s-tls", serviceName)
 }
 
 func fqdn(serviceName, namespace string) string {

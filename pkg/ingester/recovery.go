@@ -78,7 +78,10 @@ func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 func (r *ingesterRecoverer) Series(series *Series) error {
 	return r.ing.replayController.WithBackPressure(func() error {
 
-		inst := r.ing.GetOrCreateInstance(series.UserID)
+		inst, err := r.ing.GetOrCreateInstance(series.UserID)
+		if err != nil {
+			return err
+		}
 
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(logproto.Stream{
@@ -98,7 +101,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		if err != nil {
 			return err
 		}
-		memoryChunks.Add(float64(len(series.Chunks)))
+		r.ing.metrics.memoryChunks.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredEntriesTotal.Add(float64(entriesAdded))
 		r.ing.replayController.Add(int64(bytesAdded))
@@ -126,7 +129,10 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 // the fingerprint reported in the WAL record, not the potentially differing one assigned during
 // stream creation.
 func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) error {
-	inst := r.ing.GetOrCreateInstance(userID)
+	inst, err := r.ing.GetOrCreateInstance(userID)
+	if err != nil {
+		return err
+	}
 
 	stream, err := inst.getOrCreateStream(
 		logproto.Stream{

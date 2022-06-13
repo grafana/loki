@@ -5,6 +5,8 @@ package indexgatewaypb;
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "pkg/logproto/logproto.proto";
 
+option go_package = "github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb";
+
 service IndexGateway {
   /// QueryIndex reads the indexes required for given query & sends back the batch of rows
   /// in rpc streams
@@ -15,6 +17,8 @@ service IndexGateway {
   rpc LabelNamesForMetricName(LabelNamesForMetricNameRequest) returns (LabelResponse) {}
 
   rpc LabelValuesForMetricName(LabelValuesForMetricNameRequest) returns (LabelResponse) {}
+
+  rpc GetStats(IndexStatsRequest) returns (IndexStatsResponse) {}
 }
 
 message LabelValuesForMetricNameRequest {
@@ -106,4 +110,25 @@ message IndexQuery {
   bytes rangeValuePrefix = 3;
   bytes rangeValueStart = 4;
   bytes valueEqual = 5;
+}
+
+message IndexStatsRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+  // TODO(owen-d): add shards to grpc calls so we don't have
+  // to extract via labels
+}
+
+message IndexStatsResponse {
+  uint64 streams = 1 [(gogoproto.jsontag) = "streams"];
+  uint64 chunks = 2 [(gogoproto.jsontag) = "chunks"];
+  uint64 bytes = 3 [(gogoproto.jsontag) = "bytes"];
+  uint64 entries = 4 [(gogoproto.jsontag) = "entries"];
 }

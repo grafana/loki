@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/manifests"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -62,15 +62,21 @@ func TestGetTenantConfigMapData_ConfigMapExist(t *testing.T) {
 	require.NotNil(t, ts)
 	require.NoError(t, err)
 
-	expected := map[string]openshift.TenantData{
+	expected := map[string]manifests.TenantConfig{
 		"application": {
-			CookieSecret: "test123",
+			OpenShift: &manifests.TenantOpenShiftSpec{
+				CookieSecret: "test123",
+			},
 		},
 		"infrastructure": {
-			CookieSecret: "test456",
+			OpenShift: &manifests.TenantOpenShiftSpec{
+				CookieSecret: "test456",
+			},
 		},
 		"audit": {
-			CookieSecret: "test789",
+			OpenShift: &manifests.TenantOpenShiftSpec{
+				CookieSecret: "test789",
+			},
 		},
 	}
 	require.Equal(t, expected, ts)

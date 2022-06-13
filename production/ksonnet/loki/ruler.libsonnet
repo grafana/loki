@@ -19,10 +19,12 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     stateful_rulers: if self.using_boltdb_shipper && !self.use_index_gateway then true else super.stateful_rulers,
   },
 
+  ruler_ports:: $.util.defaultPorts,
+
   ruler_container::
     if $._config.ruler_enabled then
       container.new('ruler', $._images.ruler) +
-      container.withPorts($.util.defaultPorts) +
+      container.withPorts($.ruler_ports) +
       container.withArgsMixin(k.util.mapToFlags($.ruler_args)) +
       k.util.resourcesRequests('1', '6Gi') +
       k.util.resourcesLimits('16', '16Gi') +

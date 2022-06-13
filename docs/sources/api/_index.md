@@ -28,6 +28,8 @@ These endpoints are exposed by the querier and the query frontend:
 - [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
 - [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
 - [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
+- [`GET /loki/api/v1/series`](#series)
+- [`GET /loki/api/v1/index/stats`](#index-stats)
 - [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
 - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
 - [`GET /ready`](#get-ready)
@@ -919,6 +921,38 @@ $ curl -s "http://localhost:3100/loki/api/v1/series" --data-urlencode 'match[]={
   ]
 }
 ```
+
+
+## Index Stats
+
+The `/loki/api/v1/index/stats` endpoint can be used to query the index for the number of `streams`, `chunks`, `entries`, and `bytes` that a query resolves to.
+
+URL query parameters:
+
+- `query`: The [LogQL](../logql/) matchers to check (i.e. `{job="foo", env!="dev"}`)
+- `start=<nanosecond Unix epoch>`: Start timestamp.
+- `end=<nanosecond Unix epoch>`: End timestamp.
+
+You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header. This is useful when specifying a large or dynamic number of stream selectors that may breach server-side URL character limits.
+
+Response:
+```json
+{
+  "streams": 100,
+  "chunks": 1000,
+  "entries": 5000,
+  "bytes": 100000,
+}
+```
+
+It is an approximation with the following caveats:
+  * It does not include data from the ingesters
+  * It is a probabilistic technique
+  * streams/chunks which span multiple period configurations may be counted twice.
+
+These make it generally more helpful for larger queries.
+It can be used for better understanding the throughput requirements and data topology for a list of matchers over a period of time.
+
 
 ## Statistics
 

@@ -9,7 +9,7 @@ local condition(verb) = {
       [verb]:
         [
           'refs/heads/main',
-          'refs/heads/k??',
+          'refs/heads/k???',
           'refs/tags/v*',
         ],
     },
@@ -359,7 +359,7 @@ local manifest(apps) = pipeline('manifest') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: ['0.20.4'],
+          tags: ['0.21.0'],
           dry_run: false,
         },
       },
@@ -411,6 +411,9 @@ local manifest(apps) = pipeline('manifest') {
       make('lint-jsonnet', container=false) {
         // Docker image defined at https://github.com/grafana/jsonnet-libs/tree/master/build
         image: 'grafana/jsonnet-build:c8b75df',
+        depends_on: ['clone'],
+      },
+      make('loki-mixin-check', container=false) {
         depends_on: ['clone'],
       },
     ],

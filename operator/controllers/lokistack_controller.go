@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"github.com/go-logr/logr"
@@ -33,12 +34,13 @@ import (
 var (
 	createOrUpdateOnlyPred = builder.WithPredicates(predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			// Update only if generation changes, filter out anything else.
-			// We only need to check generation here, because it is only
+			// Update only if generation or annotations change, filter out anything else.
+			// We only need to check generation or annotations change here, because it is only
 			// updated on spec changes. On the other hand RevisionVersion
 			// changes also on status changes. We want to omit reconciliation
 			// for status updates for now.
-			return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()
+			return (e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()) ||
+				cmp.Diff(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) != ""
 		},
 		CreateFunc:  func(e event.CreateEvent) bool { return true },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return false },

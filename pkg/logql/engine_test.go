@@ -2168,21 +2168,23 @@ func TestEngine_MaxSeries(t *testing.T) {
 		{`count_over_time({app="foo|bar"} |~".+bar" [1m])`, logproto.BACKWARD, true},
 		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.FORWARD, false},
 	} {
-		q := eng.Query(LiteralParams{
-			qs:        test.qs,
-			start:     time.Unix(0, 0),
-			end:       time.Unix(100000, 0),
-			step:      60 * time.Second,
-			direction: test.direction,
-			limit:     1000,
+		t.Run(test.qs, func(t *testing.T) {
+			q := eng.Query(LiteralParams{
+				qs:        test.qs,
+				start:     time.Unix(0, 0),
+				end:       time.Unix(100000, 0),
+				step:      60 * time.Second,
+				direction: test.direction,
+				limit:     1000,
+			})
+			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+			if test.expectLimitErr {
+				require.NotNil(t, err)
+				require.True(t, errors.Is(err, logqlmodel.ErrLimit))
+			} else {
+				require.Nil(t, err)
+			}
 		})
-		_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
-		if test.expectLimitErr {
-			require.NotNil(t, err)
-			require.True(t, errors.Is(err, logqlmodel.ErrLimit))
-			return
-		}
-		require.Nil(t, err)
 	}
 }
 

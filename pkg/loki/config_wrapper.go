@@ -42,7 +42,7 @@ func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.ListTargets, "list-targets", false, "List available targets")
 	f.BoolVar(&c.LogConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
-	f.StringVar(&c.ConfigFile, "config.file", "", "yaml file to load")
+	f.StringVar(&c.ConfigFile, "config.file", "config.yaml,config/config.yaml", "configuration file to load, can be a comma separated list of paths, first existing file will be used")
 	f.BoolVar(&c.ConfigExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
 	c.Config.RegisterFlags(f)
 }
@@ -99,12 +99,12 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return err
 		}
 
-		if len(r.SchemaConfig.Configs) > 0 && config.UsingBoltdbShipper(r.SchemaConfig.Configs) {
-			betterBoltdbShipperDefaults(r, &defaults)
+		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
+			betterBoltdbShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
 		}
 
-		if len(r.SchemaConfig.Configs) > 0 && config.UsingTSDB(r.SchemaConfig.Configs) {
-			betterTSDBShipperDefaults(r, &defaults)
+		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
+			betterTSDBShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
 		}
 
 		applyFIFOCacheConfig(r)
@@ -114,6 +114,27 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		return nil
 	}
+}
+
+func lastConfigFor(configs []config.PeriodConfig, predicate func(config.PeriodConfig) bool) int {
+	for i := len(configs) - 1; i >= 0; i-- {
+		if predicate(configs[i]) {
+			return i
+		}
+	}
+	return len(configs)
+}
+
+func lastBoltdbShipperConfig(configs []config.PeriodConfig) int {
+	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
+		return p.IndexType == config.BoltDBShipperType
+	})
+}
+
+func lastTSDBConfig(configs []config.PeriodConfig) int {
+	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
+		return p.IndexType == config.TSDBType
+	})
 }
 
 // applyInstanceConfigs apply to Loki components instance-related configurations under the common
@@ -486,16 +507,14 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	return nil
 }
 
-func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
-	currentSchemaIdx := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
-	currentSchema := cfg.SchemaConfig.Configs[currentSchemaIdx]
+func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
 
 	if cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType == defaults.StorageConfig.BoltDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = currentSchema.ObjectType
+		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = period.ObjectType
 	}
 
 	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
-		cfg.CompactorConfig.SharedStoreType = currentSchema.ObjectType
+		cfg.CompactorConfig.SharedStoreType = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {
@@ -511,16 +530,14 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
 	}
 }
 
-func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper) {
-	currentSchemaIdx := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
-	currentSchema := cfg.SchemaConfig.Configs[currentSchemaIdx]
+func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
 
 	if cfg.StorageConfig.TSDBShipperConfig.SharedStoreType == defaults.StorageConfig.TSDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.TSDBShipperConfig.SharedStoreType = currentSchema.ObjectType
+		cfg.StorageConfig.TSDBShipperConfig.SharedStoreType = period.ObjectType
 	}
 
 	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
-		cfg.CompactorConfig.SharedStoreType = currentSchema.ObjectType
+		cfg.CompactorConfig.SharedStoreType = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {

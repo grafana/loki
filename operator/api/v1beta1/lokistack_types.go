@@ -159,12 +159,20 @@ type OIDCSpec struct {
 	IssuerURL string `json:"issuerURL"`
 	// RedirectURL defines the URL for redirect.
 	//
-	// +required
-	// +kubebuilder:validation:Required
+	// +optional
+	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Redirect URL"
-	RedirectURL   string `json:"redirectURL"`
-	GroupClaim    string `json:"groupClaim"`
-	UsernameClaim string `json:"usernameClaim"`
+	RedirectURL string `json:"redirectURL,omitempty"`
+	// Group claim field from ID Token
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	GroupClaim string `json:"groupClaim,omitempty"`
+	// User claim field from ID Token
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	UsernameClaim string `json:"usernameClaim,omitempty"`
 }
 
 // AuthenticationSpec defines the oidc configuration per tenant for lokiStack Gateway component.
@@ -305,6 +313,13 @@ type LokiTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Index Gateway pods"
 	IndexGateway *LokiComponentSpec `json:"indexGateway,omitempty"`
+
+	// Ruler defines the ruler component spec.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Ruler pods"
+	Ruler *LokiComponentSpec `json:"ruler,omitempty"`
 }
 
 // ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
@@ -343,15 +358,33 @@ type ObjectStorageSecretSpec struct {
 	Name string `json:"name"`
 }
 
+// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
+type ObjectStorageTLSSpec struct {
+	// CA is the name of a ConfigMap containing a CA certificate.
+	// It needs to be in the same namespace as the LokiStack custom resource.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
+	CA string `json:"caName,omitempty"`
+}
+
 // ObjectStorageSpec defines the requirements to access the object
 // storage bucket to persist logs by the ingester component.
 type ObjectStorageSpec struct {
 	// Secret for object storage authentication.
-	// Name of a secret in the same namespace as the cluster logging operator.
+	// Name of a secret in the same namespace as the LokiStack custom resource.
 	//
 	// +required
 	// +kubebuilder:validation:Required
 	Secret ObjectStorageSecretSpec `json:"secret"`
+
+	// TLS configuration for reaching the object storage endpoint.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLS Config"
+	TLS *ObjectStorageTLSSpec `json:"tls,omitempty"`
 }
 
 // QueryLimitSpec defines the limits applies at the query path.
@@ -475,6 +508,32 @@ type LimitsSpec struct {
 	Tenants map[string]LimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
+// RulesSpec deifnes the spec for the ruler component.
+type RulesSpec struct {
+	// Enabled defines a flag to enable/disable the ruler component
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Enable"
+	Enabled bool `json:"enabled"`
+
+	// A selector to select which LokiRules to mount for loading alerting/recording
+	// rules from.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Selector"
+	Selector *metav1.LabelSelector `json:"selector,omitempty"`
+
+	// Namespaces to be selected for PrometheusRules discovery. If unspecified, only
+	// the same namespace as the LokiStack object is in is used.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Namespace Selector"
+	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
+}
+
 // LokiStackSpec defines the desired state of LokiStack
 type LokiStackSpec struct {
 
@@ -513,8 +572,16 @@ type LokiStackSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Minimum:=1
+	// +kubebuilder:default:=1
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
 	ReplicationFactor int32 `json:"replicationFactor"`
+
+	// Rules defines the spec for the ruler component
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Rules"
+	Rules *RulesSpec `json:"rules,omitempty"`
 
 	// Limits defines the limits to be applied to log stream processing.
 	//
@@ -571,6 +638,16 @@ const (
 	ReasonMissingObjectStorageSecret LokiStackConditionReason = "MissingObjectStorageSecret"
 	// ReasonInvalidObjectStorageSecret when the format of the secret is invalid.
 	ReasonInvalidObjectStorageSecret LokiStackConditionReason = "InvalidObjectStorageSecret"
+	// ReasonMissingObjectStorageCAConfigMap when the required configmap to verify object storage
+	// certificates is missing.
+	ReasonMissingObjectStorageCAConfigMap LokiStackConditionReason = "MissingObjectStorageCAConfigMap"
+	// ReasonInvalidObjectStorageCAConfigMap when the format of the CA configmap is invalid.
+	ReasonInvalidObjectStorageCAConfigMap LokiStackConditionReason = "InvalidObjectStorageCAConfigMap"
+	// ReasonMissingRulerSecret when the required secret to authorization remote write connections
+	// for the ruler is missing.
+	ReasonMissingRulerSecret LokiStackConditionReason = "MissingRulerSecret"
+	// ReasonInvalidRulerSecret when the format of the ruler remote write authorization secret is invalid.
+	ReasonInvalidRulerSecret LokiStackConditionReason = "InvalidRulerSecret"
 	// ReasonInvalidReplicationConfiguration when the configurated replication factor is not valid
 	// with the select cluster size.
 	ReasonInvalidReplicationConfiguration LokiStackConditionReason = "InvalidReplicationConfiguration"
@@ -639,6 +716,13 @@ type LokiStackComponentStatus struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Gateway",order=5
 	Gateway PodStatusMap `json:"gateway,omitempty"`
+
+	// Ruler is a map to the per pod status of the lokistack ruler statefulset.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Ruler",order=6
+	Ruler PodStatusMap `json:"ruler,omitempty"`
 }
 
 // LokiStackStatus defines the observed state of LokiStack

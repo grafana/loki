@@ -291,7 +291,7 @@ func (s *mockStore) GetSeries(ctx context.Context, req logql.SelectLogParams) ([
 }
 
 func (s *mockStore) GetSchemaConfigs() []config.PeriodConfig {
-	return nil
+	return defaultPeriodConfigs
 }
 
 func (s *mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
@@ -588,7 +588,9 @@ func Test_InMemoryLabels(t *testing.T) {
 	_, err = i.Push(ctx, &req)
 	require.NoError(t, err)
 
+	start := time.Unix(0, 0)
 	res, err := i.Label(ctx, &logproto.LabelRequest{
+		Start:  &start,
 		Name:   "bar",
 		Values: true,
 	})
@@ -596,7 +598,7 @@ func Test_InMemoryLabels(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"baz1", "baz2"}, res.Values)
 
-	res, err = i.Label(ctx, &logproto.LabelRequest{})
+	res, err = i.Label(ctx, &logproto.LabelRequest{Start: &start})
 	require.NoError(t, err)
 	require.Equal(t, []string{"bar", "foo"}, res.Values)
 }

@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	tlsMetricsSercetVolume = "tls-metrics-secret"
+	tlsSecretVolume = "tls-secret"
 )
 
 // BuildGateway returns a list of k8s objects for Loki Stack Gateway
@@ -49,7 +49,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		if err := configureDeploymentForMode(dpl, mode, opts.Flags); err != nil {
+		if err := configureDeploymentForMode(dpl, mode, opts.Flags, opts.Name, opts.Namespace); err != nil {
 			return nil, err
 		}
 
@@ -321,7 +321,7 @@ func gatewayConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 // gatewayConfigOptions converts Options to gateway.Options
 func gatewayConfigOptions(opt Options) gateway.Options {
 	var gatewaySecrets []*gateway.Secret
-	for _, secret := range opt.TenantSecrets {
+	for _, secret := range opt.Tenants.Secrets {
 		gatewaySecret := &gateway.Secret{
 			TenantName:   secret.TenantName,
 			ClientID:     secret.ClientID,
@@ -331,20 +331,12 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 		gatewaySecrets = append(gatewaySecrets, gatewaySecret)
 	}
 
-	tenantConfigMap := make(map[string]gateway.TenantData)
-	for tenant, tenantData := range opt.TenantConfigMap {
-		tenantConfigMap[tenant] = gateway.TenantData{
-			CookieSecret: tenantData.CookieSecret,
-		}
-	}
-
 	return gateway.Options{
 		Stack:            opt.Stack,
 		Namespace:        opt.Namespace,
 		Name:             opt.Name,
 		OpenShiftOptions: opt.OpenShiftOptions,
 		TenantSecrets:    gatewaySecrets,
-		TenantConfigMap:  tenantConfigMap,
 	}
 }
 
@@ -364,7 +356,7 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
-				Name: tlsMetricsSercetVolume,
+				Name: tlsSecretVolume,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName: secretName,
@@ -376,7 +368,7 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 	secretContainerSpec := corev1.Container{
 		VolumeMounts: []corev1.VolumeMount{
 			{
-				Name:      tlsMetricsSercetVolume,
+				Name:      tlsSecretVolume,
 				ReadOnly:  true,
 				MountPath: gateway.LokiGatewayTLSDir,
 			},
