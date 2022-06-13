@@ -26,7 +26,7 @@
           "subdir": "production/loki-mixin"
         }
       },
-      "version": "aed11c25e"
+      "version": "main"
     }
   ],
   "legacyImports": true
