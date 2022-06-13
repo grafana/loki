@@ -896,6 +896,12 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
+	// IndexGateway runs by default on read target, and should always assume
+	// ring mode when run in this way.
+	if t.isModuleActive(Read) {
+		t.Cfg.IndexGateway.Mode = indexgateway.RingMode
+	}
+
 	if t.Cfg.IndexGateway.Mode != indexgateway.RingMode {
 		return
 	}
