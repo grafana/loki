@@ -74,6 +74,7 @@ func RunWith(input chan Entry, process func(e Entry) Entry) chan Entry {
 	return out
 }
 
+// RunWithSkip same as RunWith, except it skip sending it to output channel, if `process` functions returns `skip` true.
 func RunWithSkip(input chan Entry, process func(e Entry) (Entry, bool)) chan Entry {
 	out := make(chan Entry)
 	go func() {

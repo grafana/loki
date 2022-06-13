@@ -90,13 +90,14 @@ var (
 
 func TestCRI_tags(t *testing.T) {
 	cases := []struct {
-		name     string
-		lines    []string
-		expected []string
-		err      error
+		name            string
+		lines           []string
+		expected        []string
+		maxPartialLines int
+		err             error
 	}{
 		{
-			name: "simple tag F",
+			name: "tag F",
 			lines: []string{
 				"2019-05-07T18:57:50.904275087+00:00 stdout F some full line",
 				"2019-05-07T18:57:55.904275087+00:00 stdout F log",
@@ -104,7 +105,7 @@ func TestCRI_tags(t *testing.T) {
 			expected: []string{"some full line", "log"},
 		},
 		{
-			name: "simple tag P",
+			name: "tag P",
 			lines: []string{
 				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 1",
 				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 2",
@@ -113,6 +114,23 @@ func TestCRI_tags(t *testing.T) {
 			},
 			expected: []string{
 				"partial line 1\npartial line 2\nlog finished",
+				"another full log",
+			},
+		},
+		{
+			name: "tag P exceeding MaxPartialLinesSize lines",
+			lines: []string{
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 1",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 2",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 3",
+				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 4", // this exceeds the `MaxPartialLinesSize` of 3
+				"2019-05-07T18:57:55.904275087+00:00 stdout F log finished",
+				"2019-05-07T18:57:55.904275087+00:00 stdout F another full log",
+			},
+			maxPartialLines: 3,
+			expected: []string{
+				"partial line 1\npartial line 2\npartial line 3",
+				"partial line 4\nlog finished",
 				"another full log",
 			},
 		},
@@ -141,6 +159,11 @@ main.main()
 			require.NoError(t, err)
 
 			got := make([]string, 0)
+
+			// tweak `maxPartialLines`
+			if tt.maxPartialLines != 0 {
+				p.(*cri).maxPartialLines = tt.maxPartialLines
+			}
 
 			for _, line := range tt.lines {
 				out := processEntries(p, newEntry(nil, nil, line, time.Now()))
