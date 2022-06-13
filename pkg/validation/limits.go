@@ -9,6 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
@@ -108,6 +109,7 @@ type Limits struct {
 	RulerRemoteWriteQueueMinBackoff        time.Duration                `yaml:"ruler_remote_write_queue_min_backoff" json:"ruler_remote_write_queue_min_backoff"`
 	RulerRemoteWriteQueueMaxBackoff        time.Duration                `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff"`
 	RulerRemoteWriteQueueRetryOnRateLimit  bool                         `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
+	RulerRemoteWriteSigV4Config            *sigv4.SigV4Config           `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config"`
 
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
@@ -510,6 +512,10 @@ func (o *Overrides) RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration
 // RulerRemoteWriteQueueRetryOnRateLimit returns whether to retry failed remote-write requests (429 response) for a given user.
 func (o *Overrides) RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueRetryOnRateLimit
+}
+
+func (o *Overrides) RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config {
+	return o.getOverridesForUser(userID).RulerRemoteWriteSigV4Config
 }
 
 // RetentionPeriod returns the retention period for a given user.

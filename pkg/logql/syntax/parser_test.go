@@ -2954,15 +2954,33 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `{app="foo"} | json response_code, api_key="request.headers[\"X-API-KEY\"]"`,
+			in: `{app="foo"} | json response_code, api_key="request.headers[\"X-API-KEY\"]", layer7_something_specific="layer7_something_specific"`,
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
 					newJSONExpressionParser([]log.JSONExpression{
 						log.NewJSONExpr("response_code", `response_code`),
 						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
+						log.NewJSONExpr("layer7_something_specific", `layer7_something_specific`),
 					}),
 				},
+			},
+		},
+		{
+			in: `count_over_time({ foo ="bar" } | json layer7_something_specific="layer7_something_specific" [12m])`,
+			exp: &RangeAggregationExpr{
+				Left: &LogRange{
+					Left: &PipelineExpr{
+						MultiStages: MultiStageExpr{
+							newJSONExpressionParser([]log.JSONExpression{
+								log.NewJSONExpr("layer7_something_specific", `layer7_something_specific`),
+							}),
+						},
+						Left: &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					},
+					Interval: 12 * time.Minute,
+				},
+				Operation: "count_over_time",
 			},
 		},
 	} {
