@@ -88,7 +88,7 @@ func isStartIdentifier(r rune) bool {
 }
 
 func isIdentifier(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
+	return isStartIdentifier(r) || (r >= '0' && r <= '9')
 }
 
 func (sc *Scanner) scanField() string {
