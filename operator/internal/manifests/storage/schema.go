@@ -9,17 +9,13 @@ import (
 )
 
 const (
-	// updateDelay is the time before a change to the storage schema
-	// is applied to a cluster. This will avoid scenarios in which
-	// the difference between UTC and local time zones will cause
-	// logs to be unavailable.
-	updateDelay = time.Hour * 24
+	// updateBuffer is the time before a change to the storage schema
+	// is applied to a cluster. This is to avoid a midnight hour change,
+	// which could cause some logs to be unreadable.
+	updateBuffer = time.Hour * 2
 )
 
-type schemaConfig struct {
-	version       lokiv1beta1.ObjectStorageSchemaVersion
-	effectiveDate time.Time
-}
+type schemaMap map[lokiv1beta1.StorageSchemaEffectiveDate]lokiv1beta1.ObjectStorageSchemaVersion
 
 // BuildSchemaConfig creates a list of schemas to be used to configure
 // the storage schemas for the cluster. This method assumes that the following
@@ -30,166 +26,130 @@ type schemaConfig struct {
 //
 func BuildSchemaConfig(
 	utcTime time.Time,
-	specs []lokiv1beta1.ObjectStorageSchemaSpec,
-	statuses []lokiv1beta1.StorageSchemaStatus,
-) ([]lokiv1beta1.ObjectStorageSchemaSpec, error) {
-	if len(specs) == 0 {
-		return nil, kverrors.New("Spec does not contain any schemas.")
+	specSchemas, statusSchemas []lokiv1beta1.ObjectStorageSchema,
+) ([]lokiv1beta1.ObjectStorageSchema, error) {
+	if len(specSchemas) == 0 {
+		return nil, kverrors.New("spec does not contain any schemas")
 	}
 
-	specSchemas := schemaConfigFromSpec(specs)
+	schemas := buildSchemas(specSchemas)
 
-	if len(statuses) != 0 {
-		statusSchemas := schemaConfigFromStatus(statuses)
-
+	if len(statusSchemas) != 0 {
 		// Schemas applied in the future can be ignored cause they have not
 		// taken effect yet. The delay is added to avoid edge cases where UTC
 		// and local time zones may cause interference.
 		//
 		// For example, say there is a future change which will occur on 2022-06-02.
-		// If change occurs close to midnight on 2022-06-01, there might be timing
+		// If the change occurs close to midnight on 2022-06-01, there might be timing
 		// issues between the local and UTC. Thus, there is a chance of corruption.
-		// To avoid this, the change on 2022-06-02 should be considered as already
-		// applied and an error should be sent back to change the date of the
-		// in-flight change.
-		cutoff := utcTime.Add(updateDelay)
-		applied := filterAppliedSchemas(statusSchemas, cutoff)
-		if !containsSchemas(specSchemas, applied) {
-			return nil, kverrors.New("Cannot retroactively remove previously applied schemas")
-		}
+		cutoff := utcTime.Add(updateBuffer)
 
-		unapplied := filterUnappliedSchemas(specSchemas, cutoff)
-		if len(specSchemas)-len(unapplied) != len(applied) {
-			return nil, kverrors.New("Cannot retroactively add schemas.")
+		// Objects from the status cannot be changed from the spec. So,
+		// the status schemas are assumed to be the source of truth.
+		appliedMap := buildAppliedSchemaMap(statusSchemas, cutoff)
+
+		if err := validate(schemas, appliedMap, cutoff); err != nil {
+			return nil, err
 		}
 	}
 
-	sort.SliceStable(specSchemas, func(i, j int) bool {
-		return specSchemas[i].effectiveDate.Before(specSchemas[j].effectiveDate)
+	return schemas, nil
+}
+
+// buildSchemas creates a sorted and reduced list of schemaConfigs
+func buildSchemas(schemas []lokiv1beta1.ObjectStorageSchema) []lokiv1beta1.ObjectStorageSchema {
+	sortedSchemas := make([]lokiv1beta1.ObjectStorageSchema, len(schemas))
+	copy(sortedSchemas, schemas)
+
+	sort.SliceStable(sortedSchemas, func(i, j int) bool {
+		iDate, _ := sortedSchemas[i].EffectiveDate.UTCTime()
+		jDate, _ := sortedSchemas[j].EffectiveDate.UTCTime()
+
+		return iDate.Before(jDate)
 	})
 
-	reducedSpecSchemas := reduceSortedSchemas(specSchemas)
-	return buildSpecs(reducedSpecSchemas), nil
+	return reduceSortedSchemas(sortedSchemas)
 }
 
-// schemaConfigFromStatus creates a list of schemaConfigs based on the given statuses
-func schemaConfigFromStatus(statuses []lokiv1beta1.StorageSchemaStatus) []schemaConfig {
-	configs := make([]schemaConfig, len(statuses))
+// buildAppliedSchemaMap creates a map of schemas which occur before the given time
+func buildAppliedSchemaMap(schemas []lokiv1beta1.ObjectStorageSchema, effectiveDate time.Time) schemaMap {
+	appliedMap := schemaMap{}
 
-	for i, status := range statuses {
-		date, _ := time.Parse(lokiv1beta1.StorageSchemaEffectiveDateFormat, status.EffectiveDate)
-
-		configs[i] = schemaConfig{
-			version:       status.Version,
-			effectiveDate: date,
+	for _, schema := range schemas {
+		date, _ := schema.EffectiveDate.UTCTime()
+		if date.Before(effectiveDate) {
+			appliedMap[schema.EffectiveDate] = schema.Version
 		}
 	}
 
-	return configs
+	return appliedMap
 }
 
-// schemaConfigFromSpec creates a list of schemaConfigs based on the given specs
-func schemaConfigFromSpec(specs []lokiv1beta1.ObjectStorageSchemaSpec) []schemaConfig {
-	configs := make([]schemaConfig, len(specs))
+// validate checks a list of schemas to that no retroactive changes have been made
+func validate(schemas []lokiv1beta1.ObjectStorageSchema, applied schemaMap, effectiveDate time.Time) error {
+	found := map[lokiv1beta1.StorageSchemaEffectiveDate]bool{}
 
-	for i, spec := range specs {
-		date, _ := time.Parse(lokiv1beta1.StorageSchemaEffectiveDateFormat, string(spec.EffectiveDate))
-
-		configs[i] = schemaConfig{
-			version:       spec.Version,
-			effectiveDate: date,
-		}
+	for key := range applied {
+		found[key] = false
 	}
 
-	return configs
-}
+	for _, schema := range schemas {
+		date, _ := schema.EffectiveDate.UTCTime()
 
-// buildSpecs creates a list of ObjectStorageSchemaSpecs based on the given configs
-func buildSpecs(configs []schemaConfig) []lokiv1beta1.ObjectStorageSchemaSpec {
-	specs := make([]lokiv1beta1.ObjectStorageSchemaSpec, len(configs))
-
-	for i, config := range configs {
-		date := config.effectiveDate.Format(lokiv1beta1.StorageSchemaEffectiveDateFormat)
-
-		specs[i] = lokiv1beta1.ObjectStorageSchemaSpec{
-			Version:       config.version,
-			EffectiveDate: lokiv1beta1.StorageSchemaEffectiveDate(date),
+		if date.After(effectiveDate) {
+			continue
 		}
+
+		appliedSchemaVersion, ok := applied[schema.EffectiveDate]
+
+		if !ok {
+			return kverrors.New("cannot retroactively add schemas",
+				"date", schema.EffectiveDate,
+			)
+		}
+
+		if appliedSchemaVersion != schema.Version {
+			return kverrors.New("cannot retroactively change schemas",
+				"date", schema.EffectiveDate,
+				"version", schema.Version,
+			)
+		}
+
+		found[schema.EffectiveDate] = true
 	}
 
-	return specs
-}
-
-// isApplied returns whether a schemaConfig has been applied or not
-func isApplied(config schemaConfig, effectiveDate time.Time) bool {
-	year, month, day := config.effectiveDate.Date()
-	utcTime := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
-
-	return config.effectiveDate.Before(effectiveDate) || utcTime.Equal(effectiveDate)
-}
-
-// filterAppliedSchemas returns a list of configs that have been applied.
-func filterAppliedSchemas(configs []schemaConfig, cutoff time.Time) []schemaConfig {
-	applied := []schemaConfig{}
-
-	for _, config := range configs {
-		if isApplied(config, cutoff) {
-			applied = append(applied, config)
+	for key, value := range found {
+		if value {
+			continue
 		}
+
+		// The `found` map is derived from the `applied` map.
+		// Both have the same keys. So this lookup should
+		// always be successful.
+		version := applied[key]
+
+		return kverrors.New("cannot retroactively remove schema",
+			"date", key,
+			"version", version,
+		)
 	}
 
-	return applied
+	return nil
 }
 
-// filterUnappliedSchemas returns a list of configs that have not been applied.
-func filterUnappliedSchemas(configs []schemaConfig, cutoff time.Time) []schemaConfig {
-	unapplied := []schemaConfig{}
-
-	for _, config := range configs {
-		if !isApplied(config, cutoff) {
-			unapplied = append(unapplied, config)
-		}
-	}
-
-	return unapplied
-}
-
-// containsSchemas returns a boolean indicating if a list of configs
-// has all the elements in another list.
-func containsSchemas(configs []schemaConfig, subset []schemaConfig) bool {
-	for _, element := range subset {
-		contains := false
-
-		for _, config := range configs {
-			areVersionsEqual := config.version == element.version
-			areDatesEqual := config.effectiveDate.Equal(element.effectiveDate)
-
-			if areVersionsEqual && areDatesEqual {
-				contains = true
-			}
-		}
-
-		if !contains {
-			return false
-		}
-	}
-
-	return true
-}
-
-// reduceSortedSchemas returns a list of configs that have removed redundant entries.
-func reduceSortedSchemas(configs []schemaConfig) []schemaConfig {
-	if len(configs) == 0 {
+// reduceSortedSchemas returns a list of schemas that have removed redundant entries.
+func reduceSortedSchemas(schemas []lokiv1beta1.ObjectStorageSchema) []lokiv1beta1.ObjectStorageSchema {
+	if len(schemas) == 0 {
 		return nil
 	}
 
 	lastIndex := 0
-	reduced := []schemaConfig{configs[0]}
+	reduced := []lokiv1beta1.ObjectStorageSchema{schemas[0]}
 
-	for _, config := range configs {
-		if reduced[lastIndex].version != config.version {
+	for _, schema := range schemas {
+		if reduced[lastIndex].Version != schema.Version {
 			lastIndex++
-			reduced = append(reduced, config)
+			reduced = append(reduced, schema)
 		}
 	}
 

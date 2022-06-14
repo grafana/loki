@@ -85,8 +85,11 @@ func CreateOrUpdateLokiStack(
 		stack.Status.Storage.Schemas,
 	)
 	if err != nil {
-		ll.Error(err, "failed to create storage schema configurations")
-		return err
+		return &status.DegradedError{
+			Message: fmt.Sprintf("Invalid object storage schema contents: %s", err),
+			Reason:  lokiv1beta1.ReasonInvalidObjectStorageSchema,
+			Requeue: false,
+		}
 	}
 
 	objStore.Schemas = storageSchemas

@@ -1,6 +1,9 @@
 package v1beta1
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // PrometheusDuration defines the type for Prometheus durations.
 //
@@ -11,6 +14,11 @@ type PrometheusDuration string
 //
 // +kubebuilder:validation:Pattern:="^([0-9]{4,})([-]([0-9]{2})){2}$"
 type StorageSchemaEffectiveDate string
+
+// UTCTime returns the date as a time object in the UTC time zone
+func (d StorageSchemaEffectiveDate) UTCTime() (time.Time, error) {
+	return time.Parse(StorageSchemaEffectiveDateFormat, string(d))
+}
 
 const (
 	// StorageSchemaEffectiveDateFormat is the datetime string need to format the time.

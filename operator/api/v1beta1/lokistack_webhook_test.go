@@ -22,7 +22,7 @@ var ltt = []struct {
 		spec: v1beta1.LokiStack{
 			Spec: v1beta1.LokiStackSpec{
 				Storage: v1beta1.ObjectStorageSpec{
-					Schemas: []v1beta1.ObjectStorageSchemaSpec{
+					Schemas: []v1beta1.ObjectStorageSchema{
 						{
 							Version:       v1beta1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
@@ -41,7 +41,7 @@ var ltt = []struct {
 		spec: v1beta1.LokiStack{
 			Spec: v1beta1.LokiStackSpec{
 				Storage: v1beta1.ObjectStorageSpec{
-					Schemas: []v1beta1.ObjectStorageSchemaSpec{
+					Schemas: []v1beta1.ObjectStorageSchema{
 						{
 							Version:       v1beta1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020-10-11",
@@ -71,7 +71,7 @@ var ltt = []struct {
 		spec: v1beta1.LokiStack{
 			Spec: v1beta1.LokiStackSpec{
 				Storage: v1beta1.ObjectStorageSpec{
-					Schemas: []v1beta1.ObjectStorageSchemaSpec{
+					Schemas: []v1beta1.ObjectStorageSchema{
 						{
 							Version:       v1beta1.ObjectStorageSchemaV11,
 							EffectiveDate: "2020/10/11",

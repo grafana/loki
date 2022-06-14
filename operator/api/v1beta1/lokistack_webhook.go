@@ -1,8 +1,6 @@
 package v1beta1
 
 import (
-	"time"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -55,7 +53,7 @@ func (s *LokiStack) validate() error {
 
 		found[sc.EffectiveDate] = true
 
-		if _, err := time.Parse(StorageSchemaEffectiveDateFormat, string(sc.EffectiveDate)); err != nil {
+		if _, err := sc.EffectiveDate.UTCTime(); err != nil {
 			allErrs = append(allErrs, field.Invalid(
 				field.NewPath("Spec").Child("Storage").Child("Schemas").Index(i).Child("EffectiveDate"),
 				sc.EffectiveDate,

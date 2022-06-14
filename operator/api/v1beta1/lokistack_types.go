@@ -383,9 +383,9 @@ const (
 	ObjectStorageSchemaV12 ObjectStorageSchemaVersion = "v12"
 )
 
-// ObjectStorageSchemaSpec defines the requirements needed to configure a new
+// ObjectStorageSchema defines the requirements needed to configure a new
 // storage schema.
-type ObjectStorageSchemaSpec struct {
+type ObjectStorageSchema struct {
 
 	// Version for writing and reading logs.
 	//
@@ -395,8 +395,8 @@ type ObjectStorageSchemaSpec struct {
 	Version ObjectStorageSchemaVersion `json:"version"`
 
 	// EffectiveDate is the date in UTC that the schema will be applied on.
-	// To ensure readibility of logs, this date should be at least two days
-	// ahead of the current date.
+	// To ensure readibility of logs, this date should be before the current
+	// date in UTC.
 	//
 	// +required
 	// +kubebuilder:validation:Required
@@ -413,7 +413,7 @@ type ObjectStorageSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinItems:=1
 	// +kubebuilder:default:={{version:v11,effectiveDate:"2020-10-11"}}
-	Schemas []ObjectStorageSchemaSpec `json:"schemas"`
+	Schemas []ObjectStorageSchema `json:"schemas"`
 
 	// Secret for object storage authentication.
 	// Name of a secret in the same namespace as the LokiStack custom resource.
@@ -681,6 +681,8 @@ const (
 	ReasonMissingObjectStorageSecret LokiStackConditionReason = "MissingObjectStorageSecret"
 	// ReasonInvalidObjectStorageSecret when the format of the secret is invalid.
 	ReasonInvalidObjectStorageSecret LokiStackConditionReason = "InvalidObjectStorageSecret"
+	// ReasonInvalidObjectStorageSchema when the spec contains an invalid schema(s).
+	ReasonInvalidObjectStorageSchema LokiStackConditionReason = "InvalidObjectStorageSchema"
 	// ReasonMissingObjectStorageCAConfigMap when the required configmap to verify object storage
 	// certificates is missing.
 	ReasonMissingObjectStorageCAConfigMap LokiStackConditionReason = "MissingObjectStorageCAConfigMap"
@@ -768,23 +770,6 @@ type LokiStackComponentStatus struct {
 	Ruler PodStatusMap `json:"ruler,omitempty"`
 }
 
-// StorageSchemaStatus defines the observed state of a single
-// change to the Loki Storage Schema.
-type StorageSchemaStatus struct {
-
-	// Version for writing and reading logs.
-	//
-	// +required
-	// +kubebuilder:validation:Required
-	Version ObjectStorageSchemaVersion `json:"version"`
-
-	// EffectiveDate is the date that the schema will be applied on.
-	//
-	// +required
-	// +kubebuilder:validation:Required
-	EffectiveDate string `json:"effectiveDate"`
-}
-
 // LokiStackStorageStatus defines the observed state of
 // the Loki storage configuration.
 type LokiStackStorageStatus struct {
@@ -794,7 +779,7 @@ type LokiStackStorageStatus struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	Schemas []StorageSchemaStatus `json:"schemas,omitempty"`
+	Schemas []ObjectStorageSchema `json:"schemas,omitempty"`
 }
 
 // LokiStackStatus defines the observed state of LokiStack

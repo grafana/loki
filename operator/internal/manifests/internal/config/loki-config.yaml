@@ -156,7 +156,7 @@ schema_config:
         period: 24h
         prefix: index_
       object_store: {{ $store }}
-      schema: {{.Version }}
+      schema: {{ .Version }}
       store: boltdb-shipper
     {{- end }}
 {{ if .Ruler.Enabled }}

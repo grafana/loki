@@ -173,7 +173,7 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -258,7 +258,7 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -368,7 +368,7 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -423,7 +423,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -529,7 +529,7 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -592,7 +592,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -706,7 +706,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -767,7 +767,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -790,6 +790,85 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 		}
 		if name.Name == invalidSecret.Name {
 			k.SetClientObject(object, &invalidSecret)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
+
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}
+
+func TestCreateOrUpdateLokiStack_WithInvalidStorageSchema_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid object storage schema contents: cannot retroactively remove schema",
+		Reason:  lokiv1beta1.ReasonInvalidObjectStorageSchema,
+		Requeue: false,
+	}
+
+	stack := &lokiv1beta1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
+				},
+			},
+		},
+		Status: lokiv1beta1.LokiStackStatus{
+			Storage: lokiv1beta1.LokiStackStorageStatus{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV12,
+						EffectiveDate: "2021-10-11",
+					},
+				},
+			},
+		},
+	}
+
+	// GetStub looks up the CR first, so we need to return our fake stack
+	// return NotFound for everything else to trigger create.
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, stack)
+			return nil
+		}
+		if name.Name == defaultSecret.Name {
+			k.SetClientObject(object, &defaultSecret)
 			return nil
 		}
 		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
@@ -832,7 +911,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingCAConfigMap_SetDegraded(t *testing.T
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -902,7 +981,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidCAConfigMap_SetDegraded(t *testing.T
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -979,7 +1058,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -1063,7 +1142,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -1152,7 +1231,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -1245,7 +1324,7 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchemaSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",

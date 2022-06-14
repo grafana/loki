@@ -31,7 +31,7 @@ func TestSetStorageSchemaStatus_WhenGetLokiStackReturnsError_ReturnError(t *test
 		return apierrors.NewBadRequest("something wasn't found")
 	}
 
-	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []lokiv1beta1.ObjectStorageSchemaSpec{})
+	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []lokiv1beta1.ObjectStorageSchema{})
 	require.Error(t, err)
 }
 
@@ -49,7 +49,7 @@ func TestSetStorageSchemaStatus_WhenGetLokiStackReturnsNotFound_DoNothing(t *tes
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []lokiv1beta1.ObjectStorageSchemaSpec{})
+	err := status.SetStorageSchemaStatus(context.TODO(), k, r, []lokiv1beta1.ObjectStorageSchema{})
 	require.NoError(t, err)
 }
 
@@ -66,7 +66,7 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 		},
 		Status: lokiv1beta1.LokiStackStatus{
 			Storage: lokiv1beta1.LokiStackStorageStatus{
-				Schemas: []lokiv1beta1.StorageSchemaStatus{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
 					{
 						Version:       lokiv1beta1.ObjectStorageSchemaV11,
 						EffectiveDate: "2020-10-11",
@@ -83,7 +83,7 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 		},
 	}
 
-	schemas := []lokiv1beta1.ObjectStorageSchemaSpec{
+	schemas := []lokiv1beta1.ObjectStorageSchema{
 		{
 			Version:       lokiv1beta1.ObjectStorageSchemaV11,
 			EffectiveDate: "2020-10-11",
@@ -94,7 +94,7 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 		},
 	}
 
-	expected := []lokiv1beta1.StorageSchemaStatus{
+	expected := []lokiv1beta1.ObjectStorageSchema{
 		{
 
 			Version:       lokiv1beta1.ObjectStorageSchemaV11,
