@@ -1,4 +1,4 @@
-package deletion
+package pipeline
 
 import (
 	"github.com/grafana/loki/pkg/logproto"

@@ -31,7 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/deletion"
+	util_pipeline "github.com/grafana/loki/pkg/util/deletion/pipeline"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"
@@ -340,7 +340,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
-	pipeline, err = deletion.SetupPipeline(req, pipeline)
+	pipeline, err = util_pipeline.SetupPipeline(req, pipeline)
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +385,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	extractor, err = deletion.SetupExtractor(req, extractor)
+	extractor, err = util_pipeline.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}

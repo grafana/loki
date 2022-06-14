@@ -29,6 +29,7 @@ import (
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
+	util_deletion "github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -87,7 +88,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
-	f.StringVar(&cfg.DeletionMode, "boltdb.shipper.compactor.deletion-mode", "whole-stream-deletion", fmt.Sprintf("(Experimental) Deletion mode. Can be one of %v", strings.Join(deletion.AllModes(), "|")))
+	f.StringVar(&cfg.DeletionMode, "boltdb.shipper.compactor.deletion-mode", "whole-stream-deletion", fmt.Sprintf("(Experimental) Deletion mode. Can be one of %v", strings.Join(util_deletion.AllModes(), "|")))
 	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
 	f.BoolVar(&cfg.RunOnce, "boltdb.shipper.compactor.run-once", false, "Run the compactor one time to cleanup and compact index files only (no retention applied)")
 }
@@ -101,7 +102,7 @@ func (cfg *Config) Validate() error {
 		return errors.New("interval for applying retention should either be set to a 0 or a multiple of compaction interval")
 	}
 
-	if _, err := deletion.ParseMode(cfg.DeletionMode); err != nil {
+	if _, err := util_deletion.ParseMode(cfg.DeletionMode); err != nil {
 		return err
 	}
 
@@ -122,7 +123,7 @@ type Compactor struct {
 	metrics               *metrics
 	running               bool
 	wg                    sync.WaitGroup
-	deleteMode            deletion.Mode
+	deleteMode            util_deletion.Mode
 
 	// Ring used for running a single compactor
 	ringLifecycler *ring.BasicLifecycler
@@ -190,7 +191,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig config.
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	mode, err := deletion.ParseMode(cfg.DeletionMode)
+	mode, err := util_deletion.ParseMode(cfg.DeletionMode)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +233,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.Schem
 		}
 
 		switch c.deleteMode {
-		case deletion.WholeStreamDeletion, deletion.FilterOnly, deletion.FilterAndDelete:
+		case util_deletion.WholeStreamDeletion, util_deletion.FilterOnly, util_deletion.FilterAndDelete:
 			if err := c.initDeletes(r, limits); err != nil {
 				return err
 			}
@@ -592,7 +593,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	return firstErr
 }
 
-func (c *Compactor) DeleteMode() deletion.Mode {
+func (c *Compactor) DeleteMode() util_deletion.Mode {
 	return c.deleteMode
 }
 
