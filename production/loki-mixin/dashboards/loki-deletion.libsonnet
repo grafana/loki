@@ -44,7 +44,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           g.row('Deleted lines')
           .addPanel(
             g.panel('Lines Deleted / Sec') +
-            g.queryPanel('sum(rate(loki_compactor_deleted_lines{cluster=~"$cluster",job=~"$namespace/compactor"}[$__rate_interval])) by (user)', '{{user}}'),
+            g.queryPanel('sum(rate(loki_compactor_deleted_lines{' + $._config.per_cluster_label + '=~"$cluster",job=~"$namespace/compactor"}[$__rate_interval])) by (user)', '{{user}}'),
           )
         ),
     },
