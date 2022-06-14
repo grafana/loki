@@ -148,6 +148,11 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 	})
 
 	for _, deleteRequest := range d.deleteRequestsToProcess {
+		level.Info(util_log.Logger).Log(
+			"msg", "started processing delete request",
+			"delete_request_id", deleteRequest.RequestID,
+			"userID", deleteRequest.UserID,
+		)
 		rebuiltIntervals := make([]retention.IntervalFilter, 0, len(d.chunkIntervalsToRetain))
 		for _, ivf := range d.chunkIntervalsToRetain {
 			entry := ref
@@ -163,9 +168,19 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 
 		d.chunkIntervalsToRetain = rebuiltIntervals
 		if len(d.chunkIntervalsToRetain) == 0 {
+			level.Info(util_log.Logger).Log(
+				"msg", "no chunks to retain for deleted request",
+				"delete_request_id", deleteRequest.RequestID,
+				"userID", deleteRequest.UserID,
+			)
 			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
 			return true, nil
 		}
+		level.Info(util_log.Logger).Log(
+			"msg", "finished processing delete request",
+			"delete_request_id", deleteRequest.RequestID,
+			"userID", deleteRequest.UserID,
+		)
 	}
 
 	if len(d.chunkIntervalsToRetain) == 1 && d.chunkIntervalsToRetain[0].Interval.Start == ref.From && d.chunkIntervalsToRetain[0].Interval.End == ref.Through {
@@ -199,6 +214,8 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 	for _, deleteRequest := range d.deleteRequestsToProcess {
 		if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusProcessed); err != nil {
 			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to mark delete request %s for user %s as processed", deleteRequest.RequestID, deleteRequest.UserID), "err", err)
+		} else {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("delete request %s for user %s marked as processed", deleteRequest.RequestID, deleteRequest.UserID))
 		}
 		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
 	}
