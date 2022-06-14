@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"math"
 	"strings"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"golang.org/x/time/rate"
@@ -92,6 +94,7 @@ type Limits struct {
 
 	// Compactor.
 	CompactorBlocksRetentionPeriod model.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
+	CompactorDeletionMode          string         `yaml:"deletion_mode" json:"deletion_mode"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -167,6 +170,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
 
 	f.Var(&l.CompactorBlocksRetentionPeriod, "compactor.blocks-retention-period", "Delete blocks containing samples older than the specified retention period. 0 to disable.")
+	f.StringVar(&l.CompactorDeletionMode, "compactor.deletion-mode", "whole-stream-deletion", fmt.Sprintf("Deletion mode. Can be one of %v", strings.Join(deletion.AllModes(), "|")))
 
 	// Store-gateway.
 	f.IntVar(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
@@ -196,6 +200,10 @@ func (l *Limits) Validate(shardByAllLabels bool) error {
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
 		return errMaxGlobalSeriesPerUserValidation
+	}
+
+	if _, err := deletion.ParseMode(l.CompactorDeletionMode); err != nil {
+		return err
 	}
 
 	return nil
@@ -493,6 +501,11 @@ func (o *Overrides) EvaluationDelay(userID string) time.Duration {
 // CompactorBlocksRetentionPeriod returns the retention period for a given user.
 func (o *Overrides) CompactorBlocksRetentionPeriod(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).CompactorBlocksRetentionPeriod)
+}
+
+// CompactorDeletionMode returns the retention period for a given user.
+func (o *Overrides) CompactorDeletionMode(userID string) string {
+	return o.getOverridesForUser(userID).CompactorDeletionMode
 }
 
 // MetricRelabelConfigs returns the metric relabel configs for a given user.
