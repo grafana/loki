@@ -1176,6 +1176,7 @@ spec:
             spec:
               containers:
               - args:
+                - --config=controller_manager_config.yaml
                 - --with-lokistack-gateway
                 - --with-lokistack-gateway-route
                 - --with-cert-signing-service
@@ -1220,6 +1221,9 @@ spec:
                 - mountPath: /tmp/k8s-webhook-server/serving-certs
                   name: webhook-cert
                   readOnly: true
+                - mountPath: /controller_manager_config.yaml
+                  name: manager-config
+                  subPath: controller_manager_config.yaml
               - args:
                 - --secure-listen-address=0.0.0.0:8443
                 - --upstream=http://127.0.0.1:8080/
@@ -1244,6 +1248,9 @@ spec:
                 secret:
                   defaultMode: 420
                   secretName: loki-operator-webhook-service
+              - configMap:
+                  name: loki-operator-manager-config
+                name: manager-config
               - name: loki-operator-metrics-cert
                 secret:
                   defaultMode: 420

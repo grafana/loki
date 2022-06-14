@@ -6,11 +6,11 @@ data:
     health:
       healthProbeBindAddress: :8081
     metrics:
-      bindAddress: 127.0.0.1:8080
+      bindAddress: :8080
     webhook:
       port: 9443
     leaderElection:
-      leaderElect: true
+      leaderElect: false
       resourceName: e3716011.grafana.com
 kind: ConfigMap
 metadata:

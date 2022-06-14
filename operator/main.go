@@ -41,9 +41,7 @@ func init() {
 
 func main() {
 	var (
-		metricsAddr                 string
-		enableLeaderElection        bool
-		probeAddr                   string
+		configFile                  string
 		enableCertSigning           bool
 		enableServiceMonitors       bool
 		enableTLSServiceMonitors    bool
@@ -57,11 +55,17 @@ func main() {
 		enableRecordingRuleWebhooks bool
 	)
 
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
+	flag.StringVar(&configFile, "config", "",
+		"The controller will load its initial configuration from this file. "+
+			"Omit this flag to use the default configuration values. "+
+			"Command-line flags override configuration from this file.",
+	)
+
+	// flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+	// flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	// flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+	//	"Enable leader election for controller manager. "+
+	//		"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&enableCertSigning, "with-cert-signing-service", false,
 		"Enables features in an Openshift cluster.")
 	flag.BoolVar(&enableServiceMonitors, "with-service-monitors", false, "Enables service monitoring")
@@ -87,6 +91,16 @@ func main() {
 	logger := log.NewLogger("loki-operator")
 	ctrl.SetLogger(logger)
 
+	var err error
+	options := ctrl.Options{Scheme: scheme}
+	if configFile != "" {
+		options, err = options.AndFrom(ctrl.ConfigFile().AtPath(configFile))
+		if err != nil {
+			logger.Error(err, "failed to parse controller manager config file")
+			os.Exit(1)
+		}
+	}
+
 	if enablePrometheusAlerts && !enableServiceMonitors {
 		logger.Error(kverrors.New("-with-prometheus-alerts flag requires -with-service-monitors"), "")
 		os.Exit(1)
@@ -104,14 +118,7 @@ func main() {
 		}
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "e3716011.grafana.com",
-	})
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
 	if err != nil {
 		logger.Error(err, "unable to start manager")
 		os.Exit(1)
