@@ -49,7 +49,7 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
-	github.com/grafana/dskit v0.0.0-20220331160727-49faf69f72ca
+	github.com/grafana/dskit v0.0.0-20220518152339-07166f9e6d96
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/regexp v0.0.0-20220304100321-149c8afcd6cb
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
@@ -112,7 +112,10 @@ require (
 	k8s.io/klog v1.0.0
 )
 
-require github.com/willf/bloom v2.0.3+incompatible
+require (
+	github.com/prometheus/common/sigv4 v0.1.0
+	github.com/willf/bloom v2.0.3+incompatible
+)
 
 require (
 	cloud.google.com/go v0.100.2 // indirect
@@ -228,7 +231,6 @@ require (
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/alertmanager v0.23.1-0.20210914172521-e35efbddb66a // indirect
-	github.com/prometheus/common/sigv4 v0.1.0 // indirect
 	github.com/prometheus/node_exporter v1.0.0-rc.0.0.20200428091818-01054558c289 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect

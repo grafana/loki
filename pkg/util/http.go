@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -284,4 +285,15 @@ func SerializeProtoResponse(w http.ResponseWriter, resp proto.Message, compressi
 		return fmt.Errorf("error sending proto response: %v", err)
 	}
 	return nil
+}
+
+func FlagFromValues(values url.Values, key string, d bool) bool {
+	switch strings.ToLower(values.Get(key)) {
+	case "t", "true", "1":
+		return true
+	case "f", "false", "0":
+		return false
+	default:
+		return d
+	}
 }
