@@ -5,7 +5,4 @@
 // Loki services
 (import 'read.libsonnet') +
 (import 'write.libsonnet') +
-(import 'headless.libsonnet') +
-
-// Prometheus ServiceMonitor
-(import 'servicemonitor.libsonnet')
+(import 'headless.libsonnet')
