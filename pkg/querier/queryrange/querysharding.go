@@ -107,6 +107,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	resolver, ok := shardResolverForConf(
 		ctx,
 		conf,
+		ast.logger,
 		ast.limits.MaxQueryParallelism(userID),
 		r,
 		ast.next,
