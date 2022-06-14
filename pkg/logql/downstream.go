@@ -60,12 +60,12 @@ func NewDownstreamEngine(opts EngineOpts, downstreamable Downstreamable, limits 
 }
 
 // Query constructs a Query
-func (ng *DownstreamEngine) Query(p Params, mapped syntax.Expr) Query {
+func (ng *DownstreamEngine) Query(ctx context.Context, p Params, mapped syntax.Expr) Query {
 	return &query{
 		logger:    ng.logger,
 		timeout:   ng.timeout,
 		params:    p,
-		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer()),
+		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
 		parse: func(_ context.Context, _ string) (syntax.Expr, error) {
 			return mapped, nil
 		},
@@ -158,7 +158,7 @@ func ParseShards(strs []string) (Shards, error) {
 }
 
 type Downstreamable interface {
-	Downstreamer() Downstreamer
+	Downstreamer(context.Context) Downstreamer
 }
 
 type DownstreamQuery struct {

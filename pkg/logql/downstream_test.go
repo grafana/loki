@@ -82,7 +82,7 @@ func TestMappingEquivalence(t *testing.T) {
 			_, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 
-			shardedQry := sharded.Query(params, mapped)
+			shardedQry := sharded.Query(ctx, params, mapped)
 
 			res, err := qry.Exec(ctx)
 			require.Nil(t, err)
@@ -330,7 +330,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 			require.False(t, noop, "downstream engine cannot execute noop")
 
-			rangeQry := downstreamEngine.Query(params, rangeExpr)
+			rangeQry := downstreamEngine.Query(ctx, params, rangeExpr)
 			rangeRes, err := rangeQry.Exec(ctx)
 			require.Nil(t, err)
 

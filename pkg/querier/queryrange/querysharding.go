@@ -76,7 +76,7 @@ func newASTMapperware(
 		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
 		limits:  limits,
 		next:    next,
-		ng:      logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next}, limits, logger),
+		ng:      logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next: next, limits: limits}, limits, logger),
 		metrics: metrics,
 	}
 }
@@ -148,7 +148,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	default:
 		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
 	}
-	query := ast.ng.Query(params, parsed)
+	query := ast.ng.Query(ctx, params, parsed)
 
 	res, err := query.Exec(ctx)
 	if err != nil {
