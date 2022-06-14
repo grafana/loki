@@ -69,11 +69,12 @@ func newASTMapperware(
 	next queryrangebase.Handler,
 	logger log.Logger,
 	metrics *logql.MapperMetrics,
-	limits logql.Limits,
+	limits Limits,
 ) *astMapperware {
 	return &astMapperware{
 		confs:   confs,
 		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
+		limits:  limits,
 		next:    next,
 		ng:      logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next}, limits, logger),
 		metrics: metrics,
@@ -83,6 +84,7 @@ func newASTMapperware(
 type astMapperware struct {
 	confs   ShardingConfigs
 	logger  log.Logger
+	limits  Limits
 	next    queryrangebase.Handler
 	ng      *logql.DownstreamEngine
 	metrics *logql.MapperMetrics
@@ -97,7 +99,23 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	mapper, err := logql.NewShardMapper(int(conf.RowShards), ast.metrics)
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	resolver, ok := shardResolverForConf(
+		ctx,
+		conf,
+		ast.limits.MaxQueryParallelism(userID),
+		r,
+		ast.next,
+	)
+	if !ok {
+		return ast.next.Do(ctx, r)
+	}
+
+	mapper := logql.NewShardMapper(resolver, ast.metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +229,7 @@ func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request)
 
 func hasShards(confs ShardingConfigs) bool {
 	for _, conf := range confs {
-		if conf.RowShards > 0 {
+		if conf.RowShards > 0 || conf.IndexType == config.TSDBType {
 			return true
 		}
 	}
@@ -250,7 +268,7 @@ func (confs ShardingConfigs) GetConf(r queryrangebase.Request) (config.PeriodCon
 	}
 
 	// query doesn't have shard factor, so don't try to do AST mapping.
-	if conf.RowShards < 2 {
+	if conf.RowShards < 2 && conf.IndexType != config.TSDBType {
 		return conf, errors.Errorf("shard factor not high enough: [%d]", conf.RowShards)
 	}
 
@@ -304,10 +322,6 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Reques
 	// cannot shard with this timerange
 	if err != nil {
 		level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
-		return ss.next.Do(ctx, r)
-	}
-
-	if conf.RowShards <= 1 {
 		return ss.next.Do(ctx, r)
 	}
 

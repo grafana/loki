@@ -78,8 +78,7 @@ func TestMappingEquivalence(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper, err := NewShardMapper(shards, nilShardMetrics)
-			require.Nil(t, err)
+			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
 			_, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 
