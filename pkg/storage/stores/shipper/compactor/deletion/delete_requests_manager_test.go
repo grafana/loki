@@ -293,6 +293,10 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			mgr := NewDeleteRequestsManager(mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, nil, tc.deletionMode)
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
+			for _, dr := range mgr.deleteRequestsToProcess {
+				require.Contains(t, dr.deletedLinesTotal.Desc().String(), "loki_compactor_deleted_lines")
+			}
+
 			isExpired, nonDeletedIntervals := mgr.Expired(chunkEntry, model.Now())
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)
 			for idx, interval := range nonDeletedIntervals {
