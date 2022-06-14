@@ -318,6 +318,9 @@ job_name: <string>
 # Describes how to scrape logs from the journal.
 [journal: <journal_config>]
 
+# Describes from which encoding a scraped file should be converted.
+[encoding: <iana_encoding_name>]
+
 # Describes how to receive logs from syslog.
 [syslog: <syslog_config>]
 
