@@ -41,8 +41,6 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			serviceNameGatewayHTTP(opts.Name),
 			gatewayHTTPPortName,
 			ComponentLabels(LabelGatewayComponent, opts.Name),
-			opts.Flags.EnableServiceMonitors,
-			opts.Flags.EnableCertificateSigningService,
 			tenantData,
 		)
 
@@ -60,6 +58,7 @@ func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType,
 	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
 		return nil // nothing to configure
 	case lokiv1beta1.OpenshiftLogging:
+		caBundleName := signingCABundleName(stackName)
 		serviceName := serviceNameGatewayHTTP(stackName)
 		secretName := signingServiceSecretName(serviceName)
 		serverName := fqdn(serviceName, stackNs)
@@ -70,7 +69,7 @@ func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType,
 			httpTLSDir,
 			tlsCertFile,
 			tlsKeyFile,
-			signingCABundleName(stackName),
+			caBundleName,
 			caBundleDir,
 			caFile,
 			flags.EnableTLSServiceMonitorConfig,

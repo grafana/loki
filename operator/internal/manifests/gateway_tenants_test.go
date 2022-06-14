@@ -131,19 +131,19 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 							TenantName:     "application",
 							TenantID:       "",
 							ServiceAccount: "lokistack-ocp-gateway",
-							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/application/callback",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/application/callback",
 						},
 						{
 							TenantName:     "infrastructure",
 							TenantID:       "",
 							ServiceAccount: "lokistack-ocp-gateway",
-							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/infrastructure/callback",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/infrastructure/callback",
 						},
 						{
 							TenantName:     "audit",
 							TenantID:       "",
 							ServiceAccount: "lokistack-ocp-gateway",
-							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/audit/callback",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/audit/callback",
 						},
 					},
 					Authorization: openshift.AuthorizationSpec{
@@ -727,7 +727,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureDeploymentForMode(tc.dpl, tc.mode, tc.flags, "test", "test-ns")
+			err := configureDeploymentForMode(tc.dpl, tc.mode, tc.flags, tc.stackName, tc.stackNs)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
