@@ -1,5 +1,8 @@
 ## Main
 
+- [6363](https://github.com/grafana/loki/pull/6363) **periklis**: Allow optional installation of webhooks (Kind)
+- [6362](https://github.com/grafana/loki/pull/6362) **periklis**: Allow reduced tenant OIDC authentication requirements
+- [6288](https://github.com/grafana/loki/pull/6288) **aminesnow**: Expose only an HTTPS gateway when in openshift mode
 - [6195](https://github.com/grafana/loki/pull/6195) **periklis**: Add ruler config support
 - [6198](https://github.com/grafana/loki/pull/6198) **periklis**: Add support for custom S3 CA
 - [6199](https://github.com/grafana/loki/pull/6199) **Red-GV**: Update GCP secret volume path

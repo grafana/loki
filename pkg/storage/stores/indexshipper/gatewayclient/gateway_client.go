@@ -238,6 +238,21 @@ func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *indexg
 	return s.grpcClient.LabelValuesForMetricName(ctx, in, opts...)
 }
 
+func (s *GatewayClient) GetStats(ctx context.Context, in *indexgatewaypb.IndexStatsRequest, opts ...grpc.CallOption) (*indexgatewaypb.IndexStatsResponse, error) {
+	if s.cfg.Mode == indexgateway.RingMode {
+		var (
+			resp *indexgatewaypb.IndexStatsResponse
+			err  error
+		)
+		err = s.ringModeDo(ctx, func(client indexgatewaypb.IndexGatewayClient) error {
+			resp, err = client.GetStats(ctx, in, opts...)
+			return err
+		})
+		return resp, err
+	}
+	return s.grpcClient.GetStats(ctx, in, opts...)
+}
+
 func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	queryKeyQueryMap := make(map[string]index.Query, len(queries))
 	gatewayQueries := make([]*indexgatewaypb.IndexQuery, 0, len(queries))

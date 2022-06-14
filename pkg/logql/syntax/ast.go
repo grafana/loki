@@ -707,6 +707,7 @@ type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
 	Extractor() (SampleExtractor, error)
+	MatcherGroups() [][]*labels.Matcher
 	Expr
 }
 
@@ -753,6 +754,14 @@ func (e *RangeAggregationExpr) Selector() LogSelectorExpr {
 	return e.Left.Left
 }
 
+func (e *RangeAggregationExpr) MatcherGroups() [][]*labels.Matcher {
+	xs := e.Left.Left.Matchers()
+	if len(xs) > 0 {
+		return [][]*labels.Matcher{xs}
+	}
+	return nil
+}
+
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
@@ -775,6 +784,10 @@ func (e RangeAggregationExpr) validate() error {
 	default:
 		return fmt.Errorf("invalid aggregation %s without unwrap", e.Operation)
 	}
+}
+
+func (e RangeAggregationExpr) Validate() error {
+	return e.validate()
 }
 
 // impls Stringer
@@ -865,6 +878,10 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 		Grouping:  gr,
 		Params:    p,
 	}
+}
+
+func (e *VectorAggregationExpr) MatcherGroups() [][]*labels.Matcher {
+	return e.Left.MatcherGroups()
 }
 
 func (e *VectorAggregationExpr) Selector() LogSelectorExpr {
@@ -986,6 +1003,10 @@ type BinOpExpr struct {
 	RHS  SampleExpr
 	Op   string
 	Opts *BinOpOptions
+}
+
+func (e *BinOpExpr) MatcherGroups() [][]*labels.Matcher {
+	return append(e.SampleExpr.MatcherGroups(), e.RHS.MatcherGroups()...)
 }
 
 func (e *BinOpExpr) String() string {
@@ -1370,6 +1391,7 @@ func (e *LiteralExpr) Shardable() bool                         { return true }
 func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher             { return nil }
+func (e *LiteralExpr) MatcherGroups() [][]*labels.Matcher      { return nil }
 func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 func (e *LiteralExpr) Value() float64                          { return e.Val }
 
@@ -1422,6 +1444,10 @@ func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex strin
 
 func (e *LabelReplaceExpr) Selector() LogSelectorExpr {
 	return e.Left.Selector()
+}
+
+func (e *LabelReplaceExpr) MatcherGroups() [][]*labels.Matcher {
+	return e.Left.MatcherGroups()
 }
 
 func (e *LabelReplaceExpr) Extractor() (SampleExtractor, error) {
@@ -1493,4 +1519,18 @@ var shardableOps = map[string]bool{
 	// binops - arith
 	OpTypeAdd: true,
 	OpTypeMul: true,
+}
+
+func MatcherGroups(expr Expr) [][]*labels.Matcher {
+	switch e := expr.(type) {
+	case SampleExpr:
+		return e.MatcherGroups()
+	case LogSelectorExpr:
+		if xs := e.Matchers(); len(xs) > 0 {
+			return [][]*labels.Matcher{xs}
+		}
+		return nil
+	default:
+		return nil
+	}
 }

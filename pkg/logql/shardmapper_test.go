@@ -106,7 +106,9 @@ func TestMapSampleExpr(t *testing.T) {
 		},
 	} {
 		t.Run(tc.in.String(), func(t *testing.T) {
-			require.Equal(t, tc.out, m.mapSampleExpr(tc.in, nilShardMetrics.downstreamRecorder()))
+			mapped, err := m.mapSampleExpr(tc.in, nilShardMetrics.downstreamRecorder())
+			require.Nil(t, err)
+			require.Equal(t, tc.out, mapped)
 		})
 	}
 }

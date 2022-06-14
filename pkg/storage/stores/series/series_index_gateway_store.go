@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 )
 
@@ -29,6 +30,7 @@ type IndexGatewayClient interface {
 	GetSeries(ctx context.Context, in *indexgatewaypb.GetSeriesRequest, opts ...grpc.CallOption) (*indexgatewaypb.GetSeriesResponse, error)
 	LabelNamesForMetricName(ctx context.Context, in *indexgatewaypb.LabelNamesForMetricNameRequest, opts ...grpc.CallOption) (*indexgatewaypb.LabelResponse, error)
 	LabelValuesForMetricName(ctx context.Context, in *indexgatewaypb.LabelValuesForMetricNameRequest, opts ...grpc.CallOption) (*indexgatewaypb.LabelResponse, error)
+	GetStats(ctx context.Context, req *indexgatewaypb.IndexStatsRequest, opts ...grpc.CallOption) (*indexgatewaypb.IndexStatsResponse, error)
 }
 
 func NewIndexGatewayClientStore(client IndexGatewayClient, fallbackStore IndexStore) IndexStore {
@@ -114,6 +116,26 @@ func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, 
 		return nil, err
 	}
 	return resp.Values, nil
+}
+
+func (c *IndexGatewayClientStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	resp, err := c.client.GetStats(ctx, &indexgatewaypb.IndexStatsRequest{
+		From:     from,
+		Through:  through,
+		Matchers: (&syntax.MatchersExpr{Mts: matchers}).String(),
+	})
+	if err != nil {
+		if isUnimplementedCallError(err) && c.fallbackStore != nil {
+			// Handle communication with older index gateways gracefully, by falling back to the index store calls.
+			// Note: this is likely a noop anyway since only
+			// tsdb+ enables this and the prior index returns an
+			// empty response.
+			return c.fallbackStore.Stats(ctx, userID, from, through, matchers...)
+		}
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func (c *IndexGatewayClientStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {

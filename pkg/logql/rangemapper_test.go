@@ -1500,6 +1500,10 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 			`sum(avg_over_time({app="foo"} | unwrap bar[3m]))`,
 			`sum(avg_over_time({app="foo"} | unwrap bar[3m]))`,
 		},
+		{ // this query caused a panic in ops
+			`topk(10,sum by (cluster,org_id) (rate({container="query-frontend",namespace="loki-prod",cluster="prod-us-central-0"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__=""[1h])))`,
+			`topk(10,sum by (cluster,org_id) (rate({container="query-frontend",namespace="loki-prod",cluster="prod-us-central-0"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__=""[1h])))`,
+		},
 
 		// should be noop if range interval is lower or equal to split interval (1m)
 		{

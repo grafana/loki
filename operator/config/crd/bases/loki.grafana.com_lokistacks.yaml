@@ -833,6 +833,7 @@ spec:
                             authentication.
                           properties:
                             groupClaim:
+                              description: Group claim field from ID Token
                               type: string
                             issuerURL:
                               description: IssuerURL defines the URL for issuer.
@@ -852,13 +853,11 @@ spec:
                               - name
                               type: object
                             usernameClaim:
+                              description: User claim field from ID Token
                               type: string
                           required:
-                          - groupClaim
                           - issuerURL
-                          - redirectURL
                           - secret
-                          - usernameClaim
                           type: object
                         tenantId:
                           description: TenantID defines the id of the tenant.

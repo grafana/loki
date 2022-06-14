@@ -118,12 +118,12 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/non_utf8.log')[0]
-    chunk = [Time.at(1_546_270_458), {'message'=>content, 'number': 1.2345, 'stream'=>'stdout'}]
+    chunk = [Time.at(1_546_270_458), { 'message' => content, 'number': 1.2345, 'stream' => 'stdout' }]
     payload = driver.instance.generic_to_loki([chunk])
     expect(payload[0]['stream'].empty?).to eq true
     expect(payload[0]['values'].count).to eq 1
-    expect(payload[0]['values'][0][0]).to eq "1546270458000000000"
-    expect(payload[0]['values'][0][1]).to eq "message=\"? rest of line\" number=1.2345 stream=stdout"
+    expect(payload[0]['values'][0][0]).to eq '1546270458000000000'
+    expect(payload[0]['values'][0][1]).to eq 'message="? rest of line" number=1.2345 stream=stdout'
   end
 
   it 'handle non utf-8 characters from log lines in json format' do
@@ -134,12 +134,14 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/non_utf8.log')[0]
-    chunk = [Time.at(1_546_270_458), {'message'=>content, 'number': 1.2345, 'stream'=>'stdout'}]
+    chunk = [Time.at(1_546_270_458), { 'message' => content, 'number': 1.2345, 'stream' => 'stdout' }]
     payload = driver.instance.generic_to_loki([chunk])
     expect(payload[0]['stream'].empty?).to eq true
     expect(payload[0]['values'].count).to eq 1
-    expect(payload[0]['values'][0][0]).to eq "1546270458000000000"
-    expect(payload[0]['values'][0][1]).to eq "{\"message\":\"\xC1 rest of line\",\"number\":1.2345,\"stream\":\"stdout\"}"
+    expect(payload[0]['values'][0][0]).to eq '1546270458000000000'
+    expect(payload[0]['values'][0][1]).to eq(
+      "{\"message\":\"\xC1 rest of line\",\"number\":1.2345,\"stream\":\"stdout\"}"
+    )
   end
 
   it 'formats record hash as key_value' do
@@ -155,7 +157,7 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(body[:streams][0]['stream'].empty?).to eq true
     expect(body[:streams][0]['values'].count).to eq 1
     expect(body[:streams][0]['values'][0][0]).to eq '1546270458000000000'
-    expect(body[:streams][0]['values'][0][1]).to eq 'message="' + content[0] + '" stream=stdout'
+    expect(body[:streams][0]['values'][0][1]).to eq "message=\"#{content[0]}\" stream=stdout"
   end
 
   it 'formats record hash as json' do

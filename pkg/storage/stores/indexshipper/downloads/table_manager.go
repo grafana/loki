@@ -246,8 +246,10 @@ func (tm *tableManager) cleanupCache() error {
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	start := time.Now()
+	distinctUsers := make(map[string]struct{})
+
 	defer func() {
-		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start))
+		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start), "distinct_users_len", len(distinctUsers))
 	}()
 
 	activeTableNumber := getActiveTableNumber()
@@ -310,6 +312,10 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		table, err := tm.getOrCreateTable(tableName)
 		if err != nil {
 			return err
+		}
+
+		for _, u := range usersToBeQueryReadyFor {
+			distinctUsers[u] = struct{}{}
 		}
 
 		perTableStart := time.Now()
