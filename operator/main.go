@@ -17,8 +17,8 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/controllers"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokictrl "github.com/grafana/loki/operator/controllers/loki"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/metrics"
 
@@ -135,7 +135,7 @@ func main() {
 		EnableGrafanaLabsStats:          enableGrafanaLabsAnalytics,
 	}
 
-	if err = (&controllers.LokiStackReconciler{
+	if err = (&lokictrl.LokiStackReconciler{
 		Client: mgr.GetClient(),
 		Log:    logger.WithName("controllers").WithName("LokiStack"),
 		Scheme: mgr.GetScheme(),
@@ -150,7 +150,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	if err = (&controllers.AlertingRuleReconciler{
+	if err = (&lokictrl.AlertingRuleReconciler{
 		Client: mgr.GetClient(),
 		Log:    logger.WithName("controllers").WithName("AlertingRule"),
 		Scheme: mgr.GetScheme(),
@@ -164,7 +164,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	if err = (&controllers.RecordingRuleReconciler{
+	if err = (&lokictrl.RecordingRuleReconciler{
 		Client: mgr.GetClient(),
 		Log:    logger.WithName("controllers").WithName("RecordingRule"),
 		Scheme: mgr.GetScheme(),
@@ -178,7 +178,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	if err = (&controllers.RulerConfigReconciler{
+	if err = (&lokictrl.RulerConfigReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {

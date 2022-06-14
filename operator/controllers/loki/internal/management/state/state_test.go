@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/controllers/internal/management/state"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
