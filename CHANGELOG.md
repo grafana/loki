@@ -296,7 +296,7 @@ Here is the list with the changes that were produced since the previous release.
 ##### Fixes
 * [6034](https://github.com/grafana/loki/pull/6034) **DylanGuedes**: Promtail: Fix symlink tailing behavior.
 ##### Changes
-* [6371](https://github.com/grafana/loki/pull/6371) **witalisoft**: Drop stage with a complex match based on multiple extracted data fields, breaking config changes regarding to drop stage section
+* [6371](https://github.com/grafana/loki/pull/6371) **witalisoft**: BREAKING: Support more complex match based on multiple extracted data fields in drop stage
 * [5686](https://github.com/grafana/loki/pull/5686) **ssncferreira**: Move promtail StreamLagLabels config to upper level config.Config
 * [5839](https://github.com/grafana/loki/pull/5839) **marctc**: Add ActiveTargets method to promtail
 * [5661](https://github.com/grafana/loki/pull/5661) **masslessparticle**: Invalidate caches on deletes
