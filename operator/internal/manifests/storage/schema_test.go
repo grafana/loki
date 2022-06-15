@@ -193,7 +193,7 @@ func TestValidate_RetroactivelyAddSchema(t *testing.T) {
 			EffectiveDate: "2021-05-01",
 		},
 	}
-	applied := schemaMap {
+	applied := schemaMap{
 		"2020-10-01": lokiv1beta1.ObjectStorageSchemaV11,
 		"2021-10-01": lokiv1beta1.ObjectStorageSchemaV12,
 	}
@@ -213,7 +213,7 @@ func TestValidate_RetroactivelyAddSchema_ConflictingVersion(t *testing.T) {
 			EffectiveDate: "2021-10-01",
 		},
 	}
-	applied := schemaMap {
+	applied := schemaMap{
 		"2020-10-01": lokiv1beta1.ObjectStorageSchemaV11,
 		"2021-10-01": lokiv1beta1.ObjectStorageSchemaV12,
 	}
@@ -229,7 +229,7 @@ func TestValidate_RetroactivelyRemoveSchema(t *testing.T) {
 			EffectiveDate: "2020-10-01",
 		},
 	}
-	applied := schemaMap {
+	applied := schemaMap{
 		"2020-10-01": lokiv1beta1.ObjectStorageSchemaV11,
 		"2021-10-01": lokiv1beta1.ObjectStorageSchemaV12,
 	}
