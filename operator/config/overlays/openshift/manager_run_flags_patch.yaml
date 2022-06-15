@@ -9,13 +9,6 @@ spec:
         - name: manager
           args:
           - "--config=controller_manager_config.yaml"
-          - "--with-lokistack-gateway"
-          - "--with-lokistack-gateway-route"
-          - "--with-cert-signing-service"
-          - "--with-tls-grpc-services"
-          - "--with-service-monitors"
-          - "--with-tls-service-monitors"
-          - "--with-prometheus-alerts"
           volumeMounts:
           - name: manager-config
             mountPath: /controller_manager_config.yaml
@@ -23,4 +16,4 @@ spec:
       volumes:
       - name: manager-config
         configMap:
-          name: manager-config
+          name: loki-operator-manager-config

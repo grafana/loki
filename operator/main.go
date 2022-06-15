@@ -11,12 +11,14 @@ import (
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
+	ctrlconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokictrl "github.com/grafana/loki/operator/controllers/loki"
 	"github.com/grafana/loki/operator/internal/manifests"
@@ -36,84 +38,48 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(lokiv1beta1.AddToScheme(scheme))
+
+	utilruntime.Must(ctrlconfigv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
 func main() {
-	var (
-		configFile                  string
-		enableCertSigning           bool
-		enableServiceMonitors       bool
-		enableTLSServiceMonitors    bool
-		enableTLSGRPCServices       bool
-		enableGateway               bool
-		enableGatewayRoute          bool
-		enablePrometheusAlerts      bool
-		enableGrafanaLabsAnalytics  bool
-		enableLokiStackWebhooks     bool
-		enableAlertingRuleWebhooks  bool
-		enableRecordingRuleWebhooks bool
-	)
-
+	var configFile string
 	flag.StringVar(&configFile, "config", "",
 		"The controller will load its initial configuration from this file. "+
 			"Omit this flag to use the default configuration values. "+
 			"Command-line flags override configuration from this file.",
 	)
-
-	// flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	// flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	// flag.BoolVar(&enableLeaderElection, "leader-elect", false,
-	//	"Enable leader election for controller manager. "+
-	//		"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&enableCertSigning, "with-cert-signing-service", false,
-		"Enables features in an Openshift cluster.")
-	flag.BoolVar(&enableServiceMonitors, "with-service-monitors", false, "Enables service monitoring")
-	flag.BoolVar(&enableTLSServiceMonitors, "with-tls-service-monitors", false,
-		"Enables loading of a prometheus service monitor.")
-	flag.BoolVar(&enableTLSGRPCServices, "with-tls-grpc-services", false,
-		"Enables TLS for Loki GRPC services.")
-	flag.BoolVar(&enableGateway, "with-lokistack-gateway", false,
-		"Enables the manifest creation for the entire lokistack-gateway.")
-	flag.BoolVar(&enableGatewayRoute, "with-lokistack-gateway-route", false,
-		"Enables the usage of Route for the lokistack-gateway instead of Ingress (OCP Only!).")
-	flag.BoolVar(&enablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts.")
-	flag.BoolVar(&enableGrafanaLabsAnalytics, "with-grafana-labs-analytics", true,
-		"Enables Grafana Labs analytics.\nMore info: https://grafana.com/docs/loki/latest/configuration/#analytics")
-	flag.BoolVar(&enableLokiStackWebhooks, "with-lokistack-webhooks", true,
-		"Enables LokiStack validation webhooks.")
-	flag.BoolVar(&enableAlertingRuleWebhooks, "with-alerting-rule-webhooks", true,
-		"Enables AlertingRule validation webhooks.")
-	flag.BoolVar(&enableRecordingRuleWebhooks, "with-recording-rule-webhooks", true,
-		"Enables RecordingRule validation webhooks.")
 	flag.Parse()
 
 	logger := log.NewLogger("loki-operator")
 	ctrl.SetLogger(logger)
 
 	var err error
+
+	ctrlCfg := ctrlconfigv1.ProjectConfig{}
 	options := ctrl.Options{Scheme: scheme}
 	if configFile != "" {
-		options, err = options.AndFrom(ctrl.ConfigFile().AtPath(configFile))
+		options, err = options.AndFrom(ctrl.ConfigFile().AtPath(configFile).OfKind(&ctrlCfg))
 		if err != nil {
 			logger.Error(err, "failed to parse controller manager config file")
 			os.Exit(1)
 		}
 	}
 
-	if enablePrometheusAlerts && !enableServiceMonitors {
-		logger.Error(kverrors.New("-with-prometheus-alerts flag requires -with-service-monitors"), "")
+	if ctrlCfg.Flags.EnablePrometheusAlerts && !ctrlCfg.Flags.EnableServiceMonitors {
+		logger.Error(kverrors.New("enablePrometheusAlerts flag requires enableServiceMonitors"), "")
 		os.Exit(1)
 	}
 
-	if enableServiceMonitors || enableTLSServiceMonitors {
+	if ctrlCfg.Flags.EnableServiceMonitors || ctrlCfg.Flags.EnableTLSServiceMonitorConfig {
 		utilruntime.Must(monitoringv1.AddToScheme(scheme))
 	}
 
-	if enableGateway {
+	if ctrlCfg.Flags.EnableGateway {
 		utilruntime.Must(configv1.AddToScheme(scheme))
 
-		if enableGatewayRoute {
+		if ctrlCfg.Flags.EnableGatewayRoute {
 			utilruntime.Must(routev1.AddToScheme(scheme))
 		}
 	}
@@ -125,14 +91,14 @@ func main() {
 	}
 
 	featureFlags := manifests.FeatureFlags{
-		EnableCertificateSigningService: enableCertSigning,
-		EnableServiceMonitors:           enableServiceMonitors,
-		EnableTLSServiceMonitorConfig:   enableTLSServiceMonitors,
-		EnableTLSGRPCServices:           enableTLSGRPCServices,
-		EnablePrometheusAlerts:          enablePrometheusAlerts,
-		EnableGateway:                   enableGateway,
-		EnableGatewayRoute:              enableGatewayRoute,
-		EnableGrafanaLabsStats:          enableGrafanaLabsAnalytics,
+		EnableCertificateSigningService: ctrlCfg.Flags.EnableCertificateSigningService,
+		EnableServiceMonitors:           ctrlCfg.Flags.EnableServiceMonitors,
+		EnableTLSServiceMonitorConfig:   ctrlCfg.Flags.EnableTLSServiceMonitorConfig,
+		EnableTLSGRPCServices:           ctrlCfg.Flags.EnableTLSGRPCServices,
+		EnablePrometheusAlerts:          ctrlCfg.Flags.EnablePrometheusAlerts,
+		EnableGateway:                   ctrlCfg.Flags.EnableGateway,
+		EnableGatewayRoute:              ctrlCfg.Flags.EnableGatewayRoute,
+		EnableGrafanaLabsStats:          ctrlCfg.Flags.EnableGrafanaLabsStats,
 	}
 
 	if err = (&lokictrl.LokiStackReconciler{
@@ -144,7 +110,7 @@ func main() {
 		logger.Error(err, "unable to create controller", "controller", "LokiStack")
 		os.Exit(1)
 	}
-	if enableLokiStackWebhooks {
+	if ctrlCfg.Flags.EnableLokiStackWebhook {
 		if err = (&lokiv1beta1.LokiStack{}).SetupWebhookWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create webhook", "webhook", "LokiStack")
 			os.Exit(1)
@@ -158,7 +124,7 @@ func main() {
 		logger.Error(err, "unable to create controller", "controller", "AlertingRule")
 		os.Exit(1)
 	}
-	if enableAlertingRuleWebhooks {
+	if ctrlCfg.Flags.EnableAlertingRuleWebhook {
 		if err = (&lokiv1beta1.AlertingRule{}).SetupWebhookWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create webhook", "webhook", "AlertingRule")
 			os.Exit(1)
@@ -172,7 +138,7 @@ func main() {
 		logger.Error(err, "unable to create controller", "controller", "RecordingRule")
 		os.Exit(1)
 	}
-	if enableRecordingRuleWebhooks {
+	if ctrlCfg.Flags.EnableRecordingRuleWebhook {
 		if err = (&lokiv1beta1.RecordingRule{}).SetupWebhookWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create webhook", "webhook", "RecordingRule")
 			os.Exit(1)
