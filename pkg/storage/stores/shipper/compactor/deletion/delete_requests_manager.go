@@ -169,9 +169,10 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		d.chunkIntervalsToRetain = rebuiltIntervals
 		if len(d.chunkIntervalsToRetain) == 0 {
 			level.Info(util_log.Logger).Log(
-				"msg", "no chunks to retain for delete request",
+				"msg", "no chunks to retain: the whole chunk is deleted",
 				"delete_request_id", deleteRequest.RequestID,
 				"userID", deleteRequest.UserID,
+				"chunkID", string(ref.ChunkID),
 			)
 			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
 			return true, nil
