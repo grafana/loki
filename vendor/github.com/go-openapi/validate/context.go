@@ -19,7 +19,7 @@ const (
 	none     operationType = "none" // not specified in ctx
 )
 
-var operationTypeEnum []operationType = []operationType{request, response, none}
+var operationTypeEnum = []operationType{request, response, none}
 
 // WithOperationRequest returns a new context with operationType request
 // in context value
