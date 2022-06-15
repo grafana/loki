@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -22,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
+	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	loki_util "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -124,13 +126,14 @@ func newMatchers(matchers string) []*labels.Matcher {
 	return res
 }
 
-func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnotation) *logproto.QueryRequest {
+func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnotation, deletes []*logproto.Delete) *logproto.QueryRequest {
 	req := &logproto.QueryRequest{
 		Selector:  query,
 		Start:     start,
 		Limit:     1000,
 		End:       end,
 		Direction: logproto.FORWARD,
+		Deletes:   deletes,
 	}
 	for _, shard := range shards {
 		req.Shards = append(req.Shards, shard.String())
@@ -138,11 +141,12 @@ func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnota
 	return req
 }
 
-func newSampleQuery(query string, start, end time.Time) *logproto.SampleQueryRequest {
+func newSampleQuery(query string, start, end time.Time, deletes []*logproto.Delete) *logproto.SampleQueryRequest {
 	req := &logproto.SampleQueryRequest{
 		Selector: query,
 		Start:    start,
 		End:      end,
+		Deletes:  deletes,
 	}
 	return req
 }
@@ -185,7 +189,7 @@ Outer:
 					continue Outer
 				}
 			}
-			l := c.Metric.WithoutLabels(labels.MetricName)
+			l := labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels()
 			if m.f != nil {
 				if m.f.ForRequest(ctx).ShouldFilter(l) {
 					continue
@@ -239,7 +243,7 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		refs = append(refs, r)
 	}
 
-	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, util_log.Logger)
+	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, util_log.Logger, stats.ChunkCache)
 	if err != nil {
 		panic(err)
 	}
@@ -249,6 +253,10 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		panic(err)
 	}
 	return [][]chunk.Chunk{refs}, []*fetcher.Fetcher{f}, nil
+}
+
+func (m *mockChunkStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
+	return nil, nil
 }
 
 type mockChunkStoreClient struct {

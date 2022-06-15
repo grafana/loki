@@ -301,6 +301,7 @@ labelFilter:
 
 jsonExpression:
     IDENTIFIER EQ STRING { $$ = log.NewJSONExpr($1, $3) }
+  | IDENTIFIER { $$ = log.NewJSONExpr($1, $1) }
 
 jsonExpressionList:
     jsonExpression                          { $$ = []log.JSONExpression{$1} }

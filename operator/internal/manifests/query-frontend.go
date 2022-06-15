@@ -23,6 +23,12 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Flags.EnableTLSGRPCServices {
+		if err := configureQueryFrontendGRPCServicePKI(deployment, opts.Name); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		deployment,
 		NewQueryFrontendGRPCService(opts),
@@ -43,12 +49,6 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 							Name: lokiConfigMapName(opts.Name),
 						},
 					},
-				},
-			},
-			{
-				Name: storageVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
 				},
 			},
 		},
@@ -102,11 +102,6 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 						ReadOnly:  false,
 						MountPath: config.LokiConfigMountDir,
 					},
-					{
-						Name:      storageVolumeName,
-						ReadOnly:  false,
-						MountPath: dataDirectory,
-					},
 				},
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
@@ -154,7 +149,8 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 
 // NewQueryFrontendGRPCService creates a k8s service for the query-frontend GRPC endpoint
 func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
-	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
+	serviceName := serviceNameQueryFrontendGRPC(opts.Name)
+	labels := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -162,8 +158,9 @@ func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameQueryFrontendGRPC(opts.Name),
-			Labels: l,
+			Name:        serviceName,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -175,7 +172,7 @@ func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -183,8 +180,7 @@ func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
 // NewQueryFrontendHTTPService creates a k8s service for the query-frontend HTTP endpoint
 func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameQueryFrontendHTTP(opts.Name)
-	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -193,8 +189,8 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -205,7 +201,7 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -213,4 +209,9 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 func configureQueryFrontendServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQueryFrontendHTTP(stackName)
 	return configureServiceMonitorPKI(&deployment.Spec.Template.Spec, serviceName)
+}
+
+func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, stackName string) error {
+	serviceName := serviceNameQueryFrontendGRPC(stackName)
+	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }

@@ -13,7 +13,8 @@ var (
 
 // IndexSet provides storage operations for user or common index tables.
 type IndexSet interface {
-	ListFiles(ctx context.Context, tableName, userID string) ([]IndexFile, error)
+	RefreshIndexListCache(ctx context.Context)
+	ListFiles(ctx context.Context, tableName, userID string, bypassCache bool) ([]IndexFile, error)
 	GetFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error)
 	PutFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error
 	DeleteFile(ctx context.Context, tableName, userID, fileName string) error
@@ -44,17 +45,21 @@ func (i indexSet) validateUserID(userID string) error {
 	return nil
 }
 
-func (i indexSet) ListFiles(ctx context.Context, tableName, userID string) ([]IndexFile, error) {
+func (i indexSet) RefreshIndexListCache(ctx context.Context) {
+	i.client.RefreshIndexListCache(ctx)
+}
+
+func (i indexSet) ListFiles(ctx context.Context, tableName, userID string, bypassCache bool) ([]IndexFile, error) {
 	err := i.validateUserID(userID)
 	if err != nil {
 		return nil, err
 	}
 
 	if i.userBasedIndex {
-		return i.client.ListUserFiles(ctx, tableName, userID)
+		return i.client.ListUserFiles(ctx, tableName, userID, bypassCache)
 	}
 
-	files, _, err := i.client.ListFiles(ctx, tableName)
+	files, _, err := i.client.ListFiles(ctx, tableName, bypassCache)
 	return files, err
 }
 

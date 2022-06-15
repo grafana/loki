@@ -6,20 +6,21 @@ import (
 	"net/http/pprof"
 	"os"
 
-	"github.com/ViaQ/logerr/kverrors"
-	"github.com/ViaQ/logerr/log"
+	"github.com/ViaQ/logerr/v2/kverrors"
+	"github.com/ViaQ/logerr/v2/log"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	configv1 "github.com/openshift/api/config/v1"
+	routev1 "github.com/openshift/api/route/v1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/controllers"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/metrics"
-	configv1 "github.com/openshift/api/config/v1"
-	routev1 "github.com/openshift/api/route/v1"
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -40,16 +41,20 @@ func init() {
 
 func main() {
 	var (
-		metricsAddr                string
-		enableLeaderElection       bool
-		probeAddr                  string
-		enableCertSigning          bool
-		enableServiceMonitors      bool
-		enableTLSServiceMonitors   bool
-		enableGateway              bool
-		enableGatewayRoute         bool
-		enablePrometheusAlerts     bool
-		enableGrafanaLabsAnalytics bool
+		metricsAddr                 string
+		enableLeaderElection        bool
+		probeAddr                   string
+		enableCertSigning           bool
+		enableServiceMonitors       bool
+		enableTLSServiceMonitors    bool
+		enableTLSGRPCServices       bool
+		enableGateway               bool
+		enableGatewayRoute          bool
+		enablePrometheusAlerts      bool
+		enableGrafanaLabsAnalytics  bool
+		enableLokiStackWebhooks     bool
+		enableAlertingRuleWebhooks  bool
+		enableRecordingRuleWebhooks bool
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -62,6 +67,8 @@ func main() {
 	flag.BoolVar(&enableServiceMonitors, "with-service-monitors", false, "Enables service monitoring")
 	flag.BoolVar(&enableTLSServiceMonitors, "with-tls-service-monitors", false,
 		"Enables loading of a prometheus service monitor.")
+	flag.BoolVar(&enableTLSGRPCServices, "with-tls-grpc-services", false,
+		"Enables TLS for Loki GRPC services.")
 	flag.BoolVar(&enableGateway, "with-lokistack-gateway", false,
 		"Enables the manifest creation for the entire lokistack-gateway.")
 	flag.BoolVar(&enableGatewayRoute, "with-lokistack-gateway-route", false,
@@ -69,6 +76,12 @@ func main() {
 	flag.BoolVar(&enablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts.")
 	flag.BoolVar(&enableGrafanaLabsAnalytics, "with-grafana-labs-analytics", true,
 		"Enables Grafana Labs analytics.\nMore info: https://grafana.com/docs/loki/latest/configuration/#analytics")
+	flag.BoolVar(&enableLokiStackWebhooks, "with-lokistack-webhooks", true,
+		"Enables LokiStack validation webhooks.")
+	flag.BoolVar(&enableAlertingRuleWebhooks, "with-alerting-rule-webhooks", true,
+		"Enables AlertingRule validation webhooks.")
+	flag.BoolVar(&enableRecordingRuleWebhooks, "with-recording-rule-webhooks", true,
+		"Enables RecordingRule validation webhooks.")
 	flag.Parse()
 
 	logger := log.NewLogger("loki-operator")
@@ -108,6 +121,7 @@ func main() {
 		EnableCertificateSigningService: enableCertSigning,
 		EnableServiceMonitors:           enableServiceMonitors,
 		EnableTLSServiceMonitorConfig:   enableTLSServiceMonitors,
+		EnableTLSGRPCServices:           enableTLSGRPCServices,
 		EnablePrometheusAlerts:          enablePrometheusAlerts,
 		EnableGateway:                   enableGateway,
 		EnableGatewayRoute:              enableGatewayRoute,
@@ -121,6 +135,47 @@ func main() {
 		Flags:  featureFlags,
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "LokiStack")
+		os.Exit(1)
+	}
+	if enableLokiStackWebhooks {
+		if err = (&lokiv1beta1.LokiStack{}).SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "LokiStack")
+			os.Exit(1)
+		}
+	}
+	if err = (&controllers.AlertingRuleReconciler{
+		Client: mgr.GetClient(),
+		Log:    logger.WithName("controllers").WithName("AlertingRule"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		logger.Error(err, "unable to create controller", "controller", "AlertingRule")
+		os.Exit(1)
+	}
+	if enableAlertingRuleWebhooks {
+		if err = (&lokiv1beta1.AlertingRule{}).SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "AlertingRule")
+			os.Exit(1)
+		}
+	}
+	if err = (&controllers.RecordingRuleReconciler{
+		Client: mgr.GetClient(),
+		Log:    logger.WithName("controllers").WithName("RecordingRule"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		logger.Error(err, "unable to create controller", "controller", "RecordingRule")
+		os.Exit(1)
+	}
+	if enableRecordingRuleWebhooks {
+		if err = (&lokiv1beta1.RecordingRule{}).SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "RecordingRule")
+			os.Exit(1)
+		}
+	}
+	if err = (&controllers.RulerConfigReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		logger.Error(err, "unable to create controller", "controller", "RulerConfig")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

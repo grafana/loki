@@ -656,9 +656,9 @@ func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
 	if opts == nil || opts.VectorMatching == nil {
 		return sample.Metric.Hash()
 	} else if opts.VectorMatching.On {
-		return sample.Metric.WithLabels(opts.VectorMatching.MatchingLabels...).Hash()
+		return labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 	} else {
-		return sample.Metric.WithoutLabels(opts.VectorMatching.MatchingLabels...).Hash()
+		return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 	}
 }
 

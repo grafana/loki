@@ -60,6 +60,11 @@ ${VAR:default_value}
 
 Where default_value is the value to use if the environment variable is undefined.
 
+**Note**: With `expand-env=true` the configuration will first run through
+[envsubst](https://pkg.go.dev/github.com/drone/envsubst) which will replace double
+slashes with single slashes. Because of this every use of a slash `\` needs to
+be replaced with a double slash `\\`
+
 ### Generic placeholders:
 
 - `<boolean>`: a boolean that can take the values `true` or `false`
@@ -1284,6 +1289,9 @@ labels:
   # The path to load logs from. Can use glob patterns (e.g., /var/log/*.log).
   __path__: <string>
 
+  # Used to exclude files from being loaded. Can also use glob patterns.
+  __path_exclude__: <string>
+
   # Additional labels to assign to the logs
   [ <labelname>: <labelvalue> ... ]
 ```
@@ -1794,10 +1802,11 @@ sync_period: "10s"
 ## options_config
 
 ```yaml
-# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
-# The default value is "filename". A "host" label is always included.
-# The stream lag metric indicates which streams are falling behind on writes to Loki;
-# be mindful about using too many labels, as it can increase cardinality.
+# A comma-separated list of labels to include in the stream lag metric
+# `promtail_stream_lag_seconds`. The default value is "filename". A "host" label is
+# always included. The stream lag metric indicates which streams are falling behind
+# on writes to Loki; be mindful about using too many labels,
+# as it can increase cardinality.
 [stream_lag_labels: <string> | default = "filename"]
 ```
 

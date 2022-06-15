@@ -471,6 +471,16 @@ func simplifyAlternate(reg *syntax.Regexp) (Filterer, bool) {
 // Anything else is rejected.
 func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 	clearCapture(reg.Sub...)
+	// remove empty match as we don't need them for filtering
+	i := 0
+	for _, r := range reg.Sub {
+		if r.Op == syntax.OpEmptyMatch {
+			continue
+		}
+		reg.Sub[i] = r
+		i++
+	}
+	reg.Sub = reg.Sub[:i]
 	// we support only simplication of concat operation with 3 sub expressions.
 	// for instance .*foo.*bar contains 4 subs (.*+foo+.*+bar) and can't be simplified.
 	if len(reg.Sub) > 3 {

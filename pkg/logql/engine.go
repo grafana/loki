@@ -32,7 +32,7 @@ import (
 )
 
 var (
-	queryTime = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	QueryTime = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "logql",
 		Name:      "query_duration_seconds",
 		Help:      "LogQL query timings",
@@ -170,13 +170,27 @@ type query struct {
 	record    bool
 }
 
+func (q *query) resultLength(res promql_parser.Value) int {
+	switch r := res.(type) {
+	case promql.Vector:
+		return len(r)
+	case promql.Matrix:
+		return r.TotalSamples()
+	case logqlmodel.Streams:
+		return int(r.Lines())
+	default:
+		// for `scalar` or `string` or any other return type, we just return `0` as result length.
+		return 0
+	}
+}
+
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	log, ctx := spanlogger.New(ctx, "query.Exec")
 	defer log.Finish()
 
 	rangeType := GetRangeType(q.params)
-	timer := prometheus.NewTimer(queryTime.WithLabelValues(string(rangeType)))
+	timer := prometheus.NewTimer(QueryTime.WithLabelValues(string(rangeType)))
 	defer timer.ObserveDuration()
 
 	// records query statistics
@@ -187,7 +201,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
-	statResult := statsCtx.Result(time.Since(start), queueTime)
+	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
 	statResult.Log(level.Debug(log))
 
 	status := "200"
@@ -202,7 +216,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	}
 
 	if q.record {
-		RecordMetrics(ctx, q.logger, q.params, status, statResult, data)
+		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, status, statResult, data)
 	}
 
 	return logqlmodel.Result{

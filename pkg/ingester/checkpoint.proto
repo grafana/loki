@@ -2,19 +2,31 @@ syntax = "proto3";
 
 package loki_ingester;
 
-option go_package = "ingester";
-
-import "google/protobuf/timestamp.proto";
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";
+
+option go_package = "ingester";
 
 // Chunk is a {de,}serializable intermediate type for chunkDesc which allows
 // efficient loading/unloading to disk during WAL checkpoint recovery.
 message Chunk {
-  google.protobuf.Timestamp from = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  google.protobuf.Timestamp to = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  google.protobuf.Timestamp flushedAt = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  google.protobuf.Timestamp lastUpdated = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp from = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp to = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp flushedAt = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp lastUpdated = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
   bool closed = 5;
   bool synced = 6;
   // data to be unmarshaled into a MemChunk
@@ -28,15 +40,24 @@ message Series {
   string userID = 1;
   // post mapped fingerprint is necessary because subsequent wal writes will reference it.
   uint64 fingerprint = 2;
-  repeated logproto.LegacyLabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"];
+  repeated logproto.LegacyLabelPair labels = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+  ];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
   // most recently pushed timestamp.
-  google.protobuf.Timestamp to = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp to = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
   // most recently pushed line.
   string lastLine = 6;
   // highest counter value for pushes to this stream.
   // Used to skip already applied entries during WAL replay.
   int64 entryCt = 7;
   // highest timestamp pushed to this stream.
-  google.protobuf.Timestamp highestTs = 8 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp highestTs = 8 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
 }

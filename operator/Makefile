@@ -103,7 +103,7 @@ help: ## Display this help.
 
 .PHONY: deps
 deps: go.mod go.sum
-	go mod tidy
+	go mod tidy -compat=1.17
 	go mod download
 	go mod verify
 
@@ -130,7 +130,7 @@ generate: $(CONTROLLER_GEN) ## Generate controller and crd code
 
 .PHONY: manifests
 manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=lokistack-manager crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: test
 test: deps generate go-generate lint lint-prometheus manifests ## Run tests

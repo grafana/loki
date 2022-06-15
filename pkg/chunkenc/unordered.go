@@ -227,13 +227,14 @@ func (hb *unorderedHeadBlock) Iterator(
 		mint,
 		maxt,
 		func(ts int64, line string) error {
-			newLine, parsedLbs, ok := pipeline.ProcessString(line)
-			if !ok {
+			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line)
+			if !matches {
 				return nil
 			}
 
 			var stream *logproto.Stream
 			labels := parsedLbs.String()
+			var ok bool
 			if stream, ok = streams[labels]; !ok {
 				stream = &logproto.Stream{
 					Labels: labels,
@@ -275,7 +276,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		mint,
 		maxt,
 		func(ts int64, line string) error {
-			value, parsedLabels, ok := extractor.ProcessString(line)
+			value, parsedLabels, ok := extractor.ProcessString(ts, line)
 			if !ok {
 				return nil
 			}

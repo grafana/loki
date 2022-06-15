@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"log"
+	"math"
 	"net/http"
 	_ "net/http/pprof"
 	"path"
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -104,7 +106,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 		b.Run(test, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				iter, err := chunkStore.SelectSamples(ctx, logql.SelectSampleParams{
-					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano())),
+					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil),
 				})
 				if err != nil {
 					b.Fatal(err)
@@ -222,7 +224,7 @@ func Test_store_SelectLogs(t *testing.T) {
 	}{
 		{
 			"all",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -231,7 +233,6 @@ func Test_store_SelectLogs(t *testing.T) {
 							Timestamp: from,
 							Line:      "1",
 						},
-
 						{
 							Timestamp: from.Add(time.Millisecond),
 							Line:      "2",
@@ -244,7 +245,6 @@ func Test_store_SelectLogs(t *testing.T) {
 							Timestamp: from.Add(3 * time.Millisecond),
 							Line:      "4",
 						},
-
 						{
 							Timestamp: from.Add(4 * time.Millisecond),
 							Line:      "5",
@@ -262,7 +262,6 @@ func Test_store_SelectLogs(t *testing.T) {
 							Timestamp: from,
 							Line:      "1",
 						},
-
 						{
 							Timestamp: from.Add(time.Millisecond),
 							Line:      "2",
@@ -275,7 +274,6 @@ func Test_store_SelectLogs(t *testing.T) {
 							Timestamp: from.Add(3 * time.Millisecond),
 							Line:      "4",
 						},
-
 						{
 							Timestamp: from.Add(4 * time.Millisecond),
 							Line:      "5",
@@ -290,7 +288,7 @@ func Test_store_SelectLogs(t *testing.T) {
 		},
 		{
 			"filter regex",
-			newQuery("{foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"", from, from.Add(6*time.Millisecond), nil),
+			newQuery("{foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -314,7 +312,7 @@ func Test_store_SelectLogs(t *testing.T) {
 		},
 		{
 			"filter matcher",
-			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil),
+			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -323,7 +321,6 @@ func Test_store_SelectLogs(t *testing.T) {
 							Timestamp: from,
 							Line:      "1",
 						},
-
 						{
 							Timestamp: from.Add(time.Millisecond),
 							Line:      "2",
@@ -336,7 +333,6 @@ func Test_store_SelectLogs(t *testing.T) {
 							Timestamp: from.Add(3 * time.Millisecond),
 							Line:      "4",
 						},
-
 						{
 							Timestamp: from.Add(4 * time.Millisecond),
 							Line:      "5",
@@ -351,7 +347,7 @@ func Test_store_SelectLogs(t *testing.T) {
 		},
 		{
 			"filter time",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(time.Millisecond), nil),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(time.Millisecond), nil, nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -373,7 +369,115 @@ func Test_store_SelectLogs(t *testing.T) {
 				},
 			},
 		},
+		{
+			"delete covers whole time range",
+			newQuery(
+				"{foo=~\"ba.*\"}",
+				from,
+				from.Add(6*time.Millisecond),
+				nil,
+				[]*logproto.Delete{
+					{
+						Selector: `{foo="bar"}`,
+						Start:    from.Add(-1 * time.Millisecond).UnixNano(),
+						End:      from.Add(7 * time.Millisecond).UnixNano(),
+					},
+					{
+						Selector: `{foo="bazz"} |= "6"`,
+						Start:    from.Add(-1 * time.Millisecond).UnixNano(),
+						End:      from.Add(7 * time.Millisecond).UnixNano(),
+					},
+				}),
+			[]logproto.Stream{
+				{
+					Labels: "{foo=\"bazz\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+					},
+				},
+			},
+		},
+		{
+			"delete covers partial time range",
+			newQuery(
+				"{foo=~\"ba.*\"}",
+				from,
+				from.Add(6*time.Millisecond),
+				nil,
+				[]*logproto.Delete{
+					{
+						Selector: `{foo="bar"}`,
+						Start:    from.Add(-1 * time.Millisecond).UnixNano(),
+						End:      from.Add(3 * time.Millisecond).UnixNano(),
+					},
+					{
+						Selector: `{foo="bazz"} |= "2"`,
+						Start:    from.Add(-1 * time.Millisecond).UnixNano(),
+						End:      from.Add(3 * time.Millisecond).UnixNano(),
+					},
+				}),
+			[]logproto.Stream{
+				{
+					Labels: "{foo=\"bar\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond),
+							Line:      "6",
+						},
+					},
+				},
+				{
+					Labels: "{foo=\"bazz\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond),
+							Line:      "6",
+						},
+					},
+				},
+			},
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &store{
@@ -409,7 +513,7 @@ func Test_store_SelectSample(t *testing.T) {
 	}{
 		{
 			"all",
-			newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond)),
+			newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond), nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -419,7 +523,6 @@ func Test_store_SelectSample(t *testing.T) {
 							Hash:      xxhash.Sum64String("1"),
 							Value:     1.,
 						},
-
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
 							Hash:      xxhash.Sum64String("2"),
@@ -435,7 +538,6 @@ func Test_store_SelectSample(t *testing.T) {
 							Hash:      xxhash.Sum64String("4"),
 							Value:     1.,
 						},
-
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
 							Hash:      xxhash.Sum64String("5"),
@@ -456,7 +558,6 @@ func Test_store_SelectSample(t *testing.T) {
 							Hash:      xxhash.Sum64String("1"),
 							Value:     1.,
 						},
-
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
 							Hash:      xxhash.Sum64String("2"),
@@ -472,7 +573,6 @@ func Test_store_SelectSample(t *testing.T) {
 							Hash:      xxhash.Sum64String("4"),
 							Value:     1.,
 						},
-
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
 							Hash:      xxhash.Sum64String("5"),
@@ -489,7 +589,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter regex",
-			newSampleQuery("rate({foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"[1m])", from, from.Add(6*time.Millisecond)),
+			newSampleQuery("rate({foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"[1m])", from, from.Add(6*time.Millisecond), nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -515,7 +615,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter matcher",
-			newSampleQuery("count_over_time({foo=\"bar\"}[10m])", from, from.Add(6*time.Millisecond)),
+			newSampleQuery("count_over_time({foo=\"bar\"}[10m])", from, from.Add(6*time.Millisecond), nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -525,7 +625,6 @@ func Test_store_SelectSample(t *testing.T) {
 							Hash:      xxhash.Sum64String("1"),
 							Value:     1.,
 						},
-
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
 							Hash:      xxhash.Sum64String("2"),
@@ -558,7 +657,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter time",
-			newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(time.Millisecond)),
+			newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(time.Millisecond), nil),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -582,7 +681,127 @@ func Test_store_SelectSample(t *testing.T) {
 				},
 			},
 		},
+		{
+			"delete covers whole time range",
+			newSampleQuery(
+				"count_over_time({foo=~\"ba.*\"}[5m])",
+				from,
+				from.Add(6*time.Millisecond),
+				[]*logproto.Delete{
+					{
+						Selector: `{foo="bar"}`,
+						Start:    from.Add(-1 * time.Millisecond).UnixNano(),
+						End:      from.Add(7 * time.Millisecond).UnixNano(),
+					},
+					{
+						Selector: `{foo="bazz"} |= "6"`,
+						Start:    from.Add(-1 * time.Millisecond).UnixNano(),
+						End:      from.Add(7 * time.Millisecond).UnixNano(),
+					},
+				}),
+			[]logproto.Series{
+				{
+					Labels: "{foo=\"bazz\"}",
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+
+						{
+							Timestamp: from.Add(time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("2"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("3"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("4"),
+							Value:     1.,
+						},
+
+						{
+							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("5"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+		},
+		{
+			"delete covers partial time range",
+			newSampleQuery(
+				"count_over_time({foo=~\"ba.*\"}[5m])",
+				from,
+				from.Add(6*time.Millisecond),
+				[]*logproto.Delete{
+					{
+						Selector: `{foo="bar"}`,
+						Start:    from.Add(-1 * time.Millisecond).UnixNano(),
+						End:      from.Add(3 * time.Millisecond).UnixNano(),
+					},
+					{
+						Selector: `{foo="bazz"} |= "2"`,
+						Start:    from.Add(-1 * time.Millisecond).UnixNano(),
+						End:      from.Add(3 * time.Millisecond).UnixNano(),
+					},
+				}),
+			[]logproto.Series{
+				{
+					Labels: "{foo=\"bar\"}",
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("5"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("6"),
+							Value:     1.,
+						},
+					},
+				},
+				{
+					Labels: "{foo=\"bazz\"}",
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("3"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("4"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("5"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("6"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &store{
@@ -630,7 +849,7 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	s.SetChunkFilterer(&fakeChunkFilterer{})
 	ctx = user.InjectOrgID(context.Background(), "test-user")
-	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour))})
+	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil)})
 	if err != nil {
 		t.Errorf("store.SelectSamples() error = %v", err)
 		return
@@ -641,7 +860,7 @@ func Test_ChunkFilterer(t *testing.T) {
 		require.NotEqual(t, "bazz", v)
 	}
 
-	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil)})
+	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
 	if err != nil {
 		t.Errorf("store.SelectLogs() error = %v", err)
 		return
@@ -651,7 +870,7 @@ func Test_ChunkFilterer(t *testing.T) {
 		v := mustParseLabels(it.Labels())["foo"]
 		require.NotEqual(t, "bazz", v)
 	}
-	ids, err := s.Series(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil)})
+	ids, err := s.Series(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
 	require.NoError(t, err)
 	for _, id := range ids {
 		v := id.Labels["foo"]
@@ -668,7 +887,7 @@ func Test_store_GetSeries(t *testing.T) {
 	}{
 		{
 			"all",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 				{Labels: mustParseLabels("{foo=\"bazz\"}")},
@@ -677,7 +896,7 @@ func Test_store_GetSeries(t *testing.T) {
 		},
 		{
 			"all-single-batch",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 				{Labels: mustParseLabels("{foo=\"bazz\"}")},
@@ -686,7 +905,7 @@ func Test_store_GetSeries(t *testing.T) {
 		},
 		{
 			"regexp filter (post chunk fetching)",
-			newQuery("{foo=~\"bar.*\"}", from, from.Add(6*time.Millisecond), nil),
+			newQuery("{foo=~\"bar.*\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 			},
@@ -694,7 +913,7 @@ func Test_store_GetSeries(t *testing.T) {
 		},
 		{
 			"filter matcher",
-			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil),
+			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 			},
@@ -729,7 +948,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 	}{
 		{
 			"unsharded",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
@@ -742,6 +961,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 				[]astmapper.ShardAnnotation{
 					{Shard: 1, Of: 2},
 				},
+				nil,
 			),
 			[]*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
@@ -782,6 +1002,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 	boltdbShipperConfig.SharedStoreType = "filesystem"
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
+	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
 
 	// dates for activation of boltdb shippers
 	firstStoreDate := parseDate("2019-01-01")
@@ -1057,4 +1278,95 @@ func Test_GetSeries(t *testing.T) {
 			require.Equal(t, tt.expectedSeries, series)
 		})
 	}
+}
+
+func TestGetIndexStoreTableRanges(t *testing.T) {
+	now := model.Now()
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: now.Add(30 * 24 * time.Hour)},
+				IndexType:  config.BoltDBShipperType,
+				ObjectType: "filesystem",
+				Schema:     "v9",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+			},
+			{
+				From:       config.DayTime{Time: now.Add(20 * 24 * time.Hour)},
+				IndexType:  config.BoltDBShipperType,
+				ObjectType: "filesystem",
+				Schema:     "v11",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       config.DayTime{Time: now.Add(15 * 24 * time.Hour)},
+				IndexType:  config.TSDBType,
+				ObjectType: "filesystem",
+				Schema:     "v11",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       config.DayTime{Time: now.Add(10 * 24 * time.Hour)},
+				IndexType:  config.StorageTypeBigTable,
+				ObjectType: "filesystem",
+				Schema:     "v11",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       config.DayTime{Time: now.Add(5 * 24 * time.Hour)},
+				IndexType:  config.TSDBType,
+				ObjectType: "filesystem",
+				Schema:     "v11",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+		},
+	}
+
+	require.Equal(t, config.TableRanges{
+		{
+			Start: schemaConfig.Configs[0].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:   schemaConfig.Configs[1].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+		},
+		{
+			Start: schemaConfig.Configs[1].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:   schemaConfig.Configs[2].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+		},
+	}, getIndexStoreTableRanges(config.BoltDBShipperType, schemaConfig.Configs))
+
+	require.Equal(t, config.TableRanges{
+		{
+			Start: schemaConfig.Configs[3].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:   schemaConfig.Configs[4].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+		},
+	}, getIndexStoreTableRanges(config.StorageTypeBigTable, schemaConfig.Configs))
+
+	require.Equal(t, config.TableRanges{
+		{
+			Start: schemaConfig.Configs[2].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:   schemaConfig.Configs[3].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+		},
+		{
+			Start: schemaConfig.Configs[4].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:   model.Time(math.MaxInt64).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+		},
+	}, getIndexStoreTableRanges(config.TSDBType, schemaConfig.Configs))
 }

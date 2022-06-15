@@ -165,6 +165,10 @@ type SyslogTargetConfig struct {
 	// ListenAddress is the address to listen on for syslog messages.
 	ListenAddress string `yaml:"listen_address"`
 
+	// ListenProtocol is the protocol used to listen for syslog messages.
+	// Must be either `tcp` (default) or `udp`
+	ListenProtocol string `yaml:"listen_protocol"`
+
 	// IdleTimeout is the idle timeout for tcp connections.
 	IdleTimeout time.Duration `yaml:"idle_timeout"`
 

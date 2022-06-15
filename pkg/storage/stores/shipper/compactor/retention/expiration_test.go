@@ -81,9 +81,9 @@ func Test_expirationChecker_Expired(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, nonDeletedIntervals := e.Expired(tt.ref, model.Now())
+			actual, nonDeletedIntervalFilters := e.Expired(tt.ref, model.Now())
 			require.Equal(t, tt.want, actual)
-			require.Nil(t, nonDeletedIntervals)
+			require.Nil(t, nonDeletedIntervalFilters)
 		})
 	}
 }

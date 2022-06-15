@@ -1,13 +1,13 @@
 package manifests
 
 import (
+	"fmt"
 	"testing"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -69,6 +69,25 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1beta1.OpenshiftLogging,
 					},
 				},
+				Tenants: Tenants{
+					Configs: map[string]TenantConfig{
+						"application": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "D31SJpSmPe6aUDTtU2zqAoW1gqEKoH5T",
+							},
+						},
+						"infrastructure": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "i3N1paUy9JwNZIktni4kqXPuMvIHtHNe",
+							},
+						},
+						"audit": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "6UssDXle7OHElqSW4M0DNRZ6JbaTjDM3",
+							},
+						},
+					},
+				},
 			},
 			want: &Options{
 				Name:              "lokistack-ocp",
@@ -77,6 +96,25 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Stack: lokiv1beta1.LokiStackSpec{
 					Tenants: &lokiv1beta1.TenantsSpec{
 						Mode: lokiv1beta1.OpenshiftLogging,
+					},
+				},
+				Tenants: Tenants{
+					Configs: map[string]TenantConfig{
+						"application": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "D31SJpSmPe6aUDTtU2zqAoW1gqEKoH5T",
+							},
+						},
+						"infrastructure": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "i3N1paUy9JwNZIktni4kqXPuMvIHtHNe",
+							},
+						},
+						"audit": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "6UssDXle7OHElqSW4M0DNRZ6JbaTjDM3",
+							},
+						},
 					},
 				},
 				OpenShiftOptions: openshift.Options{
@@ -93,19 +131,19 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 							TenantName:     "application",
 							TenantID:       "",
 							ServiceAccount: "lokistack-ocp-gateway",
-							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/application/callback",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/application/callback",
 						},
 						{
 							TenantName:     "infrastructure",
 							TenantID:       "",
 							ServiceAccount: "lokistack-ocp-gateway",
-							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/infrastructure/callback",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/infrastructure/callback",
 						},
 						{
 							TenantName:     "audit",
 							TenantID:       "",
 							ServiceAccount: "lokistack-ocp-gateway",
-							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/audit/callback",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/audit/callback",
 						},
 					},
 					Authorization: openshift.AuthorizationSpec{
@@ -140,11 +178,13 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 
 func TestConfigureDeploymentForMode(t *testing.T) {
 	type tt struct {
-		desc  string
-		mode  lokiv1beta1.ModeType
-		flags FeatureFlags
-		dpl   *appsv1.Deployment
-		want  *appsv1.Deployment
+		desc      string
+		mode      lokiv1beta1.ModeType
+		stackName string
+		stackNs   string
+		flags     FeatureFlags
+		dpl       *appsv1.Deployment
+		want      *appsv1.Deployment
 	}
 
 	tc := []tt{
@@ -161,9 +201,15 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			want: &appsv1.Deployment{},
 		},
 		{
-			desc: "openshift-logging mode",
-			mode: lokiv1beta1.OpenshiftLogging,
+
+			desc:      "openshift-logging mode",
+			mode:      lokiv1beta1.OpenshiftLogging,
+			stackName: "test",
+			stackNs:   "test-ns",
 			dpl: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
@@ -174,6 +220,21 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=http://example.com",
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
+										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
 									},
 								},
 							},
@@ -182,6 +243,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 				},
 			},
 			want: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
@@ -192,6 +256,32 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=http://example.com",
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
+										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
+										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
+										"--tls.server.key-file=/var/run/tls/http/tls.key",
+										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
+										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
+									},
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      tlsSecretVolume,
+											ReadOnly:  true,
+											MountPath: httpTLSDir,
+										},
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTPS,
+											},
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTPS,
+											},
+										},
 									},
 								},
 								{
@@ -246,18 +336,33 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									},
 								},
 							},
+							Volumes: []corev1.Volume{
+								{
+									Name: tlsSecretVolume,
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test-gateway-http-tls",
+										},
+									},
+								},
+							},
 						},
 					},
 				},
 			},
 		},
 		{
-			desc: "openshift-logging mode with-tls-service-monitor-config",
-			mode: lokiv1beta1.OpenshiftLogging,
+			desc:      "openshift-logging mode with-tls-service-monitor-config",
+			mode:      lokiv1beta1.OpenshiftLogging,
+			stackName: "test",
+			stackNs:   "test-ns",
 			flags: FeatureFlags{
 				EnableTLSServiceMonitorConfig: true,
 			},
 			dpl: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
@@ -268,6 +373,38 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=http://example.com",
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
+										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
+									},
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      tlsSecretVolume,
+											ReadOnly:  true,
+											MountPath: httpTLSDir,
+										},
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: tlsSecretVolume,
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test-gateway-http-tls",
+										},
 									},
 								},
 							},
@@ -276,6 +413,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 				},
 			},
 			want: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
@@ -286,6 +426,32 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=http://example.com",
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
+										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
+										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
+										"--tls.server.key-file=/var/run/tls/http/tls.key",
+										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
+										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
+									},
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      tlsSecretVolume,
+											ReadOnly:  true,
+											MountPath: httpTLSDir,
+										},
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTPS,
+											},
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTPS,
+											},
+										},
 									},
 								},
 								{
@@ -298,8 +464,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
-										"--tls.internal.server.cert-file=/var/run/tls/tls.crt",
-										"--tls.internal.server.key-file=/var/run/tls/tls.key",
+										"--tls.internal.server.cert-file=/var/run/tls/http/tls.crt",
+										"--tls.internal.server.key-file=/var/run/tls/http/tls.key",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -342,9 +508,19 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      tlsMetricsSercetVolume,
+											Name:      tlsSecretVolume,
 											ReadOnly:  true,
-											MountPath: gateway.LokiGatewayTLSDir,
+											MountPath: httpTLSDir,
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: tlsSecretVolume,
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test-gateway-http-tls",
 										},
 									},
 								},
@@ -355,15 +531,18 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 		},
 		{
-			desc: "openshift-logging mode with-cert-signing-service",
-			mode: lokiv1beta1.OpenshiftLogging,
+			desc:      "openshift-logging mode with-cert-signing-service",
+			mode:      lokiv1beta1.OpenshiftLogging,
+			stackName: "test",
+			stackNs:   "test-ns",
 			flags: FeatureFlags{
 				EnableTLSServiceMonitorConfig:   true,
 				EnableCertificateSigningService: true,
 			},
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "gateway",
+					Name:      "gateway",
+					Namespace: "test-ns",
 				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -376,12 +555,27 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=http://example.com",
 										"--logs.tail.endpoint=http://example.com",
 										"--logs.write.endpoint=http://example.com",
+										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
 											Name:      "tls-secret",
 											ReadOnly:  true,
-											MountPath: "/var/run/tls",
+											MountPath: "/var/run/tls/http",
+										},
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTP,
+											},
 										},
 									},
 								},
@@ -397,7 +591,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 			want: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "gateway",
+					Name:      "gateway",
+					Namespace: "test-ns",
 				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -411,18 +606,37 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--logs.read.endpoint=https://example.com",
 										"--logs.tail.endpoint=https://example.com",
 										"--logs.write.endpoint=https://example.com",
+										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
 										"--logs.tls.ca-file=/var/run/ca/service-ca.crt",
+										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
+										"--tls.server.key-file=/var/run/tls/http/tls.key",
+										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
+										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
 											Name:      "tls-secret",
 											ReadOnly:  true,
-											MountPath: "/var/run/tls",
+											MountPath: "/var/run/tls/http",
 										},
 										{
-											Name:      "gateway-ca-bundle",
+											Name:      "test-ca-bundle",
 											ReadOnly:  true,
 											MountPath: "/var/run/ca",
+										},
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTPS,
+											},
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Scheme: corev1.URISchemeHTTPS,
+											},
 										},
 									},
 								},
@@ -436,8 +650,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
-										"--tls.internal.server.cert-file=/var/run/tls/tls.crt",
-										"--tls.internal.server.key-file=/var/run/tls/tls.key",
+										"--tls.internal.server.cert-file=/var/run/tls/http/tls.crt",
+										"--tls.internal.server.key-file=/var/run/tls/http/tls.key",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -480,9 +694,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      tlsMetricsSercetVolume,
+											Name:      tlsSecretVolume,
 											ReadOnly:  true,
-											MountPath: gateway.LokiGatewayTLSDir,
+											MountPath: httpTLSDir,
 										},
 									},
 								},
@@ -492,12 +706,12 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Name: "tls-secret-volume",
 								},
 								{
-									Name: "gateway-ca-bundle",
+									Name: "test-ca-bundle",
 									VolumeSource: corev1.VolumeSource{
 										ConfigMap: &corev1.ConfigMapVolumeSource{
 											DefaultMode: &defaultConfigMapMode,
 											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "gateway-ca-bundle",
+												Name: "test-ca-bundle",
 											},
 										},
 									},
@@ -513,7 +727,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureDeploymentForMode(tc.dpl, tc.mode, tc.flags)
+			err := configureDeploymentForMode(tc.dpl, tc.mode, tc.flags, tc.stackName, tc.stackNs)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})

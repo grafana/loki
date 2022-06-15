@@ -6,6 +6,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -32,6 +34,8 @@ func (r ChunkRef) Less(x ChunkRef) bool {
 
 type Index interface {
 	Bounded
+	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
+	Close() error
 	// GetChunkRefs accepts an optional []ChunkRef argument.
 	// If not nil, it will use that slice to build the result,
 	// allowing us to avoid unnecessary allocations at the caller's discretion.
@@ -47,4 +51,30 @@ type Index interface {
 	Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error)
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
+	Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error)
 }
+
+type NoopIndex struct{}
+
+func (NoopIndex) Close() error                       { return nil }
+func (NoopIndex) Bounds() (from, through model.Time) { return }
+func (NoopIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+	return nil, nil
+}
+
+// Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
+func (NoopIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+	return nil, nil
+}
+func (NoopIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+	return nil, nil
+}
+func (NoopIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
+	return nil, nil
+}
+
+func (NoopIndex) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
+	return nil, nil
+}
+
+func (NoopIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {}

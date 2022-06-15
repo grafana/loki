@@ -150,6 +150,8 @@ The second container is our `sample-app`, a simple [alpine][alpine] container th
 
 Go ahead and replace the `Url` property with your [GrafanaCloud][GrafanaCloud] credentials, you can find them in your [account][grafanacloud account] in the Loki instance page. If you're running your own Loki instance replace completely the URL (e.g `http://my-loki.com:3100/loki/api/v1/push`).
 
+We include plain text credentials in `options` for simplicity. However, this exposes credentials in your ECS task definition and in any version-controlled configuration. Mitigate this issue by using a secret store such as [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html), combined with the `secretOptions` configuration option for [injecting sensitive data in a log configuration](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/specifying-sensitive-data-secrets.html#secrets-logconfig).
+
 All `options` of the `logConfiguration` will be automatically translated into [fluentbit ouput][fluentbit ouput]. For example, the above options will produce this fluent bit `OUTPUT` config section:
 
 ```conf

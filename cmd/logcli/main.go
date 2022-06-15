@@ -244,6 +244,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("bearer-token", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.").Default("").Envar("LOKI_BEARER_TOKEN").StringVar(&client.BearerToken)
 	app.Flag("bearer-token-file", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.").Default("").Envar("LOKI_BEARER_TOKEN_FILE").StringVar(&client.BearerTokenFile)
 	app.Flag("retries", "How many times to retry each query when getting an error response from Loki. Can also be set using LOKI_CLIENT_RETRIES").Default("0").Envar("LOKI_CLIENT_RETRIES").IntVar(&client.Retries)
+	app.Flag("auth-header", "The authorization header used. Can also be set using LOKI_AUTH_HEADER").Default("Authorization").Envar("LOKI_AUTH_HEADER").StringVar(&client.AuthHeader)
 
 	return client
 }

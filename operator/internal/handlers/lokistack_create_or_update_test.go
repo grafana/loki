@@ -14,7 +14,8 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/status"
 
-	"github.com/ViaQ/logerr/log"
+	"github.com/ViaQ/logerr/v2/log"
+	"github.com/go-logr/logr"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,7 +33,7 @@ import (
 )
 
 var (
-	logger = log.NewLogger("testing")
+	logger logr.Logger
 
 	scheme = runtime.NewScheme()
 	flags  = manifests.FeatureFlags{
@@ -74,18 +75,24 @@ var (
 		},
 		Data: map[string][]byte{},
 	}
+
+	invalidCAConfigMap = corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "some-stack-ca-configmap",
+			Namespace: "some-ns",
+		},
+		Data: map[string]string{},
+	}
 )
 
 func TestMain(m *testing.M) {
 	testing.Init()
 	flag.Parse()
 
-	sink := log.MustGetSink(logger)
 	if testing.Verbose() {
-		// set to the highest for verbose testing
-		sink.SetVerbosity(5)
+		logger = log.NewLogger("testing", log.WithVerbosity(5))
 	} else {
-		sink.SetOutput(ioutil.Discard)
+		logger = log.NewLogger("testing", log.WithOutput(ioutil.Discard))
 	}
 
 	// Register the clientgo and CRD schemes
@@ -97,6 +104,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestCreateOrUpdateLokiStack_WhenGetReturnsNotFound_DoesNotError(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
@@ -109,6 +117,8 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNotFound_DoesNotError(t *testing.
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
+	k.StatusStub = func() client.StatusWriter { return sw }
+
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 	require.NoError(t, err)
 
@@ -117,6 +127,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNotFound_DoesNotError(t *testing.
 }
 
 func TestCreateOrUpdateLokiStack_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsTheError(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
@@ -130,6 +141,8 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsT
 		return badRequestErr
 	}
 
+	k.StatusStub = func() client.StatusWriter { return sw }
+
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
 	require.Equal(t, badRequestErr, errors.Unwrap(err))
@@ -139,6 +152,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsT
 }
 
 func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
@@ -159,6 +173,12 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -207,6 +227,8 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 		return nil
 	}
 
+	k.StatusStub = func() client.StatusWriter { return sw }
+
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 	require.NoError(t, err)
 
@@ -215,6 +237,7 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 }
 
 func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
@@ -235,6 +258,12 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -305,6 +334,8 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 		return nil
 	}
 
+	k.StatusStub = func() client.StatusWriter { return sw }
+
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 	require.NoError(t, err)
 
@@ -313,6 +344,7 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 }
 
 func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherObjects(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
@@ -336,6 +368,12 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -355,6 +393,8 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 		return nil
 	}
 
+	k.StatusStub = func() client.StatusWriter { return sw }
+
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
 	// make sure error is returned to re-trigger reconciliation
@@ -362,6 +402,7 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 }
 
 func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
@@ -382,6 +423,12 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -448,6 +495,8 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 		return nil
 	}
 
+	k.StatusStub = func() client.StatusWriter { return sw }
+
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 	require.NoError(t, err)
 
@@ -459,6 +508,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 }
 
 func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
@@ -479,6 +529,12 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -506,6 +562,8 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 		return apierrors.NewTooManyRequestsError("too many create requests")
 	}
 
+	k.StatusStub = func() client.StatusWriter { return sw }
+
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
 	// make sure error is returned to re-trigger reconciliation
@@ -513,6 +571,7 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 }
 
 func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
@@ -533,6 +592,12 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -605,6 +670,8 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 		return apierrors.NewTooManyRequestsError("too many create requests")
 	}
 
+	k.StatusStub = func() client.StatusWriter { return sw }
+
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
 
 	// make sure error is returned to re-trigger reconciliation
@@ -639,6 +706,12 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -677,7 +750,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid object storage secret contents",
+		Message: "Invalid object storage secret contents: missing secret field",
 		Reason:  lokiv1beta1.ReasonInvalidObjectStorageSecret,
 		Requeue: false,
 	}
@@ -694,6 +767,12 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: invalidSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -711,6 +790,228 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 		}
 		if name.Name == invalidSecret.Name {
 			k.SetClientObject(object, &invalidSecret)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
+
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}
+
+func TestCreateOrUpdateLokiStack_WithInvalidStorageSchema_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid object storage schema contents: cannot retroactively remove schema",
+		Reason:  lokiv1beta1.ReasonInvalidObjectStorageSchema,
+		Requeue: false,
+	}
+
+	stack := &lokiv1beta1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
+				},
+			},
+		},
+		Status: lokiv1beta1.LokiStackStatus{
+			Storage: lokiv1beta1.LokiStackStorageStatus{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV12,
+						EffectiveDate: "2021-10-11",
+					},
+				},
+			},
+		},
+	}
+
+	// GetStub looks up the CR first, so we need to return our fake stack
+	// return NotFound for everything else to trigger create.
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, stack)
+			return nil
+		}
+		if name.Name == defaultSecret.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
+
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}
+
+func TestCreateOrUpdateLokiStack_WhenMissingCAConfigMap_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Missing object storage CA config map",
+		Reason:  lokiv1beta1.ReasonMissingObjectStorageCAConfigMap,
+		Requeue: false,
+	}
+
+	stack := &lokiv1beta1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
+				},
+				TLS: &lokiv1beta1.ObjectStorageTLSSpec{
+					CA: "not-existing",
+				},
+			},
+		},
+	}
+
+	// GetStub looks up the CR first, so we need to return our fake stack
+	// return NotFound for everything else to trigger create.
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, stack)
+			return nil
+		}
+
+		if name.Name == defaultSecret.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, flags)
+
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}
+
+func TestCreateOrUpdateLokiStack_WhenInvalidCAConfigMap_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid object storage CA configmap contents: missing key `service-ca.crt` or no contents",
+		Reason:  lokiv1beta1.ReasonInvalidObjectStorageCAConfigMap,
+		Requeue: false,
+	}
+
+	stack := &lokiv1beta1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1beta1.ObjectStorageSecretS3,
+				},
+				TLS: &lokiv1beta1.ObjectStorageTLSSpec{
+					CA: invalidCAConfigMap.Name,
+				},
+			},
+		},
+	}
+
+	// GetStub looks up the CR first, so we need to return our fake stack
+	// return NotFound for everything else to trigger create.
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, stack)
+			return nil
+		}
+		if name.Name == defaultSecret.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+
+		if name.Name == invalidCAConfigMap.Name {
+			k.SetClientObject(object, &invalidCAConfigMap)
 			return nil
 		}
 		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
@@ -757,6 +1058,12 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -835,6 +1142,12 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -918,6 +1231,12 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
@@ -1005,6 +1324,12 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
+				Schemas: []lokiv1beta1.ObjectStorageSchema{
+					{
+						Version:       lokiv1beta1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,
