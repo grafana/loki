@@ -139,9 +139,8 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 
 // NewDistributorGRPCService creates a k8s service for the distributor GRPC endpoint
 func NewDistributorGRPCService(opts Options) *corev1.Service {
-	s := serviceNameDistributorGRPC(opts.Name)
-	l := ComponentLabels(LabelDistributorComponent, opts.Name)
-	a := serviceAnnotations(s, opts.Flags.EnableCertificateSigningService)
+	serviceName := serviceNameDistributorGRPC(opts.Name)
+	labels := ComponentLabels(LabelDistributorComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -149,9 +148,9 @@ func NewDistributorGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceNameDistributorGRPC(opts.Name),
-			Labels:      l,
-			Annotations: a,
+			Name:        serviceName,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -163,7 +162,7 @@ func NewDistributorGRPCService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -171,8 +170,7 @@ func NewDistributorGRPCService(opts Options) *corev1.Service {
 // NewDistributorHTTPService creates a k8s service for the distributor HTTP endpoint
 func NewDistributorHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameDistributorHTTP(opts.Name)
-	l := ComponentLabels(LabelDistributorComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelDistributorComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -181,8 +179,8 @@ func NewDistributorHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -193,7 +191,7 @@ func NewDistributorHTTPService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }

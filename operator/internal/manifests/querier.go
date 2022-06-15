@@ -7,7 +7,6 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-
 	"github.com/imdario/mergo"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -146,9 +145,8 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 
 // NewQuerierGRPCService creates a k8s service for the querier GRPC endpoint
 func NewQuerierGRPCService(opts Options) *corev1.Service {
-	s := serviceNameQuerierGRPC(opts.Name)
-	l := ComponentLabels(LabelQuerierComponent, opts.Name)
-	a := serviceAnnotations(s, opts.Flags.EnableCertificateSigningService)
+	serviceName := serviceNameQuerierGRPC(opts.Name)
+	labels := ComponentLabels(LabelQuerierComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -156,9 +154,9 @@ func NewQuerierGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceNameQuerierGRPC(opts.Name),
-			Labels:      l,
-			Annotations: a,
+			Name:        serviceName,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -170,7 +168,7 @@ func NewQuerierGRPCService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -178,8 +176,7 @@ func NewQuerierGRPCService(opts Options) *corev1.Service {
 // NewQuerierHTTPService creates a k8s service for the querier HTTP endpoint
 func NewQuerierHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameQuerierHTTP(opts.Name)
-	l := ComponentLabels(LabelQuerierComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelQuerierComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -188,8 +185,8 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -200,7 +197,7 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }

@@ -211,8 +211,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 // NewGatewayHTTPService creates a k8s service for the lokistack-gateway HTTP endpoint
 func NewGatewayHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameGatewayHTTP(opts.Name)
-	l := ComponentLabels(LabelGatewayComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelGatewayComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -221,8 +220,8 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -235,7 +234,7 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 					Port: gatewayInternalPort,
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }

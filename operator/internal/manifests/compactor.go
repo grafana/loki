@@ -163,9 +163,8 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 
 // NewCompactorGRPCService creates a k8s service for the compactor GRPC endpoint
 func NewCompactorGRPCService(opts Options) *corev1.Service {
-	s := serviceNameCompactorGRPC(opts.Name)
-	l := ComponentLabels(LabelCompactorComponent, opts.Name)
-	a := serviceAnnotations(s, opts.Flags.EnableCertificateSigningService)
+	serviceName := serviceNameCompactorGRPC(opts.Name)
+	labels := ComponentLabels(LabelCompactorComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -173,9 +172,9 @@ func NewCompactorGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceNameCompactorGRPC(opts.Name),
-			Labels:      l,
-			Annotations: a,
+			Name:        serviceName,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -187,7 +186,7 @@ func NewCompactorGRPCService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -195,8 +194,7 @@ func NewCompactorGRPCService(opts Options) *corev1.Service {
 // NewCompactorHTTPService creates a k8s service for the ingester HTTP endpoint
 func NewCompactorHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameCompactorHTTP(opts.Name)
-	l := ComponentLabels(LabelCompactorComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelCompactorComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -205,8 +203,8 @@ func NewCompactorHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -217,7 +215,7 @@ func NewCompactorHTTPService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }

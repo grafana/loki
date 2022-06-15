@@ -149,9 +149,8 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 
 // NewQueryFrontendGRPCService creates a k8s service for the query-frontend GRPC endpoint
 func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
-	s := serviceNameQueryFrontendGRPC(opts.Name)
-	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
-	a := serviceAnnotations(s, opts.Flags.EnableCertificateSigningService)
+	serviceName := serviceNameQueryFrontendGRPC(opts.Name)
+	labels := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -159,9 +158,9 @@ func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceNameQueryFrontendGRPC(opts.Name),
-			Labels:      l,
-			Annotations: a,
+			Name:        serviceName,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -173,7 +172,7 @@ func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -181,8 +180,7 @@ func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
 // NewQueryFrontendHTTPService creates a k8s service for the query-frontend HTTP endpoint
 func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameQueryFrontendHTTP(opts.Name)
-	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -191,8 +189,8 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -203,7 +201,7 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }

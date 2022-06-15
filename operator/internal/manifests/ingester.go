@@ -195,9 +195,8 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 
 // NewIngesterGRPCService creates a k8s service for the ingester GRPC endpoint
 func NewIngesterGRPCService(opts Options) *corev1.Service {
-	s := serviceNameIngesterGRPC(opts.Name)
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	a := serviceAnnotations(s, opts.Flags.EnableCertificateSigningService)
+	serviceName := serviceNameIngesterGRPC(opts.Name)
+	labels := ComponentLabels(LabelIngesterComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -206,8 +205,8 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceNameIngesterGRPC(opts.Name),
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -219,7 +218,7 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -227,8 +226,7 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 // NewIngesterHTTPService creates a k8s service for the ingester HTTP endpoint
 func NewIngesterHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameIngesterHTTP(opts.Name)
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelIngesterComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -237,8 +235,8 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -249,7 +247,7 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
