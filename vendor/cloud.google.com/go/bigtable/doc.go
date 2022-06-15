@@ -117,9 +117,13 @@ const (
 )
 
 // clientUserAgent identifies the version of this package.
-// It should be bumped upon significant changes only.
-const clientUserAgent = "cbt-go/20180601"
+// It should be the same as https://pkg.go.dev/cloud.google.com/go/bigtable.
+const clientUserAgent = "cbt-go/v1.6.0"
 
 // resourcePrefixHeader is the name of the metadata header used to indicate
 // the resource being operated on.
 const resourcePrefixHeader = "google-cloud-resource-prefix"
+
+// requestParamsHeader is the name of the metadata header used for routing
+// requests based on resources accessed.
+const requestParamsHeader = "x-goog-request-params"
