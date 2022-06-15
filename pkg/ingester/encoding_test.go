@@ -39,7 +39,7 @@ func Test_Encoding_Series(t *testing.T) {
 
 	decoded := recordPool.GetRecord()
 
-	err := decodeWALRecord(buf, decoded)
+	err := DecodeWALRecord(buf, decoded)
 	require.Nil(t, err)
 
 	// Since we use a pool, there can be subtle differentiations between nil slices and len(0) slices.
@@ -132,7 +132,7 @@ func Test_Encoding_Entries(t *testing.T) {
 	} {
 		decoded := recordPool.GetRecord()
 		buf := tc.rec.EncodeEntries(tc.version, nil)
-		err := decodeWALRecord(buf, decoded)
+		err := DecodeWALRecord(buf, decoded)
 		require.Nil(t, err)
 		require.Equal(t, tc.rec, decoded)
 
@@ -200,7 +200,7 @@ func Benchmark_DecodeWAL(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		require.NoError(b, decodeWALRecord(buf, rec))
+		require.NoError(b, DecodeWALRecord(buf, rec))
 	}
 }
 
