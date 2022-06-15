@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -31,17 +30,12 @@ func shardResolverForConf(
 	handler queryrangebase.Handler,
 ) (logql.ShardResolver, bool) {
 	if conf.IndexType == config.TSDBType {
-		from, through := util.RoundToMilliseconds(
-			time.Unix(0, r.GetStart()),
-			time.Unix(0, r.GetEnd()),
-		)
-		level.Debug(logger).Log("msg", "roundting bounds", "start", r.GetStart(), "end", r.GetEnd(), "from", from, "through", through)
 		return &dynamicShardResolver{
 			ctx:             ctx,
 			logger:          logger,
 			handler:         handler,
-			from:            from,
-			through:         through,
+			from:            model.Time(r.GetStart()),
+			through:         model.Time(r.GetEnd()),
 			maxParallelism:  maxParallelism,
 			defaultLookback: defaultLookback,
 		}, true
