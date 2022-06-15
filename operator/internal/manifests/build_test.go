@@ -166,7 +166,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 			},
 		},
 		{
-			desc: "enabled certificate signing service for every http service",
+			desc: "enabled certificate signing service for every http and grpc service",
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
@@ -190,18 +190,25 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 			err := ApplyDefaultSettings(&tst.BuildOptions)
 			require.NoError(t, err)
 
-			httpServices := []*corev1.Service{
+			svcs := []*corev1.Service{
+				NewDistributorGRPCService(tst.BuildOptions),
 				NewDistributorHTTPService(tst.BuildOptions),
+				NewIngesterGRPCService(tst.BuildOptions),
 				NewIngesterHTTPService(tst.BuildOptions),
+				NewQuerierGRPCService(tst.BuildOptions),
 				NewQuerierHTTPService(tst.BuildOptions),
+				NewQueryFrontendGRPCService(tst.BuildOptions),
 				NewQueryFrontendHTTPService(tst.BuildOptions),
+				NewCompactorGRPCService(tst.BuildOptions),
 				NewCompactorHTTPService(tst.BuildOptions),
+				NewIndexGatewayGRPCService(tst.BuildOptions),
 				NewIndexGatewayHTTPService(tst.BuildOptions),
 				NewRulerHTTPService(tst.BuildOptions),
+				NewRulerGRPCService(tst.BuildOptions),
 				NewGatewayHTTPService(tst.BuildOptions),
 			}
 
-			for _, service := range httpServices {
+			for _, service := range svcs {
 				if !tst.BuildOptions.Flags.EnableCertificateSigningService {
 					require.Equal(t, service.ObjectMeta.Annotations, map[string]string{})
 				} else {
@@ -263,7 +270,7 @@ func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
 			continue
 		}
 
-		secretName := fmt.Sprintf("%s-http-tls", name)
+		secretName := fmt.Sprintf("%s-http", name)
 		expVolume := corev1.Volume{
 			Name: secretName,
 			VolumeSource: corev1.VolumeSource{
@@ -277,14 +284,183 @@ func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
 		expVolumeMount := corev1.VolumeMount{
 			Name:      secretName,
 			ReadOnly:  false,
-			MountPath: "/etc/proxy/secrets",
+			MountPath: "/var/run/tls/http",
 		}
 		require.Contains(t, vms, expVolumeMount)
 
-		require.Contains(t, args, "-server.http-tls-cert-path=/etc/proxy/secrets/tls.crt")
-		require.Contains(t, args, "-server.http-tls-key-path=/etc/proxy/secrets/tls.key")
+		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/tls.crt")
+		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/tls.key")
 		require.Equal(t, corev1.URISchemeHTTPS, rps)
 		require.Equal(t, corev1.URISchemeHTTPS, lps)
+	}
+}
+
+func TestBuildAll_WithFeatureFlags_EnableTLSGRPCServices(t *testing.T) {
+	type test struct {
+		desc         string
+		BuildOptions Options
+	}
+
+	table := []test{
+		{
+			desc: "disabled grpc over tls services",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1beta1.LokiStackSpec{
+					Size: lokiv1beta1.SizeOneXSmall,
+					Rules: &lokiv1beta1.RulesSpec{
+						Enabled: true,
+					},
+					Template: &lokiv1beta1.LokiTemplateSpec{
+						Compactor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Distributor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ingester: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Querier: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Gateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ruler: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+				},
+				Flags: FeatureFlags{
+					EnableTLSGRPCServices: false,
+				},
+			},
+		},
+		{
+			desc: "enabled grpc over tls services",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1beta1.LokiStackSpec{
+					Size: lokiv1beta1.SizeOneXSmall,
+					Rules: &lokiv1beta1.RulesSpec{
+						Enabled: true,
+					},
+					Template: &lokiv1beta1.LokiTemplateSpec{
+						Compactor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Distributor: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ingester: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Querier: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Gateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						IndexGateway: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						Ruler: &lokiv1beta1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+				},
+				Flags: FeatureFlags{
+					EnableTLSGRPCServices: true,
+				},
+			},
+		},
+	}
+
+	secretsMap := map[string]string{
+		// deployments
+		"test-distributor":    "test-distributor-grpc",
+		"test-querier":        "test-querier-grpc",
+		"test-query-frontend": "test-query-frontend-grpc",
+		// statefulsets
+		"test-ingester":      "test-ingester-grpc",
+		"test-compactor":     "test-compactor-grpc",
+		"test-index-gateway": "test-index-gateway-grpc",
+		"test-ruler":         "test-ruler-grpc",
+	}
+
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.desc, func(t *testing.T) {
+			t.Parallel()
+
+			err := ApplyDefaultSettings(&tst.BuildOptions)
+			require.NoError(t, err)
+
+			objs, err := BuildAll(tst.BuildOptions)
+			require.NoError(t, err)
+
+			for _, o := range objs {
+				var (
+					name string
+					spec *corev1.PodSpec
+				)
+				switch obj := o.(type) {
+				case *appsv1.Deployment:
+					name = obj.Name
+					spec = &obj.Spec.Template.Spec
+				case *appsv1.StatefulSet:
+					name = obj.Name
+					spec = &obj.Spec.Template.Spec
+				default:
+					continue
+				}
+
+				t.Run(name, func(t *testing.T) {
+					secretName := secretsMap[name]
+					args := []string{
+						"-server.grpc-tls-cert-path=/var/run/tls/grpc/tls.crt",
+						"-server.grpc-tls-key-path=/var/run/tls/grpc/tls.key",
+					}
+
+					vm := corev1.VolumeMount{
+						Name:      secretName,
+						ReadOnly:  false,
+						MountPath: "/var/run/tls/grpc",
+					}
+
+					v := corev1.Volume{
+						Name: secretName,
+						VolumeSource: corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{
+								SecretName: secretName,
+							},
+						},
+					}
+
+					if tst.BuildOptions.Flags.EnableTLSGRPCServices {
+						require.Subset(t, spec.Containers[0].Args, args)
+						require.Contains(t, spec.Containers[0].VolumeMounts, vm)
+						require.Contains(t, spec.Volumes, v)
+					} else {
+						require.NotSubset(t, spec.Containers[0].Args, args)
+						require.NotContains(t, spec.Containers[0].VolumeMounts, vm)
+						require.NotContains(t, spec.Volumes, v)
+					}
+				})
+			}
+		})
 	}
 }
 

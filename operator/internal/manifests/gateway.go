@@ -211,8 +211,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 // NewGatewayHTTPService creates a k8s service for the lokistack-gateway HTTP endpoint
 func NewGatewayHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameGatewayHTTP(opts.Name)
-	l := ComponentLabels(LabelGatewayComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelGatewayComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -221,8 +220,8 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -235,7 +234,7 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 					Port: gatewayInternalPort,
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -349,9 +348,8 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 		}
 	}
 
-	secretName := signingServiceSecretName(serviceName)
-	certFile := path.Join(gateway.LokiGatewayTLSDir, gateway.LokiGatewayCertFile)
-	keyFile := path.Join(gateway.LokiGatewayTLSDir, gateway.LokiGatewayKeyFile)
+	certFile := path.Join(httpTLSDir, tlsCertFile)
+	keyFile := path.Join(httpTLSDir, tlsKeyFile)
 
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
@@ -359,7 +357,7 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 				Name: tlsSecretVolume,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
-						SecretName: secretName,
+						SecretName: serviceName,
 					},
 				},
 			},
@@ -370,7 +368,7 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) err
 			{
 				Name:      tlsSecretVolume,
 				ReadOnly:  true,
-				MountPath: gateway.LokiGatewayTLSDir,
+				MountPath: httpTLSDir,
 			},
 		},
 		Args: []string{

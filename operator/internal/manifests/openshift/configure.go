@@ -42,7 +42,7 @@ func ConfigureGatewayDeployment(
 	d *appsv1.Deployment,
 	gwContainerName string,
 	secretVolumeName, tlsDir, certFile, keyFile string,
-	caDir, caFile string,
+	caBundleVolumeName, caDir, caFile string,
 	withTLS, withCertSigningService bool,
 	secretName, serverName string,
 	gatewayHTTPPort int,
@@ -67,12 +67,6 @@ func ConfigureGatewayDeployment(
 		}
 
 		gwArgs = append(gwArgs, fmt.Sprintf("--logs.tls.ca-file=%s/%s", caDir, caFile))
-
-		caBundleVolumeName := serviceCABundleName(Options{
-			BuildOpts: BuildOptions{
-				GatewayName: d.GetName(),
-			},
-		})
 
 		gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
 			Name:      caBundleVolumeName,
