@@ -43,7 +43,7 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - lokistack
+    - lokistacks
   sideEffects: None
 - admissionReviewVersions:
   - v1
