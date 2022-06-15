@@ -101,6 +101,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		results = append(results, casted.Response)
 		level.Debug(sp).Log(
 			"msg", "queried index",
+			"type", "single",
 			"matchers", matchers,
 			"bytes", casted.Response.Bytes,
 			"chunks", casted.Response.Chunks,
@@ -116,7 +117,8 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	combined := stats.MergeStats(results...)
 	factor := guessShardFactor(combined, r.maxParallelism)
 	level.Debug(sp).Log(
-		"msg", "combined index queries",
+		"msg", "queried index",
+		"type", "combined",
 		"len", len(results),
 		"bytes", combined.Bytes,
 		"chunks", combined.Chunks,
