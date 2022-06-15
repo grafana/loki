@@ -61,8 +61,8 @@ func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebas
 func (h DownstreamHandler) Downstreamer(ctx context.Context) logql.Downstreamer {
 	p := DefaultDownstreamConcurrency
 
-	// In the future when we may increase parallelism,
-	// ensure we don't end up bottlenecking here
+	// We may increase parallelism above the default,
+	// ensure we don't end up bottlenecking here.
 	if user, err := tenant.TenantID(ctx); err == nil {
 		if x := h.limits.MaxQueryParallelism(user); x > 0 {
 			p = x
