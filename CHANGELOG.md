@@ -27,7 +27,7 @@
 * [5662](https://github.com/grafana/loki/pull/5662) **ssncferreira** **chaudum** Improve performance of instant queries by splitting range into multiple subqueries that are executed in parallel.
 * [5685](https://github.com/grafana/loki/pull/5625) **chaudum** Fix bug in push request parser that allowed users to send arbitrary non-string data as "log line".
 * [5707](https://github.com/grafana/loki/pull/5707) **franzwong** Rename Promtail configuration parameter from `limit_config` to `limits_config`.
-* [5626](https://github.com/grafana/loki/pull/5626) **jeschkies** Support multi-tenant select logs and samples queries.
+* [5626](https://github.com/grafana/loki/pull/5626) **jeschkies** Apply query limits to multi-tenant queries by choosing the most restrictive limit from the set of tenant limits.
 * [5622](https://github.com/grafana/loki/pull/5622) **chaudum**: Fixed a bug in the query splitter that caused the `interval` query parameter to be ignored and therefore returning more logs than expected.
 * [5521](https://github.com/grafana/loki/pull/5521) **cstyan**: Moved stream lag configuration to the top-level clients configuration structure, and refactored stream lag metric. This resolves a bug with duplicate metric collection when a single Promtail binary is running multiple Promtail clients.
 * [5568](https://github.com/grafana/loki/pull/5568) **afayngelerindbx**: Fix Loki Canary panics that were due to concurrent execution of `confirmMissing`.
