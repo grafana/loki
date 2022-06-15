@@ -100,7 +100,7 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 	level.Debug(util_log.Logger).Log(
 		"msg", "starting filter function",
 		"delete_request_id", d.RequestID,
-		"userID", d.UserID, "labels",
+		"user", d.UserID, "labels",
 		entry.Labels.String(),
 	)
 	ff, err := d.FilterFunction(entry.Labels)
@@ -110,7 +110,7 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 		level.Error(util_log.Logger).Log(
 			"msg", "unexpected error getting filter function",
 			"delete_request_id", d.RequestID,
-			"userID", d.UserID,
+			"user", d.UserID,
 			"err", err,
 		)
 		return false, nil
@@ -118,7 +118,7 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 	level.Debug(util_log.Logger).Log(
 		"msg", "finished filter function",
 		"delete_request_id", d.RequestID,
-		"userID", d.UserID,
+		"user", d.UserID,
 		"labels", entry.Labels.String(),
 	)
 
