@@ -10,7 +10,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -25,6 +24,7 @@ import (
 func shardResolverForConf(
 	ctx context.Context,
 	conf config.PeriodConfig,
+	defaultLookback time.Duration,
 	logger log.Logger,
 	maxParallelism int,
 	r queryrangebase.Request,
@@ -35,13 +35,15 @@ func shardResolverForConf(
 			time.Unix(0, r.GetStart()),
 			time.Unix(0, r.GetEnd()),
 		)
+		level.Debug(logger).Log("msg", "roundting bounds", "start", r.GetStart(), "end", r.GetEnd(), "from", from, "through", through)
 		return &dynamicShardResolver{
-			ctx:            ctx,
-			logger:         logger,
-			handler:        handler,
-			from:           from,
-			through:        through,
-			maxParallelism: maxParallelism,
+			ctx:             ctx,
+			logger:          logger,
+			handler:         handler,
+			from:            from,
+			through:         through,
+			maxParallelism:  maxParallelism,
+			defaultLookback: defaultLookback,
 		}, true
 	}
 	if conf.RowShards < 2 {
@@ -55,8 +57,9 @@ type dynamicShardResolver struct {
 	handler queryrangebase.Handler
 	logger  log.Logger
 
-	from, through  model.Time
-	maxParallelism int
+	from, through   model.Time
+	maxParallelism  int
+	defaultLookback time.Duration
 }
 
 // from, through, max concurrency to run
@@ -70,18 +73,26 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 
 	// If there are zero matchers groups, we'll inject one to query everything
 	if len(grps) == 0 {
-		grps = append(grps, []*labels.Matcher{})
+		grps = append(grps, syntax.MatcherRange{})
 	}
 
 	results := make([]*stats.Stats, 0, len(grps))
 
 	start := time.Now()
 	if err := concurrency.ForEachJob(r.ctx, len(grps), r.maxParallelism, func(ctx context.Context, i int) error {
-		matchers := syntax.MatchersString(grps[i])
+		matchers := syntax.MatchersString(grps[i].Matchers)
+		lookback := grps[i].Interval
+		if lookback == 0 {
+			lookback = r.defaultLookback
+		}
+		diff := lookback + grps[i].Offset
+		adjustedFrom := r.from.Add(-diff)
+		adjustedThrough := r.through.Add(-diff)
+
 		start := time.Now()
 		resp, err := r.handler.Do(r.ctx, &indexgatewaypb.IndexStatsRequest{
-			From:     r.from,
-			Through:  r.through,
+			From:     adjustedFrom,
+			Through:  adjustedThrough,
 			Matchers: matchers,
 		})
 		if err != nil {
@@ -109,6 +120,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	}
 
 	combined := stats.MergeStats(results...)
+	factor := guessShardFactor(combined, r.maxParallelism)
 	level.Debug(sp).Log(
 		"msg", "combined index queries",
 		"len", len(results),
@@ -117,8 +129,9 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		"streams", combined.Streams,
 		"entries", combined.Entries,
 		"duration", time.Since(start),
+		"factor", factor,
 	)
-	return guessShardFactor(combined, r.maxParallelism), nil
+	return factor, nil
 }
 
 const (

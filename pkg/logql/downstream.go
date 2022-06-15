@@ -43,7 +43,7 @@ operand expression can take advantage of the parallel execution model:
 // querying the underlying backend shards individually and re-aggregating them.
 type DownstreamEngine struct {
 	logger         log.Logger
-	timeout        time.Duration
+	opts           EngineOpts
 	downstreamable Downstreamable
 	limits         Limits
 }
@@ -53,17 +53,19 @@ func NewDownstreamEngine(opts EngineOpts, downstreamable Downstreamable, limits 
 	opts.applyDefault()
 	return &DownstreamEngine{
 		logger:         logger,
-		timeout:        opts.Timeout,
+		opts:           opts,
 		downstreamable: downstreamable,
 		limits:         limits,
 	}
 }
 
+func (ng *DownstreamEngine) Opts() EngineOpts { return ng.opts }
+
 // Query constructs a Query
 func (ng *DownstreamEngine) Query(ctx context.Context, p Params, mapped syntax.Expr) Query {
 	return &query{
 		logger:    ng.logger,
-		timeout:   ng.timeout,
+		timeout:   ng.opts.Timeout,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
 		parse: func(_ context.Context, _ string) (syntax.Expr, error) {

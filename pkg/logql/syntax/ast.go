@@ -707,7 +707,7 @@ type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
 	Extractor() (SampleExtractor, error)
-	MatcherGroups() [][]*labels.Matcher
+	MatcherGroups() []MatcherRange
 	Expr
 }
 
@@ -754,10 +754,16 @@ func (e *RangeAggregationExpr) Selector() LogSelectorExpr {
 	return e.Left.Left
 }
 
-func (e *RangeAggregationExpr) MatcherGroups() [][]*labels.Matcher {
+func (e *RangeAggregationExpr) MatcherGroups() []MatcherRange {
 	xs := e.Left.Left.Matchers()
 	if len(xs) > 0 {
-		return [][]*labels.Matcher{xs}
+		return []MatcherRange{
+			{
+				Matchers: xs,
+				Interval: e.Left.Interval,
+				Offset:   e.Left.Offset,
+			},
+		}
 	}
 	return nil
 }
@@ -880,7 +886,7 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 	}
 }
 
-func (e *VectorAggregationExpr) MatcherGroups() [][]*labels.Matcher {
+func (e *VectorAggregationExpr) MatcherGroups() []MatcherRange {
 	return e.Left.MatcherGroups()
 }
 
@@ -1005,7 +1011,7 @@ type BinOpExpr struct {
 	Opts *BinOpOptions
 }
 
-func (e *BinOpExpr) MatcherGroups() [][]*labels.Matcher {
+func (e *BinOpExpr) MatcherGroups() []MatcherRange {
 	return append(e.SampleExpr.MatcherGroups(), e.RHS.MatcherGroups()...)
 }
 
@@ -1391,7 +1397,7 @@ func (e *LiteralExpr) Shardable() bool                         { return true }
 func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher             { return nil }
-func (e *LiteralExpr) MatcherGroups() [][]*labels.Matcher      { return nil }
+func (e *LiteralExpr) MatcherGroups() []MatcherRange           { return nil }
 func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 func (e *LiteralExpr) Value() float64                          { return e.Val }
 
@@ -1446,7 +1452,7 @@ func (e *LabelReplaceExpr) Selector() LogSelectorExpr {
 	return e.Left.Selector()
 }
 
-func (e *LabelReplaceExpr) MatcherGroups() [][]*labels.Matcher {
+func (e *LabelReplaceExpr) MatcherGroups() []MatcherRange {
 	return e.Left.MatcherGroups()
 }
 
@@ -1521,13 +1527,22 @@ var shardableOps = map[string]bool{
 	OpTypeMul: true,
 }
 
-func MatcherGroups(expr Expr) [][]*labels.Matcher {
+type MatcherRange struct {
+	Matchers         []*labels.Matcher
+	Interval, Offset time.Duration
+}
+
+func MatcherGroups(expr Expr) []MatcherRange {
 	switch e := expr.(type) {
 	case SampleExpr:
 		return e.MatcherGroups()
 	case LogSelectorExpr:
 		if xs := e.Matchers(); len(xs) > 0 {
-			return [][]*labels.Matcher{xs}
+			return []MatcherRange{
+				{
+					Matchers: xs,
+				},
+			}
 		}
 		return nil
 	default:
