@@ -9,7 +9,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -92,7 +94,7 @@ func TestGetTenantConfigMapData_ConfigMapNotExist(t *testing.T) {
 	}
 
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
-		return nil
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
 	ts, err := GetTenantConfigMapData(context.TODO(), k, r)

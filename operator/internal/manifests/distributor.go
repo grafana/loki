@@ -14,17 +14,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	walVolumeName          = "wal"
-	configVolumeName       = "config"
-	rulesStorageVolumeName = "rules"
-	storageVolumeName      = "storage"
-	walDirectory           = "/tmp/wal"
-	dataDirectory          = "/tmp/loki"
-	rulesStorageDirectory  = "/tmp/rules"
-	secretDirectory        = "/etc/proxy/secrets"
-)
-
 // BuildDistributor returns a list of k8s objects for Loki Distributor
 func BuildDistributor(opts Options) ([]client.Object, error) {
 	deployment := NewDistributorDeployment(opts)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
@@ -69,7 +70,7 @@ func CreateOrUpdateLokiStack(
 		return kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	objstorage, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
+	objStore, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
@@ -77,6 +78,21 @@ func CreateOrUpdateLokiStack(
 			Requeue: false,
 		}
 	}
+
+	storageSchemas, err := storageoptions.BuildSchemaConfig(
+		time.Now().UTC(),
+		stack.Spec.Storage.Schemas,
+		stack.Status.Storage.Schemas,
+	)
+	if err != nil {
+		return &status.DegradedError{
+			Message: fmt.Sprintf("Invalid object storage schema contents: %s", err),
+			Reason:  lokiv1beta1.ReasonInvalidObjectStorageSchema,
+			Requeue: false,
+		}
+	}
+
+	objStore.Schemas = storageSchemas
 
 	if stack.Spec.Storage.TLS != nil {
 		var cm corev1.ConfigMap
@@ -100,7 +116,7 @@ func CreateOrUpdateLokiStack(
 			}
 		}
 
-		objstorage.TLS = &storageoptions.TLSConfig{CA: cm.Name}
+		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name}
 	}
 
 	var (
@@ -195,7 +211,7 @@ func CreateOrUpdateLokiStack(
 		GatewayBaseDomain: baseDomain,
 		Stack:             stack.Spec,
 		Flags:             flags,
-		ObjectStorage:     *objstorage,
+		ObjectStorage:     *objStore,
 		AlertingRules:     alertingRules,
 		RecordingRules:    recordingRules,
 		Ruler: manifests.Ruler{
@@ -218,7 +234,7 @@ func CreateOrUpdateLokiStack(
 	if flags.EnableGateway {
 		if optErr := manifests.ApplyGatewayDefaultOptions(&opts); optErr != nil {
 			ll.Error(optErr, "failed to apply defaults options to gateway settings ")
-			return err
+			return optErr
 		}
 	}
 
@@ -227,7 +243,18 @@ func CreateOrUpdateLokiStack(
 		ll.Error(err, "failed to build manifests")
 		return err
 	}
+
 	ll.Info("manifests built", "count", len(objects))
+
+	// The status is updated before the objects are actually created to
+	// avoid the scenario in which the configmap is successfully created or
+	// updated and another resource is not. This would cause the status to
+	// be possibly misaligned with the configmap, which could lead to
+	// a user possibly being unable to read logs.
+	if err := status.SetStorageSchemaStatus(ctx, k, req, storageSchemas); err != nil {
+		ll.Error(err, "failed to set storage schema status")
+		return err
+	}
 
 	var errCount int32
 

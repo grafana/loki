@@ -7,18 +7,18 @@ chunk_store_config:
       max_size_bytes: 500MB
 common:
   storage:
-    {{ with .ObjectStorage.Azure }}
+    {{- with .ObjectStorage.Azure }}
     azure:
       environment: {{ .Env }}
       container_name: {{ .Container }}
       account_name: {{ .AccountName }}
       account_key: {{ .AccountKey }}
-    {{ end }}
-    {{ with .ObjectStorage.GCS }}
+    {{- end }}
+    {{- with .ObjectStorage.GCS }}
     gcs:
       bucket_name: {{ .Bucket }}
-    {{ end }}
-    {{ with .ObjectStorage.S3 }}
+    {{- end }}
+    {{- with .ObjectStorage.S3 }}
     s3:
       s3: {{ .Endpoint }}
       bucketnames: {{ .Buckets }}
@@ -26,8 +26,8 @@ common:
       access_key_id: {{ .AccessKeyID }}
       secret_access_key: {{ .AccessKeySecret }}
       s3forcepathstyle: true
-    {{ end }}
-    {{ with .ObjectStorage.Swift }}
+    {{- end }}
+    {{- with .ObjectStorage.Swift }}
     swift:
       auth_url: {{ .AuthURL }}
       username: {{ .Username }}
@@ -43,7 +43,7 @@ common:
       project_domain_name: {{ .ProjectDomainName }}
       region_name: {{ .Region }}
       container_name: {{ .Container }}
-    {{ end }}
+    {{- end }}
 compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor
@@ -149,14 +149,16 @@ query_range:
   parallelise_shardable_queries: true
 schema_config:
   configs:
-    - from: "2020-10-01"
+    {{- $store := .ObjectStorage.SharedStore }}
+    {{- range .ObjectStorage.Schemas }}
+    - from: "{{ .EffectiveDate }}"
       index:
         period: 24h
         prefix: index_
-      object_store: {{ .ObjectStorage.SharedStore }}
-      schema: v11
+      object_store: {{ $store }}
+      schema: {{ .Version }}
       store: boltdb-shipper
-
+    {{- end }}
 {{ if .Ruler.Enabled }}
 ruler:
   enable_api: true

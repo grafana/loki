@@ -29,6 +29,16 @@ const (
 	gatewayHTTPPortName     = "public"
 	gatewayInternalPortName = "metrics"
 
+	walVolumeName          = "wal"
+	configVolumeName       = "config"
+	storageVolumeName      = "storage"
+	rulesStorageVolumeName = "rules"
+
+	walDirectory          = "/tmp/wal"
+	dataDirectory         = "/tmp/loki"
+	secretDirectory       = "/etc/proxy/secrets"
+	rulesStorageDirectory = "/tmp/rules"
+
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
 	// EnvRelatedImageGateway is the environment variable to fetch the Gateway image pullspec.
@@ -156,6 +166,10 @@ func GatewayName(stackName string) string {
 // PrometheusRuleName is the name of the loki-prometheus-rule
 func PrometheusRuleName(stackName string) string {
 	return fmt.Sprintf("%s-prometheus-rule", stackName)
+}
+
+func lokiConfigMapName(stackName string) string {
+	return fmt.Sprintf("%s-config", stackName)
 }
 
 func serviceNameQuerierHTTP(stackName string) string {

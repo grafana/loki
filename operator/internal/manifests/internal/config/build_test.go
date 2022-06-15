@@ -224,6 +224,12 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
+			},
 		},
 		EnableRemoteReporting: true,
 	}
@@ -466,6 +472,12 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
+			},
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -528,6 +540,12 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 				Buckets:         "loki",
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
+			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
 			},
 		},
 	}
@@ -853,6 +871,12 @@ overrides:
 				Buckets:         "loki",
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
+			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
 			},
 		},
 		EnableRemoteReporting: true,
@@ -1180,6 +1204,12 @@ overrides:
 				Buckets:         "loki",
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
+			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
 			},
 		},
 		EnableRemoteReporting: true,
@@ -1537,6 +1567,12 @@ overrides:
 				Buckets:         "loki",
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
+			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
 			},
 		},
 		EnableRemoteReporting: true,

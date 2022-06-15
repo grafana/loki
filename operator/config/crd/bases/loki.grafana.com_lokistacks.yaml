@@ -309,6 +309,33 @@ spec:
                 description: Storage defines the spec for the object storage endpoint
                   to store logs.
                 properties:
+                  schemas:
+                    default:
+                    - effectiveDate: "2020-10-11"
+                      version: v11
+                    description: Schemas for reading and writing logs.
+                    items:
+                      description: ObjectStorageSchema defines the requirements needed
+                        to configure a new storage schema.
+                      properties:
+                        effectiveDate:
+                          description: EffectiveDate is the date in UTC that the schema
+                            will be applied on. To ensure readibility of logs, this
+                            date should be before the current date in UTC.
+                          pattern: ^([0-9]{4,})([-]([0-9]{2})){2}$
+                          type: string
+                        version:
+                          description: Version for writing and reading logs.
+                          enum:
+                          - v11
+                          - v12
+                          type: string
+                      required:
+                      - effectiveDate
+                      - version
+                      type: object
+                    minItems: 1
+                    type: array
                   secret:
                     description: Secret for object storage authentication. Name of
                       a secret in the same namespace as the LokiStack custom resource.
@@ -1116,6 +1143,35 @@ spec:
                   - type
                   type: object
                 type: array
+              storage:
+                description: Storage provides summary of all changes that have occurred
+                  to the storage configuration.
+                properties:
+                  schemas:
+                    description: Schemas is a list of schemas which have been applied
+                      to the LokiStack.
+                    items:
+                      description: ObjectStorageSchema defines the requirements needed
+                        to configure a new storage schema.
+                      properties:
+                        effectiveDate:
+                          description: EffectiveDate is the date in UTC that the schema
+                            will be applied on. To ensure readibility of logs, this
+                            date should be before the current date in UTC.
+                          pattern: ^([0-9]{4,})([-]([0-9]{2})){2}$
+                          type: string
+                        version:
+                          description: Version for writing and reading logs.
+                          enum:
+                          - v11
+                          - v12
+                          type: string
+                      required:
+                      - effectiveDate
+                      - version
+                      type: object
+                    type: array
+                type: object
             type: object
         type: object
     served: true

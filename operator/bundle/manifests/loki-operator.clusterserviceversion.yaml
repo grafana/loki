@@ -439,6 +439,12 @@ spec:
           logs.
         displayName: Object Storage
         path: storage
+      - description: Version for writing and reading logs.
+        displayName: Version
+        path: storage.schemas[0].version
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:v11
+        - urn:alm:descriptor:com.tectonic.ui:select:v12
       - description: Name of a secret in the namespace configured for object storage
           secrets.
         displayName: Object Storage Secret Name
@@ -1318,6 +1324,26 @@ spec:
     targetPort: 9443
     type: ValidatingAdmissionWebhook
     webhookPath: /validate-loki-grafana-com-v1beta1-alertingrule
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: loki-operator-controller-manager
+    failurePolicy: Fail
+    generateName: vlokistack.kb.io
+    rules:
+    - apiGroups:
+      - loki.grafana.com
+      apiVersions:
+      - v1beta1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - lokistacks
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-loki-grafana-com-v1beta1-lokistack
   - admissionReviewVersions:
     - v1
     containerPort: 443
