@@ -151,7 +151,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		level.Info(util_log.Logger).Log(
 			"msg", "started processing delete request",
 			"delete_request_id", deleteRequest.RequestID,
-			"userID", deleteRequest.UserID,
+			"user", deleteRequest.UserID,
 		)
 		rebuiltIntervals := make([]retention.IntervalFilter, 0, len(d.chunkIntervalsToRetain))
 		for _, ivf := range d.chunkIntervalsToRetain {
@@ -171,7 +171,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 			level.Info(util_log.Logger).Log(
 				"msg", "no chunks to retain: the whole chunk is deleted",
 				"delete_request_id", deleteRequest.RequestID,
-				"userID", deleteRequest.UserID,
+				"user", deleteRequest.UserID,
 				"chunkID", string(ref.ChunkID),
 			)
 			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
@@ -180,7 +180,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		level.Info(util_log.Logger).Log(
 			"msg", "finished processing delete request",
 			"delete_request_id", deleteRequest.RequestID,
-			"userID", deleteRequest.UserID,
+			"user", deleteRequest.UserID,
 		)
 	}
 
