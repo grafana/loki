@@ -251,9 +251,9 @@ func CreateOrUpdateLokiStack(
 	// updated and another resource is not. This would cause the status to
 	// be possibly misaligned with the configmap, which could lead to
 	// a user possibly being unable to read logs.
-	if stsErr := status.SetStorageSchemaStatus(ctx, k, req, storageSchemas); stsErr != nil {
-		ll.Error(stsErr, "failed to set storage schema status")
-		return stsErr
+	if err := status.SetStorageSchemaStatus(ctx, k, req, storageSchemas); err != nil {
+		ll.Error(err, "failed to set storage schema status")
+		return err
 	}
 
 	var errCount int32

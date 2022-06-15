@@ -46,7 +46,7 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						DefaultMode: &defaultConfigMapMode,
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: LokiConfigMapName(opts.Name),
+							Name: lokiConfigMapName(opts.Name),
 						},
 					},
 				},

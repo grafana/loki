@@ -118,11 +118,6 @@ func GossipLabels() map[string]string {
 	}
 }
 
-// LokiConfigMapName is the name of the configmap for Loki
-func LokiConfigMapName(stackName string) string {
-	return fmt.Sprintf("%s-config", stackName)
-}
-
 // CompactorName is the name of the compactor statefulset
 func CompactorName(stackName string) string {
 	return fmt.Sprintf("%s-compactor", stackName)
@@ -171,6 +166,10 @@ func GatewayName(stackName string) string {
 // PrometheusRuleName is the name of the loki-prometheus-rule
 func PrometheusRuleName(stackName string) string {
 	return fmt.Sprintf("%s-prometheus-rule", stackName)
+}
+
+func lokiConfigMapName(stackName string) string {
+	return fmt.Sprintf("%s-config", stackName)
 }
 
 func serviceNameQuerierHTTP(stackName string) string {

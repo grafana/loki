@@ -33,7 +33,7 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   LokiConfigMapName(opt.Name),
+			Name:   lokiConfigMapName(opt.Name),
 			Labels: commonLabels(opt.Name),
 		},
 		BinaryData: map[string][]byte{
