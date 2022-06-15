@@ -114,7 +114,10 @@ func (m ShardMapper) mapLogSelectorExpr(expr syntax.LogSelectorExpr, r *downstre
 		return nil, err
 	}
 	if shards == 0 {
-		return expr, nil
+		return DownstreamLogSelectorExpr{
+			shard:           nil,
+			LogSelectorExpr: expr,
+		}, nil
 	}
 	for i := shards - 1; i >= 0; i-- {
 		head = &ConcatLogSelectorExpr{
@@ -140,7 +143,10 @@ func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder
 		return nil, err
 	}
 	if shards == 0 {
-		return expr, nil
+		return DownstreamSampleExpr{
+			shard:      nil,
+			SampleExpr: expr,
+		}, nil
 	}
 	for i := shards - 1; i >= 0; i-- {
 		head = &ConcatSampleExpr{
