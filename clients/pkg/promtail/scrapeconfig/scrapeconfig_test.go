@@ -105,9 +105,7 @@ func TestLoadSmallConfig(t *testing.T) {
 			KubernetesSDConfigs: []*kubernetes.SDConfig{
 				{
 					Role: "pod",
-					HTTPClientConfig: promConfig.HTTPClientConfig{
-						FollowRedirects: true,
-					},
+					HTTPClientConfig: promConfig.DefaultHTTPClientConfig,
 				},
 			},
 			StaticConfigs: []*targetgroup.Group{

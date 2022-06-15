@@ -517,8 +517,7 @@ func getPromMetrics(t *testing.T) ([]byte, string) {
 func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName string, label string) map[string]float64 {
 	rb := map[string]float64{}
 
-	pr, err := textparse.New(bytes, contentType)
-	require.NoError(t, err)
+	pr := textparse.New(bytes, contentType)
 	for {
 		et, err := pr.Next()
 		if err == io.EOF {
