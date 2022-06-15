@@ -710,7 +710,7 @@ func Test_DedupeIngester(t *testing.T) {
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 		var expectedLabels []string
 		for _, s := range streams {
-			expectedLabels = append(expectedLabels, s.WithoutLabels("foo").String())
+			expectedLabels = append(expectedLabels, labels.NewBuilder(s).Del("foo").Labels().String())
 		}
 		sort.Strings(expectedLabels)
 		for i := int64(0); i < requests; i++ {

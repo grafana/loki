@@ -189,7 +189,7 @@ Outer:
 					continue Outer
 				}
 			}
-			l := c.Metric.WithoutLabels(labels.MetricName)
+			l := labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels()
 			if m.f != nil {
 				if m.f.ForRequest(ctx).ShouldFilter(l) {
 					continue
