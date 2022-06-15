@@ -2,7 +2,6 @@ package deletion
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -214,9 +213,18 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 
 	for _, deleteRequest := range d.deleteRequestsToProcess {
 		if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusProcessed); err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to mark delete request %s for user %s as processed", deleteRequest.RequestID, deleteRequest.UserID), "err", err)
+			level.Error(util_log.Logger).Log(
+				"msg", "failed to mark delete request for user as processed",
+				"delete_request_id", deleteRequest.RequestID,
+				"user", deleteRequest.UserID,
+				"err", err,
+			)
 		} else {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("delete request %s for user %s marked as processed", deleteRequest.RequestID, deleteRequest.UserID))
+			level.Info(util_log.Logger).Log(
+				"msg", "delete request for user marked as processed",
+				"delete_request_id", deleteRequest.RequestID,
+				"user", deleteRequest.UserID,
+			)
 		}
 		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
 	}

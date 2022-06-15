@@ -100,8 +100,8 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 	level.Debug(util_log.Logger).Log(
 		"msg", "starting filter function",
 		"delete_request_id", d.RequestID,
-		"user", d.UserID, "labels",
-		entry.Labels.String(),
+		"user", d.UserID,
+		"labels", entry.Labels.String(),
 	)
 	ff, err := d.FilterFunction(entry.Labels)
 	if err != nil {
