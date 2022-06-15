@@ -1066,6 +1066,12 @@ steps:
     repo: public.ecr.aws/grafana/lambda-promtail
     secret_key:
       from_secret: ecr_secret_key
+  when:
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
 trigger:
   event:
   - push
@@ -1122,6 +1128,12 @@ steps:
     repo: public.ecr.aws/grafana/lambda-promtail
     secret_key:
       from_secret: ecr_secret_key
+  when:
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
 trigger:
   event:
   - push
@@ -1165,8 +1177,11 @@ steps:
 trigger:
   event:
   - push
-  - pull_request
-  - tag
+  ref:
+    include:
+    - refs/heads/main
+    - refs/heads/k??
+    - refs/tags/v*
 volumes:
 - name: dockerconf
   temp: {}
@@ -1214,6 +1229,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 148248704c13a760220b6375dab1c7b498ca47dba64f9330cd75ccf6a8fd14ef
+hmac: eb40205df6ed6142c474536e1bc42c71411c6acf15e66274d43a38bccbeee711
 
 ...

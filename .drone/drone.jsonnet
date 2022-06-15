@@ -267,7 +267,7 @@ local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(a
     // publish for tag or main
     lambda_promtail_ecr('lambda-promtail') {
       depends_on: ['image-tag'],
-      // when: condition('include').tagMain,
+      when: condition('include').tagMain,
       settings+: {},
     },
   ],
@@ -516,9 +516,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   for arch in ['amd64', 'arm64']
 ] + [
   manifest_ecr(['lambda-promtail'], ['amd64', 'arm64']) {
-    // trigger: condition('include').tagMain {
-    //   event: ['push'],
-    // },
+    trigger: condition('include').tagMain {
+      event: ['push'],
+    },
   },
 ] + [
   github_secret,
