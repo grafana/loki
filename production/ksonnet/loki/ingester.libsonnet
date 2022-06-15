@@ -15,9 +15,11 @@ local k = import 'ksonnet-util/kausal.libsonnet';
         'ingester.max-transfer-retries': 0,
       } else {},
 
+  ingester_ports: $.util.defaultPorts,
+
   ingester_container::
     container.new('ingester', $._images.ingester) +
-    container.withPorts($.util.defaultPorts) +
+    container.withPorts($.ingester_ports) +
     container.withArgsMixin(k.util.mapToFlags($.ingester_args)) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
@@ -25,6 +27,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     k.util.resourcesRequests('1', '5Gi') +
     k.util.resourcesLimits('2', '10Gi') +
+    container.withEnvMixin($._config.commonEnvs) +
     if $._config.stateful_ingesters then
       container.withVolumeMountsMixin([
         volumeMount.new('ingester-data', '/data'),

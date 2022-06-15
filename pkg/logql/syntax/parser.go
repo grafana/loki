@@ -15,7 +15,11 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-const errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"
+const (
+	EmptyMatchers = "{}"
+
+	errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"
+)
 
 var parserPool = sync.Pool{
 	New: func() interface{} {
@@ -139,6 +143,10 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 		return nil, errors.New("only label matchers is supported")
 	}
 	return matcherExpr.Mts, nil
+}
+
+func MatchersString(xs []*labels.Matcher) string {
+	return newMatcherExpr(xs).String()
 }
 
 // ParseSampleExpr parses a string and returns the sampleExpr

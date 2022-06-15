@@ -20,21 +20,22 @@ import (
 )
 
 type splitByRange struct {
-	logger log.Logger
-	next   queryrangebase.Handler
-	limits Limits
-
-	ng *logql.DownstreamEngine
+	logger  log.Logger
+	next    queryrangebase.Handler
+	limits  Limits
+	ng      *logql.DownstreamEngine
+	metrics *logql.MapperMetrics
 }
 
 // NewSplitByRangeMiddleware creates a new Middleware that splits log requests by the range interval.
-func NewSplitByRangeMiddleware(logger log.Logger, limits Limits, metrics *logql.ShardingMetrics) queryrangebase.Middleware {
+func NewSplitByRangeMiddleware(logger log.Logger, limits Limits, metrics *logql.MapperMetrics) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByRange{
-			logger: log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
-			next:   next,
-			limits: limits,
-			ng:     logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics, limits, logger),
+			logger:  log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
+			next:    next,
+			limits:  limits,
+			ng:      logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next}, limits, logger),
+			metrics: metrics,
 		}
 	})
 }
@@ -53,7 +54,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return s.next.Do(ctx, request)
 	}
 
-	mapper, err := logql.NewRangeMapper(interval)
+	mapper, err := logql.NewRangeMapper(interval, s.metrics)
 	if err != nil {
 		return nil, err
 	}

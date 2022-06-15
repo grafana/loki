@@ -26,12 +26,12 @@ const (
 )
 
 var (
-	writeAddress                       *url.URL
-	username, password, extraLabelsRaw string
-	keepStream                         bool
-	batchSize                          int
-	s3Clients                          map[string]*s3.Client
-	extraLabels                        model.LabelSet
+	writeAddress                                 *url.URL
+	username, password, extraLabelsRaw, tenantID string
+	keepStream                                   bool
+	batchSize                                    int
+	s3Clients                                    map[string]*s3.Client
+	extraLabels                                  model.LabelSet
 )
 
 func setupArguments() {
@@ -60,6 +60,8 @@ func setupArguments() {
 	if (username != "" && password == "") || (username == "" && password != "") {
 		panic("both username and password must be set if either one is set")
 	}
+
+	tenantID = os.Getenv("TENANT_ID")
 
 	keep := os.Getenv("KEEP_STREAM")
 	// Anything other than case-insensitive 'true' is treated as 'false'.

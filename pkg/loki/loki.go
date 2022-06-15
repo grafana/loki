@@ -195,19 +195,14 @@ func (c *Config) Validate() error {
 		c.LimitsConfig.MaxQueryLookback = c.ChunkStoreConfig.MaxLookBackPeriod
 	}
 
-	for i, sc := range c.SchemaConfig.Configs {
-		if sc.RowShards > 0 && c.Ingester.IndexShards%int(sc.RowShards) > 0 {
-			return fmt.Errorf(
-				"incompatible ingester index shards (%d) and period config row shard factor (%d) for period config at index (%d). The ingester factor must be evenly divisible by all period config factors",
-				c.Ingester.IndexShards,
-				sc.RowShards,
-				i,
-			)
-		}
-	}
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
+
+	if err := ValidateConfigCompatibility(*c); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -228,6 +223,7 @@ type Loki struct {
 	ModuleManager *modules.Manager
 	serviceMap    map[string]services.Service
 	deps          map[string][]string
+	SignalHandler *signals.Handler
 
 	Server                   *server.Server
 	ring                     *ring.Ring
@@ -252,7 +248,7 @@ type Loki struct {
 	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
 	usageReport              *usagestats.Reporter
-	indexGatewayRing         *ring.Ring
+	indexGatewayRingManager  *indexgateway.RingManager
 
 	clientMetrics storage.ClientMetrics
 
@@ -395,9 +391,9 @@ func (t *Loki) Run(opts RunOpts) error {
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
 
 	// Setup signal handler. If signal arrives, we stop the manager, which stops all the services.
-	handler := signals.NewHandler(t.Server.Log)
+	t.SignalHandler = signals.NewHandler(t.Server.Log)
 	go func() {
-		handler.Loop()
+		t.SignalHandler.Loop()
 		sm.StopAsync()
 	}()
 
@@ -511,12 +507,13 @@ func (t *Loki) setupModuleManager() error {
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
 		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
-		IndexGateway:             {Server, Store, Overrides, UsageReport, MemberlistKV},
+		IndexGateway:             {Server, Store, Overrides, UsageReport, MemberlistKV, IndexGatewayRing},
 		IngesterQuerier:          {Ring},
 		IndexGatewayRing:         {RuntimeConfig, Server, MemberlistKV},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},
 		Write:                    {Ingester, Distributor},
+		MemberlistKV:             {Server},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, or read.

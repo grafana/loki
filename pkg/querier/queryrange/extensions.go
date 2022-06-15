@@ -53,3 +53,11 @@ func convertPrometheusResponseHeadersToPointers(h []queryrangebase.PrometheusRes
 
 	return resp
 }
+
+// GetHeaders returns the HTTP headers in the response.
+func (m *IndexStatsResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	if m != nil {
+		return convertPrometheusResponseHeadersToPointers(m.Headers)
+	}
+	return nil
+}

@@ -67,7 +67,7 @@ func TestFileTargetSync(t *testing.T) {
 		}
 	}()
 	path := logDir1 + "/*.log"
-	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
+	target, err := NewFileTarget(metrics, logger, client, ps, path, "", nil, nil, &Config{
 		SyncPeriod: 1 * time.Minute, // assure the sync is not called by the ticker
 	}, nil, fakeHandler)
 	assert.NoError(t, err)
@@ -165,6 +165,140 @@ func TestFileTargetSync(t *testing.T) {
 	ps.Stop()
 }
 
+func TestFileTargetPathExclusion(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	dirName := newTestLogDirectories(t)
+	positionsFileName := filepath.Join(dirName, "positions.yml")
+	logDir1 := filepath.Join(dirName, "log1")
+	logDir2 := filepath.Join(dirName, "log2")
+	logDir3 := filepath.Join(dirName, "log3")
+	logFiles := []string{
+		filepath.Join(logDir1, "test1.log"),
+		filepath.Join(logDir1, "test2.log"),
+		filepath.Join(logDir2, "test1.log"),
+		filepath.Join(logDir3, "test1.log"),
+		filepath.Join(logDir3, "test2.log"),
+	}
+
+	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
+	// everything saved was done through channel notifications when target.stop() was called.
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Minute,
+		PositionsFile: positionsFileName,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	metrics := NewMetrics(nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fakeHandler := make(chan fileTargetEvent)
+	receivedStartWatch := atomic.NewInt32(0)
+	receivedStopWatch := atomic.NewInt32(0)
+	go func() {
+		for {
+			select {
+			case event := <-fakeHandler:
+				switch event.eventType {
+				case fileTargetEventWatchStart:
+					receivedStartWatch.Add(1)
+				case fileTargetEventWatchStop:
+					receivedStopWatch.Add(1)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	path := filepath.Join(dirName, "**", "*.log")
+	pathExclude := filepath.Join(dirName, "log3", "*.log")
+	target, err := NewFileTarget(metrics, logger, client, ps, path, pathExclude, nil, nil, &Config{
+		SyncPeriod: 1 * time.Minute, // assure the sync is not called by the ticker
+	}, nil, fakeHandler)
+	assert.NoError(t, err)
+
+	// Start with nothing watched.
+	if len(target.watches) != 0 {
+		t.Fatal("Expected watches to be 0 at this point in the test...")
+	}
+	if len(target.tails) != 0 {
+		t.Fatal("Expected tails to be 0 at this point in the test...")
+	}
+
+	// Create the base directories, still nothing watched.
+	err = os.MkdirAll(logDir1, 0750)
+	assert.NoError(t, err)
+	err = os.MkdirAll(logDir2, 0750)
+	assert.NoError(t, err)
+	err = os.MkdirAll(logDir3, 0750)
+	assert.NoError(t, err)
+
+	err = target.sync()
+	assert.NoError(t, err)
+
+	if len(target.watches) != 0 {
+		t.Fatal("Expected watches to be 0 at this point in the test...")
+	}
+	if len(target.tails) != 0 {
+		t.Fatal("Expected tails to be 0 at this point in the test...")
+	}
+
+	// Create all the files, which should create two directory watchers and three file tailers.
+	for _, f := range logFiles {
+		_, err = os.Create(f)
+		assert.NoError(t, err)
+	}
+
+	// Delay sync() call to make sure the filesystem watch event does not fire during sync()
+	time.Sleep(10 * time.Millisecond)
+	err = target.sync()
+	assert.NoError(t, err)
+
+	assert.Equal(t, 2, len(target.watches),
+		"Expected watches to be 2 at this point in the test...",
+	)
+	assert.Equal(t, 3, len(target.tails),
+		"Expected tails to be 3 at this point in the test...",
+	)
+	require.Eventually(t, func() bool {
+		return receivedStartWatch.Load() == 2
+	}, time.Second*10, time.Millisecond*1, "Expected received starting watch event to be 2 at this point in the test...")
+	require.Eventually(t, func() bool {
+		return receivedStopWatch.Load() == 0
+	}, time.Second*10, time.Millisecond*1, "Expected received stopping watch event to be 0 at this point in the test...")
+
+	// Remove the first directory, other tailer should stop and its watchers should go away.
+	// Only the non-excluded `logDir2` should be watched.
+	err = os.RemoveAll(logDir1)
+	assert.NoError(t, err)
+
+	err = target.sync()
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, len(target.watches),
+		"Expected watches to be 1 at this point in the test...",
+	)
+	assert.Equal(t, 1, len(target.tails),
+		"Expected tails to be 1 at this point in the test...",
+	)
+	require.Eventually(t, func() bool {
+		return receivedStartWatch.Load() == 2
+	}, time.Second*10, time.Millisecond*1, "Expected received starting watch event to still be 2 at this point in the test...")
+	require.Eventually(t, func() bool {
+		return receivedStopWatch.Load() == 1
+	}, time.Second*10, time.Millisecond*1, "Expected received stopping watch event to be 1 at this point in the test...")
+
+	target.Stop()
+	ps.Stop()
+}
+
 func TestHandleFileCreationEvent(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
@@ -209,7 +343,7 @@ func TestHandleFileCreationEvent(t *testing.T) {
 		}
 	}()
 
-	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
+	target, err := NewFileTarget(metrics, logger, client, ps, path, "", nil, nil, &Config{
 		// To handle file creation event from channel, set enough long time as sync period
 		SyncPeriod: 10 * time.Minute,
 	}, fakeFileHandler, fakeTargetHandler)

@@ -47,11 +47,11 @@ $(KUSTOMIZE): $(BINGO_DIR)/kustomize.mod
 	@echo "(re)installing $(GOBIN)/kustomize-v4.2.0"
 	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=kustomize.mod -o=$(GOBIN)/kustomize-v4.2.0 "sigs.k8s.io/kustomize/kustomize/v4"
 
-OPERATOR_SDK := $(GOBIN)/operator-sdk-v1.18.1
+OPERATOR_SDK := $(GOBIN)/operator-sdk-v1.19.1
 $(OPERATOR_SDK): $(BINGO_DIR)/operator-sdk.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/operator-sdk-v1.18.1"
-	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=operator-sdk.mod -o=$(GOBIN)/operator-sdk-v1.18.1 "github.com/operator-framework/operator-sdk/cmd/operator-sdk"
+	@echo "(re)installing $(GOBIN)/operator-sdk-v1.19.1"
+	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=operator-sdk.mod -o=$(GOBIN)/operator-sdk-v1.19.1 "github.com/operator-framework/operator-sdk/cmd/operator-sdk"
 
 PROMTOOL := $(GOBIN)/promtool-v1.8.2-0.20220211202545-56e14463bccf
 $(PROMTOOL): $(BINGO_DIR)/promtool.mod

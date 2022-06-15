@@ -8,7 +8,7 @@ import (
 
 	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
 
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 )
 
 const (
@@ -20,16 +20,6 @@ const (
 	LokiGatewayRegoFileName = "lokistack-gateway.rego"
 	// LokiGatewayMountDir is the path that is mounted from the configmap
 	LokiGatewayMountDir = "/etc/lokistack-gateway"
-	// LokiGatewayTLSDir is the path that is mounted from the configmap for TLS
-	LokiGatewayTLSDir = "/var/run/tls"
-	// LokiGatewayCABundleDir is the path that is mounted from the configmap for TLS
-	LokiGatewayCABundleDir = "/var/run/ca"
-	// LokiGatewayCAFile is the file name of the certificate authority file
-	LokiGatewayCAFile = "service-ca.crt"
-	// LokiGatewayCertFile is the file of the X509 server certificate file
-	LokiGatewayCertFile = "tls.crt"
-	// LokiGatewayKeyFile is the file name of the server private key
-	LokiGatewayKeyFile = "tls.key"
 )
 
 var (

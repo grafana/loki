@@ -291,7 +291,7 @@ func (s *mockStore) GetSeries(ctx context.Context, req logql.SelectLogParams) ([
 }
 
 func (s *mockStore) GetSchemaConfigs() []config.PeriodConfig {
-	return nil
+	return defaultPeriodConfigs
 }
 
 func (s *mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
@@ -406,7 +406,7 @@ func TestIngester_buildStoreRequest(t *testing.T) {
 	}
 }
 
-func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
+func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 	now := model.Now()
 
 	for _, tc := range []struct {
@@ -415,7 +415,7 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 		expectedMaxLookBack time.Duration
 	}{
 		{
-			name: "not using boltdb-shipper",
+			name: "not using async index store",
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
@@ -434,7 +434,17 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
 		},
 		{
-			name: "active config boltdb-shipper, previous config non boltdb-shipper",
+			name: "just one periodic config with tsdb",
+			periodicConfigs: []config.PeriodConfig{
+				{
+					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
+					IndexType: "tsdb",
+				},
+			},
+			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
+		},
+		{
+			name: "active config boltdb-shipper, previous config non async index store",
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
@@ -448,7 +458,7 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
 		},
 		{
-			name: "current and previous config both using boltdb-shipper",
+			name: "current and previous config both using async index store",
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
@@ -456,17 +466,17 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 				},
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "boltdb-shipper",
+					IndexType: "tsdb",
 				},
 			},
 			expectedMaxLookBack: time.Since(now.Add(-48 * time.Hour).Time()),
 		},
 		{
-			name: "active config non boltdb-shipper, previous config boltdb-shipper",
+			name: "active config non async index store, previous config tsdb",
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
-					IndexType: "boltdb-shipper",
+					IndexType: "tsdb",
 				},
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
@@ -477,7 +487,7 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ingester := Ingester{periodicConfigs: tc.periodicConfigs}
-			mlb := ingester.boltdbShipperMaxLookBack()
+			mlb := ingester.asyncStoreMaxLookBack()
 			require.InDelta(t, tc.expectedMaxLookBack, mlb, float64(time.Second))
 		})
 	}
@@ -578,7 +588,9 @@ func Test_InMemoryLabels(t *testing.T) {
 	_, err = i.Push(ctx, &req)
 	require.NoError(t, err)
 
+	start := time.Unix(0, 0)
 	res, err := i.Label(ctx, &logproto.LabelRequest{
+		Start:  &start,
 		Name:   "bar",
 		Values: true,
 	})
@@ -586,7 +598,7 @@ func Test_InMemoryLabels(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"baz1", "baz2"}, res.Values)
 
-	res, err = i.Label(ctx, &logproto.LabelRequest{})
+	res, err = i.Label(ctx, &logproto.LabelRequest{Start: &start})
 	require.NoError(t, err)
 	require.Equal(t, []string{"bar", "foo"}, res.Values)
 }
@@ -698,7 +710,7 @@ func Test_DedupeIngester(t *testing.T) {
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 		var expectedLabels []string
 		for _, s := range streams {
-			expectedLabels = append(expectedLabels, s.WithoutLabels("foo").String())
+			expectedLabels = append(expectedLabels, labels.NewBuilder(s).Del("foo").Labels().String())
 		}
 		sort.Strings(expectedLabels)
 		for i := int64(0); i < requests; i++ {

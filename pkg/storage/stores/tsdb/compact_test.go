@@ -356,7 +356,9 @@ func TestCompactor(t *testing.T) {
 			for _, cases := range tc.input {
 				idx := BuildIndex(t, dir, "fake", cases)
 				defer idx.Close()
-				indices = append(indices, idx)
+				casted, ok := idx.Index.(*TSDBIndex)
+				require.Equal(t, true, ok)
+				indices = append(indices, casted)
 			}
 
 			out, err := c.Compact(context.Background(), indices...)
@@ -364,8 +366,9 @@ func TestCompactor(t *testing.T) {
 				require.NotNil(t, err)
 				return
 			}
+			require.Nil(t, err)
 
-			idx, err := LoadTSDBIdentifier(dir, out)
+			idx, err := NewShippableTSDBFile(out, false)
 			require.Nil(t, err)
 			defer idx.Close()
 

@@ -15,20 +15,20 @@ import (
 // detects octet counting.
 // The function returns on EOF or unrecoverable errors.
 func ParseStream(r io.Reader, callback func(res *syslog.Result), maxMessageLength int) error {
-	buf := bufio.NewReader(r)
+	buf := bufio.NewReaderSize(r, 1<<10)
 
-	firstByte, err := buf.Peek(1)
+	b, err := buf.ReadByte()
 	if err != nil {
 		return err
 	}
+	_ = buf.UnreadByte()
 
-	b := firstByte[0]
 	if b == '<' {
 		nontransparent.NewParser(syslog.WithListener(callback), syslog.WithMaxMessageLength(maxMessageLength), syslog.WithBestEffort()).Parse(buf)
 	} else if b >= '0' && b <= '9' {
 		octetcounting.NewParser(syslog.WithListener(callback), syslog.WithMaxMessageLength(maxMessageLength), syslog.WithBestEffort()).Parse(buf)
 	} else {
-		return fmt.Errorf("invalid or unsupported framing. first byte: '%s'", firstByte)
+		return fmt.Errorf("invalid or unsupported framing. first byte: '%s'", string(b))
 	}
 
 	return nil

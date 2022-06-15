@@ -8,16 +8,19 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       target: 'distributor',
     },
 
+  distributor_ports:: $.util.defaultPorts,
+
   distributor_container::
     container.new('distributor', $._images.distributor) +
-    container.withPorts($.util.defaultPorts) +
+    container.withPorts($.distributor_ports) +
     container.withArgsMixin(k.util.mapToFlags($.distributor_args)) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     k.util.resourcesRequests('500m', '500Mi') +
-    k.util.resourcesLimits('1', '1Gi'),
+    k.util.resourcesLimits('1', '1Gi') +
+    container.withEnvMixin($._config.commonEnvs),
 
   local deployment = k.apps.v1.deployment,
 

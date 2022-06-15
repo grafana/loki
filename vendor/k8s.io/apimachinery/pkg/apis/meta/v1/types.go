@@ -303,6 +303,7 @@ const (
 // OwnerReference contains enough information to let you identify an owning
 // object. An owning object must be in the same namespace as the dependent, or
 // be cluster-scoped, so there is no namespace field.
+// +structType=atomic
 type OwnerReference struct {
 	// API version of the referent.
 	APIVersion string `json:"apiVersion" protobuf:"bytes,5,opt,name=apiVersion"`
@@ -356,8 +357,6 @@ type ListOptions struct {
 	// assume bookmarks are returned at any specific interval, nor may they
 	// assume the server will send any BOOKMARK event during a session.
 	// If this is not a watch, this field is ignored.
-	// If the feature gate WatchBookmarks is not enabled in apiserver,
-	// this field is ignored.
 	// +optional
 	AllowWatchBookmarks bool `json:"allowWatchBookmarks,omitempty" protobuf:"varint,9,opt,name=allowWatchBookmarks"`
 
@@ -523,6 +522,15 @@ type DeleteOptions struct {
 	DryRun []string `json:"dryRun,omitempty" protobuf:"bytes,5,rep,name=dryRun"`
 }
 
+const (
+	// FieldValidationIgnore ignores unknown/duplicate fields
+	FieldValidationIgnore = "Ignore"
+	// FieldValidationWarn responds with a warning, but successfully serve the request
+	FieldValidationWarn = "Warn"
+	// FieldValidationStrict fails the request on unknown/duplicate fields
+	FieldValidationStrict = "Strict"
+)
+
 // +k8s:conversion-gen:explicit-from=net/url.Values
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -545,6 +553,19 @@ type CreateOptions struct {
 	// as defined by https://golang.org/pkg/unicode/#IsPrint.
 	// +optional
 	FieldManager string `json:"fieldManager,omitempty" protobuf:"bytes,3,name=fieldManager"`
+
+	// fieldValidation determines how the server should respond to
+	// unknown/duplicate fields in the object in the request.
+	// Introduced as alpha in 1.23, older servers or servers with the
+	// `ServerSideFieldValidation` feature disabled will discard valid values
+	// specified in  this param and not perform any server side field validation.
+	// Valid values are:
+	// - Ignore: ignores unknown/duplicate fields.
+	// - Warn: responds with a warning for each
+	// unknown/duplicate field, but successfully serves the request.
+	// - Strict: fails the request on unknown/duplicate fields.
+	// +optional
+	FieldValidation string `json:"fieldValidation,omitempty" protobuf:"bytes,4,name=fieldValidation"`
 }
 
 // +k8s:conversion-gen:explicit-from=net/url.Values
@@ -578,6 +599,19 @@ type PatchOptions struct {
 	// types (JsonPatch, MergePatch, StrategicMergePatch).
 	// +optional
 	FieldManager string `json:"fieldManager,omitempty" protobuf:"bytes,3,name=fieldManager"`
+
+	// fieldValidation determines how the server should respond to
+	// unknown/duplicate fields in the object in the request.
+	// Introduced as alpha in 1.23, older servers or servers with the
+	// `ServerSideFieldValidation` feature disabled will discard valid values
+	// specified in  this param and not perform any server side field validation.
+	// Valid values are:
+	// - Ignore: ignores unknown/duplicate fields.
+	// - Warn: responds with a warning for each
+	// unknown/duplicate field, but successfully serves the request.
+	// - Strict: fails the request on unknown/duplicate fields.
+	// +optional
+	FieldValidation string `json:"fieldValidation,omitempty" protobuf:"bytes,4,name=fieldValidation"`
 }
 
 // ApplyOptions may be provided when applying an API object.
@@ -633,6 +667,19 @@ type UpdateOptions struct {
 	// as defined by https://golang.org/pkg/unicode/#IsPrint.
 	// +optional
 	FieldManager string `json:"fieldManager,omitempty" protobuf:"bytes,2,name=fieldManager"`
+
+	// fieldValidation determines how the server should respond to
+	// unknown/duplicate fields in the object in the request.
+	// Introduced as alpha in 1.23, older servers or servers with the
+	// `ServerSideFieldValidation` feature disabled will discard valid values
+	// specified in  this param and not perform any server side field validation.
+	// Valid values are:
+	// - Ignore: ignores unknown/duplicate fields.
+	// - Warn: responds with a warning for each
+	// unknown/duplicate field, but successfully serves the request.
+	// - Strict: fails the request on unknown/duplicate fields.
+	// +optional
+	FieldValidation string `json:"fieldValidation,omitempty" protobuf:"bytes,3,name=fieldValidation"`
 }
 
 // Preconditions must be fulfilled before an operation (update, delete, etc.) is carried out.
@@ -1180,6 +1227,15 @@ type ManagedFieldsEntry struct {
 	// FieldsV1 holds the first JSON version format as described in the "FieldsV1" type.
 	// +optional
 	FieldsV1 *FieldsV1 `json:"fieldsV1,omitempty" protobuf:"bytes,7,opt,name=fieldsV1"`
+
+	// Subresource is the name of the subresource used to update that object, or
+	// empty string if the object was updated through the main resource. The
+	// value of this field is used to distinguish between managers, even if they
+	// share the same name. For example, a status update will be distinct from a
+	// regular update using the same manager name.
+	// Note that the APIVersion field is not related to the Subresource field and
+	// it always corresponds to the version of the main resource.
+	Subresource string `json:"subresource,omitempty" protobuf:"bytes,8,opt,name=subresource"`
 }
 
 // ManagedFieldsOperationType is the type of operation which lead to a ManagedFieldsEntry being created.

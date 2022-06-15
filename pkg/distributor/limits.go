@@ -14,4 +14,6 @@ type Limits interface {
 	CreationGracePeriod(userID string) time.Duration
 	RejectOldSamples(userID string) bool
 	RejectOldSamplesMaxAge(userID string) time.Duration
+
+	IncrementDuplicateTimestamps(userID string) bool
 }

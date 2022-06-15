@@ -259,3 +259,50 @@ func TestBoltDB_Writes(t *testing.T) {
 		})
 	}
 }
+
+func Benchmark_Query(b *testing.B) {
+	tableName := "test"
+	dirname := b.TempDir()
+
+	indexClient, err := NewBoltDBIndexClient(BoltDBConfig{
+		Directory: dirname,
+	})
+	require.NoError(b, err)
+
+	tableClient, err := NewTableClient(dirname)
+	require.NoError(b, err)
+
+	err = tableClient.CreateTable(context.Background(), config.TableDesc{
+		Name: tableName,
+	})
+	require.NoError(b, err)
+
+	batch := indexClient.NewWriteBatch()
+	batch.Add(tableName, fmt.Sprintf("hash%s", "test"), []byte(fmt.Sprintf("range%s", "value")), nil)
+
+	err = indexClient.BatchWrite(context.Background(), batch)
+	require.NoError(b, err)
+
+	// try to create the same file which is already existing
+	err = tableClient.CreateTable(context.Background(), config.TableDesc{
+		Name: tableName,
+	})
+	require.NoError(b, err)
+
+	// make sure file content is not modified
+	entry := index.Query{
+		TableName: tableName,
+		HashValue: fmt.Sprintf("hash%s", "test"),
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		err = indexClient.query(context.Background(), entry, func(_ index.Query, read index.ReadBatchResult) bool {
+			iter := read.Iterator()
+			for iter.Next() {
+			}
+			return true
+		})
+		require.NoError(b, err)
+	}
+}

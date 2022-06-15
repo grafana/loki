@@ -11,6 +11,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 const (
@@ -302,6 +304,10 @@ func (shard ShardAnnotation) Label() labels.Label {
 		Name:  ShardLabel,
 		Value: shard.String(),
 	}
+}
+
+func (shard ShardAnnotation) TSDB() index.ShardAnnotation {
+	return index.NewShard(uint32(shard.Shard), uint32(shard.Of))
 }
 
 // ShardFromMatchers extracts a ShardAnnotation and the index it was pulled from in the matcher list

@@ -40,6 +40,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
             g.panel('Failures in Loading Delete Requests / Hour') +
             g.queryPanel('sum(increase(loki_compactor_load_pending_requests_attempts_total{status="fail", %s}[1h]))' % $.namespaceMatcher(), 'failures'),
           )
+        ).addRow(
+          g.row('Deleted lines')
+          .addPanel(
+            g.panel('Lines Deleted / Sec') +
+            g.queryPanel('sum(rate(loki_compactor_deleted_lines{' + $._config.per_cluster_label + '=~"$cluster",job=~"$namespace/compactor"}[$__rate_interval])) by (user)', '{{user}}'),
+          )
         ),
     },
 }

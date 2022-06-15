@@ -19,6 +19,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     k.util.resourcesRequests('4', '2Gi') +
+    container.withEnvMixin($._config.commonEnvs) +
     if $._config.stateful_queriers then
       container.withVolumeMountsMixin([
         volumeMount.new('querier-data', '/data'),

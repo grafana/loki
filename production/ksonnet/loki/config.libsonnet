@@ -92,6 +92,9 @@
     dynamodb_secret_access_key: '',
     dynamodb_region: error 'must specify dynamodb_region',
 
+    // DNS Resolver
+    dns_resolver: 'kube-dns.kube-system.svc.cluster.local',
+
     client_configs: {
       dynamo: {
         dynamodb: {} + if $._config.dynamodb_access_key != '' then {
@@ -138,7 +141,12 @@
       'limits.per-user-override-config': '/etc/loki/overrides/overrides.yaml',
     },
 
+    commonEnvs: [],
+
     loki: {
+      common: {
+        compactor_address: 'http://compactor.%s.svc.cluster.local.:%d' % [$._config.namespace, $._config.http_listen_port],
+      },
       server: {
         graceful_shutdown_timeout: '5s',
         http_server_idle_timeout: '120s',

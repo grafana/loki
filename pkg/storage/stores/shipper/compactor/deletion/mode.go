@@ -48,3 +48,12 @@ func ParseMode(in string) (Mode, error) {
 	}
 	return 0, errUnknownMode
 }
+
+func FilteringEnabled(in string) (bool, error) {
+	deleteMode, err := ParseMode(in)
+	if err != nil {
+		return false, err
+	}
+
+	return deleteMode == FilterOnly || deleteMode == FilterAndDelete, nil
+}

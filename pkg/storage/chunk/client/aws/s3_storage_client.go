@@ -70,7 +70,7 @@ type S3Config struct {
 	Endpoint         string              `yaml:"endpoint"`
 	Region           string              `yaml:"region"`
 	AccessKeyID      string              `yaml:"access_key_id"`
-	SecretAccessKey  string              `yaml:"secret_access_key"`
+	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
 	Insecure         bool                `yaml:"insecure"`
 	SSEEncryption    bool                `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
@@ -104,7 +104,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "S3 Endpoint to connect to.")
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "AWS region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
-	f.StringVar(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "", "AWS Secret Access Key")
+	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
 
 	// TODO Remove in Cortex 1.10.0
@@ -237,13 +237,13 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 		s3Config = s3Config.WithRegion(cfg.Region)
 	}
 
-	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||
-		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" {
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() == "" ||
+		cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() != "" {
 		return nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
 	}
 
-	if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
-		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey, "")
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
+		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
 		s3Config = s3Config.WithCredentials(creds)
 	}
 

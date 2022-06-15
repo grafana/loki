@@ -33,7 +33,7 @@ func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs ShardingConfigs,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
-	shardingMetrics *logql.ShardingMetrics,
+	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
 ) queryrangebase.Middleware {
 	noshards := !hasShards(confs)
@@ -68,14 +68,14 @@ func newASTMapperware(
 	confs ShardingConfigs,
 	next queryrangebase.Handler,
 	logger log.Logger,
-	metrics *logql.ShardingMetrics,
+	metrics *logql.MapperMetrics,
 	limits logql.Limits,
 ) *astMapperware {
 	return &astMapperware{
 		confs:   confs,
 		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
 		next:    next,
-		ng:      logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics, limits, logger),
+		ng:      logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next}, limits, logger),
 		metrics: metrics,
 	}
 }
@@ -85,7 +85,7 @@ type astMapperware struct {
 	logger  log.Logger
 	next    queryrangebase.Handler
 	ng      *logql.DownstreamEngine
-	metrics *logql.ShardingMetrics
+	metrics *logql.MapperMetrics
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -262,7 +262,7 @@ func NewSeriesQueryShardMiddleware(
 	logger log.Logger,
 	confs ShardingConfigs,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
-	shardingMetrics *logql.ShardingMetrics,
+	shardingMetrics *logql.MapperMetrics,
 	limits queryrangebase.Limits,
 	merger queryrangebase.Merger,
 ) queryrangebase.Middleware {
@@ -294,7 +294,7 @@ type seriesShardingHandler struct {
 	confs   ShardingConfigs
 	logger  log.Logger
 	next    queryrangebase.Handler
-	metrics *logql.ShardingMetrics
+	metrics *logql.MapperMetrics
 	limits  queryrangebase.Limits
 	merger  queryrangebase.Merger
 }
@@ -316,8 +316,8 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Reques
 		return nil, fmt.Errorf("expected *LokiSeriesRequest, got (%T)", r)
 	}
 
-	ss.metrics.Shards.WithLabelValues("series").Inc()
-	ss.metrics.ShardFactor.Observe(float64(conf.RowShards))
+	ss.metrics.DownstreamQueries.WithLabelValues("series").Inc()
+	ss.metrics.DownstreamFactor.Observe(float64(conf.RowShards))
 
 	requests := make([]queryrangebase.Request, 0, conf.RowShards)
 	for i := 0; i < int(conf.RowShards); i++ {

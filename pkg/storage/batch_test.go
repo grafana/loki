@@ -1587,7 +1587,7 @@ func TestBuildHeapIterator(t *testing.T) {
 				t.Errorf("buildHeapIterator error = %v", err)
 				return
 			}
-			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil)
+			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)
 			streams, _, err := iter.ReadBatch(it, req.Limit)
 			_ = it.Close()
 			if err != nil {
@@ -1704,7 +1704,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	r := statsCtx.Result(time.Since(start), 0)
+	r := statsCtx.Result(time.Since(start), 0, 0)
 	b.Log("Total chunks:" + fmt.Sprintf("%d", r.TotalChunksRef()))
 	b.Log("Total bytes decompressed:" + fmt.Sprintf("%d", r.TotalDecompressedBytes()))
 }

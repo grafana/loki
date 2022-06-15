@@ -30,7 +30,7 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
 * Create a minio deployment in the cluster using:
 
   ```console
-  kubectl apply -f config/overlays/development/minio
+  kubectl apply -k config/overlays/development/minio
   ```
 
   This creates minio's  `deployment`, `service`, `pvc` and `secret` in the `default` namespace.

@@ -18,6 +18,7 @@ func NewBoltDBShipperTableClient(objectClient client.ObjectClient, storageKeyPre
 }
 
 func (b *boltDBShipperTableClient) ListTables(ctx context.Context) ([]string, error) {
+	b.indexStorageClient.RefreshIndexListCache(ctx)
 	return b.indexStorageClient.ListTables(ctx)
 }
 
@@ -30,7 +31,7 @@ func (b *boltDBShipperTableClient) Stop() {
 }
 
 func (b *boltDBShipperTableClient) DeleteTable(ctx context.Context, tableName string) error {
-	files, _, err := b.indexStorageClient.ListFiles(ctx, tableName)
+	files, _, err := b.indexStorageClient.ListFiles(ctx, tableName, true)
 	if err != nil {
 		return err
 	}

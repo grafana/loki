@@ -1,0 +1,7 @@
+area/docs:
+- 'docs/**/*'
+- 'operator/docs/*'
+sig/operator:
+- 'operator/**/*'
+kind/feature:
+- 'operator/docs/enhancements/*'

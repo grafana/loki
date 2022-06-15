@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/assert"
@@ -31,6 +32,9 @@ const customRelabelsTenant = "custom-relabels"
 const badRelabelsTenant = "bad-relabels"
 const nilRelabelsTenant = "nil-relabels"
 const emptySliceRelabelsTenant = "empty-slice-relabels"
+const sigV4ConfigTenant = "sigv4"
+const sigV4GlobalRegion = "us-east-1"
+const sigV4TenantRegion = "us-east-2"
 
 const defaultCapacity = 1000
 
@@ -78,6 +82,11 @@ func newFakeLimits() fakeLimits {
 						SourceLabels: []string{"__cluster__"},
 						Action:       "labeldrop",
 					},
+				},
+			},
+			sigV4ConfigTenant: {
+				RulerRemoteWriteSigV4Config: &sigv4.SigV4Config{
+					Region: sigV4TenantRegion,
 				},
 			},
 		},
@@ -134,6 +143,19 @@ func setupRegistry(t *testing.T) *walRegistry {
 	return reg.(*walRegistry)
 }
 
+func setupSigV4Registry(t *testing.T) *walRegistry {
+	// Get the global config and override it
+	reg := setupRegistry(t)
+
+	// Remove the basic auth config and replace with sigv4
+	reg.config.RemoteWrite.Client.HTTPClientConfig.BasicAuth = nil
+	reg.config.RemoteWrite.Client.SigV4Config = &sigv4.SigV4Config{
+		Region: sigV4GlobalRegion,
+	}
+
+	return reg
+}
+
 func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
 	reg := setupRegistry(t)
 
@@ -157,6 +179,35 @@ func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
 	assert.Len(t, tenantCfg.RemoteWrite, 1)
 	// but the tenant has an override for the queue capacity
 	assert.Equal(t, tenantCfg.RemoteWrite[0].QueueConfig.Capacity, defaultCapacity)
+}
+
+func TestRulerRemoteWriteSigV4ConfigWithOverrides(t *testing.T) {
+	reg := setupSigV4Registry(t)
+
+	tenantCfg, err := reg.getTenantConfig(sigV4ConfigTenant)
+	require.NoError(t, err)
+
+	// tenant has not disable remote-write so will inherit the global one
+	assert.Len(t, tenantCfg.RemoteWrite, 1)
+	// ensure sigv4 config is not nil and overwritten
+	if assert.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config) {
+		assert.Equal(t, tenantCfg.RemoteWrite[0].SigV4Config.Region, sigV4TenantRegion)
+	}
+}
+
+func TestRulerRemoteWriteSigV4ConfigWithoutOverrides(t *testing.T) {
+	reg := setupSigV4Registry(t)
+
+	// this tenant has no overrides, so will get defaults
+	tenantCfg, err := reg.getTenantConfig("unknown")
+	require.NoError(t, err)
+
+	// tenant has not disable remote-write so will inherit the global one
+	assert.Len(t, tenantCfg.RemoteWrite, 1)
+	// ensure sigv4 config is not nil and the global value
+	if assert.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config) {
+		assert.Equal(t, tenantCfg.RemoteWrite[0].SigV4Config.Region, sigV4GlobalRegion)
+	}
 }
 
 func TestTenantRemoteWriteConfigDisabled(t *testing.T) {

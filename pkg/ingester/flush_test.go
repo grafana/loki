@@ -338,7 +338,7 @@ func (s *testStore) GetChunkRefs(ctx context.Context, userID string, from, throu
 }
 
 func (s *testStore) GetSchemaConfigs() []config.PeriodConfig {
-	return nil
+	return defaultPeriodConfigs
 }
 
 func (s *testStore) Stop() {}
