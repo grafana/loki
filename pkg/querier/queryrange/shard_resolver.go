@@ -108,6 +108,8 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 			"streams", casted.Response.Streams,
 			"entries", casted.Response.Entries,
 			"duration", time.Since(start),
+			"from", adjustedFrom.Time(),
+			"through", adjustedThrough.Time(),
 		)
 		return nil
 	}); err != nil {
@@ -124,6 +126,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		"chunks", combined.Chunks,
 		"streams", combined.Streams,
 		"entries", combined.Entries,
+		"max_parallelism", r.maxParallelism,
 		"duration", time.Since(start),
 		"factor", factor,
 	)
