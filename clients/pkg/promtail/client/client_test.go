@@ -561,7 +561,7 @@ func TestReplayWAL(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	c.(*client).replayWAL()
+	assert.NoError(t, c.(*client).replayWAL())
 
 	// Stop the client: it waits until the current batch is sent
 	c.Stop()
