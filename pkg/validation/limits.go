@@ -111,6 +111,8 @@ type Limits struct {
 	RulerRemoteWriteQueueRetryOnRateLimit  bool                         `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
 	RulerRemoteWriteSigV4Config            *sigv4.SigV4Config           `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config"`
 
+	CompactorDeletionEnabled bool `yaml:"compactor_deletion_enabled" json:"compactor_deletion_enabled"`
+
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
 	StreamRetention []StreamRetention `yaml:"retention_stream,omitempty" json:"retention_stream,omitempty"`
@@ -530,6 +532,10 @@ func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 
 func (o *Overrides) UnorderedWrites(userID string) bool {
 	return o.getOverridesForUser(userID).UnorderedWrites
+}
+
+func (o *Overrides) CompactorDeletionEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).CompactorDeletionEnabled
 }
 
 func (o *Overrides) DefaultLimits() *Limits {
