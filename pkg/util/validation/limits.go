@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"golang.org/x/time/rate"
 
-	util_deletion "github.com/grafana/loki/pkg/util/deletion"
+	"github.com/grafana/loki/pkg/util/deletion"
 )
 
 var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
@@ -171,7 +171,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
 
 	f.Var(&l.CompactorBlocksRetentionPeriod, "compactor.blocks-retention-period", "Delete blocks containing samples older than the specified retention period. 0 to disable.")
-	f.StringVar(&l.CompactorDeletionMode, "compactor.deletion-mode", "whole-stream-deletion", fmt.Sprintf("Deletion mode. Can be one of %v", strings.Join(util_deletion.AllModes(), "|")))
+	f.StringVar(&l.CompactorDeletionMode, "compactor.deletion-mode", "whole-stream-deletion", fmt.Sprintf("Deletion mode. Can be one of %v", strings.Join(deletion.AllModes(), "|")))
 
 	// Store-gateway.
 	f.IntVar(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
@@ -203,7 +203,7 @@ func (l *Limits) Validate(shardByAllLabels bool) error {
 		return errMaxGlobalSeriesPerUserValidation
 	}
 
-	if _, err := util_deletion.ParseMode(l.CompactorDeletionMode); err != nil {
+	if _, err := deletion.ParseMode(l.CompactorDeletionMode); err != nil {
 		return err
 	}
 
