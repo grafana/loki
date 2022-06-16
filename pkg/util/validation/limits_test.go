@@ -3,6 +3,8 @@ package validation
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // nolint:goconst
@@ -219,4 +221,12 @@ func TestMaxDurationOrZeroPerTenant(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidate(t *testing.T) {
+	l := &Limits{
+		MaxGlobalSeriesPerUser: 5,
+	}
+	require.NoError(t, l.Validate(true))
+	require.Error(t, l.Validate(false))
 }
