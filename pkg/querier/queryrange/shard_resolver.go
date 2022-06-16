@@ -111,6 +111,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 			"duration", time.Since(start),
 			"from", adjustedFrom.Time(),
 			"through", adjustedThrough.Time(),
+			"length", adjustedThrough.Sub(adjustedFrom),
 		)
 		return nil
 	}); err != nil {
