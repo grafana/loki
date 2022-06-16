@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	math "math"
+	strings "strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
@@ -103,7 +105,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 			"msg", "queried index",
 			"type", "single",
 			"matchers", matchers,
-			"bytes", casted.Response.Bytes,
+			"bytes", strings.Replace(humanize.Bytes(casted.Response.Bytes), " ", "", 1),
 			"chunks", casted.Response.Chunks,
 			"streams", casted.Response.Streams,
 			"entries", casted.Response.Entries,
@@ -120,7 +122,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		"msg", "queried index",
 		"type", "combined",
 		"len", len(results),
-		"bytes", combined.Bytes,
+		"bytes", strings.Replace(humanize.Bytes(combined.Bytes), " ", "", 1),
 		"chunks", combined.Chunks,
 		"streams", combined.Streams,
 		"entries", combined.Entries,
