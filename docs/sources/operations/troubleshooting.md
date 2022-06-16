@@ -135,30 +135,27 @@ If you deploy with Helm, use the following command:
 $ helm upgrade --install loki loki/loki --set "loki.tracing.jaegerAgentHost=YOUR_JAEGER_AGENT_HOST"
 ```
 
-## Running Loki Distributed with Istio Sidecars
+## Running Loki with Istio Sidecars
 
-The istio sidecar intercepts all traffic to and from the pod it runs alongside of. 
-When a pod tries to communicate with another pod using a given protocol, istio
-will inspect the destination's Service using [Protocol Selection](https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/).
-This mechanism uses a convention on the port name, (eg.: `http-my-port`, `grpc-my-port`)
-to determine how to handle this outgoing traffic. Istio can then do its thing,
-such as authorization, smart routing, etc.
+An Istio sidecar runs alongside a pod. It intercepts all traffic to and from the pod. 
+When a pod tries to communicate with another pod using a given protocol, Istio inspects the destination's service using [Protocol Selection](https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/).
+This mechanism uses a convention on the port name (for example, `http-my-port` or `grpc-my-port`)
+to determine how to handle this outgoing traffic. Istio can then do operations such as authorization and smart routing.
 
-This works fine when a pod communicates with another pod using a hostname. But
-istio does not allow pods to communicate with other pods using IP addresses,
+This works fine when one pod communicates with another pod using a hostname. But,
+Istio does not allow pods to communicate with other pods using IP addresses,
 unless the traffic type is `tcp`.
 
 Loki internally uses DNS to resolve the IP addresses of the different components.
-It will then attempt to send a request to the IP address of those pods. The 
-loki services have a `grpc` (:9095/:9096) port defined, so istio will consider
-this as `grpc` traffic. It will not allow loki components to reach each other using 
-an IP address. So the traffic will fail, and the ring will remain unhealthy. 
+Loki attempts to send a request to the IP address of those pods. The 
+Loki services have a `grpc` (:9095/:9096) port defined, so Istio will consider
+this to be `grpc` traffic. It will not allow Loki components to reach each other using 
+an IP address. So, the traffic will fail, and the ring will remain unhealthy. 
 
-The solution to this is to add the `appProtocol: tcp` to all of the `grpc`
-(:9095) and `grpclb` (:9096) *Service ports* of loki components. This effectively
-overrides the istio protocol selection, and force istio to consider this traffic
-as raw `tcp`, which allows pods to communicate over raw ip addresses.
+The solution to this issue is to add `appProtocol: tcp` to all of the `grpc`
+(:9095) and `grpclb` (:9096) service ports of Loki components. This
+overrides the Istio protocol selection, and it force Istio to consider this traffic raw `tcp`, which allows pods to communicate using raw ip addresses.
 
-This disables part of the istio traffic interception mechanism, 
-but still enables mTLS. This will allow pods to communcate between themselves 
+This disables part of the Istio traffic interception mechanism, 
+but still enables mTLS. This allows pods to communicate between themselves 
 using IP addresses over grpc.
