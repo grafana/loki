@@ -18,10 +18,43 @@ var ltt = []struct {
 	err  *apierrors.StatusError
 }{
 	{
-		desc: "valid spec",
+		desc: "valid spec - no status",
 		spec: v1beta1.LokiStack{
 			Spec: v1beta1.LokiStackSpec{
 				Storage: v1beta1.ObjectStorageSpec{
+					Schemas: []v1beta1.ObjectStorageSchema{
+						{
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       v1beta1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-13",
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		desc: "valid spec - with status",
+		spec: v1beta1.LokiStack{
+			Spec: v1beta1.LokiStackSpec{
+				Storage: v1beta1.ObjectStorageSpec{
+					Schemas: []v1beta1.ObjectStorageSchema{
+						{
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       v1beta1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-13",
+						},
+					},
+				},
+			},
+			Status: v1beta1.LokiStackStatus{
+				Storage: v1beta1.LokiStackStorageStatus{
 					Schemas: []v1beta1.ObjectStorageSchema{
 						{
 							Version:       v1beta1.ObjectStorageSchemaV11,
@@ -88,6 +121,164 @@ var ltt = []struct {
 					field.NewPath("Spec").Child("Storage").Child("Schemas").Index(0).Child("EffectiveDate"),
 					"2020/10/11",
 					v1beta1.ErrParseEffectiveDates.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "missing valid starting date",
+		spec: v1beta1.LokiStack{
+			Spec: v1beta1.LokiStackSpec{
+				Storage: v1beta1.ObjectStorageSpec{
+					Schemas: []v1beta1.ObjectStorageSchema{
+						{
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "9000-10-10",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("Spec").Child("Storage").Child("Schemas"),
+					[]v1beta1.ObjectStorageSchema{
+						{
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "9000-10-10",
+						},
+					},
+					v1beta1.ErrMissingValidStartDate.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "retroactively adding schema",
+		spec: v1beta1.LokiStack{
+			Spec: v1beta1.LokiStackSpec{
+				Storage: v1beta1.ObjectStorageSpec{
+					Schemas: []v1beta1.ObjectStorageSchema{
+						{
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       v1beta1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-14",
+						},
+					},
+				},
+			},
+			Status: v1beta1.LokiStackStatus{
+				Storage: v1beta1.LokiStackStorageStatus{
+					Schemas: []v1beta1.ObjectStorageSchema{
+						{
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("Spec").Child("Storage").Child("Schemas"),
+					v1beta1.ObjectStorageSchema{
+						Version:       v1beta1.ObjectStorageSchemaV12,
+						EffectiveDate: "2020-10-14",
+					},
+					v1beta1.ErrSchemaRetroactivelyAdded.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "retroactively removing schema",
+		spec: v1beta1.LokiStack{
+			Spec: v1beta1.LokiStackSpec{
+				Storage: v1beta1.ObjectStorageSpec{
+					Schemas: []v1beta1.ObjectStorageSchema{
+						{
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+			},
+			Status: v1beta1.LokiStackStatus{
+				Storage: v1beta1.LokiStackStorageStatus{
+					Schemas: []v1beta1.ObjectStorageSchema{
+						{
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       v1beta1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-14",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("Spec").Child("Storage").Child("Schemas"),
+					[]v1beta1.ObjectStorageSchema{
+						{
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+					v1beta1.ErrSchemaRetroactivelyRemoved.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "retroactively changing schema",
+		spec: v1beta1.LokiStack{
+			Spec: v1beta1.LokiStackSpec{
+				Storage: v1beta1.ObjectStorageSpec{
+					Schemas: []v1beta1.ObjectStorageSchema{
+						{
+							Version:       v1beta1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+			},
+			Status: v1beta1.LokiStackStatus{
+				Storage: v1beta1.LokiStackStorageStatus{
+					Schemas: []v1beta1.ObjectStorageSchema{
+						{
+							Version:       v1beta1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("Spec").Child("Storage").Child("Schemas"),
+					v1beta1.ObjectStorageSchema{
+						Version:       v1beta1.ObjectStorageSchemaV12,
+						EffectiveDate: "2020-10-11",
+					},
+					v1beta1.ErrSchemaRetroactivelyChanged.Error(),
 				),
 			},
 		),

@@ -1,6 +1,8 @@
 package v1beta1
 
 import (
+	"time"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -8,6 +10,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
+
+type schemaMap map[StorageSchemaEffectiveDate]ObjectStorageSchemaVersion
 
 // SetupWebhookWithManager registers the Lokistack to the controller-runtime manager
 // or returns an error.
@@ -40,7 +44,12 @@ func (s *LokiStack) ValidateDelete() error {
 func (s *LokiStack) validate() error {
 	var allErrs field.ErrorList
 
+	appliedSchemasFound := 0
+	containsValidStartDate := false
 	found := make(map[StorageSchemaEffectiveDate]bool)
+
+	cutoff := time.Now().UTC().Add(StorageSchemaUpdateBuffer)
+	appliedSchemas := buildAppliedSchemaMap(s.Status.Storage.Schemas, cutoff)
 
 	for i, sc := range s.Spec.Storage.Schemas {
 		if found[sc.EffectiveDate] {
@@ -53,13 +62,59 @@ func (s *LokiStack) validate() error {
 
 		found[sc.EffectiveDate] = true
 
-		if _, err := sc.EffectiveDate.UTCTime(); err != nil {
+		date, err := sc.EffectiveDate.UTCTime()
+		if err != nil {
 			allErrs = append(allErrs, field.Invalid(
 				field.NewPath("Spec").Child("Storage").Child("Schemas").Index(i).Child("EffectiveDate"),
 				sc.EffectiveDate,
 				ErrParseEffectiveDates.Error(),
 			))
 		}
+
+		if date.Before(cutoff) {
+			containsValidStartDate = true
+		}
+
+		// No statuses to compare against or this is a new schema which will be added.
+		if len(appliedSchemas) == 0 || date.After(cutoff) {
+			continue
+		}
+
+		appliedSchemaVersion, ok := appliedSchemas[sc.EffectiveDate]
+
+		if !ok {
+			allErrs = append(allErrs, field.Invalid(
+				field.NewPath("Spec").Child("Storage").Child("Schemas").Index(i),
+				sc,
+				ErrSchemaRetroactivelyAdded.Error(),
+			))
+		}
+
+		if ok && appliedSchemaVersion != sc.Version {
+			allErrs = append(allErrs, field.Invalid(
+				field.NewPath("Spec").Child("Storage").Child("Schemas").Index(i),
+				sc,
+				ErrSchemaRetroactivelyChanged.Error(),
+			))
+		}
+
+		appliedSchemasFound++
+	}
+
+	if !containsValidStartDate {
+		allErrs = append(allErrs, field.Invalid(
+			field.NewPath("Spec").Child("Storage").Child("Schemas"),
+			s.Spec.Storage.Schemas,
+			ErrMissingValidStartDate.Error(),
+		))
+	}
+
+	if appliedSchemasFound != len(appliedSchemas) {
+		allErrs = append(allErrs, field.Invalid(
+			field.NewPath("Spec").Child("Storage").Child("Schemas"),
+			s.Spec.Storage.Schemas,
+			ErrSchemaRetroactivelyRemoved.Error(),
+		))
 	}
 
 	if len(allErrs) == 0 {
@@ -71,4 +126,18 @@ func (s *LokiStack) validate() error {
 		s.Name,
 		allErrs,
 	)
+}
+
+// buildAppliedSchemaMap creates a map of schemas which occur before the given time
+func buildAppliedSchemaMap(schemas []ObjectStorageSchema, effectiveDate time.Time) schemaMap {
+	appliedMap := schemaMap{}
+
+	for _, schema := range schemas {
+		date, _ := schema.EffectiveDate.UTCTime()
+		if date.Before(effectiveDate) {
+			appliedMap[schema.EffectiveDate] = schema.Version
+		}
+	}
+
+	return appliedMap
 }
