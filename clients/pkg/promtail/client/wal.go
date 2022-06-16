@@ -5,9 +5,11 @@ import (
 	"path"
 	"sync"
 
-	"github.com/go-kit/log"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb/wal"
 )
@@ -64,6 +66,9 @@ func (w *walWrapper) Close() error {
 
 func (w *walWrapper) Delete() error {
 	err := w.wal.Close()
+	if err != nil {
+		level.Warn(w.log).Log("msg", "failed to close WAL", "err", err)
+	}
 	err = os.RemoveAll(w.wal.Dir())
 	return err
 }

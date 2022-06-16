@@ -281,6 +281,7 @@ func (c *client) replayWAL() error {
 			entry := api.Entry{}
 			if err := ingester.DecodeWALRecord(r.Record(), rec); err != nil {
 				// this error doesn't need to be fatal, we should maybe just throw out this batch?
+				level.Warn(c.logger).Log("msg", "failed to decode a wal record", "err", err)
 			}
 			for _, series := range rec.Series {
 				seriesRecs[uint64(series.Ref)] = util.MapToModelLabelSet(series.Labels.Map())
