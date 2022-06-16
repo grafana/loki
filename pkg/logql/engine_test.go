@@ -49,15 +49,36 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 		expected interface{}
 	}{
 		{
-			`rate({app="foo"} | unwrap foo [30s])`, time.Unix(60, 0), logproto.FORWARD, 10,
+			`rate({app="foo"} | unwrap foo [30s])`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			10,
 			[][]logproto.Series{
 				// 30s range the lower bound of the range is not inclusive only 15 samples will make it 60 included
-				{newSeries(testSize, offset(46, incValue(10)), `{app="foo"}`)},
+				{newSeries(testSize, offset(46, constantValue(1)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
 				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}},
 			},
-			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.46666766666666665}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+			// SUM(n=47, 61, 1) = 15
+			// 15 / 30 = 0.5
+			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.5}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+		},
+		{
+			`rate({app="foo"} | unwrap foo [30s])`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			10,
+			[][]logproto.Series{
+				// 30s range the lower bound of the range is not inclusive only 15 samples will make it 60 included
+				{newSeries(testSize, offset(46, incValue(1)), `{app="foo"}`)},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}},
+			},
+			// SUM(n=47, 61, n) = 810
+			// 810 / 30 = 27
+			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 27}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
 		},
 	} {
 		test := test
@@ -150,7 +171,9 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			[]SelectSampleParams{
 				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}},
 			},
-			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.0}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+			// SUM(n=46, 61, 2) = 30
+			// 30 / 30 = 1
+			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.0}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
 		},
 		{
 			`count_over_time({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
@@ -1287,7 +1310,10 @@ func TestEngine_RangeQuery(t *testing.T) {
 		{
 			`rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Series{
-				{newSeries(testSize, factor(10, constantValue(2)), `{app="foo"}`), newSeries(testSize, factor(5, constantValue(2)), `{app="bar"}`)},
+				{
+					newSeries(testSize, factor(10, constantValue(2)), `{app="foo"}`),
+					newSeries(testSize, factor(5, constantValue(2)), `{app="bar"}`),
+				},
 			},
 			[]SelectSampleParams{
 				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"|unwrap bar[1m])`}},
@@ -1295,11 +1321,11 @@ func TestEngine_RangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "bar"}},
-					Points: []promql.Point{{T: 60 * 1000, V: 0.0}, {T: 90 * 1000, V: 0.0}, {T: 120 * 1000, V: 0.0}, {T: 150 * 1000, V: 0.0}, {T: 180 * 1000, V: 0.0}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.4}, {T: 90 * 1000, V: 0.4}, {T: 120 * 1000, V: 0.4}, {T: 150 * 1000, V: 0.4}, {T: 180 * 1000, V: 0.4}},
 				},
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60 * 1000, V: 0.0}, {T: 90 * 1000, V: 0.0}, {T: 120 * 1000, V: 0.0}, {T: 150 * 1000, V: 0.0}, {T: 180 * 1000, V: 0.0}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.2}, {T: 90 * 1000, V: 0.2}, {T: 120 * 1000, V: 0.2}, {T: 150 * 1000, V: 0.2}, {T: 180 * 1000, V: 0.2}},
 				},
 			},
 		},
