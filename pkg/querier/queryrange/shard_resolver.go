@@ -58,7 +58,6 @@ type dynamicShardResolver struct {
 	defaultLookback time.Duration
 }
 
-// from, through, max concurrency to run
 func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	sp, _ := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
 	defer sp.Finish()
