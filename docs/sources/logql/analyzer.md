@@ -12,18 +12,18 @@ weight: 60
     <section class="logs-source panel-container">
         <div class="logs-source__header">
             <div class="examples">
-                <span>Examples:</span> 
+                <span>Log line format:</span> 
                 <span class="example">
                     <input type="radio" class="example-select" name="example" id="logfmt-example" checked>
-                    <label for="logfmt-example">Logfmt</label>
+                    <label for="logfmt-example">logfmt</label>
                 </span>
                 <span class="example">
                     <input type="radio" class="example-select" name="example" id="json-parser-example">
-                    <label for="json-parser-example">JSON Parser</label>
+                    <label for="json-parser-example">JSON</label>
                 </span>
                 <span class="example">
                     <input type="radio" class="example-select" name="example" id="pattern-parser-example">
-                    <label for="pattern-parser-example">Pattern parser</label>
+                    <label for="pattern-parser-example">Unstructured text</label>
                 </span>
             </div>
             <div class="share-section">
@@ -68,8 +68,10 @@ weight: 60
         <article class="debug-result-row">
             <div class="last-stage-result" data-line-index="{{@index}}">
                 <div class="line-index">
-                    <i class="line-cursor expand-cursor"></i>
-                    Line {{@index}}
+                    <div class="line-index__wrapper">
+                        <i class="line-cursor expand-cursor"></i>
+                        <span>Line {{@index}}</span>
+                    </div>
                 </div>
                 
                 {{#if this.log_result}}
@@ -186,6 +188,8 @@ level=info ts=2022-03-23T11:55:45.221254326Z caller=loki.go:355 msg="Loki starte
 {"timestamp":"2022-04-26T08:54:00.274Z","level":"INFO","class":"org.springframework.data.repository.config.RepositoryConfigurationDelegate","method":"registerRepositoriesIn","file":"RepositoryConfigurationDelegate.java","line":132,"thread":"restartedMain","message":"Bootstrapping Spring Data JPA repositories in DEFAULT mode."}
 {"timestamp":"2022-04-26T08:54:00.327Z","level":"INFO","class":"org.springframework.data.repository.config.RepositoryConfigurationDelegate","method":"registerRepositoriesIn","file":"RepositoryConfigurationDelegate.java","line":201,"thread":"restartedMain","message":"Finished Spring Data repository scanning in 47 ms. Found 3 JPA repository interfaces."}
 {"timestamp":"2022-04-26T08:54:00.704Z","level":"INFO","class":"org.springframework.boot.web.embedded.tomcat.TomcatWebServer","method":"initialize","file":"TomcatWebServer.java","line":108,"thread":"restartedMain","message":"Tomcat initialized with port(s): 8080 (http)"}
+{"timestamp":"2022-06-16T10:54:47.466Z","level":"INFO","class":"org.apache.juli.logging.DirectJDKLog","method":"log","file":"DirectJDKLog.java","line":173,"thread":"restartedMain","message":"Starting service [Tomcat]"}
+{"timestamp":"2022-06-16T10:54:47.467Z","level":"INFO","class":"org.apache.juli.logging.DirectJDKLog","method":"log","file":"DirectJDKLog.java","line":173,"thread":"restartedMain","message":"Starting Servlet engine: [Apache Tomcat/9.0.52]"}
 </script>
 
 <script type="text/plain" id="json-parser-example-query">
@@ -195,13 +199,18 @@ level=info ts=2022-03-23T11:55:45.221254326Z caller=loki.go:355 msg="Loki starte
 
 [//]: # (Pattern parser examples)
 <script type="text/plain" id="pattern-parser-example-logs">
-192.0.2.0 - - [04/Aug/2021:21:12:04 +0000] "GET /api/plugins/versioncheck?slugIn=&grafanaVersion=6.3.5 HTTP/1.1" 200 2 "-" "Go-http-client/2.0" "220.248.51.226, 34.120.177.193" "TLSv1.2" "CN" "CN31"
-198.51.100.0 - - [04/Aug/2021:21:12:04 +0000] "GET /ws/?EIO=3&transport=polling&t=NiJ0b8H HTTP/1.1" 200 103 "https://grafana.com/grafana/download?platform=mac" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15" "2001:240:168:3400::1:87, 2600:1901:0:b3ea::" "TLSv1.3" "JP" "JP13"
-203.0.113.0 - - [04/Aug/2021:21:12:04 +0000] "GET /healthz HTTP/1.1" 500 15 "-" "GoogleHC/1.0" "-" "-" "-" "-"
+238.46.18.83 - - [09/Jun/2022:14:13:44 -0700] "PUT /target/next-generation HTTP/2.0" 404 19042
+16.97.233.22 - - [09/Jun/2022:14:13:44 -0700] "DELETE /extensible/functionalities HTTP/1.0" 200 27913
+46.201.144.32 - - [09/Jun/2022:14:13:44 -0700] "PUT /e-enable/enable HTTP/2.0" 504 26885
+33.122.3.191 - corkery3759 [09/Jun/2022:14:13:44 -0700] "POST /extensible/dynamic/enable HTTP/2.0" 100 23741
+94.115.144.32 - damore5842 [09/Jun/2022:14:13:44 -0700] "PUT /matrix/envisioneer HTTP/1.0" 205 29993
+145.250.221.107 - price8727 [09/Jun/2022:14:13:44 -0700] "PUT /iterate/networks/e-business/action-items HTTP/1.0" 302 9718
+33.201.165.66 - - [09/Jun/2022:14:13:44 -0700] "GET /web-enabled/bricks-and-clicks HTTP/1.0" 205 2353
+33.83.191.176 - kling8903 [09/Jun/2022:14:13:44 -0700] "DELETE /architect HTTP/1.1" 401 13783
 </script>
 
 <script type="text/plain" id="pattern-parser-example-query">
-| pattern "<_> - - <_> \"<method> <url> <protocol>\" <status> <_> <_> \"<_>\" <_>" | status = "200"
+| pattern "<_> - <_> <_> \"<method> <url> <protocol>\" <status> <_> <_> \"<_>\" <_>" | status >= 200 and status < 300
 </script>
 
 
