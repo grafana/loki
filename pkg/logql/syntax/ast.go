@@ -616,20 +616,21 @@ const (
 	OpTypeTopK    = "topk"
 
 	// range vector ops
-	OpRangeTypeCount     = "count_over_time"
-	OpRangeTypeRate      = "rate"
-	OpRangeTypeBytes     = "bytes_over_time"
-	OpRangeTypeBytesRate = "bytes_rate"
-	OpRangeTypeAvg       = "avg_over_time"
-	OpRangeTypeSum       = "sum_over_time"
-	OpRangeTypeMin       = "min_over_time"
-	OpRangeTypeMax       = "max_over_time"
-	OpRangeTypeStdvar    = "stdvar_over_time"
-	OpRangeTypeStddev    = "stddev_over_time"
-	OpRangeTypeQuantile  = "quantile_over_time"
-	OpRangeTypeFirst     = "first_over_time"
-	OpRangeTypeLast      = "last_over_time"
-	OpRangeTypeAbsent    = "absent_over_time"
+	OpRangeTypeCount       = "count_over_time"
+	OpRangeTypeRate        = "rate"
+	OpRangeTypeRateCounter = "rate_counter"
+	OpRangeTypeBytes       = "bytes_over_time"
+	OpRangeTypeBytesRate   = "bytes_rate"
+	OpRangeTypeAvg         = "avg_over_time"
+	OpRangeTypeSum         = "sum_over_time"
+	OpRangeTypeMin         = "min_over_time"
+	OpRangeTypeMax         = "max_over_time"
+	OpRangeTypeStdvar      = "stdvar_over_time"
+	OpRangeTypeStddev      = "stddev_over_time"
+	OpRangeTypeQuantile    = "quantile_over_time"
+	OpRangeTypeFirst       = "first_over_time"
+	OpRangeTypeLast        = "last_over_time"
+	OpRangeTypeAbsent      = "absent_over_time"
 
 	// binops - logical/set
 	OpTypeOr     = "or"
@@ -772,7 +773,9 @@ func (e RangeAggregationExpr) validate() error {
 	}
 	if e.Left.Unwrap != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
+			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
+			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
