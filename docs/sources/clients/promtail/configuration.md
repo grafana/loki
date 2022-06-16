@@ -1547,18 +1547,20 @@ namespaces:
   names:
     [ - <string> ]
 
-# Optional label and field selectors to limit the discovery process to a subset of available resources.
-# See https://kubernetes.io/docs/concepts/overview/working-with-objects/field-selectors/
-# and https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/ to learn more about the possible
-# filters that can be used. The endpoints role supports pod, service and endpoints selectors.
-# Roles only support selectors matching the role itself (e.g. node role can only contain node selectors).
-
-# Note: When making decision about using field/label selector make sure that this
-# is the best approach - it will prevent Promtail from reusing single list/watch
-# for all scrape configs. This might result in a bigger load on the Kubernetes API,
-# because per each selector combination there will be additional LIST/WATCH. On the other hand,
-# if you just want to monitor small subset of pods in large cluster it's recommended to use selectors.
-# Decision, if selectors should be used or not depends on the particular situation.
+# Optional label and field selectors to limit the discovery process to a subset of available
+#  resources. See
+# https://kubernetes.io/docs/concepts/overview/working-with-objects/field-selectors/
+# and https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/ to learn
+# more about the possible filters that can be used. The endpoints role supports pod,
+# service, and endpoint selectors. Roles only support selectors matching the role itself;
+# for example, the node role can only contain node selectors.
+# Note: When making decisions about using field/label selectors, make sure that this
+# is the best approach. It will prevent Promtail from reusing single list/watch
+# for all scrape configurations. This might result in a bigger load on the Kubernetes API,
+# because for each selector combination, there will be additional LIST/WATCH.
+# On the other hand, if you want to monitor a small subset of pods of a large cluster,
+# we recommend using selectors. The decision on the use of selectors or not depends
+# on the particular situation.
 [ selectors:
           [ - role: <string>
                   [ label: <string> ]
