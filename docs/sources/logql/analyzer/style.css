@@ -99,6 +99,11 @@
 .line-index {
     display: flex;
     column-gap: 5px;
+    align-items: flex-start;
+}
+
+.line-index__wrapper{
+    display: flex;
     align-items: center;
 }
 
