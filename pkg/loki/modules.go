@@ -980,7 +980,7 @@ func (t *Loki) deleteRequestsClient() (deletion.DeleteRequestsClient, error) {
 		return nil, err
 	}
 
-	return deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
+	return deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second}, prometheus.DefaultRegisterer)
 }
 
 func calculateMaxLookBack(pc config.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {
