@@ -34,14 +34,12 @@ type AuthorizationSpec struct {
 // extra lokistack gateway k8s objects (e.g. ServiceAccount, Route, RBAC)
 // on openshift.
 type BuildOptions struct {
-	LokiStackName                   string
-	LokiStackNamespace              string
-	GatewayName                     string
-	GatewaySvcName                  string
-	GatewaySvcTargetPort            string
-	Labels                          map[string]string
-	EnableServiceMonitors           bool
-	EnableCertificateSigningService bool
+	LokiStackName        string
+	LokiStackNamespace   string
+	GatewayName          string
+	GatewaySvcName       string
+	GatewaySvcTargetPort string
+	Labels               map[string]string
 }
 
 // TenantData defines the existing cookieSecret for lokistack reconcile.
@@ -54,8 +52,6 @@ func NewOptions(
 	stackName, stackNamespace string,
 	gwName, gwBaseDomain, gwSvcName, gwPortName string,
 	gwLabels map[string]string,
-	enableServiceMonitors bool,
-	enableCertSigningService bool,
 	tenantConfigMap map[string]TenantData,
 ) Options {
 	host := ingressHost(stackName, stackNamespace, gwBaseDomain)
@@ -71,21 +67,19 @@ func NewOptions(
 			TenantName:     name,
 			TenantID:       name,
 			ServiceAccount: gwName,
-			RedirectURL:    fmt.Sprintf("http://%s/openshift/%s/callback", host, name),
+			RedirectURL:    fmt.Sprintf("https://%s/openshift/%s/callback", host, name),
 			CookieSecret:   cookieSecret,
 		})
 	}
 
 	return Options{
 		BuildOpts: BuildOptions{
-			LokiStackName:                   stackName,
-			LokiStackNamespace:              stackNamespace,
-			GatewayName:                     gwName,
-			GatewaySvcName:                  gwSvcName,
-			GatewaySvcTargetPort:            gwPortName,
-			Labels:                          gwLabels,
-			EnableServiceMonitors:           enableServiceMonitors,
-			EnableCertificateSigningService: enableCertSigningService,
+			LokiStackName:        stackName,
+			LokiStackNamespace:   stackNamespace,
+			GatewayName:          gwName,
+			GatewaySvcName:       gwSvcName,
+			GatewaySvcTargetPort: gwPortName,
+			Labels:               gwLabels,
 		},
 		Authentication: authn,
 		Authorization: AuthorizationSpec{

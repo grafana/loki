@@ -16,23 +16,20 @@ type ShardResolver interface {
 	Shards(expr syntax.Expr) (int, error)
 }
 
-type constantShards int
+type ConstantShards int
 
-func (s constantShards) Shards(_ syntax.Expr) (int, error) { return int(s), nil }
+func (s ConstantShards) Shards(_ syntax.Expr) (int, error) { return int(s), nil }
 
 type ShardMapper struct {
-	shards  constantShards
+	shards  ShardResolver
 	metrics *MapperMetrics
 }
 
-func NewShardMapper(shards int, metrics *MapperMetrics) (ShardMapper, error) {
-	if shards < 2 {
-		return ShardMapper{}, fmt.Errorf("cannot create ShardMapper with <2 shards. Received %d", shards)
-	}
+func NewShardMapper(resolver ShardResolver, metrics *MapperMetrics) ShardMapper {
 	return ShardMapper{
-		shards:  constantShards(shards),
+		shards:  resolver,
 		metrics: metrics,
-	}, nil
+	}
 }
 
 func NewShardMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
@@ -116,6 +113,14 @@ func (m ShardMapper) mapLogSelectorExpr(expr syntax.LogSelectorExpr, r *downstre
 	if err != nil {
 		return nil, err
 	}
+	if shards == 0 {
+		return &ConcatLogSelectorExpr{
+			DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
+				shard:           nil,
+				LogSelectorExpr: expr,
+			},
+		}, nil
+	}
 	for i := shards - 1; i >= 0; i-- {
 		head = &ConcatLogSelectorExpr{
 			DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
@@ -138,6 +143,14 @@ func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder
 	shards, err := m.shards.Shards(expr)
 	if err != nil {
 		return nil, err
+	}
+	if shards == 0 {
+		return &ConcatSampleExpr{
+			DownstreamSampleExpr: DownstreamSampleExpr{
+				shard:      nil,
+				SampleExpr: expr,
+			},
+		}, nil
 	}
 	for i := shards - 1; i >= 0; i-- {
 		head = &ConcatSampleExpr{

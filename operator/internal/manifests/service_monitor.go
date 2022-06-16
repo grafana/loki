@@ -1,6 +1,9 @@
 package manifests
 
 import (
+	"fmt"
+	"path"
+
 	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -146,14 +149,13 @@ func newServiceMonitor(namespace, serviceMonitorName string, labels labels.Set, 
 }
 
 func configureServiceMonitorPKI(podSpec *corev1.PodSpec, serviceName string) error {
-	secretName := signingServiceSecretName(serviceName)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
-				Name: secretName,
+				Name: serviceName,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
-						SecretName: secretName,
+						SecretName: serviceName,
 					},
 				},
 			},
@@ -162,14 +164,14 @@ func configureServiceMonitorPKI(podSpec *corev1.PodSpec, serviceName string) err
 	secretContainerSpec := corev1.Container{
 		VolumeMounts: []corev1.VolumeMount{
 			{
-				Name:      secretName,
+				Name:      serviceName,
 				ReadOnly:  false,
-				MountPath: secretDirectory,
+				MountPath: httpTLSDir,
 			},
 		},
 		Args: []string{
-			"-server.http-tls-cert-path=/etc/proxy/secrets/tls.crt",
-			"-server.http-tls-key-path=/etc/proxy/secrets/tls.key",
+			fmt.Sprintf("-server.http-tls-cert-path=%s", path.Join(httpTLSDir, tlsCertFile)),
+			fmt.Sprintf("-server.http-tls-key-path=%s", path.Join(httpTLSDir, tlsKeyFile)),
 		},
 	}
 	uriSchemeContainerSpec := corev1.Container{

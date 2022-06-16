@@ -15,12 +15,12 @@ import (
 
 // GetStart returns the start timestamp of the request in milliseconds.
 func (m *IndexStatsRequest) GetStart() int64 {
-	return m.From.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+	return int64(m.From)
 }
 
 // GetEnd returns the end timestamp of the request in milliseconds.
 func (m *IndexStatsRequest) GetEnd() int64 {
-	return m.Through.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+	return int64(m.Through)
 }
 
 // GetStep returns the step of the request in milliseconds.

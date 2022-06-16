@@ -456,54 +456,54 @@ func Test_GetSeries(t *testing.T) {
 		{
 			`foo`,
 			[]labels.Labels{
-				ch1lbs.WithoutLabels(labels.MetricName),
-				ch2lbs.WithoutLabels(labels.MetricName),
+				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
 			},
 		},
 		{
 			`foo{flip=""}`,
-			[]labels.Labels{ch2lbs.WithoutLabels(labels.MetricName)},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{bar="baz"}`,
-			[]labels.Labels{ch1lbs.WithoutLabels(labels.MetricName)},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{bar="beep"}`,
-			[]labels.Labels{ch2lbs.WithoutLabels(labels.MetricName)},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{toms="code"}`,
 			[]labels.Labels{
-				ch1lbs.WithoutLabels(labels.MetricName),
-				ch2lbs.WithoutLabels(labels.MetricName),
+				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
 			},
 		},
 		{
 			`foo{bar!="baz"}`,
-			[]labels.Labels{ch2lbs.WithoutLabels(labels.MetricName)},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{bar=~"beep|baz"}`,
 			[]labels.Labels{
-				ch1lbs.WithoutLabels(labels.MetricName),
-				ch2lbs.WithoutLabels(labels.MetricName),
+				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
 			},
 		},
 		{
 			`foo{bar=~"beeping|baz"}`,
-			[]labels.Labels{ch1lbs.WithoutLabels(labels.MetricName)},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{toms="code", bar=~"beep|baz"}`,
 			[]labels.Labels{
-				ch1lbs.WithoutLabels(labels.MetricName),
-				ch2lbs.WithoutLabels(labels.MetricName),
+				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
 			},
 		},
 		{
 			`foo{toms="code", bar="baz"}`,
-			[]labels.Labels{ch1lbs.WithoutLabels(labels.MetricName)},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
 		},
 	}
 	for _, schema := range schemas {
@@ -556,11 +556,11 @@ func Test_GetSeriesShard(t *testing.T) {
 	}{
 		{
 			`foo{__cortex_shard__="6_of_16"}`,
-			[]labels.Labels{ch2lbs.WithoutLabels(labels.MetricName)},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{__cortex_shard__="8_of_16"}`,
-			[]labels.Labels{ch1lbs.WithoutLabels(labels.MetricName)},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
 		},
 	}
 	for _, storeCase := range stores {

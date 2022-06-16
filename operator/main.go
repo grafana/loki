@@ -47,10 +47,12 @@ func main() {
 		enableCertSigning           bool
 		enableServiceMonitors       bool
 		enableTLSServiceMonitors    bool
+		enableTLSGRPCServices       bool
 		enableGateway               bool
 		enableGatewayRoute          bool
 		enablePrometheusAlerts      bool
 		enableGrafanaLabsAnalytics  bool
+		enableLokiStackWebhooks     bool
 		enableAlertingRuleWebhooks  bool
 		enableRecordingRuleWebhooks bool
 	)
@@ -65,6 +67,8 @@ func main() {
 	flag.BoolVar(&enableServiceMonitors, "with-service-monitors", false, "Enables service monitoring")
 	flag.BoolVar(&enableTLSServiceMonitors, "with-tls-service-monitors", false,
 		"Enables loading of a prometheus service monitor.")
+	flag.BoolVar(&enableTLSGRPCServices, "with-tls-grpc-services", false,
+		"Enables TLS for Loki GRPC services.")
 	flag.BoolVar(&enableGateway, "with-lokistack-gateway", false,
 		"Enables the manifest creation for the entire lokistack-gateway.")
 	flag.BoolVar(&enableGatewayRoute, "with-lokistack-gateway-route", false,
@@ -72,6 +76,8 @@ func main() {
 	flag.BoolVar(&enablePrometheusAlerts, "with-prometheus-alerts", false, "Enables prometheus alerts.")
 	flag.BoolVar(&enableGrafanaLabsAnalytics, "with-grafana-labs-analytics", true,
 		"Enables Grafana Labs analytics.\nMore info: https://grafana.com/docs/loki/latest/configuration/#analytics")
+	flag.BoolVar(&enableLokiStackWebhooks, "with-lokistack-webhooks", true,
+		"Enables LokiStack validation webhooks.")
 	flag.BoolVar(&enableAlertingRuleWebhooks, "with-alerting-rule-webhooks", true,
 		"Enables AlertingRule validation webhooks.")
 	flag.BoolVar(&enableRecordingRuleWebhooks, "with-recording-rule-webhooks", true,
@@ -115,6 +121,7 @@ func main() {
 		EnableCertificateSigningService: enableCertSigning,
 		EnableServiceMonitors:           enableServiceMonitors,
 		EnableTLSServiceMonitorConfig:   enableTLSServiceMonitors,
+		EnableTLSGRPCServices:           enableTLSGRPCServices,
 		EnablePrometheusAlerts:          enablePrometheusAlerts,
 		EnableGateway:                   enableGateway,
 		EnableGatewayRoute:              enableGatewayRoute,
@@ -129,6 +136,12 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "LokiStack")
 		os.Exit(1)
+	}
+	if enableLokiStackWebhooks {
+		if err = (&lokiv1beta1.LokiStack{}).SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "LokiStack")
+			os.Exit(1)
+		}
 	}
 	if err = (&controllers.AlertingRuleReconciler{
 		Client: mgr.GetClient(),

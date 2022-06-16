@@ -1,5 +1,7 @@
 ## Main
 
+- [6224](https://github.com/grafana/loki/pull/6224) **periklis**: Add support for GRPC over TLS for Loki components
+- [5952](https://github.com/grafana/loki/pull/5952) **Red-GV**: Add api to change storage schema version
 - [6363](https://github.com/grafana/loki/pull/6363) **periklis**: Allow optional installation of webhooks (Kind)
 - [6362](https://github.com/grafana/loki/pull/6362) **periklis**: Allow reduced tenant OIDC authentication requirements
 - [6288](https://github.com/grafana/loki/pull/6288) **aminesnow**: Expose only an HTTPS gateway when in openshift mode

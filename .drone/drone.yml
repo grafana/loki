@@ -1024,6 +1024,7 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  - echo $(./tools/image-tag)
   - echo $(./tools/image-tag) > .tag
   depends_on:
   - clone
@@ -1074,13 +1075,15 @@ trigger:
 depends_on:
 - check
 kind: pipeline
-name: lambda-promtail
+name: lambda-promtail-amd64
+platform:
+  arch: amd64
+  os: linux
 steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
-  - echo ",main" >> .tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -1131,6 +1134,114 @@ trigger:
   - pull_request
   - tag
 ---
+depends_on:
+- check
+kind: pipeline
+name: lambda-promtail-arm64
+platform:
+  arch: arm64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm64 > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: cstyan/ecr
+  name: build-lambda-promtail-image
+  privileged: true
+  settings:
+    access_key:
+      from_secret: ecr_key
+    dockerfile: tools/lambda-promtail/Dockerfile
+    dry_run: true
+    region: us-east-1
+    registry: public.ecr.aws/grafana
+    repo: public.ecr.aws/grafana/lambda-promtail
+    secret_key:
+      from_secret: ecr_secret_key
+  when:
+    ref:
+      exclude:
+      - refs/heads/main
+      - refs/heads/k???
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: cstyan/ecr
+  name: publish-lambda-promtail-image
+  privileged: true
+  settings:
+    access_key:
+      from_secret: ecr_key
+    dockerfile: tools/lambda-promtail/Dockerfile
+    dry_run: false
+    region: us-east-1
+    registry: public.ecr.aws/grafana
+    repo: public.ecr.aws/grafana/lambda-promtail
+    secret_key:
+      from_secret: ecr_secret_key
+  when:
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k???
+      - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
+  - tag
+---
+depends_on:
+- lambda-promtail-amd64
+- lambda-promtail-arm64
+kind: pipeline
+name: manifest-ecr
+steps:
+- commands:
+  - apk add --no-cache aws-cli
+  - docker login --username AWS --password $(aws ecr-public get-login-password --region
+    us-east-1) public.ecr.aws
+  depends_on:
+  - clone
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: ecr_key
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: ecr_secret_key
+  image: docker:dind
+  name: ecr-login
+  volumes:
+  - name: dockerconf
+    path: /root/.docker
+- depends_on:
+  - clone
+  - ecr-login
+  image: plugins/manifest
+  name: manifest-lambda-promtail
+  settings:
+    ignore_missing: true
+    spec: .drone/docker-manifest-ecr.tmpl
+    target: lambda-promtail
+  volumes:
+  - name: dockerconf
+    path: /.docker
+trigger:
+  event:
+  - push
+  ref:
+    include:
+    - refs/heads/main
+    - refs/heads/k???
+    - refs/tags/v*
+volumes:
+- name: dockerconf
+  temp: {}
+---
 get:
   name: pat
   path: infra/data/ci/github/grafanabot
@@ -1174,6 +1285,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 81be9fce60976703815abf1fd2f1c9255a142d615b90d4b5278ff4a64fa25e92
+hmac: 8335495d285498f513bb265cf90079175c25f5b6c5717deab7abfae65341726a
 
 ...

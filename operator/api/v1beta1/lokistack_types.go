@@ -322,6 +322,17 @@ type LokiTemplateSpec struct {
 	Ruler *LokiComponentSpec `json:"ruler,omitempty"`
 }
 
+// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
+type ObjectStorageTLSSpec struct {
+	// CA is the name of a ConfigMap containing a CA certificate.
+	// It needs to be in the same namespace as the LokiStack custom resource.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
+	CA string `json:"caName,omitempty"`
+}
+
 // ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
 //
 // +kubebuilder:validation:Enum=azure;gcs;s3;swift
@@ -358,20 +369,52 @@ type ObjectStorageSecretSpec struct {
 	Name string `json:"name"`
 }
 
-// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
-type ObjectStorageTLSSpec struct {
-	// CA is the name of a ConfigMap containing a CA certificate.
-	// It needs to be in the same namespace as the LokiStack custom resource.
+// ObjectStorageSchemaVersion defines the storage schema version which will be
+// used with the Loki cluster.
+//
+// +kubebuilder:validation:Enum=v11;v12
+type ObjectStorageSchemaVersion string
+
+const (
+	// ObjectStorageSchemaV11 when using v11 for the storage schema
+	ObjectStorageSchemaV11 ObjectStorageSchemaVersion = "v11"
+
+	// ObjectStorageSchemaV12 when using v12 for the storage schema
+	ObjectStorageSchemaV12 ObjectStorageSchemaVersion = "v12"
+)
+
+// ObjectStorageSchema defines the requirements needed to configure a new
+// storage schema.
+type ObjectStorageSchema struct {
+
+	// Version for writing and reading logs.
 	//
-	// +optional
-	// +kubebuilder:validation:optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
-	CA string `json:"caName,omitempty"`
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:v11","urn:alm:descriptor:com.tectonic.ui:select:v12"},displayName="Version"
+	Version ObjectStorageSchemaVersion `json:"version"`
+
+	// EffectiveDate is the date in UTC that the schema will be applied on.
+	// To ensure readibility of logs, this date should be before the current
+	// date in UTC.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	EffectiveDate StorageSchemaEffectiveDate `json:"effectiveDate"`
 }
 
 // ObjectStorageSpec defines the requirements to access the object
 // storage bucket to persist logs by the ingester component.
 type ObjectStorageSpec struct {
+
+	// Schemas for reading and writing logs.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinItems:=1
+	// +kubebuilder:default:={{version:v11,effectiveDate:"2020-10-11"}}
+	Schemas []ObjectStorageSchema `json:"schemas"`
+
 	// Secret for object storage authentication.
 	// Name of a secret in the same namespace as the LokiStack custom resource.
 	//
@@ -638,6 +681,8 @@ const (
 	ReasonMissingObjectStorageSecret LokiStackConditionReason = "MissingObjectStorageSecret"
 	// ReasonInvalidObjectStorageSecret when the format of the secret is invalid.
 	ReasonInvalidObjectStorageSecret LokiStackConditionReason = "InvalidObjectStorageSecret"
+	// ReasonInvalidObjectStorageSchema when the spec contains an invalid schema(s).
+	ReasonInvalidObjectStorageSchema LokiStackConditionReason = "InvalidObjectStorageSchema"
 	// ReasonMissingObjectStorageCAConfigMap when the required configmap to verify object storage
 	// certificates is missing.
 	ReasonMissingObjectStorageCAConfigMap LokiStackConditionReason = "MissingObjectStorageCAConfigMap"
@@ -725,6 +770,18 @@ type LokiStackComponentStatus struct {
 	Ruler PodStatusMap `json:"ruler,omitempty"`
 }
 
+// LokiStackStorageStatus defines the observed state of
+// the Loki storage configuration.
+type LokiStackStorageStatus struct {
+
+	// Schemas is a list of schemas which have been applied
+	// to the LokiStack.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Schemas []ObjectStorageSchema `json:"schemas,omitempty"`
+}
+
 // LokiStackStatus defines the observed state of LokiStack
 type LokiStackStatus struct {
 	// Components provides summary of all Loki pod status grouped
@@ -733,6 +790,13 @@ type LokiStackStatus struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Components LokiStackComponentStatus `json:"components,omitempty"`
+
+	// Storage provides summary of all changes that have occurred
+	// to the storage configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Storage LokiStackStorageStatus `json:"storage,omitempty"`
 
 	// Conditions of the Loki deployment health.
 	//

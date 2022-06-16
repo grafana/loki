@@ -8113,8 +8113,9 @@ func (c *S3) PutBucketLifecycleConfigurationRequest(input *PutBucketLifecycleCon
 // Rules
 //
 // You specify the lifecycle configuration in your request body. The lifecycle
-// configuration is specified as XML consisting of one or more rules. Each rule
-// consists of the following:
+// configuration is specified as XML consisting of one or more rules. An Amazon
+// S3 Lifecycle configuration can have up to 1,000 rules. This limit is not
+// adjustable. Each rule consists of the following:
 //
 //    * Filter identifying a subset of objects to which the rule applies. The
 //    filter can be based on a key name prefix, object tags, or a combination
@@ -10918,9 +10919,11 @@ func (c *S3) UploadPartRequest(input *UploadPartInput) (req *request.Request, ou
 // Part numbers can be any number from 1 to 10,000, inclusive. A part number
 // uniquely identifies a part and also defines its position within the object
 // being created. If you upload a new part using the same part number that was
-// used with a previous part, the previously uploaded part is overwritten. Each
-// part must be at least 5 MB in size, except the last part. There is no size
-// limit on the last part of your multipart upload.
+// used with a previous part, the previously uploaded part is overwritten.
+//
+// For information about maximum and minimum part sizes and other multipart
+// upload specifications, see Multipart upload limits (https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html)
+// in the Amazon S3 User Guide.
 //
 // To ensure that data is not corrupted when traversing the network, specify
 // the Content-MD5 header in the upload part request. Amazon S3 checks the part
@@ -11068,8 +11071,8 @@ func (c *S3) UploadPartCopyRequest(input *UploadPartCopyInput) (req *request.Req
 // your request and a byte range by adding the request header x-amz-copy-source-range
 // in your request.
 //
-// The minimum allowable part size for a multipart upload is 5 MB. For more
-// information about multipart upload limits, go to Quick Facts (https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html)
+// For information about maximum and minimum part sizes and other multipart
+// upload specifications, see Multipart upload limits (https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html)
 // in the Amazon S3 User Guide.
 //
 // Instead of using an existing object as part data, you might use the UploadPart
@@ -12633,7 +12636,7 @@ type CloudFunctionConfiguration struct {
 	Event *string `deprecated:"true" type:"string" enum:"Event"`
 
 	// Bucket events for which to send notifications.
-	Events []*string `locationName:"Event" type:"list" flattened:"true"`
+	Events []*string `locationName:"Event" type:"list" flattened:"true" enum:"Event"`
 
 	// An optional unique identifier for configurations in a notification configuration.
 	// If you don't provide one, Amazon S3 will assign an ID.
@@ -21627,7 +21630,7 @@ type GetObjectAttributesInput struct {
 	// in the response. Fields that you do not specify are not returned.
 	//
 	// ObjectAttributes is a required field
-	ObjectAttributes []*string `location:"header" locationName:"x-amz-object-attributes" type:"list" required:"true"`
+	ObjectAttributes []*string `location:"header" locationName:"x-amz-object-attributes" type:"list" required:"true" enum:"ObjectAttributes"`
 
 	// Specifies the part after which listing should begin. Only parts with higher
 	// part numbers will be listed.
@@ -25167,7 +25170,7 @@ type InventoryConfiguration struct {
 	IsEnabled *bool `type:"boolean" required:"true"`
 
 	// Contains the optional fields that are included in the inventory results.
-	OptionalFields []*string `locationNameList:"Field" type:"list"`
+	OptionalFields []*string `locationNameList:"Field" type:"list" enum:"InventoryOptionalField"`
 
 	// Specifies the schedule for generating inventory results.
 	//
@@ -25694,7 +25697,7 @@ type LambdaFunctionConfiguration struct {
 	// in the Amazon S3 User Guide.
 	//
 	// Events is a required field
-	Events []*string `locationName:"Event" type:"list" flattened:"true" required:"true"`
+	Events []*string `locationName:"Event" type:"list" flattened:"true" required:"true" enum:"Event"`
 
 	// Specifies object key name filtering rules. For information about key name
 	// filtering, see Configuring Event Notifications (https://docs.aws.amazon.com/AmazonS3/latest/dev/NotificationHowTo.html)
@@ -29347,9 +29350,9 @@ type NoncurrentVersionExpiration struct {
 	NewerNoncurrentVersions *int64 `type:"integer"`
 
 	// Specifies the number of days an object is noncurrent before Amazon S3 can
-	// perform the associated action. For information about the noncurrent days
-	// calculations, see How Amazon S3 Calculates When an Object Became Noncurrent
-	// (https://docs.aws.amazon.com/AmazonS3/latest/dev/intro-lifecycle-rules.html#non-current-days-calculations)
+	// perform the associated action. The value must be a non-zero positive integer.
+	// For information about the noncurrent days calculations, see How Amazon S3
+	// Calculates When an Object Became Noncurrent (https://docs.aws.amazon.com/AmazonS3/latest/dev/intro-lifecycle-rules.html#non-current-days-calculations)
 	// in the Amazon S3 User Guide.
 	NoncurrentDays *int64 `type:"integer"`
 }
@@ -29643,7 +29646,7 @@ type Object struct {
 	_ struct{} `type:"structure"`
 
 	// The algorithm that was used to create a checksum of the object.
-	ChecksumAlgorithm []*string `type:"list" flattened:"true"`
+	ChecksumAlgorithm []*string `type:"list" flattened:"true" enum:"ChecksumAlgorithm"`
 
 	// The entity tag is a hash of the object. The ETag reflects changes only to
 	// the contents of an object, not its metadata. The ETag may or may not be an
@@ -29662,7 +29665,9 @@ type Object struct {
 	//
 	//    * If an object is created by either the Multipart Upload or Part Copy
 	//    operation, the ETag is not an MD5 digest, regardless of the method of
-	//    encryption.
+	//    encryption. If an object is larger than 16 MB, the Amazon Web Services
+	//    Management Console will upload or copy that object as a Multipart Upload,
+	//    and therefore the ETag will not be an MD5 digest.
 	ETag *string `type:"string"`
 
 	// The name that you assign to an object. You use the object key to retrieve
@@ -30060,7 +30065,7 @@ type ObjectVersion struct {
 	_ struct{} `type:"structure"`
 
 	// The algorithm that was used to create a checksum of the object.
-	ChecksumAlgorithm []*string `type:"list" flattened:"true"`
+	ChecksumAlgorithm []*string `type:"list" flattened:"true" enum:"ChecksumAlgorithm"`
 
 	// The entity tag is an MD5 hash of that version of the object.
 	ETag *string `type:"string"`
@@ -36025,7 +36030,7 @@ type QueueConfiguration struct {
 	// A collection of bucket events for which to send notifications
 	//
 	// Events is a required field
-	Events []*string `locationName:"Event" type:"list" flattened:"true" required:"true"`
+	Events []*string `locationName:"Event" type:"list" flattened:"true" required:"true" enum:"Event"`
 
 	// Specifies object key name filtering rules. For information about key name
 	// filtering, see Configuring Event Notifications (https://docs.aws.amazon.com/AmazonS3/latest/dev/NotificationHowTo.html)
@@ -36114,7 +36119,7 @@ type QueueConfigurationDeprecated struct {
 	Event *string `deprecated:"true" type:"string" enum:"Event"`
 
 	// A collection of bucket events for which to send notifications.
-	Events []*string `locationName:"Event" type:"list" flattened:"true"`
+	Events []*string `locationName:"Event" type:"list" flattened:"true" enum:"Event"`
 
 	// An optional unique identifier for configurations in a notification configuration.
 	// If you don't provide one, Amazon S3 will assign an ID.
@@ -39062,7 +39067,7 @@ type TopicConfiguration struct {
 	// in the Amazon S3 User Guide.
 	//
 	// Events is a required field
-	Events []*string `locationName:"Event" type:"list" flattened:"true" required:"true"`
+	Events []*string `locationName:"Event" type:"list" flattened:"true" required:"true" enum:"Event"`
 
 	// Specifies object key name filtering rules. For information about key name
 	// filtering, see Configuring Event Notifications (https://docs.aws.amazon.com/AmazonS3/latest/dev/NotificationHowTo.html)
@@ -39152,7 +39157,7 @@ type TopicConfigurationDeprecated struct {
 	Event *string `deprecated:"true" type:"string" enum:"Event"`
 
 	// A collection of events related to objects
-	Events []*string `locationName:"Event" type:"list" flattened:"true"`
+	Events []*string `locationName:"Event" type:"list" flattened:"true" enum:"Event"`
 
 	// An optional unique identifier for configurations in a notification configuration.
 	// If you don't provide one, Amazon S3 will assign an ID.

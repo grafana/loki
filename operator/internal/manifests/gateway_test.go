@@ -165,7 +165,7 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Len(t, objs, 7)
+	require.Len(t, objs, 9)
 }
 
 func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T) {

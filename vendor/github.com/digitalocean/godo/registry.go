@@ -50,6 +50,7 @@ type RegistryServiceOp struct {
 type RegistryCreateRequest struct {
 	Name                 string `json:"name,omitempty"`
 	SubscriptionTierSlug string `json:"subscription_tier_slug,omitempty"`
+	Region               string `json:"region,omitempty"`
 }
 
 // RegistryDockerCredentialsRequest represents a request to retrieve docker
@@ -65,6 +66,7 @@ type Registry struct {
 	StorageUsageBytes          uint64    `json:"storage_usage_bytes,omitempty"`
 	StorageUsageBytesUpdatedAt time.Time `json:"storage_usage_bytes_updated_at,omitempty"`
 	CreatedAt                  time.Time `json:"created_at,omitempty"`
+	Region                     string    `json:"region,omitempty"`
 }
 
 // Repository represents a repository
@@ -192,6 +194,7 @@ type UpdateGarbageCollectionRequest struct {
 // RegistryOptions are options for users when creating or updating a registry.
 type RegistryOptions struct {
 	SubscriptionTiers []*RegistrySubscriptionTier `json:"subscription_tiers,omitempty"`
+	AvailableRegions  []string                    `json:"available_regions"`
 }
 
 type registryOptionsRoot struct {

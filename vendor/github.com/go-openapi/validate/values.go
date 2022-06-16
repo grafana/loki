@@ -394,7 +394,7 @@ func IsValueValidAgainstRange(val interface{}, typeName, format, prefix, path st
 	kind := reflect.ValueOf(val).Type().Kind()
 
 	// What is the string representation of val
-	stringRep := ""
+	var stringRep string
 	switch kind {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		stringRep = swag.FormatUint64(valueHelp.asUint64(val))

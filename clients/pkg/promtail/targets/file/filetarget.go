@@ -172,7 +172,11 @@ func (t *FileTarget) run() {
 
 	for {
 		select {
-		case event := <-t.fileEventWatcher:
+		case event, ok := <-t.fileEventWatcher:
+			if !ok {
+				// fileEventWatcher has been closed
+				return
+			}
 			switch event.Op {
 			case fsnotify.Create:
 				t.startTailing([]string{event.Name})
