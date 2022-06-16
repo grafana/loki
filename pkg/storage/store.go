@@ -32,7 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
-	util_pipeline "github.com/grafana/loki/pkg/util/deletion/pipeline"
+	deletion "github.com/grafana/loki/pkg/util/deletion/pipeline"
 )
 
 var (
@@ -435,7 +435,7 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
-	pipeline, err = util_pipeline.SetupPipeline(req, pipeline)
+	pipeline, err = deletion.SetupPipeline(req, pipeline)
 	if err != nil {
 		return nil, err
 	}
@@ -473,7 +473,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		return nil, err
 	}
 
-	extractor, err = util_pipeline.SetupExtractor(req, extractor)
+	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}
