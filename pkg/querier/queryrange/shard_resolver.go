@@ -81,7 +81,8 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		if grps[i].Interval == 0 {
 			adjustedFrom = adjustedFrom.Add(-r.defaultLookback)
 		}
-		adjustedThrough := r.through.Add(-diff)
+
+		adjustedThrough := r.through.Add(-grps[i].Offset)
 
 		start := time.Now()
 		resp, err := r.handler.Do(r.ctx, &indexgatewaypb.IndexStatsRequest{
