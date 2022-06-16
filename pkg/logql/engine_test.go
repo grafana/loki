@@ -53,6 +53,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			time.Unix(60, 0),
 			logproto.FORWARD,
 			10,
+			// create a stream {app="foo"} with 300 samples starting at 46s and ending at 345s with a constant value of 1
 			[][]logproto.Series{
 				// 30s range the lower bound of the range is not inclusive only 15 samples will make it 60 included
 				{newSeries(testSize, offset(46, constantValue(1)), `{app="foo"}`)},
@@ -60,6 +61,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			[]SelectSampleParams{
 				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}},
 			},
+			// there are 15 samples (from 47 to 61) matched from the generated series
 			// SUM(n=47, 61, 1) = 15
 			// 15 / 30 = 0.5
 			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.5}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
@@ -69,6 +71,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			time.Unix(60, 0),
 			logproto.FORWARD,
 			10,
+			// create a stream {app="foo"} with 300 samples starting at 46s and ending at 345s with an increasing value by 1
 			[][]logproto.Series{
 				// 30s range the lower bound of the range is not inclusive only 15 samples will make it 60 included
 				{newSeries(testSize, offset(46, incValue(1)), `{app="foo"}`)},
@@ -76,9 +79,44 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			[]SelectSampleParams{
 				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}},
 			},
-			// SUM(n=47, 61, n) = 810
+			// there are 15 samples (from 47 to 61) matched from the generated series
+			// SUM(n=47, 61, n) = (47+48+...+61) = 810
 			// 810 / 30 = 27
 			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 27}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+		},
+		{
+			`rate_counter({app="foo"} | unwrap foo [30s])`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			10,
+			// create a stream {app="foo"} with 300 samples starting at 46s and ending at 345s with a constant value of 1
+			[][]logproto.Series{
+				// 30s range the lower bound of the range is not inclusive only 15 samples will make it 60 included
+				{newSeries(testSize, offset(46, constantValue(1)), `{app="foo"}`)},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`}},
+			},
+			// there are 15 samples (from 47 to 61) matched from the generated series
+			// (1 - 1) / 30 = 0
+			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+		},
+		{
+			`rate_counter({app="foo"} | unwrap foo [30s])`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			10,
+			// create a stream {app="foo"} with 300 samples starting at 46s and ending at 345s with an increasing value by 1
+			[][]logproto.Series{
+				// 30s range the lower bound of the range is not inclusive only 15 samples will make it 60 included
+				{newSeries(testSize, offset(46, incValue(1)), `{app="foo"}`)},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`}},
+			},
+			// there are 15 samples (from 47 to 61) matched from the generated series
+			// (61 - 47) / 30 = 0.4666
+			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.46666766666666665}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
 		},
 	} {
 		test := test

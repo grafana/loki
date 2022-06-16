@@ -69,6 +69,7 @@ We currently support the functions:
 Supported function for operating over unwrapped ranges are:
 
 - `rate(unwrapped-range)`: calculates per second rate of the sum of all values in the specified interval.
+- `rate_counter(unwrapped-range)`: calculates per second rate of the values in the specified interval and treating them as "counter metric"
 - `sum_over_time(unwrapped-range)`: the sum of all values in the specified interval.
 - `avg_over_time(unwrapped-range)`: the average value of all points in the specified interval.
 - `max_over_time(unwrapped-range)`: the maximum value of all points in the specified interval.
