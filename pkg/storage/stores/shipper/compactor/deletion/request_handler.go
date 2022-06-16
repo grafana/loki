@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -12,22 +13,27 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
+
+var errPermissionDenied = errors.New("permission denied")
 
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
 	deleteRequestsStore       DeleteRequestsStore
 	metrics                   *deleteRequestHandlerMetrics
+	limits                    retention.Limits
 	deleteRequestCancelPeriod time.Duration
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, limits retention.Limits, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
 		deleteRequestsStore:       deleteStore,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
+		limits:                    limits,
 		metrics:                   newDeleteRequestHandlerMetrics(registerer),
 	}
 
@@ -40,6 +46,13 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err = checkDeletionPermission(dm.limits, userID)
+	if err != nil {
+		level.Debug(util_log.Logger).Log("msg", "user forbidden to access delete API by limits", "user", userID, "action", "add")
+		http.Error(w, "access denied", http.StatusForbidden)
 		return
 	}
 
@@ -106,6 +119,13 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 		return
 	}
 
+	err = checkDeletionPermission(dm.limits, userID)
+	if err != nil {
+		level.Debug(util_log.Logger).Log("msg", "user forbidden to access delete API by limits", "user", userID, "action", "get")
+		http.Error(w, "access denied", http.StatusForbidden)
+		return
+	}
+
 	deleteRequests, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
@@ -125,6 +145,13 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err = checkDeletionPermission(dm.limits, userID)
+	if err != nil {
+		level.Debug(util_log.Logger).Log("msg", "user forbidden to access delete API by limits", "user", userID, "action", "cancel")
+		http.Error(w, "access denied", http.StatusForbidden)
 		return
 	}
 
@@ -171,6 +198,13 @@ func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler(w http.ResponseW
 		return
 	}
 
+	err = checkDeletionPermission(dm.limits, userID)
+	if err != nil {
+		level.Debug(util_log.Logger).Log("msg", "user forbidden to access delete API by limits", "user", userID, "action", "get_cache_generation_number")
+		http.Error(w, "access denied", http.StatusForbidden)
+		return
+	}
+
 	cacheGenNumber, err := dm.deleteRequestsStore.GetCacheGenerationNumber(ctx, userID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting cache generation number", "err", err)
@@ -182,4 +216,13 @@ func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler(w http.ResponseW
 		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
 	}
+}
+
+func checkDeletionPermission(limits retention.Limits, userID string) error {
+	allLimits := limits.AllByUserID()
+	userLimits, ok := allLimits[userID]
+	if ok && !userLimits.CompactorDeletionEnabled {
+		return errPermissionDenied
+	}
+	return nil
 }
