@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
-	util_deletion "github.com/grafana/loki/pkg/util/deletion"
+	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -31,10 +31,10 @@ type DeleteRequestsManager struct {
 	metrics                    *deleteRequestsManagerMetrics
 	wg                         sync.WaitGroup
 	done                       chan struct{}
-	deletionMode               util_deletion.Mode
+	deletionMode               deletion.Mode
 }
 
-func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer, mode util_deletion.Mode) *DeleteRequestsManager {
+func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer, mode deletion.Mode) *DeleteRequestsManager {
 	dm := &DeleteRequestsManager{
 		deleteRequestsStore:       store,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
@@ -134,7 +134,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		return false, nil
 	}
 
-	if d.deletionMode == util_deletion.Disabled || d.deletionMode == util_deletion.FilterOnly {
+	if d.deletionMode == deletion.Disabled || d.deletionMode == deletion.FilterOnly {
 		// Don't process deletes
 		return false, nil
 	}
