@@ -77,12 +77,11 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	start := time.Now()
 	if err := concurrency.ForEachJob(r.ctx, len(grps), r.maxParallelism, func(ctx context.Context, i int) error {
 		matchers := syntax.MatchersString(grps[i].Matchers)
-		lookback := grps[i].Interval
-		if lookback == 0 {
-			lookback = r.defaultLookback
-		}
-		diff := lookback + grps[i].Offset
+		diff := grps[i].Interval + grps[i].Offset
 		adjustedFrom := r.from.Add(-diff)
+		if grps[i].Interval == 0 {
+			adjustedFrom = adjustedFrom.Add(-r.defaultLookback)
+		}
 		adjustedThrough := r.through.Add(-diff)
 
 		start := time.Now()
