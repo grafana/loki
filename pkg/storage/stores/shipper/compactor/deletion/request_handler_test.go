@@ -103,6 +103,26 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 
 	require.Equal(t, http.StatusForbidden, res.Result().StatusCode)
 
+	// User without override, this should use the default value which is false
+	req = httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
+	req = req.WithContext(user.InjectOrgID(req.Context(), "3"))
+
+	res = httptest.NewRecorder()
+	middle.ServeHTTP(res, req)
+
+	require.Equal(t, http.StatusForbidden, res.Result().StatusCode)
+
+	// User without override, after the default value is set to true
+	fl.defaultLimit.compactorDeletionEnabled = true
+
+	req = httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
+	req = req.WithContext(user.InjectOrgID(req.Context(), "3"))
+
+	res = httptest.NewRecorder()
+	middle.ServeHTTP(res, req)
+
+	require.Equal(t, http.StatusOK, res.Result().StatusCode)
+
 	// User header is not given
 	req = httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
 

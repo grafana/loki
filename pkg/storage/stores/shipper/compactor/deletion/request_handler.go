@@ -218,9 +218,16 @@ func (dm *DeleteRequestHandler) deletionMiddleware(next http.Handler) http.Handl
 
 		allLimits := dm.limits.AllByUserID()
 		userLimits, ok := allLimits[userID]
-		if ok && !userLimits.CompactorDeletionEnabled {
-			http.Error(w, "access denied", http.StatusForbidden)
-			return
+		if ok {
+			if !userLimits.CompactorDeletionEnabled {
+				http.Error(w, "access denied", http.StatusForbidden)
+				return
+			}
+		} else {
+			if !dm.limits.DefaultLimits().CompactorDeletionEnabled {
+				http.Error(w, "access denied", http.StatusForbidden)
+				return
+			}
 		}
 
 		next.ServeHTTP(w, r)
