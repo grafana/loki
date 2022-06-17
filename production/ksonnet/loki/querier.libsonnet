@@ -36,7 +36,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       $._config.overrides_configmap_mount_name,
       $._config.overrides_configmap_mount_path,
     ) +
-    # Evenly spread queriers among available nodes.
+    // Evenly spread queriers among available nodes.
     deployment.spec.template.spec.withTopologySpreadConstraints(
       topologySpreadConstraints.labelSelector.withMatchLabels({ name: 'querier' }) +
       topologySpreadConstraints.withTopologyKey('kubernetes.io/hostname') +
