@@ -1,5 +1,6 @@
 ## Main
 
+* [6415](https://github.com/grafana/loki/pull/6415) **salvacorts** Evenly spread queriers across kubernetes nodes.
 * [6372](https://github.com/grafana/loki/pull/6372) **splitice**: Add support for numbers in JSON fields.
 * [6105](https://github.com/grafana/loki/pull/6105) **rutgerke** Export metrics for the Promtail journal target.
 * [6099](https://github.com/grafana/loki/pull/6099) **cstyan**: Drop lines with malformed JSON in Promtail JSON pipeline stage.
