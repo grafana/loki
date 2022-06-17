@@ -330,3 +330,7 @@ replace google.golang.org/grpc => google.golang.org/grpc v1.45.0
 
 // We need to define the replace because thanos is importing an older version and then replacing it
 replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.36.2-0.20220613200027-59727ab0eb48
+
+// Replace memberlist with our fork which includes some fixes that haven't been
+// merged upstream yet.
+replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220425183535-6b97a09b7167

@@ -800,11 +800,17 @@ func (m *Memberlist) sendMsg(a Address, msg []byte) error {
 	msgs = append(msgs, msg)
 	msgs = append(msgs, extra...)
 
-	// Create a compound message
-	compound := makeCompoundMessage(msgs)
+	// Create one or more compound messages.
+	compounds := makeCompoundMessages(msgs)
 
-	// Send the message
-	return m.rawSendMsgPacket(a, nil, compound.Bytes())
+	// Send the messages.
+	for _, compound := range compounds {
+		if err := m.rawSendMsgPacket(a, nil, compound.Bytes()); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // rawSendMsgPacket is used to send message via packet to another host without
