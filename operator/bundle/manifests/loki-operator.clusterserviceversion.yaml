@@ -1303,6 +1303,7 @@ spec:
     name: gateway
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
+  replaces: loki-operator.v0.0.0
   version: 0.0.1
   webhookdefinitions:
   - admissionReviewVersions:

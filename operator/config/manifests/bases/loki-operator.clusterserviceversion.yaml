@@ -798,4 +798,5 @@ spec:
   minKubeVersion: 1.21.1
   provider:
     name: Grafana.com
+  replaces: loki-operator.v0.0.0
   version: 0.0.0
