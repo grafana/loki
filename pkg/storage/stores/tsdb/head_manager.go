@@ -254,14 +254,14 @@ func (m *HeadManager) Rotate(t time.Time) error {
 		}
 	}
 
-	stopPrev("previous cycle") // stop the previous wal if it hasn't been cleaned up yet
 	m.mtx.Lock()
+	stopPrev("previous cycle") // stop the previous wal if it hasn't been cleaned up yet
 	m.prev = m.active
 	m.prevHeads = m.activeHeads
 	m.active = nextWAL
 	m.activeHeads = nextHeads
-	m.mtx.Unlock()
 	stopPrev("freshly rotated") // stop the newly rotated-out wal
+	m.mtx.Unlock()
 
 	// build tsdb from rotated-out period
 	// TODO(owen-d): don't block Append() waiting for tsdb building. Use a work channel/etc
