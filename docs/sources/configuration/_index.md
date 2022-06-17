@@ -196,6 +196,11 @@ configures the HTTP and gRPC server communication of the launched service(s).
 # CLI flag: -server.http-listen-port
 [http_listen_port: <int> | default = 80]
 
+# TLS configuration for serving over https
+[http_tls_config: &tls_server_config]
+  [cert_file: <string>]
+  [key_file: <string>]
+
 # gRPC server listen host
 # CLI flag: -server.grpc-listen-address
 [grpc_listen_address: <string>]
