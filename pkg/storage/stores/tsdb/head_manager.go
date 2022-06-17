@@ -231,6 +231,14 @@ func managerPerTenantDir(parent string) string {
 }
 
 func (m *HeadManager) Rotate(t time.Time) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if m.activeHeads != nil && m.period.PeriodFor(t) == m.period.PeriodFor(m.activeHeads.start) {
+		// no-op, we've already rotated to the desired period
+		return nil
+	}
+
 	// create new wal
 	nextWALPath := walPath(m.dir, t)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
@@ -254,14 +262,12 @@ func (m *HeadManager) Rotate(t time.Time) error {
 		}
 	}
 
-	m.mtx.Lock()
 	stopPrev("previous cycle") // stop the previous wal if it hasn't been cleaned up yet
 	m.prev = m.active
 	m.prevHeads = m.activeHeads
 	m.active = nextWAL
 	m.activeHeads = nextHeads
 	stopPrev("freshly rotated") // stop the newly rotated-out wal
-	m.mtx.Unlock()
 
 	// build tsdb from rotated-out period
 	// TODO(owen-d): don't block Append() waiting for tsdb building. Use a work channel/etc
@@ -292,10 +298,8 @@ func (m *HeadManager) Rotate(t time.Time) error {
 	}
 
 	// Now that the tsdbManager has the updated TSDBs, we can remove our references
-	m.mtx.Lock()
 	m.prevHeads = nil
 	m.prev = nil
-	m.mtx.Unlock()
 	return nil
 }
 
