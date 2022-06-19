@@ -21,8 +21,7 @@ import (
 )
 
 var (
-	hashBuffer = make([]byte, 0, 1024)
-	walRecord  = &ingester.WALRecord{
+	walRecord = &ingester.WALRecord{
 		RefEntries: make([]ingester.RefEntries, 0, 1),
 		Series:     make([]record.RefSeries, 0, 1),
 	}
@@ -83,7 +82,6 @@ func (b *batch) add(entry api.Entry) error {
 	b.bytes += len(entry.Line)
 	walRecord.RefEntries = walRecord.RefEntries[:0]
 	walRecord.Series = walRecord.Series[:0]
-	hashBuffer = hashBuffer[:0]
 
 	// todo: log the error
 	defer func() {
@@ -96,7 +94,7 @@ func (b *batch) add(entry api.Entry) error {
 	var fp uint64
 	lbs := labels.FromMap(util.ModelLabelSetToMap(entry.Labels))
 	sort.Sort(lbs)
-	fp, hashBuffer = lbs.HashWithoutLabels(hashBuffer, []string(nil)...)
+	fp, _ = lbs.HashWithoutLabels(nil, []string(nil)...)
 
 	// Append the entry to an already existing stream (if any)
 	labelsString := labelsMapToString(entry.Labels, ReservedLabelTenantID)
