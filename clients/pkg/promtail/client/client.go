@@ -291,6 +291,20 @@ func (c *client) replayWAL() error {
 					entry.Labels = l
 					for _, e := range samples.Entries {
 						entry.Entry = e
+						// If adding the entry to the batch will increase the size over the max
+						// size allowed, we do send the current batch and then create a new one
+						if b.sizeBytesAfter(entry) > c.cfg.BatchSize {
+							c.sendBatch(tenantID, b)
+							if err := b.wal.Delete(); err != nil {
+								level.Error(c.logger).Log("msg", "failed to delete WAL", "err", err)
+							}
+							new := c.newBatch(tenantID)
+							new.replay(entry)
+							b = new
+							break
+						}
+
+						// The max size of the batch isn't reached, so we can add the entry
 						b.replay(entry)
 					}
 
