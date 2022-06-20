@@ -182,6 +182,15 @@ ifndef ignore-not-found
   ignore-not-found = false
 endif
 
+.PHONY: quickstart
+ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
+quickstart: ## Quickstart full dev environment on local kind cluster
+	@./quickstart.sh
+else
+quickstart: oci-build oci-push
+	@./quickstart.sh
+endif
+
 .PHONY: run
 run: generate manifests ## Run against the configured Kubernetes cluster in ~/.kube/config
 	go run ./main.go

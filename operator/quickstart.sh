@@ -34,7 +34,7 @@ operator(){
     echo "-------------------------------------------"
     echo "- Deploy Loki Operator...                  -"
     echo "-------------------------------------------"
-    make oci-build oci-push deploy REGISTRY_ORG=periklis
+    make deploy
     kubectl rollout status deployment controller-manager
     kubectl rollout status deployment minio
 }
