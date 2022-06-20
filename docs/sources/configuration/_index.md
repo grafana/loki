@@ -2373,9 +2373,9 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 30m]
 
-# When true, access to the deletion API on the compactor is enabled.
-# CLI flag: -compactor.deletion-enabled
-[compactor_deletion_enabled: <boolean> | default = false]
+# When true, access to the deletion API is enabled.
+# CLI flag: -compactor.allow_deletes
+[allow_deletes: <boolean> | default = false]
 ```
 
 ## sigv4_config
