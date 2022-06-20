@@ -76,7 +76,7 @@ data:
     mode = console
 kind: ConfigMap
 metadata:
-  name: grafana-config-5kt2h4545b
+  name: grafana-config
   namespace: openshift-logging
 ---
 apiVersion: v1
@@ -88,18 +88,30 @@ data:
         isDefault: true
         type: loki
         access: proxy
-        url: http://${GATEWAY_ADDRESS}/api/logs/v1/application/
+        url: https://${GATEWAY_ADDRESS}/api/logs/v1/application/
+        jsonData:
+          tlsAuthWithCACert: true
+        secureJsonData:
+          tlsCACert: ${GATEWAY_SERVICE_CA}
       - name: Loki (Infrastructure)
         type: loki
         access: proxy
-        url: http://${GATEWAY_ADDRESS}/api/logs/v1/infrastructure/
+        url: https://${GATEWAY_ADDRESS}/api/logs/v1/infrastructure/
+        jsonData:
+          tlsAuthWithCACert: true
+        secureJsonData:
+          tlsCACert: ${GATEWAY_SERVICE_CA}
       - name: Loki (Audit)
         type: loki
         access: proxy
-        url: http://${GATEWAY_ADDRESS}/api/logs/v1/audit/
+        url: https://${GATEWAY_ADDRESS}/api/logs/v1/audit/
+        jsonData:
+          tlsAuthWithCACert: true
+        secureJsonData:
+          tlsCACert: ${GATEWAY_SERVICE_CA}
 kind: ConfigMap
 metadata:
-  name: grafana-datasources-d9f6t65c72
+  name: grafana-datasources
   namespace: openshift-logging
 ---
 apiVersion: v1
@@ -127,7 +139,7 @@ spec:
   type: ClusterIP
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   labels:
     app: grafana
@@ -137,7 +149,6 @@ spec:
   selector:
     matchLabels:
       app: grafana
-  serviceName: grafana
   template:
     metadata:
       labels:
@@ -147,11 +158,16 @@ spec:
       - args:
         - -config=/etc/grafana/config.ini
         env:
+        - name: GATEWAY_SERVICE_CA
+          valueFrom:
+            configMapKeyRef:
+              key: service-ca.crt
+              name: openshift-service-ca.crt
         - name: GATEWAY_ADDRESS
           value: lokistack-dev-gateway-http.openshift-logging.svc:8080
         - name: GF_SECURITY_ADMIN_USER
           value: kube:admin
-        image: docker.io/grafana/grafana:8.5.2
+        image: docker.io/grafana/grafana:8.5.6
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
@@ -234,26 +250,17 @@ spec:
       serviceAccountName: grafana
       volumes:
       - configMap:
-          name: grafana-config-5kt2h4545b
+          name: grafana-config
         name: grafana-config
       - name: secret-grafana-tls
         secret:
           defaultMode: 420
           secretName: grafana-tls
       - configMap:
-          name: grafana-datasources-d9f6t65c72
+          name: grafana-datasources
         name: grafana-datasources
-  volumeClaimTemplates:
-  - metadata:
-      labels:
-        app: grafana
-      name: grafana
-    spec:
-      accessModes:
-      - ReadWriteOnce
-      resources:
-        requests:
-          storage: 1Gi
+      - emptyDir: {}
+        name: grafana
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
