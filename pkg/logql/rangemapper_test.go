@@ -1487,9 +1487,9 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			  sum by (org_id) (
 					(
 						sum without(
-							   downstream<sumby(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrapbytes(total_bytes) | __error__="" [1m] offset 2m0s)),shard=<nil>>
-              ++ downstream<sumby(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrapbytes(total_bytes) | __error__="" [1m] offset 1m0s)),shard=<nil>>
-							++ downstream<sumby(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrapbytes(total_bytes) | __error__="" [1m])),shard=<nil>>
+							   downstream<sum by(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__="" [1m] offset 2m0s)),shard=<nil>>
+              ++ downstream<sum by(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__="" [1m] offset 1m0s)),shard=<nil>>
+							++ downstream<sum by(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__="" [1m])),shard=<nil>>
 				    )
 					/ 180
 				  )
