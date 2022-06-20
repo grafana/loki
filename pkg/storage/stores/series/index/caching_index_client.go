@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -56,6 +57,11 @@ type CardinalityExceededError struct {
 func (e CardinalityExceededError) Error() string {
 	return fmt.Sprintf("cardinality limit exceeded for %s{%s}; %d entries, more than limit of %d",
 		e.MetricName, e.LabelName, e.Size, e.Limit)
+}
+
+// Is allows to use errors.Is(err,ErrLimit) on this error.
+func (e CardinalityExceededError) Is(target error) bool {
+	return target == logqlmodel.ErrLimit
 }
 
 // StoreLimits helps get Limits specific to Queries for Stores
