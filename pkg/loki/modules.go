@@ -881,7 +881,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 	if t.Cfg.CompactorConfig.RetentionEnabled {
 		switch t.compactor.DeleteMode() {
-		case deletion.WholeStreamDeletion, deletion.FilterOnly, deletion.FilterAndDelete:
+		case deletion.FilterOnly, deletion.FilterAndDelete:
 			t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler()))
 			t.Server.HTTP.Path("/loki/api/v1/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler()))
 			t.Server.HTTP.Path("/loki/api/v1/delete").Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler()))
