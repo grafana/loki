@@ -35,7 +35,7 @@ func NewStore(indexShipperCfg indexshipper.Config, p config.PeriodConfig, f *fet
 	objectClient client.ObjectClient, limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) (stores.ChunkWriter, series.IndexStore, error) {
 	if storeInstance == nil {
 		storeInstance = &store{}
-		err := storeInstance.init(indexShipperCfg, p, objectClient, limits, tableRanges, reg)
+		err := storeInstance.init(indexShipperCfg, objectClient, limits, tableRanges, reg)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -44,8 +44,8 @@ func NewStore(indexShipperCfg indexshipper.Config, p config.PeriodConfig, f *fet
 	return NewChunkWriter(f, p, storeInstance.indexWriter), storeInstance.indexStore, nil
 }
 
-func (s *store) init(indexShipperCfg indexshipper.Config, p config.PeriodConfig,
-	objectClient client.ObjectClient, limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) error {
+func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.ObjectClient,
+	limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) error {
 
 	shpr, err := indexshipper.NewIndexShipper(
 		indexShipperCfg,
@@ -73,9 +73,9 @@ func (s *store) init(indexShipperCfg indexshipper.Config, p config.PeriodConfig,
 			nodeName,
 			dir,
 			shpr,
-			p.IndexTables.Period,
 			util_log.Logger,
 			tsdbMetrics,
+			tableRanges,
 		)
 
 		headManager := NewHeadManager(
@@ -94,7 +94,7 @@ func (s *store) init(indexShipperCfg indexshipper.Config, p config.PeriodConfig,
 		s.indexWriter = failingIndexWriter{}
 	}
 
-	indices = append(indices, newIndexShipperQuerier(shpr))
+	indices = append(indices, newIndexShipperQuerier(shpr, tableRanges))
 	multiIndex, err := NewMultiIndex(indices...)
 	if err != nil {
 		return err

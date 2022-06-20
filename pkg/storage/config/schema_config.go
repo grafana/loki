@@ -64,6 +64,7 @@ var (
 // Both Start and End are inclusive.
 type TableRange struct {
 	Start, End int64
+	cfg        *PeriodConfig
 }
 
 // TableRanges represents a list of table ranges for multiple schemas.
@@ -71,13 +72,17 @@ type TableRanges []TableRange
 
 // TableNumberInRange tells whether given table number falls in any of the ranges.
 func (t TableRanges) TableNumberInRange(tableNumber int64) bool {
+	return t.ConfigForTableNumber(tableNumber) != nil
+}
+
+func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 	for _, r := range t {
 		if r.Start <= tableNumber && tableNumber <= r.End {
-			return true
+			return r.cfg
 		}
 	}
 
-	return false
+	return nil
 }
 
 // PeriodConfig defines the schema and tables to use for a period of time
@@ -113,6 +118,7 @@ func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRa
 	return TableRange{
 		Start: cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
 		End:   schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		cfg:   cfg,
 	}
 }
 
