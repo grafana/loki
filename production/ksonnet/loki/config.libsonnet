@@ -51,6 +51,7 @@
       // If use_topology_spread is true, queriers can run on nodes already running queriers but will be
       // spread through the available nodes using a TopologySpreadConstraints with a max skew
       // of topology_spread_max_skew.
+      // See: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
       // If use_topology_spread is false, queriers will not be scheduled on nodes already running queriers.
       use_topology_spread: true,
       topology_spread_max_skew: 1,

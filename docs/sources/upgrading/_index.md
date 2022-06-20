@@ -36,7 +36,7 @@ The output is incredibly verbose as it shows the entire internal config struct u
 #### Evenly spread queriers across kubernetes nodes
 
 We now evenly spread queriers across the available kubernetes nodes, but allowing more than one querier to be scheduled into the same node.
-If you want to keep running up to one querier per node, set `$._config.querier.use_topology_spread` to false.
+If you want to run at most a single querier per node, set `$._config.querier.use_topology_spread` to false.
 
 #### Implementation of unwrapped `rate` aggregation changed
 
