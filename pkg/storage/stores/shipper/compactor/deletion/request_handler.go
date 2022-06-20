@@ -17,6 +17,8 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+const deletionNotAvailableMsg = "deletion is not available for this tenant"
+
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
 	deleteRequestsStore       DeleteRequestsStore
@@ -220,12 +222,12 @@ func (dm *DeleteRequestHandler) deletionMiddleware(next http.Handler) http.Handl
 		userLimits, ok := allLimits[userID]
 		if ok {
 			if !userLimits.CompactorDeletionEnabled {
-				http.Error(w, "access denied", http.StatusForbidden)
+				http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
 				return
 			}
 		} else {
 			if !dm.limits.DefaultLimits().CompactorDeletionEnabled {
-				http.Error(w, "access denied", http.StatusForbidden)
+				http.Error(w, deletionNotAvailableMsg, http.StatusForbidden)
 				return
 			}
 		}
