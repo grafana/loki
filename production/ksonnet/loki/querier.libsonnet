@@ -36,15 +36,18 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       $._config.overrides_configmap_mount_name,
       $._config.overrides_configmap_mount_path,
     ) +
-    // Evenly spread queriers among available nodes.
-    deployment.spec.template.spec.withTopologySpreadConstraints(
-      topologySpreadConstraints.labelSelector.withMatchLabels({ name: 'querier' }) +
-      topologySpreadConstraints.withTopologyKey('kubernetes.io/hostname') +
-      topologySpreadConstraints.withWhenUnsatisfiable('ScheduleAnyway') +
-      topologySpreadConstraints.withMaxSkew(1),
-    ) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(5) +
-    deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1)
+    deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1) +
+    if $._config.querier.use_topology_spread then
+      deployment.spec.template.spec.withTopologySpreadConstraints(
+        // Evenly spread queriers among available nodes.
+        topologySpreadConstraints.labelSelector.withMatchLabels({ name: 'querier' }) +
+        topologySpreadConstraints.withTopologyKey('kubernetes.io/hostname') +
+        topologySpreadConstraints.withWhenUnsatisfiable('ScheduleAnyway') +
+        topologySpreadConstraints.withMaxSkew($._config.querier.topology_spread_max_skew),
+      )
+    else
+      k.util.antiAffinity
   else {},
 
   // PVC for queriers when running as statefulsets

@@ -36,8 +36,7 @@ The output is incredibly verbose as it shows the entire internal config struct u
 #### Evenly spread queriers across kubernetes nodes
 
 We now evenly spread queriers across the available kubernetes nodes, but allowing more than one querier to be scheduled into the same node.
-If you want to keep running up to one querier per node, you will need to revert the changes for `production/ksonnet/loki/querier.libsonnet`
-made at [6415](https://github.com/grafana/loki/pull/6415).
+If you want to keep running up to one querier per node, set `$._config.querier.use_topology_spread` to false.
 
 #### Implementation of unwrapped `rate` aggregation changed
 
