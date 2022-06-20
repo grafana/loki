@@ -184,11 +184,11 @@ endif
 
 .PHONY: quickstart
 ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
-quickstart: ## Quickstart full dev environment on local kind cluster
-	@./quickstart.sh
+quickstart: $(KIND) ## Quickstart full dev environment on local kind cluster
+	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
 else
-quickstart: oci-build oci-push
-	@./quickstart.sh
+quickstart: oci-build oci-push $(KIND)
+	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
 endif
 
 .PHONY: run

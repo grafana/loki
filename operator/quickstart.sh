@@ -2,11 +2,13 @@
 
 set -eou pipefail
 
+source .bingo/variables.env
+
 setup() {
     echo "-------------------------------------------"
     echo "- Creating Kind cluster...                -"
     echo "-------------------------------------------"
-    kind create cluster --config=hack/kind_config.yaml
+    $KIND create cluster --config=hack/kind_config.yaml
 }
 
 deps() {
@@ -68,7 +70,7 @@ certificates() {
 }
 
 check() {
-    logcli --addr "http://localhost/token-refresher/api/logs/v1/test-oidc" labels
+    $LOGCLI --addr "http://localhost/token-refresher/api/logs/v1/test-oidc" labels
 }
 
 case ${1:-"*"} in
