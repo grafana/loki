@@ -25,7 +25,7 @@ With `filter-and-delete`, log lines matching the query in the delete request are
 
 A delete request may be canceled within a configurable cancellation period. Set the `delete_request_cancel_period` in the Compactor's YAML configuration or on the command line when invoking Loki. Its default value is 24h.
 
-Access to the deletion API can be enabled per tenant via the `compactor_deletion_enabled` setting.
+Access to the deletion API can be enabled per tenant via the `allow_deletes` setting.
 
 ## Compactor endpoints
 

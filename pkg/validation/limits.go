@@ -111,7 +111,7 @@ type Limits struct {
 	RulerRemoteWriteQueueRetryOnRateLimit  bool                         `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
 	RulerRemoteWriteSigV4Config            *sigv4.SigV4Config           `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config"`
 
-	CompactorDeletionEnabled bool `yaml:"compactor_deletion_enabled" json:"compactor_deletion_enabled"`
+	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes"`
 
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
@@ -196,7 +196,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.QuerySplitDuration.Set("30m")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by an interval and execute in parallel, 0 disables it. This also determines how cache keys are chosen when result caching is enabled")
 
-	f.BoolVar(&l.CompactorDeletionEnabled, "compactor.deletion-enabled", false, "Enable access to deletion API.")
+	f.BoolVar(&l.CompactorDeletionEnabled, "compactor.allow-deletes", false, "Enable access to the deletion API.")
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

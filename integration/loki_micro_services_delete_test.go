@@ -26,7 +26,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			"-boltdb.shipper.compactor.deletion-mode=filter-and-delete",
 			// By default a minute is added to the delete request start time. This compensates for that.
 			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
-			"-compactor.deletion-enabled=true",
+			"-compactor.allow-deletes=true",
 		)
 		tIndexGateway = clu.AddComponent(
 			"index-gateway",
