@@ -1,7 +1,10 @@
 package v1beta1
 
 import (
+	"reflect"
 	"time"
+
+	"github.com/ViaQ/logerr/v2/kverrors"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -25,12 +28,17 @@ var _ webhook.Validator = &LokiStack{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (s *LokiStack) ValidateCreate() error {
-	return s.validate()
+	return s.validate(nil)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (s *LokiStack) ValidateUpdate(_ runtime.Object) error {
-	return s.validate()
+func (s *LokiStack) ValidateUpdate(old runtime.Object) error {
+	oldStack, ok := old.(*LokiStack)
+	if !ok {
+		t := reflect.TypeOf(old).String()
+		return apierrors.NewInternalError(kverrors.New("runtime object is incorrect type", "type", t))
+	}
+	return s.validate(oldStack)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
@@ -123,10 +131,15 @@ func (s *ObjectStorageSpec) ValidateSchemas(utcTime time.Time, status LokiStackS
 	return allErrs
 }
 
-func (s *LokiStack) validate() error {
+func (s *LokiStack) validate(old *LokiStack) error {
 	var allErrs field.ErrorList
 
-	errors := s.Spec.Storage.ValidateSchemas(time.Now().UTC(), s.Status.Storage)
+	storageStatus := LokiStackStorageStatus{}
+	if old != nil {
+		storageStatus = old.Status.Storage
+	}
+
+	errors := s.Spec.Storage.ValidateSchemas(time.Now().UTC(), storageStatus)
 	if len(errors) != 0 {
 		allErrs = append(allErrs, errors...)
 	}
@@ -143,8 +156,8 @@ func (s *LokiStack) validate() error {
 }
 
 // buildAppliedSchemaMap creates a map of schemas which occur before the given time
-func buildAppliedSchemaMap(schemas []ObjectStorageSchema, effectiveDate time.Time) ObjectStorageSchemaMap {
-	appliedMap := ObjectStorageSchemaMap{}
+func buildAppliedSchemaMap(schemas []ObjectStorageSchema, effectiveDate time.Time) objectStorageSchemaMap {
+	appliedMap := objectStorageSchemaMap{}
 
 	for _, schema := range schemas {
 		date, err := schema.EffectiveDate.UTCTime()
