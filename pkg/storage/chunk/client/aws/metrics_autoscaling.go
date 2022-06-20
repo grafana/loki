@@ -27,16 +27,16 @@ const (
 
 	// fetch Ingester queue length
 	// average the queue length over 2 minutes to avoid aliasing with the 1-minute flush period
-	defaultQueueLenQuery = `sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))`
+	defaultQueueLenQuery = `sum(avg_over_time(loki_ingester_flush_queue_length{job="loki/ingester"}[2m]))`
 	// fetch write throttle rate per DynamoDB table
-	defaultThrottleRateQuery = `sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0`
+	defaultThrottleRateQuery = `sum(rate(loki_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0`
 	// fetch write capacity usage per DynamoDB table
 	// use the rate over 15 minutes so we take a broad average
-	defaultUsageQuery = `sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0`
+	defaultUsageQuery = `sum(rate(loki_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0`
 	// use the read rate over 1hr so we take a broad average
-	defaultReadUsageQuery = `sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h])) by (table) > 0`
+	defaultReadUsageQuery = `sum(rate(loki_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h])) by (table) > 0`
 	// fetch read error rate per DynamoDB table
-	defaultReadErrorQuery = `sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0`
+	defaultReadErrorQuery = `sum(increase(loki_dynamo_failures_total{operation="DynamoDB.QueryPages",error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0`
 )
 
 // MetricsAutoScalingConfig holds parameters to configure how it works
