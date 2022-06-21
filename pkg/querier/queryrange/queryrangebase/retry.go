@@ -2,6 +2,7 @@ package queryrangebase
 
 import (
 	"context"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -68,6 +69,9 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 
 		// Retry if we get a HTTP 500 or a non-HTTP error.
 		httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+		if strings.Contains(err.Error(), "cardinality limit exceeded for logs") && strings.Contains(err.Error(), " entries, more than limit of ") {
+			return nil, err
+		}
 		if !ok || httpResp.Code/100 == 5 {
 			lastErr = err
 			level.Error(util_log.WithContext(ctx, r.log)).Log("msg", "error processing request", "try", tries, "err", err)
