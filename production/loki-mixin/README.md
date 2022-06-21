@@ -1,12 +1,15 @@
 # loki-mixin
 
-loki-mixin is a jsonnet library containing a set of loki monitoring dashboards, alerts and rules collected based on our experience operating Loki in Grafana Cloud.
+loki-mixin is a jsonnet library containing a set of Loki monitoring dashboards, alerts and rules collected based on our experience operating Loki in Grafana Cloud.
 
 ## Dashboards
 
-To test the dashboards against a local grafana & loki setup perform the following steps.
+To test the dashboards against a local grafana & Loki setup perform the following steps.
 
 ### Pre-requisites
+
+* jb is a jsonnet package manager
+To install it follow the instructions at: https://github.com/jsonnet-bundler/jsonnet-bundler.
 
 * Grizzly is a tool for managing jsonnet dashboards in Grafana: https://github.com/grafana/grizzly.
 To install it follow the instructions at: https://grafana.github.io/grizzly/installation/.
