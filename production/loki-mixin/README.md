@@ -28,7 +28,7 @@ Copy this key for the next step.
 To test the dashboard in your local grafana instance, in directory `production/loki-mixin` run the command:
 
 ```shell
-GRAFANA_URL=http://localhost:3000 GRAFANA_TOKEN=<API_KEY> grr watch ./ dashboards.libsonnet
+GRAFANA_URL=http://localhost:3000 GRAFANA_TOKEN=<API_KEY> JSONNET_PATH=$(pwd)/lib:$(pwd)/vendor grr watch ./ dashboards.libsonnet
 ```
 
 `grr watch` will detect changes when you save files and try to add/update dashboards:
