@@ -369,6 +369,9 @@ type ObjectStorageSecretSpec struct {
 	Name string `json:"name"`
 }
 
+// objectStorageSchemaMap defines the type for mapping a schema version with a date
+type objectStorageSchemaMap map[StorageSchemaEffectiveDate]ObjectStorageSchemaVersion
+
 // ObjectStorageSchemaVersion defines the storage schema version which will be
 // used with the Loki cluster.
 //

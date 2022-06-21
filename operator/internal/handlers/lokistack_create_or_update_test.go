@@ -815,7 +815,7 @@ func TestCreateOrUpdateLokiStack_WithInvalidStorageSchema_SetDegraded(t *testing
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid object storage schema contents: cannot retroactively remove schema",
+		Message: "Invalid object storage schema contents: spec does not contain any schemas",
 		Reason:  lokiv1beta1.ReasonInvalidObjectStorageSchema,
 		Requeue: false,
 	}
@@ -832,12 +832,7 @@ func TestCreateOrUpdateLokiStack_WithInvalidStorageSchema_SetDegraded(t *testing
 		Spec: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
-				Schemas: []lokiv1beta1.ObjectStorageSchema{
-					{
-						Version:       lokiv1beta1.ObjectStorageSchemaV11,
-						EffectiveDate: "2020-10-11",
-					},
-				},
+				Schemas: []lokiv1beta1.ObjectStorageSchema{},
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
 					Type: lokiv1beta1.ObjectStorageSecretS3,

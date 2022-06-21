@@ -81,8 +81,8 @@ func CreateOrUpdateLokiStack(
 
 	storageSchemas, err := storageoptions.BuildSchemaConfig(
 		time.Now().UTC(),
-		stack.Spec.Storage.Schemas,
-		stack.Status.Storage.Schemas,
+		stack.Spec.Storage,
+		stack.Status.Storage,
 	)
 	if err != nil {
 		return &status.DegradedError{
