@@ -1,6 +1,6 @@
 # loki-mixin
 
-loki-mixin is a jsonnet library containing a set of loki monitoring dashboards, alerts and rules used on our production setup. 
+loki-mixin is a jsonnet library containing a set of loki monitoring dashboards, alerts and rules collected based on our experience operating Loki in Grafana Cloud.
 
 ## Dashboards
 
@@ -41,4 +41,4 @@ Dashboard.writes updated
 ...
 ```
 
-**Disclaimer:** Since these dashboards are used on our own production setup, these contain very specific configurations to our cloud environment which may be incorrect for other setups.
+**Disclaimer:** Since these dashboards are used on our own production setup, these contain very specific configurations to our cloud environment which may need to overridden for other setups and use-cases.
