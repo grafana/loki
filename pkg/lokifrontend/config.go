@@ -3,6 +3,7 @@ package lokifrontend
 import (
 	"flag"
 
+	"github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	v1 "github.com/grafana/loki/pkg/lokifrontend/frontend/v1"
 	v2 "github.com/grafana/loki/pkg/lokifrontend/frontend/v2"
@@ -17,6 +18,8 @@ type Config struct {
 	DownstreamURL     string `yaml:"downstream_url"`
 
 	TailProxyURL string `yaml:"tail_proxy_url"`
+	//TlsSkipVerify bool             `yaml:"tls_skip_verify"`
+	TLS tls.ClientConfig `yaml:"tail_tls_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -24,6 +27,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Handler.RegisterFlags(f)
 	cfg.FrontendV1.RegisterFlags(f)
 	cfg.FrontendV2.RegisterFlags(f)
+	cfg.TLS.RegisterFlagsWithPrefix("frontend.tail-tls-config", f)
 
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
