@@ -17,9 +17,8 @@ type Config struct {
 	CompressResponses bool   `yaml:"compress_responses"`
 	DownstreamURL     string `yaml:"downstream_url"`
 
-	TailProxyURL string `yaml:"tail_proxy_url"`
-	//TlsSkipVerify bool             `yaml:"tls_skip_verify"`
-	TLS tls.ClientConfig `yaml:"tail_tls_config"`
+	TailProxyURL string           `yaml:"tail_proxy_url"`
+	TLS          tls.ClientConfig `yaml:"tail_tls_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
