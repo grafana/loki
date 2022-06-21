@@ -2,13 +2,12 @@ package heroku
 
 import (
 	"flag"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/grafana/loki/pkg/logproto"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	herokuEncoding "github.com/heroku/x/logplex/encoding"
 	"github.com/imdario/mergo"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,9 +15,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/weaveworks/common/server"
-	"net/http"
-	"strings"
-	"time"
+
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Target struct {
