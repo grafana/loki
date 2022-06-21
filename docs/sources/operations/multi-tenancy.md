@@ -22,11 +22,11 @@ The single tenant ID will be the string `fake`.
 ## Multi-tenant Queries
 
 In multi-tenant mode, queries may gather results from multiple tenants.
-Set the querier configuration option `multi_tenant_queries_enabled: true` to enable queries to cross tenants.
+Set the querier configuration option `multi_tenant_queries_enabled: true` to enable queries across tenants.
 The query API request defines the tenants.
 Specify multiple tenants
 in the query request HTTP header `X-Scope-OrgID` by separating the tenant IDs with the pipe character (`|`).
-For example, a query for tenants `A` and `B` sets the header `X-Scope-OrgID: A|B`.
+For example, a query for tenants `A` and `B` requires the header `X-Scope-OrgID: A|B`.
 
 Only query endpoints support multi-tenant calls.
 Calls to `GET /loki/api/v1/tail` and `POST /loki/api/v1/push` will return an HTTP 400 error if more than one tenant is defined in the HTTP header.
