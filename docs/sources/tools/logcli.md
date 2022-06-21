@@ -59,13 +59,13 @@ export LOKI_ADDR=http://localhost:3100
 ```bash
 $ logcli labels job
 https://logs-dev-ops-tools1.grafana.net/api/prom/label/job/values
-cortex-ops/consul
-cortex-ops/cortex-gw
+loki-ops/consul
+loki-ops/loki-gw
 ...
 
-$ logcli query '{job="cortex-ops/consul"}'
-https://logs-dev-ops-tools1.grafana.net/api/prom/query?query=%7Bjob%3D%22cortex-ops%2Fconsul%22%7D&limit=30&start=1529928228&end=1529931828&direction=backward&regexp=
-Common labels: {job="cortex-ops/consul", namespace="cortex-ops"}
+$ logcli query '{job="loki-ops/consul"}'
+https://logs-dev-ops-tools1.grafana.net/api/prom/query?query=%7Bjob%3D%22loki-ops%2Fconsul%22%7D&limit=30&start=1529928228&end=1529931828&direction=backward&regexp=
+Common labels: {job="loki-ops/consul", namespace="loki-ops"}
 2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Snapshot to 475409 complete
 2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Compacting logs from 456973 to 465169
 ...

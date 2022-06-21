@@ -54,7 +54,7 @@ func serviceAccountName(opts Options) string {
 }
 
 func serviceCABundleName(opts Options) string {
-	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.GatewayName)
+	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.LokiStackName)
 }
 
 func serviceAccountAnnotations(opts Options) map[string]string {

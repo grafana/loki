@@ -59,23 +59,22 @@ func TestSingleIdx(t *testing.T) {
 
 	for _, variant := range []struct {
 		desc string
-		fn   func() *TSDBIndex
+		fn   func() Index
 	}{
 		{
 			desc: "file",
-			fn: func() *TSDBIndex {
+			fn: func() Index {
 				return BuildIndex(t, t.TempDir(), "fake", cases)
 			},
 		},
 		{
 			desc: "head",
-			fn: func() *TSDBIndex {
-				head := NewHead("fake", NewHeadMetrics(nil), log.NewNopLogger())
+			fn: func() Index {
+				head := NewHead("fake", NewMetrics(nil), log.NewNopLogger())
 				for _, x := range cases {
-					head.Append(x.Labels, x.Chunks)
+					_, _ = head.Append(x.Labels, x.Chunks)
 				}
-				reader, err := head.Index()
-				require.Nil(t, err)
+				reader := head.Index()
 				return NewTSDBIndex(reader)
 			},
 		},

@@ -616,20 +616,21 @@ const (
 	OpTypeTopK    = "topk"
 
 	// range vector ops
-	OpRangeTypeCount     = "count_over_time"
-	OpRangeTypeRate      = "rate"
-	OpRangeTypeBytes     = "bytes_over_time"
-	OpRangeTypeBytesRate = "bytes_rate"
-	OpRangeTypeAvg       = "avg_over_time"
-	OpRangeTypeSum       = "sum_over_time"
-	OpRangeTypeMin       = "min_over_time"
-	OpRangeTypeMax       = "max_over_time"
-	OpRangeTypeStdvar    = "stdvar_over_time"
-	OpRangeTypeStddev    = "stddev_over_time"
-	OpRangeTypeQuantile  = "quantile_over_time"
-	OpRangeTypeFirst     = "first_over_time"
-	OpRangeTypeLast      = "last_over_time"
-	OpRangeTypeAbsent    = "absent_over_time"
+	OpRangeTypeCount       = "count_over_time"
+	OpRangeTypeRate        = "rate"
+	OpRangeTypeRateCounter = "rate_counter"
+	OpRangeTypeBytes       = "bytes_over_time"
+	OpRangeTypeBytesRate   = "bytes_rate"
+	OpRangeTypeAvg         = "avg_over_time"
+	OpRangeTypeSum         = "sum_over_time"
+	OpRangeTypeMin         = "min_over_time"
+	OpRangeTypeMax         = "max_over_time"
+	OpRangeTypeStdvar      = "stdvar_over_time"
+	OpRangeTypeStddev      = "stddev_over_time"
+	OpRangeTypeQuantile    = "quantile_over_time"
+	OpRangeTypeFirst       = "first_over_time"
+	OpRangeTypeLast        = "last_over_time"
+	OpRangeTypeAbsent      = "absent_over_time"
 
 	// binops - logical/set
 	OpTypeOr     = "or"
@@ -707,6 +708,7 @@ type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
 	Extractor() (SampleExtractor, error)
+	MatcherGroups() []MatcherRange
 	Expr
 }
 
@@ -753,6 +755,20 @@ func (e *RangeAggregationExpr) Selector() LogSelectorExpr {
 	return e.Left.Left
 }
 
+func (e *RangeAggregationExpr) MatcherGroups() []MatcherRange {
+	xs := e.Left.Left.Matchers()
+	if len(xs) > 0 {
+		return []MatcherRange{
+			{
+				Matchers: xs,
+				Interval: e.Left.Interval,
+				Offset:   e.Left.Offset,
+			},
+		}
+	}
+	return nil
+}
+
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
@@ -763,7 +779,9 @@ func (e RangeAggregationExpr) validate() error {
 	}
 	if e.Left.Unwrap != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
+			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
+			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
@@ -775,6 +793,10 @@ func (e RangeAggregationExpr) validate() error {
 	default:
 		return fmt.Errorf("invalid aggregation %s without unwrap", e.Operation)
 	}
+}
+
+func (e RangeAggregationExpr) Validate() error {
+	return e.validate()
 }
 
 // impls Stringer
@@ -867,6 +889,10 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 	}
 }
 
+func (e *VectorAggregationExpr) MatcherGroups() []MatcherRange {
+	return e.Left.MatcherGroups()
+}
+
 func (e *VectorAggregationExpr) Selector() LogSelectorExpr {
 	return e.Left.Selector()
 }
@@ -909,12 +935,19 @@ func (e *VectorAggregationExpr) String() string {
 // impl SampleExpr
 func (e *VectorAggregationExpr) Shardable() bool {
 	if e.Operation == OpTypeCount || e.Operation == OpTypeAvg {
-		// count is shardable is labels are not mutated
+		if !e.Left.Shardable() {
+			return false
+		}
+		// count is shardable if labels are not mutated
 		// otherwise distinct values can be counted twice per shard
 		shardable := true
-		e.Walk(func(e interface{}) {
+		e.Left.Walk(func(e interface{}) {
 			switch e.(type) {
-			case *LabelParserExpr, LabelFmtExpr:
+			// LabelParserExpr is normally shardable, but not in this case.
+			// TODO(owen-d): I think LabelParserExpr is shardable
+			// for avg, but not for count. Let's refactor to make this
+			// cleaner. For now I'm disallowing sharding on both.
+			case *LabelParserExpr:
 				shardable = false
 			}
 		})
@@ -979,6 +1012,10 @@ type BinOpExpr struct {
 	RHS  SampleExpr
 	Op   string
 	Opts *BinOpOptions
+}
+
+func (e *BinOpExpr) MatcherGroups() []MatcherRange {
+	return append(e.SampleExpr.MatcherGroups(), e.RHS.MatcherGroups()...)
 }
 
 func (e *BinOpExpr) String() string {
@@ -1363,6 +1400,7 @@ func (e *LiteralExpr) Shardable() bool                         { return true }
 func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher             { return nil }
+func (e *LiteralExpr) MatcherGroups() []MatcherRange           { return nil }
 func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 func (e *LiteralExpr) Value() float64                          { return e.Val }
 
@@ -1415,6 +1453,10 @@ func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex strin
 
 func (e *LabelReplaceExpr) Selector() LogSelectorExpr {
 	return e.Left.Selector()
+}
+
+func (e *LabelReplaceExpr) MatcherGroups() []MatcherRange {
+	return e.Left.MatcherGroups()
 }
 
 func (e *LabelReplaceExpr) Extractor() (SampleExtractor, error) {
@@ -1486,4 +1528,27 @@ var shardableOps = map[string]bool{
 	// binops - arith
 	OpTypeAdd: true,
 	OpTypeMul: true,
+}
+
+type MatcherRange struct {
+	Matchers         []*labels.Matcher
+	Interval, Offset time.Duration
+}
+
+func MatcherGroups(expr Expr) []MatcherRange {
+	switch e := expr.(type) {
+	case SampleExpr:
+		return e.MatcherGroups()
+	case LogSelectorExpr:
+		if xs := e.Matchers(); len(xs) > 0 {
+			return []MatcherRange{
+				{
+					Matchers: xs,
+				},
+			}
+		}
+		return nil
+	default:
+		return nil
+	}
 }

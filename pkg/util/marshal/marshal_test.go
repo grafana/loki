@@ -84,6 +84,32 @@ var queryTests = []struct {
 							}
 						}
 					},
+					"cache": {
+						"chunk": {
+							"entriesFound": 0,
+							"entriesRequested": 0,
+							"entriesStored": 0,
+							"bytesReceived": 0,
+							"bytesSent": 0,
+							"requests": 0
+						},
+						"index": {
+							"entriesFound": 0,
+							"entriesRequested": 0,
+							"entriesStored": 0,
+							"bytesReceived": 0,
+							"bytesSent": 0,
+							"requests": 0
+						},
+						"result": {
+							"entriesFound": 0,
+							"entriesRequested": 0,
+							"entriesStored": 0,
+							"bytesReceived": 0,
+							"bytesSent": 0,
+							"requests": 0
+						}
+					},
 					"summary": {
 						"bytesProcessedPerSecond": 0,
 						"execTime": 0,
@@ -91,6 +117,7 @@ var queryTests = []struct {
 						"queueTime": 0,
 						"subqueries": 0,
 						"totalBytesProcessed":0,
+                                                "totalEntriesReturned":0,
 						"totalLinesProcessed":0
 					}
 				}
@@ -193,6 +220,32 @@ var queryTests = []struct {
 						}
 					}
 				},
+				"cache": {
+					"chunk": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0
+					},
+					"index": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0
+					},
+					"result": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0
+					}
+				},
 				"summary": {
 					"bytesProcessedPerSecond": 0,
 					"execTime": 0,
@@ -200,6 +253,7 @@ var queryTests = []struct {
 					"queueTime": 0,
 					"subqueries": 0,
 					"totalBytesProcessed":0,
+                                        "totalEntriesReturned":0,
 					"totalLinesProcessed":0
 				}
 			  }
@@ -319,6 +373,32 @@ var queryTests = []struct {
 						}
 					}
 				},
+				"cache": {
+					"chunk": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0
+					},
+					"index": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0
+					},
+					"result": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0
+					}
+				},
 				"summary": {
 					"bytesProcessedPerSecond": 0,
 					"execTime": 0,
@@ -326,6 +406,7 @@ var queryTests = []struct {
 					"queueTime": 0,
 					"subqueries": 0,
 					"totalBytesProcessed":0,
+                                        "totalEntriesReturned":0,
 					"totalLinesProcessed":0
 				}
 			  }

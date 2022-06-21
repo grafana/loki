@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -21,7 +22,7 @@ func mustParseLabels(s string) labels.Labels {
 
 func TestQueryIndex(t *testing.T) {
 	dir := t.TempDir()
-	b := index.NewBuilder()
+	b := NewBuilder()
 	cases := []struct {
 		labels labels.Labels
 		chunks []index.ChunkMeta
@@ -85,13 +86,21 @@ func TestQueryIndex(t *testing.T) {
 		},
 	}
 	for _, s := range cases {
-		b.AddSeries(s.labels, s.chunks)
+		b.AddSeries(s.labels, model.Fingerprint(s.labels.Hash()), s.chunks)
 	}
 
-	dst, err := b.Build(context.Background(), dir, "fake")
+	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {
+		id := SingleTenantTSDBIdentifier{
+			Tenant:   "fake",
+			From:     from,
+			Through:  through,
+			Checksum: checksum,
+		}
+		return newPrefixedIdentifier(id, dir, dir)
+	})
 	require.Nil(t, err)
 
-	reader, err := index.NewFileReader(dst.FilePath(dir))
+	reader, err := index.NewFileReader(dst.Path())
 	require.Nil(t, err)
 
 	p, err := PostingsForMatchers(reader, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))

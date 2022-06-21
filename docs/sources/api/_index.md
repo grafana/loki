@@ -19,6 +19,7 @@ These endpoints are exposed by all components:
 - [`GET /ready`](#get-ready)
 - [`GET /metrics`](#get-metrics)
 - [`GET /config`](#get-config)
+- [`GET /services`](#get-services)
 - [`GET /loki/api/v1/status/buildinfo`](#get-lokiapiv1statusbuildinfo)
 
 These endpoints are exposed by the querier and the query frontend:
@@ -27,6 +28,8 @@ These endpoints are exposed by the querier and the query frontend:
 - [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
 - [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
 - [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
+- [`GET /loki/api/v1/series`](#series)
+- [`GET /loki/api/v1/index/stats`](#index-stats)
 - [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
 - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
 - [`GET /ready`](#get-ready)
@@ -45,7 +48,8 @@ These endpoints are exposed by the distributor:
 These endpoints are exposed by the ingester:
 
 - [`POST /flush`](#post-flush)
-- [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
+- **Deprecated** [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
+- [`POST /ingester/shutdown`](#post-ingestershutdown)
 
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
@@ -69,6 +73,9 @@ These endpoints are exposed by the ruler:
 
 These endpoints are exposed by the compactor:
 - [`GET /compactor/ring`](#get-compactorring)
+- [`POST /loki/api/v1/delete`](#post-lokiapiv1delete)
+- [`GET /loki/api/v1/delete`](#get-lokiapiv1delete)
+- [`DELETE /loki/api/v1/delete`](#delete-lokiapiv1delete)
 
 A [list of clients](../clients) can be found in the clients documentation.
 
@@ -150,6 +157,10 @@ And `<stream value>` is:
   ]
 }
 ```
+
+The items in the `values` array are sorted by timestamp.
+The most recent item is first when using `direction=backward`.
+The oldest item is first when using `direction=forward`.
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
@@ -273,11 +284,16 @@ Where `<matrix value>` is:
     <label key-value pairs>
   },
   "values": [
-    <number: second unix epoch>,
-    <string: value>
+    [
+      <number: second unix epoch>,
+      <string: value>
+    ],
+    ...
   ]
 }
 ```
+
+The items in the `values` array are sorted by timestamp, and the oldest item is first.
 
 And `<stream value>` is:
 
@@ -295,6 +311,10 @@ And `<stream value>` is:
   ]
 }
 ```
+
+The items in the `values` array are sorted by timestamp.
+The most recent item is first when using `direction=backward`.
+The oldest item is first when using `direction=forward`.
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
@@ -387,8 +407,9 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
 
 ## `GET /loki/api/v1/labels`
 
-`/loki/api/v1/labels` retrieves the list of known labels within a given time span. It
-accepts the following query parameters in the URL:
+`/loki/api/v1/labels` retrieves the list of known labels within a given time span.
+Loki may use a larger time span than the one specified.
+It accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
@@ -424,8 +445,8 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/labels" | jq
 ## `GET /loki/api/v1/label/<name>/values`
 
 `/loki/api/v1/label/<name>/values` retrieves the list of known values for a given
-label within a given time span. It accepts the following query parameters in
-the URL:
+label within a given time span. Loki may use a larger time span than the one specified.
+It accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
@@ -787,19 +808,36 @@ In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
 ## `POST /ingester/flush_shutdown`
 
+**Deprecated**: Please use `/ingester/shutdown?flush=true` instead.
+
 `/ingester/flush_shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
 This is helpful for scaling down WAL-enabled ingesters where we want to ensure old WAL directories are not orphaned,
 but instead flushed to our chunk backend.
 
 In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
 
-### `GET /distributor/ring`
+## `POST /ingester/shutdown`
+
+`/ingester/shutdown` is similar to the [`/ingester/flush_shutdown`](#post-ingesterflush_shutdown)
+endpoint, but accepts three URL query parameters `flush`, `delete_ring_tokens`, and `terminate`.
+
+**URL query parameters:**
+
+* `flush=<bool>`:
+  Flag to control whether to flush any in-memory chunks the ingester holds. Defaults to `true`.
+* `delete_ring_tokens=<bool>`:
+  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified.
+* `terminate=<bool>`:
+  Flag to control whether to terminate the Loki process after service shutdown. Defaults to `true`.
+
+This handler, in contrast to the `/ingester/flush_shutdown` handler, terminates the Loki process by default.
+This behaviour can be changed by setting the `terminate` query parameter to `false`.
+
+In microservices mode, the `/ingester/shutdown` endpoint is exposed by the ingester.
+
+## `GET /distributor/ring`
 
 Displays a web page with the distributor hash ring status, including the state, healthy and last heartbeat time of each distributor.
-
-### `GET /compactor/ring`
-
-Displays a web page with the compactor hash ring status, including the state, healthy and last heartbeat time of each compactor.
 
 ## `GET /metrics`
 
@@ -816,6 +854,19 @@ modify the output. If it has the value `diff` only the differences between the d
 and the current are returned. A value of `defaults` returns the default configuration.
 
 In microservices mode, the `/config` endpoint is exposed by all components.
+
+## `GET /services`
+
+`/services` returns a list of all running services and their current states.
+
+Services can have the following states:
+
+- **New**: Service is new, not running yet (initial state)
+- **Starting**: Service is starting; if starting succeeds, service enters **Running** state
+- **Running**: Service is fully running now; when service stops running, it enters **Stopping** state
+- **Stopping**: Service is shutting down
+- **Terminated**: Service has stopped successfully (terminal state)
+- **Failed**: Service has failed in **Starting**, **Running** or **Stopping** state (terminal state)
 
 ## `GET /loki/api/v1/status/buildinfo`
 
@@ -892,6 +943,38 @@ $ curl -s "http://localhost:3100/loki/api/v1/series" --data-urlencode 'match[]={
   ]
 }
 ```
+
+
+## Index Stats
+
+The `/loki/api/v1/index/stats` endpoint can be used to query the index for the number of `streams`, `chunks`, `entries`, and `bytes` that a query resolves to.
+
+URL query parameters:
+
+- `query`: The [LogQL](../logql/) matchers to check (i.e. `{job="foo", env!="dev"}`)
+- `start=<nanosecond Unix epoch>`: Start timestamp.
+- `end=<nanosecond Unix epoch>`: End timestamp.
+
+You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header. This is useful when specifying a large or dynamic number of stream selectors that may breach server-side URL character limits.
+
+Response:
+```json
+{
+  "streams": 100,
+  "chunks": 1000,
+  "entries": 5000,
+  "bytes": 100000,
+}
+```
+
+It is an approximation with the following caveats:
+  * It does not include data from the ingesters
+  * It is a probabilistic technique
+  * streams/chunks which span multiple period configurations may be counted twice.
+
+These make it generally more helpful for larger queries.
+It can be used for better understanding the throughput requirements and data topology for a list of matchers over a period of time.
+
 
 ## Statistics
 
@@ -1094,3 +1177,21 @@ GET /prometheus/api/v1/alerts
 Prometheus-compatible rules endpoint to list all active alerts.
 
 For more information, please check out the Prometheus [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) documentation.
+
+## Compactor
+
+### `GET /compactor/ring`
+
+Displays a web page with the compactor hash ring status, including the state, health, and last heartbeat time of each compactor.
+
+### `POST /loki/api/v1/delete`
+
+Create a new delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-log-entry-deletion).
+
+### `GET /loki/api/v1/delete`
+
+List the existing delete requests for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#list-delete-requests).
+
+### `DELETE /loki/api/v1/delete`
+
+Remove a delete request for the authenticated tenant. More details can be found in the [logs deletion documentation](../operations/storage/logs-deletion.md#request-cancellation-of-a-delete-request).

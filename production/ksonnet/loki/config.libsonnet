@@ -47,6 +47,14 @@
       // A higher value will lead to a querier trying to process more requests than there are available
       // cores and will result in scheduling delays.
       concurrency: 4,
+
+      // If use_topology_spread is true, queriers can run on nodes already running queriers but will be
+      // spread through the available nodes using a TopologySpreadConstraints with a max skew
+      // of topology_spread_max_skew.
+      // See: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+      // If use_topology_spread is false, queriers will not be scheduled on nodes already running queriers.
+      use_topology_spread: true,
+      topology_spread_max_skew: 1,
     },
 
     queryFrontend: {
@@ -141,7 +149,12 @@
       'limits.per-user-override-config': '/etc/loki/overrides/overrides.yaml',
     },
 
+    commonEnvs: [],
+
     loki: {
+      common: {
+        compactor_address: 'http://compactor.%s.svc.cluster.local.:%d' % [$._config.namespace, $._config.http_listen_port],
+      },
       server: {
         graceful_shutdown_timeout: '5s',
         http_server_idle_timeout: '120s',
@@ -156,7 +169,6 @@
       frontend: {
         compress_responses: true,
         log_queries_longer_than: '5s',
-        compactor_address: 'http://compactor.%s.svc.cluster.local:%d' % [$._config.namespace, $._config.http_listen_port],
       },
       frontend_worker: {
         match_max_concurrent: true,

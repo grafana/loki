@@ -29,8 +29,8 @@ const (
 	// rules of an input field.
 	//
 	// Domain and distribution APIs are only available in the N. Virginia (us-east-1)
-	// AWS Region. Please set your AWS Region configuration to us-east-1 to create,
-	// view, or edit these resources.
+	// Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+	// to us-east-1 to create, view, or edit these resources.
 	ErrCodeInvalidInputException = "InvalidInputException"
 
 	// ErrCodeNotFoundException for service response error code

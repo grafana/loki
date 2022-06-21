@@ -8,11 +8,11 @@ weight: 40
 are incorporated into Loki cluster architectures to
 
 - aid in the sharding of log lines
-- implement high availability 
+- implement high availability
 - ease the horizontal scale up and scale down of clusters.
 There is less of a performance hit for operations that must rebalance data.
 
-Hash rings connect instances of a single type of component when 
+Hash rings connect instances of a single type of component when
 
 - there are a set of Loki instances in monolithic deployment mode
 - there are multiple read components or multiple write components in
@@ -27,6 +27,9 @@ These components need to be connected into a hash ring:
 - query schedulers
 - compactors
 - rulers
+
+These components can optionally be connected into a hash ring:
+- index gateway
 
 In an architecture that has three distributors and three ingestors defined,
 the hash rings for these components connect the instances of same-type components.
@@ -91,3 +94,7 @@ despite the compactor target being on multiple instances.
 ## About the ruler ring
 
 The ruler ring is used to determine which rulers evaluate which rule groups.
+
+## About the index gateway ring
+
+The index gateway ring is used to determine which gateway is responsible for which tenant's indexes when queried by rulers or queriers.

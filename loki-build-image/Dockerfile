@@ -62,13 +62,19 @@ RUN GO111MODULE=on go get github.com/tcnksm/ghr
 FROM golang:1.17.9 as nfpm
 RUN GO111MODULE=on go get github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.11.3
 
+# Install tools used to compile jsonnet.
+FROM golang:1.17.9 as jsonnet
+RUN GO111MODULE=on go get \
+    github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.4.0 \
+    github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066
+
 FROM golang:1.17.9-buster
 RUN apt-get update && \
     apt-get install -qy \
     musl gnupg ragel \
     file zip unzip jq gettext\
     protobuf-compiler libprotobuf-dev \
-    libsystemd-dev && \
+    libsystemd-dev jq && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY --from=docker /usr/bin/docker /usr/bin/docker
@@ -81,6 +87,8 @@ COPY --from=faillint /go/bin/faillint /usr/bin/faillint
 COPY --from=delve /go/bin/dlv /usr/bin/dlv
 COPY --from=ghr /go/bin/ghr /usr/bin/ghr
 COPY --from=nfpm /go/bin/nfpm /usr/bin/nfpm
+COPY --from=jsonnet /go/bin/jb /usr/bin/jb
+COPY --from=jsonnet /go/bin/mixtool /usr/bin/mixtool
 
 # Install some necessary dependencies.
 # Forcing GO111MODULE=on is required to specify dependencies at specific versions using the go mod notation.

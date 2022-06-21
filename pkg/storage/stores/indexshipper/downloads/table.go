@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
@@ -40,6 +41,7 @@ type table struct {
 	cacheLocation     string
 	storageClient     storage.Client
 	openIndexFileFunc index.OpenIndexFileFunc
+	metrics           *metrics
 
 	baseUserIndexSet, baseCommonIndexSet storage.IndexSet
 
@@ -50,7 +52,7 @@ type table struct {
 
 // NewTable just creates an instance of table without trying to load files from local storage or object store.
 // It is used for initializing table at query time.
-func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc) Table {
+func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) Table {
 	table := table{
 		name:               name,
 		cacheLocation:      cacheLocation,
@@ -59,6 +61,7 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 		baseCommonIndexSet: storage.NewIndexSet(storageClient, false),
 		logger:             log.With(util_log.Logger, "table-name", name),
 		openIndexFileFunc:  openIndexFileFunc,
+		metrics:            metrics,
 		indexSets:          map[string]IndexSet{},
 	}
 
@@ -67,7 +70,7 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 
 // LoadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
 // It is used for loading and initializing table at startup. It would initialize index sets which already had files locally.
-func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc) (Table, error) {
+func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) (Table, error) {
 	err := util.EnsureDirectory(cacheLocation)
 	if err != nil {
 		return nil, err
@@ -87,6 +90,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		logger:             log.With(util_log.Logger, "table-name", name),
 		indexSets:          map[string]IndexSet{},
 		openIndexFileFunc:  openIndexFileFunc,
+		metrics:            metrics,
 	}
 
 	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(filesInfo))
@@ -104,7 +108,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 			return nil, err
 		}
 
-		err = userIndexSet.Init()
+		err = userIndexSet.Init(false)
 		if err != nil {
 			return nil, err
 		}
@@ -118,7 +122,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		return nil, err
 	}
 
-	err = commonIndexSet.Init()
+	err = commonIndexSet.Init(false)
 	if err != nil {
 		return nil, err
 	}
@@ -143,21 +147,13 @@ func (t *table) Close() {
 func (t *table) ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
 	// iterate through both user and common index
 	for _, uid := range []string{userID, ""} {
-		indexSet, err := t.getOrCreateIndexSet(uid, true)
+		indexSet, err := t.getOrCreateIndexSet(ctx, uid, true)
 		if err != nil {
 			return err
 		}
 
 		if indexSet.Err() != nil {
-			level.Error(util_log.WithContext(ctx, t.logger)).Log("msg", fmt.Sprintf("index set %s has some problem, cleaning it up", uid), "err", indexSet.Err())
-			if err := indexSet.DropAllDBs(); err != nil {
-				level.Error(t.logger).Log("msg", fmt.Sprintf("failed to cleanup broken index set %s", uid), "err", err)
-			}
-
-			t.indexSetsMtx.Lock()
-			delete(t.indexSets, userID)
-			t.indexSetsMtx.Unlock()
-
+			t.cleanupBrokenIndexSet(ctx, uid)
 			return indexSet.Err()
 		}
 
@@ -191,7 +187,8 @@ func (t *table) findExpiredIndexSets(ttl time.Duration, now time.Time) []string 
 		}
 	}
 
-	if commonIndexSetExpired {
+	// common index set should expire only after all the user index sets have expired.
+	if commonIndexSetExpired && len(expiredIndexSets) == len(t.indexSets)-1 {
 		expiredIndexSets = append(expiredIndexSets, "")
 	}
 
@@ -207,6 +204,13 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 		t.indexSetsMtx.Lock()
 		defer t.indexSetsMtx.Unlock()
 		for _, userID := range indexSetsToCleanup {
+			// additional check for cleaning up the common index set when it is the only one left.
+			// This is just for safety because the index sets could change between findExpiredIndexSets and the actual cleanup.
+			if userID == "" && len(t.indexSets) != 1 {
+				level.Info(t.logger).Log("msg", "skipping cleanup of common index set because we possibly have unexpired user index sets left")
+				continue
+			}
+
 			level.Info(t.logger).Log("msg", fmt.Sprintf("cleaning up expired index set %s", userID))
 			err := t.indexSets[userID].DropAllDBs()
 			if err != nil {
@@ -243,7 +247,7 @@ func (t *table) Sync(ctx context.Context) error {
 // Caller can use IndexSet.AwaitReady() to wait until the IndexSet gets ready, if required.
 // forQuerying must be set to true only getting the index for querying since
 // it captures the amount of time it takes to download the index at query time.
-func (t *table) getOrCreateIndexSet(id string, forQuerying bool) (IndexSet, error) {
+func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying bool) (IndexSet, error) {
 	t.indexSetsMtx.RLock()
 	indexSet, ok := t.indexSets[id]
 	t.indexSetsMtx.RUnlock()
@@ -278,24 +282,45 @@ func (t *table) getOrCreateIndexSet(id string, forQuerying bool) (IndexSet, erro
 		if forQuerying {
 			start := time.Now()
 			defer func() {
-				duration := time.Since(start).Seconds()
-				level.Info(loggerWithUserID(t.logger, id)).Log("msg", "downloaded index set at query time", "duration", duration)
+				duration := time.Since(start)
+				t.metrics.queryTimeTableDownloadDurationSeconds.WithLabelValues(t.name).Add(duration.Seconds())
+				logger := spanlogger.FromContextWithFallback(ctx, loggerWithUserID(t.logger, id))
+				level.Info(logger).Log("msg", "downloaded index set at query time", "duration", duration)
 			}()
 		}
 
-		err := indexSet.Init()
+		err := indexSet.Init(forQuerying)
 		if err != nil {
 			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
+			t.cleanupBrokenIndexSet(ctx, id)
 		}
 	}()
 
 	return indexSet, nil
 }
 
+// cleanupBrokenIndexSet if an indexSet with given id exists and is really broken i.e Err() returns a non-nil error
+func (t *table) cleanupBrokenIndexSet(ctx context.Context, id string) {
+	t.indexSetsMtx.Lock()
+	defer t.indexSetsMtx.Unlock()
+
+	indexSet, ok := t.indexSets[id]
+	if !ok || indexSet.Err() == nil {
+		return
+	}
+
+	level.Error(util_log.WithContext(ctx, t.logger)).Log("msg", fmt.Sprintf("index set %s has some problem, cleaning it up", id), "err", indexSet.Err())
+	if err := indexSet.DropAllDBs(); err != nil {
+		level.Error(t.logger).Log("msg", fmt.Sprintf("failed to cleanup broken index set %s", id), "err", err)
+	}
+
+	delete(t.indexSets, id)
+}
+
 // EnsureQueryReadiness ensures that we have downloaded the common index as well as user index for the provided userIDs.
 // When ensuring query readiness for a table, we will always download common index set because it can include index for one of the provided user ids.
 func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) error {
-	commonIndexSet, err := t.getOrCreateIndexSet("", false)
+	commonIndexSet, err := t.getOrCreateIndexSet(ctx, "", false)
 	if err != nil {
 		return err
 	}
@@ -323,7 +348,7 @@ func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) erro
 // downloadUserIndexes downloads user specific index files concurrently.
 func (t *table) downloadUserIndexes(ctx context.Context, userIDs []string) error {
 	return concurrency.ForEachJob(ctx, len(userIDs), maxDownloadConcurrency, func(ctx context.Context, idx int) error {
-		indexSet, err := t.getOrCreateIndexSet(userIDs[idx], false)
+		indexSet, err := t.getOrCreateIndexSet(ctx, userIDs[idx], false)
 		if err != nil {
 			return err
 		}

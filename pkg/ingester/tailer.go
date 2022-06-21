@@ -121,15 +121,20 @@ func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
 		return
 	}
 
-	processed := t.processStream(stream, lbs)
-	select {
-	case t.sendChan <- processed:
-	default:
-		t.dropStream(stream)
+	streams := t.processStream(stream, lbs)
+	if len(streams) == 0 {
+		return
+	}
+	for _, s := range streams {
+		select {
+		case t.sendChan <- s:
+		default:
+			t.dropStream(*s)
+		}
 	}
 }
 
-func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) *logproto.Stream {
+func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*logproto.Stream {
 	// Build a new pipeline for each call because the pipeline builds a cache of labels
 	// and if we don't start with a new pipeline that cache will grow unbounded.
 	// The error is ignored because it would be handled in the constructor of the tailer.
@@ -137,28 +142,37 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) *logpr
 
 	// Optimization: skip filtering entirely, if no filter is set
 	if log.IsNoopPipeline(pipeline) {
-		return &stream
+		return []*logproto.Stream{&stream}
 	}
 	// pipeline are not thread safe and tailer can process multiple stream at once.
 	t.pipelineMtx.Lock()
 	defer t.pipelineMtx.Unlock()
 
-	responseStream := &logproto.Stream{
-		Labels:  stream.Labels,
-		Entries: make([]logproto.Entry, 0, len(stream.Entries)),
-	}
+	streams := map[uint64]*logproto.Stream{}
+
 	sp := pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		newLine, _, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
+		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
 		if !ok {
 			continue
 		}
-		responseStream.Entries = append(responseStream.Entries, logproto.Entry{
+		var stream *logproto.Stream
+		if stream, ok = streams[parsedLbs.Hash()]; !ok {
+			stream = &logproto.Stream{
+				Labels: parsedLbs.String(),
+			}
+			streams[parsedLbs.Hash()] = stream
+		}
+		stream.Entries = append(stream.Entries, logproto.Entry{
 			Timestamp: e.Timestamp,
 			Line:      newLine,
 		})
 	}
-	return responseStream
+	streamsResult := make([]*logproto.Stream, 0, len(streams))
+	for _, stream := range streams {
+		streamsResult = append(streamsResult, stream)
+	}
+	return streamsResult
 }
 
 // isMatching returns true if lbs matches all matchers.

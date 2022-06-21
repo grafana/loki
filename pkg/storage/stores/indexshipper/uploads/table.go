@@ -32,7 +32,6 @@ type Table interface {
 // All the public methods are concurrency safe and take care of mutexes to avoid any data race.
 type table struct {
 	name                                 string
-	uploader                             string
 	baseUserIndexSet, baseCommonIndexSet storage.IndexSet
 	logger                               log.Logger
 
@@ -41,10 +40,9 @@ type table struct {
 }
 
 // NewTable create a new table instance.
-func NewTable(name, uploader string, storageClient storage.Client) Table {
+func NewTable(name string, storageClient storage.Client) Table {
 	return &table{
 		name:               name,
-		uploader:           uploader,
 		baseUserIndexSet:   storage.NewIndexSet(storageClient, true),
 		baseCommonIndexSet: storage.NewIndexSet(storageClient, false),
 		logger:             log.With(util_log.Logger, "table-name", name),
@@ -84,12 +82,20 @@ func (lt *table) ForEach(userID string, callback index.ForEachIndexCallback) err
 	lt.indexSetMtx.RLock()
 	defer lt.indexSetMtx.RUnlock()
 
-	idxSet, ok := lt.indexSet[userID]
-	if !ok {
-		return nil
-	}
+	// TODO(owen-d): refactor? Uploads mgr never has user indices,
+	// only common (multitenant) ones.
+	// iterate through both user and common index
+	for _, uid := range []string{userID, ""} {
+		idxSet, ok := lt.indexSet[uid]
+		if !ok {
+			continue
+		}
 
-	return idxSet.ForEach(callback)
+		if err := idxSet.ForEach(callback); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Upload uploads the index to object storage.

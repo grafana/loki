@@ -62,7 +62,7 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 	t.Run("label-names", func(t *testing.T) {
 		resp, err := cli.LabelNames()
 		require.NoError(t, err)
-		assert.ElementsMatch(t, []string{"__name__", "job"}, resp)
+		assert.ElementsMatch(t, []string{"job"}, resp)
 	})
 
 	t.Run("label-values", func(t *testing.T) {

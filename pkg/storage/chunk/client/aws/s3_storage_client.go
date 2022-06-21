@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v2"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -63,20 +61,6 @@ func init() {
 	s3RequestDuration.Register()
 }
 
-type secret struct {
-	Value string
-}
-
-func (secret) MarshalYAML() (interface{}, error) {
-	return "redacted", nil
-}
-
-func (s *secret) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	return unmarshal(&s.Value)
-}
-
-var _ yaml.Marshaler = secret{}
-
 // S3Config specifies config for storing chunks on AWS S3.
 type S3Config struct {
 	S3               flagext.URLValue
@@ -85,8 +69,8 @@ type S3Config struct {
 	BucketNames      string
 	Endpoint         string              `yaml:"endpoint"`
 	Region           string              `yaml:"region"`
-	AccessKeyID      secret              `yaml:"access_key_id"`
-	SecretAccessKey  secret              `yaml:"secret_access_key"`
+	AccessKeyID      string              `yaml:"access_key_id"`
+	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
 	Insecure         bool                `yaml:"insecure"`
 	SSEEncryption    bool                `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
@@ -119,8 +103,8 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "S3 Endpoint to connect to.")
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "AWS region to use.")
-	f.StringVar(&cfg.AccessKeyID.Value, prefix+"s3.access-key-id", "", "AWS Access Key ID")
-	f.StringVar(&cfg.SecretAccessKey.Value, prefix+"s3.secret-access-key", "", "AWS Secret Access Key")
+	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
+	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
 
 	// TODO Remove in Cortex 1.10.0
@@ -253,13 +237,13 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 		s3Config = s3Config.WithRegion(cfg.Region)
 	}
 
-	if cfg.AccessKeyID.Value != "" && cfg.SecretAccessKey.Value == "" ||
-		cfg.AccessKeyID.Value == "" && cfg.SecretAccessKey.Value != "" {
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() == "" ||
+		cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() != "" {
 		return nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
 	}
 
-	if cfg.AccessKeyID.Value != "" && cfg.SecretAccessKey.Value != "" {
-		creds := credentials.NewStaticCredentials(cfg.AccessKeyID.Value, cfg.SecretAccessKey.Value, "")
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
+		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
 		s3Config = s3Config.WithCredentials(creds)
 	}
 

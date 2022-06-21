@@ -45,7 +45,8 @@ func Test_GetShards(t *testing.T) {
 }
 
 func Test_ValidateShards(t *testing.T) {
-	require.NoError(t, validateShard(32, &astmapper.ShardAnnotation{Shard: 1, Of: 16}))
+	ii := NewWithShards(32)
+	require.NoError(t, ii.validateShard(&astmapper.ShardAnnotation{Shard: 1, Of: 16}))
 }
 
 var (

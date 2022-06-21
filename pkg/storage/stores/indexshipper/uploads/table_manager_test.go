@@ -30,10 +30,9 @@ func buildTestTableManager(t *testing.T, testDir string) (TableManager, stopFunc
 	storageClient := buildTestStorageClient(t, testDir)
 
 	cfg := Config{
-		Uploader:       "test-table-manager",
 		UploadInterval: time.Hour,
 	}
-	tm, err := NewTableManager(cfg, storageClient)
+	tm, err := NewTableManager(cfg, storageClient, nil)
 	require.NoError(t, err)
 
 	return tm, func() {

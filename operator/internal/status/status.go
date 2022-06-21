@@ -37,7 +37,8 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 		len(cs.Querier[corev1.PodFailed]) +
 		len(cs.QueryFrontend[corev1.PodFailed]) +
 		len(cs.Gateway[corev1.PodFailed]) +
-		len(cs.IndexGateway[corev1.PodFailed])
+		len(cs.IndexGateway[corev1.PodFailed]) +
+		len(cs.Ruler[corev1.PodFailed])
 
 	unknown := len(cs.Compactor[corev1.PodUnknown]) +
 		len(cs.Distributor[corev1.PodUnknown]) +
@@ -45,7 +46,8 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 		len(cs.Querier[corev1.PodUnknown]) +
 		len(cs.QueryFrontend[corev1.PodUnknown]) +
 		len(cs.Gateway[corev1.PodUnknown]) +
-		len(cs.IndexGateway[corev1.PodUnknown])
+		len(cs.IndexGateway[corev1.PodUnknown]) +
+		len(cs.Ruler[corev1.PodUnknown])
 
 	if failed != 0 || unknown != 0 {
 		return SetFailedCondition(ctx, k, req)
@@ -58,7 +60,8 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 		len(cs.Querier[corev1.PodPending]) +
 		len(cs.QueryFrontend[corev1.PodPending]) +
 		len(cs.Gateway[corev1.PodPending]) +
-		len(cs.IndexGateway[corev1.PodPending])
+		len(cs.IndexGateway[corev1.PodPending]) +
+		len(cs.Ruler[corev1.PodPending])
 
 	if pending != 0 {
 		return SetPendingCondition(ctx, k, req)

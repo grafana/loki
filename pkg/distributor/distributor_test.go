@@ -100,23 +100,23 @@ func TestDistributor(t *testing.T) {
 	}
 }
 
-func Test_FudgeTimestamp(t *testing.T) {
-	fudgingDisabled := &validation.Limits{}
-	flagext.DefaultValues(fudgingDisabled)
-	fudgingDisabled.RejectOldSamples = false
+func Test_IncrementTimestamp(t *testing.T) {
+	incrementingDisabled := &validation.Limits{}
+	flagext.DefaultValues(incrementingDisabled)
+	incrementingDisabled.RejectOldSamples = false
 
-	fudgingEnabled := &validation.Limits{}
-	flagext.DefaultValues(fudgingEnabled)
-	fudgingEnabled.RejectOldSamples = false
-	fudgingEnabled.FudgeDuplicateTimestamp = true
+	incrementingEnabled := &validation.Limits{}
+	flagext.DefaultValues(incrementingEnabled)
+	incrementingEnabled.RejectOldSamples = false
+	incrementingEnabled.IncrementDuplicateTimestamp = true
 
 	tests := map[string]struct {
 		limits       *validation.Limits
 		push         *logproto.PushRequest
 		expectedPush *logproto.PushRequest
 	}{
-		"fudging disabled, no dupes": {
-			limits: fudgingDisabled,
+		"incrementing disabled, no dupes": {
+			limits: incrementingDisabled,
 			push: &logproto.PushRequest{
 				Streams: []logproto.Stream{
 					{
@@ -140,8 +140,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 				},
 			},
 		},
-		"fudging disabled, with dupe timestamp different entry": {
-			limits: fudgingDisabled,
+		"incrementing disabled, with dupe timestamp different entry": {
+			limits: incrementingDisabled,
 			push: &logproto.PushRequest{
 				Streams: []logproto.Stream{
 					{
@@ -165,8 +165,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 				},
 			},
 		},
-		"fudging disabled, with dupe timestamp same entry": {
-			limits: fudgingDisabled,
+		"incrementing disabled, with dupe timestamp same entry": {
+			limits: incrementingDisabled,
 			push: &logproto.PushRequest{
 				Streams: []logproto.Stream{
 					{
@@ -190,8 +190,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 				},
 			},
 		},
-		"fudging enabled, no dupes": {
-			limits: fudgingEnabled,
+		"incrementing enabled, no dupes": {
+			limits: incrementingEnabled,
 			push: &logproto.PushRequest{
 				Streams: []logproto.Stream{
 					{
@@ -215,8 +215,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 				},
 			},
 		},
-		"fudging enabled, with dupe timestamp different entry": {
-			limits: fudgingEnabled,
+		"incrementing enabled, with dupe timestamp different entry": {
+			limits: incrementingEnabled,
 			push: &logproto.PushRequest{
 				Streams: []logproto.Stream{
 					{
@@ -240,8 +240,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 				},
 			},
 		},
-		"fudging enabled, with dupe timestamp same entry": {
-			limits: fudgingEnabled,
+		"incrementing enabled, with dupe timestamp same entry": {
+			limits: incrementingEnabled,
 			push: &logproto.PushRequest{
 				Streams: []logproto.Stream{
 					{
@@ -265,8 +265,8 @@ func Test_FudgeTimestamp(t *testing.T) {
 				},
 			},
 		},
-		"fudging enabled, multiple subsequent fudges": {
-			limits: fudgingEnabled,
+		"incrementing enabled, multiple subsequent increments": {
+			limits: incrementingEnabled,
 			push: &logproto.PushRequest{
 				Streams: []logproto.Stream{
 					{

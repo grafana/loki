@@ -33,27 +33,21 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
-#### Tail API no longer creates multiple streams when using parsers.
+#### Evenly spread queriers across kubernetes nodes
 
-We expect this change to be non-impactful however it is a breaking change to existing behavior. 
+We now evenly spread queriers across the available kubernetes nodes, but allowing more than one querier to be scheduled into the same node.
+If you want to run at most a single querier per node, set `$._config.querier.use_topology_spread` to false.
 
-This change would likely only affect anyone who's doing machine to machine type work with Loki's tail API 
-and is expecting a parser in a query to alter the streams in a tail response.
+#### Implementation of unwrapped `rate` aggregation changed
 
-Prior to this change a tail request with a parser (e.g. json, logfmt, regexp, pattern) would split the 
-incoming log stream into multiple streams based on the extracted labels after running the parser.
+The implementation of the `rate()` aggregation function changed back to the previous implemention prior to [#5013](https://github.com/grafana/loki/pulls/5013).
+This means that the rate per second is calculated based on the sum of the extracted values, instead of the average increase over time.
 
-[PR 6063](https://github.com/grafana/loki/pull/6063) changes this behavior 
-to no longer split incoming streams when using a parser in the query, instead Loki will return exactly
-the same streams with and without a parser in the query.
+If you want the extracted values to be treated as [Counter](https://prometheus.io/docs/concepts/metric_types/#counter) metric, you should use the new `rate_counter()` aggregation function, which calculates the per-second average rate of increase of the vector.
 
-We found a significant performance impact when using parsers on live tailing queries which would 
-result in turning a single stream with multiple entries into multiple streams with single entries.
-Often leading to the case where the tailing client could not keep up with the number of streams
-being pushed and tailing logs being dropped.
+#### Default value for `azure.container-name` changed
 
-This change will have no impact on viewing the tail output from Grafana or logcli. 
-Parsers can still be used to do filtering and reformatting of live tailed log lines.
+This value now defaults to `loki`, it was previously set to `cortex`. If you are relying on this container name for your chunks or ruler storage, you will have to manually specify `-azure.container-name=cortex` or `-ruler.storage.azure.container-name=cortex` respectively.
 
 ## 2.5.0
 

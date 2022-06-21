@@ -20,13 +20,13 @@ import (
 )
 
 var (
-	dedupedChunksTotal = promauto.NewCounter(prometheus.CounterOpts{
+	DedupedChunksTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "chunk_store_deduped_chunks_total",
 		Help:      "Count of chunks which were not stored because they have already been stored by another replica.",
 	})
 
-	indexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{
+	IndexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "chunk_store_index_entries_per_chunk",
 		Help:      "Number of entries written to storage per chunk.",
@@ -86,7 +86,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 
 	if len(found) > 0 {
 		writeChunk = false
-		dedupedChunksTotal.Inc()
+		DedupedChunksTotal.Inc()
 	}
 
 	// If we dont have to write the chunk and DisableIndexDeduplication is false, we do not have to do anything.
@@ -170,7 +170,7 @@ func (c *Writer) calculateIndexEntries(ctx context.Context, from, through model.
 	}
 	entries = append(entries, chunkEntries...)
 
-	indexEntriesPerChunk.Observe(float64(len(entries)))
+	IndexEntriesPerChunk.Observe(float64(len(entries)))
 
 	// Remove duplicate entries based on tableName:hashValue:rangeValue
 	result := c.indexWriter.NewWriteBatch()

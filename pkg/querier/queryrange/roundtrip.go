@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -52,7 +53,7 @@ func NewTripperware(
 		err error
 	)
 	if cfg.CacheResults {
-		c, err = cache.New(cfg.CacheConfig, registerer, log)
+		c, err = cache.New(cfg.CacheConfig, registerer, log, stats.ResultCache)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -224,6 +225,7 @@ const (
 	QueryRangeOp   = "query_range"
 	SeriesOp       = "series"
 	LabelNamesOp   = "labels"
+	IndexStatsOp   = "index_stats"
 )
 
 func getOperation(path string) string {
@@ -236,6 +238,8 @@ func getOperation(path string) string {
 		return LabelNamesOp
 	case strings.HasSuffix(path, "/v1/query"):
 		return InstantQueryOp
+	case path == "/loki/api/v1/index/stats":
+		return IndexStatsOp
 	default:
 		return ""
 	}
@@ -312,6 +316,7 @@ func NewSeriesTripperware(
 	schema config.SchemaConfig,
 ) (queryrangebase.Tripperware, error) {
 	queryRangeMiddleware := []queryrangebase.Middleware{
+		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
@@ -357,6 +362,7 @@ func NewLabelsTripperware(
 	metrics *Metrics,
 ) (queryrangebase.Tripperware, error) {
 	queryRangeMiddleware := []queryrangebase.Middleware{
+		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.

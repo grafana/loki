@@ -1,5 +1,15 @@
 ## Main
 
+- [6224](https://github.com/grafana/loki/pull/6224) **periklis**: Add support for GRPC over TLS for Loki components
+- [5952](https://github.com/grafana/loki/pull/5952) **Red-GV**: Add api to change storage schema version
+- [6363](https://github.com/grafana/loki/pull/6363) **periklis**: Allow optional installation of webhooks (Kind)
+- [6362](https://github.com/grafana/loki/pull/6362) **periklis**: Allow reduced tenant OIDC authentication requirements
+- [6288](https://github.com/grafana/loki/pull/6288) **aminesnow**: Expose only an HTTPS gateway when in openshift mode
+- [6195](https://github.com/grafana/loki/pull/6195) **periklis**: Add ruler config support
+- [6198](https://github.com/grafana/loki/pull/6198) **periklis**: Add support for custom S3 CA
+- [6199](https://github.com/grafana/loki/pull/6199) **Red-GV**: Update GCP secret volume path
+- [6125](https://github.com/grafana/loki/pull/6125) **sasagarw**: Add method to get authenticated from GCP
+- [5986](https://github.com/grafana/loki/pull/5986) **periklis**: Add support for Loki Rules reconciliation
 - [5987](https://github.com/grafana/loki/pull/5987) **Red-GV**: Update logerr to v2.0.0
 - [5907](https://github.com/grafana/loki/pull/5907) **xperimental**: Do not include non-static labels in pod selectors
 - [5893](https://github.com/grafana/loki/pull/5893) **periklis**: Align PVC storage size requests for all lokistack t-shirt sizes

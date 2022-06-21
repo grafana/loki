@@ -44,6 +44,27 @@ Promtail yet. There may be one of many root causes:
 - Your pods are running with different labels than the ones Promtail is
   configured to read. Check `scrape_configs` to validate.
 
+## Loki timeout errors
+
+Loki 504 errors, context canceled, and error processing requests
+can have many possible causes.
+
+- Review Loki configuration
+
+    - Loki configuration `querier.query_timeout`
+    - `server.http_server_read_timeout`
+    - `server.http_server_write_timeout`
+    - `server.http_server_idle_timeout`
+
+- Check your Loki deployment.
+If you have a reverse proxy in front of Loki, that is, between Loki and Grafana, then check any configured timeouts, such as an NGINX proxy read timeout.
+
+- Other causes.  To determine if the issue is related to Loki itself or another system such as Grafana or a client-side error,
+attempt to run a [LogCLI](../../tools/logcli/) query in as direct a manner as you can. For example, if running on virtual machines, run the query on the local machine. If running in a Kubernetes cluster, then port forward the Loki HTTP port, and attempt to run the query there. If you do not get a timeout, then consider these causes:
+
+    - Adjust the [Grafana dataproxy timeout](https://grafana.com/docs/grafana/latest/administration/configuration/#dataproxy). Configure Grafana with a large enough dataproxy timeout.
+    - Check timeouts for reverse proxies or load balancers between your client and Grafana. Queries to Grafana are made from the your local browser with Grafana serving as a proxy (a dataproxy). Therefore, connections from your client to Grafana must have their timeout configured as well.
+
 ## Troubleshooting targets
 
 Promtail exposes two web pages that can be used to understand how its service

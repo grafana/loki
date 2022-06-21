@@ -4,7 +4,7 @@ import (
 	"github.com/grafana/dskit/ring"
 )
 
-func (g *Gateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
+func (rm *RingManager) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
 	// When we initialize the index gateway instance in the ring we want to start from
 	// a clean situation, so whatever is the state we set it JOINING, while we keep existing
 	// tokens (if any) or the ones loaded from file.
@@ -22,7 +22,7 @@ func (g *Gateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.
 	return ring.JOINING, tokens
 }
 
-func (g *Gateway) OnRingInstanceTokens(_ *ring.BasicLifecycler, _ ring.Tokens) {}
-func (g *Gateway) OnRingInstanceStopping(_ *ring.BasicLifecycler)              {}
-func (g *Gateway) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.InstanceDesc) {
+func (rm *RingManager) OnRingInstanceTokens(_ *ring.BasicLifecycler, _ ring.Tokens) {}
+func (rm *RingManager) OnRingInstanceStopping(_ *ring.BasicLifecycler)              {}
+func (rm *RingManager) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.InstanceDesc) {
 }

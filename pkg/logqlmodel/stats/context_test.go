@@ -22,11 +22,14 @@ func TestResult(t *testing.T) {
 	stats.AddChunksRef(50)
 	stats.AddChunksDownloaded(60)
 	stats.AddChunksDownloadTime(time.Second)
+	stats.AddCacheRequest(ChunkCache, 3)
+	stats.AddCacheRequest(IndexCache, 4)
+	stats.AddCacheRequest(ResultCache, 1)
 
 	fakeIngesterQuery(ctx)
 	fakeIngesterQuery(ctx)
 
-	res := stats.Result(2*time.Second, 2*time.Nanosecond)
+	res := stats.Result(2*time.Second, 2*time.Nanosecond, 10)
 	res.Log(util_log.Logger)
 	expected := Result{
 		Ingester: Ingester{
@@ -60,6 +63,17 @@ func TestResult(t *testing.T) {
 				},
 			},
 		},
+		Caches: Caches{
+			Chunk: Cache{
+				Requests: 3,
+			},
+			Index: Cache{
+				Requests: 4,
+			},
+			Result: Cache{
+				Requests: 1,
+			},
+		},
 		Summary: Summary{
 			ExecTime:                2 * time.Second.Seconds(),
 			QueueTime:               2 * time.Nanosecond.Seconds(),
@@ -67,6 +81,7 @@ func TestResult(t *testing.T) {
 			LinesProcessedPerSecond: int64(50),
 			TotalBytesProcessed:     int64(84),
 			TotalLinesProcessed:     int64(100),
+			TotalEntriesReturned:    int64(10),
 			Subqueries:              1,
 		},
 	}
@@ -114,12 +129,13 @@ func TestSnapshot_JoinResults(t *testing.T) {
 			LinesProcessedPerSecond: int64(50),
 			TotalBytesProcessed:     int64(84),
 			TotalLinesProcessed:     int64(100),
+			TotalEntriesReturned:    int64(10),
 			Subqueries:              2,
 		},
 	}
 
 	JoinResults(ctx, expected)
-	res := statsCtx.Result(2*time.Second, 2*time.Nanosecond)
+	res := statsCtx.Result(2*time.Second, 2*time.Nanosecond, 10)
 	require.Equal(t, expected, res)
 }
 
@@ -180,6 +196,20 @@ func TestResult_Merge(t *testing.T) {
 				},
 			},
 		},
+		Caches: Caches{
+			Chunk: Cache{
+				Requests:      5,
+				BytesReceived: 1024,
+				BytesSent:     512,
+			},
+			Index: Cache{
+				EntriesRequested: 22,
+				EntriesFound:     2,
+			},
+			Result: Cache{
+				EntriesStored: 3,
+			},
+		},
 		Summary: Summary{
 			ExecTime:                2 * time.Second.Seconds(),
 			QueueTime:               2 * time.Nanosecond.Seconds(),
@@ -228,6 +258,20 @@ func TestResult_Merge(t *testing.T) {
 				},
 			},
 		},
+		Caches: Caches{
+			Chunk: Cache{
+				Requests:      2 * 5,
+				BytesReceived: 2 * 1024,
+				BytesSent:     2 * 512,
+			},
+			Index: Cache{
+				EntriesRequested: 2 * 22,
+				EntriesFound:     2 * 2,
+			},
+			Result: Cache{
+				EntriesStored: 2 * 3,
+			},
+		},
 		Summary: Summary{
 			ExecTime:                2 * 2 * time.Second.Seconds(),
 			QueueTime:               2 * 2 * time.Nanosecond.Seconds(),
@@ -243,10 +287,10 @@ func TestResult_Merge(t *testing.T) {
 func TestReset(t *testing.T) {
 	statsCtx, ctx := NewContext(context.Background())
 	fakeIngesterQuery(ctx)
-	res := statsCtx.Result(2*time.Second, 2*time.Millisecond)
+	res := statsCtx.Result(2*time.Second, 2*time.Millisecond, 10)
 	require.NotEmpty(t, res)
 	statsCtx.Reset()
-	res = statsCtx.Result(0, 0)
+	res = statsCtx.Result(0, 0, 0)
 	res.Summary.Subqueries = 0
 	require.Empty(t, res)
 }
@@ -270,4 +314,30 @@ func TestIngester(t *testing.T) {
 			},
 		},
 	}, statsCtx.Ingester())
+}
+
+func TestCaches(t *testing.T) {
+	statsCtx, _ := NewContext(context.Background())
+
+	statsCtx.AddCacheRequest(ChunkCache, 5)
+	statsCtx.AddCacheEntriesStored(ResultCache, 3)
+	statsCtx.AddCacheEntriesRequested(IndexCache, 22)
+	statsCtx.AddCacheBytesRetrieved(ChunkCache, 1024)
+	statsCtx.AddCacheBytesSent(ChunkCache, 512)
+	statsCtx.AddCacheEntriesFound(IndexCache, 2)
+
+	require.Equal(t, Caches{
+		Chunk: Cache{
+			Requests:      5,
+			BytesReceived: 1024,
+			BytesSent:     512,
+		},
+		Index: Cache{
+			EntriesRequested: 22,
+			EntriesFound:     2,
+		},
+		Result: Cache{
+			EntriesStored: 3,
+		},
+	}, statsCtx.Caches())
 }

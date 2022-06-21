@@ -35,6 +35,12 @@ variable "password" {
   default     = ""
 }
 
+variable "tenant_id" {
+  type        = string
+  description = "Tenant ID to be added when writing logs from lambda-promtail."
+  default     = ""
+}
+
 variable "keep_stream" {
   type        = string
   description = "Determines whether to keep the CloudWatch Log Stream value as a Loki label when writing logs from lambda-promtail."

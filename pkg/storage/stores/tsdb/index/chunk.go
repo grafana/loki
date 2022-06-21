@@ -63,10 +63,10 @@ func (c ChunkMetas) Less(i, j int) bool {
 	return a.Checksum < b.Checksum
 }
 
-// finalize sorts and dedupes
+// Finalize sorts and dedupes
 // TODO(owen-d): can we remove the need for this by ensuring we only push
 // in order and without duplicates?
-func (c ChunkMetas) finalize() ChunkMetas {
+func (c ChunkMetas) Finalize() ChunkMetas {
 	sort.Sort(c)
 
 	if len(c) == 0 {

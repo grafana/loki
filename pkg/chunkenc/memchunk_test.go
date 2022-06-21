@@ -566,7 +566,7 @@ func TestChunkStats(t *testing.T) {
 		t.Fatal(err)
 	}
 	// test on a chunk filling up
-	s := statsCtx.Result(time.Since(first), 0)
+	s := statsCtx.Result(time.Since(first), 0, 0)
 	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
 	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
 
@@ -593,7 +593,7 @@ func TestChunkStats(t *testing.T) {
 	if err := it.Close(); err != nil {
 		t.Fatal(err)
 	}
-	s = statsCtx.Result(time.Since(first), 0)
+	s = statsCtx.Result(time.Since(first), 0, 0)
 	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
 	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
 

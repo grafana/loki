@@ -66,7 +66,7 @@ func buildTestTable(t *testing.T, path string) (*table, stopFunc) {
 
 	table := NewTable(tableName, cachePath, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	}).(*table)
+	}, newMetrics(nil)).(*table)
 	_, usersWithIndex, err := table.storageClient.ListFiles(context.Background(), tableName, false)
 	require.NoError(t, err)
 	require.NoError(t, table.EnsureQueryReadiness(context.Background(), usersWithIndex))
@@ -201,6 +201,20 @@ func TestTable_DropUnusedIndex(t *testing.T) {
 	ensureIndexSetExistsInTable(t, &table, "")
 	ensureIndexSetExistsInTable(t, &table, notExpiredIndexUserID)
 
+	// change the lastUsedAt for common index set to expire it
+	indexSets[""].(*mockIndexSet).lastUsedAt = now.Add(-25 * time.Hour)
+
+	// common index set should not get dropped since we still have notExpiredIndexUserID which is not expired
+	require.Equal(t, []string(nil), table.findExpiredIndexSets(ttl, now))
+	allIndexSetsDropped, err = table.DropUnusedIndex(ttl, now)
+	require.NoError(t, err)
+	require.False(t, allIndexSetsDropped)
+
+	// none of the index set should be dropped
+	require.Len(t, table.indexSets, 2)
+	ensureIndexSetExistsInTable(t, &table, "")
+	ensureIndexSetExistsInTable(t, &table, notExpiredIndexUserID)
+
 	// change the lastUsedAt for all indexSets so that all of them get dropped
 	for _, indexSets := range table.indexSets {
 		indexSets.(*mockIndexSet).lastUsedAt = now.Add(-25 * time.Hour)
@@ -244,7 +258,7 @@ func TestTable_EnsureQueryReadiness(t *testing.T) {
 			cachePath := t.TempDir()
 			table := NewTable(tableName, cachePath, storageClient, func(path string) (index.Index, error) {
 				return openMockIndexFile(t, path), nil
-			}).(*table)
+			}, newMetrics(nil)).(*table)
 			defer func() {
 				table.Close()
 			}()
@@ -342,6 +356,33 @@ func TestTable_Sync(t *testing.T) {
 		_, ok := expectedFilesInDir[fileInfo.Name()]
 		require.True(t, ok)
 	}
+
+	// let us simulate a compaction to test stale index list cache handling
+
+	// first, let us add a new file and refresh the index list cache
+	oneMoreDB := "one-more-db"
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, oneMoreDB), []byte(oneMoreDB), 0755))
+	table.storageClient.RefreshIndexListCache(context.Background())
+
+	// now, without syncing the table, let us compact the index in storage
+	compactedDBName := "compacted-db"
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, compactedDBName), []byte(compactedDBName), 0755))
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, noUpdatesDB)))
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, newDB)))
+	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, oneMoreDB)))
+
+	// let us run a sync which should detect the stale index list cache and sync the table after refreshing the cache
+	require.NoError(t, table.Sync(context.Background()))
+
+	// verify that table has got only compacted db
+	indexesFound = []string{}
+	err = table.ForEach(context.Background(), userID, func(idx index.Index) error {
+		indexesFound = append(indexesFound, idx.Name())
+		return nil
+	})
+	require.NoError(t, err)
+	sort.Strings(indexesFound)
+	require.Equal(t, []string{compactedDBName}, indexesFound)
 }
 
 func TestLoadTable(t *testing.T) {
@@ -362,7 +403,7 @@ func TestLoadTable(t *testing.T) {
 	// try loading the table.
 	table, err := LoadTable(tableName, tablePathInCache, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	})
+	}, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -382,7 +423,7 @@ func TestLoadTable(t *testing.T) {
 	// try loading the table, it should skip loading corrupt file and reload it from storage.
 	table, err = LoadTable(tableName, tablePathInCache, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	})
+	}, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 

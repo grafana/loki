@@ -36,9 +36,8 @@ type PodDisruptionBudgetSpec struct {
 	// A null selector selects no pods.
 	// An empty selector ({}) also selects no pods, which differs from standard behavior of selecting all pods.
 	// In policy/v1, an empty selector will select all pods in the namespace.
-	// +patchStrategy=replace
 	// +optional
-	Selector *metav1.LabelSelector `json:"selector,omitempty" patchStrategy:"replace" protobuf:"bytes,2,opt,name=selector"`
+	Selector *metav1.LabelSelector `json:"selector,omitempty" protobuf:"bytes,2,opt,name=selector"`
 
 	// An eviction is allowed if at most "maxUnavailable" pods selected by
 	// "selector" are unavailable after the eviction, i.e. even in absence of
@@ -129,6 +128,9 @@ const (
 // PodDisruptionBudget is an object to define the max disruption that can be caused to a collection of pods
 type PodDisruptionBudget struct {
 	metav1.TypeMeta `json:",inline"`
+
+	// Standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
@@ -149,9 +151,13 @@ type PodDisruptionBudget struct {
 // PodDisruptionBudgetList is a collection of PodDisruptionBudgets.
 type PodDisruptionBudgetList struct {
 	metav1.TypeMeta `json:",inline"`
+
+	// Standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	// +optional
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
-	Items           []PodDisruptionBudget `json:"items" protobuf:"bytes,2,rep,name=items"`
+	// items list individual PodDisruptionBudget objects
+	Items []PodDisruptionBudget `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
 
 // +genclient

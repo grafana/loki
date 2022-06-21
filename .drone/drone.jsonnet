@@ -9,7 +9,7 @@ local condition(verb) = {
       [verb]:
         [
           'refs/heads/main',
-          'refs/heads/k??',
+          'refs/heads/k???',
           'refs/tags/v*',
         ],
     },
@@ -46,15 +46,19 @@ local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
 local deploy_configuration = secret('deploy_config', 'secret/data/common/loki_ci_autodeploy', 'config.json');
 
-
-local run(name, commands) = {
+local run(name, commands, env={}) = {
   name: name,
   image: 'grafana/loki-build-image:%s' % build_image_version,
   commands: commands,
+  environment: env,
 };
 
-local make(target, container=true) = run(target, [
-  'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target,
+local make(target, container=true, args=[]) = run(target, [
+  std.join(' ', [
+    'make',
+    'BUILD_IN_CONTAINER=' + container,
+    target,
+  ] + args),
 ]);
 
 local docker(arch, app) = {
@@ -253,17 +257,9 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
   depends_on: ['check'],
 };
 
-local lambda_promtail(tags='') = pipeline('lambda-promtail') {
+local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(arch) {
   steps+: [
-    {
-      name: 'image-tag',
-      image: 'alpine',
-      commands: [
-        'apk add --no-cache bash git',
-        'git fetch origin --tags',
-        'echo $(./tools/image-tag)-amd64 > .tags',
-      ] + if tags != '' then ['echo ",%s" >> .tags' % tags] else [],
-    },
+    // dry run for everything that is not tag or main
     lambda_promtail_ecr('lambda-promtail') {
       depends_on: ['image-tag'],
       when: condition('exclude').tagMain,
@@ -338,6 +334,58 @@ local manifest(apps) = pipeline('manifest') {
   ],
 };
 
+local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
+  steps: std.foldl(
+    function(acc, app) acc + [{
+      name: 'manifest-' + app,
+      image: 'plugins/manifest',
+      volumes: [{
+        name: 'dockerconf',
+        path: '/.docker',
+      }],
+      settings: {
+        // the target parameter is abused for the app's name,
+        // as it is unused in spec mode. See docker-manifest-ecr.tmpl
+        target: app,
+        spec: '.drone/docker-manifest-ecr.tmpl',
+        ignore_missing: true,
+      },
+      depends_on: ['clone'] + (
+        // Depend on the previous app, if any.
+        if std.length(acc) > 0
+        then [acc[std.length(acc) - 1].name]
+        else []
+      ),
+    }],
+    apps,
+    [{
+      name: 'ecr-login',
+      image: 'docker:dind',
+      volumes: [{
+        name: 'dockerconf',
+        path: '/root/.docker',
+      }],
+      environment: {
+        AWS_ACCESS_KEY_ID: { from_secret: ecr_key.name },
+        AWS_SECRET_ACCESS_KEY: { from_secret: ecr_secret_key.name },
+      },
+      commands: [
+        'apk add --no-cache aws-cli',
+        'docker login --username AWS --password $(aws ecr-public get-login-password --region us-east-1) public.ecr.aws',
+      ],
+      depends_on: ['clone'],
+    }],
+  ),
+  volumes: [{
+    name: 'dockerconf',
+    temp: {},
+  }],
+  depends_on: [
+    'lambda-promtail-%s' % arch
+    for arch in archs
+  ],
+};
+
 [
   pipeline('loki-build-image') {
     workspace: {
@@ -355,7 +403,7 @@ local manifest(apps) = pipeline('manifest') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: ['0.20.4'],
+          tags: ['0.21.0'],
           dry_run: false,
         },
       },
@@ -369,7 +417,23 @@ local manifest(apps) = pipeline('manifest') {
     steps: [
       make('check-drone-drift', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
-      make('test', container=false) { depends_on: ['clone', 'check-generated-files'] },
+      run('clone-main', commands=['cd ..', 'git clone $CI_REPO_REMOTE loki-main', 'cd -']) { depends_on: ['clone'] },
+      make('test', container=false) { depends_on: ['clone', 'clone-main'] },
+      run('test-main', commands=['cd ../loki-main', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-main'] },
+      make('compare-coverage', container=false, args=[
+        'old=../loki-main/test_results.txt',
+        'new=test_results.txt',
+        'packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki',
+        '> diff.txt',
+      ]) { depends_on: ['test', 'test-main'] },
+      run('report-coverage', commands=[
+        "pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')",
+        "body=$(jq -Rs '{body: . }' diff.txt)",
+        'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d "$body" > /dev/null',
+      ], env={
+        USER: 'grafanabot',
+        TOKEN: { from_secret: github_secret.name },
+      }) { depends_on: ['compare-coverage'] },
       make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {
@@ -391,6 +455,9 @@ local manifest(apps) = pipeline('manifest') {
       make('lint-jsonnet', container=false) {
         // Docker image defined at https://github.com/grafana/jsonnet-libs/tree/master/build
         image: 'grafana/jsonnet-build:c8b75df',
+        depends_on: ['clone'],
+      },
+      make('loki-mixin-check', container=false) {
         depends_on: ['clone'],
       },
     ],
@@ -449,6 +516,7 @@ local manifest(apps) = pipeline('manifest') {
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
+          'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
         ],
         depends_on: ['clone'],
@@ -466,5 +534,21 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
 ] + [promtail_win()]
-+ [lambda_promtail('main')]
-+ [github_secret, pull_secret, docker_username_secret, docker_password_secret, ecr_key, ecr_secret_key, deploy_configuration]
++ [
+  lambda_promtail(arch)
+  for arch in ['amd64', 'arm64']
+] + [
+  manifest_ecr(['lambda-promtail'], ['amd64', 'arm64']) {
+    trigger: condition('include').tagMain {
+      event: ['push'],
+    },
+  },
+] + [
+  github_secret,
+  pull_secret,
+  docker_username_secret,
+  docker_password_secret,
+  ecr_key,
+  ecr_secret_key,
+  deploy_configuration,
+]
