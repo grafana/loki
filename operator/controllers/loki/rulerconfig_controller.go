@@ -9,8 +9,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/controllers/internal/lokistack"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	"github.com/grafana/loki/operator/controllers/loki/internal/lokistack"
 )
 
 // RulerConfigReconciler reconciles a RulerConfig object

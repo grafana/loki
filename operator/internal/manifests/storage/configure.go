@@ -5,7 +5,7 @@ import (
 	"path"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/imdario/mergo"
 
 	appsv1 "k8s.io/api/apps/v1"

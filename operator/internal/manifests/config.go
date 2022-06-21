@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
 	corev1 "k8s.io/api/core/v1"
