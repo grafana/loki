@@ -666,6 +666,15 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		}
 		tp := httputil.NewSingleHostReverseProxy(tailURL)
 
+		cfg, err := t.Cfg.Frontend.TLS.GetTLSConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		tp.Transport = &http.Transport{
+			TLSClientConfig: cfg,
+		}
+
 		director := tp.Director
 		tp.Director = func(req *http.Request) {
 			director(req)
