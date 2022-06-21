@@ -2,7 +2,6 @@ package targets
 
 import (
 	"fmt"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -16,6 +15,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gelf"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/heroku"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/kafka"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/lokipush"
@@ -37,6 +37,7 @@ const (
 	CloudflareConfigs    = "cloudflareConfigs"
 	DockerConfigs        = "dockerConfigs"
 	DockerSDConfigs      = "dockerSDConfigs"
+	HerokuConfigs        = "herokuConfigs"
 )
 
 type targetManager interface {
@@ -96,6 +97,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[CloudflareConfigs] = append(targetScrapeConfigs[CloudflareConfigs], cfg)
 		case cfg.DockerSDConfigs != nil:
 			targetScrapeConfigs[DockerSDConfigs] = append(targetScrapeConfigs[DockerSDConfigs], cfg)
+		case cfg.HerokuConfig != nil:
+			targetScrapeConfigs[HerokuConfigs] = append(targetScrapeConfigs[HerokuConfigs], cfg)
 		default:
 			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
 		}
@@ -123,6 +126,7 @@ func NewTargetManagers(
 		cloudflareMetrics *cloudflare.Metrics
 		dockerMetrics     *docker.Metrics
 		journalMetrics    *journal.Metrics
+		herokuMetrics     *heroku.Metrics
 	)
 	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
 		fileMetrics = file.NewMetrics(reg)
@@ -144,6 +148,9 @@ func NewTargetManagers(
 	}
 	if len(targetScrapeConfigs[JournalScrapeConfigs]) > 0 {
 		journalMetrics = journal.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[HerokuConfigs]) > 0 {
+		herokuMetrics = heroku.NewMetrics(reg)
 	}
 
 	for target, scrapeConfigs := range targetScrapeConfigs {
@@ -214,6 +221,12 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make Loki Push API target manager")
 			}
 			targetManagers = append(targetManagers, pushTargetManager)
+		case HerokuConfigs:
+			herokuDrainTargetManager, err := heroku.NewHerokuTargetManager(herokuMetrics, reg, logger, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make Heroku target manager")
+			}
+			targetManagers = append(targetManagers, herokuDrainTargetManager)
 		case WindowsEventsConfigs:
 			windowsTargetManager, err := windows.NewTargetManager(reg, logger, client, scrapeConfigs)
 			if err != nil {

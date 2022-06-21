@@ -113,6 +113,7 @@ require (
 )
 
 require (
+	github.com/heroku/x v0.0.50
 	github.com/prometheus/alertmanager v0.24.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/willf/bloom v2.0.3+incompatible

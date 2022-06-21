@@ -43,6 +43,7 @@ type Config struct {
 	KafkaConfig      *KafkaTargetConfig         `yaml:"kafka,omitempty"`
 	GelfConfig       *GelfTargetConfig          `yaml:"gelf,omitempty"`
 	CloudflareConfig *CloudflareConfig          `yaml:"cloudflare,omitempty"`
+	HerokuConfig     *HerokuTargetConfig        `yaml:"heroku,omitempty"`
 	RelabelConfigs   []*relabel.Config          `yaml:"relabel_configs,omitempty"`
 	// List of Docker service discovery configurations.
 	DockerSDConfigs        []*moby.DockerSDConfig `yaml:"docker_sd_configs,omitempty"`
@@ -355,6 +356,19 @@ type GcplogTargetConfig struct {
 	// UseIncomingTimestamp represents whether to keep the timestamp same as actual log entry coming in or replace it with
 	// current timestamp at the time of processing.
 	// Its default value(`false`) denotes, replace it with current timestamp at the time of processing.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+}
+
+// HerokuTargetConfig describes a scrape config to listen and consume heroku logs, in the HTTPS drain manner.
+type HerokuTargetConfig struct {
+	// Server is the weaveworks server config for listening connections
+	Server server.Config `yaml:"server"`
+
+	// Labels optionally holds labels to associate with each record received on the push api.
+	Labels model.LabelSet `yaml:"labels"`
+
+	// UseIncomingTimestamp sets the timestamp to the incoming heroku log entry timestamp. If false,
+	// promtail will assign the current timestamp to the log entry when it was processed.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
