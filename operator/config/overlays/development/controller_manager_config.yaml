@@ -11,7 +11,7 @@ leaderElection:
   resourceName: e3716011.grafana.com
 featureFlags:
   enableLokiStackGateway: true
-  enableTLSGRPCServices: true
+  enableTlsGrpcServices: true
   enableLokiStackWebhook: false
   enableAlertingRuleWebhook: false
   enableRecordingRuleWebhook: false
