@@ -1,4 +1,4 @@
-apiVersion: config.grafana.com/v1
+apiVersion: config.loki.grafana.com/v1
 kind: ProjectConfig
 health:
   healthProbeBindAddress: :8081
