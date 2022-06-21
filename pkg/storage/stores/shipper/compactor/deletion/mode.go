@@ -28,6 +28,10 @@ func (m Mode) String() string {
 	return "unknown"
 }
 
+func (m Mode) DeleteEnabled() bool {
+	return m == FilterOnly || m == FilterAndDelete
+}
+
 func AllModes() []string {
 	return []string{Disabled.String(), FilterOnly.String(), FilterAndDelete.String()}
 }
@@ -44,11 +48,11 @@ func ParseMode(in string) (Mode, error) {
 	return 0, errUnknownMode
 }
 
-func FilteringEnabled(in string) (bool, error) {
+func DeleteEnabled(in string) (bool, error) {
 	deleteMode, err := ParseMode(in)
 	if err != nil {
 		return false, err
 	}
 
-	return deleteMode == FilterOnly || deleteMode == FilterAndDelete, nil
+	return deleteMode.DeleteEnabled(), nil
 }

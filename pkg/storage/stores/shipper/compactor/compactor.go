@@ -231,12 +231,11 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig config.Schem
 			return err
 		}
 
-		switch c.deleteMode {
-		case deletion.FilterOnly, deletion.FilterAndDelete:
+		if c.deleteMode.DeleteEnabled() {
 			if err := c.initDeletes(r, limits); err != nil {
 				return err
 			}
-		default:
+		} else {
 			c.expirationChecker = newExpirationChecker(
 				retention.NewExpirationChecker(limits),
 				// This is a dummy deletion ExpirationChecker that never expires anything
