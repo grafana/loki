@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -214,7 +215,7 @@ func NewRequestPostFetcherChunkFiltererForRequest(maxParallelPipelineChunk int) 
 	return &requestPostFetcherChunkFilterer{maxParallelPipelineChunk: maxParallelPipelineChunk}
 }
 func (c *requestPostFetcherChunkFilterer) ForRequest(req *logproto.QueryRequest) PostFetcherChunkFilterer {
-	return &chunkFiltererByExpr{selector: req.Selector, direction: req.Direction, maxParallelPipelineChunk: c.maxParallelPipelineChunk}
+	return &chunkFiltererByExpr{selector: req.Selector, direction: req.Direction, maxParallelPipelineChunk: c.maxParallelPipelineChunk, limit: req.Limit}
 }
 
 func (c *requestPostFetcherChunkFilterer) ForSampleRequest(sampleReq *logproto.SampleQueryRequest) PostFetcherChunkFilterer {
@@ -222,10 +223,13 @@ func (c *requestPostFetcherChunkFilterer) ForSampleRequest(sampleReq *logproto.S
 }
 
 type chunkFiltererByExpr struct {
+	limitMutex               sync.RWMutex
+	records                  int
 	isSampleExpr             bool
 	maxParallelPipelineChunk int
 	direction                logproto.Direction
 	selector                 string
+	limit                    uint32
 	from                     time.Time
 	through                  time.Time
 	nextChunk                *LazyChunk
@@ -235,6 +239,12 @@ func (c *chunkFiltererByExpr) SetQueryRangeTime(from time.Time, through time.Tim
 	c.from = from
 	c.through = through
 	c.nextChunk = nextChunk
+}
+
+func (c *chunkFiltererByExpr) getRecords() uint32 {
+	c.limitMutex.RLock()
+	defer c.limitMutex.RUnlock()
+	return uint32(c.records)
 }
 
 func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chunk.Chunk, s config.SchemaConfig) ([]chunk.Chunk, []string, error) {
@@ -313,6 +323,12 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 	for i := 0; i < len(chunks); i++ {
 		select {
 		case chunkWithKey := <-processedChunks:
+			lines := chunkWithKey.cnk.Data.Entries()
+			if lines > 0 {
+				c.limitMutex.Lock()
+				c.records += lines
+				c.limitMutex.Unlock()
+			}
 			result = append(result, chunkWithKey.cnk)
 			resultKeys = append(resultKeys, chunkWithKey.key)
 			if chunkWithKey.isPostFilter {
@@ -393,7 +409,7 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	headChunkBytes := int64(0)
 	headChunkLine := int64(0)
 	decompressedLines := int64(0)
-	for iterator.Next() {
+	for iterator.Next() && c.getRecords() > c.limit {
 		entry := iterator.Entry()
 		//reset line after post filter.
 		//entry.Line = iterator.ProcessLine()
