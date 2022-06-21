@@ -259,7 +259,7 @@ func TestHerokuDrainTarget_UseIncomingTimestamp(t *testing.T) {
 
 	expectedTs, err := time.Parse(time.RFC3339Nano, testLogLine1Timestamp)
 	require.NoError(t, err, "expected expected timestamp to be parse correctly")
-	require.Equal(t, expectedTs, eh.Received()[0].Timestamp, "expected entry timestamp to be overriden by received one")
+	require.Equal(t, expectedTs, eh.Received()[0].Timestamp, "expected entry timestamp to be overridden by received one")
 }
 
 func getServerConfigWithAvailablePort() (cfg server.Config, port int, err error) {
