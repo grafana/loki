@@ -1,7 +1,6 @@
 ## Main
 
 * [6444](https://github.com/grafana/loki/pull/6444) **aminesnow** Add TLS config to query frontend.
-* [6415](https://github.com/grafana/loki/pull/6415) **salvacorts** Evenly spread queriers across kubernetes nodes.
 * [6435](https://github.com/grafana/loki/pull/6430) **MichelHollands**: Remove the `whole-stream-deletion` mode.
 * [6415](https://github.com/grafana/loki/pull/6415) **salvacorts** Evenly spread queriers across kubernetes nodes.
 * [6410](https://github.com/grafana/loki/pull/6410) **MichelHollands**: Add support for per tenant delete API access enabling.
