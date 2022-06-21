@@ -1,4 +1,17 @@
-# Storing Objects to Google Cloud Platform
+---
+title: "GCS Storage"
+description: "Setup for storing logs to Google GCS"
+lead: ""
+date: 2022-06-21T08:48:45+00:00
+lastmod: 2022-06-21T08:48:45+00:00
+draft: false
+images: []
+menu:
+  docs:
+    parent: "lokistack"
+weight: 100
+toc: true
+---
 
 Loki Operator supports [GCS](https://cloud.google.com/) for Loki storage.
 

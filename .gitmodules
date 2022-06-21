@@ -1,0 +1,3 @@
+[submodule "operator/website/themes/doks"]
+	path = operator/website/themes/doks
+	url = https://github.com/h-enk/doks.git

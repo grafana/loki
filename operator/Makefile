@@ -2,6 +2,9 @@
 # referenced here as make variables. For example: $(GOLANGCI_LINT)
 include .bingo/Variables.mk
 
+WEBSITE_DIR ?= website
+WEBSITE_BASE_URL ?= https://loki-operator.dev
+
 # set the default target here, because the include above will automatically set
 # it to the first defined target
 .DEFAULT_GOAL := default
@@ -257,3 +260,19 @@ oci-build-calculator: ## Build the calculator image
 .PHONY: oci-push-calculator
 oci-push-calculator: ## Push the calculator image
 	$(OCI_RUNTIME) push $(CALCULATOR_IMG)
+
+##@ Website
+
+.PHONY: web-pre
+web-pre:
+	@echo ">> preprocessing docs for website"
+	@git submodule update --init --recursive
+	cd $(WEBSITE_DIR)/themes/doks/ && npm install && rm -rf content
+
+.PHONY: web
+web: $(HUGO) | web-pre ## Run production build of the loki-operator.dev website
+	cd $(WEBSITE_DIR) && $(HUGO) -b $(WEBSITE_BASE_URL)
+
+.PHONY: web-serve
+web-serve: $(HUGO) | web-pre ## Run local preview version of the loki-operator.dev website
+	@cd $(WEBSITE_DIR) && $(HUGO) serve
