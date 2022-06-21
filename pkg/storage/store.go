@@ -409,7 +409,7 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	headChunkBytes := int64(0)
 	headChunkLine := int64(0)
 	decompressedLines := int64(0)
-	for iterator.Next() && c.getRecords() > c.limit {
+	for c.limit > 0 && c.getRecords() < c.limit && iterator.Next() {
 		entry := iterator.Entry()
 		//reset line after post filter.
 		//entry.Line = iterator.ProcessLine()
