@@ -2120,7 +2120,7 @@ compacts index shards to more performant forms.
 # When set to "filter-only" or "filter-and-delete", and if
 # retention_enabled is true, then the log entry deletion API endpoints are available.
 # CLI flag: -boltdb.shipper.compactor.deletion-mode
-[deletion_mode: <string> | default = "filter-and-delete"]
+[deletion_mode: <string> | default = "disabled"]
 
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
