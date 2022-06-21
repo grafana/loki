@@ -77,7 +77,7 @@ To modify an already created CloudFormation stack you need to use [update-stack]
 
 This workflow is intended to be an effective approach for monitoring ephemeral jobs such as those run on AWS Lambda which are otherwise hard/impossible to monitor via one of the other Loki [clients](../).
 
-Ephemeral jobs can quite easily run afoul of cardinality best practices. During high request load, an AWS lambda function might balloon in concurrency, creating many log streams in Cloudwatch. For this reason lambda-promtail defaults to **not** keeping the log stream value as a label when propagating the logs to Loki. This is only possible because new versions of Loki no longer have an ingestion ordering constraing on logs within a single stream. 
+Ephemeral jobs can quite easily run afoul of cardinality best practices. During high request load, an AWS lambda function might balloon in concurrency, creating many log streams in Cloudwatch. For this reason lambda-promtail defaults to **not** keeping the log stream value as a label when propagating the logs to Loki. This is only possible because new versions of Loki no longer have an ingestion ordering constraint on logs within a single stream. 
 
 ### Proof of concept Loki deployments
 
@@ -156,13 +156,13 @@ scrape_configs:
         promtail: 'lambda-promtail'
     relabel_configs:
       - source_labels: ['__aws_log_type']
-        taget_label: 'log_type'
+        target_label: 'log_type'
       # Maps the cloudwatch log group into a label called `log_group` for use in Loki.
       - source_labels: ['__aws_cloudwatch_log_group']
         target_label: 'log_group'
       # Maps the loadbalancer name into a label called `loadbalancer_name` for use in Loki.
       - source_label: ['__aws_s3_log_lb']
-        taget_label: 'loadbalancer_name'
+        target_label: 'loadbalancer_name'
 ```
 
 ## Multiple Promtail Deployment
