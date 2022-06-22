@@ -28,7 +28,7 @@ func TestParseMode(t *testing.T) {
 	require.ErrorIs(t, errUnknownMode, err)
 }
 
-func TestFilteringEnabled(t *testing.T) {
+func TestDeleteEnabled(t *testing.T) {
 	enabled, err := DeleteEnabled("disabled")
 	require.NoError(t, err)
 	require.False(t, enabled)
