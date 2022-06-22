@@ -154,6 +154,8 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		"contentEncoding", contentEncoding,
 		"bodySize", humanize.Bytes(uint64(bodySize.Size())),
 		"streams", len(req.Streams),
+		"stream0Label", req.Streams[0].Labels,
+		"stream0Entry0Line", req.Streams[0].Entries[0].Line,
 		"entries", totalEntries,
 		"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
