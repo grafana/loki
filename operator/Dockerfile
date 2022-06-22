@@ -3,17 +3,17 @@ FROM golang:1.17.9 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
-COPY go.mod go.mod
-COPY go.sum go.sum
+COPY operator/go.mod go.mod
+COPY operator/go.sum go.sum
 # cache deps before building and copying source so that we don't need to re-download as much
 # and so that source changes don't invalidate our downloaded layer
 RUN go mod download
 
 # Copy the go source
-COPY main.go main.go
-COPY apis/ apis/
-COPY controllers/ controllers/
-COPY internal/ internal/
+COPY operator/main.go main.go
+COPY operator/apis/ apis/
+COPY operator/controllers/ controllers/
+COPY operator/internal/ internal/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GO111MODULE=on go build -a -o manager main.go

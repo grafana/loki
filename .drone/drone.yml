@@ -731,6 +731,174 @@ trigger:
 depends_on:
 - check
 kind: pipeline
+name: lokioperator-amd64
+platform:
+  arch: amd64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-loki-operator-image
+  settings:
+    dockerfile: operator/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/main
+      - refs/heads/k???
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-operator-image
+  settings:
+    dockerfile: operator/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k???
+      - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
+  - tag
+---
+depends_on:
+- check
+kind: pipeline
+name: lokioperator-arm64
+platform:
+  arch: arm64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm64 > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-loki-operator-image
+  settings:
+    dockerfile: operator/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/main
+      - refs/heads/k???
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-operator-image
+  settings:
+    dockerfile: operator/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k???
+      - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
+  - tag
+---
+depends_on:
+- check
+kind: pipeline
+name: lokioperator-arm
+platform:
+  arch: arm
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-loki-operator-image
+  settings:
+    dockerfile: operator/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/main
+      - refs/heads/k???
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-operator-image
+  settings:
+    dockerfile: operator/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-operator
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k???
+      - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
+  - tag
+---
+depends_on:
+- check
+kind: pipeline
 name: fluent-bit-amd64
 platform:
   arch: amd64
