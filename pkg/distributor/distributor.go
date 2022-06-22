@@ -121,13 +121,13 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 			return nil, errors.Wrap(err, "create distributor KV store client")
 		}
 
-		distributorsLifecycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+		distributorsLifecycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", registerer))
 		if err != nil {
 			return nil, errors.Wrap(err, "create distributor lifecycler")
 		}
 
 		distributorsRing, err = ring.NewWithStoreClientAndStrategy(cfg.DistributorRing.ToRingConfig(),
-			"distributor", "distributor", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", registerer), util_log.Logger)
+			"distributor", "distributor", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), util_log.Logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "create distributor ring client")
 		}

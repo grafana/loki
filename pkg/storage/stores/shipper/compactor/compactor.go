@@ -172,13 +172,15 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig config.
 	delegate = ring.NewTokensPersistencyDelegate(cfg.CompactorRing.TokensFilePath, ring.JOINING, delegate, util_log.Logger)
 	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.CompactorRing.HeartbeatTimeout, delegate, util_log.Logger)
 
-	compactor.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, ringKey, ringStore, delegate, util_log.Logger, r)
+	prefixedReg := prometheus.WrapRegistererWithPrefix("loki_", r)
+
+	compactor.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, ringKey, ringStore, delegate, util_log.Logger, prefixedReg)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ring lifecycler")
 	}
 
 	ringCfg := cfg.CompactorRing.ToRingConfig(ringReplicationFactor)
-	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", r), util_log.Logger)
+	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prefixedReg, util_log.Logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ring client")
 	}

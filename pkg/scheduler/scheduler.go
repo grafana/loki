@@ -209,13 +209,15 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		delegate = ring.NewTokensPersistencyDelegate(cfg.SchedulerRing.TokensFilePath, ring.JOINING, delegate, log)
 		delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.SchedulerRing.HeartbeatTimeout, delegate, log)
 
+		registerer = prometheus.WrapRegistererWithPrefix("loki_", registerer)
+
 		s.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, ringKey, ringStore, delegate, log, registerer)
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring lifecycler")
 		}
 
 		ringCfg := cfg.SchedulerRing.ToRingConfig(ringReplicationFactor)
-		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", registerer), util_log.Logger)
+		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), registerer, util_log.Logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring client")
 		}
