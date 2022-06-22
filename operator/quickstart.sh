@@ -2,13 +2,15 @@
 
 set -eou pipefail
 
+# shellcheck disable=SC1091
 source .bingo/variables.env
 
 setup() {
     echo "-------------------------------------------"
     echo "- Creating Kind cluster...                -"
     echo "-------------------------------------------"
-    $KIND create cluster --config=hack/kind_config.yaml
+    # shellcheck disable=SC2154
+    ${KIND} create cluster --config=hack/kind_config.yaml
 }
 
 deps() {
@@ -70,7 +72,8 @@ certificates() {
 }
 
 check() {
-    $LOGCLI --addr "http://localhost/token-refresher/api/logs/v1/test-oidc" labels
+    # shellcheck disable=SC2154
+    ${LOGCLI} --addr "http://localhost/token-refresher/api/logs/v1/test-oidc" labels
 }
 
 case ${1:-"*"} in
