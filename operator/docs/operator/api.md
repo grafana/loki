@@ -1,6 +1,6 @@
 ---
 title: "API"
-description: "Generated API docs for the Prometheus Operator"
+description: "Generated API docs for the Loki Operator"
 lead: ""
 date: 2021-03-08T08:49:31+00:00
 draft: false
@@ -12,7 +12,7 @@ weight: 1000
 toc: true
 ---
 
-This Document documents the types introduced by the Prometheus Operator to be consumed by users.
+This Document documents the types introduced by the Loki Operator to be consumed by users.
 
 > Note this document is generated from code comments. When contributing a change to this document please do so by changing the code comments.
 
