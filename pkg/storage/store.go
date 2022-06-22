@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/go-kit/log"
@@ -23,9 +24,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -37,6 +39,8 @@ var (
 	indexTypeStats  = usagestats.NewString("store_index_type")
 	objectTypeStats = usagestats.NewString("store_object_type")
 	schemaStats     = usagestats.NewString("store_schema")
+
+	errWritingChunkUnsupported = errors.New("writing chunks is not supported while running store in read-only mode")
 )
 
 // Store is the Loki chunk store to retrieve and save chunks.
@@ -84,19 +88,19 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		}
 	}
 
-	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger)
+	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger, stats.IndexCache)
 	if err != nil {
 		return nil, err
 	}
 
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger)
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger, stats.WriteDedupeCache)
 	if err != nil {
 		return nil, err
 	}
 
 	chunkCacheCfg := storeCfg.ChunkCacheConfig
 	chunkCacheCfg.Prefix = "chunks"
-	chunksCache, err := cache.New(chunkCacheCfg, registerer, logger)
+	chunksCache, err := cache.New(chunkCacheCfg, registerer, logger, stats.ChunkCache)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +154,7 @@ func (s *store) init() error {
 		if err != nil {
 			return err
 		}
-		f, err := fetcher.New(s.chunksCache, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize)
+		f, err := fetcher.New(cache.CollectStats(s.chunksCache), s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize)
 		if err != nil {
 			return err
 		}
@@ -185,12 +189,12 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 	return chunks, nil
 }
 
-func shouldUseBoltDBIndexGatewayClient(cfg Config) bool {
-	if cfg.BoltDBShipperConfig.Mode != shipper.ModeReadOnly || cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled {
+func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
+	if cfg.Mode != indexshipper.ModeReadOnly || cfg.IndexGatewayClientConfig.Disabled {
 		return false
 	}
 
-	gatewayCfg := cfg.BoltDBShipperConfig.IndexGatewayClientConfig
+	gatewayCfg := cfg.IndexGatewayClientConfig
 	if gatewayCfg.Mode == indexgateway.SimpleMode && gatewayCfg.Address == "" {
 		return false
 	}
@@ -203,25 +207,29 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 		prometheus.Labels{"component": "index-store-" + p.From.String()}, s.registerer)
 
 	if p.IndexType == config.TSDBType {
+		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
+			// inject the index-gateway client into the index store
+			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			idx := series.NewIndexGatewayClientStore(gw, nil)
+
+			return failingChunkWriter{}, idx, func() {
+				f.Stop()
+				gw.Stop()
+			}, nil
+		}
+
 		objectClient, err := NewObjectClient(s.cfg.TSDBShipperConfig.SharedStoreType, s.cfg, s.clientMetrics)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
-		// ToDo(Sandeep): Avoid initializing writer when in read only mode
-		writer, idx, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits, indexClientReg)
+		writer, idx, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
+			getIndexStoreTableRanges(config.TSDBType, s.schemaCfg.Configs), indexClientReg)
 		if err != nil {
 			return nil, nil, nil, err
-		}
-
-		// ToDo(Sandeep): Refactor code to not use boltdb-shipper index gateway client config
-		if shouldUseBoltDBIndexGatewayClient(s.cfg) {
-			// inject the index-gateway client into the index store
-			gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			idx = series.NewIndexGatewayClientStore(gw, idx)
 		}
 
 		return writer, idx,
@@ -251,7 +259,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 	)
 
 	// (Sandeep): Disable IndexGatewayClientStore for stores other than tsdb until we are ready to enable it again
-	/*if shouldUseBoltDBIndexGatewayClient(s.cfg) {
+	/*if s.cfg.BoltDBShipperConfig != nil && shouldUseIndexGatewayClient(s.cfg.BoltDBShipperConfig) {
 		// inject the index-gateway client into the index store
 		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
 		if err != nil {
@@ -491,4 +499,32 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 		filtered = append(filtered, chunk)
 	}
 	return filtered
+}
+
+type failingChunkWriter struct{}
+
+func (f failingChunkWriter) Put(_ context.Context, _ []chunk.Chunk) error {
+	return errWritingChunkUnsupported
+}
+
+func (f failingChunkWriter) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
+	return errWritingChunkUnsupported
+}
+
+func getIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodConfig) config.TableRanges {
+	var ranges config.TableRanges
+	for i, periodicConfig := range periodicConfigs {
+		if periodicConfig.IndexType != indexType {
+			continue
+		}
+
+		periodEndTime := config.DayTime{Time: math.MaxInt64}
+		if i < len(periodicConfigs)-1 {
+			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
+		}
+
+		ranges = append(ranges, periodicConfig.GetIndexTableNumberRange(periodEndTime))
+	}
+
+	return ranges
 }

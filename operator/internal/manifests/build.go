@@ -2,7 +2,7 @@ package manifests
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 
 	"github.com/imdario/mergo"
@@ -58,6 +58,22 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	res = append(res, indexGatewayObjs...)
 	res = append(res, BuildLokiGossipRingService(opts.Name))
 
+	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
+		rulesCm, err := RulesConfigMap(&opts)
+		if err != nil {
+			return nil, err
+		}
+
+		res = append(res, rulesCm)
+
+		rulerObjs, err := BuildRuler(opts)
+		if err != nil {
+			return nil, err
+		}
+
+		res = append(res, rulerObjs...)
+	}
+
 	if opts.Flags.EnableGateway {
 		gatewayObjects, err := BuildGateway(opts)
 		if err != nil {
@@ -65,6 +81,10 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		}
 
 		res = append(res, gatewayObjects...)
+	}
+
+	if opts.Stack.Tenants != nil {
+		res = configureLokiStackObjsForMode(res, opts)
 	}
 
 	if opts.Flags.EnableServiceMonitors {

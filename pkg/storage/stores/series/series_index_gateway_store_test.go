@@ -34,7 +34,7 @@ func (fakeClient) GetSeries(ctx context.Context, in *indexgatewaypb.GetSeriesReq
 func Test_IndexGatewayClient(t *testing.T) {
 	idx := IndexGatewayClientStore{
 		client: fakeClient{},
-		IndexStore: &indexStore{
+		fallbackStore: &indexStore{
 			chunkBatchSize: 1,
 		},
 	}

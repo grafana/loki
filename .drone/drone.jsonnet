@@ -9,7 +9,7 @@ local condition(verb) = {
       [verb]:
         [
           'refs/heads/main',
-          'refs/heads/k??',
+          'refs/heads/k???',
           'refs/tags/v*',
         ],
     },
@@ -269,17 +269,9 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
   depends_on: ['check'],
 };
 
-local lambda_promtail(tags='') = pipeline('lambda-promtail') {
+local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(arch) {
   steps+: [
-    {
-      name: 'image-tag',
-      image: 'alpine',
-      commands: [
-        'apk add --no-cache bash git',
-        'git fetch origin --tags',
-        'echo $(./tools/image-tag)-amd64 > .tags',
-      ] + if tags != '' then ['echo ",%s" >> .tags' % tags] else [],
-    },
+    // dry run for everything that is not tag or main
     lambda_promtail_ecr('lambda-promtail') {
       depends_on: ['image-tag'],
       when: condition('exclude').tagMain,
@@ -375,6 +367,58 @@ local manifest(apps) = pipeline('manifest') {
   ],
 };
 
+local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
+  steps: std.foldl(
+    function(acc, app) acc + [{
+      name: 'manifest-' + app,
+      image: 'plugins/manifest',
+      volumes: [{
+        name: 'dockerconf',
+        path: '/.docker',
+      }],
+      settings: {
+        // the target parameter is abused for the app's name,
+        // as it is unused in spec mode. See docker-manifest-ecr.tmpl
+        target: app,
+        spec: '.drone/docker-manifest-ecr.tmpl',
+        ignore_missing: true,
+      },
+      depends_on: ['clone'] + (
+        // Depend on the previous app, if any.
+        if std.length(acc) > 0
+        then [acc[std.length(acc) - 1].name]
+        else []
+      ),
+    }],
+    apps,
+    [{
+      name: 'ecr-login',
+      image: 'docker:dind',
+      volumes: [{
+        name: 'dockerconf',
+        path: '/root/.docker',
+      }],
+      environment: {
+        AWS_ACCESS_KEY_ID: { from_secret: ecr_key.name },
+        AWS_SECRET_ACCESS_KEY: { from_secret: ecr_secret_key.name },
+      },
+      commands: [
+        'apk add --no-cache aws-cli',
+        'docker login --username AWS --password $(aws ecr-public get-login-password --region us-east-1) public.ecr.aws',
+      ],
+      depends_on: ['clone'],
+    }],
+  ),
+  volumes: [{
+    name: 'dockerconf',
+    temp: {},
+  }],
+  depends_on: [
+    'lambda-promtail-%s' % arch
+    for arch in archs
+  ],
+};
+
 [
   pipeline('loki-build-image') {
     workspace: {
@@ -392,7 +436,7 @@ local manifest(apps) = pipeline('manifest') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: ['0.20.4'],
+          tags: ['0.21.0'],
           dry_run: false,
         },
       },
@@ -444,6 +488,9 @@ local manifest(apps) = pipeline('manifest') {
       make('lint-jsonnet', container=false) {
         // Docker image defined at https://github.com/grafana/jsonnet-libs/tree/master/build
         image: 'grafana/jsonnet-build:c8b75df',
+        depends_on: ['clone'],
+      },
+      make('loki-mixin-check', container=false) {
         depends_on: ['clone'],
       },
     ],
@@ -505,6 +552,7 @@ local manifest(apps) = pipeline('manifest') {
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
+          'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
         ],
         depends_on: ['clone'],
@@ -522,5 +570,21 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
 ] + [promtail_win()]
-+ [lambda_promtail('main')]
-+ [github_secret, pull_secret, docker_username_secret, docker_password_secret, ecr_key, ecr_secret_key, deploy_configuration]
++ [
+  lambda_promtail(arch)
+  for arch in ['amd64', 'arm64']
+] + [
+  manifest_ecr(['lambda-promtail'], ['amd64', 'arm64']) {
+    trigger: condition('include').tagMain {
+      event: ['push'],
+    },
+  },
+] + [
+  github_secret,
+  pull_secret,
+  docker_username_secret,
+  docker_password_secret,
+  ecr_key,
+  ecr_secret_key,
+  deploy_configuration,
+]

@@ -159,7 +159,7 @@ func Test_astMapper(t *testing.T) {
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
 	)
 
-	resp, err := mware.Do(context.Background(), defaultReq().WithQuery(`{food="bar"}`))
+	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`{food="bar"}`))
 	require.Nil(t, err)
 
 	expected, err := LokiCodec.MergeResponse(lokiResps...)
@@ -188,7 +188,7 @@ func Test_ShardingByPass(t *testing.T) {
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
 	)
 
-	_, err := mware.Do(context.Background(), defaultReq().WithQuery(`1+1`))
+	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`1+1`))
 	require.Nil(t, err)
 	require.Equal(t, called, 1)
 }

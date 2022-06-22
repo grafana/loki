@@ -5,6 +5,29 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+type deleteRequestClientMetrics struct {
+	deleteRequestsLookupsTotal       prometheus.Counter
+	deleteRequestsLookupsFailedTotal prometheus.Counter
+}
+
+func newDeleteRequestClientMetrics(r prometheus.Registerer) *deleteRequestClientMetrics {
+	m := deleteRequestClientMetrics{}
+
+	m.deleteRequestsLookupsTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "delete_request_lookups_total",
+		Help:      "Number times the client has looked up delete requests",
+	})
+
+	m.deleteRequestsLookupsFailedTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "delete_request_lookups_failed_total",
+		Help:      "Number times the client has failed to look up delete requests",
+	})
+
+	return &m
+}
+
 type deleteRequestHandlerMetrics struct {
 	deleteRequestsReceivedTotal *prometheus.CounterVec
 }
@@ -27,6 +50,7 @@ type deleteRequestsManagerMetrics struct {
 	loadPendingRequestsAttemptsTotal     *prometheus.CounterVec
 	oldestPendingDeleteRequestAgeSeconds prometheus.Gauge
 	pendingDeleteRequestsCount           prometheus.Gauge
+	deletedLinesTotal                    *prometheus.CounterVec
 }
 
 func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsManagerMetrics {
@@ -57,6 +81,11 @@ func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsMan
 		Name:      "compactor_pending_delete_requests_count",
 		Help:      "Count of delete requests which are over their cancellation period and have not finished processing yet",
 	})
+	m.deletedLinesTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "compactor_deleted_lines",
+		Help:      "Number of deleted lines per user",
+	}, []string{"user"})
 
 	return &m
 }

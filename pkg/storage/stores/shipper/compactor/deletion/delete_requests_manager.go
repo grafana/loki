@@ -2,7 +2,6 @@ package deletion
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -119,6 +118,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
 			continue
 		}
+		deleteRequest.deletedLinesTotal = d.metrics.deletedLinesTotal.WithLabelValues(deleteRequest.UserID)
 		d.deleteRequestsToProcess = append(d.deleteRequestsToProcess, deleteRequest)
 	}
 
@@ -133,6 +133,11 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		return false, nil
 	}
 
+	if d.deletionMode == Disabled || d.deletionMode == FilterOnly {
+		// Don't process deletes
+		return false, nil
+	}
+
 	d.chunkIntervalsToRetain = d.chunkIntervalsToRetain[:0]
 	d.chunkIntervalsToRetain = append(d.chunkIntervalsToRetain, retention.IntervalFilter{
 		Interval: model.Interval{
@@ -142,6 +147,11 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 	})
 
 	for _, deleteRequest := range d.deleteRequestsToProcess {
+		level.Info(util_log.Logger).Log(
+			"msg", "started processing delete request",
+			"delete_request_id", deleteRequest.RequestID,
+			"user", deleteRequest.UserID,
+		)
 		rebuiltIntervals := make([]retention.IntervalFilter, 0, len(d.chunkIntervalsToRetain))
 		for _, ivf := range d.chunkIntervalsToRetain {
 			entry := ref
@@ -157,9 +167,20 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 
 		d.chunkIntervalsToRetain = rebuiltIntervals
 		if len(d.chunkIntervalsToRetain) == 0 {
+			level.Info(util_log.Logger).Log(
+				"msg", "no chunks to retain: the whole chunk is deleted",
+				"delete_request_id", deleteRequest.RequestID,
+				"user", deleteRequest.UserID,
+				"chunkID", string(ref.ChunkID),
+			)
 			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
 			return true, nil
 		}
+		level.Info(util_log.Logger).Log(
+			"msg", "finished processing delete request",
+			"delete_request_id", deleteRequest.RequestID,
+			"user", deleteRequest.UserID,
+		)
 	}
 
 	if len(d.chunkIntervalsToRetain) == 1 && d.chunkIntervalsToRetain[0].Interval.Start == ref.From && d.chunkIntervalsToRetain[0].Interval.End == ref.Through {
@@ -192,19 +213,32 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 
 	for _, deleteRequest := range d.deleteRequestsToProcess {
 		if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusProcessed); err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to mark delete request %s for user %s as processed", deleteRequest.RequestID, deleteRequest.UserID), "err", err)
+			level.Error(util_log.Logger).Log(
+				"msg", "failed to mark delete request for user as processed",
+				"delete_request_id", deleteRequest.RequestID,
+				"user", deleteRequest.UserID,
+				"err", err,
+			)
+		} else {
+			level.Info(util_log.Logger).Log(
+				"msg", "delete request for user marked as processed",
+				"delete_request_id", deleteRequest.RequestID,
+				"user", deleteRequest.UserID,
+			)
 		}
 		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
 	}
 }
 
-func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval, userID string) bool {
+func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
 	if userID != "" {
 		for _, deleteRequest := range d.deleteRequestsToProcess {
-			if deleteRequest.UserID == userID {
+			if deleteRequest.UserID == userID &&
+				deleteRequest.StartTime <= interval.End &&
+				deleteRequest.EndTime >= interval.Start {
 				return true
 			}
 		}

@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -19,9 +20,10 @@ type DeleteRequest struct {
 	Status    DeleteRequestStatus `json:"status"`
 	CreatedAt model.Time          `json:"created_at"`
 
-	UserID          string                 `json:"-"`
-	matchers        []*labels.Matcher      `json:"-"`
-	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
+	UserID            string                 `json:"-"`
+	matchers          []*labels.Matcher      `json:"-"`
+	logSelectorExpr   syntax.LogSelectorExpr `json:"-"`
+	deletedLinesTotal prometheus.Counter     `json:"-"`
 }
 
 func (d *DeleteRequest) SetQuery(logQL string) error {
@@ -57,7 +59,11 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 	f := p.ForStream(labels).ProcessString
 	return func(s string) bool {
 		result, _, skip := f(0, s)
-		return len(result) != 0 || skip
+		if len(result) != 0 || skip {
+			d.deletedLinesTotal.Inc()
+			return true
+		}
+		return false
 	}, nil
 }
 
@@ -91,13 +97,30 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []retention
 		return false, nil
 	}
 
+	level.Debug(util_log.Logger).Log(
+		"msg", "starting filter function",
+		"delete_request_id", d.RequestID,
+		"user", d.UserID,
+		"labels", entry.Labels.String(),
+	)
 	ff, err := d.FilterFunction(entry.Labels)
 	if err != nil {
 		// The query in the delete request is checked when added to the table.
 		// So this error should not occur.
-		level.Error(util_log.Logger).Log("msg", "unexpected error getting filter function", "err", err)
+		level.Error(util_log.Logger).Log(
+			"msg", "unexpected error getting filter function",
+			"delete_request_id", d.RequestID,
+			"user", d.UserID,
+			"err", err,
+		)
 		return false, nil
 	}
+	level.Debug(util_log.Logger).Log(
+		"msg", "finished filter function",
+		"delete_request_id", d.RequestID,
+		"user", d.UserID,
+		"labels", entry.Labels.String(),
+	)
 
 	if d.StartTime <= entry.From && d.EndTime >= entry.Through {
 		// if the logSelectorExpr has a filter part return the chunk boundaries as intervals

@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
+	"github.com/imdario/mergo"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,10 +27,14 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	storageType := opts.Stack.Storage.Secret.Type
-	secretName := opts.Stack.Storage.Secret.Name
-	if err := configureDeploymentForStorageType(deployment, storageType, secretName); err != nil {
+	if err := storage.ConfigureDeployment(deployment, opts.ObjectStorage); err != nil {
 		return nil, err
+	}
+
+	if opts.Flags.EnableTLSGRPCServices {
+		if err := configureQuerierGRPCServicePKI(deployment, opts.Name, opts.Namespace); err != nil {
+			return nil, err
+		}
 	}
 
 	return []client.Object{
@@ -137,7 +145,8 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 
 // NewQuerierGRPCService creates a k8s service for the querier GRPC endpoint
 func NewQuerierGRPCService(opts Options) *corev1.Service {
-	l := ComponentLabels(LabelQuerierComponent, opts.Name)
+	serviceName := serviceNameQuerierGRPC(opts.Name)
+	labels := ComponentLabels(LabelQuerierComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -145,8 +154,9 @@ func NewQuerierGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameQuerierGRPC(opts.Name),
-			Labels: l,
+			Name:        serviceName,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -158,7 +168,7 @@ func NewQuerierGRPCService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -166,8 +176,7 @@ func NewQuerierGRPCService(opts Options) *corev1.Service {
 // NewQuerierHTTPService creates a k8s service for the querier HTTP endpoint
 func NewQuerierHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameQuerierHTTP(opts.Name)
-	l := ComponentLabels(LabelQuerierComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelQuerierComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -176,8 +185,8 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -188,7 +197,7 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -196,4 +205,57 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 func configureQuerierServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQuerierHTTP(stackName)
 	return configureServiceMonitorPKI(&deployment.Spec.Template.Spec, serviceName)
+}
+
+func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, stackName, stackNS string) error {
+	caBundleName := signingCABundleName(stackName)
+	secretVolumeSpec := corev1.PodSpec{
+		Volumes: []corev1.Volume{
+			{
+				Name: caBundleName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: caBundleName,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	secretContainerSpec := corev1.Container{
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      caBundleName,
+				ReadOnly:  false,
+				MountPath: caBundleDir,
+			},
+		},
+		Args: []string{
+			// Enable GRPC over TLS for ingester client
+			"-ingester.client.tls-enabled=true",
+			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNS)),
+			// Enable GRPC over TLS for query frontend client
+			"-querier.frontend-client.tls-enabled=true",
+			fmt.Sprintf("-querier.frontend-client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-querier.frontend-client.tls-server-name=%s", fqdn(serviceNameQueryFrontendGRPC(stackName), stackNS)),
+			// Enable GRPC over TLS for boltb-shipper index-gateway client
+			"-boltdb.shipper.index-gateway-client.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
+		},
+	}
+
+	if err := mergo.Merge(&deployment.Spec.Template.Spec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge volumes")
+	}
+
+	if err := mergo.Merge(&deployment.Spec.Template.Spec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
+	serviceName := serviceNameQuerierGRPC(stackName)
+	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }

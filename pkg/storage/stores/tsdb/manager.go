@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -16,9 +15,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -27,13 +25,12 @@ import (
 // TSDB files on  disk
 type TSDBManager interface {
 	Start() error
-	Index
 	// Builds a new TSDB file from a set of WALs
 	BuildFromWALs(time.Time, []WALIdentifier) error
 }
 
 /*
-tsdbManager is responsible for:
+tsdbManager is used for managing active index and is responsible for:
  * Turning WALs into optimized multi-tenant TSDBs when requested
  * Serving reads from these TSDBs
  * Shipping them to remote storage
@@ -49,8 +46,7 @@ type tsdbManager struct {
 
 	sync.RWMutex
 
-	chunkFilter chunk.RequestChunkFilterer
-	shipper     indexshipper.IndexShipper
+	shipper indexshipper.IndexShipper
 }
 
 func NewTSDBManager(
@@ -176,7 +172,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		// chunks may overlap index period bounds, in which case they're written to multiple
 		pds := make(map[int]index.ChunkMetas)
 		for _, chk := range chks {
-			for _, bucket := range indexBuckets(m.indexPeriod, chk.From(), chk.Through()) {
+			for _, bucket := range indexBuckets(chk.From(), chk.Through()) {
 				pds[bucket] = append(pds[bucket], chk)
 			}
 		}
@@ -249,98 +245,11 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	return nil
 }
 
-func indexBuckets(indexPeriod time.Duration, from, through model.Time) (res []int) {
-	start := from.Time().UnixNano() / int64(indexPeriod)
-	end := through.Time().UnixNano() / int64(indexPeriod)
+func indexBuckets(from, through model.Time) (res []int) {
+	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
+	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
 		res = append(res, int(cur))
 	}
 	return
-}
-
-func (m *tsdbManager) indices(ctx context.Context, from, through model.Time, user string) (Index, error) {
-	var indices []Index
-
-	// Ensure we query both per tenant and multitenant TSDBs
-
-	for _, bkt := range indexBuckets(m.indexPeriod, from, through) {
-		if err := m.shipper.ForEach(ctx, fmt.Sprintf("%d", bkt), user, func(idx shipper_index.Index) error {
-			_, multitenant := parseMultitenantTSDBName(idx.Name())
-			impl, ok := idx.(Index)
-			if !ok {
-				return fmt.Errorf("unexpected shipper index type: %T", idx)
-			}
-			if multitenant {
-				indices = append(indices, NewMultiTenantIndex(impl))
-			} else {
-				indices = append(indices, impl)
-			}
-			return nil
-		}); err != nil {
-			return nil, err
-		}
-
-	}
-
-	if len(indices) == 0 {
-		return NoopIndex{}, nil
-	}
-	idx, err := NewMultiIndex(indices...)
-	if err != nil {
-		return nil, err
-	}
-
-	if m.chunkFilter != nil {
-		idx.SetChunkFilterer(m.chunkFilter)
-	}
-	return idx, nil
-}
-
-// TODO(owen-d): how to better implement this?
-// setting 0->maxint will force the tsdbmanager to always query
-// underlying tsdbs, which is safe, but can we optimize this?
-func (m *tsdbManager) Bounds() (model.Time, model.Time) {
-	return 0, math.MaxInt64
-}
-
-func (m *tsdbManager) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	m.chunkFilter = chunkFilter
-}
-
-// Close implements Index.Close, but we offload this responsibility
-// to the index shipper
-func (m *tsdbManager) Close() error {
-	return nil
-}
-
-func (m *tsdbManager) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	idx, err := m.indices(ctx, from, through, userID)
-	if err != nil {
-		return nil, err
-	}
-	return idx.GetChunkRefs(ctx, userID, from, through, res, shard, matchers...)
-}
-
-func (m *tsdbManager) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
-	idx, err := m.indices(ctx, from, through, userID)
-	if err != nil {
-		return nil, err
-	}
-	return idx.Series(ctx, userID, from, through, res, shard, matchers...)
-}
-
-func (m *tsdbManager) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	idx, err := m.indices(ctx, from, through, userID)
-	if err != nil {
-		return nil, err
-	}
-	return idx.LabelNames(ctx, userID, from, through, matchers...)
-}
-
-func (m *tsdbManager) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	idx, err := m.indices(ctx, from, through, userID)
-	if err != nil {
-		return nil, err
-	}
-	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 }

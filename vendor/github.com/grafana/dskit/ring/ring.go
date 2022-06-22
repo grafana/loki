@@ -183,12 +183,9 @@ type Ring struct {
 	// If set to nil, no caching is done (used by tests, and subrings).
 	shuffledSubringCache map[subringCacheKey]*Ring
 
-	memberOwnershipGaugeVec *prometheus.GaugeVec
 	numMembersGaugeVec      *prometheus.GaugeVec
 	totalTokensGauge        prometheus.Gauge
-	numTokensGaugeVec       *prometheus.GaugeVec
 	oldestTimestampGaugeVec *prometheus.GaugeVec
-	reportedOwners          map[string]struct{}
 
 	logger log.Logger
 }
@@ -227,11 +224,6 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		strategy:             strategy,
 		ringDesc:             &Desc{},
 		shuffledSubringCache: map[subringCacheKey]*Ring{},
-		memberOwnershipGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name:        "ring_member_ownership_percent",
-			Help:        "The percent ownership of the ring by member",
-			ConstLabels: map[string]string{"name": name}},
-			[]string{"member"}),
 		numMembersGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "ring_members",
 			Help:        "Number of members in the ring",
@@ -241,11 +233,6 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 			Name:        "ring_tokens_total",
 			Help:        "Number of tokens in the ring",
 			ConstLabels: map[string]string{"name": name}}),
-		numTokensGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name:        "ring_tokens_owned",
-			Help:        "The number of tokens in the ring owned by the member",
-			ConstLabels: map[string]string{"name": name}},
-			[]string{"member"}),
 		oldestTimestampGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "ring_oldest_member_timestamp",
 			Help:        "Timestamp of the oldest member in the ring.",
@@ -514,12 +501,10 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}, nil
 }
 
-// countTokens returns the number of tokens and tokens within the range for each instance.
-func (r *Desc) countTokens() (map[string]uint32, map[string]uint32) {
+// countTokens returns the number tokens within the range for each instance.
+func (r *Desc) countTokens() map[string]uint32 {
 	var (
-		owned     = map[string]uint32{}
-		numTokens = map[string]uint32{}
-
+		owned               = map[string]uint32{}
 		ringTokens          = r.GetTokens()
 		ringInstanceByToken = r.getTokensInfo()
 	)
@@ -535,7 +520,6 @@ func (r *Desc) countTokens() (map[string]uint32, map[string]uint32) {
 		}
 
 		info := ringInstanceByToken[token]
-		numTokens[info.InstanceID] = numTokens[info.InstanceID] + 1
 		owned[info.InstanceID] = owned[info.InstanceID] + diff
 	}
 
@@ -543,11 +527,10 @@ func (r *Desc) countTokens() (map[string]uint32, map[string]uint32) {
 	for id := range r.Ingesters {
 		if _, ok := owned[id]; !ok {
 			owned[id] = 0
-			numTokens[id] = 0
 		}
 	}
 
-	return numTokens, owned
+	return owned
 }
 
 // updateRingMetrics updates ring metrics. Caller must be holding the Write lock!
@@ -585,21 +568,6 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 
 	if compareResult == EqualButStatesAndTimestamps {
 		return
-	}
-
-	prevOwners := r.reportedOwners
-	r.reportedOwners = make(map[string]struct{})
-	numTokens, ownedRange := r.ringDesc.countTokens()
-	for id, totalOwned := range ownedRange {
-		r.memberOwnershipGaugeVec.WithLabelValues(id).Set(float64(totalOwned) / float64(math.MaxUint32))
-		r.numTokensGaugeVec.WithLabelValues(id).Set(float64(numTokens[id]))
-		delete(prevOwners, id)
-		r.reportedOwners[id] = struct{}{}
-	}
-
-	for k := range prevOwners {
-		r.memberOwnershipGaugeVec.DeleteLabelValues(k)
-		r.numTokensGaugeVec.DeleteLabelValues(k)
 	}
 
 	r.totalTokensGauge.Set(float64(len(r.ringTokens)))

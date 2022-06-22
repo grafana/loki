@@ -4,7 +4,12 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
+
+	"github.com/imdario/mergo"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -24,10 +29,14 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	storageType := opts.Stack.Storage.Secret.Type
-	secretName := opts.Stack.Storage.Secret.Name
-	if err := configureStatefulSetForStorageType(statefulSet, storageType, secretName); err != nil {
+	if err := storage.ConfigureStatefulSet(statefulSet, opts.ObjectStorage); err != nil {
 		return nil, err
+	}
+
+	if opts.Flags.EnableTLSGRPCServices {
+		if err := configureIngesterGRPCServicePKI(statefulSet, opts.Name, opts.Namespace); err != nil {
+			return nil, err
+		}
 	}
 
 	return []client.Object{
@@ -186,7 +195,8 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 
 // NewIngesterGRPCService creates a k8s service for the ingester GRPC endpoint
 func NewIngesterGRPCService(opts Options) *corev1.Service {
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+	serviceName := serviceNameIngesterGRPC(opts.Name)
+	labels := ComponentLabels(LabelIngesterComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -194,8 +204,9 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameIngesterGRPC(opts.Name),
-			Labels: l,
+			Name:        serviceNameIngesterGRPC(opts.Name),
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -207,7 +218,7 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -215,8 +226,7 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 // NewIngesterHTTPService creates a k8s service for the ingester HTTP endpoint
 func NewIngesterHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameIngesterHTTP(opts.Name)
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelIngesterComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -225,8 +235,8 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -237,7 +247,7 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -245,4 +255,53 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 func configureIngesterServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameIngesterHTTP(stackName)
 	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+}
+
+func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, stackName, stackNS string) error {
+	caBundleName := signingCABundleName(stackName)
+	secretVolumeSpec := corev1.PodSpec{
+		Volumes: []corev1.Volume{
+			{
+				Name: caBundleName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: caBundleName,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	secretContainerSpec := corev1.Container{
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      caBundleName,
+				ReadOnly:  false,
+				MountPath: caBundleDir,
+			},
+		},
+		Args: []string{
+			// Enable GRPC over TLS for ingester client
+			"-ingester.client.tls-enabled=true",
+			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNS)),
+			// Enable GRPC over TLS for boltb-shipper index-gateway client
+			"-boltdb.shipper.index-gateway-client.tls-enabled=true",
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-ca-path=%s", signingCAPath()),
+			fmt.Sprintf("-boltdb.shipper.index-gateway-client.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
+		},
+	}
+
+	if err := mergo.Merge(&sts.Spec.Template.Spec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge volumes")
+	}
+
+	if err := mergo.Merge(&sts.Spec.Template.Spec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
+	serviceName := serviceNameIngesterGRPC(stackName)
+	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }

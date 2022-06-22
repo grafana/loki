@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/grafana/dskit/tenant"
 	"github.com/klauspost/compress/gzip"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -20,19 +21,19 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
-func AddRecordsToDB(t testing.TB, path string, dbClient *local.BoltIndexClient, start, numRecords int, bucketName []byte) {
+func AddRecordsToDB(t testing.TB, path string, start, numRecords int, bucketName []byte) {
 	t.Helper()
 	db, err := local.OpenBoltdbFile(path)
 	require.NoError(t, err)
 
-	batch := dbClient.NewWriteBatch()
+	batch := local.NewWriteBatch()
 	AddRecordsToBatch(batch, "test", start, numRecords)
 
 	if len(bucketName) == 0 {
 		bucketName = local.IndexBucketName
 	}
 
-	require.NoError(t, dbClient.WriteToDB(context.Background(), db, bucketName, batch.(*local.BoltWriteBatch).Writes["test"]))
+	require.NoError(t, local.WriteToDB(context.Background(), db, bucketName, batch.(*local.BoltWriteBatch).Writes["test"]))
 
 	require.NoError(t, db.Sync())
 	require.NoError(t, db.Close())
@@ -45,19 +46,28 @@ func AddRecordsToBatch(batch index.WriteBatch, tableName string, start, numRecor
 	}
 }
 
-type SingleTableQuerier interface {
-	MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
+// nolint
+func queryIndexes(t *testing.T, ctx context.Context, queries []index.Query, indexIteratorFunc IndexIteratorFunc, callback index.QueryPagesCallback) {
+	userID, err := tenant.TenantID(ctx)
+	require.NoError(t, err)
+
+	for _, query := range queries {
+		err := indexIteratorFunc(ctx, query.TableName, func(boltdb *bbolt.DB) error {
+			return queryBoltDB(ctx, boltdb, []byte(userID), []index.Query{query}, callback)
+		})
+		require.NoError(t, err)
+	}
 }
 
-func TestSingleTableQuery(t *testing.T, userID string, queries []index.Query, querier SingleTableQuerier, start, numRecords int) {
+type IndexIteratorFunc func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error
+
+func VerifyIndexes(t *testing.T, userID string, queries []index.Query, indexIteratorFunc IndexIteratorFunc, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
 	fetchedRecords := make(map[string]string)
 
-	err := querier.MultiQueries(user.InjectOrgID(context.Background(), userID), queries, makeTestCallback(t, minValue, maxValue, fetchedRecords))
-
-	require.NoError(t, err)
+	queryIndexes(t, user.InjectOrgID(context.Background(), userID), queries, indexIteratorFunc, makeTestCallback(t, minValue, maxValue, fetchedRecords))
 	require.Len(t, fetchedRecords, numRecords)
 }
 
@@ -65,29 +75,17 @@ type SingleDBQuerier interface {
 	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query index.Query, callback index.QueryPagesCallback) error
 }
 
-func TestSingleDBQuery(t *testing.T, query index.Query, db *bbolt.DB, bucketName []byte, querier SingleDBQuerier, start, numRecords int) {
+func VerifySingleIndexFile(t *testing.T, query index.Query, db *bbolt.DB, bucketName []byte, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
 	fetchedRecords := make(map[string]string)
 
-	err := querier.QueryDB(context.Background(), db, bucketName, query, makeTestCallback(t, minValue, maxValue, fetchedRecords))
-
-	require.NoError(t, err)
-	require.Len(t, fetchedRecords, numRecords)
-}
-
-type MultiTableQuerier interface {
-	QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
-}
-
-func TestMultiTableQuery(t *testing.T, userID string, queries []index.Query, querier MultiTableQuerier, start, numRecords int) {
-	t.Helper()
-	minValue := start
-	maxValue := start + numRecords
-	fetchedRecords := make(map[string]string)
-
-	err := querier.QueryPages(user.InjectOrgID(context.Background(), userID), queries, makeTestCallback(t, minValue, maxValue, fetchedRecords))
+	err := db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketName)
+		require.NotNil(t, b)
+		return local.QueryWithCursor(context.Background(), b.Cursor(), query, makeTestCallback(t, minValue, maxValue, fetchedRecords))
+	})
 
 	require.NoError(t, err)
 	require.Len(t, fetchedRecords, numRecords)
@@ -114,32 +112,6 @@ func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]s
 	}
 }
 
-func CompareDBs(t *testing.T, db1, db2 *bbolt.DB) {
-	t.Helper()
-	db1Records := readDB(t, db1)
-	db2Records := readDB(t, db2)
-
-	require.Equal(t, db1Records, db2Records)
-}
-
-func readDB(t *testing.T, db *bbolt.DB) map[string]map[string]string {
-	t.Helper()
-	dbRecords := map[string]map[string]string{}
-
-	err := db.View(func(tx *bbolt.Tx) error {
-		return tx.ForEach(func(name []byte, b *bbolt.Bucket) error {
-			dbRecords[string(name)] = map[string]string{}
-			return b.ForEach(func(k, v []byte) error {
-				dbRecords[string(name)][string(k)] = string(v)
-				return nil
-			})
-		})
-	})
-
-	require.NoError(t, err)
-	return dbRecords
-}
-
 type DBConfig struct {
 	CompressFile bool
 	DBRecords
@@ -159,7 +131,7 @@ func SetupDBsAtPath(t *testing.T, path string, dbs map[string]DBConfig, bucketNa
 	require.NoError(t, chunk_util.EnsureDirectory(path))
 
 	for name, dbConfig := range dbs {
-		AddRecordsToDB(t, filepath.Join(path, name), boltIndexClient, dbConfig.Start, dbConfig.NumRecords, bucketName)
+		AddRecordsToDB(t, filepath.Join(path, name), dbConfig.Start, dbConfig.NumRecords, bucketName)
 		if dbConfig.CompressFile {
 			compressFile(t, filepath.Join(path, name))
 		}
@@ -300,4 +272,23 @@ func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBs
 
 func BuildUserID(id int) string {
 	return fmt.Sprintf("user-%d", id)
+}
+
+func queryBoltDB(ctx context.Context, db *bbolt.DB, userID []byte, queries []index.Query, callback index.QueryPagesCallback) error {
+	return db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket(userID)
+		if bucket == nil {
+			bucket = tx.Bucket(local.IndexBucketName)
+			if bucket == nil {
+				return nil
+			}
+		}
+
+		for _, query := range queries {
+			if err := local.QueryWithCursor(ctx, bucket.Cursor(), query, callback); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
 	"github.com/google/uuid"
@@ -95,12 +95,14 @@ func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 				},
 			},
 		},
-		TenantSecrets: []*TenantSecrets{
-			{
-				TenantName:   "test",
-				ClientID:     "test",
-				ClientSecret: "test",
-				IssuerCAPath: "/tmp/test",
+		Tenants: Tenants{
+			Secrets: []*TenantSecrets{
+				{
+					TenantName:   "test",
+					ClientID:     "test",
+					ClientSecret: "test",
+					IssuerCAPath: "/tmp/test",
+				},
 			},
 		},
 	}
@@ -163,7 +165,7 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Len(t, objs, 7)
+	require.Len(t, objs, 9)
 }
 
 func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T) {

@@ -74,6 +74,23 @@ func RunWith(input chan Entry, process func(e Entry) Entry) chan Entry {
 	return out
 }
 
+// RunWithSkip same as RunWith, except it skip sending it to output channel, if `process` functions returns `skip` true.
+func RunWithSkip(input chan Entry, process func(e Entry) (Entry, bool)) chan Entry {
+	out := make(chan Entry)
+	go func() {
+		defer close(out)
+		for e := range input {
+			ee, skip := process(e)
+			if skip {
+				continue
+			}
+			out <- ee
+		}
+	}()
+
+	return out
+}
+
 // Run implements Stage
 func (p *Pipeline) Run(in chan Entry) chan Entry {
 	in = RunWith(in, func(e Entry) Entry {
