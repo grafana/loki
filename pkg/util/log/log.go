@@ -37,20 +37,25 @@ func InitLogger(cfg *server.Config, reg prometheus.Registerer) {
 // prometheusLogger exposes Prometheus counters for each of go-kit's log levels.
 type prometheusLogger struct {
 	logger      log.Logger
+	elogger     log.Logger
 	logMessages *prometheus.CounterVec
 }
 
 // newPrometheusLogger creates a new instance of PrometheusLogger which exposes
 // Prometheus counters for various log levels.
 func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.Registerer) log.Logger {
-	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
+	elogger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	if format.String() == "json" {
-		logger = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
+		logger = log.NewJSONLogger(log.NewSyncWriter(os.Stdout))
+		elogger = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
 	}
 	logger = level.NewFilter(logger, levelFilter(l.String()))
+	elogger = level.NewFilter(elogger, levelFilter(l.String()))
 
 	plogger := &prometheusLogger{
-		logger: logger,
+		logger:  logger,
+		elogger: elogger,
 		logMessages: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "log_messages_total",
@@ -74,14 +79,23 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 
 // Log increments the appropriate Prometheus counter depending on the log level.
 func (pl *prometheusLogger) Log(kv ...interface{}) error {
-	pl.logger.Log(kv...)
+	var lv level.Value
 	l := "unknown"
 	for i := 1; i < len(kv); i += 2 {
 		if v, ok := kv[i].(level.Value); ok {
 			l = v.String()
+			lv = v
 			break
 		}
 	}
+
+	switch lv {
+	case level.ErrorValue(), level.WarnValue():
+		pl.elogger.Log(kv...)
+	default:
+		pl.logger.Log(kv...)
+	}
+
 	pl.logMessages.WithLabelValues(l).Inc()
 	return nil
 }
