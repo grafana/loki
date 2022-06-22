@@ -5,42 +5,27 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-type deleteRequestClientMetrics struct {
+type DeleteRequestClientMetrics struct {
 	deleteRequestsLookupsTotal       prometheus.Counter
 	deleteRequestsLookupsFailedTotal prometheus.Counter
 }
 
-func newDeleteRequestClientMetrics(r prometheus.Registerer) *deleteRequestClientMetrics {
-	m := deleteRequestClientMetrics{}
+func NewDeleteRequestClientMetrics(r prometheus.Registerer) *DeleteRequestClientMetrics {
+	m := DeleteRequestClientMetrics{}
 
-	m.deleteRequestsLookupsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	m.deleteRequestsLookupsTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "delete_request_lookups_total",
 		Help:      "Number times the client has looked up delete requests",
 	})
 
-	m.deleteRequestsLookupsFailedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	m.deleteRequestsLookupsFailedTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "delete_request_lookups_failed_total",
 		Help:      "Number times the client has failed to look up delete requests",
 	})
 
-	if r != nil {
-		m.deleteRequestsLookupsTotal = mustRegisterOrGet(r, m.deleteRequestsLookupsTotal).(prometheus.Counter)
-		m.deleteRequestsLookupsFailedTotal = mustRegisterOrGet(r, m.deleteRequestsLookupsFailedTotal).(prometheus.Counter)
-	}
-
 	return &m
-}
-
-func mustRegisterOrGet(reg prometheus.Registerer, c prometheus.Collector) prometheus.Collector {
-	if err := reg.Register(c); err != nil {
-		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			return are.ExistingCollector
-		}
-		panic(err)
-	}
-	return c
 }
 
 type deleteRequestHandlerMetrics struct {
