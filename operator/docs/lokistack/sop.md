@@ -1,6 +1,6 @@
 ---
-title: "Standard Operations Procedures"
-description: "The LokiStack Alerts and SOPs"
+title: "Standard Operational Procedures"
+description: "The LokiStack Alerts and Standard Operational Procedures"
 lead: ""
 date: 2022-06-21T08:48:45+00:00
 lastmod: 2022-06-21T08:48:45+00:00
@@ -13,13 +13,7 @@ weight: 100
 toc: true
 ---
 
-<!-- TOC depthTo:2 -->
-
-- Loki Cluster
-  - [Loki Request Errors](#Loki-Request-Errors)
-  - [Loki Request Panics](#Loki-Request-Panics)
-
-<!-- /TOC -->
+The following page describes Standard Operational Procedures for alerts provided and managed by the Loki Operator for any LokiStack instance.
 
 ## Loki Request Errors
 
