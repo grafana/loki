@@ -21,8 +21,8 @@ The Loki operator includes, but is not limited to, the following features:
 * Kubernetes Custom Resources: Use Kubernetes custom resources to deploy and manage Loki, Alerting rules, Recording rules, and related components.
 * Simplified Deployment Configuration: Configure the fundamentals of Loki like tenants, limits, replication factor and storage from a native Kubernetes resource.
 
+## Get started
+
 ### Quick Start
 
-{{< alert icon="👉" text="The Quick Start is intended for novice to intermediate users." >}}
-
-One page summary of how to start with the Loki Operator. [Quick Start →]({{< ref "quick-start" >}})
+One page summary of how to start with the Loki Operator. [Quick Start →]({{< ref "quickstart" >}})

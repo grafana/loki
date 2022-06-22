@@ -14,11 +14,11 @@ toc: true
 
 One page summary on how to start with Loki Operator and LokiStack.
 
-# Requirements
+## Requirements
 
 The easiest way to start with the Loki Operator is to use Kubernetes [kind](sigs.k8s.io/kind).
 
-# Deploy from Github repository
+## Deploy from Github repository
 
 The simplest form to deploy the Loki Operator and a LokiStack for demo purposes is:
 
@@ -32,8 +32,8 @@ If you want to test local changes from your repository fork, you need to provide
 make quickstart REGISTRY_ORG=my-company-org
 ```
 
-# Further reading
+## Further reading
 
 For detailed instructions on how to start hacking on the Loki Operator, please follow one of the two guides:
-- [Hack using an image registry →]({{< ref "/docs/hack_loki_operator.md" >}})
-- [Hack using make run →]({{< ref "/docs/hack_operator_make_run.md" >}})
+- [Hack using an image registry →]({{< ref "hack_loki_operator.md" >}})
+- [Hack using make run →]({{< ref "hack_operator_make_run.md" >}})
