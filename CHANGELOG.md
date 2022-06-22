@@ -1,5 +1,6 @@
 ## Main
 
+* [6457](https://github.com/grafana/loki/pull/6457) **cstyan**: Consistenly prefix ring, KV store, and memberlist metrics with loki_ instead of cortex_
 * [6444](https://github.com/grafana/loki/pull/6444) **aminesnow** Add TLS config to query frontend.
 * [6415](https://github.com/grafana/loki/pull/6415) **salvacorts** Evenly spread queriers across kubernetes nodes.
 * [6410](https://github.com/grafana/loki/pull/6410) **MichelHollands**: Add support for per tenant delete API access enabling.
