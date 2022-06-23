@@ -81,10 +81,3 @@ jobs:
           name: docker-driver
           command: make docker-driver-push
 
-  publish/binaries:
-    <<: *defaults
-    steps:
-      - checkout
-      - run:
-          name: github release
-          command: make BUILD_IN_CONTAINER=false publish

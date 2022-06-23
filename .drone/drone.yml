@@ -1072,6 +1072,34 @@ trigger:
   - pull_request
   - tag
 ---
+image_pull_secrets:
+- dockerconfigjson
+kind: pipeline
+name: release
+steps:
+- commands:
+  - make BUILD_IN_CONTAINER=false package
+  environment: {}
+  image: grafana/loki-build-image:0.21.0
+  name: package-test
+  when:
+    event:
+    - pull_request
+- commands:
+  - make BUILD_IN_CONTAINER=false publish
+  environment:
+    GITHUB_TOKEN:
+      from_secret: github_token
+  image: grafana/loki-build-image:0.21.0
+  name: publish
+  when:
+    event:
+    - tag
+trigger:
+  event:
+  - pull_request
+  - tag
+---
 depends_on:
 - check
 kind: pipeline
@@ -1285,6 +1313,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 8335495d285498f513bb265cf90079175c25f5b6c5717deab7abfae65341726a
+hmac: 9ee1916dc7d2f5d56caa0abef6fc6fa8318c8dd39a1dc1efdd48dbc3eee34a22
 
 ...

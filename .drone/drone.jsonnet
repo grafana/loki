@@ -496,13 +496,11 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   fluentd(),
   logstash(),
   querytee(),
-] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMain {
       event: ['push', 'tag'],
     },
   },
-] + [
   pipeline('deploy') {
     trigger: condition('include').tagMain {
       event: ['push', 'tag'],
@@ -533,7 +531,27 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
     ],
   },
-] + [promtail_win()]
+  promtail_win(),
+  pipeline('release') {
+    trigger: {
+      event: ['pull_request', 'tag'],
+    },
+    image_pull_secrets: [pull_secret.name],
+    steps: [
+      run(
+        'package-test',
+        commands=['make BUILD_IN_CONTAINER=false package']
+      ) { when: { event: ['pull_request'] } },
+      run(
+        'publish',
+        commands=['make BUILD_IN_CONTAINER=false publish'],
+        env={
+          GITHUB_TOKEN: { from_secret: github_secret.name },
+        }
+      ) { when: { event: ['tag'] } },
+    ],
+  },
+]
 + [
   lambda_promtail(arch)
   for arch in ['amd64', 'arm64']
