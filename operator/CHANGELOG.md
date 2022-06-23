@@ -6,6 +6,7 @@
 - [6531](https://github.com/grafana/loki/pull/6531) **periklis**: Use default interface_names for lokistack clusters (IPv6 Support)
 - [6411](https://github.com/grafana/loki/pull/6478) **aminesnow**: Support TLS enabled lokistack-gateway for vanilla kubernetes deployments
 - [6504](https://github.com/grafana/loki/pull/6504) **periklis**: Disable usage report on OpenShift
+- [6474](https://github.com/grafana/loki/pull/6474) **periklis**: Bump loki.grafana.com/LokiStack from v1beta to v1
 - [6411](https://github.com/grafana/loki/pull/6411) **Red-GV**: Extend schema validation in LokiStack webhook
 - [6334](https://github.com/grafana/loki/pull/6433) **periklis**: Move operator cli flags to component config
 - [6224](https://github.com/grafana/loki/pull/6224) **periklis**: Add support for GRPC over TLS for Loki components
