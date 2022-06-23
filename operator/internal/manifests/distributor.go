@@ -19,7 +19,7 @@ import (
 // BuildDistributor returns a list of k8s objects for Loki Distributor
 func BuildDistributor(opts Options) ([]client.Object, error) {
 	deployment := NewDistributorDeployment(opts)
-	if opts.Flags.EnableHttpTLSServices {
+	if opts.Flags.EnableHTTPTLSServices {
 		if err := configureDistributorServiceMonitorPKI(deployment, opts.Name); err != nil {
 			return nil, err
 		}

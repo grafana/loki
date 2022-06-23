@@ -19,7 +19,7 @@ import (
 // BuildIndexGateway returns a list of k8s objects for Loki IndexGateway
 func BuildIndexGateway(opts Options) ([]client.Object, error) {
 	statefulSet := NewIndexGatewayStatefulSet(opts)
-	if opts.Flags.EnableHttpTLSServices {
+	if opts.Flags.EnableHTTPTLSServices {
 		if err := configureIndexGatewayServiceMonitorPKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}

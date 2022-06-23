@@ -17,7 +17,7 @@ import (
 // BuildQueryFrontend returns a list of k8s objects for Loki QueryFrontend
 func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 	deployment := NewQueryFrontendDeployment(opts)
-	if opts.Flags.EnableHttpTLSServices {
+	if opts.Flags.EnableHTTPTLSServices {
 		if err := configureQueryFrontendServiceMonitorPKI(deployment, opts.Name); err != nil {
 			return nil, err
 		}

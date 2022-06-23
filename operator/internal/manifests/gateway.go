@@ -40,7 +40,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	objs := []client.Object{cm, dpl, svc, ing}
 
-	if opts.Flags.EnableHttpTLSServices {
+	if opts.Flags.EnableHTTPTLSServices {
 		serviceName := serviceNameGatewayHTTP(opts.Name)
 		if err := configureGatewayMetricsPKI(&dpl.Spec.Template.Spec, serviceName); err != nil {
 			return nil, err

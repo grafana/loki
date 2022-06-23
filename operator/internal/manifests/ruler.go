@@ -20,7 +20,7 @@ import (
 // BuildRuler returns a list of k8s objects for Loki Stack Ruler
 func BuildRuler(opts Options) ([]client.Object, error) {
 	statefulSet := NewRulerStatefulSet(opts)
-	if opts.Flags.EnableHttpTLSServices {
+	if opts.Flags.EnableHTTPTLSServices {
 		if err := configureRulerServiceMonitorPKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}

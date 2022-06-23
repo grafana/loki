@@ -9,7 +9,7 @@ import (
 type FeatureFlags struct {
 	EnableCertificateSigningService bool `json:"enableCertSigningService,omitempty"`
 	EnableServiceMonitors           bool `json:"enableServiceMonitors,omitempty"`
-	EnableHttpTLSServices           bool `json:"enableHttpTLSServices,omitempty"`
+	EnableHTTPTLSServices           bool `json:"enableHttpTLSServices,omitempty"`
 	EnableTLSServiceMonitorConfig   bool `json:"enableTlsServiceMonitorConfig,omitempty"`
 	EnableTLSGRPCServices           bool `json:"enableTlsGrpcServices,omitempty"`
 	EnablePrometheusAlerts          bool `json:"enableLokiStackAlerts,omitempty"`
