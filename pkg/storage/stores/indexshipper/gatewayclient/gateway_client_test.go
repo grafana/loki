@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"testing"
 
@@ -100,11 +101,17 @@ func createTestGrpcServer(t *testing.T) (func(), string) {
 	indexgatewaypb.RegisterIndexGatewayServer(s, &server)
 	go func() {
 		if err := s.Serve(lis); err != nil {
-			t.Logf("Failed to serve: %v", err)
+			log.Fatalf("Failed to serve: %v", err)
 		}
 	}()
+	cleanup := func() {
+		s.GracefulStop()
+		// if err := lis.Close(); err != nil {
+		// 	panic(err)
+		// }
+	}
 
-	return s.GracefulStop, lis.Addr().String()
+	return cleanup, lis.Addr().String()
 }
 
 func TestGatewayClient(t *testing.T) {
@@ -299,12 +306,15 @@ func TestDoubleRegistration(t *testing.T) {
 	cleanup, storeAddress := createTestGrpcServer(t)
 	t.Cleanup(cleanup)
 
-	_, err := NewGatewayClient(IndexGatewayClientConfig{
+	clientCfg := IndexGatewayClientConfig{
 		Address: storeAddress,
-	}, r, util_log.Logger)
+	}
+
+	client, err := NewGatewayClient(clientCfg, r, util_log.Logger)
 	require.NoError(t, err)
-	_, err = NewGatewayClient(IndexGatewayClientConfig{
-		Address: storeAddress,
-	}, r, util_log.Logger)
+	defer client.Stop()
+
+	client, err = NewGatewayClient(clientCfg, r, util_log.Logger)
 	require.NoError(t, err)
+	defer client.Stop()
 }
