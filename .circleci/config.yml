@@ -32,10 +32,6 @@ workflows:
           requires: [test]
           filters: { <<: *tag-or-main }
 
-      - publish/binaries:
-          requires: [test]
-          filters: { <<: *only-tags }
-
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults

@@ -539,8 +539,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     image_pull_secrets: [pull_secret.name],
     steps: [
       run(
-        'package-test',
-        commands=['make BUILD_IN_CONTAINER=false package']
+        'test packaging',
+        commands=['make BUILD_IN_CONTAINER=false packages']
       ) { when: { event: ['pull_request'] } },
       run(
         'publish',

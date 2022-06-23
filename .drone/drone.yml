@@ -1078,10 +1078,10 @@ kind: pipeline
 name: release
 steps:
 - commands:
-  - make BUILD_IN_CONTAINER=false package
+  - make BUILD_IN_CONTAINER=false packages
   environment: {}
   image: grafana/loki-build-image:0.21.0
-  name: package-test
+  name: test packaging
   when:
     event:
     - pull_request
@@ -1313,6 +1313,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 9ee1916dc7d2f5d56caa0abef6fc6fa8318c8dd39a1dc1efdd48dbc3eee34a22
+hmac: e56633097c3edb68fc784f2059f5c773f02ac485750610aaff59b43eb1417c5b
 
 ...
