@@ -103,11 +103,8 @@ func createTestGrpcServer(t *testing.T) (func(), string) {
 			t.Logf("Failed to serve: %v", err)
 		}
 	}()
-	cleanup := func() {
-		s.GracefulStop()
-	}
 
-	return cleanup, lis.Addr().String()
+	return s.GracefulStop, lis.Addr().String()
 }
 
 func TestGatewayClient(t *testing.T) {
