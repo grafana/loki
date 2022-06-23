@@ -106,9 +106,6 @@ func createTestGrpcServer(t *testing.T) (func(), string) {
 	}()
 	cleanup := func() {
 		s.GracefulStop()
-		// if err := lis.Close(); err != nil {
-		// 	panic(err)
-		// }
 	}
 
 	return cleanup, lis.Addr().String()
