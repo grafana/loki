@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/util/log"
 )
@@ -33,7 +32,7 @@ type deleteRequestsClient struct {
 	cache         map[string][]DeleteRequest
 	cacheDuration time.Duration
 
-	metrics *deleteRequestClientMetrics
+	metrics *DeleteRequestClientMetrics
 
 	stopChan chan struct{}
 }
@@ -50,7 +49,7 @@ func WithRequestClientCacheDuration(d time.Duration) DeleteRequestsStoreOption {
 	}
 }
 
-func NewDeleteRequestsClient(addr string, c httpClient, r prometheus.Registerer, opts ...DeleteRequestsStoreOption) (DeleteRequestsClient, error) {
+func NewDeleteRequestsClient(addr string, c httpClient, deleteClientMetrics *DeleteRequestClientMetrics, opts ...DeleteRequestsStoreOption) (DeleteRequestsClient, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error parsing url", "err", err)
@@ -63,7 +62,7 @@ func NewDeleteRequestsClient(addr string, c httpClient, r prometheus.Registerer,
 		httpClient:    c,
 		cacheDuration: 5 * time.Minute,
 		cache:         make(map[string][]DeleteRequest),
-		metrics:       newDeleteRequestClientMetrics(r),
+		metrics:       deleteClientMetrics,
 		stopChan:      make(chan struct{}),
 	}
 
