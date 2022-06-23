@@ -21,7 +21,7 @@ import (
 func BuildRuler(opts Options) ([]client.Object, error) {
 	statefulSet := NewRulerStatefulSet(opts)
 	if opts.Flags.EnableHTTPTLSServices {
-		if err := configureRulerServiceMonitorPKI(statefulSet, opts.Name); err != nil {
+		if err := configureRulerHTTPServicePKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
 	}
@@ -266,9 +266,9 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureRulerServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
+func configureRulerHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameRulerHTTP(stackName)
-	return configureTLS(&statefulSet.Spec.Template.Spec, serviceName)
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {

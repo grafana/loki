@@ -18,7 +18,7 @@ import (
 func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 	deployment := NewQueryFrontendDeployment(opts)
 	if opts.Flags.EnableHTTPTLSServices {
-		if err := configureQueryFrontendServiceMonitorPKI(deployment, opts.Name); err != nil {
+		if err := configureQueryFrontendHTTPServicePKI(deployment, opts.Name); err != nil {
 			return nil, err
 		}
 	}
@@ -206,9 +206,9 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureQueryFrontendServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
+func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQueryFrontendHTTP(stackName)
-	return configureTLS(&deployment.Spec.Template.Spec, serviceName)
+	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
 func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, stackName string) error {

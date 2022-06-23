@@ -21,7 +21,7 @@ import (
 func BuildCompactor(opts Options) ([]client.Object, error) {
 	statefulSet := NewCompactorStatefulSet(opts)
 	if opts.Flags.EnableHTTPTLSServices {
-		if err := configureCompactorServiceMonitorPKI(statefulSet, opts.Name); err != nil {
+		if err := configureCompactorHTTPServicePKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
 	}
@@ -220,9 +220,9 @@ func NewCompactorHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureCompactorServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
+func configureCompactorHTTPServicePKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameCompactorHTTP(stackName)
-	return configureTLS(&statefulSet.Spec.Template.Spec, serviceName)
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureCompactorGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {

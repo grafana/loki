@@ -1,16 +1,10 @@
 package manifests
 
 import (
-	"fmt"
-	"path"
-
-	"github.com/ViaQ/logerr/v2/kverrors"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/imdario/mergo"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 )
 
@@ -146,62 +140,4 @@ func newServiceMonitor(namespace, serviceMonitorName string, labels labels.Set, 
 			},
 		},
 	}
-}
-
-func configureTLS(podSpec *corev1.PodSpec, serviceName string) error {
-	secretVolumeSpec := corev1.PodSpec{
-		Volumes: []corev1.Volume{
-			{
-				Name: serviceName,
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: serviceName,
-					},
-				},
-			},
-		},
-	}
-	secretContainerSpec := corev1.Container{
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      serviceName,
-				ReadOnly:  false,
-				MountPath: httpTLSDir,
-			},
-		},
-		Args: []string{
-			fmt.Sprintf("-server.http-tls-cert-path=%s", path.Join(httpTLSDir, tlsCertFile)),
-			fmt.Sprintf("-server.http-tls-key-path=%s", path.Join(httpTLSDir, tlsKeyFile)),
-		},
-	}
-	uriSchemeContainerSpec := corev1.Container{
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Scheme: corev1.URISchemeHTTPS,
-				},
-			},
-		},
-		LivenessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Scheme: corev1.URISchemeHTTPS,
-				},
-			},
-		},
-	}
-
-	if err := mergo.Merge(podSpec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge volumes")
-	}
-
-	if err := mergo.Merge(&podSpec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
-	if err := mergo.Merge(&podSpec.Containers[0], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
-	return nil
 }

@@ -22,7 +22,7 @@ import (
 func BuildQuerier(opts Options) ([]client.Object, error) {
 	deployment := NewQuerierDeployment(opts)
 	if opts.Flags.EnableHTTPTLSServices {
-		if err := configureQuerierServiceMonitorPKI(deployment, opts.Name); err != nil {
+		if err := configureQuerierHTTPServicePKI(deployment, opts.Name); err != nil {
 			return nil, err
 		}
 	}
@@ -202,9 +202,9 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureQuerierServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
+func configureQuerierHTTPServicePKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQuerierHTTP(stackName)
-	return configureTLS(&deployment.Spec.Template.Spec, serviceName)
+	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
 func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, stackName, stackNS string) error {
