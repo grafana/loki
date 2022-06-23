@@ -357,6 +357,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			stackName: "test",
 			stackNs:   "test-ns",
 			flags: FeatureFlags{
+				EnableHttpTLSServices:         true,
 				EnableTLSServiceMonitorConfig: true,
 			},
 			dpl: &appsv1.Deployment{
@@ -536,6 +537,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			stackName: "test",
 			stackNs:   "test-ns",
 			flags: FeatureFlags{
+				EnableHttpTLSServices:           true,
 				EnableTLSServiceMonitorConfig:   true,
 				EnableCertificateSigningService: true,
 			},
@@ -822,6 +824,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 			desc: "openshift-logging mode with-tls-service-monitor-config",
 			mode: lokiv1beta1.OpenshiftLogging,
 			flags: FeatureFlags{
+				EnableHttpTLSServices:         true,
 				EnableTLSServiceMonitorConfig: true,
 			},
 			sm: &monitoringv1.ServiceMonitor{

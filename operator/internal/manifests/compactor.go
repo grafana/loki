@@ -20,7 +20,7 @@ import (
 // BuildCompactor builds the k8s objects required to run Loki Compactor.
 func BuildCompactor(opts Options) ([]client.Object, error) {
 	statefulSet := NewCompactorStatefulSet(opts)
-	if opts.Flags.EnableTLSServiceMonitorConfig {
+	if opts.Flags.EnableHttpTLSServices {
 		if err := configureCompactorServiceMonitorPKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
@@ -222,7 +222,7 @@ func NewCompactorHTTPService(opts Options) *corev1.Service {
 
 func configureCompactorServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameCompactorHTTP(stackName)
-	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+	return configureTLS(&statefulSet.Spec.Template.Spec, serviceName)
 }
 
 func configureCompactorGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {

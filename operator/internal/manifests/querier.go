@@ -21,7 +21,7 @@ import (
 // BuildQuerier returns a list of k8s objects for Loki Querier
 func BuildQuerier(opts Options) ([]client.Object, error) {
 	deployment := NewQuerierDeployment(opts)
-	if opts.Flags.EnableTLSServiceMonitorConfig {
+	if opts.Flags.EnableHttpTLSServices {
 		if err := configureQuerierServiceMonitorPKI(deployment, opts.Name); err != nil {
 			return nil, err
 		}
@@ -204,7 +204,7 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 
 func configureQuerierServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQuerierHTTP(stackName)
-	return configureServiceMonitorPKI(&deployment.Spec.Template.Spec, serviceName)
+	return configureTLS(&deployment.Spec.Template.Spec, serviceName)
 }
 
 func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, stackName, stackNS string) error {

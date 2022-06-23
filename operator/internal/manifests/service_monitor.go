@@ -148,7 +148,7 @@ func newServiceMonitor(namespace, serviceMonitorName string, labels labels.Set, 
 	}
 }
 
-func configureServiceMonitorPKI(podSpec *corev1.PodSpec, serviceName string) error {
+func configureTLS(podSpec *corev1.PodSpec, serviceName string) error {
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
