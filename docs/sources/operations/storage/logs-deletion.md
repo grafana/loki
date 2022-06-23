@@ -24,8 +24,9 @@ With `whole-stream-deletion`, all the log entries matching the query given in th
 With `filter-only`, log lines matching the query in the delete request are filtered out when querying Loki. They are not removed from the on-disk chunks.
 With `filter-and-delete`, log lines matching the query in the delete request are filtered out when querying Loki, and they are also removed from the on-disk chunks.
 
-
 A delete request may be canceled within a configurable cancellation period. Set the `delete_request_cancel_period` in the Compactor's YAML configuration or on the command line when invoking Loki. Its default value is 24h.
+
+Access to the deletion API can be enabled per tenant via the `allow_deletes` setting.
 
 ## Compactor endpoints
 
