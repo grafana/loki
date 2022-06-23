@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
@@ -43,6 +44,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -250,7 +252,8 @@ type Loki struct {
 	usageReport              *usagestats.Reporter
 	indexGatewayRingManager  *indexgateway.RingManager
 
-	clientMetrics storage.ClientMetrics
+	clientMetrics       storage.ClientMetrics
+	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
 }
@@ -258,8 +261,9 @@ type Loki struct {
 // New makes a new Loki.
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
-		Cfg:           cfg,
-		clientMetrics: storage.NewClientMetrics(),
+		Cfg:                 cfg,
+		clientMetrics:       storage.NewClientMetrics(),
+		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 	}
 	usagestats.Edition("oss")
 	loki.setupAuthMiddleware()
