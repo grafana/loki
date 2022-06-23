@@ -1,5 +1,6 @@
 ## Main
 
+* [6435](https://github.com/grafana/loki/pull/6430) **MichelHollands**: Remove the `whole-stream-deletion` mode.
 * [6410](https://github.com/grafana/loki/pull/6410) **MichelHollands**: Add support for per tenant delete API access enabling.
 * [6105](https://github.com/grafana/loki/pull/6105) **rutgerke** Export metrics for the promtail journal target
 * [6099](https://github.com/grafana/loki/pull/6099/files) **cstyan**: Drop lines with malformed JSON in Promtail JSON pipeline stage
