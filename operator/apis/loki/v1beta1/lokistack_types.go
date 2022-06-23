@@ -811,6 +811,7 @@ type LokiStackStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:unservedversion
 // +kubebuilder:resource:categories=logging
 
 // LokiStack is the Schema for the lokistacks API

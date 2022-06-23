@@ -237,6 +237,15 @@ olm-deploy: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
 	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode AllNamespaces $(BUNDLE_IMG)
 endif
 
+.PHONY: olm-upgrade
+ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
+olm-upgrade:  ## Upgrade the operator bundle and the operator via OLM into an Kubernetes cluster selected via KUBECONFIG.
+	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
+else
+olm-upgrade: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
+	$(OPERATOR_SDK) run bundle-upgrade -n $(LOKI_OPERATOR_NS) $(BUNDLE_IMG)
+endif
+
 .PHONY: olm-undeploy
 olm-undeploy: $(OPERATOR_SDK) ## Cleanup deployments of the operator bundle and the operator via OLM on an OpenShift cluster selected via KUBECONFIG.
 	$(OPERATOR_SDK) cleanup -n $(LOKI_OPERATOR_NS) loki-operator
