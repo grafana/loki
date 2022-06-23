@@ -14,7 +14,7 @@ import (
 func TestGetCacheGenNumberForUser(t *testing.T) {
 	t.Run("it requests results from the api", func(t *testing.T) {
 		httpClient := &mockHTTPClient{ret: `[{"request_id":"test-request"}]`}
-		client, err := NewDeleteRequestsClient("http://test-server", httpClient)
+		client, err := NewDeleteRequestsClient("http://test-server", httpClient, nil)
 		require.Nil(t, err)
 
 		deleteRequests, err := client.GetAllDeleteRequestsForUser(context.Background(), "userID")
@@ -30,7 +30,7 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 
 	t.Run("it caches the results", func(t *testing.T) {
 		httpClient := &mockHTTPClient{ret: `[{"request_id":"test-request"}]`}
-		client, err := NewDeleteRequestsClient("http://test-server", httpClient, WithRequestClientCacheDuration(100*time.Millisecond))
+		client, err := NewDeleteRequestsClient("http://test-server", httpClient, nil, WithRequestClientCacheDuration(100*time.Millisecond))
 		require.Nil(t, err)
 
 		deleteRequests, err := client.GetAllDeleteRequestsForUser(context.Background(), "userID")
