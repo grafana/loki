@@ -316,7 +316,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		createTableDuration := time.Now()
+		createTableDuration := time.Since(operationStart)
 
 		for _, u := range usersToBeQueryReadyFor {
 			distinctUsers[u] = struct{}{}
@@ -327,6 +327,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 			return err
 		}
 		ensureQueryReadinessDuration := time.Since(operationStart)
+
 		level.Info(util_log.Logger).Log(
 			"msg", "index pre-download for query readiness completed",
 			"users_len", len(usersToBeQueryReadyFor),
