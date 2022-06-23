@@ -3,7 +3,7 @@ package manifests
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
@@ -17,33 +17,33 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 		Effect:   corev1.TaintEffectNoSchedule,
 	}}
 	optsWithTolerations := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
-				Ruler: &lokiv1beta1.LokiComponentSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
@@ -53,27 +53,27 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 	}
 
 	optsWithoutTolerations := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Ruler: &lokiv1beta1.LokiComponentSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -120,33 +120,33 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 	nodeSelectors := map[string]string{"type": "storage"}
 	optsWithNodeSelectors := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
-				Ruler: &lokiv1beta1.LokiComponentSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
@@ -156,27 +156,27 @@ func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 	}
 
 	optsWithoutNodeSelectors := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Ruler: &lokiv1beta1.LokiComponentSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},

@@ -6,7 +6,7 @@ stringData:
 metadata:
   name: test-oidc
 ---
-apiVersion: loki.grafana.com/v1beta1
+apiVersion: loki.grafana.com/v1
 kind: LokiStack
 metadata:
   name: lokistack-dev

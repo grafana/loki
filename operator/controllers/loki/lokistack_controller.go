@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 var (
@@ -152,7 +152,7 @@ func (r *LokiStackReconciler) SetupWithManager(mgr manager.Manager) error {
 
 func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	bld = bld.
-		For(&lokiv1beta1.LokiStack{}, createOrUpdateOnlyPred).
+		For(&lokiv1.LokiStack{}, createOrUpdateOnlyPred).
 		Owns(&corev1.ConfigMap{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.ServiceAccount{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.Service{}, updateOrDeleteOnlyPred).

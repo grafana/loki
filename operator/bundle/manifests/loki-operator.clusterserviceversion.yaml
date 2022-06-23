@@ -199,7 +199,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: List of groups for alerting rules.
         displayName: Groups
@@ -1095,7 +1095,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: List of groups for recording rules.
         displayName: Groups
@@ -1143,7 +1143,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: Defines alert manager configuration to notify on firing alerts.
         displayName: Alert Manager Configuration
@@ -1790,6 +1790,26 @@ spec:
     targetPort: 9443
     type: ValidatingAdmissionWebhook
     webhookPath: /validate-loki-grafana-com-v1beta1-lokistack
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: loki-operator-controller-manager
+    failurePolicy: Fail
+    generateName: vlokistack.kb.io
+    rules:
+    - apiGroups:
+      - loki.grafana.com
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - lokistacks
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-loki-grafana-com-v1-lokistack
   - admissionReviewVersions:
     - v1
     containerPort: 443

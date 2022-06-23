@@ -38,7 +38,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: List of groups for alerting rules.
         displayName: Groups
@@ -934,7 +934,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: List of groups for recording rules.
         displayName: Groups
@@ -982,7 +982,7 @@ spec:
       resources:
       - kind: LokiStack
         name: ""
-        version: v1beta1
+        version: v1
       specDescriptors:
       - description: Defines alert manager configuration to notify on firing alerts.
         displayName: Alert Manager Configuration

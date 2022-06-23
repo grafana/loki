@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 
 	"github.com/ViaQ/logerr/v2/log"
@@ -44,7 +44,7 @@ func TestMain(m *testing.M) {
 	// Register the clientgo and CRD schemes
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(routev1.AddToScheme(scheme))
-	utilruntime.Must(lokiv1beta1.AddToScheme(scheme))
+	utilruntime.Must(lokiv1.AddToScheme(scheme))
 
 	os.Exit(m.Run())
 }
@@ -65,7 +65,7 @@ func TestLokiStackController_RegistersCustomResourceForCreateOrUpdate(t *testing
 
 	// Require For-call options to have create and  update predicates
 	obj, opts := b.ForArgsForCall(0)
-	require.Equal(t, &lokiv1beta1.LokiStack{}, obj)
+	require.Equal(t, &lokiv1.LokiStack{}, obj)
 	require.Equal(t, opts[0], createOrUpdateOnlyPred)
 }
 
