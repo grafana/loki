@@ -27,6 +27,8 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -38,6 +40,7 @@ func init() {
 	utilruntime.Must(lokiv1beta1.AddToScheme(scheme))
 
 	utilruntime.Must(ctrlconfigv1.AddToScheme(scheme))
+	utilruntime.Must(lokiv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -104,6 +107,10 @@ func main() {
 	}
 	if ctrlCfg.Gates.LokiStackWebhook {
 		if err = (&lokiv1beta1.LokiStack{}).SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "LokiStack")
+			os.Exit(1)
+		}
+		if err = (&lokiv1.LokiStack{}).SetupWebhookWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create webhook", "webhook", "LokiStack")
 			os.Exit(1)
 		}

@@ -17,7 +17,7 @@ spec:
     singular: lokistack
   scope: Namespaced
   versions:
-  - name: v1beta1
+  - name: v1
     schema:
       openAPIV3Schema:
         description: LokiStack is the Schema for the lokistacks API

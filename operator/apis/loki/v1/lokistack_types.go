@@ -1,8 +1,10 @@
-package v1beta1
+package v1
 
 import (
+	"github.com/grafana/loki/operator/apis/loki/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/conversion"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -811,6 +813,7 @@ type LokiStackStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:storageversion
 // +kubebuilder:resource:categories=logging
 
 // LokiStack is the Schema for the lokistacks API
@@ -836,5 +839,489 @@ func init() {
 	SchemeBuilder.Register(&LokiStack{}, &LokiStackList{})
 }
 
-// Hub declares the v1beta1.LokiStack as the hub CRD version.
-func (*LokiStack) Hub() {}
+// ConvertTo converts this LokiStack (v1) to the Hub version (v1beta1).
+func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
+	dst := dstRaw.(*v1beta1.LokiStack)
+
+	if src.Spec.ManagementState != "" {
+		dst.Spec.ManagementState = v1beta1.ManagementStateType(src.Spec.ManagementState)
+	}
+
+	if src.Spec.Size != "" {
+		dst.Spec.Size = v1beta1.LokiStackSizeType(src.Spec.Size)
+	}
+
+	var storageTLS *v1beta1.ObjectStorageTLSSpec
+	if src.Spec.Storage.TLS != nil {
+		storageTLS = &v1beta1.ObjectStorageTLSSpec{
+			CA: src.Spec.Storage.TLS.CA,
+		}
+	}
+
+	var schemas []v1beta1.ObjectStorageSchema
+	for _, s := range src.Spec.Storage.Schemas {
+		schemas = append(schemas, v1beta1.ObjectStorageSchema{
+			EffectiveDate: v1beta1.StorageSchemaEffectiveDate(s.EffectiveDate),
+			Version:       v1beta1.ObjectStorageSchemaVersion(s.Version),
+		})
+	}
+
+	dst.Spec.Storage = v1beta1.ObjectStorageSpec{
+		Schemas: schemas,
+		Secret: v1beta1.ObjectStorageSecretSpec{
+			Type: v1beta1.ObjectStorageSecretType(src.Spec.Storage.Secret.Type),
+			Name: src.Spec.Storage.Secret.Name,
+		},
+		TLS: storageTLS,
+	}
+
+	if src.Spec.StorageClassName != "" {
+		dst.Spec.StorageClassName = src.Spec.StorageClassName
+	}
+
+	if src.Spec.ReplicationFactor != 0 {
+		dst.Spec.ReplicationFactor = src.Spec.ReplicationFactor
+	}
+
+	if src.Spec.Rules != nil {
+		dst.Spec.Rules = &v1beta1.RulesSpec{
+			Enabled:           src.Spec.Rules.Enabled,
+			Selector:          src.Spec.Rules.Selector,
+			NamespaceSelector: src.Spec.Rules.NamespaceSelector,
+		}
+	}
+
+	if src.Spec.Limits != nil {
+		dst.Spec.Limits = &v1beta1.LimitsSpec{}
+
+		if src.Spec.Limits.Global != nil {
+			dst.Spec.Limits.Global = &v1beta1.LimitsTemplateSpec{}
+
+			if src.Spec.Limits.Global.IngestionLimits != nil {
+				dst.Spec.Limits.Global.IngestionLimits = &v1beta1.IngestionLimitSpec{
+					IngestionRate:             src.Spec.Limits.Global.IngestionLimits.IngestionRate,
+					IngestionBurstSize:        src.Spec.Limits.Global.IngestionLimits.IngestionBurstSize,
+					MaxLabelNameLength:        src.Spec.Limits.Global.IngestionLimits.MaxLabelNameLength,
+					MaxLabelValueLength:       src.Spec.Limits.Global.IngestionLimits.MaxLabelValueLength,
+					MaxLabelNamesPerSeries:    src.Spec.Limits.Global.IngestionLimits.MaxLabelNamesPerSeries,
+					MaxGlobalStreamsPerTenant: src.Spec.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant,
+					MaxLineSize:               src.Spec.Limits.Global.IngestionLimits.MaxLineSize,
+				}
+			}
+
+			if src.Spec.Limits.Global.QueryLimits != nil {
+				dst.Spec.Limits.Global.QueryLimits = &v1beta1.QueryLimitSpec{
+					MaxEntriesLimitPerQuery: src.Spec.Limits.Global.QueryLimits.MaxEntriesLimitPerQuery,
+					MaxChunksPerQuery:       src.Spec.Limits.Global.QueryLimits.MaxChunksPerQuery,
+					MaxQuerySeries:          src.Spec.Limits.Global.QueryLimits.MaxQuerySeries,
+				}
+			}
+		}
+
+		if len(src.Spec.Limits.Tenants) > 0 {
+			dst.Spec.Limits.Tenants = make(map[string]v1beta1.LimitsTemplateSpec)
+		}
+
+		for tenant, srcSpec := range src.Spec.Limits.Tenants {
+			dstSpec := v1beta1.LimitsTemplateSpec{}
+
+			if srcSpec.IngestionLimits != nil {
+				dstSpec.IngestionLimits = &v1beta1.IngestionLimitSpec{
+					IngestionRate:             srcSpec.IngestionLimits.IngestionRate,
+					IngestionBurstSize:        srcSpec.IngestionLimits.IngestionBurstSize,
+					MaxLabelNameLength:        srcSpec.IngestionLimits.MaxLabelNameLength,
+					MaxLabelValueLength:       srcSpec.IngestionLimits.MaxLabelValueLength,
+					MaxLabelNamesPerSeries:    srcSpec.IngestionLimits.MaxLabelNamesPerSeries,
+					MaxGlobalStreamsPerTenant: srcSpec.IngestionLimits.MaxGlobalStreamsPerTenant,
+					MaxLineSize:               srcSpec.IngestionLimits.MaxLineSize,
+				}
+			}
+
+			if srcSpec.QueryLimits != nil {
+				dstSpec.QueryLimits = &v1beta1.QueryLimitSpec{
+					MaxEntriesLimitPerQuery: srcSpec.QueryLimits.MaxEntriesLimitPerQuery,
+					MaxChunksPerQuery:       srcSpec.QueryLimits.MaxChunksPerQuery,
+					MaxQuerySeries:          srcSpec.QueryLimits.MaxQuerySeries,
+				}
+			}
+
+			dst.Spec.Limits.Tenants[tenant] = dstSpec
+		}
+	}
+
+	if src.Spec.Template != nil {
+		dst.Spec.Template = &v1beta1.LokiTemplateSpec{}
+		if src.Spec.Template.Compactor != nil {
+			dst.Spec.Template.Compactor = &v1beta1.LokiComponentSpec{
+				Replicas:     src.Spec.Template.Compactor.Replicas,
+				NodeSelector: src.Spec.Template.Compactor.NodeSelector,
+				Tolerations:  src.Spec.Template.Compactor.Tolerations,
+			}
+		}
+		if src.Spec.Template.Distributor != nil {
+			dst.Spec.Template.Distributor = &v1beta1.LokiComponentSpec{
+				Replicas:     src.Spec.Template.Distributor.Replicas,
+				NodeSelector: src.Spec.Template.Distributor.NodeSelector,
+				Tolerations:  src.Spec.Template.Distributor.Tolerations,
+			}
+		}
+		if src.Spec.Template.Ingester != nil {
+			dst.Spec.Template.Ingester = &v1beta1.LokiComponentSpec{
+				Replicas:     src.Spec.Template.Ingester.Replicas,
+				NodeSelector: src.Spec.Template.Ingester.NodeSelector,
+				Tolerations:  src.Spec.Template.Ingester.Tolerations,
+			}
+		}
+		if src.Spec.Template.Querier != nil {
+			dst.Spec.Template.Querier = &v1beta1.LokiComponentSpec{
+				Replicas:     src.Spec.Template.Querier.Replicas,
+				NodeSelector: src.Spec.Template.Querier.NodeSelector,
+				Tolerations:  src.Spec.Template.Querier.Tolerations,
+			}
+		}
+		if src.Spec.Template.QueryFrontend != nil {
+			dst.Spec.Template.QueryFrontend = &v1beta1.LokiComponentSpec{
+				Replicas:     src.Spec.Template.QueryFrontend.Replicas,
+				NodeSelector: src.Spec.Template.QueryFrontend.NodeSelector,
+				Tolerations:  src.Spec.Template.QueryFrontend.Tolerations,
+			}
+		}
+		if src.Spec.Template.Gateway != nil {
+			dst.Spec.Template.Gateway = &v1beta1.LokiComponentSpec{
+				Replicas:     src.Spec.Template.Gateway.Replicas,
+				NodeSelector: src.Spec.Template.Gateway.NodeSelector,
+				Tolerations:  src.Spec.Template.Gateway.Tolerations,
+			}
+		}
+		if src.Spec.Template.IndexGateway != nil {
+			dst.Spec.Template.IndexGateway = &v1beta1.LokiComponentSpec{
+				Replicas:     src.Spec.Template.IndexGateway.Replicas,
+				NodeSelector: src.Spec.Template.IndexGateway.NodeSelector,
+				Tolerations:  src.Spec.Template.IndexGateway.Tolerations,
+			}
+		}
+		if src.Spec.Template.Ruler != nil {
+			dst.Spec.Template.Ruler = &v1beta1.LokiComponentSpec{
+				Replicas:     src.Spec.Template.Ruler.Replicas,
+				NodeSelector: src.Spec.Template.Ruler.NodeSelector,
+				Tolerations:  src.Spec.Template.Ruler.Tolerations,
+			}
+		}
+	}
+
+	if src.Spec.Tenants != nil {
+		dst.Spec.Tenants = &v1beta1.TenantsSpec{
+			Mode: v1beta1.ModeType(src.Spec.Tenants.Mode),
+		}
+
+		for _, srcAuth := range src.Spec.Tenants.Authentication {
+			dstAuth := v1beta1.AuthenticationSpec{
+				TenantName: srcAuth.TenantName,
+				TenantID:   srcAuth.TenantID,
+			}
+
+			if srcAuth.OIDC != nil {
+				dstAuth.OIDC = &v1beta1.OIDCSpec{
+					Secret: &v1beta1.TenantSecretSpec{
+						Name: srcAuth.OIDC.Secret.Name,
+					},
+					IssuerURL:     srcAuth.OIDC.IssuerURL,
+					RedirectURL:   srcAuth.OIDC.RedirectURL,
+					GroupClaim:    srcAuth.OIDC.GroupClaim,
+					UsernameClaim: srcAuth.OIDC.UsernameClaim,
+				}
+			}
+
+			dst.Spec.Tenants.Authentication = append(dst.Spec.Tenants.Authentication, dstAuth)
+		}
+
+		if src.Spec.Tenants.Authorization != nil {
+			dstAuthz := &v1beta1.AuthorizationSpec{}
+
+			if src.Spec.Tenants.Authorization.OPA != nil {
+				dstAuthz.OPA = &v1beta1.OPASpec{
+					URL: src.Spec.Tenants.Authorization.OPA.URL,
+				}
+			}
+
+			for _, srcRole := range src.Spec.Tenants.Authorization.Roles {
+				dstRole := v1beta1.RoleSpec{
+					Name:        srcRole.Name,
+					Resources:   srcRole.Resources,
+					Tenants:     srcRole.Tenants,
+					Permissions: []v1beta1.PermissionType{},
+				}
+
+				for _, perm := range srcRole.Permissions {
+					dstRole.Permissions = append(dstRole.Permissions, v1beta1.PermissionType(perm))
+				}
+
+				dstAuthz.Roles = append(dstAuthz.Roles, dstRole)
+			}
+
+			for _, srcBinding := range src.Spec.Tenants.Authorization.RoleBindings {
+				dstBinding := v1beta1.RoleBindingsSpec{
+					Name:  srcBinding.Name,
+					Roles: srcBinding.Roles,
+				}
+
+				for _, srcSubject := range srcBinding.Subjects {
+					dstBinding.Subjects = append(dstBinding.Subjects, v1beta1.Subject{
+						Name: srcSubject.Name,
+						Kind: v1beta1.SubjectKind(srcSubject.Kind),
+					})
+				}
+
+				dstAuthz.RoleBindings = append(dstAuthz.RoleBindings, dstBinding)
+			}
+
+			dst.Spec.Tenants.Authorization = dstAuthz
+		}
+	}
+
+	return nil
+}
+
+// ConvertFrom converts from the Hub version (v1beta1) to this version (v1).
+// nolint:golint
+func (dst *LokiStack) ConvertFrom(srcRaw conversion.Hub) error {
+	src := srcRaw.(*v1beta1.LokiStack)
+
+	if src.Spec.ManagementState != "" {
+		dst.Spec.ManagementState = ManagementStateType(src.Spec.ManagementState)
+	}
+
+	if src.Spec.Size != "" {
+		dst.Spec.Size = LokiStackSizeType(src.Spec.Size)
+	}
+
+	var storageTLS *ObjectStorageTLSSpec
+	if src.Spec.Storage.TLS != nil {
+		storageTLS = &ObjectStorageTLSSpec{
+			CA: src.Spec.Storage.TLS.CA,
+		}
+	}
+
+	var schemas []ObjectStorageSchema
+	for _, s := range src.Spec.Storage.Schemas {
+		schemas = append(schemas, ObjectStorageSchema{
+			EffectiveDate: StorageSchemaEffectiveDate(s.EffectiveDate),
+			Version:       ObjectStorageSchemaVersion(s.Version),
+		})
+	}
+
+	dst.Spec.Storage = ObjectStorageSpec{
+		Schemas: schemas,
+		Secret: ObjectStorageSecretSpec{
+			Type: ObjectStorageSecretType(src.Spec.Storage.Secret.Type),
+			Name: src.Spec.Storage.Secret.Name,
+		},
+		TLS: storageTLS,
+	}
+
+	if src.Spec.StorageClassName != "" {
+		dst.Spec.StorageClassName = src.Spec.StorageClassName
+	}
+
+	if src.Spec.ReplicationFactor != 0 {
+		dst.Spec.ReplicationFactor = src.Spec.ReplicationFactor
+	}
+
+	if src.Spec.Rules != nil {
+		dst.Spec.Rules = &RulesSpec{
+			Enabled:           src.Spec.Rules.Enabled,
+			Selector:          src.Spec.Rules.Selector,
+			NamespaceSelector: src.Spec.Rules.NamespaceSelector,
+		}
+	}
+
+	if src.Spec.Limits != nil {
+		dst.Spec.Limits = &LimitsSpec{}
+
+		if src.Spec.Limits.Global != nil {
+			dst.Spec.Limits.Global = &LimitsTemplateSpec{}
+
+			if src.Spec.Limits.Global.IngestionLimits != nil {
+				dst.Spec.Limits.Global.IngestionLimits = &IngestionLimitSpec{
+					IngestionRate:             src.Spec.Limits.Global.IngestionLimits.IngestionRate,
+					IngestionBurstSize:        src.Spec.Limits.Global.IngestionLimits.IngestionBurstSize,
+					MaxLabelNameLength:        src.Spec.Limits.Global.IngestionLimits.MaxLabelNameLength,
+					MaxLabelValueLength:       src.Spec.Limits.Global.IngestionLimits.MaxLabelValueLength,
+					MaxLabelNamesPerSeries:    src.Spec.Limits.Global.IngestionLimits.MaxLabelNamesPerSeries,
+					MaxGlobalStreamsPerTenant: src.Spec.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant,
+					MaxLineSize:               src.Spec.Limits.Global.IngestionLimits.MaxLineSize,
+				}
+			}
+
+			if src.Spec.Limits.Global.QueryLimits != nil {
+				dst.Spec.Limits.Global.QueryLimits = &QueryLimitSpec{
+					MaxEntriesLimitPerQuery: src.Spec.Limits.Global.QueryLimits.MaxEntriesLimitPerQuery,
+					MaxChunksPerQuery:       src.Spec.Limits.Global.QueryLimits.MaxChunksPerQuery,
+					MaxQuerySeries:          src.Spec.Limits.Global.QueryLimits.MaxQuerySeries,
+				}
+			}
+		}
+
+		if len(src.Spec.Limits.Tenants) > 0 {
+			dst.Spec.Limits.Tenants = make(map[string]LimitsTemplateSpec)
+		}
+
+		for tenant, srcSpec := range src.Spec.Limits.Tenants {
+			dstSpec := LimitsTemplateSpec{}
+
+			if srcSpec.IngestionLimits != nil {
+				dstSpec.IngestionLimits = &IngestionLimitSpec{
+					IngestionRate:             srcSpec.IngestionLimits.IngestionRate,
+					IngestionBurstSize:        srcSpec.IngestionLimits.IngestionBurstSize,
+					MaxLabelNameLength:        srcSpec.IngestionLimits.MaxLabelNameLength,
+					MaxLabelValueLength:       srcSpec.IngestionLimits.MaxLabelValueLength,
+					MaxLabelNamesPerSeries:    srcSpec.IngestionLimits.MaxLabelNamesPerSeries,
+					MaxGlobalStreamsPerTenant: srcSpec.IngestionLimits.MaxGlobalStreamsPerTenant,
+					MaxLineSize:               srcSpec.IngestionLimits.MaxLineSize,
+				}
+			}
+
+			if srcSpec.QueryLimits != nil {
+				dstSpec.QueryLimits = &QueryLimitSpec{
+					MaxEntriesLimitPerQuery: srcSpec.QueryLimits.MaxEntriesLimitPerQuery,
+					MaxChunksPerQuery:       srcSpec.QueryLimits.MaxChunksPerQuery,
+					MaxQuerySeries:          srcSpec.QueryLimits.MaxQuerySeries,
+				}
+			}
+
+			dst.Spec.Limits.Tenants[tenant] = dstSpec
+		}
+	}
+
+	if src.Spec.Template != nil {
+		dst.Spec.Template = &LokiTemplateSpec{}
+		if src.Spec.Template.Compactor != nil {
+			dst.Spec.Template.Compactor = &LokiComponentSpec{
+				Replicas:     src.Spec.Template.Compactor.Replicas,
+				NodeSelector: src.Spec.Template.Compactor.NodeSelector,
+				Tolerations:  src.Spec.Template.Compactor.Tolerations,
+			}
+		}
+		if src.Spec.Template.Distributor != nil {
+			dst.Spec.Template.Distributor = &LokiComponentSpec{
+				Replicas:     src.Spec.Template.Distributor.Replicas,
+				NodeSelector: src.Spec.Template.Distributor.NodeSelector,
+				Tolerations:  src.Spec.Template.Distributor.Tolerations,
+			}
+		}
+		if src.Spec.Template.Ingester != nil {
+			dst.Spec.Template.Ingester = &LokiComponentSpec{
+				Replicas:     src.Spec.Template.Ingester.Replicas,
+				NodeSelector: src.Spec.Template.Ingester.NodeSelector,
+				Tolerations:  src.Spec.Template.Ingester.Tolerations,
+			}
+		}
+		if src.Spec.Template.Querier != nil {
+			dst.Spec.Template.Querier = &LokiComponentSpec{
+				Replicas:     src.Spec.Template.Querier.Replicas,
+				NodeSelector: src.Spec.Template.Querier.NodeSelector,
+				Tolerations:  src.Spec.Template.Querier.Tolerations,
+			}
+		}
+		if src.Spec.Template.QueryFrontend != nil {
+			dst.Spec.Template.QueryFrontend = &LokiComponentSpec{
+				Replicas:     src.Spec.Template.QueryFrontend.Replicas,
+				NodeSelector: src.Spec.Template.QueryFrontend.NodeSelector,
+				Tolerations:  src.Spec.Template.QueryFrontend.Tolerations,
+			}
+		}
+		if src.Spec.Template.Gateway != nil {
+			dst.Spec.Template.Gateway = &LokiComponentSpec{
+				Replicas:     src.Spec.Template.Gateway.Replicas,
+				NodeSelector: src.Spec.Template.Gateway.NodeSelector,
+				Tolerations:  src.Spec.Template.Gateway.Tolerations,
+			}
+		}
+		if src.Spec.Template.IndexGateway != nil {
+			dst.Spec.Template.IndexGateway = &LokiComponentSpec{
+				Replicas:     src.Spec.Template.IndexGateway.Replicas,
+				NodeSelector: src.Spec.Template.IndexGateway.NodeSelector,
+				Tolerations:  src.Spec.Template.IndexGateway.Tolerations,
+			}
+		}
+		if src.Spec.Template.Ruler != nil {
+			dst.Spec.Template.Ruler = &LokiComponentSpec{
+				Replicas:     src.Spec.Template.Ruler.Replicas,
+				NodeSelector: src.Spec.Template.Ruler.NodeSelector,
+				Tolerations:  src.Spec.Template.Ruler.Tolerations,
+			}
+		}
+	}
+
+	if src.Spec.Tenants != nil {
+		dst.Spec.Tenants = &TenantsSpec{
+			Mode: ModeType(src.Spec.Tenants.Mode),
+		}
+
+		for _, srcAuth := range src.Spec.Tenants.Authentication {
+			dstAuth := AuthenticationSpec{
+				TenantName: srcAuth.TenantName,
+				TenantID:   srcAuth.TenantID,
+			}
+
+			if srcAuth.OIDC != nil {
+				dstAuth.OIDC = &OIDCSpec{
+					Secret: &TenantSecretSpec{
+						Name: srcAuth.OIDC.Secret.Name,
+					},
+					IssuerURL:     srcAuth.OIDC.IssuerURL,
+					RedirectURL:   srcAuth.OIDC.RedirectURL,
+					GroupClaim:    srcAuth.OIDC.GroupClaim,
+					UsernameClaim: srcAuth.OIDC.UsernameClaim,
+				}
+			}
+
+			dst.Spec.Tenants.Authentication = append(dst.Spec.Tenants.Authentication, dstAuth)
+		}
+
+		if src.Spec.Tenants.Authorization != nil {
+			dstAuthz := &AuthorizationSpec{}
+
+			if src.Spec.Tenants.Authorization.OPA != nil {
+				dstAuthz.OPA = &OPASpec{
+					URL: src.Spec.Tenants.Authorization.OPA.URL,
+				}
+			}
+
+			for _, srcRole := range src.Spec.Tenants.Authorization.Roles {
+				dstRole := RoleSpec{
+					Name:        srcRole.Name,
+					Resources:   srcRole.Resources,
+					Tenants:     srcRole.Tenants,
+					Permissions: []PermissionType{},
+				}
+
+				for _, perm := range srcRole.Permissions {
+					dstRole.Permissions = append(dstRole.Permissions, PermissionType(perm))
+				}
+
+				dstAuthz.Roles = append(dstAuthz.Roles, dstRole)
+			}
+
+			for _, srcBinding := range src.Spec.Tenants.Authorization.RoleBindings {
+				dstBinding := RoleBindingsSpec{
+					Name:  srcBinding.Name,
+					Roles: srcBinding.Roles,
+				}
+
+				for _, srcSubject := range srcBinding.Subjects {
+					dstBinding.Subjects = append(dstBinding.Subjects, Subject{
+						Name: srcSubject.Name,
+						Kind: SubjectKind(srcSubject.Kind),
+					})
+				}
+
+				dstAuthz.RoleBindings = append(dstAuthz.RoleBindings, dstBinding)
+			}
+
+			dst.Spec.Tenants.Authorization = dstAuthz
+		}
+	}
+
+	return nil
+}
