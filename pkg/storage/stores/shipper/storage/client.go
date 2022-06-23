@@ -8,14 +8,13 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 )
 
 const delimiter = "/"
 
 // UserIndexClient allows doing operations on the object store for user specific index.
 type UserIndexClient interface {
-	ListUserFiles(ctx context.Context, tableName, userID string) ([]IndexFile, error)
+	ListUserFiles(ctx context.Context, tableName, userID string, bypassCache bool) ([]IndexFile, error)
 	GetUserFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error)
 	PutUserFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error
 	DeleteUserFile(ctx context.Context, tableName, userID, fileName string) error
@@ -23,7 +22,7 @@ type UserIndexClient interface {
 
 // CommonIndexClient allows doing operations on the object store for common index.
 type CommonIndexClient interface {
-	ListFiles(ctx context.Context, tableName string) ([]IndexFile, []string, error)
+	ListFiles(ctx context.Context, tableName string, bypassCache bool) ([]IndexFile, []string, error)
 	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
 	PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error
 	DeleteFile(ctx context.Context, tableName, fileName string) error
@@ -34,13 +33,14 @@ type Client interface {
 	CommonIndexClient
 	UserIndexClient
 
+	RefreshIndexListCache(ctx context.Context)
 	ListTables(ctx context.Context) ([]string, error)
 	IsFileNotFoundErr(err error) bool
 	Stop()
 }
 
 type indexStorageClient struct {
-	objectClient client.ObjectClient
+	objectClient *cachedObjectClient
 }
 
 type IndexFile struct {
@@ -49,15 +49,16 @@ type IndexFile struct {
 }
 
 func NewIndexStorageClient(origObjectClient client.ObjectClient, storagePrefix string) Client {
-	objectClient := newPrefixedObjectClient(origObjectClient, storagePrefix)
-	if _, ok := origObjectClient.(*local.FSObjectClient); !ok {
-		objectClient = newCachedObjectClient(objectClient)
-	}
+	objectClient := newCachedObjectClient(newPrefixedObjectClient(origObjectClient, storagePrefix))
 	return &indexStorageClient{objectClient: objectClient}
 }
 
+func (s *indexStorageClient) RefreshIndexListCache(ctx context.Context) {
+	s.objectClient.RefreshIndexListCache(ctx)
+}
+
 func (s *indexStorageClient) ListTables(ctx context.Context) ([]string, error) {
-	_, tables, err := s.objectClient.List(ctx, "", delimiter)
+	_, tables, err := s.objectClient.List(ctx, "", delimiter, false)
 	if err != nil {
 		return nil, err
 	}
@@ -70,11 +71,11 @@ func (s *indexStorageClient) ListTables(ctx context.Context) ([]string, error) {
 	return tableNames, nil
 }
 
-func (s *indexStorageClient) ListFiles(ctx context.Context, tableName string) ([]IndexFile, []string, error) {
+func (s *indexStorageClient) ListFiles(ctx context.Context, tableName string, bypassCache bool) ([]IndexFile, []string, error) {
 	// The forward slash here needs to stay because we are trying to list contents of a directory without which
 	// we will get the name of the same directory back with hosted object stores.
 	// This is due to the object stores not having a concept of directories.
-	objects, users, err := s.objectClient.List(ctx, tableName+delimiter, delimiter)
+	objects, users, err := s.objectClient.List(ctx, tableName+delimiter, delimiter, bypassCache)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -99,11 +100,11 @@ func (s *indexStorageClient) ListFiles(ctx context.Context, tableName string) ([
 	return files, userIDs, nil
 }
 
-func (s *indexStorageClient) ListUserFiles(ctx context.Context, tableName, userID string) ([]IndexFile, error) {
+func (s *indexStorageClient) ListUserFiles(ctx context.Context, tableName, userID string, bypassCache bool) ([]IndexFile, error) {
 	// The forward slash here needs to stay because we are trying to list contents of a directory without which
 	// we will get the name of the same directory back with hosted object stores.
 	// This is due to the object stores not having a concept of directories.
-	objects, _, err := s.objectClient.List(ctx, path.Join(tableName, userID)+delimiter, delimiter)
+	objects, _, err := s.objectClient.List(ctx, path.Join(tableName, userID)+delimiter, delimiter, bypassCache)
 	if err != nil {
 		return nil, err
 	}

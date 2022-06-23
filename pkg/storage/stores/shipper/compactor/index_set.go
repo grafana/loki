@@ -94,7 +94,7 @@ func (is *indexSet) initUserIndexSet(workingDir string) {
 	ctx, cancelFunc := context.WithTimeout(is.ctx, userIndexReadinessTimeout)
 	defer cancelFunc()
 
-	is.sourceObjects, is.err = is.baseIndexSet.ListFiles(is.ctx, is.tableName, is.userID)
+	is.sourceObjects, is.err = is.baseIndexSet.ListFiles(is.ctx, is.tableName, is.userID, false)
 	if is.err != nil {
 		return
 	}

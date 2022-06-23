@@ -19,11 +19,13 @@ import (
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -320,6 +322,10 @@ func (s *storeMock) GetSeries(ctx context.Context, userID string, from, through 
 	panic("don't call me please")
 }
 
+func (s *storeMock) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	return nil, nil
+}
+
 func (s *storeMock) Stop() {
 }
 
@@ -480,4 +486,8 @@ func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (
 
 func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
 	return nil, errors.New("querierMock.Tail() has not been mocked")
+}
+
+func (q *querierMock) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+	return nil, nil
 }

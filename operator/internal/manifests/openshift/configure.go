@@ -2,10 +2,11 @@ package openshift
 
 import (
 	"fmt"
+	"path"
 	"regexp"
 	"strings"
 
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -36,12 +37,15 @@ var (
 // ConfigureGatewayDeployment merges an OpenPolicyAgent sidecar into the deployment spec.
 // With this, the deployment will route authorization request to the OpenShift
 // apiserver through the sidecar.
+// This function also forces the use of a TLS connection for the gateway.
 func ConfigureGatewayDeployment(
 	d *appsv1.Deployment,
 	gwContainerName string,
-	sercretVolumeName, tlsDir, certFile, keyFile string,
-	caDir, caFile string,
+	secretVolumeName, tlsDir, certFile, keyFile string,
+	caBundleVolumeName, caDir, caFile string,
 	withTLS, withCertSigningService bool,
+	secretName, serverName string,
+	gatewayHTTPPort int,
 ) error {
 	var gwIndex int
 	for i, c := range d.Spec.Template.Spec.Containers {
@@ -64,12 +68,6 @@ func ConfigureGatewayDeployment(
 
 		gwArgs = append(gwArgs, fmt.Sprintf("--logs.tls.ca-file=%s/%s", caDir, caFile))
 
-		caBundleVolumeName := serviceCABundleName(Options{
-			BuildOpts: BuildOptions{
-				GatewayName: d.GetName(),
-			},
-		})
-
 		gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
 			Name:      caBundleVolumeName,
 			ReadOnly:  true,
@@ -89,13 +87,49 @@ func ConfigureGatewayDeployment(
 		})
 	}
 
+	for i, a := range gwArgs {
+		if strings.HasPrefix(a, "--web.healthchecks.url=") {
+			gwArgs[i] = fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort)
+			break
+		}
+	}
+
+	certFilePath := path.Join(tlsDir, certFile)
+	keyFilePath := path.Join(tlsDir, keyFile)
+	caFilePath := path.Join(caDir, caFile)
+	gwArgs = append(gwArgs,
+		fmt.Sprintf("--tls.server.cert-file=%s", certFilePath),
+		fmt.Sprintf("--tls.server.key-file=%s", keyFilePath),
+		fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", caFilePath),
+		fmt.Sprintf("--tls.healthchecks.server-name=%s", serverName))
+
+	gwContainer.ReadinessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.LivenessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
 	gwContainer.Args = gwArgs
+
+	// Create and mount TLS secrets volumes if it's not already done by the service monitor config.
+	if !withTLS {
+		gwVolumes = append(gwVolumes, corev1.Volume{
+			Name: secretVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: secretName,
+				},
+			},
+		})
+
+		gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
+			Name:      secretVolumeName,
+			ReadOnly:  true,
+			MountPath: tlsDir,
+		})
+	}
 
 	p := corev1.PodSpec{
 		ServiceAccountName: d.GetName(),
 		Containers: []corev1.Container{
 			*gwContainer,
-			newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile, withTLS),
+			newOPAOpenShiftContainer(secretVolumeName, tlsDir, certFile, keyFile, withTLS),
 		},
 		Volumes: gwVolumes,
 	}

@@ -3,6 +3,10 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 {
   _config+:: {
     htpasswd_contents: error 'must specify htpasswd contents',
+
+    // This is inserted into the gateway Nginx config file
+    // under the server directive
+    gateway_server_snippet: '',
   },
 
   _images+:: {
@@ -39,7 +43,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
           access_log   /dev/stderr  main;
           sendfile     on;
           tcp_nopush   on;
-          resolver kube-dns.kube-system.svc.cluster.local;
+          resolver %(dns_resolver)s;
 
           server {
             listen               80;
@@ -74,6 +78,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
             location ~ /loki/api/.* {
               proxy_pass       http://query-frontend.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
             }
+
+            %(gateway_server_snippet)s
           }
         }
       ||| % $._config,

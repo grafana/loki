@@ -3,8 +3,8 @@ package status
 import (
 	"context"
 
-	"github.com/ViaQ/logerr/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	"github.com/ViaQ/logerr/v2/kverrors"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
 
@@ -60,6 +60,12 @@ func SetComponentsStatus(ctx context.Context, k k8s.Client, req ctrl.Request) er
 	if err != nil {
 		return kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelGatewayComponent)
 	}
+
+	s.Status.Components.Ruler, err = appendPodStatus(ctx, k, manifests.LabelRulerComponent, s.Name, s.Namespace)
+	if err != nil {
+		return kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelRulerComponent)
+	}
+
 	return k.Status().Update(ctx, &s, &client.UpdateOptions{})
 }
 

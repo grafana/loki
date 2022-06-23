@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -21,23 +22,29 @@ type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 }
 
+type AsyncStoreCfg struct {
+	IngesterQuerier IngesterQuerier
+	// QueryIngestersWithin defines maximum lookback beyond which ingesters are not queried for chunk ids.
+	QueryIngestersWithin time.Duration
+}
+
 // AsyncStore does querying to both ingesters and chunk store and combines the results after deduping them.
 // This should be used when using an async store like boltdb-shipper.
 // AsyncStore is meant to be used only in queriers or any other service other than ingesters.
 // It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {
-	Store
+	stores.Store
 	scfg                 config.SchemaConfig
 	ingesterQuerier      IngesterQuerier
 	queryIngestersWithin time.Duration
 }
 
-func NewAsyncStore(store Store, scfg config.SchemaConfig, querier IngesterQuerier, queryIngestersWithin time.Duration) *AsyncStore {
+func NewAsyncStore(cfg AsyncStoreCfg, store stores.Store, scfg config.SchemaConfig) *AsyncStore {
 	return &AsyncStore{
 		Store:                store,
 		scfg:                 scfg,
-		ingesterQuerier:      querier,
-		queryIngestersWithin: queryIngestersWithin,
+		ingesterQuerier:      cfg.IngesterQuerier,
+		queryIngestersWithin: cfg.QueryIngestersWithin,
 	}
 }
 

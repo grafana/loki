@@ -1,7 +1,10 @@
 package manifests
 
 import (
-	"github.com/ViaQ/logerr/kverrors"
+	"fmt"
+	"path"
+
+	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -20,6 +23,7 @@ func BuildServiceMonitors(opts Options) []client.Object {
 		NewCompactorServiceMonitor(opts),
 		NewQueryFrontendServiceMonitor(opts),
 		NewIndexGatewayServiceMonitor(opts),
+		NewRulerServiceMonitor(opts),
 		NewGatewayServiceMonitor(opts),
 	}
 }
@@ -90,6 +94,17 @@ func NewIndexGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
 
+// NewRulerServiceMonitor creates a k8s service monitor for the ruler component
+func NewRulerServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
+	l := ComponentLabels(LabelRulerComponent, opts.Name)
+
+	serviceMonitorName := serviceMonitorName(RulerName(opts.Name))
+	serviceName := serviceNameRulerHTTP(opts.Name)
+	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
+
+	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
+}
+
 // NewGatewayServiceMonitor creates a k8s service monitor for the lokistack-gateway component
 func NewGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 	l := ComponentLabels(LabelGatewayComponent, opts.Name)
@@ -134,14 +149,13 @@ func newServiceMonitor(namespace, serviceMonitorName string, labels labels.Set, 
 }
 
 func configureServiceMonitorPKI(podSpec *corev1.PodSpec, serviceName string) error {
-	secretName := signingServiceSecretName(serviceName)
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
-				Name: secretName,
+				Name: serviceName,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
-						SecretName: secretName,
+						SecretName: serviceName,
 					},
 				},
 			},
@@ -150,14 +164,14 @@ func configureServiceMonitorPKI(podSpec *corev1.PodSpec, serviceName string) err
 	secretContainerSpec := corev1.Container{
 		VolumeMounts: []corev1.VolumeMount{
 			{
-				Name:      secretName,
+				Name:      serviceName,
 				ReadOnly:  false,
-				MountPath: secretDirectory,
+				MountPath: httpTLSDir,
 			},
 		},
 		Args: []string{
-			"-server.http-tls-cert-path=/etc/proxy/secrets/tls.crt",
-			"-server.http-tls-key-path=/etc/proxy/secrets/tls.key",
+			fmt.Sprintf("-server.http-tls-cert-path=%s", path.Join(httpTLSDir, tlsCertFile)),
+			fmt.Sprintf("-server.http-tls-key-path=%s", path.Join(httpTLSDir, tlsKeyFile)),
 		},
 	}
 	uriSchemeContainerSpec := corev1.Container{

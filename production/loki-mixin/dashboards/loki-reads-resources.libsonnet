@@ -1,7 +1,8 @@
+local grafana = import 'grafonnet/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  grafanaDashboards+:
+  grafanaDashboards+::
     {
       'loki-reads-resources.json':
         ($.dashboard('Loki / Reads Resources', uid='reads-resources'))
@@ -33,7 +34,19 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRow(
-          $.row('Querier')
+          $.row('Query Scheduler')
+          .addPanel(
+            $.containerCPUUsagePanel('CPU', 'query-scheduler'),
+          )
+          .addPanel(
+            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-scheduler'),
+          )
+          .addPanel(
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'query-scheduler'),
+          )
+        )
+        .addRow(
+          grafana.row.new('Querier')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'querier'),
           )
@@ -43,9 +56,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             $.goHeapInUsePanel('Memory (go heap inuse)', 'querier'),
           )
-        )
-        .addRow(
-          $.row('')
           .addPanel(
             $.panel('Disk Writes') +
             $.queryPanel(
@@ -69,7 +79,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRow(
-          $.row('Index Gateway')
+          grafana.row.new('Index Gateway')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'index-gateway'),
           )
@@ -79,9 +89,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             $.goHeapInUsePanel('Memory (go heap inuse)', 'index-gateway'),
           )
-        )
-        .addRow(
-          $.row('')
           .addPanel(
             $.panel('Disk Writes') +
             $.queryPanel(
@@ -103,6 +110,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'index-gateway'),
           )
+          .addPanel(
+            $.panel('Query Readiness Duration') +
+            $.queryPanel(
+              ['loki_boltdb_shipper_query_readiness_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']
+            ) +
+            { yaxes: $.yaxes('s') },
+          )
         )
         .addRow(
           $.row('Ingester')
@@ -117,7 +131,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRow(
-          $.row('Ruler')
+          grafana.row.new('Ruler')
           .addPanel(
             $.panel('Rules') +
             $.queryPanel(
@@ -128,9 +142,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'ruler'),
           )
-        )
-        .addRow(
-          $.row('')
           .addPanel(
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'ruler'),
           )

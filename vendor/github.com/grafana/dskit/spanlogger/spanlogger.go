@@ -97,11 +97,9 @@ func (s *SpanLogger) Error(err error) error {
 }
 
 func withContext(ctx context.Context, logger log.Logger, resolver TenantResolver) log.Logger {
-	// Weaveworks uses "orgs" and "orgID" to represent Cortex users,
-	// even though the code-base generally uses `userID` to refer to the same thing.
 	userID, err := resolver.TenantID(ctx)
 	if err == nil && userID != "" {
-		logger = log.With(logger, "org_id", userID)
+		logger = log.With(logger, "user", userID)
 	}
 
 	traceID, ok := tracing.ExtractSampledTraceID(ctx)

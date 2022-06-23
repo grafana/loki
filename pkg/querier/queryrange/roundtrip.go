@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -42,6 +43,7 @@ func NewTripperware(
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
+	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
 	registerer prometheus.Registerer,
 ) (queryrangebase.Tripperware, Stopper, error) {
 	metrics := NewMetrics(registerer)
@@ -51,7 +53,7 @@ func NewTripperware(
 		err error
 	)
 	if cfg.CacheResults {
-		c, err = cache.New(cfg.CacheConfig, registerer, log)
+		c, err = cache.New(cfg.CacheConfig, registerer, log, stats.ResultCache)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -61,7 +63,7 @@ func NewTripperware(
 	}
 
 	metricsTripperware, err := NewMetricTripperware(cfg, log, limits, schema, LokiCodec, c,
-		PrometheusExtractor{}, metrics, registerer)
+		cacheGenNumLoader, PrometheusExtractor{}, metrics, registerer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -223,6 +225,7 @@ const (
 	QueryRangeOp   = "query_range"
 	SeriesOp       = "series"
 	LabelNamesOp   = "labels"
+	IndexStatsOp   = "index_stats"
 )
 
 func getOperation(path string) string {
@@ -231,10 +234,12 @@ func getOperation(path string) string {
 		return QueryRangeOp
 	case strings.HasSuffix(path, "/series"):
 		return SeriesOp
-	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label"):
+	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label") || strings.HasSuffix(path, "/values"):
 		return LabelNamesOp
 	case strings.HasSuffix(path, "/v1/query"):
 		return InstantQueryOp
+	case path == "/loki/api/v1/index/stats":
+		return IndexStatsOp
 	default:
 		return ""
 	}
@@ -280,7 +285,7 @@ func NewLogFilterTripperware(
 				log,
 				schema.Configs,
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-				metrics.ShardingMetrics,
+				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
 			),
 		)
@@ -311,6 +316,7 @@ func NewSeriesTripperware(
 	schema config.SchemaConfig,
 ) (queryrangebase.Tripperware, error) {
 	queryRangeMiddleware := []queryrangebase.Middleware{
+		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
@@ -332,7 +338,7 @@ func NewSeriesTripperware(
 				log,
 				schema.Configs,
 				metrics.InstrumentMiddlewareMetrics,
-				metrics.ShardingMetrics,
+				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
 				codec,
 			),
@@ -356,6 +362,7 @@ func NewLabelsTripperware(
 	metrics *Metrics,
 ) (queryrangebase.Tripperware, error) {
 	queryRangeMiddleware := []queryrangebase.Middleware{
+		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
@@ -387,6 +394,7 @@ func NewMetricTripperware(
 	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
 	c cache.Cache,
+	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
 	extractor queryrangebase.Extractor,
 	metrics *Metrics,
 	registerer prometheus.Registerer,
@@ -414,7 +422,7 @@ func NewMetricTripperware(
 			limits,
 			codec,
 			extractor,
-			nil,
+			cacheGenNumLoader,
 			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
@@ -436,7 +444,7 @@ func NewMetricTripperware(
 				log,
 				schema.Configs,
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-				metrics.ShardingMetrics,
+				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
 			),
 		)
@@ -478,12 +486,12 @@ func NewInstantMetricTripperware(
 
 	if cfg.ShardedQueries {
 		queryRangeMiddleware = append(queryRangeMiddleware,
-			NewSplitByRangeMiddleware(log, limits, nil),
+			NewSplitByRangeMiddleware(log, limits, metrics.MiddlewareMapperMetrics.rangeMapper),
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-				metrics.ShardingMetrics,
+				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
 			),
 		)

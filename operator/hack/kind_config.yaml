@@ -1,0 +1,21 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kind
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true"
+  extraPortMappings:
+  # Ingress Controller Web Port
+  - containerPort: 80
+    hostPort: 80
+  # Ingress Controller Web Secure Port
+  - containerPort: 443
+    hostPort: 443
+  # Ingress Controller Admin Port
+  - containerPort: 8080
+    hostPort: 8080

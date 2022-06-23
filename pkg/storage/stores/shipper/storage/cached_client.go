@@ -50,7 +50,7 @@ func newCachedObjectClient(downstreamClient client.ObjectClient) *cachedObjectCl
 // We have a buffered channel here with a capacity of 1 to make sure only one concurrent call makes it through.
 // We also have a sync.WaitGroup to make sure all the concurrent calls to buildCacheOnce wait until the cache gets rebuilt since
 // we are doing read-through cache, and we do not want to serve stale results.
-func (c *cachedObjectClient) buildCacheOnce(ctx context.Context) {
+func (c *cachedObjectClient) buildCacheOnce(ctx context.Context, forceRefresh bool) {
 	c.buildCacheWg.Add(1)
 	defer c.buildCacheWg.Done()
 
@@ -59,7 +59,7 @@ func (c *cachedObjectClient) buildCacheOnce(ctx context.Context) {
 	select {
 	case c.buildCacheChan <- struct{}{}:
 		c.err = nil
-		c.err = c.buildCache(ctx)
+		c.err = c.buildCache(ctx, forceRefresh)
 		<-c.buildCacheChan
 		if c.err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to build cache", "err", c.err)
@@ -68,7 +68,16 @@ func (c *cachedObjectClient) buildCacheOnce(ctx context.Context) {
 	}
 }
 
-func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+func (c *cachedObjectClient) RefreshIndexListCache(ctx context.Context) {
+	c.buildCacheOnce(ctx, true)
+	c.buildCacheWg.Wait()
+}
+
+func (c *cachedObjectClient) List(ctx context.Context, prefix, objectDelimiter string, bypassCache bool) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	if bypassCache {
+		return c.ObjectClient.List(ctx, prefix, objectDelimiter)
+	}
+
 	prefix = strings.TrimSuffix(prefix, delimiter)
 	ss := strings.Split(prefix, delimiter)
 	if len(ss) > 2 {
@@ -76,7 +85,7 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]clie
 	}
 
 	if time.Since(c.cacheBuiltAt) >= cacheTimeout {
-		c.buildCacheOnce(ctx)
+		c.buildCacheOnce(ctx, false)
 	}
 
 	// wait for cache build operation to finish, if running
@@ -120,8 +129,8 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, _ string) ([]clie
 }
 
 // buildCache builds the cache if expired
-func (c *cachedObjectClient) buildCache(ctx context.Context) error {
-	if time.Since(c.cacheBuiltAt) < cacheTimeout {
+func (c *cachedObjectClient) buildCache(ctx context.Context, forceRefresh bool) error {
+	if !forceRefresh && time.Since(c.cacheBuiltAt) < cacheTimeout {
 		return nil
 	}
 
@@ -144,6 +153,11 @@ func (c *cachedObjectClient) buildCache(ctx context.Context) error {
 	c.tableNames = []client.StorageCommonPrefix{}
 
 	for _, object := range objects {
+		// The s3 client can also return the directory itself in the ListObjects.
+		if object.Key == "" {
+			continue
+		}
+
 		ss := strings.Split(object.Key, delimiter)
 		if len(ss) < 2 || len(ss) > 3 {
 			return fmt.Errorf("invalid key: %s", object.Key)

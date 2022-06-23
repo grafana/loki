@@ -33,6 +33,8 @@ const percentBangString = "%!"
 // It is invalid to include more than one %w verb or to supply it with an
 // operand that does not implement the error interface. The %w verb is otherwise
 // a synonym for %v.
+//
+// Deprecated: As of Go 1.13, use fmt.Errorf instead.
 func Errorf(format string, a ...interface{}) error {
 	format = formatPlusW(format)
 	// Support a ": %[wsv]" suffix, which works well with xerrors.Formatter.

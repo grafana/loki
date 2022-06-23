@@ -135,7 +135,7 @@ func TestChunkMetasFinalize(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			require.Equal(t, tc.output, tc.input.finalize())
+			require.Equal(t, tc.output, tc.input.Finalize())
 		})
 	}
 }

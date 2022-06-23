@@ -3,17 +3,28 @@ title: Releasing Loki Build Image
 ---
 # Releasing `loki-build-image`
 
-The [`loki-build-image`](https://github.com/grafana/loki/tree/master/loki-build-image) is the Docker image used to run tests and build Grafana Loki binaries in CI.
+The [`loki-build-image`](https://github.com/grafana/loki/tree/master/loki-build-image)
+is the Docker image used to run tests and build Grafana Loki binaries in CI.
 
-The image is released with any change to `./loki-build-image` on `main`.
+The build and publish process of the image is triggered upon a merge to `main`
+if there were made any changes in the folder `./loki-build-image/`.
 
-## How To Use a New Release
+**Building and using the `loki-build-image` is a two-step process.**
 
-1. Update the version tag of the `loki-build-image` pipeline defined in `.drone/drone.jsonnet` (search for `pipeline('loki-build-image')`).
-1. Merge change into `main` and wait for the release.
-1. Update `BUILD_IMAGE_VERSION` in the `Makefile`.
-1. Update the image version in all the other places it exists
-    1. Dockerfiles in `cmd` directory
-    1. .circleci/config.yml
-1. Run `make drone BUILD_IN_CONTAINER=false` to rebuild the drone yml file with the new image version (the image version in the Makefile is used)
-2. Merge change into `main`.
+As a **first step** to build the new image, you need to create a pull
+request with the desired changes to the Dockerfile. To increase the version of
+the image, you also need to update the version tag of the `loki-build-image`
+pipeline defined in `.drone/drone.jsonnet` (search for
+`pipeline('loki-build-image')`) and run `BUILD_IN_CONTAINER=false make drone`
+and commit the changes to the same pull request.
+Once approved and merged to `main`, the image with the new version is built.
+
+The new image can only be used after updating the `BUILD_IMAGE_VERSION` in the
+`Makefile` a **second step**. After changing the version in the Makefile and
+updating it in all other places where the image is used:
+
+* Dockerfiles in `cmd` directory
+* `.circleci/config.yml`
+
+run `BUILD_IN_CONTAINER=false make drone` again and submit a PR with the
+generated changes.

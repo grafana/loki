@@ -15,7 +15,6 @@ package tsdb
 
 import (
 	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -133,6 +132,7 @@ func (h *Head) loadWAL(r *wal.Reader, multiRef map[chunks.HeadSeriesRef]chunks.H
 
 	go func() {
 		defer close(decoded)
+		var err error
 		for r.Next() {
 			rec := r.Record()
 			switch dec.Type(rec) {
@@ -438,7 +438,7 @@ func (wp *walSubsetProcessor) waitUntilIdle() {
 	}
 	wp.input <- []record.RefSample{}
 	for len(wp.input) != 0 {
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(10 * time.Microsecond)
 		select {
 		case <-wp.output: // Allow output side to drain to avoid deadlock.
 		default:
@@ -759,7 +759,7 @@ type ChunkSnapshotStats struct {
 // LastChunkSnapshot returns the directory name and index of the most recent chunk snapshot.
 // If dir does not contain any chunk snapshots, ErrNotFound is returned.
 func LastChunkSnapshot(dir string) (string, int, int, error) {
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return "", 0, 0, err
 	}
@@ -804,7 +804,7 @@ func LastChunkSnapshot(dir string) (string, int, int, error) {
 
 // DeleteChunkSnapshots deletes all chunk snapshots in a directory below a given index.
 func DeleteChunkSnapshots(dir string, maxIndex, maxOffset int) error {
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}

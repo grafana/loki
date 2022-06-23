@@ -1,15 +1,13 @@
-
 syntax = "proto3";
 
 package rules;
 
-option go_package = "github.com/grafana/loki/pkg/ruler/rulespb";
-
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-import "google/protobuf/duration.proto";
 import "google/protobuf/any.proto";
+import "google/protobuf/duration.proto";
 import "pkg/logproto/logproto.proto";
 
+option go_package = "github.com/grafana/loki/pkg/ruler/rulespb";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -18,8 +16,10 @@ message RuleGroupDesc {
   reserved 5, 7, 8;
   string name = 1;
   string namespace = 2;
-  google.protobuf.Duration interval = 3
-      [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration interval = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdduration) = true
+  ];
   repeated RuleDesc rules = 4;
   string user = 6;
   // The options field can be used to extend Ruler functionality without
@@ -35,7 +35,10 @@ message RuleDesc {
   string expr = 1;
   string record = 2;
   string alert = 3;
-  google.protobuf.Duration for = 4 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true];
+  google.protobuf.Duration for = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdduration) = true
+  ];
   repeated logproto.LegacyLabelPair labels = 5 [
     (gogoproto.nullable) = false,
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"

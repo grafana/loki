@@ -6,7 +6,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,6 +55,9 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 				IndexGateway: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
+				Ruler: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
 			},
 		},
 	}
@@ -87,6 +90,10 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 		{
 			Service:        NewIndexGatewayHTTPService(opt),
 			ServiceMonitor: NewIndexGatewayServiceMonitor(opt),
+		},
+		{
+			Service:        NewRulerHTTPService(opt),
+			ServiceMonitor: NewRulerServiceMonitor(opt),
 		},
 	}
 

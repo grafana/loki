@@ -5,8 +5,8 @@
 package netaddr
 
 import (
-	"errors"
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -64,7 +64,7 @@ func (s *IPSetBuilder) normalize() {
 		}
 
 		switch {
-		case !rout.Valid() || !rin.Valid():
+		case !rout.IsValid() || !rin.IsValid():
 			// mergeIPRanges should have prevented invalid ranges from
 			// sneaking in.
 			panic("invalid IPRanges during Ranges merge")
@@ -168,9 +168,22 @@ func (s *IPSetBuilder) Clone() *IPSetBuilder {
 	}
 }
 
+func (s *IPSetBuilder) addError(msg string, args ...interface{}) {
+	se := new(stacktraceErr)
+	// Skip three frames: runtime.Callers, addError, and the IPSetBuilder
+	// method that called addError (such as IPSetBuilder.Add).
+	// The resulting stack trace ends at the line in the user's
+	// code where they called into netaddr.
+	n := runtime.Callers(3, se.pcs[:])
+	se.at = se.pcs[:n]
+	se.err = fmt.Errorf(msg, args...)
+	s.errs = append(s.errs, se)
+}
+
 // Add adds ip to s.
 func (s *IPSetBuilder) Add(ip IP) {
 	if ip.IsZero() {
+		s.addError("Add(IP{})")
 		return
 	}
 	s.AddRange(IPRangeFrom(ip, ip))
@@ -178,18 +191,18 @@ func (s *IPSetBuilder) Add(ip IP) {
 
 // AddPrefix adds all IPs in p to s.
 func (s *IPSetBuilder) AddPrefix(p IPPrefix) {
-	if r := p.Range(); r.Valid() {
+	if r := p.Range(); r.IsValid() {
 		s.AddRange(r)
 	} else {
-		s.errs = append(s.errs, fmt.Errorf("AddPrefix of invalid prefix %q", p))
+		s.addError("AddPrefix(%v/%v)", p.IP(), p.Bits())
 	}
 }
 
 // AddRange adds r to s.
 // If r is not Valid, AddRange does nothing.
 func (s *IPSetBuilder) AddRange(r IPRange) {
-	if !r.Valid() {
-		s.errs = append(s.errs, fmt.Errorf("AddRange of invalid range %q", r))
+	if !r.IsValid() {
+		s.addError("AddRange(%v-%v)", r.From(), r.To())
 		return
 	}
 	// If there are any removals (s.out), then we need to compact the set
@@ -213,7 +226,7 @@ func (s *IPSetBuilder) AddSet(b *IPSet) {
 // Remove removes ip from s.
 func (s *IPSetBuilder) Remove(ip IP) {
 	if ip.IsZero() {
-		s.errs = append(s.errs, errors.New("ignored Remove of zero IP"))
+		s.addError("Remove(IP{})")
 	} else {
 		s.RemoveRange(IPRangeFrom(ip, ip))
 	}
@@ -221,19 +234,19 @@ func (s *IPSetBuilder) Remove(ip IP) {
 
 // RemovePrefix removes all IPs in p from s.
 func (s *IPSetBuilder) RemovePrefix(p IPPrefix) {
-	if r := p.Range(); r.Valid() {
+	if r := p.Range(); r.IsValid() {
 		s.RemoveRange(r)
 	} else {
-		s.errs = append(s.errs, fmt.Errorf("RemovePrefix of invalid prefix %q", p))
+		s.addError("RemovePrefix(%v/%v)", p.IP(), p.Bits())
 	}
 }
 
 // RemoveRange removes all IPs in r from s.
 func (s *IPSetBuilder) RemoveRange(r IPRange) {
-	if r.Valid() {
+	if r.IsValid() {
 		s.out = append(s.out, r)
 	} else {
-		s.errs = append(s.errs, fmt.Errorf("RemoveRange of invalid range %q", r))
+		s.addError("RemoveRange(%v-%v)", r.From(), r.To())
 	}
 }
 
@@ -454,5 +467,31 @@ func (e multiErr) Error() string {
 	for _, err := range e {
 		ret = append(ret, err.Error())
 	}
-	return strings.Join(ret, ", ")
+	return strings.Join(ret, "; ")
+}
+
+// A stacktraceErr combines an error with a stack trace.
+type stacktraceErr struct {
+	pcs [16]uintptr // preallocated array of PCs
+	at  []uintptr   // stack trace whence the error
+	err error       // underlying error
+}
+
+func (e *stacktraceErr) Error() string {
+	frames := runtime.CallersFrames(e.at)
+	buf := new(strings.Builder)
+	buf.WriteString(e.err.Error())
+	buf.WriteString(" @ ")
+	for {
+		frame, more := frames.Next()
+		if !more {
+			break
+		}
+		fmt.Fprintf(buf, "%s:%d ", frame.File, frame.Line)
+	}
+	return strings.TrimSpace(buf.String())
+}
+
+func (e *stacktraceErr) Unwrap() error {
+	return e.err
 }

@@ -14,7 +14,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-var nilMetrics = NewShardingMetrics(nil)
+var nilShardMetrics = NewShardMapperMetrics(nil)
+var nilRangeMetrics = NewRangeMapperMetrics(nil)
 
 func TestMappingEquivalence(t *testing.T) {
 	var (
@@ -61,7 +62,7 @@ func TestMappingEquivalence(t *testing.T) {
 
 		opts := EngineOpts{}
 		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, nilMetrics, NoLimits, log.NewNopLogger())
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
 			params := NewLiteralParams(
@@ -77,12 +78,11 @@ func TestMappingEquivalence(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper, err := NewShardMapper(shards, nilMetrics)
-			require.Nil(t, err)
+			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
 			_, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 
-			shardedQry := sharded.Query(params, mapped)
+			shardedQry := sharded.Query(ctx, params, mapped)
 
 			res, err := qry.Exec(ctx)
 			require.Nil(t, err)
@@ -122,11 +122,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`sum_over_time({a=~".+"} | unwrap b [2s])`, time.Second},
 		{`max_over_time({a=~".+"} | unwrap b [2s])`, time.Second},
 		{`max_over_time({a=~".+"} | unwrap b [2s]) by (a)`, time.Second},
-		{`max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a)`, time.Second},
 		{`min_over_time({a=~".+"} | unwrap b [2s])`, time.Second},
 		{`min_over_time({a=~".+"} | unwrap b [2s]) by (a)`, time.Second},
-		{`min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a)`, time.Second},
 		{`rate({a=~".+"}[2s])`, time.Second},
+		{`rate({a=~".+"} | unwrap b [2s])`, time.Second},
 		{`bytes_rate({a=~".+"}[2s])`, time.Second},
 
 		// sum
@@ -135,11 +134,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`sum(sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum(max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`sum(max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`sum(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`sum(min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`sum(rate({a=~".+"}[2s]))`, time.Second},
+		{`sum(rate({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum(bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// sum by
@@ -148,11 +146,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`sum by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`sum by (a) (max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`sum by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`sum by (a) (min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`sum by (a) (rate({a=~".+"}[2s]))`, time.Second},
+		{`sum by (a) (rate({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`sum by (a) (bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// count
@@ -161,11 +158,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`count(sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`count(max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`count(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`count(max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`count(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`count(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`count(min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`count(rate({a=~".+"}[2s]))`, time.Second},
+		{`count(rate({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`count(bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// count by
@@ -174,11 +170,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`count by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`count by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`count by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`count by (a) (max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`count by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`count by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`count by (a) (min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`count by (a) (rate({a=~".+"}[2s]))`, time.Second},
+		{`count by (a) (rate({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`count by (a) (bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// max
@@ -187,11 +182,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`max(sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`max(max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`max(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`max(max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`max(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`max(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`max(min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`max(rate({a=~".+"}[2s]))`, time.Second},
+		{`max(rate({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`max(bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// max by
@@ -200,11 +194,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`max by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`max by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`max by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`max by (a) (max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`max by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`max by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`max by (a) (min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`max by (a) (rate({a=~".+"}[2s]))`, time.Second},
+		{`max by (a) (rate({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`max by (a) (bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// min
@@ -213,11 +206,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`min(sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min(max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min(max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`min(max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`min(min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min(min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`min(min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`min(rate({a=~".+"}[2s]))`, time.Second},
+		{`min(rate({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min(bytes_rate({a=~".+"}[2s]))`, time.Second},
 
 		// min by
@@ -226,16 +218,76 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`min by (a) (sum_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min by (a) (max_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min by (a) (max_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`min by (a) (max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`min by (a) (min_over_time({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min by (a) (min_over_time({a=~".+"} | unwrap b [2s]) by (a))`, time.Second},
-		{`min by (a) (min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 		{`min by (a) (rate({a=~".+"}[2s]))`, time.Second},
+		{`min by (a) (rate({a=~".+"} | unwrap b [2s]))`, time.Second},
 		{`min by (a) (bytes_rate({a=~".+"}[2s]))`, time.Second},
+
+		// Label extraction stage
+		{`max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a)`, time.Second},
+		{`min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a)`, time.Second},
+
+		{`sum(bytes_over_time({a=~".+"} | logfmt | line > 5 [2s]))`, time.Second},
+		{`sum(count_over_time({a=~".+"} | logfmt [2s]))`, time.Second},
+		{`sum(sum_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`sum(max_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`sum(max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`sum(min_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`sum(min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`sum(rate({a=~".+"} | logfmt[2s]))`, time.Second},
+		{`sum(rate({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`sum(bytes_rate({a=~".+"} | logfmt[2s]))`, time.Second},
+		{`sum by (a) (bytes_over_time({a=~".+"} | logfmt [2s]))`, time.Second},
+		{`sum by (a) (count_over_time({a=~".+"} | logfmt [2s]))`, time.Second},
+		{`sum by (a) (sum_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`sum by (a) (max_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`sum by (a) (max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`sum by (a) (min_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`sum by (a) (min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`sum by (a) (rate({a=~".+"} | logfmt[2s]))`, time.Second},
+		{`sum by (a) (rate({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`sum by (a) (bytes_rate({a=~".+"} | logfmt[2s]))`, time.Second},
+
+		{`count(max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`count(min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`count by (a) (max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`count by (a) (min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+
+		{`max(bytes_over_time({a=~".+"} | logfmt [2s]))`, time.Second},
+		{`max(count_over_time({a=~".+"} | logfmt [2s]))`, time.Second},
+		{`max(sum_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`max(max_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`max(max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`max(min_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`max(min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`max by (a) (bytes_over_time({a=~".+"} | logfmt [2s]))`, time.Second},
+		{`max by (a) (count_over_time({a=~".+"} | logfmt [2s]))`, time.Second},
+		{`max by (a) (sum_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`max by (a) (max_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`max by (a) (max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`max by (a) (min_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`max by (a) (min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+
+		{`min(bytes_over_time({a=~".+"} | logfmt [2s]))`, time.Second},
+		{`min(count_over_time({a=~".+"} | logfmt [2s]))`, time.Second},
+		{`min(sum_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`min(max_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`min(max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`min(min_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`min(min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`min by (a) (bytes_over_time({a=~".+"} | logfmt [2s]))`, time.Second},
+		{`min by (a) (count_over_time({a=~".+"} | logfmt [2s]))`, time.Second},
+		{`min by (a) (sum_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`min by (a) (max_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`min by (a) (max_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
+		{`min by (a) (min_over_time({a=~".+"} | logfmt | unwrap line [2s]))`, time.Second},
+		{`min by (a) (min_over_time({a=~".+"} | logfmt | unwrap line [2s]) by (a))`, time.Second},
 
 		// Binary operations
 		{`bytes_over_time({a=~".+"}[3s]) + count_over_time({a=~".+"}[5s])`, time.Second},
 		{`sum(count_over_time({a=~".+"}[3s]) * count(sum_over_time({a=~".+"} | unwrap b [5s])))`, time.Second},
+		{`sum by (a) (count_over_time({a=~".+"} | logfmt | line > 5 [3s])) / sum by (a) (count_over_time({a=~".+"} [3s]))`, time.Second},
 
 		// Multi vector aggregator layer queries
 		{`sum(max(bytes_over_time({a=~".+"}[3s])))`, time.Second},
@@ -260,7 +312,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 		opts := EngineOpts{}
 		regularEngine := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-		downstreamEngine := NewDownstreamEngine(opts, MockDownstreamer{regularEngine}, nilMetrics, NoLimits, log.NewNopLogger())
+		downstreamEngine := NewDownstreamEngine(opts, MockDownstreamer{regularEngine}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
@@ -282,14 +334,14 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			require.Nil(t, err)
 
 			// Downstream engine - split by range
-			rangeMapper, err := NewRangeMapper(tc.splitByInterval)
+			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics)
 			require.Nil(t, err)
 			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
 			require.Nil(t, err)
 
 			require.False(t, noop, "downstream engine cannot execute noop")
 
-			rangeQry := downstreamEngine.Query(params, rangeExpr)
+			rangeQry := downstreamEngine.Query(ctx, params, rangeExpr)
 			rangeRes, err := rangeQry.Exec(ctx)
 			require.Nil(t, err)
 

@@ -3,11 +3,13 @@ package querier
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
@@ -19,10 +21,15 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
+	"github.com/grafana/loki/pkg/util/server"
 	serverutil "github.com/grafana/loki/pkg/util/server"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -200,7 +207,32 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log, ctx := spanlogger.New(r.Context(), "query.Label")
+
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("labels"))
+	defer timer.ObserveDuration()
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
 	resp, err := q.querier.Label(r.Context(), req)
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+
+	resLength := 0
+	if resp != nil {
+		resLength = len(resp.Values)
+	}
+	// record stats about the label query
+	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
+	statResult.Log(level.Debug(log))
+
+	status := 200
+	if err != nil {
+		status, _ = server.ClientHTTPStatusAndError(err)
+	}
+
+	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, strconv.Itoa(status), statResult)
+
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
@@ -350,13 +382,68 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log, ctx := spanlogger.New(r.Context(), "query.Series")
+
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("series"))
+	defer timer.ObserveDuration()
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
 	resp, err := q.querier.Series(r.Context(), req)
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+
+	resLength := 0
+	if resp != nil {
+		resLength = len(resp.Series)
+	}
+
+	// record stats about the label query
+	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
+	statResult.Log(level.Debug(log))
+
+	status := 200
+	if err != nil {
+		status, _ = server.ClientHTTPStatusAndError(err)
+	}
+
+	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
 
 	err = marshal.WriteSeriesResponseJSON(*resp, w)
+	if err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+}
+
+// IndexStatsHandler queries the index for the data statistics related to a query
+func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
+
+	req, err := loghttp.ParseIndexStatsQuery(r)
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+
+	_, ctx := spanlogger.New(r.Context(), "query.IndexStats")
+
+	// TODO(owen-d): log metadata, record stats?
+	resp, err := q.querier.IndexStats(ctx, req)
+	if resp == nil {
+		// Some stores don't implement this
+		resp = &index_stats.Stats{}
+	}
+
+	if err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+
+	err = marshal.WriteIndexStatsResponseJSON(resp, w)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
