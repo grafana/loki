@@ -229,9 +229,24 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	if q.logExecQuery {
 		queryHash := HashedQuery(q.params.Query())
 		if GetRangeType(q.params) == InstantType {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query(), "query_hash", queryHash)
+			level.Info(logutil.WithContext(ctx, q.logger)).Log(
+				"msg", "executing query",
+				"type", "instant",
+				"query", q.params.Query(),
+				"query_hash", queryHash,
+				"start", q.params.Start(),
+			)
 		} else {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.Query(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step(), "query_hash", queryHash)
+			level.Info(logutil.WithContext(ctx, q.logger)).Log(
+				"msg", "executing query",
+				"type", "range",
+				"query", q.params.Query(),
+				"length", q.params.End().Sub(q.params.Start()),
+				"step", q.params.Step(),
+				"query_hash", queryHash,
+				"start", q.params.Start(),
+				"end", q.params.End(),
+			)
 		}
 	}
 

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/singleflight"
+
 	"github.com/grafana/dskit/user"
 
 	"github.com/go-kit/log"
@@ -33,6 +35,9 @@ type Config struct {
 	Transformer            UserIDTransformer     `yaml:"-"`
 	CacheIndexStatsResults bool                  `yaml:"cache_index_stats_results"`
 	StatsCacheConfig       IndexStatsCacheConfig `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
+
+	// SingleFlight is configured/initialized as part of modules and injected here
+	SingleFlight *singleflight.SingleFlight `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -134,6 +139,11 @@ func NewTripperware(
 		codec = &RequestProtobufCodec{}
 	}
 
+	singleFlight, err := NewSingleFlightTripperware(log, cfg, codec)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, statsCache,
 		cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
@@ -180,14 +190,14 @@ func NewTripperware(
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		var (
-			metricRT       = metricsTripperware(next)
-			limitedRT      = limitedTripperware(next)
-			logFilterRT    = logFilterTripperware(next)
-			seriesRT       = seriesTripperware(next)
-			labelsRT       = labelsTripperware(next)
-			instantRT      = instantMetricTripperware(next)
-			statsRT        = indexStatsTripperware(next)
-			seriesVolumeRT = seriesVolumeTripperware(next)
+			metricRT       = singleFlight("metrics", metricsTripperware(next))
+			limitedRT      = singleFlight("limited", limitedTripperware(next))
+			logFilterRT    = singleFlight("logFilter", logFilterTripperware(next))
+			seriesRT       = singleFlight("series", seriesTripperware(next))
+			labelsRT       = singleFlight("labels", labelsTripperware(next))
+			instantRT      = singleFlight("instant", instantMetricTripperware(next))
+			statsRT        = singleFlight("stats", indexStatsTripperware(next))
+			seriesVolumeRT = singleFlight("volume", seriesVolumeTripperware(next))
 		)
 
 		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, limits)
@@ -238,7 +248,16 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		queryHash := logql.HashedQuery(rangeQuery.Query)
-		level.Info(logger).Log("msg", "executing query", "type", "range", "query", rangeQuery.Query, "length", rangeQuery.End.Sub(rangeQuery.Start), "step", rangeQuery.Step, "query_hash", queryHash)
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "range",
+			"query", rangeQuery.Query,
+			"length", rangeQuery.End.Sub(rangeQuery.Start),
+			"step", rangeQuery.Step,
+			"query_hash", queryHash,
+			"start", rangeQuery.Start,
+			"end", rangeQuery.End,
+		)
 
 		switch e := expr.(type) {
 		case syntax.SampleExpr:
@@ -774,6 +793,46 @@ func NewInstantMetricTripperware(
 		}
 		return next
 	}, nil
+}
+
+func NewSingleFlightTripperware(
+	log log.Logger,
+	cfg Config,
+	codec queryrangebase.Codec,
+) (func(name string, next http.RoundTripper) http.RoundTripper, error) {
+	if cfg.SingleFlight == nil { // Noop
+		return func(_ string, next http.RoundTripper) http.RoundTripper {
+			return next
+		}, nil
+	}
+
+	return func(name string, next http.RoundTripper) http.RoundTripper {
+		handler := SingleFlightHandler(name, cfg.SingleFlight, log, next, codec)
+
+		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			request, err := codec.DecodeRequest(r.Context(), r, nil)
+			if err != nil {
+				return nil, err
+			}
+
+			request = request.WithStartEnd(
+				truncateToSecond(request.GetStart()),
+				truncateToSecond(request.GetEnd()),
+			)
+
+			ctx := context.WithValue(r.Context(), "headers", r.Header)
+			response, err := handler.Do(ctx, request)
+			if err != nil {
+				return nil, err
+			}
+
+			return codec.EncodeResponse(ctx, r, response)
+		})
+	}, nil
+}
+
+func truncateToSecond(t int64) int64 {
+	return int64(model.TimeFromUnix(model.Time(t).Unix()))
 }
 
 func NewVolumeTripperware(

@@ -60,7 +60,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	f.IntVar(&cfg.AsyncCacheWriteBackConcurrency, prefix+"max-async-cache-write-back-concurrency", 16, "The maximum number of concurrent asynchronous writeback cache can occur.")
 	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
-	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"(deprecated: use embedded-cache instead) Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
 
 	cfg.Prefix = prefix
 }

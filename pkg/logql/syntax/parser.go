@@ -20,6 +20,10 @@ const (
 	errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"
 )
 
+var (
+	ErrNotASampleExpr = errors.New("only sample expression supported")
+)
+
 var parserPool = sync.Pool{
 	New: func() interface{} {
 		p := &parser{
@@ -145,7 +149,7 @@ func ParseSampleExpr(input string) (SampleExpr, error) {
 	}
 	sampleExpr, ok := expr.(SampleExpr)
 	if !ok {
-		return nil, errors.New("only sample expression supported")
+		return nil, ErrNotASampleExpr
 	}
 
 	return sampleExpr, nil

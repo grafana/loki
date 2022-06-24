@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/singleflight"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -79,6 +81,7 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 // The various modules that make up Loki.
 const (
 	Ring                     string = "ring"
+	SingleFlight             string = "singleflight"
 	RuntimeConfig            string = "runtime-config"
 	Overrides                string = "overrides"
 	OverridesExporter        string = "overrides-exporter"
@@ -218,6 +221,31 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 		t.InternalServer.HTTP.Path("/ring").Methods("GET").Handler(t.ring)
 	}
 	return t.ring, nil
+}
+
+func (t *Loki) initSingleFlight() (_ services.Service, err error) {
+	if !t.Cfg.Common.SingleFlightConfig.Enabled {
+		return nil, nil
+	}
+
+	t.Cfg.Common.SingleFlightConfig.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
+	rm, err := singleflight.NewRingManager(t.Cfg.Common.SingleFlightConfig, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "new index gateway ring manager")
+	}
+
+	t.singleflightRingManager = rm
+	t.Server.HTTP.Path("/singleflight/ring").Methods("GET", "POST").Handler(t.singleflightRingManager)
+
+	sf, err := singleflight.NewSingleFlight(rm, t.Server, t.HTTPAuthMiddleware, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	t.Cfg.QueryRange.SingleFlight = sf
+	t.singleflightRingManager.SingleFlight = sf
+
+	return t.singleflightRingManager, nil
 }
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
@@ -1081,6 +1109,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Common.SingleFlightConfig.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 

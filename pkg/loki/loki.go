@@ -10,6 +10,8 @@ import (
 	rt "runtime"
 	"time"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/singleflight"
+
 	"go.uber.org/atomic"
 
 	"github.com/fatih/color"
@@ -370,6 +372,7 @@ type Loki struct {
 	querySchedulerRingManager *scheduler.RingManager
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *indexgateway.RingManager
+	singleflightRingManager   *singleflight.RingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -619,6 +622,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
+	mm.RegisterModule(SingleFlight, t.initSingleFlight, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
@@ -650,6 +654,7 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
+		SingleFlight:             {RuntimeConfig, Server, MemberlistKV},
 		Analytics:                {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
@@ -658,7 +663,7 @@ func (t *Loki) setupModuleManager() error {
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
-		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
+		QueryFrontendTripperware: {Server, Overrides, TenantConfigs, SingleFlight},
 		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
 		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},

@@ -3,6 +3,8 @@ package common
 import (
 	"flag"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/singleflight"
+
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 
@@ -48,6 +50,9 @@ type Config struct {
 
 	// CompactorAddress is the grpc address of the compactor in the form host:port
 	CompactorGRPCAddress string `yaml:"compactor_grpc_address"`
+
+	// SingleFlightConfig is the configuration to use when singleflight is enabled.
+	SingleFlightConfig singleflight.Config `yaml:"singleflight"`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -62,6 +67,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.InstanceInterfaceNames = netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
 	throwaway.StringVar(&c.InstanceAddr, "common.instance-addr", "", "Default advertised address to be used by Loki components.")
 	throwaway.Var((*flagext.StringSlice)(&c.InstanceInterfaceNames), "common.instance-interface-names", "List of network interfaces to read address from.")
+
+	// flags that only live in common
+	c.SingleFlightConfig.RegisterFlagsWithPrefix("common.singleflight", "", f)
 
 	f.StringVar(&c.CompactorAddress, "common.compactor-address", "", "the http address of the compactor in the form http://host:port")
 	f.StringVar(&c.CompactorGRPCAddress, "common.compactor-grpc-address", "", "the grpc address of the compactor in the form host:port")
