@@ -109,6 +109,8 @@ type Limits struct {
 	RulerRemoteWriteQueueMaxBackoff        time.Duration                `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff"`
 	RulerRemoteWriteQueueRetryOnRateLimit  bool                         `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
 
+	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes"`
+
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
 	StreamRetention []StreamRetention `yaml:"retention_stream,omitempty" json:"retention_stream,omitempty"`
@@ -191,6 +193,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.QuerySplitDuration.Set("30m")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by an interval and execute in parallel, 0 disables it. This also determines how cache keys are chosen when result caching is enabled")
+
+	f.BoolVar(&l.CompactorDeletionEnabled, "compactor.allow-deletes", false, "Enable access to the deletion API.")
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -524,6 +528,10 @@ func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 
 func (o *Overrides) UnorderedWrites(userID string) bool {
 	return o.getOverridesForUser(userID).UnorderedWrites
+}
+
+func (o *Overrides) CompactorDeletionEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).CompactorDeletionEnabled
 }
 
 func (o *Overrides) DefaultLimits() *Limits {
