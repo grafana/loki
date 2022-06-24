@@ -227,6 +227,7 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 	ringCfg := t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.LifecyclerConfig.RingConfig
 	cacheRing, err := ring.New(ringCfg, cache.GroupcacheRingName, cache.GroupcacheRingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer))
 	if err != nil {
+
 		return
 	}
 	t.Server.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
@@ -249,6 +250,7 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 		return nil, err
 	}
 
+	// TODO: This should be extracted or made it's own
 	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Cache = gc
 
 	m, err := services.NewManager(cacheRing, lifecycler)
@@ -1125,6 +1127,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
