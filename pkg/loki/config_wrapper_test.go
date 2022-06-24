@@ -969,7 +969,7 @@ func TestDefaultUnmarshal(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.True(t, config.AuthEnabled)
-		assert.Equal(t, 80, config.Server.HTTPListenPort)
+		assert.Equal(t, 3100, config.Server.HTTPListenPort)
 		assert.Equal(t, 9095, config.Server.GRPCListenPort)
 	})
 }
