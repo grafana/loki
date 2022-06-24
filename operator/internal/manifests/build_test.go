@@ -219,7 +219,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 	}
 }
 
-func TestBuildAll_WithFeatureFlags_EnableHTTPTLSServices(t *testing.T) {
+func TestBuildAll_WithFeatureFlags_EnableTLSHTTPServices(t *testing.T) {
 	opts := Options{
 		Name:      "test",
 		Namespace: "test",
@@ -230,7 +230,7 @@ func TestBuildAll_WithFeatureFlags_EnableHTTPTLSServices(t *testing.T) {
 			},
 		},
 		Flags: FeatureFlags{
-			EnableHTTPTLSServices: true,
+			EnableTLSHTTPServices: true,
 		},
 	}
 
@@ -305,7 +305,7 @@ func TestBuildAll_WithFeatureFlags_EnableTLSServiceMonitorConfig(t *testing.T) {
 		},
 		Flags: FeatureFlags{
 			EnableServiceMonitors:         true,
-			EnableHTTPTLSServices:         true,
+			EnableTLSHTTPServices:         true,
 			EnableTLSServiceMonitorConfig: true,
 		},
 	}
@@ -555,7 +555,7 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 				},
 				Flags: FeatureFlags{
 					EnableGateway:                 false,
-					EnableHTTPTLSServices:         true,
+					EnableTLSHTTPServices:         true,
 					EnableTLSServiceMonitorConfig: false,
 				},
 			},
@@ -593,7 +593,7 @@ func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
 				},
 				Flags: FeatureFlags{
 					EnableGateway:                 true,
-					EnableHTTPTLSServices:         true,
+					EnableTLSHTTPServices:         true,
 					EnableTLSServiceMonitorConfig: true,
 				},
 			},

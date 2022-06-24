@@ -15,7 +15,7 @@ featureFlags:
   enableCertSigningService: true
   enableServiceMonitors: true
   enableTlsServiceMonitorConfig: true
-  enableHttpTLSServices: true
+  enableTLSHttpServices: true
   enableTlsGRPCServices: true
   enableLokiStackAlerts: true
   enableLokiStackGateway: true

@@ -23,7 +23,7 @@ import (
 // BuildIngester builds the k8s objects required to run Loki Ingester
 func BuildIngester(opts Options) ([]client.Object, error) {
 	statefulSet := NewIngesterStatefulSet(opts)
-	if opts.Flags.EnableHTTPTLSServices {
+	if opts.Flags.EnableTLSHTTPServices {
 		if err := configureIngesterHTTPServicePKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}

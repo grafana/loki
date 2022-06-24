@@ -37,7 +37,7 @@ type Options struct {
 type FeatureFlags struct {
 	EnableCertificateSigningService bool
 	EnableServiceMonitors           bool
-	EnableHTTPTLSServices           bool
+	EnableTLSHTTPServices           bool
 	EnableTLSServiceMonitorConfig   bool
 	EnableTLSGRPCServices           bool
 	EnablePrometheusAlerts          bool
