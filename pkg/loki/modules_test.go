@@ -218,7 +218,7 @@ func TestIndexGatewayRingMode_when_TargetIsRead(t *testing.T) {
 	})
 }
 
-func TestIndexGatewayClientConfig_when_TargetIsQuerier(t *testing.T) {
+func TestIndexGatewayClientConfig_when_TargetIsQuerierOrRead(t *testing.T) {
 	dir := t.TempDir()
 
 	t.Run("IndexGateway client is disabled when running querier target", func(t *testing.T) {
@@ -236,8 +236,8 @@ func TestIndexGatewayClientConfig_when_TargetIsQuerier(t *testing.T) {
 		}()
 
 		require.NoError(t, err)
-		assert.Equal(t, false, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
-		assert.Equal(t, false, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
+		assert.False(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
+		assert.False(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
 	})
 
 	t.Run("IndexGateway client is endabled when running read target", func(t *testing.T) {
@@ -257,8 +257,8 @@ func TestIndexGatewayClientConfig_when_TargetIsQuerier(t *testing.T) {
 		}()
 
 		require.NoError(t, err)
-		assert.Equal(t, true, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
-		assert.Equal(t, true, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
+		assert.True(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
+		assert.True(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
 	})
 }
 
