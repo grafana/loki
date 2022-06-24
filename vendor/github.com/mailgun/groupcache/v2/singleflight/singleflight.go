@@ -18,7 +18,10 @@ limitations under the License.
 // mechanism.
 package singleflight
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 // call is an in-flight or completed Do call
 type call struct {
@@ -48,17 +51,31 @@ func (g *Group) Do(key string, fn func() (interface{}, error)) (interface{}, err
 		c.wg.Wait()
 		return c.val, c.err
 	}
-	c := new(call)
+	c := &call{
+		err: fmt.Errorf("singleflight leader panicked"),
+	}
 	c.wg.Add(1)
 	g.m[key] = c
 	g.mu.Unlock()
 
-	c.val, c.err = fn()
-	c.wg.Done()
+	defer func() {
+		c.wg.Done()
 
-	g.mu.Lock()
-	delete(g.m, key)
-	g.mu.Unlock()
+		g.mu.Lock()
+		delete(g.m, key)
+		g.mu.Unlock()
+	}()
+
+	c.val, c.err = fn()
 
 	return c.val, c.err
+}
+
+// Lock prevents single flights from occurring for the duration
+// of the provided function. This allows users to clear caches
+// or preform some operation in between running flights.
+func (g *Group) Lock(fn func()) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	fn()
 }

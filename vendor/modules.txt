@@ -1055,6 +1055,13 @@ github.com/leodido/go-urn
 ## explicit
 github.com/leodido/ragel-machinery
 github.com/leodido/ragel-machinery/parser
+# github.com/mailgun/groupcache/v2 v2.3.2
+## explicit; go 1.15
+github.com/mailgun/groupcache/v2
+github.com/mailgun/groupcache/v2/consistenthash
+github.com/mailgun/groupcache/v2/groupcachepb
+github.com/mailgun/groupcache/v2/lru
+github.com/mailgun/groupcache/v2/singleflight
 # github.com/mailru/easyjson v0.7.7
 ## explicit; go 1.12
 github.com/mailru/easyjson/buffer
@@ -1299,6 +1306,7 @@ github.com/rs/xid
 github.com/sean-/seed
 # github.com/segmentio/fasthash v1.0.3
 ## explicit; go 1.11
+github.com/segmentio/fasthash/fnv1
 github.com/segmentio/fasthash/fnv1a
 # github.com/sercand/kuberesolver/v4 v4.0.0
 ## explicit; go 1.14
@@ -1386,8 +1394,13 @@ github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 ## explicit
 github.com/ugorji/go/codec
+<<<<<<< HEAD
 # github.com/weaveworks/common v0.0.0-20230511094633-334485600903
 ## explicit; go 1.14
+=======
+# github.com/weaveworks/common v0.0.0-20211015155308-ebe5bdc2c89e
+## explicit; go 1.13
+>>>>>>> 00127cd50 (use mailgun groupcache)
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/test
 # github.com/weaveworks/promrus v1.2.0

@@ -1,0 +1,62 @@
+# Changelog
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+# 
+## [2.3.1] - 2022-05-17
+### Changed
+* Fix example in README #40
+* fix: deal with panics in Getter.Get #39
+
+## [2.3.0] - 2022-01-06
+### Added
+* Added Group.Set() to allow users to explicity set values in the cache.
+
+## [2.2.1] - 2021-01-13
+### Changes
+* Now uses the much faster fnv1
+* Now md5 hashs the keys to help distribute hosts more evenly in some
+  cases.
+
+## [2.2.0] - 2019-07-09
+### Added
+* Added `SetLogger()` to pass in a logrus entry for logging peer errors
+* Added `DeregisterGroup()` to remove an existing group cache
+### Changes
+* Fixed race condition in `Remove()`
+
+## [2.1.0] - 2019-06-10
+### Changes
+* `Get()` now returns immediately when context is done during a groupcache peer
+  conversation. Previously `Get()` would call the `Getter` with a done context.
+
+## [2.0.0] - 2019-06-04
+### Changes
+* Now using golang standard `context.Context` instead of `groupcache.Context`.
+* HTTP requests made by `httpGetter` now respect `context.Context` done.
+* Moved `HTTPPool` config `Context` and `Transport` to `HTTPPoolOptions` for consist configuration.
+* Now always populating the hotcache. A more complex algorithm is unnecessary
+  when the LRU cache will ensure the most used values remain in the cache. The
+  evict code ensures the hotcache does not overcrowd the maincache.
+* Changed import paths to /v2 in accordance with go modules rules
+* Fixed Issue where `DefaultTransport` was always used even if `Transport` was
+  specified by the user.
+### Removed
+* Reverted change to associate `Transport` to `httpGetter`, Which caused a data
+  race. Also discovered `DefaultTransport` has per address connection pooling
+  only when the request was a success, which is sufficient for most use cases.
+
+## [1.3.0] - 2019-05-23
+### Added
+* Added `Remove()` method to `Group` to purge a key from the group.
+
+## [1.1.0] - 2019-04-10
+### Added
+* Sinks can now accept an expire time
+* Changed import path to mailgun/groupcache
+
+## [hash 5b532d6fd5efaf7fa130d4e859a2fde0fc3a9e1b] - 2019-01-29
+### Changes
+* Initial import from https://github.com/golang/groupcache

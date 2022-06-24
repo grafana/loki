@@ -244,7 +244,7 @@ func (t *Loki) initGroupcache() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	gc, err := cache.NewGroupCache(cacheRing, lifecycler, util_log.Logger)
+	gc, err := cache.NewGroupCache(cacheRing, lifecycler, t.Server, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
