@@ -568,7 +568,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 }
 
 func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
-	filteringEnabled, err := deletion.FilteringEnabled(t.Cfg.CompactorConfig.DeletionMode)
+	filteringEnabled, err := deletion.DeleteEnabled(t.Cfg.CompactorConfig.DeletionMode)
 	if err != nil {
 		return nil, err
 	}
@@ -864,16 +864,11 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 
-	if t.Cfg.CompactorConfig.RetentionEnabled {
-		switch t.compactor.DeleteMode() {
-		case deletion.WholeStreamDeletion, deletion.FilterOnly, deletion.FilterAndDelete:
-			t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler()))
-			t.Server.HTTP.Path("/loki/api/v1/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler()))
-			t.Server.HTTP.Path("/loki/api/v1/delete").Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler()))
-			t.Server.HTTP.Path("/loki/api/v1/cache/generation_numbers").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler()))
-		default:
-			break
-		}
+	if t.Cfg.CompactorConfig.RetentionEnabled && t.compactor.DeleteMode().DeleteEnabled() {
+		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler()))
+		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler()))
+		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler()))
+		t.Server.HTTP.Path("/loki/api/v1/cache/generation_numbers").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler()))
 	}
 
 	return t.compactor, nil
@@ -971,12 +966,12 @@ func (t *Loki) deleteRequestsClient() (deletion.DeleteRequestsClient, error) {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
-	filteringEnabled, err := deletion.FilteringEnabled(t.Cfg.CompactorConfig.DeletionMode)
+	deleteEnabled, err := deletion.DeleteEnabled(t.Cfg.CompactorConfig.DeletionMode)
 	if err != nil {
 		return nil, err
 	}
 
-	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) || !filteringEnabled {
+	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) || !deleteEnabled {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
