@@ -394,6 +394,24 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.tail-proxy-url
 [tail_proxy_url: <string> | default = ""]
 
+tail_tls_config:
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
+  # CLI flag: -frontend.tail-tls-config.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+  
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -frontend.tail-tls-config.tls-key-path
+  [tls_key_path: <string> | default = ""]
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
+  # CLI flag: -frontend.tail-tls-config.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+  # Skip validating server certificate.
+  # CLI flag: -frontend.tail-tls-config.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+
 # DNS hostname used for finding query-schedulers.
 # CLI flag: -frontend.scheduler-address
 [scheduler_address: <string> | default = ""]
