@@ -4,6 +4,7 @@ import (
 	"flag"
 
 	"github.com/grafana/dskit/crypto/tls"
+
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	v1 "github.com/grafana/loki/pkg/lokifrontend/frontend/v1"
 	v2 "github.com/grafana/loki/pkg/lokifrontend/frontend/v2"
