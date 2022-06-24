@@ -1320,26 +1320,6 @@ spec:
     containerPort: 443
     deploymentName: loki-operator-controller-manager
     failurePolicy: Fail
-    generateName: v1lokistack.kb.io
-    rules:
-    - apiGroups:
-      - loki.grafana.com
-      apiVersions:
-      - v1
-      operations:
-      - CREATE
-      - UPDATE
-      resources:
-      - lokistacks
-    sideEffects: None
-    targetPort: 9443
-    type: ValidatingAdmissionWebhook
-    webhookPath: /validate-loki-grafana-com-v1-lokistack
-  - admissionReviewVersions:
-    - v1
-    containerPort: 443
-    deploymentName: loki-operator-controller-manager
-    failurePolicy: Fail
     generateName: valertingrule.kb.io
     rules:
     - apiGroups:
@@ -1355,6 +1335,26 @@ spec:
     targetPort: 9443
     type: ValidatingAdmissionWebhook
     webhookPath: /validate-loki-grafana-com-v1beta1-alertingrule
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: loki-operator-controller-manager
+    failurePolicy: Fail
+    generateName: vlokistack.kb.io
+    rules:
+    - apiGroups:
+      - loki.grafana.com
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - lokistacks
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-loki-grafana-com-v1-lokistack
   - admissionReviewVersions:
     - v1
     containerPort: 443

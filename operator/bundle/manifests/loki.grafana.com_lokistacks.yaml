@@ -12,6 +12,17 @@ metadata:
     app.kubernetes.io/version: 0.0.1
   name: lokistacks.loki.grafana.com
 spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        service:
+          name: webhook-service
+          namespace: openshift-operators-redhat
+          path: /convert
+      conversionReviewVersions:
+      - v1
+      - v1beta1
   group: loki.grafana.com
   names:
     categories:
