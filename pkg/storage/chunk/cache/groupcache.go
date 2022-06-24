@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 
 	"github.com/grafana/dskit/ring"
+	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
 type GroupCache struct {
@@ -36,13 +37,13 @@ const (
 
 type GroupCacheConfig struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
-
-	Cache *GroupCache
+	RingConfig       lokiutil.RingConfig   `yaml:"ring,omitempty"`
+	Cache            *GroupCache           `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.FlagSet) {
-	cfg.LifecyclerConfig.RegisterFlagsWithPrefix(prefix+"querier", f, util_log.Logger)
+	cfg.LifecyclerConfig.RegisterFlagsWithPrefix(prefix+"groupcache", f, util_log.Logger)
 }
 
 func NewGroupCache(ring *ring.Ring, lifecycler *ring.Lifecycler, server *server.Server, logger log.Logger) (*GroupCache, error) {
