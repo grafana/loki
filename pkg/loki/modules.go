@@ -79,6 +79,7 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 // The various modules that make up Loki.
 const (
 	Ring                     string = "ring"
+	GroupCache               string = "groupcache"
 	RuntimeConfig            string = "runtime-config"
 	Overrides                string = "overrides"
 	OverridesExporter        string = "overrides-exporter"
@@ -218,6 +219,49 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 		t.InternalServer.HTTP.Path("/ring").Methods("GET").Handler(t.ring)
 	}
 	return t.ring, nil
+}
+
+func (t *Loki) initGroupcache() (_ services.Service, err error) {
+	//TODO, only do this when groupcache is enabled
+
+	ringCfg := t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.LifecyclerConfig.RingConfig
+	cacheRing, err := ring.New(ringCfg, cache.GroupcacheRingName, cache.GroupcacheRingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer))
+	if err != nil {
+		return
+	}
+	t.Server.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
+
+	lifecycler, err := ring.NewLifecycler(
+		t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.LifecyclerConfig,
+		nil,
+		cache.GroupcacheRingName,
+		cache.GroupcacheRingKey,
+		false,
+		util_log.Logger,
+		prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	gc, err := cache.NewGroupCache(cacheRing, lifecycler, util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	t.Cfg.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Cache = gc
+
+	m, err := services.NewManager(cacheRing, lifecycler)
+	return services.NewBasicService(func(serviceContext context.Context) error {
+		return services.StartManagerAndAwaitHealthy(serviceContext, m)
+	}, func(serviceContext context.Context) error {
+		<-serviceContext.Done()
+		return nil
+	}, func(failureCase error) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		return services.StopManagerAndAwaitStopped(ctx, m)
+	}), nil
 }
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {

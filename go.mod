@@ -133,6 +133,8 @@ require (
 	google.golang.org/protobuf v1.31.0
 )
 
+require github.com/vimeo/galaxycache v0.0.0-20210323154928-b7e5d71c067a
+
 require (
 	cloud.google.com/go v0.110.2 // indirect
 	cloud.google.com/go/compute v1.20.1 // indirect

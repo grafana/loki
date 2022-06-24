@@ -36,6 +36,7 @@ type Config struct {
 	Redis          RedisConfig           `yaml:"redis"`
 	EmbeddedCache  EmbeddedCacheConfig   `yaml:"embedded_cache"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"` // deprecated
+	GroupCache     GroupCacheConfig      `yaml:"groupcache"`
 
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
@@ -57,10 +58,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.EmbeddedCache.RegisterFlagsWithPrefix(prefix, description, f)
+	cfg.GroupCache.RegisterFlagsWithPrefix(prefix, description, f)
 	f.IntVar(&cfg.AsyncCacheWriteBackConcurrency, prefix+"max-async-cache-write-back-concurrency", 16, "The maximum number of concurrent asynchronous writeback cache can occur.")
 	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
-	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"(deprecated: use embedded-cache instead) Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
 
 	cfg.Prefix = prefix
 }
@@ -82,6 +83,10 @@ func IsMemcacheSet(cfg Config) bool {
 // Internally, this function is used to set Redis as the cache storage to be used.
 func IsRedisSet(cfg Config) bool {
 	return cfg.Redis.Endpoint != ""
+}
+
+func IsGroupCacheSet(cfg Config) bool {
+	return cfg.GroupCache.Cache != nil
 }
 
 func IsEmbeddedCacheSet(cfg Config) bool {
@@ -172,6 +177,12 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		}
 		cache := NewRedisCache(cacheName, client, logger, cacheType)
 		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
+	}
+
+	if IsGroupCacheSet(cfg) {
+		cache := cfg.GroupCache.Cache
+		//TODO: tf does the getter come from
+		cache.InitGroupCache(nil, cacheType)
 	}
 
 	cache := NewTiered(caches)

@@ -12,6 +12,8 @@ import (
 
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -345,6 +347,7 @@ type Loki struct {
 	Server                    *server.Server
 	InternalServer            *server.Server
 	ring                      *ring.Ring
+	groupcache                *cache.GroupCache
 	Overrides                 limiter.CombinedLimits
 	tenantConfigs             *runtime.TenantConfigs
 	TenantLimits              validation.TenantLimits
@@ -619,6 +622,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
+	mm.RegisterModule(GroupCache, t.initGroupcache, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
@@ -650,6 +654,7 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
+		GroupCache:               {RuntimeConfig, Server, MemberlistKV},
 		Analytics:                {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
@@ -658,7 +663,7 @@ func (t *Loki) setupModuleManager() error {
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
-		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
+		QueryFrontendTripperware: {Server, Overrides, TenantConfigs, GroupCache},
 		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
 		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
