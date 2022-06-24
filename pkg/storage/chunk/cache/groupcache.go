@@ -5,6 +5,10 @@ import (
 	"flag"
 	"time"
 
+	"github.com/weaveworks/common/server"
+
+	"github.com/mailgun/groupcache/v2"
+
 	util_log "github.com/grafana/loki/pkg/util/log"
 
 	"github.com/go-kit/kit/log/level"
@@ -13,24 +17,16 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 
 	"github.com/grafana/dskit/ring"
-	"go.opencensus.io/plugin/ocgrpc"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/vimeo/galaxycache"
-	gcgrpc "github.com/vimeo/galaxycache/grpc"
 )
 
 type GroupCache struct {
 	peerRing       *ring.Ring
-	universe       *galaxycache.Universe
-	cache          *galaxycache.Galaxy
+	cache          *groupcache.Group
+	pool           *groupcache.HTTPPool
 	cacheType      stats.CacheType
 	stopChan       chan struct{}
 	updateInterval time.Duration
-	myUrl          string
 	logger         log.Logger
-	lifecycler     *ring.Lifecycler
 }
 
 const (
@@ -49,17 +45,13 @@ func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.F
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix(prefix+"querier", f, util_log.Logger)
 }
 
-func NewGroupCache(ring *ring.Ring, lifecycler *ring.Lifecycler, logger log.Logger) (*GroupCache, error) {
-	grpcProto := gcgrpc.NewGRPCFetchProtocol(grpc.WithTransportCredentials(insecure.NewCredentials()))
-	u := galaxycache.NewUniverse(grpcProto, lifecycler.Addr)
-
-	grpcServer := grpc.NewServer(grpc.StatsHandler(&ocgrpc.ServerHandler{}))
-	gcgrpc.RegisterGRPCServer(u, grpcServer)
+func NewGroupCache(ring *ring.Ring, lifecycler *ring.Lifecycler, server *server.Server, logger log.Logger) (*GroupCache, error) {
+	pool := groupcache.NewHTTPPoolOpts(lifecycler.Addr, &groupcache.HTTPPoolOptions{})
+	server.HTTP.Path("/_groupcache").Handler(pool)
 
 	cache := &GroupCache{
 		peerRing:       ring,
-		lifecycler:     lifecycler,
-		universe:       u,
+		pool:           pool,
 		logger:         logger,
 		stopChan:       make(chan struct{}),
 		updateInterval: 30 * time.Second,
@@ -68,9 +60,8 @@ func NewGroupCache(ring *ring.Ring, lifecycler *ring.Lifecycler, logger log.Logg
 	return cache, nil
 }
 
-func (c *GroupCache) InitGroupCache(getter galaxycache.BackendGetter, ct stats.CacheType) {
-	// TODO: configure the name
-	c.cache = c.universe.NewGalaxy("the-cache", 1<<30, getter)
+func (c *GroupCache) InitGroupCache(name string, getter groupcache.GetterFunc, ct stats.CacheType) {
+	c.cache = groupcache.NewGroup(name, 1<<30, getter)
 	c.cacheType = ct
 
 	go c.updatePeers()
@@ -97,10 +88,7 @@ func (c *GroupCache) update() {
 	}
 
 	level.Info(c.logger).Log("msg", "got groupcache peers", "peers", urls)
-
-	if err := c.universe.Set(urls...); err != nil {
-		level.Warn(c.logger).Log("msg", "error setting groupcache peer urls")
-	}
+	c.pool.Set(urls...)
 }
 
 func (c *GroupCache) peerUrls() ([]string, error) {
@@ -121,22 +109,21 @@ func (c *GroupCache) peerUrls() ([]string, error) {
 // TODO: Issue the key requests in parallel, groupcache should be able to handle that
 func (c *GroupCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
 	// TODO: do the things
-	values := make([][]byte, len(keys))
-
-	val := galaxycache.ByteCodec{}
-	for _, key := range keys {
-		if err := c.cache.Get(ctx, key, &val); err != nil {
-			return nil, nil, nil, err
-		}
-
-		buf, err := val.MarshalBinary()
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		values = append(values, buf)
-	}
-
+	//values := make([][]byte, len(keys))
+	//
+	//for _, key := range keys {
+	//	if err := c.cache.Get(ctx, key, &val); err != nil {
+	//		return nil, nil, nil, err
+	//	}
+	//
+	//	buf, err := val.MarshalBinary()
+	//	if err != nil {
+	//		return nil, nil, nil, err
+	//	}
+	//
+	//	values = append(values, buf)
+	//}
+	//
 	return nil, nil, keys, nil // count everything as a cache miss for now
 }
 
@@ -149,10 +136,6 @@ func (c *GroupCache) Store(ctx context.Context, keys []string, values [][]byte) 
 // Stop implements Cache.
 func (c *GroupCache) Stop() {
 	close(c.stopChan)
-
-	if err := c.universe.Shutdown(); err != nil {
-		level.Warn(c.logger).Log("msg", "error stopping groupcache")
-	}
 }
 
 func (c *GroupCache) GetCacheType() stats.CacheType {

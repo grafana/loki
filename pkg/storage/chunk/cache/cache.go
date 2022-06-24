@@ -142,7 +142,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 	if IsGroupCacheSet(cfg) {
 		cache := cfg.GroupCache.Cache
 		//TODO: tf does the getter come from
-		cache.InitGroupCache(nil, cacheType)
+		cache.InitGroupCache(cfg.Prefix+"groupcache", nil, cacheType)
 	}
 
 	cache := NewTiered(caches)

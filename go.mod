@@ -83,7 +83,7 @@ require (
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.34.0
 	github.com/prometheus/prometheus v1.8.2-0.20211119115433-692a54649ed7
-	github.com/segmentio/fasthash v1.0.2
+	github.com/segmentio/fasthash v1.0.3
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
 	github.com/sony/gobreaker v0.4.1
@@ -113,12 +113,12 @@ require (
 )
 
 require (
+	github.com/go-kit/kit v0.12.0
+	github.com/mailgun/groupcache/v2 v2.3.2
 	github.com/prometheus/alertmanager v0.24.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/willf/bloom v2.0.3+incompatible
 )
-
-require github.com/vimeo/galaxycache v0.0.0-20210323154928-b7e5d71c067a
 
 require (
 	cloud.google.com/go v0.100.2 // indirect
@@ -165,7 +165,6 @@ require (
 	github.com/edsrzf/mmap-go v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
-	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/analysis v0.21.2 // indirect
