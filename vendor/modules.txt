@@ -1034,6 +1034,15 @@ github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 ## explicit
 github.com/ugorji/go/codec
+# github.com/vimeo/galaxycache v0.0.0-20210323154928-b7e5d71c067a
+## explicit; go 1.12
+github.com/vimeo/galaxycache
+github.com/vimeo/galaxycache/consistenthash
+github.com/vimeo/galaxycache/galaxycachepb
+github.com/vimeo/galaxycache/grpc
+github.com/vimeo/galaxycache/lru
+github.com/vimeo/galaxycache/promoter
+github.com/vimeo/galaxycache/singleflight
 # github.com/weaveworks/common v0.0.0-20211015155308-ebe5bdc2c89e
 ## explicit; go 1.13
 github.com/weaveworks/common/aws
