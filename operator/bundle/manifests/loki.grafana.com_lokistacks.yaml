@@ -20,6 +20,7 @@ spec:
           name: webhook-service
           namespace: openshift-operators-redhat
           path: /convert
+          port: 443
       conversionReviewVersions:
       - v1
       - v1beta1

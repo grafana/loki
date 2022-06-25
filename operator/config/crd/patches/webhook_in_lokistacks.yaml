@@ -12,6 +12,7 @@ spec:
           namespace: system
           name: webhook-service
           path: /convert
+          port: 443
       conversionReviewVersions:
       - v1
       - v1beta1
