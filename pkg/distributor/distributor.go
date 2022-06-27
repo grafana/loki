@@ -87,6 +87,14 @@ type Distributor struct {
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendFailures *prometheus.CounterVec
 	replicationFactor      prometheus.Gauge
+	logSender              LogSender
+}
+
+var DefaultLogSender LogSender = nil
+
+//send log to ES or kafka
+type LogSender interface {
+	Send(ctx context.Context, tenantID string, req *logproto.PushRequest) error
 }
 
 // New a distributor creates.
@@ -170,6 +178,8 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 			Name:      "distributor_replication_factor",
 			Help:      "The configured replication factor.",
 		}),
+
+		logSender: DefaultLogSender,
 	}
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))

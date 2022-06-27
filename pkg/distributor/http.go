@@ -50,6 +50,17 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = d.Push(r.Context(), req)
+	if d.logSender != nil {
+		sendErr := d.logSender.Send(r.Context(), tenantID, req)
+		if sendErr != nil {
+			level.Warn(logger).Log(
+				"msg", "logSender send log fail",
+				"err", "sendErr",
+			)
+			http.Error(w, sendErr.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
