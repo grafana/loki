@@ -640,7 +640,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         commands: [
           'sleep 15',
           'docker ps',
-          'image="$($(docker ps -f ancestor=jrei/systemd-debian --last 1 --format {{.ID}}))"',
+          'image="$(docker ps -f ancestor=jrei/systemd-debian --last 1 --format {{.ID}})"',
           'echo "Running image $image"',
           "docker exec $image sh -c '" + |||
             // Install loki and check it's running

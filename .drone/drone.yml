@@ -1110,7 +1110,7 @@ steps:
 - commands:
   - sleep 15
   - docker ps
-  - image="$($(docker ps -f ancestor=jrei/systemd-debian --last 1 --format {{.ID}}))"
+  - image="$(docker ps -f ancestor=jrei/systemd-debian --last 1 --format {{.ID}})"
   - echo "Running image $image"
   - |-
     docker exec $image sh -c '// Install loki and check it's running
@@ -1424,6 +1424,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 7575a87e42cf9abd540b0d41fb3b547dc38f577b8b1f5a468514724fab443e97
+hmac: ce8a3f43015ffa75b9d8ab19642d8c1319aa4c9beed228fc8a0bae0a0e6c6dc5
 
 ...
