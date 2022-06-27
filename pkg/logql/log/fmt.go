@@ -128,14 +128,11 @@ func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	lf.buf.Reset()
 	lf.currentLine = line
 
-	if err := lf.Template.Execute(lf.buf, lbs.Labels().Map()); err != nil {
+	if err := lf.Template.Execute(lf.buf, lbs.Map()); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		return line, true
 	}
-	// todo(cyriltovena): we might want to reuse the input line or a bytes buffer.
-	res := make([]byte, len(lf.buf.Bytes()))
-	copy(res, lf.buf.Bytes())
-	return res, true
+	return lf.buf.Bytes(), true
 }
 
 func (lf *LineFormatter) RequiredLabelNames() []string {
@@ -287,7 +284,7 @@ func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) 
 		}
 		lf.buf.Reset()
 		if data == nil {
-			data = lbs.Labels().Map()
+			data = lbs.Map()
 		}
 		if err := f.tmpl.Execute(lf.buf, data); err != nil {
 			lbs.SetErr(errTemplateFormat)

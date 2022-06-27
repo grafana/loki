@@ -114,7 +114,7 @@ func Test_SeriesCleaner(t *testing.T) {
 				}
 
 				// remove series for c1 without __name__ label, which should work just fine
-				return cleaner.Cleanup(entryFromChunk(testSchema, c1).UserID, c1.Metric.WithoutLabels(labels.MetricName))
+				return cleaner.Cleanup(entryFromChunk(testSchema, c1).UserID, labels.NewBuilder(c1.Metric).Del(labels.MetricName).Labels())
 			})
 			require.NoError(t, err)
 
@@ -153,7 +153,7 @@ func entryFromChunk(s config.SchemaConfig, c chunk.Chunk) ChunkEntry {
 			From:     c.From,
 			Through:  c.Through,
 		},
-		Labels: c.Metric.WithoutLabels("__name__"),
+		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(),
 	}
 }
 

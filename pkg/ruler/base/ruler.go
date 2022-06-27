@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
@@ -94,6 +95,8 @@ type Config struct {
 	AlertmanagerRefreshInterval time.Duration `yaml:"alertmanager_refresh_interval"`
 	// Enables the ruler notifier to use the Alertmananger V2 API.
 	AlertmanangerEnableV2API bool `yaml:"enable_alertmanager_v2"`
+	// Configuration for alert relabeling.
+	AlertRelabelConfigs []*relabel.Config `yaml:"alert_relabel_configs,omitempty"`
 	// Capacity of the queue for notifications to be sent to the Alertmanager.
 	NotificationQueueCapacity int `yaml:"notification_queue_capacity"`
 	// HTTP timeout duration when sending notifications to the Alertmanager.

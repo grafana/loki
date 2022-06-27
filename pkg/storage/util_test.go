@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -22,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
+	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	loki_util "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -187,7 +189,7 @@ Outer:
 					continue Outer
 				}
 			}
-			l := c.Metric.WithoutLabels(labels.MetricName)
+			l := labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels()
 			if m.f != nil {
 				if m.f.ForRequest(ctx).ShouldFilter(l) {
 					continue
@@ -241,7 +243,7 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		refs = append(refs, r)
 	}
 
-	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, util_log.Logger)
+	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, util_log.Logger, stats.ChunkCache)
 	if err != nil {
 		panic(err)
 	}
@@ -251,6 +253,10 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		panic(err)
 	}
 	return [][]chunk.Chunk{refs}, []*fetcher.Fetcher{f}, nil
+}
+
+func (m *mockChunkStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
+	return nil, nil
 }
 
 type mockChunkStoreClient struct {

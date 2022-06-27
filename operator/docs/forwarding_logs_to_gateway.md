@@ -1,6 +1,6 @@
 # Forwarding Logs to LokiStack
 
-This document will describe how to send application, infrastructure, and audit logs to the Lokistack Gateway as different tenants using Promtail or Fluentd. The built-in gateway provides secure access to the distributor (and query-frontend) via consulting an OAuth/OIDC endpoint for the request subject.
+This document will describe how to send application, infrastructure, and audit logs to the LokiStack Gateway as different tenants using Promtail or Fluentd. The built-in gateway provides secure access to the distributor (and query-frontend) via consulting an OAuth/OIDC endpoint for the request subject.
 
 __Please read the [hacking guide](./hack_loki_operator.md) before proceeding with the following instructions.__
 
@@ -37,7 +37,8 @@ _Note: While this document will only give instructions for two methods of log fo
 
     ```console
     kubectl -n openshift-logging create secret generic lokistack-gateway-bearer-token \
-    --from-literal=token="/var/run/secrets/kubernetes.io/serviceaccount/token"
+      --from-literal=token="/var/run/secrets/kubernetes.io/serviceaccount/token" \
+      --from-literal=ca-bundle.crt="$(kubectl get cm lokistack-dev-ca-bundle -o json | jq -r '.data."service-ca.crt"')"
     ```
 
 * Create the following `ClusterRole` and `ClusterRoleBinding` which will allow the cluster to authenticate the user(s) submitting the logs:
@@ -178,13 +179,19 @@ To configure Promtail to send application, audit, and infrastructure logs, add t
 clients:
   - # ...
     bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-    url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/audit/loki/api/v1/push
+    tls_config:
+      ca_file: /run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+    url: https://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/audit/loki/api/v1/push
   - # ...
     bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-    url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application/loki/api/v1/push
+    tls_config:
+      ca_file: /run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+    url: https://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application/loki/api/v1/push
   - # ...
     bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-    url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/infrastructure/loki/api/v1/push
+    tls_config:
+      ca_file: /run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+    url: https://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/infrastructure/loki/api/v1/push
 ```
 
 The rest of the configuration can be configured to the developer's desire.
@@ -199,8 +206,9 @@ The Fluentd configuration can be overrided to target the `application` endpoint 
 <match **>
   @type loki
   # ...
-  bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-  url: http://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application
+  bearer_token_file /var/run/secrets/kubernetes.io/serviceaccount/token
+  ca_cert /run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+  url https://lokistack-dev-gateway-http.openshift-logging.svc:8080/api/logs/v1/application
 </match>
 ```
 

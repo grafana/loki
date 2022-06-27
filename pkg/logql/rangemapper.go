@@ -113,11 +113,7 @@ func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
 // is pushed down to the downstream expression.
 func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.VectorAggregationExpr, recorder *downstreamRecorder) (syntax.SampleExpr, error) {
 	// immediately clone the passed expr to avoid mutating the original
-	expr, err := clone(expr)
-	if err != nil {
-		return nil, err
-	}
-
+	expr = clone(expr)
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e, recorder)
@@ -187,9 +183,11 @@ func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 // sumOverFullRange returns an expression that sums up individual downstream queries (with preserving labels)
 // and dividing it by the full range in seconds to calculate a rate value.
 // The operation defines the range aggregation operation of the downstream queries.
-// Example:
+// Examples:
 // rate({app="foo"}[2m])
 // => (sum without (count_over_time({app="foo"}[1m]) ++ count_over_time({app="foo"}[1m]) offset 1m) / 120)
+// rate({app="foo"} | unwrap bar [2m])
+// => (sum without (sum_over_time({app="foo"}[1m]) ++ sum_over_time({app="foo"}[1m]) offset 1m) / 120)
 func (m RangeMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrideDownstream *syntax.VectorAggregationExpr, operation string, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
 	var downstreamExpr syntax.SampleExpr = &syntax.RangeAggregationExpr{
 		Left:      expr.Left,
@@ -203,7 +201,12 @@ func (m RangeMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrid
 			Grouping:  overrideDownstream.Grouping,
 			Operation: overrideDownstream.Operation,
 		}
+		// Ensure our modified expression is still valid.
+		if downstreamExpr.(*syntax.VectorAggregationExpr).Left.(*syntax.RangeAggregationExpr).Validate() != nil {
+			return expr
+		}
 	}
+
 	return &syntax.BinOpExpr{
 		SampleExpr: &syntax.VectorAggregationExpr{
 			Left: m.mapConcatSampleExpr(downstreamExpr, rangeInterval, recorder),
@@ -247,7 +250,7 @@ func (m RangeMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregatio
 // appendDownstream adds expression expr with a range interval 'interval' and offset 'offset' to the downstreams list.
 // Returns the updated downstream ConcatSampleExpr.
 func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
-	sampleExpr, _ := clone(expr)
+	sampleExpr := clone(expr)
 	sampleExpr.Walk(func(e interface{}) {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
@@ -341,21 +344,50 @@ func (m RangeMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		return expr
 	}
 
-	// We cannot execute downstream queries that would potentially produce a huge amount of series
-	// and therefore would very likely fail.
-	if expr.Grouping == nil && vectorAggrPushdown == nil && hasLabelExtractionStage(expr) {
+	labelExtractor := hasLabelExtractionStage(expr)
+
+	// Downstream queries with label extractors can potentially produce a huge amount of series
+	// which can impact the queries and consequently fail.
+	// Note: vector aggregation expressions aggregate the result in a single empty label set,
+	// so these expressions can be pushed downstream
+	if expr.Grouping == nil && vectorAggrPushdown == nil && labelExtractor {
 		return expr
 	}
 	switch expr.Operation {
-	case syntax.OpRangeTypeBytes, syntax.OpRangeTypeCount, syntax.OpRangeTypeSum:
+	case syntax.OpRangeTypeSum:
+		return m.vectorAggrWithRangeDownstreams(expr, vectorAggrPushdown, syntax.OpTypeSum, rangeInterval, recorder)
+	case syntax.OpRangeTypeBytes, syntax.OpRangeTypeCount:
+		// Downstream queries with label extractors use concat as aggregation operator instead of sum
+		// in order to merge the resultant label sets
+		if labelExtractor {
+			var downstream syntax.SampleExpr = expr
+			if vectorAggrPushdown != nil {
+				downstream = vectorAggrPushdown
+			}
+			return m.mapConcatSampleExpr(downstream, rangeInterval, recorder)
+		}
 		return m.vectorAggrWithRangeDownstreams(expr, vectorAggrPushdown, syntax.OpTypeSum, rangeInterval, recorder)
 	case syntax.OpRangeTypeMax:
 		return m.vectorAggrWithRangeDownstreams(expr, vectorAggrPushdown, syntax.OpTypeMax, rangeInterval, recorder)
 	case syntax.OpRangeTypeMin:
 		return m.vectorAggrWithRangeDownstreams(expr, vectorAggrPushdown, syntax.OpTypeMin, rangeInterval, recorder)
 	case syntax.OpRangeTypeRate:
-		return m.sumOverFullRange(expr, vectorAggrPushdown, syntax.OpRangeTypeCount, rangeInterval, recorder)
+		if labelExtractor && vectorAggrPushdown.Operation != syntax.OpTypeSum {
+			return expr
+		}
+		// rate({app="foo"}[2m]) =>
+		// => (sum without (count_over_time({app="foo"}[1m]) ++ count_over_time({app="foo"}[1m]) offset 1m) / 120)
+		op := syntax.OpRangeTypeCount
+		if expr.Left.Unwrap != nil {
+			// rate({app="foo"} | unwrap bar [2m])
+			// => (sum without (sum_over_time({app="foo"}[1m]) ++ sum_over_time({app="foo"}[1m]) offset 1m) / 120)
+			op = syntax.OpRangeTypeSum
+		}
+		return m.sumOverFullRange(expr, vectorAggrPushdown, op, rangeInterval, recorder)
 	case syntax.OpRangeTypeBytesRate:
+		if labelExtractor && vectorAggrPushdown.Operation != syntax.OpTypeSum {
+			return expr
+		}
 		return m.sumOverFullRange(expr, vectorAggrPushdown, syntax.OpRangeTypeBytes, rangeInterval, recorder)
 	default:
 		// this should not be reachable.
@@ -397,6 +429,10 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 // This is needed whenever we want to modify the existing query tree.
 // clone is identical to syntax.Expr.Clone() but with the additional type
 // casting for syntax.SampleExpr.
-func clone(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
-	return syntax.ParseSampleExpr(expr.String())
+func clone(expr syntax.SampleExpr) syntax.SampleExpr {
+	e, err := syntax.ParseSampleExpr(expr.String())
+	if err != nil {
+		panic(err)
+	}
+	return e
 }

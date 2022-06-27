@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,6 +42,9 @@ func TestServicesMatchPorts(t *testing.T) {
 					Replicas: 1,
 				},
 				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ruler: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -96,6 +99,13 @@ func TestServicesMatchPorts(t *testing.T) {
 			Services: []*corev1.Service{
 				NewIndexGatewayGRPCService(opt),
 				NewIndexGatewayHTTPService(opt),
+			},
+		},
+		{
+			Containers: NewRulerStatefulSet(opt).Spec.Template.Spec.Containers,
+			Services: []*corev1.Service{
+				NewRulerGRPCService(opt),
+				NewRulerHTTPService(opt),
 			},
 		},
 	}
@@ -163,6 +173,9 @@ func TestServicesMatchLabels(t *testing.T) {
 				IndexGateway: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
+				Ruler: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
 			},
 		},
 	}
@@ -215,6 +228,13 @@ func TestServicesMatchLabels(t *testing.T) {
 			Services: []*corev1.Service{
 				NewIndexGatewayGRPCService(opt),
 				NewIndexGatewayHTTPService(opt),
+			},
+		},
+		{
+			Object: NewRulerStatefulSet(opt),
+			Services: []*corev1.Service{
+				NewRulerGRPCService(opt),
+				NewRulerHTTPService(opt),
 			},
 		},
 	}

@@ -3,7 +3,7 @@ package ui
 
 import (
 	// The blank import is to make Go modules happy.
-	_ "github.com/prometheus/prometheus/util/modtimevfs"
+	_ "github.com/prometheus/alertmanager/pkg/modtimevfs"
 	_ "github.com/shurcooL/vfsgen"
 )
 

@@ -229,7 +229,6 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 	// TODO(dannyk): configure HTTP client overrides
 	// metadata is only used by prometheus scrape configs
 	overrides.Client.MetadataConfig = config.MetadataConfig{Send: false}
-	overrides.Client.SigV4Config = nil
 
 	if r.overrides.RulerRemoteWriteDisabled(tenant) {
 		overrides.Enabled = false
@@ -294,6 +293,10 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 
 	if v := r.overrides.RulerRemoteWriteQueueRetryOnRateLimit(tenant); v {
 		overrides.Client.QueueConfig.RetryOnRateLimit = v
+	}
+
+	if v := r.overrides.RulerRemoteWriteSigV4Config(tenant); v != nil {
+		overrides.Client.SigV4Config = v
 	}
 
 	return overrides, nil

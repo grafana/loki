@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 	storageerrors "github.com/grafana/loki/pkg/storage/errors"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/extract"
@@ -67,6 +68,7 @@ type IndexStore interface {
 	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
 	// SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
 	// This is only used for GetSeries implementation.
 	// Todo we might want to pass it as a parameter to GetSeries instead.
@@ -211,7 +213,7 @@ func (c *indexStore) chunksToSeries(ctx context.Context, in []logproto.ChunkRef,
 				continue outer
 			}
 
-			results = append(results, chk.Metric.WithoutLabels(labels.MetricName))
+			results = append(results, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())
 		}
 	}
 	sort.Slice(results, func(i, j int) bool {
@@ -572,7 +574,6 @@ func (c *indexStore) lookupLabelNamesBySeries(ctx context.Context, from, through
 	level.Debug(log).Log("entries", len(entries))
 
 	var result util.UniqueStrings
-	result.Add(model.MetricNameLabel)
 	for _, entry := range entries {
 		lbs := []string{}
 		err := jsoniter.ConfigFastest.Unmarshal(entry.Value, &lbs)
@@ -663,4 +664,9 @@ func (c *indexStore) convertChunkIDsToChunkRefs(_ context.Context, userID string
 	}
 
 	return chunkSet, nil
+}
+
+// old index stores do not implement stats -- skip
+func (c *indexStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	return nil, nil
 }

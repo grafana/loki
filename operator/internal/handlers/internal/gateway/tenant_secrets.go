@@ -6,9 +6,8 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/handlers/internal/secrets"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/status"
 
@@ -48,7 +47,7 @@ func GetTenantSecrets(
 		}
 
 		var ts *manifests.TenantSecrets
-		ts, err := secrets.ExtractGatewaySecret(&gatewaySecret, tenant.TenantName)
+		ts, err := extractSecret(&gatewaySecret, tenant.TenantName)
 		if err != nil {
 			return nil, &status.DegradedError{
 				Message: "Invalid gateway tenant secret contents",
@@ -60,4 +59,22 @@ func GetTenantSecrets(
 	}
 
 	return tenantSecrets, nil
+}
+
+// extractSecret reads a k8s secret into a manifest tenant secret struct if valid.
+func extractSecret(s *corev1.Secret, tenantName string) (*manifests.TenantSecrets, error) {
+	// Extract and validate mandatory fields
+	clientID := s.Data["clientID"]
+	if len(clientID) == 0 {
+		return nil, kverrors.New("missing clientID field", "field", "clientID")
+	}
+	clientSecret := s.Data["clientSecret"]
+	issuerCAPath := s.Data["issuerCAPath"]
+
+	return &manifests.TenantSecrets{
+		TenantName:   tenantName,
+		ClientID:     string(clientID),
+		ClientSecret: string(clientSecret),
+		IssuerCAPath: string(issuerCAPath),
+	}, nil
 }

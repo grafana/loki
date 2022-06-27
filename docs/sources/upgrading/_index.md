@@ -31,6 +31,28 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Loki
+
+#### Evenly spread queriers across kubernetes nodes
+
+We now evenly spread queriers across the available kubernetes nodes, but allowing more than one querier to be scheduled into the same node.
+If you want to run at most a single querier per node, set `$._config.querier.use_topology_spread` to false.
+
+#### Implementation of unwrapped `rate` aggregation changed
+
+The implementation of the `rate()` aggregation function changed back to the previous implemention prior to [#5013](https://github.com/grafana/loki/pulls/5013).
+This means that the rate per second is calculated based on the sum of the extracted values, instead of the average increase over time.
+
+If you want the extracted values to be treated as [Counter](https://prometheus.io/docs/concepts/metric_types/#counter) metric, you should use the new `rate_counter()` aggregation function, which calculates the per-second average rate of increase of the vector.
+
+#### Default value for `azure.container-name` changed
+
+This value now defaults to `loki`, it was previously set to `cortex`. If you are relying on this container name for your chunks or ruler storage, you will have to manually specify `-azure.container-name=cortex` or `-ruler.storage.azure.container-name=cortex` respectively.
+
+#### Default value for `server.http-listen-port` changed
+
+This value now defaults to 3100, so the Loki process doesn't require special privileges. Previously, it had been set to port 80, which is a privileged port. If you need Loki to listen on port 80, you can set it back to the previous default using `-server.http-listen-port=80`.
+
 ## 2.5.0
 
 ### Loki

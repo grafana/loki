@@ -92,7 +92,7 @@ func SetErrorHandler(h ErrorHandler) {
 	globalErrorHandler.setDelegate(h)
 }
 
-// Handle is a convenience function for ErrorHandler().Handle(err)
+// Handle is a convenience function for ErrorHandler().Handle(err).
 func Handle(err error) {
 	GetErrorHandler().Handle(err)
 }
