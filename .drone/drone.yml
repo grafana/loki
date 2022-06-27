@@ -1088,17 +1088,6 @@ steps:
     path: /run
   - name: tmp-debian
     path: /tmp
-- detach: true
-  image: centos/systemd
-  name: systemd-centos
-  privileged: true
-  volumes:
-  - name: cgroup
-    path: /sys/fs/cgroup
-  - name: run-centos
-    path: /run
-  - name: tmp-centos
-    path: /tmp
 - commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
   environment:
@@ -1421,6 +1410,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: ad136ffeef36f41909dc549c46e38076ccb5e929f2c24b94ddf931786e53b9f8
+hmac: c848bf18508cee4b69515238e7881f8bdc834d3a71f5da984ff94e8d1902eeb8
 
 ...

@@ -599,26 +599,26 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         detach: true,
         privileged: true,
       },
-      {
-        name: 'systemd-centos',
-        image: 'centos/systemd',
-        volumes: [
-          {
-            name: 'cgroup',
-            path: '/sys/fs/cgroup',
-          },
-          {
-            name: 'run-centos',
-            path: '/run',
-          },
-          {
-            name: 'tmp-centos',
-            path: '/tmp',
-          },
-        ],
-        detach: true,
-        privileged: true,
-      },
+      // {
+      //   name: 'systemd-centos',
+      //   image: 'centos/systemd',
+      //   volumes: [
+      //     {
+      //       name: 'cgroup',
+      //       path: '/sys/fs/cgroup',
+      //     },
+      //     {
+      //       name: 'run-centos',
+      //       path: '/run',
+      //     },
+      //     {
+      //       name: 'tmp-centos',
+      //       path: '/tmp',
+      //     },
+      //   ],
+      //   detach: true,
+      //   privileged: true,
+      // },
       run('write-key',
           commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
           env={
