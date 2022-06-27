@@ -1110,20 +1110,20 @@ steps:
 - commands:
   - sleep 15
   - docker ps
-  - image="$(docker ps -f ancestor=jrei/systemd-debian --last 1 --format {{.ID}})"
-  - echo "Running image $image"
-  - |-
-    docker exec $image sh -c '// Install loki and check it's running
-    dpkg -i dist/loki_0.0.0~rc0_amd64.deb
-    [ "$(systemctl is-active loki)" = "active" ] || exit 1
-    // Install promtail and check it's running
-    dpkg -i dist/promtail_0.0.0~rc0_amd64.deb
-    [ "$(systemctl is-active promtail)" = "active" ] || exit 1
-    // Install logcli
-    dpkg -i dist/logcli_0.0.0~rc0_amd64.deb
-    // Check that there are logs (from the dpkg install)
-    [ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1
-    '
+  - image="$$(docker ps -f ancestor="jrei/systemd-debian" --last 1 --format {{.ID}})"
+  - echo "Running image $$image"
+  - docker exec $$image sh -c '
+  - '  // Install loki and check it''s running'
+  - '  dpkg -i dist/loki_0.0.0~rc0_amd64.deb'
+  - '  [ "$$(systemctl is-active loki)" = "active" ] || exit 1'
+  - '  // Install promtail and check it''s running'
+  - '  dpkg -i dist/promtail_0.0.0~rc0_amd64.deb'
+  - '  [ "$$(systemctl is-active promtail)" = "active" ] || exit 1'
+  - '  // Install logcli'
+  - '  dpkg -i dist/logcli_0.0.0~rc0_amd64.deb'
+  - '  // Check that there are logs (from the dpkg install)'
+  - '  [ $$(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
+  - ''''
   image: docker
   name: test deb package
   privileged: true
@@ -1424,6 +1424,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: ce8a3f43015ffa75b9d8ab19642d8c1319aa4c9beed228fc8a0bae0a0e6c6dc5
+hmac: 15cfa1bf50f1a63cb01aa75d5d189ba8d0533e8a74e2392899c781c938106e79
 
 ...
