@@ -119,14 +119,14 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 	log.Span.SetTag("postFilter", true)
 	log.Span.LogFields(otlog.String("logql", queryLogql))
 	log.Span.LogFields(otlog.String("postFilterPreFilterLogql", preFilterLogql))
-	removeLineFmtAbel := false
+	//removeLineFmtAbel := false
 	if strings.Contains(preFilterLogql, "line_format") {
 		//removeLineFmt(postFilterLogSelector)
-		removeLineFmtAbel = true
+		//removeLineFmtAbel = true
 		log.Span.LogFields(otlog.String("resultPostFilterPreFilterLogql", postFilterLogSelector.String()))
 		return chunks, nil, nil
 	}
-	log.Span.SetTag("remove_line_format", removeLineFmtAbel)
+	//log.Span.SetTag("remove_line_format", removeLineFmtAbel)
 	result := make([]chunk.Chunk, 0)
 	resultKeys := make([]string, 0)
 

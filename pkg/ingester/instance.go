@@ -729,7 +729,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 
 	// send until the limit is reached.
 	for limit != 0 && !isDone(ctx) {
-		fetchSize := uint32(queryBatchSize)
+		fetchSize := queryBatchSize
 		if limit > 0 {
 			fetchSize = math.MinUint32(queryBatchSize, uint32(limit))
 		}
