@@ -547,6 +547,12 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           path: '/sys/fs/cgroup',
         },
       },
+      {
+        name: 'docker',
+        host: {
+          path: '/var/run/docker.sock',
+        },
+      },
     ],
     steps: [
       run('write-key',
@@ -555,34 +561,41 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             NFPM_SIGNING_KEY: { from_secret: gpg_private_key.name },
             NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
           }),
-      run('test packaging',
-          commands=[
-            'go install github.com/google/go-jsonnet/cmd/jsonnet@latest',  // Test, install in build image instead
-            'make BUILD_IN_CONTAINER=false packages',
-          ],
-          env={
-            NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
-            NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
-          }) { when: { event: ['pull_request'] } },
+      // run('test packaging',
+      //     commands=[
+      //       'go install github.com/google/go-jsonnet/cmd/jsonnet@latest',  // Test, install in build image instead
+      //       'make BUILD_IN_CONTAINER=false packages',
+      //     ],
+      //     env={
+      //       NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
+      //       NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
+      //     }) { when: { event: ['pull_request'] } },
       {
         name: 'test deb package',
-        image: 'jrei/systemd-debian',
+        image: 'docker',
         commands: [
-          // Install loki and check it's running
-          'dpkg -i dist/loki_0.0.0~rc0_amd64.deb',
-          '[ "$(systemctl is-active loki)" = "active" ] || exit 1',
-          // Install promtail and check it's running
-          'dpkg -i dist/promtail_0.0.0~rc0_amd64.deb',
-          '[ "$(systemctl is-active promtail)" = "active" ] || exit 1',
-          // Install logcli
-          'dpkg -i dist/logcli_0.0.0~rc0_amd64.deb',
-          // Check that there are logs (from the dpkg install)
-          "[ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1",
+          'docker run -d --name systemd --tmpfs /tmp --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro jrei/jrei/systemd-debian:12',
+          "docker exec systemd sh -c '" + |||
+            // Install loki and check it's running
+            dpkg -i dist/loki_0.0.0~rc0_amd64.deb
+            [ "$(systemctl is-active loki)" = "active" ] || exit 1
+            // Install promtail and check it's running
+            dpkg -i dist/promtail_0.0.0~rc0_amd64.deb
+            [ "$(systemctl is-active promtail)" = "active" ] || exit 1
+            // Install logcli
+            dpkg -i dist/logcli_0.0.0~rc0_amd64.deb
+            // Check that there are logs (from the dpkg install)
+            [ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1
+          ||| + "'",
         ],
         volumes: [
           {
             name: 'cgroup',
             path: '/sys/fs/cgroup',
+          },
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
           },
         ],
         privileged: true,
@@ -590,23 +603,30 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       {
         name: 'test rpm package',
-        image: 'centos/systemd',
+        image: 'docker',
         commands: [
-          // Install loki and check it's running
-          'rpm -i dist/loki-0.0.0~rc0.x86_64.rpm',
-          '[ "$(systemctl is-active loki)" = "active" ] || exit 1',
-          // Install promtail and check it's running
-          'rpm -i dist/promtail-0.0.0~rc0.x86_64.rpm',
-          '[ "$(systemctl is-active promtail)" = "active" ] || exit 1',
-          // Install logcli
-          'rpm -i dist/logcli-0.0.0~rc0.x86_64.rpm',
-          // Check that there are logs (from the dpkg install)
-          "[ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1",
+          'docker run -d --name systemd-centos --tmpfs /tmp --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro jrei/systemd-centos:8',
+          "docker exec systemd sh -c '" + |||
+            // Install loki and check it's running
+            rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
+            [ "$(systemctl is-active loki)" = "active" ] || exit 1
+            // Install promtail and check it's running
+            rpm -i dist/promtail-0.0.0~rc0.x86_64.rpm
+            [ "$(systemctl is-active promtail)" = "active" ] || exit 1
+            // Install logcli
+            rpm -i dist/logcli-0.0.0~rc0.x86_64.rpm
+            // Check that there are logs (from the dpkg install)
+            [ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1
+          ||| + "'",
         ],
         volumes: [
           {
             name: 'cgroup',
             path: '/sys/fs/cgroup',
+          },
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
           },
         ],
         privileged: true,

@@ -1086,46 +1086,54 @@ steps:
   image: grafana/loki-build-image:0.21.0
   name: write-key
 - commands:
-  - go install github.com/google/go-jsonnet/cmd/jsonnet@latest
-  - make BUILD_IN_CONTAINER=false packages
-  environment:
-    NFPM_PASSPHRASE:
-      from_secret: gpg_passphrase
-    NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.21.0
-  name: test packaging
-  when:
-    event:
-    - pull_request
-- commands:
-  - dpkg -i dist/loki_0.0.0~rc0_amd64.deb
-  - '[ "$(systemctl is-active loki)" = "active" ] || exit 1'
-  - dpkg -i dist/promtail_0.0.0~rc0_amd64.deb
-  - '[ "$(systemctl is-active promtail)" = "active" ] || exit 1'
-  - dpkg -i dist/logcli_0.0.0~rc0_amd64.deb
-  - '[ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
-  image: jrei/systemd-debian
+  - docker run -d --name systemd --tmpfs /tmp --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro
+    jrei/jrei/systemd-debian:12
+  - |-
+    docker exec systemd sh -c '// Install loki and check it's running
+    dpkg -i dist/loki_0.0.0~rc0_amd64.deb
+    [ "$(systemctl is-active loki)" = "active" ] || exit 1
+    // Install promtail and check it's running
+    dpkg -i dist/promtail_0.0.0~rc0_amd64.deb
+    [ "$(systemctl is-active promtail)" = "active" ] || exit 1
+    // Install logcli
+    dpkg -i dist/logcli_0.0.0~rc0_amd64.deb
+    // Check that there are logs (from the dpkg install)
+    [ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1
+    '
+  image: docker
   name: test deb package
   privileged: true
   volumes:
   - name: cgroup
     path: /sys/fs/cgroup
+  - name: docker
+    path: /var/run/docker.sock
   when:
     event:
     - pull_request
 - commands:
-  - rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
-  - '[ "$(systemctl is-active loki)" = "active" ] || exit 1'
-  - rpm -i dist/promtail-0.0.0~rc0.x86_64.rpm
-  - '[ "$(systemctl is-active promtail)" = "active" ] || exit 1'
-  - rpm -i dist/logcli-0.0.0~rc0.x86_64.rpm
-  - '[ $(logcli query ''{job="varlogs"}'' | wc -l) -gt 0 ] || exit 1'
-  image: centos/systemd
+  - docker run -d --name systemd-centos --tmpfs /tmp --tmpfs /run --tmpfs /run/lock
+    -v /sys/fs/cgroup:/sys/fs/cgroup:ro jrei/systemd-centos:8
+  - |-
+    docker exec systemd sh -c '// Install loki and check it's running
+    rpm -i dist/loki-0.0.0~rc0.x86_64.rpm
+    [ "$(systemctl is-active loki)" = "active" ] || exit 1
+    // Install promtail and check it's running
+    rpm -i dist/promtail-0.0.0~rc0.x86_64.rpm
+    [ "$(systemctl is-active promtail)" = "active" ] || exit 1
+    // Install logcli
+    rpm -i dist/logcli-0.0.0~rc0.x86_64.rpm
+    // Check that there are logs (from the dpkg install)
+    [ $(logcli query '{job=\"varlogs\"}' | wc -l) -gt 0 ] || exit 1
+    '
+  image: docker
   name: test rpm package
   privileged: true
   volumes:
   - name: cgroup
     path: /sys/fs/cgroup
+  - name: docker
+    path: /var/run/docker.sock
   when:
     event:
     - pull_request
@@ -1150,6 +1158,9 @@ volumes:
 - host:
     path: /sys/fs/cgroup
   name: cgroup
+- host:
+    path: /var/run/docker.sock
+  name: docker
 ---
 depends_on:
 - check
@@ -1382,6 +1393,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 038368aad75744edcf9b5433282d3860c7b8f4c2481166ed6ee46118b44783d8
+hmac: 1e39c0690418b18d0b40302da2c7187881637302a07e8635a6dffdbb83fb8eec
 
 ...
