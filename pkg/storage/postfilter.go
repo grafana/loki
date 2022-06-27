@@ -265,38 +265,38 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 	return &chunkWithKey{cnk: postFilterCh, key: s.ExternalKey(cnk.ChunkRef), isPostFilter: isPostFilter}, nil
 }
 
-func removeLineFmt(selector syntax.LogSelectorExpr) {
-	selector.Walk(func(e interface{}) {
-		pipelineExpr, ok := e.(*syntax.PipelineExpr)
-		if !ok {
-			return
-		}
-		stages := pipelineExpr.MultiStages
-		temp := pipelineExpr.MultiStages[:0]
-		for i, stageExpr := range stages {
-			_, ok := stageExpr.(*syntax.LineFmtExpr)
-			if !ok {
-				temp = append(temp, stageExpr)
-				continue
-			}
-			var found bool
-			for j := i; j < len(pipelineExpr.MultiStages); j++ {
-				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LabelParserExpr); ok {
-					found = true
-					break
-				}
-				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LineFilterExpr); ok {
-					found = true
-					break
-				}
-			}
-			if found {
-				temp = append(temp, stageExpr)
-			}
-		}
-		pipelineExpr.MultiStages = temp
-	})
-}
+//func removeLineFmt(selector syntax.LogSelectorExpr) {
+//	selector.Walk(func(e interface{}) {
+//		pipelineExpr, ok := e.(*syntax.PipelineExpr)
+//		if !ok {
+//			return
+//		}
+//		stages := pipelineExpr.MultiStages
+//		temp := pipelineExpr.MultiStages[:0]
+//		for i, stageExpr := range stages {
+//			_, ok := stageExpr.(*syntax.LineFmtExpr)
+//			if !ok {
+//				temp = append(temp, stageExpr)
+//				continue
+//			}
+//			var found bool
+//			for j := i; j < len(pipelineExpr.MultiStages); j++ {
+//				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LabelParserExpr); ok {
+//					found = true
+//					break
+//				}
+//				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LineFilterExpr); ok {
+//					found = true
+//					break
+//				}
+//			}
+//			if found {
+//				temp = append(temp, stageExpr)
+//			}
+//		}
+//		pipelineExpr.MultiStages = temp
+//	})
+//}
 
 type chunkWithKey struct {
 	cnk          chunk.Chunk
