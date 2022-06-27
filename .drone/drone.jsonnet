@@ -555,6 +555,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
     ],
     services: [
+
+    ],
+    steps: [
       {
         name: 'systemd-debian',
         image: 'jrei/systemd-debian:12',
@@ -564,6 +567,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             path: '/sys/fs/cgroup',
           },
         ],
+        detach: true,
         privileged: true,
       },
       {
@@ -575,10 +579,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             path: '/sys/fs/cgroup',
           },
         ],
+        detach: true,
         privileged: true,
       },
-    ],
-    steps: [
       run('write-key',
           commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
           env={

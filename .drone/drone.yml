@@ -1076,20 +1076,22 @@ image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
 name: release
-services:
-- image: jrei/systemd-debian:12
+services: []
+steps:
+- detach: true
+  image: jrei/systemd-debian:12
   name: systemd-debian
   privileged: true
   volumes:
   - name: cgroup
     path: /sys/fs/cgroup
-- image: jrei/systemd-centos:8
+- detach: true
+  image: jrei/systemd-centos:8
   name: systemd-centos
   privileged: true
   volumes:
   - name: cgroup
     path: /sys/fs/cgroup
-steps:
 - commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
   environment:
@@ -1400,6 +1402,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 3a8b29a065829fc528c5e9f0b0cecf257f4fec96e7db8c7762d15572cb5077f9
+hmac: 01d16d7dd043e88013bee1b020c69d1508429eadbb61d5212fa872c3316b7a75
 
 ...
