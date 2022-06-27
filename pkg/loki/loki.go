@@ -234,7 +234,6 @@ type Loki struct {
 
 	Server                   *server.Server
 	ring                     *ring.Ring
-	groupcache               *cache.GroupCache
 	overrides                *validation.Overrides
 	tenantConfigs            *runtime.TenantConfigs
 	TenantLimits             validation.TenantLimits
@@ -257,6 +256,7 @@ type Loki struct {
 	queryScheduler           *scheduler.Scheduler
 	usageReport              *usagestats.Reporter
 	indexGatewayRingManager  *indexgateway.RingManager
+	groupcacheRingManager    *cache.GroupcacheRingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
