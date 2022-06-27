@@ -92,7 +92,7 @@ func NewGroupCache(rm *GroupcacheRingManager, server *server.Server, logger log.
 func (c *GroupCache) updatePeers() {
 	c.update()
 
-	t := time.NewTimer(c.updateInterval)
+	t := time.NewTicker(c.updateInterval)
 	for {
 		select {
 		case <-t.C:
