@@ -1076,7 +1076,6 @@ image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
 name: release
-services: []
 steps:
 - detach: true
   image: jrei/systemd-debian:12
@@ -1085,13 +1084,21 @@ steps:
   volumes:
   - name: cgroup
     path: /sys/fs/cgroup
+  - name: run-debian
+    path: /run
+  - name: tmp-debian
+    path: /tmp
 - detach: true
-  image: jrei/systemd-centos:8
+  image: centos/systemd
   name: systemd-centos
   privileged: true
   volumes:
   - name: cgroup
     path: /sys/fs/cgroup
+  - name: run-centos
+    path: /run
+  - name: tmp-centos
+    path: /tmp
 - commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
   environment:
@@ -1164,6 +1171,18 @@ trigger:
   - pull_request
   - tag
 volumes:
+- name: tmp-centos
+  temp:
+    medium: memory
+- name: run-centos
+  temp:
+    medium: memory
+- name: tmp-debian
+  temp:
+    medium: memory
+- name: run-debian
+  temp:
+    medium: memory
 - host:
     path: /sys/fs/cgroup
   name: cgroup
@@ -1402,6 +1421,6 @@ kind: secret
 name: gpg_public_key
 ---
 kind: signature
-hmac: 01d16d7dd043e88013bee1b020c69d1508429eadbb61d5212fa872c3316b7a75
+hmac: ad136ffeef36f41909dc549c46e38076ccb5e929f2c24b94ddf931786e53b9f8
 
 ...

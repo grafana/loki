@@ -542,6 +542,30 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     image_pull_secrets: [pull_secret.name],
     volumes+: [
       {
+        name: 'tmp-centos',
+        temp: {
+          medium: 'memory',
+        },
+      },
+      {
+        name: 'run-centos',
+        temp: {
+          medium: 'memory',
+        },
+      },
+      {
+        name: 'tmp-debian',
+        temp: {
+          medium: 'memory',
+        },
+      },
+      {
+        name: 'run-debian',
+        temp: {
+          medium: 'memory',
+        },
+      },
+      {
         name: 'cgroup',
         host: {
           path: '/sys/fs/cgroup',
@@ -554,9 +578,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         },
       },
     ],
-    services: [
-
-    ],
     steps: [
       {
         name: 'systemd-debian',
@@ -566,17 +587,33 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             name: 'cgroup',
             path: '/sys/fs/cgroup',
           },
+          {
+            name: 'run-debian',
+            path: '/run',
+          },
+          {
+            name: 'tmp-debian',
+            path: '/tmp',
+          },
         ],
         detach: true,
         privileged: true,
       },
       {
         name: 'systemd-centos',
-        image: 'jrei/systemd-centos:8',
+        image: 'centos/systemd',
         volumes: [
           {
             name: 'cgroup',
             path: '/sys/fs/cgroup',
+          },
+          {
+            name: 'run-centos',
+            path: '/run',
+          },
+          {
+            name: 'tmp-centos',
+            path: '/tmp',
           },
         ],
         detach: true,
