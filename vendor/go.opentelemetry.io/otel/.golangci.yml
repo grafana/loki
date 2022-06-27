@@ -15,6 +15,7 @@ linters:
     - goimports
     - gosimple
     - govet
+    - godot
     - ineffassign
     - misspell
     - revive
@@ -45,3 +46,9 @@ linters-settings:
       - cancelled
   goimports:
     local-prefixes: go.opentelemetry.io
+  godot:
+    exclude:
+      # Exclude sentence fragments for lists.
+      - '^[ ]*[-•]'
+      # Exclude sentences prefixing a list.
+      - ':$'

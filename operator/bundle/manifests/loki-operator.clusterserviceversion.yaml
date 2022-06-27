@@ -439,6 +439,12 @@ spec:
           logs.
         displayName: Object Storage
         path: storage
+      - description: Version for writing and reading logs.
+        displayName: Version
+        path: storage.schemas[0].version
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:v11
+        - urn:alm:descriptor:com.tectonic.ui:select:v12
       - description: Name of a secret in the namespace configured for object storage
           secrets.
         displayName: Object Storage Secret Name
@@ -1170,12 +1176,7 @@ spec:
             spec:
               containers:
               - args:
-                - --with-lokistack-gateway
-                - --with-lokistack-gateway-route
-                - --with-cert-signing-service
-                - --with-service-monitors
-                - --with-tls-service-monitors
-                - --with-prometheus-alerts
+                - --config=controller_manager_config.yaml
                 command:
                 - /manager
                 env:
@@ -1213,6 +1214,9 @@ spec:
                 - mountPath: /tmp/k8s-webhook-server/serving-certs
                   name: webhook-cert
                   readOnly: true
+                - mountPath: /controller_manager_config.yaml
+                  name: manager-config
+                  subPath: controller_manager_config.yaml
               - args:
                 - --secure-listen-address=0.0.0.0:8443
                 - --upstream=http://127.0.0.1:8080/
@@ -1237,6 +1241,9 @@ spec:
                 secret:
                   defaultMode: 420
                   secretName: loki-operator-webhook-service
+              - configMap:
+                  name: loki-operator-manager-config
+                name: manager-config
               - name: loki-operator-metrics-cert
                 secret:
                   defaultMode: 420
@@ -1318,6 +1325,26 @@ spec:
     targetPort: 9443
     type: ValidatingAdmissionWebhook
     webhookPath: /validate-loki-grafana-com-v1beta1-alertingrule
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: loki-operator-controller-manager
+    failurePolicy: Fail
+    generateName: vlokistack.kb.io
+    rules:
+    - apiGroups:
+      - loki.grafana.com
+      apiVersions:
+      - v1beta1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - lokistacks
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-loki-grafana-com-v1beta1-lokistack
   - admissionReviewVersions:
     - v1
     containerPort: 443

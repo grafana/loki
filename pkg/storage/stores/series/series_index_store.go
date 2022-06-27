@@ -209,7 +209,7 @@ func (c *indexStore) chunksToSeries(ctx context.Context, in []logproto.ChunkRef,
 				continue outer
 			}
 
-			results = append(results, chk.Metric.WithoutLabels(labels.MetricName))
+			results = append(results, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())
 		}
 	}
 	sort.Slice(results, func(i, j int) bool {

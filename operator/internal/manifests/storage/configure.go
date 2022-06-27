@@ -5,7 +5,7 @@ import (
 	"path"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/imdario/mergo"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -26,10 +26,7 @@ const (
 // based on the object storage type. Currently supported amendments:
 // - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
-func ConfigureDeployment(
-	d *appsv1.Deployment,
-	opts Options,
-) error {
+func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 	switch opts.SharedStore {
 	case lokiv1beta1.ObjectStorageSecretGCS:
 		return configureDeployment(d, opts.SecretName)
@@ -37,7 +34,6 @@ func ConfigureDeployment(
 		if opts.TLS == nil {
 			return nil
 		}
-
 		return configureDeploymentCA(d, opts.TLS.CA)
 	default:
 		return nil
@@ -48,10 +44,7 @@ func ConfigureDeployment(
 // based on the object storage type. Currently supported amendments:
 // - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
-func ConfigureStatefulSet(
-	d *appsv1.StatefulSet,
-	opts Options,
-) error {
+func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 	switch opts.SharedStore {
 	case lokiv1beta1.ObjectStorageSecretGCS:
 		return configureStatefulSet(d, opts.SecretName)
@@ -59,7 +52,6 @@ func ConfigureStatefulSet(
 		if opts.TLS == nil {
 			return nil
 		}
-
 		return configureStatefulSetCA(d, opts.TLS.CA)
 	default:
 		return nil

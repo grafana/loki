@@ -3,6 +3,7 @@ package syntax
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -182,19 +183,34 @@ func Test_SampleExpr_String(t *testing.T) {
 func TestMatcherGroups(t *testing.T) {
 	for i, tc := range []struct {
 		query string
-		exp   [][]*labels.Matcher
+		exp   []MatcherRange
 	}{
 		{
 			query: `{job="foo"}`,
-			exp: [][]*labels.Matcher{
-				{labels.MustNewMatcher(labels.MatchEqual, "job", "foo")},
+			exp: []MatcherRange{
+				{
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "job", "foo"),
+					},
+				},
 			},
 		},
 		{
-			query: `count_over_time({job="foo"}[5m]) / count_over_time({job="bar"}[5m])`,
-			exp: [][]*labels.Matcher{
-				{labels.MustNewMatcher(labels.MatchEqual, "job", "foo")},
-				{labels.MustNewMatcher(labels.MatchEqual, "job", "bar")},
+			query: `count_over_time({job="foo"}[5m]) / count_over_time({job="bar"}[5m] offset 10m)`,
+			exp: []MatcherRange{
+				{
+					Interval: 5 * time.Minute,
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "job", "foo"),
+					},
+				},
+				{
+					Interval: 5 * time.Minute,
+					Offset:   10 * time.Minute,
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "job", "bar"),
+					},
+				},
 			},
 		},
 	} {

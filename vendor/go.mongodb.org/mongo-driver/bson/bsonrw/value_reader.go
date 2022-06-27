@@ -790,16 +790,6 @@ func (vr *valueReader) readCString() (string, error) {
 	return string(vr.d[start : start+int64(idx)]), nil
 }
 
-func (vr *valueReader) skipCString() error {
-	idx := bytes.IndexByte(vr.d[vr.offset:], 0x00)
-	if idx < 0 {
-		return io.EOF
-	}
-	// idx does not include the null byte
-	vr.offset += int64(idx) + 1
-	return nil
-}
-
 func (vr *valueReader) readString() (string, error) {
 	length, err := vr.readLength()
 	if err != nil {

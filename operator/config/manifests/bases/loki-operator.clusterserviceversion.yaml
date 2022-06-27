@@ -294,6 +294,12 @@ spec:
           logs.
         displayName: Object Storage
         path: storage
+      - description: Version for writing and reading logs.
+        displayName: Version
+        path: storage.schemas[0].version
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:v11
+        - urn:alm:descriptor:com.tectonic.ui:select:v12
       - description: Name of a secret in the namespace configured for object storage
           secrets.
         displayName: Object Storage Secret Name

@@ -29,6 +29,12 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if opts.Flags.EnableTLSGRPCServices {
+		if err := configureIndexGatewayGRPCServicePKI(statefulSet, opts.Name); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIndexGatewayGRPCService(opts),
@@ -157,7 +163,8 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 
 // NewIndexGatewayGRPCService creates a k8s service for the index-gateway GRPC endpoint
 func NewIndexGatewayGRPCService(opts Options) *corev1.Service {
-	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
+	serviceName := serviceNameIndexGatewayGRPC(opts.Name)
+	labels := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -165,8 +172,9 @@ func NewIndexGatewayGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameIndexGatewayGRPC(opts.Name),
-			Labels: l,
+			Name:        serviceName,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -178,7 +186,7 @@ func NewIndexGatewayGRPCService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -186,8 +194,7 @@ func NewIndexGatewayGRPCService(opts Options) *corev1.Service {
 // NewIndexGatewayHTTPService creates a k8s service for the index-gateway HTTP endpoint
 func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameIndexGatewayHTTP(opts.Name)
-	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -196,8 +203,8 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Labels:      labels,
+			Annotations: serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -208,7 +215,7 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -216,4 +223,9 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 func configureIndexGatewayServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameIndexGatewayHTTP(stackName)
 	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+}
+
+func configureIndexGatewayGRPCServicePKI(sts *appsv1.StatefulSet, stackName string) error {
+	serviceName := serviceNameIndexGatewayGRPC(stackName)
+	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }

@@ -6,15 +6,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -359,36 +358,43 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
 
+	g, ctx := errgroup.WithContext(ctx)
+
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
 
 	var ingesterValues [][]string
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
-		timeFramedReq := *req
-		timeFramedReq.Start = &ingesterQueryInterval.start
-		timeFramedReq.End = &ingesterQueryInterval.end
+		g.Go(func() error {
+			var err error
+			timeFramedReq := *req
+			timeFramedReq.Start = &ingesterQueryInterval.start
+			timeFramedReq.End = &ingesterQueryInterval.end
 
-		ingesterValues, err = q.ingesterQuerier.Label(ctx, &timeFramedReq)
-		if err != nil {
-			return nil, err
-		}
+			ingesterValues, err = q.ingesterQuerier.Label(ctx, &timeFramedReq)
+			return err
+		})
 	}
 
 	var storeValues []string
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
-		from := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
-		through := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+		g.Go(func() error {
+			var (
+				err     error
+				from    = model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
+				through = model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+			)
 
-		if req.Values {
-			storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
-			if err != nil {
-				return nil, err
+			if req.Values {
+				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+			} else {
+				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
 			}
-		} else {
-			storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
-			if err != nil {
-				return nil, err
-			}
-		}
+			return err
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	results := append(ingesterValues, storeValues)

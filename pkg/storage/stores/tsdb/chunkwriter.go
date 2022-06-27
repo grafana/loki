@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"math"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -77,12 +78,13 @@ func (w *ChunkWriter) PutOne(ctx context.Context, from, through model.Time, chk 
 	}
 
 	// Always write the index to benefit durability via replication factor.
+	approxKB := math.Round(float64(chk.Data.Size()) / float64(1<<10))
 	metas := index.ChunkMetas{
 		{
 			Checksum: chk.ChunkRef.Checksum,
 			MinTime:  int64(chk.ChunkRef.From),
 			MaxTime:  int64(chk.ChunkRef.Through),
-			KB:       uint32(chk.Size()) / (1 << 10),
+			KB:       uint32(approxKB),
 			Entries:  uint32(chk.Data.Entries()),
 		},
 	}

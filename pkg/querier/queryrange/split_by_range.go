@@ -31,10 +31,13 @@ type splitByRange struct {
 func NewSplitByRangeMiddleware(logger log.Logger, limits Limits, metrics *logql.MapperMetrics) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByRange{
-			logger:  log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
-			next:    next,
-			limits:  limits,
-			ng:      logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next}, limits, logger),
+			logger: log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
+			next:   next,
+			limits: limits,
+			ng: logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{
+				limits: limits,
+				next:   next,
+			}, limits, logger),
 			metrics: metrics,
 		}
 	})
@@ -80,7 +83,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return nil, fmt.Errorf("expected *LokiInstantRequest")
 	}
 
-	query := s.ng.Query(params, parsed)
+	query := s.ng.Query(ctx, params, parsed)
 
 	res, err := query.Exec(ctx)
 	if err != nil {

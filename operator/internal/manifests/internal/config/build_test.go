@@ -3,7 +3,7 @@ package config
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/stretchr/testify/require"
 )
@@ -223,6 +223,12 @@ overrides:
 				Buckets:         "loki",
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
+			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
 			},
 		},
 		EnableRemoteReporting: true,
@@ -466,6 +472,12 @@ overrides:
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
 			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
+			},
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -528,6 +540,12 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 				Buckets:         "loki",
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
+			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
 			},
 		},
 	}
@@ -853,6 +871,12 @@ overrides:
 				Buckets:         "loki",
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
+			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
 			},
 		},
 		EnableRemoteReporting: true,
@@ -1180,6 +1204,12 @@ overrides:
 				Buckets:         "loki",
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
+			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
 			},
 		},
 		EnableRemoteReporting: true,
@@ -1537,6 +1567,12 @@ overrides:
 				Buckets:         "loki",
 				AccessKeyID:     "test",
 				AccessKeySecret: "test123",
+			},
+			Schemas: []lokiv1beta1.ObjectStorageSchema{
+				{
+					Version:       lokiv1beta1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-01",
+				},
 			},
 		},
 		EnableRemoteReporting: true,

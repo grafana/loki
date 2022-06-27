@@ -490,6 +490,12 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
 			// Only queriers should use the AsyncStore, it should never be used in ingesters.
 			asyncStore = true
+
+			if t.Cfg.isModuleEnabled(Read) {
+				// we want to use the actual storage when running the index-gateway, so we remove the Addr from the config
+				t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+				t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+			}
 		case t.Cfg.isModuleEnabled(IndexGateway):
 			// we want to use the actual storage when running the index-gateway, so we remove the Addr from the config
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
@@ -574,7 +580,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 }
 
 func (t *Loki) cacheGenClient() (generationnumber.CacheGenClient, error) {
-	filteringEnabled, err := deletion.FilteringEnabled(t.Cfg.CompactorConfig.DeletionMode)
+	filteringEnabled, err := deletion.DeleteEnabled(t.Cfg.CompactorConfig.DeletionMode)
 	if err != nil {
 		return nil, err
 	}
@@ -665,6 +671,15 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 			return nil, err
 		}
 		tp := httputil.NewSingleHostReverseProxy(tailURL)
+
+		cfg, err := t.Cfg.Frontend.TLS.GetTLSConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		tp.Transport = &http.Transport{
+			TLSClientConfig: cfg,
+		}
 
 		director := tp.Director
 		tp.Director = func(req *http.Request) {
@@ -870,16 +885,11 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 
-	if t.Cfg.CompactorConfig.RetentionEnabled {
-		switch t.compactor.DeleteMode() {
-		case deletion.WholeStreamDeletion, deletion.FilterOnly, deletion.FilterAndDelete:
-			t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler)))
-			t.Server.HTTP.Path("/loki/api/v1/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler)))
-			t.Server.HTTP.Path("/loki/api/v1/delete").Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler)))
-			t.Server.HTTP.Path("/loki/api/v1/cache/generation_numbers").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler)))
-		default:
-			break
-		}
+	if t.Cfg.CompactorConfig.RetentionEnabled && t.compactor.DeleteMode().DeleteEnabled() {
+		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler()))
+		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler()))
+		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler()))
+		t.Server.HTTP.Path("/loki/api/v1/cache/generation_numbers").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler()))
 	}
 
 	return t.compactor, nil
@@ -902,6 +912,12 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
+	// IndexGateway runs by default on read target, and should always assume
+	// ring mode when run in this way.
+	if t.isModuleActive(Read) {
+		t.Cfg.IndexGateway.Mode = indexgateway.RingMode
+	}
+
 	if t.Cfg.IndexGateway.Mode != indexgateway.RingMode {
 		return
 	}
@@ -911,7 +927,7 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	managerMode := indexgateway.ClientMode
-	if t.Cfg.isModuleEnabled(IndexGateway) {
+	if t.Cfg.isModuleEnabled(IndexGateway) || t.Cfg.isModuleEnabled(Read) {
 		managerMode = indexgateway.ServerMode
 	}
 	rm, err := indexgateway.NewRingManager(managerMode, t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer)
@@ -977,12 +993,12 @@ func (t *Loki) deleteRequestsClient() (deletion.DeleteRequestsClient, error) {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
-	filteringEnabled, err := deletion.FilteringEnabled(t.Cfg.CompactorConfig.DeletionMode)
+	deleteEnabled, err := deletion.DeleteEnabled(t.Cfg.CompactorConfig.DeletionMode)
 	if err != nil {
 		return nil, err
 	}
 
-	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) || !filteringEnabled {
+	if !config.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) || !deleteEnabled {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
@@ -991,7 +1007,7 @@ func (t *Loki) deleteRequestsClient() (deletion.DeleteRequestsClient, error) {
 		return nil, err
 	}
 
-	return deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second}, prometheus.DefaultRegisterer)
+	return deletion.NewDeleteRequestsClient(compactorAddress, &http.Client{Timeout: 5 * time.Second}, t.deleteClientMetrics)
 }
 
 func calculateMaxLookBack(pc config.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {

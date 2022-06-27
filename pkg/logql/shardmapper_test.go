@@ -51,8 +51,7 @@ func TestShardedStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-	m, err := NewShardMapper(2, nilShardMetrics)
-	require.Nil(t, err)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
 
 	for _, tc := range []struct {
 		in  syntax.SampleExpr
@@ -114,8 +113,7 @@ func TestMapSampleExpr(t *testing.T) {
 }
 
 func TestMappingStrings(t *testing.T) {
-	m, err := NewShardMapper(2, nilShardMetrics)
-	require.Nil(t, err)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
 	for _, tc := range []struct {
 		in  string
 		out string
@@ -279,8 +277,7 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m, err := NewShardMapper(2, nilShardMetrics)
-	require.Nil(t, err)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
 
 	for _, tc := range []struct {
 		in   string

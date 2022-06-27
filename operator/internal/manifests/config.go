@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -51,6 +52,7 @@ func ConfigOptions(opt Options) config.Options {
 		amConfig                   *config.AlertManagerConfig
 		rwConfig                   *config.RemoteWriteConfig
 	)
+
 	if rulerEnabled {
 		rulerEnabled = true
 
@@ -106,10 +108,6 @@ func ConfigOptions(opt Options) config.Options {
 			RemoteWrite:           rwConfig,
 		},
 	}
-}
-
-func lokiConfigMapName(stackName string) string {
-	return fmt.Sprintf("%s-config", stackName)
 }
 
 func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {

@@ -171,7 +171,8 @@ func (ts TraceState) Get(key string) string {
 // specification an error is returned with the original TraceState.
 //
 // If adding a new list-member means the TraceState would have more members
-// than is allowed an error is returned instead with the original TraceState.
+// then is allowed, the new list-member will be inserted and the right-most
+// list-member will be dropped in the returned TraceState.
 func (ts TraceState) Insert(key, value string) (TraceState, error) {
 	m, err := newMember(key, value)
 	if err != nil {
@@ -179,17 +180,10 @@ func (ts TraceState) Insert(key, value string) (TraceState, error) {
 	}
 
 	cTS := ts.Delete(key)
-	if cTS.Len()+1 > maxListMembers {
-		// TODO (MrAlias): When the second version of the Trace Context
-		// specification is published this needs to not return an error.
-		// Instead it should drop the "right-most" member and insert the new
-		// member at the front.
-		//
-		// https://github.com/w3c/trace-context/pull/448
-		return ts, fmt.Errorf("failed to insert: %w", errMemberNumber)
+	if cTS.Len()+1 <= maxListMembers {
+		cTS.list = append(cTS.list, member{})
 	}
-
-	cTS.list = append(cTS.list, member{})
+	// When the number of members exceeds capacity, drop the "right-most".
 	copy(cTS.list[1:], cTS.list)
 	cTS.list[0] = m
 
